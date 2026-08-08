@@ -11801,6 +11801,12 @@ static int64_t lambda_scope_open(
     return found;
 }
 
+static bool lambda_declaration_syntax_token(
+    const char *source,
+    int64_t function_open,
+    int64_t target
+);
+
 /* Lifted lambdas still use the scalar capture ABI. Refuse every List[Int]
  * binding read in a lambda before C publication, including len and indexing. */
 static char *validate_list_int_lambda_uses(
@@ -11840,11 +11846,13 @@ static char *validate_list_int_lambda_uses(
         if (strcmp(token_kind(source, cursor), "identifier") == 0) {
             char *binding_id = hir_use_binding_id(hir, cursor);
             if (
-                inside_lambda && constructed_list_type_end(
+                inside_lambda && token_equal(source, cursor, "List") &&
+                previous >= 0 && token_equal(source, previous, ":") &&
+                lambda_declaration_syntax_token(
                     source,
-                    cursor,
-                    length
-                ) >= 0
+                    function_open,
+                    cursor
+                )
             ) {
                 free(binding_id);
                 return lower_error(

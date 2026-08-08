@@ -8724,11 +8724,13 @@ fn validate_list_int_lambda_uses(source: Text, hir: Text) -> Text {
         }
         if token_kind(source, cursor) == "identifier" {
             let binding_id = hir_use_binding_id(hir, cursor)
-            if inside_lambda && constructed_list_type_end(
-                source,
-                cursor,
-                len(source)
-            ) >= 0 {
+            if inside_lambda && token_text(source, cursor) == "List" &&
+               previous >= 0 && token_text(source, previous) == ":" &&
+               lambda_declaration_syntax_token(
+                   source,
+                   function_open,
+                   cursor
+               ) {
                 return "error[E2S157]: List annotations inside lambdas are outside this lowering slice at byte " +
                 to_text(cursor)
             }

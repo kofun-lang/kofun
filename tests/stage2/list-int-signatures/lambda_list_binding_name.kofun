@@ -1,0 +1,6 @@
+fn main() -> Int {
+    let List = 7
+    let deferred = fn() => List
+    print(deferred())
+    return 0
+}

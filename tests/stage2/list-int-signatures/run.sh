@@ -71,6 +71,21 @@ assert_not_grep \
     -Eq 'kofun_fn_[^(]+\([^)]*KofunIntList[[:space:]]+\*' \
     "$work/pass-return.c"
 
+# `List` remains an ordinary binding name outside annotation position; the
+# bare-list refusal must not turn every lambda read of that spelling into a
+# type diagnostic.
+compile_success lambda-list-binding-name \
+    "$fixtures/lambda_list_binding_name.kofun"
+"$work/lambda-list-binding-name" \
+    >"$work/lambda-list-binding-name.stdout" \
+    2>"$work/lambda-list-binding-name.stderr"
+cmp \
+    "$fixtures/lambda_list_binding_name.stdout" \
+    "$work/lambda-list-binding-name.stdout"
+assert_file_empty \
+    "List-named lambda binding runtime stderr" \
+    "$work/lambda-list-binding-name.stderr"
+
 compile_success capacity "$fixtures/capacity.kofun"
 "$work/capacity" >"$work/capacity.stdout" 2>"$work/capacity.stderr"
 cmp "$fixtures/capacity.stdout" "$work/capacity.stdout"
@@ -187,6 +202,7 @@ for stem in \
     edit_parameter \
     lambda_argument \
     lambda_bare_result \
+    lambda_bare_list_parameter \
     lambda_capture_index \
     lambda_capture_len \
     lambda_direct_result \
@@ -242,6 +258,7 @@ done
 # one exact binding type. This inventory prevents annotation brackets or
 # nested element identifiers from reappearing as synthetic bindings.
 for scope_case in \
+    lambda_bare_list_parameter \
     lambda_parameter \
     lambda_list_text_parameter \
     lambda_nested_list_parameter
@@ -257,6 +274,10 @@ do
         -Fq '|[|immutable|' \
         "$work/$scope_case.scope-hir"
 done
+assert_grep \
+    "lambda bare List parameter keeps its exact type" \
+    -Fq '|values|immutable|List|copy|initialized|' \
+    "$work/lambda_bare_list_parameter.scope-hir"
 assert_grep \
     "lambda List[Int] parameter keeps its exact type" \
     -Fq '|values|immutable|List[Int]|copy|initialized|' \
