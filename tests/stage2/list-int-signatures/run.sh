@@ -191,6 +191,8 @@ for stem in \
     lambda_capture_len \
     lambda_direct_result \
     lambda_literal \
+    lambda_list_text_parameter \
+    lambda_nested_list_parameter \
     lambda_parameter \
     lambda_parenthesized_result \
     labelled_argument \
@@ -235,6 +237,59 @@ do
         "$work/refuse-$stem-first.tokens" \
         "$work/refuse-$stem-second.tokens"
 done
+
+# Refusal happens only after Scope HIR has recorded each constructed List as
+# one exact binding type. This inventory prevents annotation brackets or
+# nested element identifiers from reappearing as synthetic bindings.
+for scope_case in \
+    lambda_parameter \
+    lambda_list_text_parameter \
+    lambda_nested_list_parameter
+do
+    "$work/kofun-stage2" --emit-scope-hir \
+        "$fixtures/$scope_case.kofun" \
+        "$work/$scope_case.scope-hir"
+    scope_bindings=$(awk '/^binding[|]/ { count++ } END { print count + 0 }' \
+        "$work/$scope_case.scope-hir")
+    assert_num "$scope_case exact binding inventory" "$scope_bindings" -eq 2
+    assert_not_grep \
+        "$scope_case has no bracket-shaped binding" \
+        -Fq '|[|immutable|' \
+        "$work/$scope_case.scope-hir"
+done
+assert_grep \
+    "lambda List[Int] parameter keeps its exact type" \
+    -Fq '|values|immutable|List[Int]|copy|initialized|' \
+    "$work/lambda_parameter.scope-hir"
+assert_grep \
+    "lambda List[Text] parameter keeps its exact type" \
+    -Fq '|values|immutable|List[Text]|copy|initialized|' \
+    "$work/lambda_list_text_parameter.scope-hir"
+assert_grep \
+    "nested lambda List parameter keeps its exact type" \
+    -Fq '|values|immutable|List[List[Int]]|copy|initialized|' \
+    "$work/lambda_nested_list_parameter.scope-hir"
+
+# The unsupported local path has the same load-bearing partial-fact contract:
+# one List[Text] binding with GC ownership and no candidate use for `Text`.
+local_list_source="$root/tests/stage2/list-int-values/unsupported_annotation.kofun"
+"$work/kofun-stage2" --emit-scope-hir \
+    "$local_list_source" \
+    "$work/local-list-text.scope-hir"
+local_list_bindings=$(awk \
+    '/^binding[|]/ { count++ } END { print count + 0 }' \
+    "$work/local-list-text.scope-hir")
+local_list_candidates=$(awk \
+    '/^candidate-use[|]/ { count++ } END { print count + 0 }' \
+    "$work/local-list-text.scope-hir")
+assert_num "local List[Text] exact binding inventory" \
+    "$local_list_bindings" -eq 1
+assert_num "local List[Text] has no annotation candidate uses" \
+    "$local_list_candidates" -eq 0
+assert_grep \
+    "local List[Text] keeps its exact type and ownership" \
+    -Fq '|values|immutable|List[Text]|gc|initialized|' \
+    "$work/local-list-text.scope-hir"
 
 # The public four-argument compiler maps every refusal to process status 1.
 # Its orchestration-only outcome mode preserves status 3 for exactly the

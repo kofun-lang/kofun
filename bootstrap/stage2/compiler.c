@@ -3410,6 +3410,45 @@ static char *parameter_list_type_text(
     return text.data;
 }
 
+/* Preserve any constructed List annotation as one canonical type identity.
+ * This is deliberately shape-only: lowering separately decides which element
+ * types are supported, while Scope HIR must not split `List[T]` into bindings.
+ */
+static int64_t constructed_list_type_end(
+    const char *source,
+    int64_t type,
+    int64_t limit
+) {
+    if (
+        type < 0 || type >= limit || !token_equal(source, type, "List")
+    ) {
+        return -1;
+    }
+    int64_t open = skip_trivia(source, token_end(source, type));
+    if (open >= limit || !token_equal(source, open, "[")) return -1;
+    int64_t close = balanced_end(source, open, "[", "]");
+    return close >= 0 && close <= limit ? close : -1;
+}
+
+static char *constructed_list_type_text(
+    const char *source,
+    int64_t type,
+    int64_t limit
+) {
+    int64_t finish = constructed_list_type_end(source, type, limit);
+    if (finish < 0) return owned_text("");
+    Buffer text;
+    buffer_init(&text);
+    int64_t cursor = type;
+    while (cursor < finish) {
+        char *token = token_copy(source, cursor);
+        buffer_append(&text, token);
+        free(token);
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return text.data;
+}
+
 static char *trailing_lambda_refusal(const char *source, int64_t cursor) {
     Buffer error;
     buffer_init(&error);
@@ -5752,9 +5791,9 @@ static int64_t list_int_literal_count(
     return -1;
 }
 
-/* `List` and `Int` in a local annotation are declaration syntax, not lexical
- * reads. Keeping this local-only preserves #919's boundary: parameters and
- * results still reach their existing unsupported type diagnostics. */
+/* Every identifier inside a constructed local List annotation is declaration
+ * syntax, not a lexical read. Keeping this local-only preserves #919's
+ * boundary: parameters and results still reach their lowering diagnostics. */
 static bool list_int_local_type_token(
     const char *source,
     int64_t target
@@ -5773,17 +5812,15 @@ static bool list_int_local_type_token(
                     source,
                     token_end(source, colon)
                 );
-                int64_t type_finish = list_int_type_end(source, type_start);
+                int64_t type_finish = constructed_list_type_end(
+                    source,
+                    type_start,
+                    length
+                );
                 if (type_finish >= 0) {
-                    int64_t open = skip_trivia(
-                        source,
-                        token_end(source, type_start)
-                    );
-                    int64_t element = skip_trivia(
-                        source,
-                        token_end(source, open)
-                    );
-                    if (target == type_start || target == element) return true;
+                    if (target >= type_start && target < type_finish) {
+                        return true;
+                    }
                     cursor = skip_trivia(source, type_finish);
                 }
             }
@@ -11802,11 +11839,17 @@ static char *validate_list_int_lambda_uses(
         }
         if (strcmp(token_kind(source, cursor), "identifier") == 0) {
             char *binding_id = hir_use_binding_id(hir, cursor);
-            if (inside_lambda && list_int_type_end(source, cursor) >= 0) {
+            if (
+                inside_lambda && constructed_list_type_end(
+                    source,
+                    cursor,
+                    length
+                ) >= 0
+            ) {
                 free(binding_id);
                 return lower_error(
                     "E2S157",
-                    "List[Int] annotations inside lambdas are outside this "
+                    "List annotations inside lambdas are outside this "
                     "lowering slice",
                     cursor
                 );
@@ -13976,22 +14019,12 @@ static char *build_scope_hir_mode(
              * balanced span so partial scope HIR retains the parameter fact
              * before lowering reports the exact E2S157 boundary. */
             int64_t list_shape_end = -1;
-            if (list_end < 0 && token_equal(source, type_cursor, "List")) {
-                int64_t list_open = skip_trivia(
+            if (list_end < 0) {
+                list_shape_end = constructed_list_type_end(
                     source,
-                    token_end(source, type_cursor)
+                    type_cursor,
+                    parameters_close
                 );
-                if (
-                    list_open < parameters_close &&
-                    token_equal(source, list_open, "[")
-                ) {
-                    list_shape_end = balanced_end(
-                        source,
-                        list_open,
-                        "[",
-                        "]"
-                    );
-                }
             }
             /* #916: a parameter binding records the annotation's full
              * identity, so a const argument reaches the scope HIR instead of
@@ -14018,10 +14051,10 @@ static char *build_scope_hir_mode(
                                 parameters_close
                             )
                             : (list_shape_end >= 0
-                                ? source_slice(
+                                ? constructed_list_type_text(
                                     source,
                                     type_cursor,
-                                    list_shape_end
+                                    parameters_close
                                 )
                                 : annotation_type_text(
                                     source,
@@ -14095,11 +14128,28 @@ static char *build_scope_hir_mode(
                             source,
                             token_end(source, after)
                         );
-                        parameter_type = token_copy(source, annotation);
-                        after = skip_trivia(
+                        int64_t list_finish = constructed_list_type_end(
                             source,
-                            token_end(source, annotation)
+                            annotation,
+                            lambda_close
                         );
+                        if (list_finish >= 0) {
+                            parameter_type = constructed_list_type_text(
+                                source,
+                                annotation,
+                                lambda_close
+                            );
+                            after = skip_trivia(source, list_finish);
+                        } else {
+                            parameter_type = annotation_type_text(
+                                source,
+                                annotation
+                            );
+                            after = skip_trivia(
+                                source,
+                                annotation_type_end(source, annotation)
+                            );
+                        }
                     }
                     char *parameter_name = token_copy(source, parameter);
                     char *first = hir_same_scope_declaration(
@@ -14226,6 +14276,13 @@ static char *build_scope_hir_mode(
                     int64_t list_end = optional_end >= 0
                         ? -1
                         : list_int_type_end(source, type_cursor);
+                    int64_t list_shape_end = optional_end < 0 && list_end < 0
+                        ? constructed_list_type_end(
+                            source,
+                            type_cursor,
+                            length
+                        )
+                        : -1;
                     /* #916: an annotated local records the annotation's full
                      * identity, so `let kept: Fixed[2]` binds `Fixed[2]` and
                      * not `Fixed`. */
@@ -14233,14 +14290,28 @@ static char *build_scope_hir_mode(
                         ? owned_text("Int?")
                         : (list_end >= 0
                             ? owned_text("List[Int]")
-                            : annotation_type_text(source, type_cursor));
+                            : (list_shape_end >= 0
+                                ? constructed_list_type_text(
+                                    source,
+                                    type_cursor,
+                                    length
+                                )
+                                : annotation_type_text(
+                                    source,
+                                    type_cursor
+                                )));
                     after_name = skip_trivia(
                         source,
                         optional_end >= 0
                             ? optional_end
                             : (list_end >= 0
                                 ? list_end
-                                : annotation_type_end(source, type_cursor))
+                                : (list_shape_end >= 0
+                                    ? list_shape_end
+                                    : annotation_type_end(
+                                        source,
+                                        type_cursor
+                                    )))
                     );
                 }
                 int64_t initializer = skip_trivia(
@@ -14338,7 +14409,7 @@ static char *build_scope_hir_mode(
                 const char *ownership =
                     strcmp(binding_type, "Text") == 0 ||
                     strcmp(binding_type, "List") == 0 ||
-                    strcmp(binding_type, "List[Int]") == 0 ? "gc" : "copy";
+                    strncmp(binding_type, "List[", 5) == 0 ? "gc" : "copy";
                 buffer_format(
                     &hir,
                     "binding|%" PRId64 "|%s|%s|%s|%s|%s|initialized|"

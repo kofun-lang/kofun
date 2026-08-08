@@ -26,7 +26,7 @@ function callCount(source, name) {
 }
 
 const minimumCalls = new Map([
-  ["list_int_type_end", { c: 15, kofun: 15 }],
+  ["list_int_type_end", { c: 13, kofun: 13 }],
   ["validate_list_int_annotations", { c: 4, kofun: 3 }],
   ["direct_list_int_call_shape", { c: 3, kofun: 3 }],
   ["direct_list_int_call_supported", { c: 4, kofun: 4 }],
@@ -47,6 +47,16 @@ const semanticAnchors = [
     id: "annotation-fallback-after-partial-hir",
     c: "char *list_fallback = validate_list_int_annotations(source);",
     kofun: "let list_fallback = validate_list_int_annotations(source)",
+  },
+  {
+    id: "constructed-list-scope-span",
+    c: "static int64_t constructed_list_type_end(",
+    kofun: "fn constructed_list_type_end(",
+  },
+  {
+    id: "constructed-list-scope-identity",
+    c: "static char *constructed_list_type_text(",
+    kofun: "fn constructed_list_type_text(",
   },
   {
     id: "lambda-validation-before-output",
@@ -133,7 +143,7 @@ function verifyPair(cText, kofunText) {
     ["view projection", "kofun_list_int_view("],
     ["source-order slots", "kofun_list_call_arg_"],
     ["stable refusal", "E2S157"],
-    ["lambda annotation refusal", "List[Int] annotations inside lambdas"],
+    ["lambda annotation refusal", "List annotations inside lambdas"],
     ["lambda literal refusal", "List[Int] literals inside lambdas"],
     ["lambda binding refusal", "List[Int] binding uses inside lambdas"],
     ["lambda result refusal", "List[Int] direct results inside lambdas"],

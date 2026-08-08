@@ -1,0 +1,4 @@
+fn main() -> Int {
+    let deferred = fn(values: List[Text]) => values
+    return 0
+}

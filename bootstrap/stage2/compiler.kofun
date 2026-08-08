@@ -2434,6 +2434,47 @@ fn parameter_list_type_text(source: Text, type_at: Int, limit: Int) -> Text {
     return "List[" + token_text(source, element) + "]"
 }
 
+# Preserve any constructed List annotation as one canonical type identity.
+# This is deliberately shape-only: lowering separately decides which element
+# types are supported, while Scope HIR must not split `List[T]` into bindings.
+fn constructed_list_type_end(
+    source: Text,
+    type_at: Int,
+    limit: Int
+) -> Int {
+    if type_at < 0 || type_at >= limit ||
+       token_text(source, type_at) != "List" {
+        return -1
+    }
+    let open = skip_trivia(source, token_end(source, type_at))
+    if open >= limit || token_text(source, open) != "[" {
+        return -1
+    }
+    let close = balanced_end(source, open, "[", "]")
+    if close < 0 || close > limit {
+        return -1
+    }
+    return close
+}
+
+fn constructed_list_type_text(
+    source: Text,
+    type_at: Int,
+    limit: Int
+) -> Text {
+    let finish = constructed_list_type_end(source, type_at, limit)
+    if finish < 0 {
+        return ""
+    }
+    let mut text = ""
+    let mut cursor = type_at
+    while cursor < finish {
+        text = text + token_text(source, cursor)
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return text
+}
+
 fn trailing_lambda_refusal(cursor: Int) -> Text {
     return "error[E2S158]: a trailing lambda is specified by call-arguments v1 " +
     "but not implemented at byte " + to_text(cursor)
@@ -3035,9 +3076,9 @@ fn list_int_literal_count(source: Text, open: Int) -> Int {
     return -1
 }
 
-# `List` and `Int` in a local annotation are declaration syntax, not lexical
-# reads. Keeping this local-only preserves #919's boundary: parameters and
-# results still reach their existing unsupported type diagnostics.
+# Every identifier inside a constructed local List annotation is declaration
+# syntax, not a lexical read. Keeping this local-only preserves #919's
+# boundary: parameters and results still reach their lowering diagnostics.
 fn list_int_local_type_token(source: Text, target: Int) -> Bool {
     let mut cursor = skip_trivia(source, 0)
     while cursor <= target && cursor < len(source) {
@@ -3052,17 +3093,13 @@ fn list_int_local_type_token(source: Text, target: Int) -> Bool {
                     source,
                     token_end(source, colon)
                 )
-                let type_finish = list_int_type_end(source, type_start)
+                let type_finish = constructed_list_type_end(
+                    source,
+                    type_start,
+                    len(source)
+                )
                 if type_finish >= 0 {
-                    let open = skip_trivia(
-                        source,
-                        token_end(source, type_start)
-                    )
-                    let element = skip_trivia(
-                        source,
-                        token_end(source, open)
-                    )
-                    if target == type_start || target == element {
+                    if target >= type_start && target < type_finish {
                         return true
                     }
                     cursor = skip_trivia(source, type_finish)
@@ -8687,8 +8724,12 @@ fn validate_list_int_lambda_uses(source: Text, hir: Text) -> Text {
         }
         if token_kind(source, cursor) == "identifier" {
             let binding_id = hir_use_binding_id(hir, cursor)
-            if inside_lambda && list_int_type_end(source, cursor) >= 0 {
-                return "error[E2S157]: List[Int] annotations inside lambdas are outside this lowering slice at byte " +
+            if inside_lambda && constructed_list_type_end(
+                source,
+                cursor,
+                len(source)
+            ) >= 0 {
+                return "error[E2S157]: List annotations inside lambdas are outside this lowering slice at byte " +
                 to_text(cursor)
             }
             if len(binding_id) > 0 &&
@@ -9981,20 +10022,12 @@ fn build_scope_hir_mode(
             # balanced span so scope HIR can retain the parameter fact before
             # lowering reports the exact E2S157 boundary.
             let mut list_shape_end = -1
-            if list_end < 0 && token_text(source, type_cursor) == "List" {
-                let list_open = skip_trivia(
+            if list_end < 0 {
+                list_shape_end = constructed_list_type_end(
                     source,
-                    token_end(source, type_cursor)
+                    type_cursor,
+                    parameters_close
                 )
-                if list_open < parameters_close &&
-                   token_text(source, list_open) == "[" {
-                    list_shape_end = balanced_end(
-                        source,
-                        list_open,
-                        "[",
-                        "]"
-                    )
-                }
             }
             # A parameter binding records the annotation's full identity, so a
             # const argument reaches the scope HIR instead of being flattened
@@ -10017,10 +10050,10 @@ fn build_scope_hir_mode(
                 )
             } else if list_shape_end >= 0 {
                 type_end = list_shape_end
-                binding_type = text_slice(
+                binding_type = constructed_list_type_text(
                     source,
                     type_cursor,
-                    list_shape_end
+                    parameters_close
                 )
             }
             let first_declaration = hir_same_scope_declaration(
@@ -10093,11 +10126,28 @@ fn build_scope_hir_mode(
                             source,
                             token_end(source, after)
                         )
-                        binding_type = token_text(source, type_cursor)
-                        after = skip_trivia(
+                        let list_finish = constructed_list_type_end(
                             source,
-                            token_end(source, type_cursor)
+                            type_cursor,
+                            lambda_close
                         )
+                        if list_finish >= 0 {
+                            binding_type = constructed_list_type_text(
+                                source,
+                                type_cursor,
+                                lambda_close
+                            )
+                            after = skip_trivia(source, list_finish)
+                        } else {
+                            binding_type = annotation_type_text(
+                                source,
+                                type_cursor
+                            )
+                            after = skip_trivia(
+                                source,
+                                annotation_type_end(source, type_cursor)
+                            )
+                        }
                     }
                     let first_declaration = hir_same_scope_declaration(
                         hir,
@@ -10169,12 +10219,27 @@ fn build_scope_hir_mode(
                     if optional_end < 0 {
                         list_end = list_int_type_end(source, type_cursor)
                     }
+                    let mut list_shape_end = -1
+                    if optional_end < 0 && list_end < 0 {
+                        list_shape_end = constructed_list_type_end(
+                            source,
+                            type_cursor,
+                            len(source)
+                        )
+                    }
                     if optional_end >= 0 {
                         binding_type = "Int?"
                         after_name = skip_trivia(source, optional_end)
                     } else if list_end >= 0 {
                         binding_type = "List[Int]"
                         after_name = skip_trivia(source, list_end)
+                    } else if list_shape_end >= 0 {
+                        binding_type = constructed_list_type_text(
+                            source,
+                            type_cursor,
+                            len(source)
+                        )
+                        after_name = skip_trivia(source, list_shape_end)
                     } else {
                         binding_type = annotation_type_text(
                             source,
@@ -10227,7 +10292,7 @@ fn build_scope_hir_mode(
                 }
                 let mut ownership = "copy"
                 if binding_type == "Text" || binding_type == "List" ||
-                   binding_type == "List[Int]" {
+                   starts_with(binding_type, "List[") {
                     ownership = "gc"
                 }
                 hir = hir + "binding|" + to_text(next_binding_id) + "|" +
