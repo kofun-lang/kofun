@@ -119,9 +119,22 @@ A1(S)------------> C2 --host cc--> A2
 A2(S)------------> C3 --host cc--> A3
 ```
 
-Success requires byte-identical `C1/C2/C3` and byte-identical `A1/A2/A3`.
+Success requires byte-identical `C2/C3` and byte-identical `A2/A3` — the
+criterion decided on [#271](https://github.com/kofun-lang/kofun/issues/271).
+`C1/A1` are recorded provenance: C1 comes from the trusted seed's independent
+emitter, so it is not expected to match the Kofun-written compiler's output
+byte for byte, and requiring it would freeze both emitters together forever.
 Direct-native compiler reproduction is a separate strengthening track; it does
 not block this first C11 fixed point.
+
+`sh bootstrap/selfhost/build-a1-a2.sh OUTPUT` is the one documented generation
+command: it verifies every declared input digest, derives `C1/A1` and `C2/A2`
+twice in normalized clean directories (each generation's C under the same
+basename), requires the two runs to agree byte for byte, runs the full driver
+corpus through A1 and A2 differentially, and writes the artifacts with
+path-independent provenance under `OUTPUT` only.
+`sh bootstrap/selfhost/check-a1-a2.sh OUTPUT` rejects missing, empty, stale,
+or non-runnable output; `task selfhost-generations` runs both.
 
 The implementation order is
 [#619](https://github.com/kofun-lang/kofun/issues/619) through

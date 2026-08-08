@@ -116,6 +116,12 @@ tasks:
     cmds:
       - "sh bootstrap/selfhost/check-driver-diagnostics.sh"
 
+  selfhost-generations:
+    desc: "Produce the C1/A1 and C2/A2 generations twice and gate reproducibility"
+    cmds:
+      - "sh bootstrap/selfhost/build-a1-a2.sh build/selfhost-generations"
+      - "sh bootstrap/selfhost/check-a1-a2.sh build/selfhost-generations"
+
   selfhost-frontend:
     desc: "Gate #619 typed-frontend evidence (all 46 cells)"
     cmds:
@@ -763,6 +769,7 @@ tasks:
             selfhost-frontend \
             selfhost-c11 \
             selfhost-c11-control \
+            selfhost-generations \
             selfhost-native \
             stage2 \
             stage2-events \
