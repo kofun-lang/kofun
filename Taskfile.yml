@@ -122,6 +122,11 @@ tasks:
       - "sh bootstrap/selfhost/build-a1-a2.sh build/selfhost-generations"
       - "sh bootstrap/selfhost/check-a1-a2.sh build/selfhost-generations"
 
+  selfhost-fixed-point:
+    desc: "Prove the three-generation C11 fixed point: C2 == C3 and A2 == A3"
+    cmds:
+      - "sh bootstrap/selfhost/check-fixed-point.sh build/selfhost-fixed-point"
+
   selfhost-frontend:
     desc: "Gate #619 typed-frontend evidence (all 46 cells)"
     cmds:
@@ -770,6 +775,7 @@ tasks:
             selfhost-c11 \
             selfhost-c11-control \
             selfhost-generations \
+            selfhost-fixed-point \
             selfhost-native \
             stage2 \
             stage2-events \

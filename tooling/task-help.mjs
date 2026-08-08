@@ -23,6 +23,7 @@ export const GROUPS = Object.freeze([
         tasks: [
             'compiler', 'bootstrap', 'selfhost-profile', 'selfhost-self-compile',
             'selfhost-driver-diagnostics', 'selfhost-generations',
+            'selfhost-fixed-point',
             'selfhost-frontend', 'selfhost-c11', 'selfhost-c11-control',
             'selfhost-native', 'stage2', 'stage2-events', 'native', 'wasm',
             'wasm-host-abi', 'wasm-host-profile', 'wasi-command-profile',
