@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 27,
+  "open_issues": 24,
   "issues": [
     {
       "number": 26,
@@ -128,96 +128,12 @@
       ]
     },
     {
-      "number": 32,
-      "title": "Stage 2 fixed point: Kofun compiles Kofun",
-      "state_labels": [
-        "blocked"
-      ],
-      "state_line": "blocked",
-      "blocked_by": [
-        271
-      ],
-      "evidence_commits": [
-        "b8bcaa9b24281ad8ec4e1300c8a444cffe352331"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-32-fixed-point-parent-audit-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-32-fixed-point-parent-audit-20260808",
-          "status": "released"
-        }
-      ]
-    },
-    {
-      "number": 271,
-      "title": "Bootstrap: produce C1/A1 and self-compile S into C2/A2",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "6f71b6df5cf54aa16542b89494d2194c4172a97e",
-        "d0e000d535fb6861abe7a5e582a958d29d1e2461",
-        "d3429207447e112f5230d5be38576959130d288e"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-271-boundary-audit-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-271-boundary-audit-20260808",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-271-d0e-fixedpoint-audit-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-271-d0e-fixedpoint-audit-20260808",
-          "status": "released"
-        },
-        {
-          "agent_id": "claude-271-generations-20260809",
-          "status": "active"
-        }
-      ]
-    },
-    {
-      "number": 272,
-      "title": "Bootstrap fixed point: produce C3/A3, compare three generations, close B4/B5",
-      "state_labels": [
-        "blocked"
-      ],
-      "state_line": "blocked",
-      "blocked_by": [
-        271
-      ],
-      "evidence_commits": [
-        "b8bcaa9b24281ad8ec4e1300c8a444cffe352331"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-refresh-272-fixed-point-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-refresh-272-fixed-point-20260808",
-          "status": "released"
-        }
-      ]
-    },
-    {
       "number": 274,
       "title": "Reproducible bootstrap B6: independent clean builder reproduces the fixed point",
       "state_labels": [
-        "blocked"
+        "needs-detail"
       ],
-      "state_line": "blocked",
+      "state_line": "needs-detail",
       "blocked_by": [
         272
       ],
