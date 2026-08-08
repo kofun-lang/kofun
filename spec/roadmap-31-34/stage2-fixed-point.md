@@ -30,16 +30,30 @@ A3  executable compiler produced by the same host cc from C3
 
 Generated C11 is explicitly allowed for this first fixed point. All build
 inputs, host-compiler identities and flags, target triples, layout rules, and
-reproducibility settings must be declared and identical. Success requires:
+reproducibility settings must be declared and identical. Success requires
+byte equality from generation 2 on:
 
 ```text
-sha256(C1) == sha256(C2) == sha256(C3)
-cmp C1 C2
+sha256(C2) == sha256(C3)
 cmp C2 C3
-sha256(A1) == sha256(A2) == sha256(A3)
-cmp A1 A2
+sha256(A2) == sha256(A3)
 cmp A2 A3
 ```
+
+C1 and A1 are provenance, not fixed-point criteria. Decided on
+[#271](https://github.com/kofun-lang/kofun/issues/271): C1 comes from the
+trusted seed's emitter and C2 from the Kofun-written Stage 1 compiler — two
+independently derived emitters for the same semantics, with different banners,
+include order, runtime symbol names, and helper layout. Requiring `C1 == C2`
+would mean rewriting the seed's lowering to stay byte-compatible with the
+Kofun emitter forever, on a component whose purpose is to stay small and
+auditable. A three-stage bootstrap's stage 1 is built by a foreign compiler
+and is not expected to match; the fixed-point test is stage 2 against
+stage 3. The gate records C1's digest, proves it built a runnable A1, and
+states this criterion in its own output. Each generation's C must be written
+under the same basename in its own directory, because the host C compiler
+records the source basename in the binary it produces — a mismatch there
+reports a fixed-point failure that has nothing to do with Kofun.
 
 Direct-native compiler reproduction is not a prerequisite for this B4/B5
 gate. It remains a separate strengthening track. Equality of token tapes,
