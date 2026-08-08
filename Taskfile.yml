@@ -189,6 +189,11 @@ tasks:
     cmds:
       - "sh tests/conformance/traits/run.sh"
 
+  trait-dictionary-c11:
+    desc: "Execute the bounded one-method Equal[Int] dictionary in C11"
+    cmds:
+      - "sh tests/conformance/trait-dictionary-c11/run.sh"
+
   optional:
     desc: "Verify the bounded null/T? frontend"
     cmds:
@@ -842,6 +847,7 @@ tasks:
             call-arguments-spec \
             call-arguments-surface \
             task-help \
+            trait-dictionary-c11 \
             repository-check \
             assertions \
             backlog \

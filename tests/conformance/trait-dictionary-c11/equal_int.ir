@@ -1,0 +1,15 @@
+kofun-traits-ir/v2
+trait|trait-id=trait:local:Equal|name=Equal|package=local|type-parameters=1|methods=1|span=0..58
+type-parameter|type-parameter-id=type-parameter:trait:local:Equal:0|owner=trait:local:Equal|name=T|index=0|span=12..13
+type-parameter|type-parameter-id=type-parameter:function:same:0|owner=function:same|name=T|index=0|span=169..170
+method|method-id=method:trait:local:Equal:0|owner=trait:local:Equal|name=equal|slot=0|parameters=2|result=builtin:Bool|span=21..56
+dictionary-descriptor|descriptor-id=dictionary-descriptor:abi1/trait:local:Equal|trait=trait:local:Equal|abi=abi1|slots=1|slot-methods=method:trait:local:Equal:0|span=0..58
+implementation|implementation-id=impl:abi1/package:local/trait:local:Equal/args=builtin:Int/self=builtin:Int/decl=0|trait=trait:local:Equal|type-arguments=builtin:Int|self-type=builtin:Int|method=equal|span=60..159
+dictionary|dictionary-id=dictionary:abi1/package:local/trait:local:Equal/args=builtin:Int/self=builtin:Int|descriptor=dictionary-descriptor:abi1/trait:local:Equal|implementation=impl:abi1/package:local/trait:local:Equal/args=builtin:Int/self=builtin:Int/decl=0|trait=trait:local:Equal|self-type=builtin:Int|slots=1|span=60..159
+dictionary-entry|dictionary=dictionary:abi1/package:local/trait:local:Equal/args=builtin:Int/self=builtin:Int|slot=0|method=method:trait:local:Equal:0|implementation-method=equal|span=93..129
+function|function-id=function:same|name=same|type-parameters=1|parameters=2|result=builtin:Bool|span=161..248
+function|function-id=function:use_int|name=use_int|type-parameters=0|parameters=2|result=builtin:Bool|span=250..329
+bound|owner=function:same|type-parameter=type-parameter:function:same:0|trait=trait:local:Equal|type-arguments=type-parameter:function:same:0|span=170..180
+dictionary-parameter|dictionary-parameter-id=dictionary-parameter:function:same:0|owner=function:same|index=0|descriptor=dictionary-descriptor:abi1/trait:local:Equal|discharges-bound=type-parameter:function:same:0|trait=trait:local:Equal|span=170..180
+method-call|caller=function:same|method=method:trait:local:Equal:0|via-bound=type-parameter:function:same:0|dictionary-parameter=dictionary-parameter:function:same:0|method-slot=0|value-arguments=2|result=builtin:Bool|use-span=222..246
+call|caller=function:use_int|callee=function:same|type-arguments=builtin:Int|value-arguments=2|result=builtin:Bool|selected-implementation=impl:abi1/package:local/trait:local:Equal/args=builtin:Int/self=builtin:Int/decl=0|dictionary-arguments=dictionary:abi1/package:local/trait:local:Equal/args=builtin:Int/self=builtin:Int|dictionary-parameter=dictionary-parameter:function:same:0|use-span=305..327|declaration-span=161..248

@@ -41,6 +41,7 @@ export const GROUPS = Object.freeze([
             'affine-resumption',
             'scoped-parallelism', 'schedule-trace', 'type-reduction-trace',
             'generics', 'const-generics', 'hm-levels', 'effect-inference', 'traits',
+            'trait-dictionary-c11',
             'optional', 'optional-narrowing',
             'optional-construction', 'optional-coalescing', 'optional-pair',
             'text-results', 'list-int-values',

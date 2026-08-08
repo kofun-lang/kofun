@@ -1,0 +1,17 @@
+trait Equal[T] {
+    fn equal(left: T, right: T) -> Bool
+}
+
+impl Equal[Int] for Int {
+    fn equal(left: Int, right: Int) -> Bool {
+        return true
+    }
+}
+
+fn same[T: Equal[T]](left: T, right: T) -> Bool {
+    return Equal.equal(left, right)
+}
+
+fn use_int(left: Int, right: Int) -> Bool {
+    return same[Int](left, right)
+}
