@@ -68,14 +68,16 @@ assert_file_empty "$temporary/current-core-probe.stderr" \
     "$temporary/current-core-probe.stderr"
 
 assert_grep "bootstrap/manifest.json" \
-    -q '"stage1_self_recompile": "open"' "$ROOT/bootstrap/manifest.json"
+    -q '"stage1_self_recompile": "working"' "$ROOT/bootstrap/manifest.json"
 assert_grep "bootstrap/manifest.json" \
     -q \
-    '"stage1_stage2_artifact_equivalence": "open"' \
+    '"stage1_stage2_artifact_equivalence": "working"' \
     "$ROOT/bootstrap/manifest.json"
 sed -n '/"stage2": {/,/^[[:space:]]*}/p' \
     "$ROOT/bootstrap/manifest.json" |
-    grep -q '"status": "open"'
+    grep -q '"status": "working"'
+assert_grep "bootstrap/manifest.json" \
+    -q '"diverse_double_compilation": "open"' "$ROOT/bootstrap/manifest.json"
 
 assert_executable "tooling/lsp/kofun-lsp" "$ROOT/tooling/lsp/kofun-lsp"
 assert_regular_file "tooling/lsp/server.js" "$ROOT/tooling/lsp/server.js"
@@ -93,5 +95,5 @@ sh "$ROOT/tests/lsp/check.sh"
 
 printf '%s\n' \
     "PASS: current Stage 2 integer Core probe printed -3 and 2, then exited 42" \
-    "PASS: Stage 2 self-recompile and artifact-equivalence gates remain open" \
+    "PASS: Stage 2 self-recompile and artifact-equivalence gates are closed working; B7 stays open" \
     "PASS: the stdio language server is present and its gate runs"

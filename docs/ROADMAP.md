@@ -259,10 +259,12 @@ B6  independent reproducible bootstrap
 B7  diverse double compilation
 ```
 
-Current status: the canonical B4 source profile is frozen and audited, and the
-repository produces and executes the first generated compiler. B5 remains
-open until the `C1/C2/C3` and `A1/A2/A3` equivalence gates pass. This is a
-runnable first generation, not a semantic self-hosting fixed point.
+Current status: B4 and B5 are closed. The `selfhost-fixed-point` gate proves
+`C2 == C3` and `A2 == A3` byte for byte — the criterion decided on
+[#271](https://github.com/kofun-lang/kofun/issues/271), with `C1/A1` as
+hash-pinned runnable provenance — and the full driver corpus agrees across
+all three executable generations. B6 (independent reproduction) and B7
+(diverse double compilation) remain open strengthening tracks.
 
 ## Law verification milestones
 

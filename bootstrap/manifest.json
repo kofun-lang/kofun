@@ -29,8 +29,33 @@
     },
     "stage2": {
       "implementation": "generated compiler produces and reproduces equivalent later generations",
-      "status": "open",
+      "status": "working",
       "role": "three-generation semantic self-hosting fixed point; the first compiler-produced compiler is active separately"
+    }
+  },
+  "fixed_point_closure": {
+    "schema": "kofun.selfhost-fixed-point/v1",
+    "criterion": "C2 == C3 and A2 == A3 byte for byte from generation 2 on (#271); C1/A1 are hash-pinned runnable provenance",
+    "reproduction_command": "sh bootstrap/selfhost/check-fixed-point.sh build/selfhost-fixed-point",
+    "canonical_source": "bootstrap/stage1/compiler.kofun",
+    "canonical_source_sha256": "2595b8dad461bf02ec75d765295da6b03f40dd02f34daa2b0ebd8b3fab8e596d",
+    "trusted_seed": "bootstrap/stage2/compiler.c",
+    "trusted_seed_sha256": "38a3678ef55f164fc2cb63abed668dce024934bc9c66bf550a1e5160d7d091d1",
+    "corpus_sha256": "74b63ee4951ca95330ed1c503b56bd4edb0b25b71359a7d648a0206b0bf614a6",
+    "c1_sha256": "48a30a19d85c79bae44b03daf2fc66248fd5464fde67694ec308d8772ecfd491",
+    "c2_sha256": "82005a8b89a32f1763bfc7ba5f030b5e109b25ed2a1aff307356ee174f1b887a",
+    "c3_sha256": "82005a8b89a32f1763bfc7ba5f030b5e109b25ed2a1aff307356ee174f1b887a",
+    "closure_measurement": {
+      "note": "C digests above are deterministic and machine-independent; the executable digests below are the closure measurement on the declared host toolchain, re-proven live by the gate rather than compared against this record",
+      "target_triple": "x86_64-pc-linux-gnu",
+      "artifact_format": "host-cc ELF executable",
+      "host_compiler_identity": "cc (GCC) 16.1.1 20260728",
+      "host_compiler_binary_sha256": "47e31bbb6fb82bdb9f01b59b9741674dfe5e6d186e03e16f338678d6efe0038d",
+      "host_compiler_flags": "-std=c11 -O2 -Wall -Wextra -Werror",
+      "normalized_environment": "LC_ALL=C TZ=UTC umask=022",
+      "a1_sha256": "bf1243eded47cad3a58d0a8199a6f74fb2b03b562d332802fbe221d066e8f9b4",
+      "a2_sha256": "551604075186beaec175c9a381c267d1c9bd7940377eb16b15d07b017ef184f2",
+      "a3_sha256": "551604075186beaec175c9a381c267d1c9bd7940377eb16b15d07b017ef184f2"
     }
   },
   "gates": {
@@ -43,10 +68,10 @@
     "native_elf64_exit_fixture": "working",
     "syscall_stdlib_source_contract": "working",
     "syscall_file_round_trip_execution": "working",
-    "stage1_self_recompile": "open",
-    "generated_c_three_generation_equivalence": "open",
-    "stage1_stage2_artifact_equivalence": "open",
+    "stage1_self_recompile": "working",
+    "generated_c_three_generation_equivalence": "working",
+    "stage1_stage2_artifact_equivalence": "working",
     "diverse_double_compilation": "open"
   },
-  "truthful_status": "The repository contains a Python-free Kofun-written compiler seed, a frozen first self-host profile, and a runnable compiler-produced compiler. It is not fully self-hosting because three compiler generations have not yet reached the required equivalent fixed point."
+  "truthful_status": "The repository contains a Python-free Kofun-written compiler seed, a frozen first self-host profile, and a compiler-produced compiler that reproduces itself: three generations reach the #271 fixed-point criterion (C2 == C3, A2 == A3) under the selfhost-fixed-point gate. Independent reproduction (B6) and diverse double compilation (B7) remain open strengthening tracks."
 }

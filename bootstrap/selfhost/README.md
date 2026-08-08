@@ -136,6 +136,15 @@ path-independent provenance under `OUTPUT` only.
 `sh bootstrap/selfhost/check-a1-a2.sh OUTPUT` rejects missing, empty, stale,
 or non-runnable output; `task selfhost-generations` runs both.
 
+`sh bootstrap/selfhost/check-fixed-point.sh OUTPUT` closes the loop: it
+rebuilds and validates that bundle under a declared normalized environment
+(`LC_ALL=C`, `TZ=UTC`, `umask 022`), derives `C3/A3` from `A2(S)` twice in
+normalized clean directories, asserts `C2 == C3` and `A2 == A3` byte for
+byte, and runs the full driver corpus through A3 against A1. The fixed point
+is closed in `bootstrap/manifest.json` (`fixed_point_closure` records the
+measurement); `task selfhost-fixed-point` is the gate. Independent
+reproduction (B6) and diverse double compilation (B7) stay open.
+
 The implementation order is
 [#619](https://github.com/kofun-lang/kofun/issues/619) through
 [#622](https://github.com/kofun-lang/kofun/issues/622), followed by the executable
