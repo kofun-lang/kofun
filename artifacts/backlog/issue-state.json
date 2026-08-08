@@ -98,7 +98,7 @@
       "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
-        "d0e000d535fb6861abe7a5e582a958d29d1e2461"
+        "1639a8deb811d3f04acc5d84a4fd73f7630e8be0"
       ],
       "claims": [
         {
@@ -115,6 +115,14 @@
         },
         {
           "agent_id": "codex-31-main-refresh-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-31-dictionary-c11-split-20260809",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-31-dictionary-c11-split-20260809",
           "status": "released"
         }
       ]
@@ -147,9 +155,9 @@
       "number": 271,
       "title": "Bootstrap: produce C1/A1 and self-compile S into C2/A2",
       "state_labels": [
-        "needs-decision"
+        "ready"
       ],
-      "state_line": "needs-decision",
+      "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
         "6f71b6df5cf54aa16542b89494d2194c4172a97e",
@@ -172,6 +180,10 @@
         {
           "agent_id": "codex-271-d0e-fixedpoint-audit-20260808",
           "status": "released"
+        },
+        {
+          "agent_id": "claude-271-generations-20260809",
+          "status": "active"
         }
       ]
     },
@@ -336,10 +348,9 @@
         784
       ],
       "evidence_commits": [
-        "041816f714eb82ed72e4a773c0112ed87f71b93b",
         "09e03fb96597aa1f48abce7ad95171d3184730d0",
-        "b5ea9ec9241e832b87705c468818b4fd2684146d",
-        "b8bcaa9b24281ad8ec4e1300c8a444cffe352331"
+        "1639a8deb811d3f04acc5d84a4fd73f7630e8be0",
+        "b5ea9ec9241e832b87705c468818b4fd2684146d"
       ],
       "claims": [
         {
@@ -348,6 +359,14 @@
         },
         {
           "agent_id": "codex-644-http-client-audit-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-root-644-http-client-topology-20260809",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-root-644-http-client-topology-20260809",
           "status": "released"
         }
       ]
@@ -386,7 +405,7 @@
       "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
-        "c20a03d69ebc7f65ce83ef284869825184960b7a"
+        "1639a8deb811d3f04acc5d84a4fd73f7630e8be0"
       ],
       "claims": [
         {
@@ -395,6 +414,10 @@
         },
         {
           "agent_id": "codex-audit-710-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-710-docs-truth-topology-20260809",
           "status": "released"
         }
       ]
@@ -409,7 +432,7 @@
       "blocked_by": [],
       "evidence_commits": [
         "09a3229c33fd309f61a0a0ba407fd543f8c670e6",
-        "5c43d4999aefe4f6caeb15a19207bf41fa9935d8",
+        "1639a8deb811d3f04acc5d84a4fd73f7630e8be0",
         "bbb6b0ffee24952016394dc6352499a89ec3e938",
         "bbf7af74862a23019cbbb73ade3b39b8aac605fa"
       ],
@@ -429,6 +452,10 @@
         {
           "agent_id": "codex-725-868-metadata-audit-20260808",
           "status": "released"
+        },
+        {
+          "agent_id": "codex-725-docs-truth-split-20260809",
+          "status": "released"
         }
       ]
     },
@@ -441,7 +468,7 @@
       "state_line": "needs-decision",
       "blocked_by": [],
       "evidence_commits": [
-        "041816f714eb82ed72e4a773c0112ed87f71b93b"
+        "1639a8deb811d3f04acc5d84a4fd73f7630e8be0"
       ],
       "claims": [
         {
@@ -450,6 +477,14 @@
         },
         {
           "agent_id": "codex-refresh-784-affine-handle-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-root-784-affine-protocol-audit-20260809",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-root-784-affine-protocol-audit-20260809",
           "status": "released"
         }
       ]
@@ -489,9 +524,10 @@
       "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
+        "08718618aeb3f4b81a64ed470ffcf5c6087bee3f",
         "0a209468da3698a31cf6177b863284fd04c9a374",
+        "1639a8deb811d3f04acc5d84a4fd73f7630e8be0",
         "1be32d5b9b7cdd9dbcb4532b6c1b094ec5b5f779",
-        "5c43d4999aefe4f6caeb15a19207bf41fa9935d8",
         "b783e7697d3791ce26def31e7b58a51367c83036"
       ],
       "claims": [
@@ -509,6 +545,14 @@
         },
         {
           "agent_id": "codex-725-868-metadata-audit-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-868-list-int-signatures-20260809",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-868-list-int-signatures-20260809",
           "status": "released"
         }
       ]
@@ -602,7 +646,7 @@
       "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
-        "d0e000d535fb6861abe7a5e582a958d29d1e2461"
+        "1639a8deb811d3f04acc5d84a4fd73f7630e8be0"
       ],
       "claims": [
         {
@@ -627,6 +671,14 @@
         },
         {
           "agent_id": "codex-885-d0e-readiness-audit-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-root-885-production-identity-audit-20260809",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-root-885-production-identity-audit-20260809",
           "status": "released"
         }
       ]
