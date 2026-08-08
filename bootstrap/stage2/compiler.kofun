@@ -9833,10 +9833,6 @@ fn build_scope_hir_mode(
     if starts_with(notation_check, "error[") {
         return notation_check
     }
-    let list_annotation_check = validate_list_int_annotations(source)
-    if starts_with(list_annotation_check, "error[") {
-        return list_annotation_check
-    }
     let mut hir = "kofun-scope-hir/v1\n"
     let mut next_scope_id = 0
     let mut next_binding_id = 0
@@ -9981,6 +9977,25 @@ fn build_scope_hir_mode(
                 type_cursor,
                 parameters_close
             )
+            # Unsupported nested/general List annotations still need one
+            # balanced span so scope HIR can retain the parameter fact before
+            # lowering reports the exact E2S157 boundary.
+            let mut list_shape_end = -1
+            if list_end < 0 && token_text(source, type_cursor) == "List" {
+                let list_open = skip_trivia(
+                    source,
+                    token_end(source, type_cursor)
+                )
+                if list_open < parameters_close &&
+                   token_text(source, list_open) == "[" {
+                    list_shape_end = balanced_end(
+                        source,
+                        list_open,
+                        "[",
+                        "]"
+                    )
+                }
+            }
             # A parameter binding records the annotation's full identity, so a
             # const argument reaches the scope HIR instead of being flattened
             # to its head. Recording `Fixed` here would make every scale one
@@ -9999,6 +10014,13 @@ fn build_scope_hir_mode(
                     source,
                     type_cursor,
                     parameters_close
+                )
+            } else if list_shape_end >= 0 {
+                type_end = list_shape_end
+                binding_type = text_slice(
+                    source,
+                    type_cursor,
+                    list_shape_end
                 )
             }
             let first_declaration = hir_same_scope_declaration(
@@ -13695,6 +13717,13 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     if starts_with(optional_use_check, "error[") {
         return optional_use_check
     }
+    # Scope HIR is already complete: unsupported list signature shapes remain
+    # a lowering refusal, so semantic-event consumers can retain partial scope
+    # facts before this exact E2S157 boundary.
+    let list_annotation_check = validate_list_int_annotations(source)
+    if starts_with(list_annotation_check, "error[") {
+        return list_annotation_check
+    }
     let type_check = validate_core_types(source, hir)
     if starts_with(type_check, "error[") {
         return type_check
@@ -13989,6 +14018,9 @@ fn unsupported_lowering_error(diagnostic: Text) -> Bool {
     ) || starts_with(
         diagnostic,
         "error[E2S158]: labelled-call ABI lowering is owned by #882"
+    ) || starts_with(
+        diagnostic,
+        "error[E2S157]: List[Int] function parameters support only the immutable copy mode"
     )
 }
 
@@ -14022,6 +14054,14 @@ fn compile_file(
         }
         let hir = build_scope_hir(source)
         if starts_with(hir, "error[") {
+            # A scope error may occur after its partial facts were observed.
+            # Unsupported list annotations still own the public compile
+            # diagnostic, but no longer prevent those partial facts.
+            let list_fallback = validate_list_int_annotations(source)
+            if starts_with(list_fallback, "error[") {
+                print(list_fallback)
+                return 1
+            }
             print(hir)
             let ownership = borrowed_collection_check(source)
             if ownership == "ok" {

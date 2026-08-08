@@ -236,6 +236,25 @@ do
         "$work/refuse-$stem-second.tokens"
 done
 
+# The public four-argument compiler maps every refusal to process status 1.
+# Its orchestration-only outcome mode preserves status 3 for exactly the
+# ownership-mode boundary so `kofun check` can delegate to the established
+# Copy/borrow validator without classifying unrelated E2S157 refusals.
+set +e
+"$work/kofun-stage2" --compile-outcome \
+    "$fixtures/read_parameter.kofun" \
+    "$work/read-outcome.c" \
+    "$work/read-outcome.ir" \
+    "$work/read-outcome.tokens" \
+    >"$work/read-outcome.stdout" \
+    2>"$work/read-outcome.stderr"
+read_outcome_status=$?
+set -e
+assert_num "read ownership compile outcome" "$read_outcome_status" -eq 3
+assert_absent "read ownership rejected C" "$work/read-outcome.c"
+assert_file_empty "read ownership outcome stderr" "$work/read-outcome.stderr"
+cmp "$fixtures/read_parameter.stdout" "$work/read-outcome.stdout"
+
 # The Kofun authority and audited C seed must carry this semantic family
 # together; the checksum gate then pins their exact bytes.
 assert_grep \

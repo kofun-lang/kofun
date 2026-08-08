@@ -13682,11 +13682,6 @@ static char *build_scope_hir_mode(
     char *notation_check = validate_removed_callable_notation(source);
     if (strncmp(notation_check, "error[", 6) == 0) return notation_check;
     free(notation_check);
-    char *list_annotation_check = validate_list_int_annotations(source);
-    if (strncmp(list_annotation_check, "error[", 6) == 0) {
-        return list_annotation_check;
-    }
-    free(list_annotation_check);
     Buffer hir;
     buffer_init(&hir);
     buffer_append(&hir, "kofun-scope-hir/v1\n");
@@ -13977,6 +13972,27 @@ static char *build_scope_hir_mode(
                 type_cursor,
                 parameters_close
             );
+            /* Unsupported nested/general List annotations still need one
+             * balanced span so partial scope HIR retains the parameter fact
+             * before lowering reports the exact E2S157 boundary. */
+            int64_t list_shape_end = -1;
+            if (list_end < 0 && token_equal(source, type_cursor, "List")) {
+                int64_t list_open = skip_trivia(
+                    source,
+                    token_end(source, type_cursor)
+                );
+                if (
+                    list_open < parameters_close &&
+                    token_equal(source, list_open, "[")
+                ) {
+                    list_shape_end = balanced_end(
+                        source,
+                        list_open,
+                        "[",
+                        "]"
+                    );
+                }
+            }
             /* #916: a parameter binding records the annotation's full
              * identity, so a const argument reaches the scope HIR instead of
              * being flattened to its head. Recording `Fixed` here would make
@@ -13988,7 +14004,9 @@ static char *build_scope_hir_mode(
                        ? optional_end
                        : (list_end >= 0
                             ? list_end
-                            : annotation_type_end(source, type_cursor)));
+                            : (list_shape_end >= 0
+                                ? list_shape_end
+                                : annotation_type_end(source, type_cursor))));
             char *type_text = callable_end >= 0
                 ? owned_text("Fn")
                 : (optional_end >= 0
@@ -13999,7 +14017,16 @@ static char *build_scope_hir_mode(
                                 type_cursor,
                                 parameters_close
                             )
-                            : annotation_type_text(source, type_cursor)));
+                            : (list_shape_end >= 0
+                                ? source_slice(
+                                    source,
+                                    type_cursor,
+                                    list_shape_end
+                                )
+                                : annotation_type_text(
+                                    source,
+                                    type_cursor
+                                ))));
             char *ownership = ownership_mode_token(source, parameter_cursor)
                 ? token_copy(source, parameter_cursor)
                 : owned_text("copy");
@@ -21595,6 +21622,14 @@ static char *lower_c_body(const char *source, const char *hir) {
         return optional_use_check;
     }
     free(optional_use_check);
+    /* Scope HIR is complete before this lowering refusal, preserving partial
+     * scope facts for semantic-event consumers while compile still reports
+     * the exact unsupported-list E2S157 and publishes no C. */
+    char *list_annotation_check = validate_list_int_annotations(source);
+    if (strncmp(list_annotation_check, "error[", 6) == 0) {
+        return list_annotation_check;
+    }
+    free(list_annotation_check);
     char *type_check = validate_core_types(source, hir);
     if (strncmp(type_check, "error[", 6) == 0) return type_check;
     free(type_check);
@@ -22050,6 +22085,15 @@ static bool unsupported_lowering_error(const char *diagnostic) {
                strlen(
                    "error[E2S158]: labelled-call ABI lowering is owned by #882"
                )
+           ) == 0 ||
+           strncmp(
+               diagnostic,
+               "error[E2S157]: List[Int] function parameters support only "
+               "the immutable copy mode",
+               strlen(
+                   "error[E2S157]: List[Int] function parameters support only "
+                   "the immutable copy mode"
+               )
            ) == 0;
 }
 
@@ -22132,14 +22176,25 @@ static bool stage2_compile_outcome(
 
     result->scope_hir = build_scope_hir(source);
     if (strncmp(result->scope_hir, "error[", 6) == 0) {
-        Stage2StructuredDiagnostic saved = context == NULL ?
-            (Stage2StructuredDiagnostic){0} : context->diagnostic;
         char *scope_error = result->scope_hir;
         char *ownership;
-        result->diagnostic = scope_error;
         result->scope_hir = result->scope_prefix_hir;
         result->scope_prefix_hir = NULL;
         result->scope_committed = result->scope_hir != NULL;
+        /* Match the command adapter: partial scope facts remain committed,
+         * while an unsupported List annotation still owns the public
+         * diagnostic if scope construction encountered a later error. */
+        char *list_fallback = validate_list_int_annotations(source);
+        if (strncmp(list_fallback, "error[", 6) == 0) {
+            result->diagnostic = list_fallback;
+            result->exit_class = 1u;
+            free(scope_error);
+            goto done;
+        }
+        free(list_fallback);
+        Stage2StructuredDiagnostic saved = context == NULL ?
+            (Stage2StructuredDiagnostic){0} : context->diagnostic;
+        result->diagnostic = scope_error;
         ownership = borrowed_collection_check(source);
         result->exit_class =
             strncmp(ownership, "error[", 6) == 0 ? 1u : 3u;
@@ -22317,6 +22372,20 @@ static int compile_file(
         free(pattern_check);
         char *hir = build_scope_hir(source);
         if (strncmp(hir, "error[", 6) == 0) {
+            /* Scope-prefix facts have already been observed. Keep the public
+             * unsupported-list diagnostic exact without moving validation
+             * back inside scope-HIR construction. */
+            char *list_fallback = validate_list_int_annotations(source);
+            if (strncmp(list_fallback, "error[", 6) == 0) {
+                puts(list_fallback);
+                free(list_fallback);
+                free(hir);
+                free(ir);
+                free(tokens);
+                free(source);
+                return 1;
+            }
+            free(list_fallback);
             char *ownership = borrowed_collection_check(source);
             int status = strcmp(ownership, "ok") == 0 ? 3 : 1;
             puts(hir);

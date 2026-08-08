@@ -409,9 +409,10 @@ do
     esac
 done <"$WORK/plain/repository-error-companions"
 # Optional coalescing adds six exact compile-time refusal companions and
-# retires its one former construction refusal: 303 + 6 - 1 = 308.
-test "$repository_error_cases" -eq 308 ||
-    fail "expected all 308 repository error companions, saw $repository_error_cases"
+# retires its one former construction refusal: 303 + 6 - 1 = 308. #1103 adds
+# sixteen exact List[Int] signature/lambda/ownership boundary companions.
+test "$repository_error_cases" -eq 324 ||
+    fail "expected all 324 repository error companions, saw $repository_error_cases"
 
 # Project-owned valid Stage 2 profiles cover functions, value control, concrete
 # enums, nested lexical scopes, and shadowing.  Producer and compiler must both

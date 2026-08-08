@@ -27,7 +27,7 @@ function callCount(source, name) {
 
 const minimumCalls = new Map([
   ["list_int_type_end", { c: 15, kofun: 15 }],
-  ["validate_list_int_annotations", { c: 2, kofun: 2 }],
+  ["validate_list_int_annotations", { c: 4, kofun: 3 }],
   ["direct_list_int_call_shape", { c: 3, kofun: 3 }],
   ["direct_list_int_call_supported", { c: 4, kofun: 4 }],
   ["emit_direct_list_int_call", { c: 2, kofun: 2 }],
@@ -39,9 +39,14 @@ const minimumCalls = new Map([
 
 const semanticAnchors = [
   {
-    id: "annotation-validation-before-hir",
+    id: "annotation-validation-before-lowering",
     c: "char *list_annotation_check = validate_list_int_annotations(source);",
     kofun: "let list_annotation_check = validate_list_int_annotations(source)",
+  },
+  {
+    id: "annotation-fallback-after-partial-hir",
+    c: "char *list_fallback = validate_list_int_annotations(source);",
+    kofun: "let list_fallback = validate_list_int_annotations(source)",
   },
   {
     id: "lambda-validation-before-output",
