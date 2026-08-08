@@ -1,0 +1,9 @@
+fn read(values: List[Int], index: Int) -> Int {
+    return values[index]
+}
+
+fn main() -> Int {
+    let values: List[Int] = [7, 8]
+    print(read(values, 2))
+    return 0
+}

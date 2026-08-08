@@ -1,0 +1,7 @@
+fn count(values: List[Text]) -> Int {
+    return 0
+}
+
+fn main() -> Int {
+    return 0
+}

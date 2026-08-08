@@ -73,11 +73,14 @@ set +e
     >"$work/canonical.check.stdout" 2>"$work/canonical.check.stderr"
 canonical_status=$?
 set -e
-[ "$canonical_status" -ne 0 ] ||
+[ "$canonical_status" -eq 1 ] ||
     fail 'canonical ADT source unexpectedly claimed executable codegen'
-grep -Fq 'error[E2S35]: unknown lexical binding `TestSummary` at byte 1904' \
-    "$work/canonical.check.stderr" ||
-    fail 'canonical ADT source did not expose the documented compiler boundary'
+[ ! -s "$work/canonical.check.stdout" ] ||
+    fail 'canonical ADT refusal unexpectedly wrote stdout'
+printf '%s\n' \
+    'error[E2S157]: Stage 2 function list signatures require exactly List[Int] at byte 2328' |
+    cmp - "$work/canonical.check.stderr" ||
+    fail 'canonical ADT source did not expose the documented list boundary'
 
 checkpoint="$testing_dir/tests/checkpoint.kofun"
 expected="$testing_dir/tests/checkpoint.stdout"

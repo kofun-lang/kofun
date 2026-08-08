@@ -1,0 +1,14 @@
+fn make() -> List[Int] {
+    let values: List[Int] = [1]
+    return values
+}
+
+fn count(values: List[Int]) -> Int {
+    return len(values)
+}
+
+fn main() -> Int {
+    let deferred = fn() => count(make())
+    print(deferred())
+    return 0
+}

@@ -1,0 +1,9 @@
+fn make() -> List[Int] {
+    return [1]
+}
+
+fn main() -> Int {
+    let values: List[Int] = make()
+    print(len(values))
+    return 0
+}

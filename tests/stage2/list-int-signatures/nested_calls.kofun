@@ -1,0 +1,17 @@
+fn make(marker: Int) -> List[Int] {
+    print(marker)
+    let values: List[Int] = [marker]
+    return values
+}
+
+fn choose(first: List[Int], second: List[Int]) -> List[Int] {
+    print(first[0])
+    print(second[0])
+    return first
+}
+
+fn main() -> Int {
+    let selected: List[Int] = choose(make(1), choose(make(2), make(3)))
+    print(selected[0])
+    return 0
+}

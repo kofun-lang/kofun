@@ -1,0 +1,6 @@
+fn main() -> Int {
+    let values: List[Int] = [1]
+    let deferred = fn() => values[0]
+    print(deferred())
+    return 0
+}

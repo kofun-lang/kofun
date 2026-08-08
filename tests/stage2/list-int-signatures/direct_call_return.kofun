@@ -1,0 +1,16 @@
+fn make() -> List[Int] {
+    print(41)
+    let values: List[Int] = [7, 8]
+    return values
+}
+
+fn forward() -> List[Int] {
+    return make()
+}
+
+fn main() -> Int {
+    let values: List[Int] = forward()
+    print(len(values))
+    print(values[0])
+    return 0
+}

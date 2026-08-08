@@ -230,6 +230,11 @@ tasks:
     cmds:
       - "sh tests/stage2/list-int-values/run.sh"
 
+  list-int-signatures:
+    desc: "Verify bounded Stage 2 List[Int] parameters and results"
+    cmds:
+      - "sh tests/stage2/list-int-signatures/run.sh"
+
   adt-exhaustiveness:
     desc: "Verify resolved flat-ADT match diagnostics"
     cmds:
@@ -776,6 +781,7 @@ tasks:
             optional-pair \
             text-results \
             list-int-values \
+            list-int-signatures \
             adt-exhaustiveness \
             enum-match-value \
             module-constants \

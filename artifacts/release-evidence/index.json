@@ -653,7 +653,7 @@
     }
   ],
   "evidence_digests": {
-    "Taskfile.yml": "1bdea7c895150345662d7446ee0cb480dbd8765071752696bef54e11bd311766",
+    "Taskfile.yml": "2b3cd6120786db404386b23c02e1bb37a05ce28fbd2bc7bc8ff32925c219091f",
     "bootstrap/native/check.sh": "fea94cb623757e1bf17e4497f43d656b1e8ff57a39a92ece871d8ff257c0f2ef",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/driver/corpus_builtin_rejects.tsv": "b1fa0b26247581aef797a81880554a94233a34109215530641706d76777087d4",
@@ -696,7 +696,7 @@
     "stdlib/tests/verify.sh": "3c9056344a95b957792a6ab38e42f81a2ff86786b5ade6680cf8dc9d31edc5dd",
     "tests/cli.sh": "72aff8e52acb330d5be247f46ad3bfe875677c2f6d53bb823ed69fb3b9795d20",
     "tests/cli_stage2_outcomes.sh": "9f84a95495afab023a1572b37a2508a4ee02a3a89881df14b887c209a628a9a7",
-    "tests/conformance/capabilities.tsv": "12cef6ec6a3c86221893bfcbb54d511ccf27b943f83554e44759694798293833",
+    "tests/conformance/capabilities.tsv": "b752c9e2330bcd994f135ee3f51f11a226ac68d33374049e48fc700d1dfb5ad4",
     "tests/conformance/functions/division_floor_signs.kofun": "6bfd48679ebcf604305c78271b80e803866a64d8e9c8f732f5b1884d4d0d67b0",
     "tests/conformance/modules/re-exports/run.sh": "39d91f56a27e5c7469d26309a3f709431a8307359715452f6cfbcaf9843f6b12",
     "tests/conformance/numeric/reject_slash_operator.kofun": "49a14dbd0392e6920a681168af44018182f78175a921592283631c9942045c24",

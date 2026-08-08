@@ -1,0 +1,32 @@
+fn make_left() -> List[Int] {
+    print(10)
+    let values: List[Int] = [1, 2, 3]
+    return values
+}
+
+fn make_right() -> List[Int] {
+    print(20)
+    let values: List[Int] = [4, 5]
+    return values
+}
+
+fn choose(first: List[Int], marker: Int, second: List[Int]) -> List[Int] {
+    print(len(first))
+    print(first[1])
+    print(marker)
+    print(len(second))
+    return second
+}
+
+fn echo(values: List[Int]) -> List[Int] {
+    return values
+}
+
+fn main() -> Int {
+    let selected: List[Int] = choose(make_left(), 30, make_right())
+    let returned: List[Int] = echo(selected)
+    print(len(returned))
+    print(returned[0])
+    print(returned[-1])
+    return 0
+}

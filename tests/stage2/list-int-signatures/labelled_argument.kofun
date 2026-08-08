@@ -1,0 +1,9 @@
+fn count(values items: List[Int]) -> Int {
+    return len(items)
+}
+
+fn main() -> Int {
+    let values: List[Int] = [1]
+    print(count(values: values))
+    return 0
+}

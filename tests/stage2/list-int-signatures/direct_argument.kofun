@@ -1,0 +1,8 @@
+fn count(values: List[Int]) -> Int {
+    return len(values)
+}
+
+fn main() -> Int {
+    print(count([1]))
+    return 0
+}

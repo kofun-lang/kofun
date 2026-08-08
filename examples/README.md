@@ -39,7 +39,7 @@ suite (see [`tooling/kotest/README.md`](../tooling/kotest/README.md)), run by
 | `api_server.kofun` | owned | `tests/http/check.sh` |
 | `broken_list_monad.kofun` | illustrative | `E2S02` |
 | `cli_tool.kofun` | owned | `framework/cli/check.sh` |
-| `coding_interview.kofun` | illustrative | `E2S15` |
+| `coding_interview.kofun` | illustrative | `E2S10` |
 | `fibonacci_native.kofun` | owned | `bootstrap/native/check.sh` |
 | `hello.kofun` | runs | `hello.expected` |
 | `lambdas.kofun` | owned | `tests/conformance/syntax/issues_35_47/run.sh` |
@@ -100,7 +100,7 @@ Stage 2 Core path states for itself:
 |---|---|
 | `broken_list_monad.kofun`, `lawful_list_monad.kofun`, `proven_optional_bool_monad.kofun` | `law` declarations (DD-035) are not a Stage 2 Core top-level form |
 | `ownership.kofun` | `read`/`take`/`own` parameter modes (DD-005, DD-006) parse, but the general ownership pass is open |
-| `coding_interview.kofun` | `List[Int]` parameters are outside the Core parameter set, which `E2S15` states directly in parameter position |
+| `coding_interview.kofun` | The `List[Int]` signature now lowers, then the ordinary `while` reaches the exact `E2S10` unsupported-statement boundary at byte 120 |
 | `null_and_else_if.kofun` | `Int?` construction and `??` coalescing lower to Core; the Text-valued `return if ... else if ...` remains outside Stage 2 value-return lowering and stops at `E2S12` |
 | `pipeline.kofun` | `|>` is accepted design (DD-011); `map`, `filter`, and `sum` are not Core functions |
 | `science.kofun` | `linspace` and the numeric surface it uses are not Core functions |

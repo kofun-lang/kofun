@@ -1,0 +1,9 @@
+fn make() -> List[Int] {
+    let values: List[Int] = [1]
+    return values
+}
+
+fn main() -> Int {
+    let deferred = fn() => make()
+    return 0
+}

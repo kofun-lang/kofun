@@ -4618,6 +4618,13 @@ static char *emit_primary(
     int64_t start,
     int64_t end
 );
+static char *emit_list_int_value(
+    const char *source,
+    const char *hir,
+    int64_t start,
+    int64_t end,
+    bool allow_literal
+);
 static char *initializer_type(
     const char *source,
     const char *hir,
@@ -5786,8 +5793,85 @@ static bool list_int_local_type_token(
     return false;
 }
 
-static char *validate_list_int_local_annotations(const char *source) {
+static char *validate_list_int_annotations(const char *source) {
     int64_t length = source_length(source);
+    int64_t function_start = next_function_start(source, 0);
+    while (function_start < length) {
+        int64_t parameters = parameter_open(source, function_start);
+        int64_t parameters_close = balanced_end(
+            source,
+            parameters,
+            "(",
+            ")"
+        );
+        int64_t parameter = skip_trivia(
+            source,
+            token_end(source, parameters)
+        );
+        while (
+            parameter < parameters_close &&
+            !token_equal(source, parameter, ")")
+        ) {
+            int64_t type_start = parameter_type_start(
+                source,
+                parameter,
+                parameters_close
+            );
+            if (type_start < 0) break;
+            if (
+                ownership_mode_token(source, parameter) &&
+                list_int_type_end(source, type_start) >= 0
+            ) {
+                return lower_error(
+                    "E2S157",
+                    "List[Int] function parameters support only the immutable "
+                    "copy mode",
+                    parameter
+                );
+            }
+            if (
+                token_equal(source, type_start, "List") &&
+                list_int_type_end(source, type_start) < 0
+            ) {
+                return lower_error(
+                    "E2S157",
+                    "Stage 2 function list signatures require exactly List[Int]",
+                    type_start
+                );
+            }
+            int64_t type_end = parameter_list_type_end(
+                source,
+                type_start,
+                parameters_close
+            );
+            if (type_end < 0) {
+                type_end = annotation_type_end(source, type_start);
+            }
+            int64_t separator = skip_trivia(source, type_end);
+            parameter = separator < parameters_close &&
+                token_equal(source, separator, ",")
+                ? skip_trivia(source, token_end(source, separator))
+                : separator;
+        }
+        int64_t after = skip_trivia(source, parameters_close);
+        if (after < length && token_equal(source, after, "->")) {
+            int64_t result = skip_trivia(source, token_end(source, after));
+            if (
+                token_equal(source, result, "List") &&
+                list_int_type_end(source, result) < 0
+            ) {
+                return lower_error(
+                    "E2S157",
+                    "Stage 2 function list signatures require exactly List[Int]",
+                    result
+                );
+            }
+        }
+        function_start = next_function_start(
+            source,
+            function_end(source, function_start)
+        );
+    }
     int64_t cursor = skip_trivia(source, 0);
     while (cursor < length) {
         if (token_equal(source, cursor, "let")) {
@@ -6576,6 +6660,28 @@ static char *emit_argument(
         free(message.data);
         return error;
     }
+    if (strcmp(expected_type, "List[Int]") == 0) {
+        if (strcmp(actual_type, "List[Int]") != 0) {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(
+                &message,
+                "Core function `%s` expects List[Int] for argument %" PRId64
+                ", got %s",
+                callee,
+                argument_index + 1,
+                actual_type
+            );
+            free(actual_type);
+            free(expected_type);
+            char *error = lower_error("E2S15", message.data, start);
+            free(message.data);
+            return error;
+        }
+        free(actual_type);
+        free(expected_type);
+        return emit_list_int_value(source, hir, start, end, false);
+    }
     free(actual_type);
     free(expected_type);
     /* An arrow lambda argument is the address of the function it was lifted
@@ -6887,6 +6993,176 @@ static char *emit_labelled_int_call_temporaries(
     return output.data;
 }
 
+/* Ordinary C argument evaluation is unsequenced. A direct call that crosses
+ * a List[Int] carrier therefore uses fixed source-byte slots for every
+ * argument, including its Int companions, before the declaration-order call.
+ */
+static bool direct_list_int_call_shape(
+    const char *source,
+    const char *hir,
+    int64_t call_start,
+    const char *callee,
+    int64_t open
+) {
+    if (call_has_labelled_argument(source, open)) return false;
+    char *binding = hir_use_binding_id(hir, call_start);
+    bool direct = binding[0] == '\0';
+    free(binding);
+    if (!direct) return false;
+    int64_t declaration = function_start_named(source, callee);
+    if (declaration < 0) return false;
+    int64_t count = parameter_count(source, declaration);
+    if (count < 1 || count > 8) return false;
+    bool has_list = false;
+    for (int64_t index = 0; index < count; ++index) {
+        char *type = function_parameter_type(source, callee, index);
+        if (strcmp(type, "List[Int]") == 0) {
+            has_list = true;
+        } else if (strcmp(type, "Int") != 0) {
+            free(type);
+            return false;
+        }
+        free(type);
+    }
+    return has_list;
+}
+
+static bool direct_list_int_call_supported(
+    const char *source,
+    const char *hir,
+    int64_t call_start,
+    const char *callee,
+    int64_t open
+) {
+    if (!direct_list_int_call_shape(
+        source,
+        hir,
+        call_start,
+        callee,
+        open
+    )) {
+        return false;
+    }
+    int64_t function_open = enclosing_function_open(source, call_start);
+    return function_open < 0 ||
+        lambda_scope_open(source, function_open, call_start) < 0;
+}
+
+static char *emit_direct_list_int_call(
+    const char *source,
+    const char *hir,
+    int64_t call_start,
+    int64_t open,
+    int64_t end,
+    const char *callee
+) {
+    int64_t declaration = function_start_named(source, callee);
+    int64_t count = parameter_count(source, declaration);
+    Buffer output;
+    buffer_init(&output);
+    buffer_append(&output, "(");
+    int64_t argument = skip_trivia(source, token_end(source, open));
+    int64_t index = 0;
+    while (
+        index < count && argument < end &&
+        !token_equal(source, argument, ")")
+    ) {
+        int64_t bound = argument_end(source, argument);
+        char *value = emit_argument(
+            source,
+            hir,
+            argument,
+            bound,
+            callee,
+            index
+        );
+        if (strncmp(value, "error[", 6) == 0) {
+            free(output.data);
+            return value;
+        }
+        buffer_format(
+            &output,
+            "(kofun_list_call_arg_%" PRId64 "_%" PRId64 " = %s), ",
+            call_start,
+            index,
+            value
+        );
+        free(value);
+        int64_t separator = skip_trivia(source, bound);
+        argument = separator < end && token_equal(source, separator, ",")
+            ? skip_trivia(source, token_end(source, separator))
+            : separator;
+        ++index;
+    }
+    char *c_name = c_identifier_name(callee);
+    buffer_format(&output, "kofun_fn_%s(", c_name);
+    free(c_name);
+    for (int64_t slot = 0; slot < count; ++slot) {
+        if (slot > 0) buffer_append(&output, ", ");
+        buffer_format(
+            &output,
+            "kofun_list_call_arg_%" PRId64 "_%" PRId64,
+            call_start,
+            slot
+        );
+    }
+    buffer_append(&output, "))");
+    return output.data;
+}
+
+static char *emit_direct_list_int_call_temporaries(
+    const char *source,
+    const char *hir,
+    int64_t function_open
+) {
+    int64_t close = balanced_end(source, function_open, "{", "}");
+    Buffer output;
+    buffer_init(&output);
+    if (close < 0) return output.data;
+    int64_t cursor = skip_trivia(source, token_end(source, function_open));
+    while (cursor < close) {
+        if (strcmp(token_kind(source, cursor), "identifier") == 0) {
+            int64_t open = skip_trivia(source, token_end(source, cursor));
+            if (open < close && token_equal(source, open, "(")) {
+                char *callee = token_copy(source, cursor);
+                if (direct_list_int_call_supported(
+                    source,
+                    hir,
+                    cursor,
+                    callee,
+                    open
+                )) {
+                    int64_t declaration = function_start_named(source, callee);
+                    int64_t count = parameter_count(source, declaration);
+                    for (int64_t slot = 0; slot < count; ++slot) {
+                        char *type = function_parameter_type(
+                            source,
+                            callee,
+                            slot
+                        );
+                        bool list = strcmp(type, "List[Int]") == 0;
+                        free(type);
+                        buffer_format(
+                            &output,
+                            "    %s kofun_list_call_arg_%" PRId64
+                            "_%" PRId64 " = %s;\n",
+                            list ? "KofunIntListValue" : "int64_t",
+                            cursor,
+                            slot,
+                            list ? "KOFUN_LIST_INT_ZERO" : "INT64_C(0)"
+                        );
+                    }
+                }
+                free(callee);
+            }
+        }
+        int64_t next = token_end(source, cursor);
+        if (next <= cursor) break;
+        cursor = skip_trivia(source, next);
+    }
+    return output.data;
+}
+
 static int64_t list_int_binding_literal_count(
     const char *source,
     const char *hir,
@@ -7030,6 +7306,90 @@ static char *emit_list_int_literal(
     }
     buffer_append(&output, "}})");
     return output.data;
+}
+
+/* A whole List[Int] value crosses function boundaries in one fixed-capacity
+ * by-value carrier. Literals are copied only at immutable local bindings;
+ * direct literal arguments and returns stay outside this bounded slice. */
+static char *emit_list_int_value(
+    const char *source,
+    const char *hir,
+    int64_t start,
+    int64_t end,
+    bool allow_literal
+) {
+    int64_t cursor = skip_trivia(source, start);
+    int64_t function_open = enclosing_function_open(source, cursor);
+    if (
+        function_open >= 0 &&
+        lambda_scope_open(source, function_open, cursor) >= 0
+    ) {
+        return lower_error(
+            "E2S157",
+            "List[Int] values inside lambdas are outside this lowering slice",
+            cursor
+        );
+    }
+    if (token_equal(source, cursor, "[")) {
+        if (!allow_literal) {
+            return lower_error(
+                "E2S157",
+                "bind a List[Int] literal before passing or returning it",
+                cursor
+            );
+        }
+        char *literal = emit_list_int_literal(source, hir, cursor);
+        if (strncmp(literal, "error[", 6) == 0) return literal;
+        Buffer output;
+        buffer_init(&output);
+        buffer_format(&output, "kofun_list_int_value(%s)", literal);
+        free(literal);
+        return output.data;
+    }
+    if (strcmp(token_kind(source, cursor), "identifier") != 0) {
+        return lower_error(
+            "E2S157",
+            "List[Int] value must be a whole binding or same-typed direct call",
+            cursor
+        );
+    }
+    int64_t after = skip_trivia(source, token_end(source, cursor));
+    if (after >= end || !token_equal(source, after, "(")) {
+        char *binding_id = hir_use_binding_id(hir, cursor);
+        char *binding_type = hir_binding_field(hir, binding_id, 5);
+        bool accepted = binding_id[0] != '\0' &&
+            strcmp(binding_type, "List[Int]") == 0 && after >= end;
+        free(binding_type);
+        if (!accepted) {
+            free(binding_id);
+            return lower_error(
+                "E2S157",
+                "List[Int] value must be a whole binding or same-typed direct call",
+                cursor
+            );
+        }
+        Buffer output;
+        buffer_init(&output);
+        buffer_format(&output, "k_b%s", binding_id);
+        free(binding_id);
+        return output.data;
+    }
+    char *name = token_copy(source, cursor);
+    char *result_type = function_return_type(source, name);
+    char *binding = hir_use_binding_id(hir, cursor);
+    bool accepted = strcmp(result_type, "List[Int]") == 0 &&
+        !call_has_labelled_argument(source, after) && binding[0] == '\0';
+    free(result_type);
+    free(binding);
+    free(name);
+    if (!accepted) {
+        return lower_error(
+            "E2S157",
+            "List[Int] value must be a whole binding or same-typed direct call",
+            cursor
+        );
+    }
+    return emit_primary(source, hir, cursor, end);
 }
 
 static char *emit_primary(
@@ -7221,11 +7581,33 @@ static char *emit_primary(
             Buffer length;
             buffer_init(&length);
             if (strcmp(actual, "List[Int]") == 0) {
-                buffer_format(
-                    &length,
-                    "((int64_t)kofun_list_int_length(%s))",
-                    emitted
-                );
+                if (token_equal(source, value, "[")) {
+                    buffer_format(
+                        &length,
+                        "((int64_t)kofun_list_int_length(%s))",
+                        emitted
+                    );
+                } else {
+                    free(emitted);
+                    emitted = emit_list_int_value(
+                        source,
+                        hir,
+                        value,
+                        value_end,
+                        false
+                    );
+                    if (strncmp(emitted, "error[", 6) == 0) {
+                        free(actual);
+                        free(name);
+                        free(length.data);
+                        return emitted;
+                    }
+                    buffer_format(
+                        &length,
+                        "((int64_t)kofun_list_int_value_length(%s))",
+                        emitted
+                    );
+                }
             } else {
                 buffer_format(&length, "((int64_t)strlen(%s))", emitted);
             }
@@ -7422,7 +7804,7 @@ static char *emit_primary(
                 }
                 buffer_format(
                     &output,
-                    "kofun_list_int_index(k_b%s, %s)",
+                    "kofun_list_int_index(kofun_list_int_view(&k_b%s), %s)",
                     binding_id,
                     index_value
                 );
@@ -7509,6 +7891,50 @@ static char *emit_primary(
         /* A callee the scope HIR resolved to a binding is either a lifted
          * lambda or a callable-typed parameter; anything else is a top-level
          * function looked up by name. */
+        if (
+            direct_list_int_call_shape(
+                source,
+                hir,
+                cursor,
+                name,
+                open
+            ) &&
+            !direct_list_int_call_supported(
+                source,
+                hir,
+                cursor,
+                name,
+                open
+            )
+        ) {
+            free(name);
+            free(output.data);
+            return lower_error(
+                "E2S157",
+                "List[Int] carrier calls inside lambdas are outside this "
+                "lowering slice",
+                cursor
+            );
+        }
+        if (direct_list_int_call_supported(
+            source,
+            hir,
+            cursor,
+            name,
+            open
+        )) {
+            char *sequenced = emit_direct_list_int_call(
+                source,
+                hir,
+                cursor,
+                open,
+                end,
+                name
+            );
+            free(name);
+            free(output.data);
+            return sequenced;
+        }
         if (labelled_int_call_supported(
             source,
             hir,
@@ -8215,7 +8641,8 @@ static char *validate_core_types(const char *source, const char *hir) {
                     bool wrong =
                         strcmp(condition_type, "Int") == 0 ||
                         strcmp(condition_type, "Text") == 0 ||
-                        strcmp(condition_type, "List") == 0;
+                        strcmp(condition_type, "List") == 0 ||
+                        strcmp(condition_type, "List[Int]") == 0;
                     free(condition_type);
                     if (wrong) {
                         Buffer error;
@@ -8277,7 +8704,8 @@ static char *validate_core_types(const char *source, const char *hir) {
                         strcmp(value_type, "Int") == 0 ||
                         strcmp(value_type, "Bool") == 0 ||
                         strcmp(value_type, "Text") == 0 ||
-                        strcmp(value_type, "List") == 0;
+                        strcmp(value_type, "List") == 0 ||
+                        strcmp(value_type, "List[Int]") == 0;
                     if (known && strcmp(value_type, declared) != 0) {
                         Buffer error;
                         buffer_init(&error);
@@ -9000,6 +9428,12 @@ static char *core_parameters(
             buffer_init(&plain);
             buffer_format(&plain, "const char *k_b%s", binding_id);
             declarator = plain.data;
+        } else if (list_int_type_end(source, type_cursor) >= 0) {
+            type_end = list_int_type_end(source, type_cursor);
+            Buffer list;
+            buffer_init(&list);
+            buffer_format(&list, "KofunIntListValue k_b%s", binding_id);
+            declarator = list.data;
         } else if (
             ownership_mode_token(source, cursor) &&
             parameter_list_type_end(source, type_cursor, parameters_end) >= 0
@@ -10991,6 +11425,13 @@ static int64_t core_body_open(
                 ? cursor
                 : -1;
         }
+        int64_t list_end = list_int_type_end(source, cursor);
+        if (list_end >= 0) {
+            cursor = skip_trivia(source, list_end);
+            return cursor < length && token_equal(source, cursor, "{")
+                ? cursor
+                : -1;
+        }
         char *result_type = token_copy(source, cursor);
         bool supported_result =
             strcmp(result_type, "Int") == 0 ||
@@ -11321,6 +11762,97 @@ static int64_t lambda_scope_open(
         cursor = skip_trivia(source, token_end(source, cursor));
     }
     return found;
+}
+
+/* Lifted lambdas still use the scalar capture ABI. Refuse every List[Int]
+ * binding read in a lambda before C publication, including len and indexing. */
+static char *validate_list_int_lambda_uses(
+    const char *source,
+    const char *hir
+) {
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, 0);
+    int64_t previous = -1;
+    while (cursor < length) {
+        int64_t function_open = enclosing_function_open(source, cursor);
+        bool inside_lambda = function_open >= 0 &&
+            lambda_scope_open(source, function_open, cursor) >= 0;
+        bool follows_primary = false;
+        if (previous >= 0) {
+            const char *previous_kind = token_kind(source, previous);
+            follows_primary =
+                strcmp(previous_kind, "identifier") == 0 ||
+                strcmp(previous_kind, "integer") == 0 ||
+                strcmp(previous_kind, "float") == 0 ||
+                strcmp(previous_kind, "decimal") == 0 ||
+                strcmp(previous_kind, "string") == 0 ||
+                token_equal(source, previous, ")") ||
+                token_equal(source, previous, "]");
+        }
+        if (
+            inside_lambda && token_equal(source, cursor, "[") &&
+            !follows_primary
+        ) {
+            return lower_error(
+                "E2S157",
+                "List[Int] literals inside lambdas are outside this lowering "
+                "slice",
+                cursor
+            );
+        }
+        if (strcmp(token_kind(source, cursor), "identifier") == 0) {
+            char *binding_id = hir_use_binding_id(hir, cursor);
+            if (inside_lambda && list_int_type_end(source, cursor) >= 0) {
+                free(binding_id);
+                return lower_error(
+                    "E2S157",
+                    "List[Int] annotations inside lambdas are outside this "
+                    "lowering slice",
+                    cursor
+                );
+            }
+            if (binding_id[0] != '\0') {
+                char *binding_type = hir_binding_field(hir, binding_id, 5);
+                if (
+                    inside_lambda && strcmp(binding_type, "List[Int]") == 0
+                ) {
+                    free(binding_type);
+                    free(binding_id);
+                    return lower_error(
+                        "E2S157",
+                        "List[Int] binding uses inside lambdas are outside "
+                        "this lowering slice",
+                        cursor
+                    );
+                }
+                free(binding_type);
+            }
+            int64_t open = skip_trivia(source, token_end(source, cursor));
+            if (
+                inside_lambda && binding_id[0] == '\0' && open < length &&
+                token_equal(source, open, "(")
+            ) {
+                char *name = token_copy(source, cursor);
+                char *result_type = function_return_type(source, name);
+                bool list_result = strcmp(result_type, "List[Int]") == 0;
+                free(result_type);
+                free(name);
+                if (list_result) {
+                    free(binding_id);
+                    return lower_error(
+                        "E2S157",
+                        "List[Int] direct results inside lambdas are outside "
+                        "this lowering slice",
+                        cursor
+                    );
+                }
+            }
+            free(binding_id);
+        }
+        previous = cursor;
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return owned_text("ok");
 }
 
 /*
@@ -12496,6 +13028,9 @@ static char *function_return_type_at(
             token_end(source, after)
         );
         if (type_cursor < length) {
+            if (list_int_type_end(source, type_cursor) >= 0) {
+                return owned_text("List[Int]");
+            }
             return annotation_type_text(source, type_cursor);
         }
         return owned_text("");
@@ -12645,6 +13180,16 @@ static bool function_result_is_record(
 static bool function_result_is_text(const char *source, const char *name) {
     char *type = function_return_type(source, name);
     bool result = strcmp(type, "Text") == 0;
+    free(type);
+    return result;
+}
+
+static bool function_result_is_list_int(
+    const char *source,
+    const char *name
+) {
+    char *type = function_return_type(source, name);
+    bool result = strcmp(type, "List[Int]") == 0;
     free(type);
     return result;
 }
@@ -13137,7 +13682,7 @@ static char *build_scope_hir_mode(
     char *notation_check = validate_removed_callable_notation(source);
     if (strncmp(notation_check, "error[", 6) == 0) return notation_check;
     free(notation_check);
-    char *list_annotation_check = validate_list_int_local_annotations(source);
+    char *list_annotation_check = validate_list_int_annotations(source);
     if (strncmp(list_annotation_check, "error[", 6) == 0) {
         return list_annotation_check;
     }
@@ -16293,6 +16838,13 @@ static char *lower_body(
         );
         buffer_append(&emitted, temporaries);
         free(temporaries);
+        temporaries = emit_direct_list_int_call_temporaries(
+            source,
+            hir,
+            function_open
+        );
+        buffer_append(&emitted, temporaries);
+        free(temporaries);
         temporaries = emit_labelled_int_call_temporaries(
             source,
             hir,
@@ -16314,6 +16866,7 @@ static char *lower_body(
     bool returns_optional_int =
         optional_int_result_containing(source, function_open);
     bool returns_text = strcmp(body_result_type, "Text") == 0;
+    bool returns_list_int = strcmp(body_result_type, "List[Int]") == 0;
     char failure_record[512] = "";
     if (returns_record) {
         char *c_type = record_c_type_name(body_result_type);
@@ -16340,7 +16893,9 @@ static char *lower_body(
                                * rather than NULL, so every consumer in the
                                * bounded profile still receives a readable
                                * value. */
-                              (returns_text ? "\"\"" : "0")))
+                              (returns_text ? "\"\"" :
+                               (returns_list_int ?
+                                    "KOFUN_LIST_INT_ZERO" : "0"))))
             );
     while (cursor < length && !token_equal(source, cursor, "}")) {
         if (returned) {
@@ -17021,6 +17576,23 @@ static char *lower_body(
                 );
             }
             free(actual_type);
+            if (strcmp(binding_type, "List[Int]") == 0) {
+                free(value);
+                value = emit_list_int_value(
+                    source,
+                    hir,
+                    value_start,
+                    value_end,
+                    true
+                );
+                if (strncmp(value, "error[", 6) == 0) {
+                    free(binding_type);
+                    free(binding_id);
+                    free(name);
+                    free(emitted.data);
+                    return value;
+                }
+            }
             const char *c_type = "int64_t";
             if (strcmp(binding_type, "Decimal") == 0) {
                 c_type = "KofunDecimal *";
@@ -17031,7 +17603,7 @@ static char *lower_body(
             } else if (strcmp(binding_type, "Text") == 0) {
                 c_type = "const char *";
             } else if (strcmp(binding_type, "List[Int]") == 0) {
-                c_type = "KofunIntList";
+                c_type = "KofunIntListValue";
             }
             if (mutable && strcmp(binding_type, "List[Int]") == 0) {
                 free(binding_type);
@@ -17831,7 +18403,43 @@ static char *lower_body(
             }
         } else if (token_equal(source, cursor, "return")) {
             int64_t value_start = skip_trivia(source, token_end(source, cursor));
-            if (returns_optional_int) {
+            if (returns_list_int) {
+                int64_t value_end = expression_end(source, value_start);
+                if (
+                    value_end < 0 || value_start >= length ||
+                    token_equal(source, value_start, "}")
+                ) {
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S157",
+                        "List[Int] return requires one whole binding or "
+                        "same-typed direct call",
+                        value_start
+                    );
+                }
+                char *value = emit_list_int_value(
+                    source,
+                    hir,
+                    value_start,
+                    value_end,
+                    false
+                );
+                if (strncmp(value, "error[", 6) == 0) {
+                    free(emitted.data);
+                    return value;
+                }
+                buffer_format(
+                    &emitted,
+                    "    {\n"
+                    "        KofunIntListValue kofun_result = %s;\n"
+                    "        if (kofun_failed) return KOFUN_LIST_INT_ZERO;\n"
+                    "        return kofun_result;\n"
+                    "    }\n",
+                    value
+                );
+                free(value);
+                cursor = skip_trivia(source, value_end);
+            } else if (returns_optional_int) {
                 /* #924: an `Int?` result carries the tag out of the function
                  * exactly as it was constructed. */
                 int64_t value_end = expression_end(source, value_start);
@@ -18241,7 +18849,7 @@ static char *lower_body(
                  * rather than the `int64_t` this emits.
                  */
                 if (!is_main && append_default && !returns_enum &&
-                    !returns_record &&
+                    !returns_record && !returns_list_int &&
                     after < length && token_equal(source, after, "}")) {
                     buffer_format(
                         &emitted,
@@ -18282,7 +18890,9 @@ static char *lower_body(
             "E2S19",
             returns_enum ?
                 "Core function may complete without returning its enum" :
-                "Core function may complete without returning Int",
+                (returns_list_int ?
+                    "Core function may complete without returning List[Int]" :
+                    "Core function may complete without returning Int"),
             open
         );
     }
@@ -20991,6 +21601,11 @@ static char *lower_c_body(const char *source, const char *hir) {
     char *call_check = validate_core_calls(source, hir);
     if (strncmp(call_check, "error[", 6) == 0) return call_check;
     free(call_check);
+    char *list_lambda_check = validate_list_int_lambda_uses(source, hir);
+    if (strncmp(list_lambda_check, "error[", 6) == 0) {
+        return list_lambda_check;
+    }
+    free(list_lambda_check);
     char *capture_check = validate_argument_lambda_captures(source, hir);
     if (strncmp(capture_check, "error[", 6) == 0) return capture_check;
     free(capture_check);
@@ -21087,6 +21702,8 @@ static char *lower_c_body(const char *source, const char *hir) {
             c_result = "KofunEnumValue";
         } else if (function_result_is_text(source, name)) {
             c_result = "const char *";
+        } else if (function_result_is_list_int(source, name)) {
+            c_result = "KofunIntListValue";
         } else if (function_result_is_record(source, name)) {
             char *result_type = function_return_type(source, name);
             char *record_c_type = record_c_type_name(result_type);
@@ -21249,6 +21866,12 @@ static char *lower_c_body(const char *source, const char *hir) {
         "#define KOFUN_ENUM_ZERO "
         "((KofunEnumValue){INT64_C(0), INT64_C(0)})\n\n"
         "typedef const unsigned char *KofunIntList;\n"
+        "typedef struct { uint64_t length; int64_t elements[64]; } KofunIntListValue;\n"
+        "#define KOFUN_LIST_INT_ZERO ((KofunIntListValue){UINT64_C(0), {INT64_C(0)}})\n"
+        "_Static_assert(sizeof(KofunIntListValue) == 520, \"bounded List[Int] value size\");\n"
+        "_Static_assert(offsetof(KofunIntListValue, length) == 0, \"bounded List[Int] value length offset\");\n"
+        "_Static_assert(offsetof(KofunIntListValue, elements) == 8, \"bounded List[Int] value payload offset\");\n"
+        "_Static_assert(_Alignof(KofunIntListValue) == 8, \"bounded List[Int] value alignment\");\n"
         "enum {\n"
         "    KOFUN_LIST_INT_LENGTH_OFFSET = 0,\n"
         "    KOFUN_LIST_INT_PAYLOAD_OFFSET = 8,\n"
@@ -21271,6 +21894,21 @@ static char *lower_c_body(const char *source, const char *hir) {
         "    uint64_t length = UINT64_C(0);\n"
         "    memcpy(&length, list + KOFUN_LIST_INT_LENGTH_OFFSET, sizeof length);\n"
         "    return length;\n"
+        "}\n"
+        "static inline KofunIntList kofun_list_int_view(const KofunIntListValue *list) {\n"
+        "    return (KofunIntList)(const void *)list;\n"
+        "}\n"
+        "static inline KofunIntListValue kofun_list_int_value(KofunIntList list) {\n"
+        "    KofunIntListValue value = KOFUN_LIST_INT_ZERO;\n"
+        "    value.length = kofun_list_int_length(list);\n"
+        "    if (value.length > UINT64_C(64)) {\n"
+        "        kofun_error(\"error[R024]: bounded List[Int] carrier exceeds 64 elements\"); return KOFUN_LIST_INT_ZERO;\n"
+        "    }\n"
+        "    if (value.length > 0) memcpy(value.elements, list + KOFUN_LIST_INT_PAYLOAD_OFFSET, (size_t)value.length * sizeof value.elements[0]);\n"
+        "    return value;\n"
+        "}\n"
+        "static inline uint64_t kofun_list_int_value_length(KofunIntListValue list) {\n"
+        "    return list.length;\n"
         "}\n"
         "static inline int64_t kofun_list_int_index(KofunIntList list, int64_t index) {\n"
         "    uint64_t length = kofun_list_int_length(list);\n"

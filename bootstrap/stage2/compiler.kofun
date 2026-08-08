@@ -3074,7 +3074,69 @@ fn list_int_local_type_token(source: Text, target: Int) -> Bool {
     return false
 }
 
-fn validate_list_int_local_annotations(source: Text) -> Text {
+fn validate_list_int_annotations(source: Text) -> Text {
+    let mut function_start = next_function_start(source, 0)
+    while function_start < len(source) {
+        let parameters = parameter_open(source, function_start)
+        let parameters_close = balanced_end(source, parameters, "(", ")")
+        let mut parameter = skip_trivia(
+            source,
+            token_end(source, parameters)
+        )
+        while parameter < parameters_close &&
+              token_text(source, parameter) != ")" {
+            let type_start = parameter_type_start(
+                source,
+                parameter,
+                parameters_close
+            )
+            if type_start < 0 {
+                parameter = parameters_close
+                continue
+            }
+            if ownership_mode_token(source, parameter) &&
+               list_int_type_end(source, type_start) >= 0 {
+                return "error[E2S157]: List[Int] function parameters support only the immutable copy mode at byte " +
+                to_text(parameter)
+            }
+            if type_start >= 0 && token_text(source, type_start) == "List" &&
+               list_int_type_end(source, type_start) < 0 {
+                return "error[E2S157]: Stage 2 function list signatures require exactly List[Int] at byte " +
+                to_text(type_start)
+            }
+            let mut type_end = parameter_list_type_end(
+                source,
+                type_start,
+                parameters_close
+            )
+            if type_end < 0 {
+                type_end = annotation_type_end(source, type_start)
+            }
+            let separator = skip_trivia(source, type_end)
+            if separator < parameters_close &&
+               token_text(source, separator) == "," {
+                parameter = skip_trivia(
+                    source,
+                    token_end(source, separator)
+                )
+            } else {
+                parameter = separator
+            }
+        }
+        let after = skip_trivia(source, parameters_close)
+        if after < len(source) && token_text(source, after) == "->" {
+            let result = skip_trivia(source, token_end(source, after))
+            if token_text(source, result) == "List" &&
+               list_int_type_end(source, result) < 0 {
+                return "error[E2S157]: Stage 2 function list signatures require exactly List[Int] at byte " +
+                to_text(result)
+            }
+        }
+        function_start = next_function_start(
+            source,
+            function_end(source, function_start)
+        )
+    }
     let mut cursor = skip_trivia(source, 0)
     while cursor < len(source) {
         if token_text(source, cursor) == "let" {
@@ -3624,6 +3686,14 @@ fn emit_argument(
         expected_type + " for argument " + to_text(argument_index + 1) +
         ", got List[Int] at byte " + to_text(start)
     }
+    if expected_type == "List[Int]" {
+        if actual_type != "List[Int]" {
+            return "error[E2S15]: Core function `" + callee + "` expects " +
+            "List[Int] for argument " + to_text(argument_index + 1) +
+            ", got " + actual_type + " at byte " + to_text(start)
+        }
+        return emit_list_int_value(source, hir, start, end, false)
+    }
     # An arrow lambda argument is the address of the function it was lifted to.
     if lambda_parameters_end(source, -1, cursor) >= 0 {
         return argument_lambda_name(cursor)
@@ -3888,6 +3958,171 @@ fn emit_labelled_int_call_temporaries(
     return emitted
 }
 
+# Ordinary C argument evaluation is unsequenced. A direct call that crosses a
+# List[Int] carrier therefore uses fixed source-byte slots for every argument,
+# including its Int companions, and assigns those slots through a comma
+# expression before the declaration-order call.
+fn direct_list_int_call_shape(
+    source: Text,
+    hir: Text,
+    call_start: Int,
+    callee: Text,
+    open: Int
+) -> Bool {
+    if call_has_labelled_argument(source, open) ||
+       len(hir_use_binding_id(hir, call_start)) > 0 {
+        return false
+    }
+    let declaration = function_start_named(source, callee)
+    if declaration < 0 {
+        return false
+    }
+    let count = parameter_count(source, declaration)
+    if count < 1 || count > 8 {
+        return false
+    }
+    let mut has_list = false
+    let mut index = 0
+    while index < count {
+        let parameter_type = function_parameter_type(source, callee, index)
+        if parameter_type == "List[Int]" {
+            has_list = true
+        } else if parameter_type != "Int" {
+            return false
+        }
+        index = index + 1
+    }
+    return has_list
+}
+
+fn direct_list_int_call_supported(
+    source: Text,
+    hir: Text,
+    call_start: Int,
+    callee: Text,
+    open: Int
+) -> Bool {
+    if !direct_list_int_call_shape(
+        source,
+        hir,
+        call_start,
+        callee,
+        open
+    ) {
+        return false
+    }
+    let function_open = enclosing_function_open(source, call_start)
+    return function_open < 0 ||
+    lambda_scope_open(source, function_open, call_start) < 0
+}
+
+fn emit_direct_list_int_call(
+    source: Text,
+    hir: Text,
+    call_start: Int,
+    open: Int,
+    end: Int,
+    callee: Text
+) -> Text {
+    let declaration = function_start_named(source, callee)
+    let count = parameter_count(source, declaration)
+    let mut emitted = "("
+    let mut argument = skip_trivia(source, token_end(source, open))
+    let mut index = 0
+    while index < count && argument < end &&
+          token_text(source, argument) != ")" {
+        let bound = argument_end(source, argument)
+        let value = emit_argument(
+            source,
+            hir,
+            argument,
+            bound,
+            callee,
+            index
+        )
+        if starts_with(value, "error[") {
+            return value
+        }
+        emitted = emitted + "(kofun_list_call_arg_" +
+        to_text(call_start) + "_" + to_text(index) + " = " + value +
+        "), "
+        let separator = skip_trivia(source, bound)
+        if separator < end && token_text(source, separator) == "," {
+            argument = skip_trivia(source, token_end(source, separator))
+        } else {
+            argument = separator
+        }
+        index = index + 1
+    }
+    emitted = emitted + "kofun_fn_" + callee + "("
+    let mut slot = 0
+    while slot < count {
+        if slot > 0 {
+            emitted = emitted + ", "
+        }
+        emitted = emitted + "kofun_list_call_arg_" +
+        to_text(call_start) + "_" + to_text(slot)
+        slot = slot + 1
+    }
+    return emitted + "))"
+}
+
+fn emit_direct_list_int_call_temporaries(
+    source: Text,
+    hir: Text,
+    function_open: Int
+) -> Text {
+    let close = balanced_end(source, function_open, "{", "}")
+    if close < 0 {
+        return ""
+    }
+    let mut emitted = ""
+    let mut cursor = skip_trivia(source, token_end(source, function_open))
+    while cursor < close {
+        if token_kind(source, cursor) == "identifier" {
+            let open = skip_trivia(source, token_end(source, cursor))
+            if open < close && token_text(source, open) == "(" {
+                let callee = token_text(source, cursor)
+                if direct_list_int_call_supported(
+                    source,
+                    hir,
+                    cursor,
+                    callee,
+                    open
+                ) {
+                    let declaration = function_start_named(source, callee)
+                    let count = parameter_count(source, declaration)
+                    let mut slot = 0
+                    while slot < count {
+                        let mut c_type = "int64_t"
+                        if function_parameter_type(
+                            source,
+                            callee,
+                            slot
+                        ) == "List[Int]" {
+                            c_type = "KofunIntListValue"
+                        }
+                        let mut initial = "INT64_C(0)"
+                        if c_type == "KofunIntListValue" {
+                            initial = "KOFUN_LIST_INT_ZERO"
+                        }
+                        emitted = emitted + "    " + c_type +
+                        " kofun_list_call_arg_" + to_text(cursor) + "_" +
+                        to_text(slot) + " = " + initial + ";\n"
+                        slot = slot + 1
+                    }
+                }
+            }
+        }
+        let next = token_end(source, cursor)
+        if next <= cursor {
+            break
+        }
+        cursor = skip_trivia(source, next)
+    }
+    return emitted
+}
+
 fn list_int_binding_literal_count(
     source: Text,
     hir: Text,
@@ -3994,6 +4229,60 @@ fn emit_list_int_literal(
     return emitted + "}})"
 }
 
+# A whole List[Int] value crosses function boundaries in one fixed-capacity
+# by-value carrier. Literals remain the compact AggregateLayout view emitted
+# above and are copied into the carrier only at an immutable local binding;
+# direct literal arguments and returns stay outside this bounded slice.
+fn emit_list_int_value(
+    source: Text,
+    hir: Text,
+    start: Int,
+    end: Int,
+    allow_literal: Bool
+) -> Text {
+    let cursor = skip_trivia(source, start)
+    let function_open = enclosing_function_open(source, cursor)
+    if function_open >= 0 &&
+       lambda_scope_open(source, function_open, cursor) >= 0 {
+        return "error[E2S157]: List[Int] values inside lambdas are outside this lowering slice at byte " +
+        to_text(cursor)
+    }
+    if token_text(source, cursor) == "[" {
+        if !allow_literal {
+            return "error[E2S157]: bind a List[Int] literal before passing or returning it at byte " +
+            to_text(cursor)
+        }
+        let literal = emit_list_int_literal(source, hir, cursor)
+        if starts_with(literal, "error[") {
+            return literal
+        }
+        return "kofun_list_int_value(" + literal + ")"
+    }
+    if token_kind(source, cursor) != "identifier" {
+        return "error[E2S157]: List[Int] value must be a whole binding or same-typed direct call at byte " +
+        to_text(cursor)
+    }
+    let after = skip_trivia(source, token_end(source, cursor))
+    if after >= end || token_text(source, after) != "(" {
+        let binding_id = hir_use_binding_id(hir, cursor)
+        if len(binding_id) == 0 ||
+           hir_binding_field(hir, binding_id, 5) != "List[Int]" ||
+           after < end {
+            return "error[E2S157]: List[Int] value must be a whole binding or same-typed direct call at byte " +
+            to_text(cursor)
+        }
+        return "k_b" + binding_id
+    }
+    let name = token_text(source, cursor)
+    if function_return_type(source, name) != "List[Int]" ||
+       call_has_labelled_argument(source, after) ||
+       len(hir_use_binding_id(hir, cursor)) > 0 {
+        return "error[E2S157]: List[Int] value must be a whole binding or same-typed direct call at byte " +
+        to_text(cursor)
+    }
+    return emit_primary(source, hir, cursor, end)
+}
+
 fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
     let cursor = skip_trivia(source, start)
     let kind = token_kind(source, cursor)
@@ -4076,12 +4365,22 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
                 enclosing_function_open(source, value),
                 value
             ) == "List[Int]" {
-                return "((int64_t)kofun_list_int_length(" + emit_expression(
+                if token_text(source, value) == "[" {
+                    return "((int64_t)kofun_list_int_length(" +
+                    emit_list_int_literal(source, hir, value) + "))"
+                }
+                let list_value = emit_list_int_value(
                     source,
                     hir,
                     value,
-                    value_end
-                ) + "))"
+                    value_end,
+                    false
+                )
+                if starts_with(list_value, "error[") {
+                    return list_value
+                }
+                return "((int64_t)kofun_list_int_value_length(" +
+                list_value + "))"
             }
             return "((int64_t)strlen(" + emit_expression(
                 source, hir, value, value_end) + "))"
@@ -4178,7 +4477,8 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
                 if starts_with(index_value, "error[") {
                     return index_value
                 }
-                return "kofun_list_int_index(k_b" + binding_id +
+                return "kofun_list_int_index(kofun_list_int_view(&k_b" +
+                binding_id + ")" +
                 ", " + index_value + ")"
             }
             if open < end && token_text(source, open) == "." {
@@ -4218,6 +4518,38 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
         # A callee the scope HIR resolved to a binding is either a lifted
         # lambda or a callable-typed parameter; anything else is a top-level
         # function looked up by name.
+        if direct_list_int_call_shape(
+            source,
+            hir,
+            cursor,
+            name,
+            open
+        ) && !direct_list_int_call_supported(
+            source,
+            hir,
+            cursor,
+            name,
+            open
+        ) {
+            return "error[E2S157]: List[Int] carrier calls inside lambdas are outside this lowering slice at byte " +
+            to_text(cursor)
+        }
+        if direct_list_int_call_supported(
+            source,
+            hir,
+            cursor,
+            name,
+            open
+        ) {
+            return emit_direct_list_int_call(
+                source,
+                hir,
+                cursor,
+                open,
+                end,
+                name
+            )
+        }
         if labelled_int_call_supported(
             source,
             hir,
@@ -4756,7 +5088,8 @@ fn validate_core_types(source: Text, hir: Text) -> Text {
                         )
                         if condition_type == "Int" ||
                            condition_type == "Text" ||
-                           condition_type == "List" {
+                           condition_type == "List" ||
+                           condition_type == "List[Int]" {
                             if keyword == "if" {
                                 return "error[E2S23]: if condition must be Bool or an Int comparison at byte " +
                                 to_text(condition)
@@ -4789,7 +5122,8 @@ fn validate_core_types(source: Text, hir: Text) -> Text {
                         )
                         let known =
                             value_type == "Int" || value_type == "Bool" ||
-                            value_type == "Text" || value_type == "List"
+                            value_type == "Text" || value_type == "List" ||
+                            value_type == "List[Int]"
                         if known && value_type != declared {
                             return "error[E2S15]: Core function `" + name +
                             "` returns " + value_type + ", expected " +
@@ -5301,6 +5635,10 @@ fn core_parameters(
         } else if token_text(source, type_cursor) == "Text" {
             type_end = token_end(source, type_cursor)
             declarator = "const char *k_b" +
+            hir_definition_id_at(hir, name_at)
+        } else if list_int_type_end(source, type_cursor) >= 0 {
+            type_end = list_int_type_end(source, type_cursor)
+            declarator = "KofunIntListValue k_b" +
             hir_definition_id_at(hir, name_at)
         } else if ownership_mode_token(source, cursor) &&
             parameter_list_type_end(
@@ -8037,6 +8375,14 @@ fn core_body_open(
             }
             return cursor
         }
+        let list_end = list_int_type_end(source, cursor)
+        if list_end >= 0 {
+            cursor = skip_trivia(source, list_end)
+            if cursor >= len(source) || token_text(source, cursor) != "{" {
+                return -1
+            }
+            return cursor
+        }
         if cursor >= len(source) ||
            (token_text(source, cursor) != "Int" &&
             token_text(source, cursor) != "Text" &&
@@ -8313,6 +8659,58 @@ fn lambda_scope_open(source: Text, function_open: Int, target: Int) -> Int {
         cursor = skip_trivia(source, token_end(source, cursor))
     }
     return found
+}
+
+# Lifted lambdas still use the scalar capture ABI. Fail before C publication
+# when a lambda reads any List[Int]-typed binding; this covers whole carriers,
+# len, and indexing without pretending the scalar capture can transport one.
+fn validate_list_int_lambda_uses(source: Text, hir: Text) -> Text {
+    let mut cursor = skip_trivia(source, 0)
+    let mut previous = -1
+    while cursor < len(source) {
+        let function_open = enclosing_function_open(source, cursor)
+        let inside_lambda = function_open >= 0 &&
+            lambda_scope_open(source, function_open, cursor) >= 0
+        let mut follows_primary = false
+        if previous >= 0 {
+            let previous_kind = token_kind(source, previous)
+            follows_primary = previous_kind == "identifier" ||
+                previous_kind == "integer" || previous_kind == "float" ||
+                previous_kind == "decimal" || previous_kind == "string" ||
+                token_text(source, previous) == ")" ||
+                token_text(source, previous) == "]"
+        }
+        if inside_lambda && token_text(source, cursor) == "[" &&
+           !follows_primary {
+            return "error[E2S157]: List[Int] literals inside lambdas are outside this lowering slice at byte " +
+            to_text(cursor)
+        }
+        if token_kind(source, cursor) == "identifier" {
+            let binding_id = hir_use_binding_id(hir, cursor)
+            if inside_lambda && list_int_type_end(source, cursor) >= 0 {
+                return "error[E2S157]: List[Int] annotations inside lambdas are outside this lowering slice at byte " +
+                to_text(cursor)
+            }
+            if len(binding_id) > 0 &&
+               hir_binding_field(hir, binding_id, 5) == "List[Int]" {
+                if inside_lambda {
+                    return "error[E2S157]: List[Int] binding uses inside lambdas are outside this lowering slice at byte " +
+                    to_text(cursor)
+                }
+            }
+            let open = skip_trivia(source, token_end(source, cursor))
+            if inside_lambda && len(binding_id) == 0 &&
+               open < len(source) && token_text(source, open) == "(" &&
+               function_return_type(source, token_text(source, cursor)) ==
+               "List[Int]" {
+                return "error[E2S157]: List[Int] direct results inside lambdas are outside this lowering slice at byte " +
+                to_text(cursor)
+            }
+        }
+        previous = cursor
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return "ok"
 }
 
 # `target` is a parameter name or a parameter type inside an arrow lambda's
@@ -9079,6 +9477,9 @@ fn function_return_type(source: Text, wanted: Text) -> Text {
                     token_end(source, after)
                 )
                 if type_cursor < len(source) {
+                    if list_int_type_end(source, type_cursor) >= 0 {
+                        return "List[Int]"
+                    }
                     return annotation_type_text(source, type_cursor)
                 }
                 return ""
@@ -9216,6 +9617,10 @@ fn function_result_is_record(source: Text, name: Text) -> Bool {
 # `return` lowering rather than the Int path.
 fn function_result_is_text(source: Text, name: Text) -> Bool {
     return function_return_type(source, name) == "Text"
+}
+
+fn function_result_is_list_int(source: Text, name: Text) -> Bool {
+    return function_return_type(source, name) == "List[Int]"
 }
 
 # Bounded initializer typing for unannotated `let` bindings. Top-level
@@ -9428,7 +9833,7 @@ fn build_scope_hir_mode(
     if starts_with(notation_check, "error[") {
         return notation_check
     }
-    let list_annotation_check = validate_list_int_local_annotations(source)
+    let list_annotation_check = validate_list_int_annotations(source)
     if starts_with(list_annotation_check, "error[") {
         return list_annotation_check
     }
@@ -10747,6 +11152,11 @@ fn lower_body(
             hir,
             function_open
         )
+        emitted = emitted + emit_direct_list_int_call_temporaries(
+            source,
+            hir,
+            function_open
+        )
     }
     let mut cursor = skip_trivia(source, token_end(source, open))
     let mut returned = false
@@ -10762,6 +11172,7 @@ fn lower_body(
         function_open
     )
     let returns_text = result_type == "Text"
+    let returns_list_int = result_type == "List[Int]"
     let mut failure_result = "0"
     if is_main {
         failure_result = "1"
@@ -10775,6 +11186,8 @@ fn lower_body(
         # A failed Text result is the empty string rather than NULL, so every
         # consumer in the bounded profile still receives a readable value.
         failure_result = "\"\""
+    } else if returns_list_int {
+        failure_result = "KOFUN_LIST_INT_ZERO"
     }
     while cursor < len(source) && token_text(source, cursor) != "}" {
         if returned {
@@ -11099,7 +11512,7 @@ fn lower_body(
                     return "error[E2S12]: invalid Int expression at byte " +
                     to_text(value_start)
                 }
-                let initializer = emit_expression(
+                let mut initializer = emit_expression(
                     source,
                     hir,
                     value_start,
@@ -11120,6 +11533,18 @@ fn lower_body(
                     return "error[E2S15]: initializer type mismatch at byte " +
                     to_text(value_start)
                 }
+                if inferred_type == "List[Int]" {
+                    initializer = emit_list_int_value(
+                        source,
+                        hir,
+                        value_start,
+                        value_end,
+                        true
+                    )
+                    if starts_with(initializer, "error[") {
+                        return initializer
+                    }
+                }
                 let mut c_type = "int64_t"
                 if inferred_type == "Decimal" {
                     c_type = "KofunDecimal *"
@@ -11130,7 +11555,7 @@ fn lower_body(
                 } else if inferred_type == "Text" {
                     c_type = "const char *"
                 } else if inferred_type == "List[Int]" {
-                    c_type = "KofunIntList"
+                    c_type = "KofunIntListValue"
                 }
                 if mutable && inferred_type == "List[Int]" {
                     return "error[E2S157]: mutable List[Int] bindings are outside this lowering slice at byte " +
@@ -11598,7 +12023,31 @@ fn lower_body(
             }
         } else if statement == "return" {
             let value_start = skip_trivia(source, token_end(source, cursor))
-            if returns_optional_int {
+            if returns_list_int {
+                let value_end = expression_end(source, value_start)
+                if value_end < 0 || value_start >= len(source) ||
+                   token_text(source, value_start) == "}" {
+                    return "error[E2S157]: List[Int] return requires one whole binding or same-typed direct call at byte " +
+                    to_text(value_start)
+                }
+                let value = emit_list_int_value(
+                    source,
+                    hir,
+                    value_start,
+                    value_end,
+                    false
+                )
+                if starts_with(value, "error[") {
+                    return value
+                }
+                emitted = emitted +
+                "    {\n" +
+                "        KofunIntListValue kofun_result = " + value + ";\n" +
+                "        if (kofun_failed) return KOFUN_LIST_INT_ZERO;\n" +
+                "        return kofun_result;\n" +
+                "    }\n"
+                cursor = skip_trivia(source, value_end)
+            } else if returns_optional_int {
                 let value_end = expression_end(source, value_start)
                 if value_end < 0 || value_start >= len(source) ||
                    token_text(source, value_start) == "}" {
@@ -11824,7 +12273,7 @@ fn lower_body(
                 # return, and an enum or record result needs its own C shape
                 # rather than the `int64_t` this emits.
                 if !is_main && append_default && !returns_enum &&
-                   !returns_record &&
+                   !returns_record && !returns_list_int &&
                    after < len(source) && token_text(source, after) == "}" {
                     emitted = emitted +
                     "    {\n" +
@@ -11853,6 +12302,10 @@ fn lower_body(
         if !is_main {
             if returns_enum {
                 return "error[E2S19]: Core function may complete without returning its enum at byte " +
+                to_text(open)
+            }
+            if returns_list_int {
+                return "error[E2S19]: Core function may complete without returning List[Int] at byte " +
                 to_text(open)
             }
             return "error[E2S19]: Core function may complete without returning Int at byte " + to_text(open)
@@ -13250,6 +13703,10 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     if starts_with(call_check, "error[") {
         return call_check
     }
+    let list_lambda_check = validate_list_int_lambda_uses(source, hir)
+    if starts_with(list_lambda_check, "error[") {
+        return list_lambda_check
+    }
     let capture_check = validate_argument_lambda_captures(source, hir)
     if starts_with(capture_check, "error[") {
         return capture_check
@@ -13297,6 +13754,8 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
             )
         } else if function_result_is_text(source, name) {
             c_result = "const char *"
+        } else if function_result_is_list_int(source, name) {
+            c_result = "KofunIntListValue"
         }
         let arity = parameter_count(source, cursor)
         let parameters = core_parameters(source, hir, cursor)
@@ -13374,6 +13833,12 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     "} KofunEnumValue;\n" +
     "#define KOFUN_ENUM_ZERO ((KofunEnumValue){INT64_C(0), INT64_C(0)})\n\n" +
     "typedef const unsigned char *KofunIntList;\n" +
+    "typedef struct { uint64_t length; int64_t elements[64]; } KofunIntListValue;\n" +
+    "#define KOFUN_LIST_INT_ZERO ((KofunIntListValue){UINT64_C(0), {INT64_C(0)}})\n" +
+    "_Static_assert(sizeof(KofunIntListValue) == 520, \"bounded List[Int] value size\");\n" +
+    "_Static_assert(offsetof(KofunIntListValue, length) == 0, \"bounded List[Int] value length offset\");\n" +
+    "_Static_assert(offsetof(KofunIntListValue, elements) == 8, \"bounded List[Int] value payload offset\");\n" +
+    "_Static_assert(_Alignof(KofunIntListValue) == 8, \"bounded List[Int] value alignment\");\n" +
     "enum {\n" +
     "    KOFUN_LIST_INT_LENGTH_OFFSET = 0,\n" +
     "    KOFUN_LIST_INT_PAYLOAD_OFFSET = 8,\n" +
@@ -13396,6 +13861,21 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     "    uint64_t length = UINT64_C(0);\n" +
     "    memcpy(&length, list + KOFUN_LIST_INT_LENGTH_OFFSET, sizeof length);\n" +
     "    return length;\n" +
+    "}\n" +
+    "static inline KofunIntList kofun_list_int_view(const KofunIntListValue *list) {\n" +
+    "    return (KofunIntList)(const void *)list;\n" +
+    "}\n" +
+    "static inline KofunIntListValue kofun_list_int_value(KofunIntList list) {\n" +
+    "    KofunIntListValue value = KOFUN_LIST_INT_ZERO;\n" +
+    "    value.length = kofun_list_int_length(list);\n" +
+    "    if (value.length > UINT64_C(64)) {\n" +
+    "        kofun_error(\"error[R024]: bounded List[Int] carrier exceeds 64 elements\"); return KOFUN_LIST_INT_ZERO;\n" +
+    "    }\n" +
+    "    if (value.length > 0) memcpy(value.elements, list + KOFUN_LIST_INT_PAYLOAD_OFFSET, (size_t)value.length * sizeof value.elements[0]);\n" +
+    "    return value;\n" +
+    "}\n" +
+    "static inline uint64_t kofun_list_int_value_length(KofunIntListValue list) {\n" +
+    "    return list.length;\n" +
     "}\n" +
     "static inline int64_t kofun_list_int_index(KofunIntList list, int64_t index) {\n" +
     "    uint64_t length = kofun_list_int_length(list);\n" +

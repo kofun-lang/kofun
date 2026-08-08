@@ -1,0 +1,8 @@
+fn consume(take values: List[Int]) -> Int {
+    return len(values)
+}
+
+fn main() -> Int {
+    let values: List[Int] = [1, 2]
+    return consume(values)
+}

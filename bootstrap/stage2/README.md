@@ -686,6 +686,30 @@ the `optional-narrowing` adapter. `E2S134`-`E2S141` are still unregistered:
 see the note in `tests/conformance/optional/README.md` for why the registry's
 completeness check cannot see codes emitted from a separate frontend.
 
+### Executable bounded `List[Int]` in the C11 slice (#919, #1103)
+
+The ordinary Stage 2 path admits immutable `List[Int]` literals and locals up
+to 64 elements. The AggregateLayout view remains a checked `u64` length
+followed by contiguous `Int` payload bytes; `len` and positive, negative, or
+dynamic indexing use that view, with runtime `R023` on a dynamic out-of-range
+read.
+
+Direct top-level function signatures now carry the same bounded value (#1103).
+The generated ABI uses `KofunIntListValue`, a fixed-capacity structure passed
+and returned by value. A literal is copied into that carrier at its immutable
+local binding; whole bindings and same-typed calls may then cross direct
+function parameters/results without a heap allocation or pointer alias in the
+ABI. Calls containing a list parameter evaluate every list and companion `Int`
+argument exactly once in written order through typed C11 temporary slots.
+
+This is not general list lowering. Direct literal arguments/returns, mutable
+lists, `List[Text]`, nested/general lists, labelled or indirect list calls,
+list fields in nominal records, non-C11 backends, variable capacities, and
+collection ownership inference remain refused. The focused gates are
+`tests/stage2/list-int-values/run.sh` and
+`tests/stage2/list-int-signatures/run.sh`; the general list capability remains
+unsupported until the later #868 record-field increments land.
+
 ### Executable `Optional(Int)` in the C11 slice (#924)
 
 The paragraphs above describe `optional_frontend.c`, which is still
