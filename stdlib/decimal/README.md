@@ -24,13 +24,17 @@ recovers the same canonical native value, including negative values.
 
 ## Fixed-point boundary
 
-The project still names the limitation `runtime-scale/v1`: destination scales
-in this slice are ordinary runtime `Int` arguments, not type parameters. There
-is no implemented `Fixed[scale]` and no static scale safety. Slice 5 removes the
-old `Fixed { significand: Int, scale: Int }` placeholder instead of allowing a
-fixed-width representation to coexist with compiler-native Decimal. A future
-const-generic Fixed type must introduce its own executable representation and
-update the profile name and documentation together.
+The project still names the Decimal-library limitation `runtime-scale/v1`:
+destination scales in this slice are ordinary runtime `Int` arguments.
+
+Literal integer const generics already distinguish Fixed[2] from Fixed[3]; that type-system checkpoint is not a Decimal-backed Fixed[scale] implementation.
+
+The current library has no Decimal-backed `Fixed` value and no static scale
+safety. Slice 5 removes the old `Fixed { significand: Int, scale: Int }`
+placeholder instead of allowing a fixed-width representation to coexist with
+compiler-native Decimal. A future Decimal-backed Fixed type must reuse the
+existing const-generic identity, introduce its own executable representation,
+and update the profile name and documentation together.
 
 ## Executable evidence
 

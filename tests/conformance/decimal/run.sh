@@ -197,9 +197,25 @@ cmp "$SCALE_MISMATCH.stdout" "$WORK/scale-mismatch.stderr" ||
 for doc in docs/DECIMAL.md stdlib/decimal/README.md; do
     grep -qF "$PROFILE" "$ROOT/$doc" ||
         fail "$doc does not name the interim scale profile $PROFILE"
+    grep -qF 'Literal integer const generics already distinguish Fixed[2] from Fixed[3]' \
+        "$ROOT/$doc" ||
+        fail "$doc stopped stating the shipped literal const-generic identity"
+    grep -qF 'not a Decimal-backed Fixed[scale] implementation' "$ROOT/$doc" ||
+        fail "$doc confuses const-generic identity with Decimal-backed Fixed semantics"
 done
 grep -qF 'no static scale safety' "$ROOT/docs/DECIMAL.md" ||
     fail "docs/DECIMAL.md stopped stating that runtime Decimal has no static scale safety"
+
+for stale in \
+    'const-generic integer parameters are not implemented' \
+    'Fixed[2] and Fixed[3] cannot yet be expressed as different types at all'
+do
+    for doc in docs/DECIMAL.md stdlib/decimal/README.md; do
+        if grep -qF "$stale" "$ROOT/$doc"; then
+            fail "$doc retains stale pre-#916 premise: $stale"
+        fi
+    done
+done
 
 # The implementation side. Slice 5 exposes scale only as an explicit runtime
 # argument. It must not publish either a fake Fixed[scale] guarantee or the old

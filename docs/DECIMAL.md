@@ -375,24 +375,25 @@ likewise specify their result type and rounding boundary.
 
 ### Interim profile: `runtime-scale/v1`
 
-Everything above describes a type that does not exist yet, because const-generic
-integer parameters are not implemented. What Kofun actually ships is a named
-interim profile, and naming it is how the requirement that the language state
-its scale guarantees truthfully is met — by saying what the guarantee is, not by
-delivering the type.
+Literal integer const generics are implemented for nominal record identity and
+the bounded ordinary C11 Stage 2 specialization.
 
-**`runtime-scale/v1` is what exists.** Under it, destination and display scales
-are ordinary runtime `Int` arguments to Decimal operations. There is no
-implemented `Fixed` value and therefore no carried or statically checked scale.
-The earlier `Fixed { significand: Int, scale: Int }` checkpoint was removed when
-the stdlib moved to native Decimal; keeping it would preserve the fixed-width
+Literal integer const generics already distinguish Fixed[2] from Fixed[3]; that type-system checkpoint is not a Decimal-backed Fixed[scale] implementation.
+
+**`runtime-scale/v1` is what native Decimal operations ship.** Destination and
+display scales are ordinary runtime `Int` arguments. `stdlib/decimal` declares
+no Decimal-backed `Fixed` value, constructor, conversion, or arithmetic, so no
+Decimal value carries or statically checks a storage scale. The earlier
+`Fixed { significand: Int, scale: Int }` checkpoint was removed when the stdlib
+moved to native Decimal; keeping it would preserve the fixed-width
 representation under a second name.
 
-The difference this name keeps visible is that `Fixed[2]` and `Fixed[3]` cannot
-yet be expressed as different types at all. Explicit runtime arguments prevent
-implicit rounding, but provide **no static scale safety**. A future
-const-generic Fixed implementation must move scale into the type and replace
-this profile rather than presenting runtime arguments as that guarantee.
+The type system can therefore express distinct nominal scale identities, but
+current stdlib Decimal operations do not use them. Explicit runtime arguments
+prevent implicit rounding, but provide **no static scale safety**. A future
+Decimal-backed Fixed implementation must reuse the existing const-generic
+identity, move scale into the Decimal-backed value type, and replace this
+profile rather than presenting runtime arguments as that guarantee.
 
 ## Laws
 
@@ -458,7 +459,8 @@ The following details are intentionally not invented by this design:
 
 - the first cross-backend digit, scale, allocation, and operation-cost limits;
 - stable diagnostic codes for those resource failures;
-- the implementation schedule for integer const generics and `Fixed[scale]`;
+- the implementation schedule for Decimal-backed `Fixed[scale]` and for const
+  expressions or inference beyond the shipped literal nominal profile;
 - locale-aware formatting and exponent-selection thresholds beyond the exact
   fixed-display-scale API;
 - the signed quotient/remainder convention for Decimal `//` and `%`;
@@ -485,7 +487,8 @@ Implementation should land in this order:
 4. implement exact operations and checked exact division across every backend;
 5. implement explicit rounding and formatting, then migrate the checkpoint
    (landed in issue #724);
-6. add `Fixed[scale]` after integer const generics exist;
+6. add Decimal-backed `Fixed[scale]` on the existing literal const-generic
+   identity checkpoint;
 7. connect versioned law evidence and backend differential tests.
 
 Each step must reject unsupported behavior explicitly. A backend that lacks the
