@@ -38,7 +38,7 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | `public-re-exports` | checkpoint | frontend | Same-package `pub import` / `pub from` with non-widening edges and explicit numeric bounds: 64-edge chains, 1,024 bindings per module, 65,536 edges per package. |
 | `reproducible-bootstrap` | implemented | bootstrap | Regenerating Stage 1 from its seed reproduces the checked-in artifact byte for byte on the supported host toolchain. |
 | `rust-crate-shim` | checkpoint | interop | One vendored Rust crate is reached through an audited C ABI shim, as a worked example. It is not a general Rust interop story. |
-| `self-recompile` | checkpoint | self-hosting | The frozen profile reaches a runnable compiler-produced compiler. The three-generation semantic fixed point is not reached and is not claimed. |
+| `self-recompile` | checkpoint | self-hosting | The frozen profile reaches the three-generation semantic fixed point: A1(S) -> C2/A2, A2(S) -> C3/A3, with C2 == C3 and A2 == A3 byte for byte and C1/A1 as hash-pinned runnable provenance. Full-language self-hosting is not claimed. |
 | `selfhost-native-corpus` | checkpoint | self-hosting | The driver's five-`print` success corpus reaches a static ELF on both native targets and its output matches the self-host C11 path exactly. |
 | `source-extension` | implemented | tooling | `.kofun` is the only source extension in the repository. The editor integration that registers it is hjosugi/kofun-vscode and is gated there, not here. |
 | `stable-diagnostics` | implemented | quality | Every diagnostic code has a canonical registry row and an executable family owner. Stage 2 retains 46 of 46 codes, with 3 span debts recorded rather than hidden. |

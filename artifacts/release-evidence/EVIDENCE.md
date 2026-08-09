@@ -34,7 +34,7 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | `public-re-exports` | `sh tests/conformance/modules/re-exports/run.sh` | Re-export chains resolve within the stated bounds and preserve binding identity. |
 | `reproducible-bootstrap` | `sh bootstrap/stage1/check.sh` | Regeneration reproduces the checked-in Stage 1 artifact and its digest. |
 | `rust-crate-shim` | `sh examples/rust-shim/check.sh` | The vendored crate builds and answers through the C ABI shim. |
-| `self-recompile` | `sh bootstrap/selfhost/check-compiler-driver.sh` | The compiler-produced compiler emits byte-identical C to the audited seed for every accept corpus, including all 15 profile builtins, and agrees on all 30 builtin arity/type refusals. |
+| `self-recompile` | `task selfhost-fixed-point` | A2 compiles canonical S into a C3 byte-identical to C2 and rebuilds an A3 byte-identical to A2, twice in normalized clean directories, with all 45 driver corpus cases agreeing across A1 and A3 in emitted C, stdout, stderr, and exit status. |
 | `selfhost-native-corpus` | `sh bootstrap/selfhost/native/check-native-corpus.sh` | The native and C11 self-host paths produce identical output. |
 | `source-extension` | `task repository-check` | No Python or `.kf` sources remain. |
 | `stable-diagnostics` | `sh tests/diagnostics/check.sh` | Every registry code has an owner and every fixture matches exactly. |

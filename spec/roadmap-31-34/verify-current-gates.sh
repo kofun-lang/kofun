@@ -77,6 +77,10 @@ sed -n '/"stage2": {/,/^[[:space:]]*}/p' \
     "$ROOT/bootstrap/manifest.json" |
     grep -q '"status": "working"'
 assert_grep "bootstrap/manifest.json" \
+    -q \
+    '"generated_c_three_generation_equivalence": "working"' \
+    "$ROOT/bootstrap/manifest.json"
+assert_grep "bootstrap/manifest.json" \
     -q '"diverse_double_compilation": "open"' "$ROOT/bootstrap/manifest.json"
 
 assert_executable "tooling/lsp/kofun-lsp" "$ROOT/tooling/lsp/kofun-lsp"
