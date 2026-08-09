@@ -203,27 +203,64 @@ Exit criteria:
 
 ## M4 — 1.0
 
-Deliverables:
+[`docs/RELEASING.md`](RELEASING.md) sends a reader here to learn what 1.0
+requires, so this section states not only the list but where each item stands.
+Every row was measured on `main@a654f7fe` and carries the command that
+measured it, because a milestone list with no status cannot tell anyone how
+far away 1.0 is — which is the question the list exists to answer.
 
-- language and runtime stability policy
-- stable ABI boundaries where promised
-- long-term support plan
-- complete specification
-- conformance suite
-- multi-platform release
-- adoption guide
-- compatibility and edition process
-- audited proof kernel
-- audited bootstrap chain
+The verdicts are `absent`, `partial`, and `present`. Re-run a row's command
+rather than trusting its verdict; that is what the command is for.
 
-Exit criteria:
+### Deliverables
 
-- external security audit
-- sustained fuzzing without unresolved critical findings
-- performance regression gates
-- independent production use
-- governance and funding model
-- fixed-point self-hosting release artifacts reproduced by independent builders
+| Deliverable | Verdict | Measured | Command |
+| --- | --- | --- | --- |
+| language and runtime stability policy | absent | no document. `RELEASING.md` is deliberately the opposite — "No compatibility promise exists at `0.x`" — and defers the policy to this milestone | `grep -rniF "stability policy" docs/ *.md` → 1 hit, this list |
+| stable ABI boundaries where promised | partial | 9 versioned boundaries, 8 gated in `task verify`; every one either has no backend behind it or explicitly refuses a stability promise, so **zero are promised stable today** | `git grep -hoE 'kofun[.:][a-z0-9._-]+/v[0-9]+' \| sort -u \| wc -l` → 118 identity strings; 6 tracked JSON Schemas |
+| long-term support plan | absent | no document, and no release cadence to build one on: releases are tag-triggered and ad hoc | `grep -rniF "long-term support" docs/ *.md` → 1 hit, this list |
+| complete specification | partial | 36 specification documents, 9,249 lines, covering 8 areas. No `spec/` document for the standard library, the ownership and memory model, metaprogramming, general type inference, or the C ABI. Traits and generics have only `spec/roadmap-31-34/generics-and-traits.md`, which calls its own lowering decision provisional. 12 of 41 design decisions carry a `spec/` pointer | `find spec -name '*.md' \| wc -l` → 36; `grep -cE '^## DD-[0-9]+' docs/DESIGN_DECISIONS.md` → 41 |
+| conformance suite | partial | 537 `.kofun` cases under `tests/conformance/`, of which 176 are refusal fixtures. Only 7 corpora carry an `expectations.kofun` and so enter the cross-backend matrix: 87 declared cases, 17 of 35 backend×corpus cells supported. M1's "1,000+ conformance tests" exit criterion is not met | `git ls-files 'tests/conformance/**/*.kofun' \| wc -l` → 537; `find tests/conformance -name expectations.kofun \| wc -l` → 7 |
+| multi-platform release | partial | Linux x86-64 only. AArch64 is cross-built and executed under `qemu-aarch64`, and skips (exit 125) without it. No macOS and no Windows exist. All six CI jobs run on `ubuntu-latest`. Releases ship a source archive and its SHA-256, never a binary | `grep -rn "runs-on" .github/workflows/` → 6 × `ubuntu-latest` |
+| adoption guide | absent | `docs/GETTING_STARTED.md` onboards contributors to the compiler, not teams adopting the language. Blocked behind the `general-parser-type-checker` claim, whose state is `open` | `grep -rniF "adoption guide" docs/ *.md` → 1 hit, this list |
+| compatibility and edition process | partial | the compatibility half exists as two per-decision ledgers — `rfcs/index.json` with a typed four-value category and 20 of 32 rows carrying a corpus query, and `release/claims.json` with free-text prose and no enum. The edition half is **entirely unbuilt**: a reserved KIF tag, an `unspecified` package-id field, no syntax, no flag, no tool, no policy | `git grep -c -- "--edition" -- bin tooling package` → no matches |
+| audited proof kernel | absent | no kernel. `docs/LAW_SYSTEM.md` opens by stating the active compiler does not parse, type-check, evaluate, or emit evidence for its design. The `proven` assurance level is defined as unreachable by any current path; the one live artifact is `bounded-exhaustive`. Its M2 prerequisites — proof kernel and certificate format — are not started | `grep -oE "proven-finite" release/claims.json \| wc -l` → 0 |
+| audited bootstrap chain | partial | 12 of the 13 gates in `bootstrap/manifest.json` read `working`; the thirteenth, diverse double compilation, is closed by [#1137](https://github.com/kofun-lang/kofun/issues/1137) and open at this commit. What no gate supplies is the audit: no record exists of who reviewed the 31,808 lines of seed C, when, or against what, while three documents already call those files audited. [#1138](https://github.com/kofun-lang/kofun/issues/1138) owns that contradiction | `git ls-files \| grep -i audit` → no matches |
+
+### Exit criteria
+
+| Exit criterion | Verdict | Measured | Command |
+| --- | --- | --- | --- |
+| external security audit | absent | no audit report exists for anything in the repository | `git ls-files \| grep -i audit` → no matches |
+| sustained fuzzing without unresolved critical findings | partial | roughly 688 generated programs per commit across 10 gates in `task fuzz` and 2 more under sibling tasks, every one from a hardcoded seed, so ten thousand CI runs explore exactly the inputs one run does. No scheduled lane, no corpus that grows, no coverage instrumentation. The second half is not merely unmet but **unmeasurable**: no findings register exists, so nothing records what was found or triaged | `grep -rniE "schedule:\|cron" .github/workflows/` → no matches |
+| performance regression gates | partial | one gate runs in CI, and it asserts **fixed absolute ceilings** rather than a baseline, so a hover that slows from 4 ms to 40 ms passes. A real 5%-regression gate exists in `benchmarks/native-functions/benchmark.sh` and is referenced by no task and no workflow | `grep -n "benchmarks/" Taskfile.yml` → no matches |
+| independent production use | absent | no adopter is recorded anywhere | `git grep -ril "adopter\|production use" -- '*.md'` → this list only |
+| governance and funding model | absent | no document. An RFC process and a security reporting process exist as components; neither is a governance model | `grep -rniF "governance" docs/ *.md .github/` → 1 hit, this list |
+| fixed-point self-hosting artifacts reproduced by independent builders | open | B6, [#274](https://github.com/kofun-lang/kofun/issues/274). The producer-owned half landed as #1114; reproduction by a builder that did not produce the evidence has not happened | `task selfhost-declared-inputs` passes; nothing measures the consumer half |
+
+### What the measurement says
+
+Three things, none of which is visible from the list alone.
+
+**Nothing here is overstated, and one thing is understated.** Every gap above
+is already disclaimed by the document that owns it — `RELEASING.md` on
+binaries, `tests/fuzz/README.md` on coverage, `benchmarks/README.md` on
+performance claims, `LAW_SYSTEM.md` on the kernel. The exception runs the
+other way: `benchmarks/native-functions/benchmark.sh` implements a complete
+regression gate, with a 5% ceiling and per-workload improvement budgets, that
+nothing invokes. That is the cheapest item on this page.
+
+**Four items are not late, they are blocked behind earlier milestones.**
+macOS is an M2 exit criterion and Windows an M3 deliverable, so
+"multi-platform release" cannot start here. The proof kernel and certificate
+format are M2 deliverables, so "audited proof kernel" has nothing to audit.
+The adoption guide waits on a general parser and type checker, which
+`release/claims.json` records as `open`. M4 is not the next milestone.
+
+**Six of the sixteen items are documents nobody has started**, and four of
+those — stability policy, LTS plan, adoption guide, governance and funding —
+need a decision before they can be written, not engineering time. They are the
+part of 1.0 that no amount of gate work reaches.
 
 ## Performance milestones
 
