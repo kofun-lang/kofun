@@ -144,16 +144,22 @@ tasks:
     cmds:
       - "sh bootstrap/selfhost/check-fixed-point.sh build/{{.NAMESPACE}}selfhost-fixed-point build/{{.NAMESPACE}}selfhost-generations"
 
-  # The acquisition set an independent builder needs, and the refusal that
-  # keeps it honest. This is the producer-owned half of B6 (#1114); the
+  # The acquisition set an independent builder needs, and the two refusals that
+  # keep it honest. This is the producer-owned half of B6 (#1114); the
   # reproduction by a builder that did not produce the evidence stays #274.
+  #
+  # The third command is the one that closes the direction the first two
+  # cannot: they prove the manifest describes the checkout, and it proves the
+  # manifest is enough to build from. Before it existed the set was accurate
+  # and insufficient — 59 files declared, 70 needed.
   selfhost-declared-inputs:
-    desc: "Declare every reproduction input and refuse missing, altered, or extra ones"
+    desc: "Declare every reproduction input, refuse drift, and prove the set is enough to rebuild from"
     vars:
       NAMESPACE: '{{if .KOFUN_GATE_WORK_NAMESPACE}}{{.KOFUN_GATE_WORK_NAMESPACE}}/{{end}}'
     cmds:
       - "sh bootstrap/selfhost/declare-inputs.sh build/{{.NAMESPACE}}selfhost-inputs"
       - "sh bootstrap/selfhost/check-declared-inputs.sh build/{{.NAMESPACE}}selfhost-inputs"
+      - "sh bootstrap/selfhost/check-inputs-sufficient.sh build/{{.NAMESPACE}}selfhost-inputs"
 
   # RFC-0001 stage 1. The canonical contract and its bounded Stage 2
   # projection, pinned against each other. The seed grants no capability;

@@ -76,6 +76,23 @@ mkdir -p "$work"
     declare_file manifest bootstrap/manifest.json
     declare_file sums bootstrap/stage1/SHA256SUMS
     declare_file sums bootstrap/stage2/SHA256SUMS
+
+    # Both sums files are verified with `sha256sum -c`, which reads every file
+    # they list, so every listed file is an input whether or not the chain
+    # names it directly. Omitting these two made the acquisition set
+    # insufficient: a builder who obtained exactly the manifest failed at
+    # `bootstrap/stage1/SHA256SUMS does not match the checkout` before
+    # compiling anything.
+    declare_file sums-member bootstrap/stage1/compiler.c
+    declare_file sums-member bootstrap/stage2/compiler.kofun
+
+    # The trusted seed is one translation unit spread over several files: it
+    # `#include`s its siblings and the Unicode runtime by relative path, and
+    # that runtime in turn includes the vendored utf8proc. A seed that cannot
+    # be compiled is not an acquisition set, so the whole translation unit is
+    # declared rather than only its entry file.
+    declare_file seed-unit bootstrap/stage2/decimal_v1.c
+    declare_file seed-unit bootstrap/stage2/decimal_v1.h
     for script in bootstrap/selfhost/generations-lib.sh \
         bootstrap/selfhost/build-a1-a2.sh \
         bootstrap/selfhost/check-a1-a2.sh \
@@ -86,8 +103,26 @@ mkdir -p "$work"
     for header in unicode/*.h; do
         declare_file runtime "$header"
     done
+    declare_file runtime unicode/kofun_unicode.c
+    declare_file runtime unicode/kofun_unicode_tables.inc
+    for vendored in vendor/utf8proc/utf8proc.c \
+        vendor/utf8proc/utf8proc_data.c \
+        vendor/utf8proc/utf8proc.h; do
+        declare_file vendored "$vendored"
+    done
     for source in bootstrap/selfhost/driver/corpus_*.kofun; do
         declare_file corpus "$source"
+    done
+
+    # Pinned emissions and goldens. `check-a1-a2.sh` reads corpus_answer.c and
+    # corpus_answer.stdout unconditionally; `build-a1-a2.sh` compares each
+    # other `corpus_*.c` only when the file is present, so a builder missing
+    # them does not fail — the proof quietly checks less, which is worse.
+    for evidence in bootstrap/selfhost/driver/corpus_*.c; do
+        declare_file corpus-evidence "$evidence"
+    done
+    for golden in bootstrap/selfhost/driver/corpus_*.stdout; do
+        declare_file corpus-golden "$golden"
     done
 
     # The two set digests the generation gates verify, so a builder can check
@@ -95,7 +130,12 @@ mkdir -p "$work"
     printf 'set|name=corpus|sha256=%s\n' "$(corpus_digest)"
     printf 'set|name=runtime-headers|sha256=%s\n' "$(runtime_digest)"
 
-    printf 'reconstruct|%s\n' 'task selfhost-fixed-point'
+    # The reconstruction command names a declared file, not a task. `task
+    # selfhost-fixed-point` is the same proof and is what a contributor in a
+    # checkout runs, but Taskfile.yml and go-task are neither declared inputs
+    # nor obtainable from this manifest, so naming it left a builder holding
+    # the acquisition set with a command they could not run.
+    printf 'reconstruct|%s\n' 'sh bootstrap/selfhost/check-fixed-point.sh OUTPUT'
 } >"$work/declared-inputs.tsv"
 
 count=$(grep -c '^input|' "$work/declared-inputs.tsv")
