@@ -473,18 +473,27 @@ Run:
 sh bootstrap/stage2/check.sh
 ```
 
-`build.sh` in this directory is not a gate and is not executable. It is sourced
-by the twenty gates that need a Stage 2 compiler binary, and it is the single
-definition of how one is produced:
+`build.sh` in this directory is not a gate and is not executable. It is the
+single definition of how a Stage 2 compiler binary is produced, sourced by the
+gates that need one:
 
 ```sh
 . "$ROOT/bootstrap/stage2/build.sh"
 kofun_stage2_build "$ROOT" "$WORK/kofun-stage2"
 ```
 
-Every one of those gates therefore honours `KOFUN_STAGE2_COMPILER`. Export it
-with a compiler you have already built and each gate copies it instead of
-spending about 4.6s recompiling `compiler.c`.
+A gate that calls it honours `KOFUN_STAGE2_COMPILER`: export a compiler you
+have already built and the gate copies it instead of spending several seconds
+recompiling `compiler.c`. `task verify` builds one such compiler and exports
+the variable, so every adopting gate reuses it.
+
+Adoption is not yet complete. `bootstrap/stage2/check.sh`,
+`bootstrap/selfhost/check-compiler-driver.sh`,
+`bootstrap/selfhost/check-driver-diagnostics.sh`,
+`bootstrap/selfhost/frontend/check-frontend.sh`, and
+`bootstrap/selfhost/c11/check-c11.sh` still spell the compile line themselves
+and therefore rebuild `compiler.c` even when the variable is set — the debt
+this file exists to pay down, measured rather than assumed.
 
 The check validates the canonical-source and seed hashes, compiles the audited
 C11 seed, round-trips the fixture, current Stage 1 compiler, and Stage 2
@@ -704,9 +713,10 @@ ABI. Calls containing a list parameter evaluate every list and companion `Int`
 argument exactly once in written order through typed C11 temporary slots.
 
 This is not general list lowering. Direct literal arguments/returns, mutable
-lists, `List[Text]`, nested/general lists, labelled or indirect list calls,
-list fields in nominal records, non-C11 backends, variable capacities, and
-collection ownership inference remain refused. The focused gates are
+lists, `List[Text]`, nested/general lists, indirect list calls, list fields in
+nominal records, non-C11 backends, variable capacities, and collection
+ownership inference remain refused. Labelled `List[Int]` calls do execute
+since #1107, through the same fixed-slot temporaries. The focused gates are
 `tests/stage2/list-int-values/run.sh` and
 `tests/stage2/list-int-signatures/run.sh`; the general list capability remains
 unsupported until the later #868 record-field increments land.

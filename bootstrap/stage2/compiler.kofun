@@ -3768,31 +3768,26 @@ fn emit_argument(
     return emit_expression(source, hir, start, end)
 }
 
-# The C carrier a fixed call slot is declared with, or "" for a type this
-# lowering does not carry. One mapping serves the labelled (#1097/#1107) and
-# direct List[Int] (#1103) slot paths, so a widened carrier cannot become
-# executable in one and silently stay unknown in the other.
-fn call_slot_c_type(carrier: Text) -> Text {
-    if carrier == "Int" {
-        return "int64_t"
-    }
+# Whether a fixed call slot can carry this type. One vocabulary serves the
+# labelled (#1097/#1107) and direct List[Int] (#1103) slot paths, so a
+# widened carrier cannot become executable in one and silently stay unknown
+# in the other.
+fn call_slot_carried(carrier: Text) -> Bool {
+    return carrier == "Int" || carrier == "Text" || carrier == "List[Int]"
+}
+
+# Everything before the slot's name in its C declaration, so pointer spacing
+# is decided here instead of at each emitter: a pointer carrier already ends
+# in `*`, which is how the rest of the emitted surface spells
+# `const char *name`.
+fn call_slot_declaration_prefix(carrier: Text) -> Text {
     if carrier == "Text" {
         return "const char *"
     }
     if carrier == "List[Int]" {
-        return "KofunIntListValue"
+        return "KofunIntListValue "
     }
-    return ""
-}
-
-# The separator between a slot's carrier and its name, so pointer spacing is
-# decided here instead of at each emitter. A pointer carrier already ends in
-# `*`, which is how the rest of the emitted surface spells `const char *name`.
-fn call_slot_separator(carrier: Text) -> Text {
-    if call_slot_c_type(carrier) == "const char *" {
-        return ""
-    }
-    return " "
+    return "int64_t "
 }
 
 # The declared zero for that carrier. A slot is assigned before the call in
@@ -3840,7 +3835,7 @@ fn labelled_call_supported(
     }
     let declaration = function_start_named(source, callee)
     if declaration < 0 ||
-       len(call_slot_c_type(function_return_type(source, callee))) == 0 {
+       !call_slot_carried(function_return_type(source, callee)) {
         return false
     }
     let count = parameter_count(source, declaration)
@@ -3849,8 +3844,7 @@ fn labelled_call_supported(
     }
     let mut index = 0
     while index < count {
-        let carrier = function_parameter_type(source, callee, index)
-        if len(call_slot_c_type(carrier)) == 0 {
+        if !call_slot_carried(function_parameter_type(source, callee, index)) {
             return false
         }
         index = index + 1
@@ -3952,8 +3946,11 @@ fn emit_labelled_call(
             source_index
         )
         if slot < 0 || slot >= parameter_count_value {
-            return "error[E2S158]: labelled-call fixed-slot projection failed at byte " +
-            to_text(argument)
+            return lower_error(
+                "E2S158",
+                "labelled-call fixed-slot projection failed",
+                argument
+            )
         }
         let value_start = labelled_argument_value(source, argument)
         let value = emit_argument(
@@ -4027,8 +4024,7 @@ fn emit_labelled_call_temporaries(
                             slot
                         )
                         emitted = emitted + "    " +
-                            call_slot_c_type(carrier) +
-                            call_slot_separator(carrier) +
+                            call_slot_declaration_prefix(carrier) +
                             "kofun_call_arg_" + to_text(cursor) + "_" +
                             to_text(slot) +
                             " = " + call_slot_zero(carrier) + ";\n"
@@ -4188,11 +4184,10 @@ fn emit_direct_list_int_call_temporaries(
                             slot
                         )
                         emitted = emitted + "    " +
-                        call_slot_c_type(carrier) +
-                        call_slot_separator(carrier) +
-                        "kofun_list_call_arg_" + to_text(cursor) + "_" +
-                        to_text(slot) + " = " + call_slot_zero(carrier) +
-                        ";\n"
+                            call_slot_declaration_prefix(carrier) +
+                            "kofun_list_call_arg_" + to_text(cursor) + "_" +
+                            to_text(slot) +
+                            " = " + call_slot_zero(carrier) + ";\n"
                         slot = slot + 1
                     }
                 }
@@ -4651,8 +4646,12 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
             )
         }
         if call_has_labelled_argument(source, open) {
-            return "error[E2S158]: labelled-call ABI lowering is owned by #882; fixed-slot checked HIR is available at byte " +
-            to_text(cursor)
+            return lower_error(
+                "E2S158",
+                "labelled-call ABI lowering is owned by #882; fixed-slot " +
+                "checked HIR is available",
+                cursor
+            )
         }
         let callee_binding = hir_use_binding_id(hir, cursor)
         let mut lambda_open = -1
@@ -8488,6 +8487,19 @@ fn core_body_open(
         return -1
     }
     return cursor
+}
+
+# One diagnostic spelling for the lowering surface: `error[CODE]: MESSAGE`,
+# with ` at byte N` appended when a position is known. The C seed's
+# counterpart additionally records the diagnostic in the structured event
+# stream; that sink is a seed-only capability with no Kofun surface yet, so
+# this authority owns the observable text and nothing else.
+fn lower_error(code: Text, message: Text, cursor: Int) -> Text {
+    if cursor >= 0 {
+        return "error[" + code + "]: " + message + " at byte " +
+            to_text(cursor)
+    }
+    return "error[" + code + "]: " + message
 }
 
 fn parent_block_open(

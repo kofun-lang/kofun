@@ -10,9 +10,9 @@ checkpoint is executable.
 | #31 | Generic functions and types with trait bounds type-check | A focused typed-only frontend checks explicit unbounded generic function calls; generic types, bounds, traits, and lowering remain open | open |
 | #31 | Strategy selected with measured justification | A baseline and measurement protocol are specified in `generics-and-traits.md`; no compiler measurements exist | open |
 | #31 | Laws can be stated over generic types | Proposed syntax exists, but no generic proof kernel exists | open |
-| #32 | Stage 1 compiles its own source | The canonical `S` has complete frozen-profile evidence and the trusted seed produces runnable `C1/A1`; `A1(S) -> C2/A2` remains open | open |
-| #32 | Three generated C sources and executables are byte-identical | The first compiler-produced `C1/A1` exists; `C2/A2`, `C3/A3`, and their equivalence gate remain open | open |
-| #32 | Manifest closes the gate and records hashes | The manifest truthfully records both self-recompile gates as open | open |
+| #32 | Stage 1 compiles its own source | The canonical `S` has complete frozen-profile evidence, the trusted seed produces runnable `C1/A1`, and `A1(S) -> C2/A2` is gated by `task selfhost-generations` (#271) | implemented |
+| #32 | Three generated C sources and executables are byte-identical | `task selfhost-fixed-point` (#272) proves `C2 == C3` and `A2 == A3` byte for byte, twice in normalized clean directories; `C1/A1` are hash-pinned provenance, not criteria, per #271's recorded decision | implemented |
+| #32 | Manifest closes the gate and records hashes | `bootstrap/manifest.json` records the three B4/B5 gates as `working` with a `fixed_point_closure` hash block the fixed-point gate asserts; only `diverse_double_compilation` (B7) stays `open` | implemented |
 | #33 | Stage 1 builds through the native backend | Bounded Kofun-authored x86-64 and AArch64 ELF fixtures execute or are audited; Stage 1 still builds through C11 | open |
 | #33 | Interpreted and native Stage 1 outputs match | The Kofun checker exists, but no native Stage 1 artifact exists to supply its second input | open |
 | #33 | Bootstrap gate verifies the native path | Native fixtures and Stage 1 are separate gates | open |
@@ -31,8 +31,10 @@ sh spec/roadmap-31-34/verify-current-gates.sh
 It compiles the audited Stage 2 C11 checkpoint, uses that checkpoint to lower
 `current-core-probe.kofun`, compiles and executes the result, and checks the
 observable floor-arithmetic contract. It also confirms that the self-recompile
-manifest entries remain open, then runs the packaged LSP protocol, editor smoke,
-and performance gates.
+and artifact-equivalence manifest entries read `working` while
+`diverse_double_compilation` stays `open`, then runs the packaged LSP protocol,
+editor smoke, and performance gates. The fixed point those entries record is
+proven by `task selfhost-fixed-point`, not by this probe.
 
 To rerun the repository's complete Stage 2 and native fixture gates before the
 probe:

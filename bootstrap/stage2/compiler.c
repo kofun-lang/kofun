@@ -6785,23 +6785,24 @@ static char *emit_argument(
     return emit_expression(source, hir, start, end);
 }
 
-/* The C carrier a fixed call slot is declared with, or "" for a type this
- * lowering does not carry. One mapping serves the labelled (#1097/#1107) and
- * direct List[Int] (#1103) slot paths, so a widened carrier cannot become
- * executable in one and silently stay unknown in the other. */
-static const char *call_slot_c_type(const char *carrier) {
-    if (strcmp(carrier, "Int") == 0) return "int64_t";
-    if (strcmp(carrier, "Text") == 0) return "const char *";
-    if (strcmp(carrier, "List[Int]") == 0) return "KofunIntListValue";
-    return "";
+/* Whether a fixed call slot can carry this type. One vocabulary serves the
+ * labelled (#1097/#1107) and direct List[Int] (#1103) slot paths, so a
+ * widened carrier cannot become executable in one and silently stay unknown
+ * in the other. */
+static bool call_slot_carried(const char *carrier) {
+    return strcmp(carrier, "Int") == 0 ||
+        strcmp(carrier, "Text") == 0 ||
+        strcmp(carrier, "List[Int]") == 0;
 }
 
-/* The separator between a slot's carrier and its name, so pointer spacing is
- * decided here instead of at each emitter. A pointer carrier already ends in
- * `*`, which is how the rest of the emitted surface spells `const char
- * *name`. */
-static const char *call_slot_separator(const char *carrier) {
-    return strcmp(call_slot_c_type(carrier), "const char *") == 0 ? "" : " ";
+/* Everything before the slot's name in its C declaration, so pointer spacing
+ * is decided here instead of at each emitter: a pointer carrier already ends
+ * in `*`, which is how the rest of the emitted surface spells
+ * `const char *name`. */
+static const char *call_slot_declaration_prefix(const char *carrier) {
+    if (strcmp(carrier, "Text") == 0) return "const char *";
+    if (strcmp(carrier, "List[Int]") == 0) return "KofunIntListValue ";
+    return "int64_t ";
 }
 
 /* The declared zero for that carrier. A slot is assigned before the call in
@@ -6827,10 +6828,17 @@ static bool labelled_call_supported(
     int64_t open
 ) {
     if (!call_has_labelled_argument(source, open)) return false;
+    /* A lexical callable may shadow a top-level declaration with the same
+     * spelling. Only an unresolved callee name denotes the direct top-level
+     * function this bounded ABI slice can lower. */
     char *callee_binding = hir_use_binding_id(hir, call_start);
     bool direct = callee_binding[0] == '\0';
     free(callee_binding);
     if (!direct) return false;
+    /* Lifted lambdas are emitted as separate C functions. Their call-site
+     * temporaries therefore cannot live in the enclosing source function;
+     * keep that independently reviewable lowering at #882's E2S158
+     * boundary. */
     int64_t function_open = enclosing_function_open(source, call_start);
     if (
         function_open >= 0 &&
@@ -6840,14 +6848,14 @@ static bool labelled_call_supported(
     }
     int64_t declaration = function_start_named(source, callee);
     char *result = function_return_type(source, callee);
-    bool carries_result = call_slot_c_type(result)[0] != '\0';
+    bool carries_result = call_slot_carried(result);
     free(result);
     if (declaration < 0 || !carries_result) return false;
     int64_t count = parameter_count(source, declaration);
     if (count < 1 || count > 8) return false;
     for (int64_t index = 0; index < count; ++index) {
         char *type = function_parameter_type(source, callee, index);
-        bool carried = call_slot_c_type(type)[0] != '\0';
+        bool carried = call_slot_carried(type);
         free(type);
         if (!carried) return false;
     }
@@ -7047,10 +7055,9 @@ static char *emit_labelled_call_temporaries(
                         );
                         buffer_format(
                             &output,
-                            "    %s%skofun_call_arg_%" PRId64
+                            "    %skofun_call_arg_%" PRId64
                             "_%" PRId64 " = %s;\n",
-                            call_slot_c_type(carrier),
-                            call_slot_separator(carrier),
+                            call_slot_declaration_prefix(carrier),
                             cursor,
                             slot,
                             call_slot_zero(carrier)
@@ -7217,10 +7224,9 @@ static char *emit_direct_list_int_call_temporaries(
                         );
                         buffer_format(
                             &output,
-                            "    %s%skofun_list_call_arg_%" PRId64
+                            "    %skofun_list_call_arg_%" PRId64
                             "_%" PRId64 " = %s;\n",
-                            call_slot_c_type(carrier),
-                            call_slot_separator(carrier),
+                            call_slot_declaration_prefix(carrier),
                             cursor,
                             slot,
                             call_slot_zero(carrier)
@@ -16976,20 +16982,26 @@ static char *lower_body(
     Buffer emitted;
     buffer_init(&emitted);
     if (open == function_open) {
+        /* Prologue order is part of the emitted bytes and must match the
+         * Kofun authority exactly: optional coalescing, then labelled
+         * slots, then direct List[Int] slots. A function containing both
+         * call shapes would otherwise compile to different C under the two
+         * surfaces — a byte-parity failure the fixed-point gate exists to
+         * refuse. */
         char *temporaries = emit_optional_int_coalescing_temporaries(
             source,
             function_open
         );
         buffer_append(&emitted, temporaries);
         free(temporaries);
-        temporaries = emit_direct_list_int_call_temporaries(
+        temporaries = emit_labelled_call_temporaries(
             source,
             hir,
             function_open
         );
         buffer_append(&emitted, temporaries);
         free(temporaries);
-        temporaries = emit_labelled_call_temporaries(
+        temporaries = emit_direct_list_int_call_temporaries(
             source,
             hir,
             function_open

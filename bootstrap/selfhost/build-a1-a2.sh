@@ -176,9 +176,11 @@ fi
 
 # Promotion is atomic with respect to failure: everything above either
 # succeeded, or prior output was never touched. A rewrite owns the whole
-# promoted set, including a fixed-point layer a previous gate run may have
-# left beside it — a stale fixed-point.tsv describing deleted generations is
-# exactly the drift these gates exist to refuse.
+# promoted set, including the fixed-point layer. Under `task verify` the two
+# gates use separate directories so that layer is absent here, but
+# check-fixed-point.sh's one-argument form writes both into one directory —
+# and there a stale fixed-point.tsv describing deleted generations is exactly
+# the drift these gates exist to refuse.
 rm -rf "$output/generations" "$output/corpus" \
     "$output/provenance.tsv" "$output/gen3" "$output/fixed-point.tsv"
 mkdir -p "$output/generations/gen1" "$output/generations/gen2"

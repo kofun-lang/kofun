@@ -116,14 +116,22 @@ tasks:
     cmds:
       - "sh bootstrap/selfhost/check-driver-diagnostics.sh"
 
+  # These two write their outputs under an explicit directory argument rather
+  # than deriving one, so the repository's `KOFUN_GATE_WORK_NAMESPACE`
+  # convention is applied here instead of inside the scripts — a caller that
+  # sets it (spec/roadmap-31-34/verify-current-gates.sh does) still isolates
+  # them.
+  #
   # `run: once` so the fixed-point dependency and the aggregate `verify`
   # listing resolve to a single bundle build instead of two racing ones.
   selfhost-generations:
     desc: "Produce the C1/A1 and C2/A2 generations twice and gate reproducibility"
     run: once
+    vars:
+      BUNDLE: 'build/{{if .KOFUN_GATE_WORK_NAMESPACE}}{{.KOFUN_GATE_WORK_NAMESPACE}}/{{end}}selfhost-generations'
     cmds:
-      - "sh bootstrap/selfhost/build-a1-a2.sh build/selfhost-generations"
-      - "sh bootstrap/selfhost/check-a1-a2.sh build/selfhost-generations"
+      - "sh bootstrap/selfhost/build-a1-a2.sh {{.BUNDLE}}"
+      - "sh bootstrap/selfhost/check-a1-a2.sh {{.BUNDLE}}"
 
   # Consumes the bundle the dependency just produced and validated; the gate
   # re-validates it and writes only under its own output directory. Run
@@ -131,8 +139,10 @@ tasks:
   selfhost-fixed-point:
     desc: "Prove the three-generation C11 fixed point: C2 == C3 and A2 == A3"
     deps: [selfhost-generations]
+    vars:
+      NAMESPACE: '{{if .KOFUN_GATE_WORK_NAMESPACE}}{{.KOFUN_GATE_WORK_NAMESPACE}}/{{end}}'
     cmds:
-      - "sh bootstrap/selfhost/check-fixed-point.sh build/selfhost-fixed-point build/selfhost-generations"
+      - "sh bootstrap/selfhost/check-fixed-point.sh build/{{.NAMESPACE}}selfhost-fixed-point build/{{.NAMESPACE}}selfhost-generations"
 
   selfhost-frontend:
     desc: "Gate #619 typed-frontend evidence (all 46 cells)"
