@@ -1,5 +1,0 @@
-fn main() {
-    let x = linspace(0.0, 1.0, 1000)
-    let squared = vmul(x, x)
-    print(mean(squared))
-}

@@ -69,7 +69,6 @@ start at [`bin/kofun`](../bin/kofun), find the public subcommand, and follow the
 | `package/` | locked external native-artifact package manager | `package/README.md` | `task packages` |
 | `examples/` | user-facing and interoperability examples | example plus its nearest check | relevant build or `check.sh` |
 | `docs/` | authored guides, designs, status, and browser-tour source | this guide | `task tour` for `docs/tour/`; `spec/*/check.sh` for the gated documents |
-| `benchmarks/` | reproducible benchmark programs, harnesses, and recorded results | `benchmarks/README.md` | subsystem benchmark script |
 | `artifacts/` | checked evidence summaries and cost/law artifacts | inspect producer named in the artifact | producer-specific gate |
 | `scripts/` | repository policy verification written in Kofun; **currently inert**, see below | script source | none — no task invokes it |
 | `.github/workflows/` | CI | workflow YAML | GitHub Actions |
@@ -106,6 +105,7 @@ What is deliberately not here, and where it lives instead:
 | official site, docs renderer, browser playground, delivery-planning snapshots, long-range issue catalogue | [`kofun-lang/kofun-site`](https://github.com/kofun-lang/kofun-site) |
 | VS Code extension: metadata, TextMate highlighting, snippets, packaging | [`kofun-lang/kofun-vscode`](https://github.com/kofun-lang/kofun-vscode) |
 | Tree-sitter grammar, editor queries, recovery corpus | [`kofun-lang/tree-sitter-kofun`](https://github.com/kofun-lang/tree-sitter-kofun) |
+| benchmark programs, harnesses, and recorded results | [`kofun-lang/kofun-benchmarks`](https://github.com/kofun-lang/kofun-benchmarks) |
 
 Each reads this repository, never the other way. No gate here reads anything
 from them, and `task verify` needs no npm, Next.js, or Cloudflare toolchain —
@@ -464,6 +464,7 @@ Never make a source fix only inside one of these directories.
 | explanatory docs | `docs/` | this guide | the `spec/*/check.sh` that reads the document, if any |
 | the browser tour | `docs/tour/` | `docs/tour/README.md` | `task tour` |
 | docs UI, playground, or delivery snapshots | `kofun-lang/kofun-site` | that repository's `site/README.md` | `npm run verify:site` there |
+| a benchmark program, harness, or recorded result | `kofun-lang/kofun-benchmarks` | that repository's `README.md` | its own harness |
 
 ## What to read on your first day
 
