@@ -1,0 +1,8 @@
+# Suite for the source-coordinate gate (#1129).  Its companion `offsets.kofun`
+# does not compile, so this suite never runs; what the gate reads is the build
+# diagnostic, which must point into the companion rather than into the
+# concatenated unit.
+
+fn test_late_returns_zero() -> Int {
+    return expect_eq_int(late(0), 0)
+}

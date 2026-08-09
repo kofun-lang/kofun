@@ -104,6 +104,130 @@ strip_main() {
     ' "$1"
 }
 
+# ------------------------------------------------------- source coordinates
+# The unit handed to `kofun emit-c` is the kotest library, the companion, and
+# the suite concatenated, so a diagnostic's byte offset is an offset into that
+# concatenation (#1129). It is off by roughly the size of the library, and it
+# moves whenever the library is edited — so the same user error reported a
+# different offset over time, and none of them pointed anywhere the author
+# could look.
+#
+# The runner already knows the answer, because it built the unit. Every append
+# below records where its bytes landed, and diagnostics are rewritten into
+# source coordinates before they are printed.
+#
+# Runs, not whole files, because `strip_main` drops lines from the middle: the
+# bytes before a removed `fn main` and the bytes after it land at different
+# distances from their source offsets. A row is
+#
+#   unit_start <TAB> unit_end <TAB> path <TAB> source_start
+#
+# and `unit_start` is where that run begins in the unit, half-open at
+# `unit_end`. Byte offsets are zero-based, which is what the compiler reports.
+
+unit_size() {
+    if [ -f "$1" ]; then
+        wc -c <"$1" | tr -d ' '
+    else
+        printf '0'
+    fi
+}
+
+# Copies FILE into the unit unchanged. `cat` rather than awk so the unit stays
+# byte-identical to what it was before offsets were tracked — awk would add a
+# trailing newline to a file that lacks one.
+append_verbatim() {
+    av_file=$1
+    av_unit=$2
+    av_map=$3
+    av_base=$(unit_size "$av_unit")
+    av_bytes=$(wc -c <"$av_file" | tr -d ' ')
+    cat "$av_file" >>"$av_unit"
+    printf '%s\t%s\t%s\t0\n' \
+        "$av_base" "$((av_base + av_bytes))" "$av_file" >>"$av_map"
+}
+
+# `strip_main` with the bookkeeping: same line filter, and one map row per
+# contiguous run of lines that survived it.
+append_stripped() {
+    as_file=$1
+    as_unit=$2
+    as_map=$3
+    as_base=$(unit_size "$as_unit")
+    LC_ALL=C awk -v base="$as_base" -v path="$as_file" -v mapfile="$as_map" '
+        BEGIN { unit_pos = base + 0; src_pos = 0; run = -1 }
+        {
+            bytes = length($0) + 1
+            keep = 1
+            if ($0 ~ /^fn main\(/) { inside = 1; keep = 0 }
+            else if (inside == 1 && $0 ~ /^}/) { inside = 0; keep = 0 }
+            else if (inside == 1) { keep = 0 }
+            if (keep) {
+                print
+                if (run < 0) { run = unit_pos; run_src = src_pos }
+                unit_pos += bytes
+                run_end = unit_pos
+            } else if (run >= 0) {
+                printf "%d\t%d\t%s\t%d\n", run, run_end, path, run_src >> mapfile
+                run = -1
+            }
+            src_pos += bytes
+        }
+        END {
+            if (run >= 0)
+                printf "%d\t%d\t%s\t%d\n", run, run_end, path, run_src >> mapfile
+        }
+    ' "$as_file" >>"$as_unit"
+}
+
+# Appends generated text that came from no source file, and advances the unit
+# position past it by writing nothing to the map: an offset that lands there
+# matches no run and is reported as the generated text it is.
+append_generated() {
+    cat >>"$1"
+}
+
+# Rewrites every `byte N` in a diagnostic into the file the author wrote. The
+# unit offset is kept as a secondary note, because the unit is retained on
+# failure and that is the coordinate space it is in.
+translate_diagnostics() {
+    LC_ALL=C awk -v mapfile="$1" '
+        BEGIN {
+            runs = 0
+            while ((getline row < mapfile) > 0) {
+                split(row, field, "\t")
+                unit_start[runs] = field[1] + 0
+                unit_end[runs] = field[2] + 0
+                run_path[runs] = field[3]
+                src_start[runs] = field[4] + 0
+                runs++
+            }
+            close(mapfile)
+        }
+        {
+            out = ""
+            rest = $0
+            while (match(rest, /byte [0-9]+/)) {
+                out = out substr(rest, 1, RSTART - 1)
+                token = substr(rest, RSTART, RLENGTH)
+                rest = substr(rest, RSTART + RLENGTH)
+                offset = substr(token, 6) + 0
+                replacement = sprintf("byte %d of the generated unit", offset)
+                for (i = 0; i < runs; i++) {
+                    if (offset >= unit_start[i] && offset < unit_end[i]) {
+                        replacement = sprintf("%s byte %d (unit byte %d)", \
+                            run_path[i], src_start[i] + offset - unit_start[i], \
+                            offset)
+                        break
+                    }
+                }
+                out = out replacement
+            }
+            print out rest
+        }
+    '
+}
+
 # ------------------------------------------------------------------ harness
 emit_harness() {
     unit_label=$1
@@ -171,7 +295,11 @@ run_unit() {
     work=$2
     stem=$(basename "$source_file" .kofun)
     unit="$work/$stem.unit.kofun"
+    unit_map="$work/$stem.unit.map"
     names="$work/$stem.names"
+    rm -f "$unit" "$unit_map"
+    : >"$unit"
+    : >"$unit_map"
 
     test_names "$source_file" >"$names.all"
     if [ -n "$filter" ]; then
@@ -191,28 +319,27 @@ run_unit() {
             return 2
         fi
         companion="${source_file%_test.kofun}.kofun"
+        append_verbatim "$KOTEST_LIB" "$unit" "$unit_map"
+        printf '\n' | append_generated "$unit"
         if [ -f "$companion" ]; then
-            {
-                cat "$KOTEST_LIB"
-                printf '\n'
-                strip_main "$companion"
-                printf '\n'
-                cat "$source_file"
-            } >"$unit"
-        else
-            { cat "$KOTEST_LIB"; printf '\n'; cat "$source_file"; } >"$unit"
+            append_stripped "$companion" "$unit" "$unit_map"
+            printf '\n' | append_generated "$unit"
         fi
+        append_verbatim "$source_file" "$unit" "$unit_map"
         ;;
     *)
-        { cat "$KOTEST_LIB"; printf '\n'; strip_main "$source_file"; } >"$unit"
+        append_verbatim "$KOTEST_LIB" "$unit" "$unit_map"
+        printf '\n' | append_generated "$unit"
+        append_stripped "$source_file" "$unit" "$unit_map"
         ;;
     esac
-    emit_harness "$stem" "$names" >>"$unit"
+    emit_harness "$stem" "$names" | append_generated "$unit"
 
     if ! "$ROOT/bin/kofun" emit-c "$unit" "$work/$stem.c" \
         >"$work/$stem.emit.log" 2>&1; then
         printf '%skotest: BUILD FAIL %s%s\n' "$C_RED" "$source_file" "$C_OFF"
-        sed 's/^/    /' "$work/$stem.emit.log"
+        translate_diagnostics "$unit_map" <"$work/$stem.emit.log" |
+            sed 's/^/    /'
         printf '    %sunit kept at %s%s\n' "$C_DIM" "$unit" "$C_OFF"
         return 2
     fi

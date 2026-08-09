@@ -2,20 +2,35 @@
 
 - Shepherd: hjosugi
 - Opened: 2026-08-09
-- Status: proposed
+- Review closed: 2026-08-09
+- Decided: 2026-08-09
+- Status: accepted
 
 Proposal for [#1130](https://github.com/kofun-lang/kofun/issues/1130). This
 document records target semantics only. No parser, reducer, or trace producer
-implements it, and the rejection row in
+implements it. Acceptance decides the semantics and nothing else: the
+`kofun.type-reduction/general-v2` profile, the `general` modifier, the
+`kofun.type-reduction-trace/v2` schema, and `E390`–`E393` are decided target
+semantics with no implementation behind them, and `release/claims.json`
+remains the authority on what the compiler can actually do.
+
+Acceptance supersedes the rejection row in
 [`spec/type-level-programming-v1.md`](../spec/type-level-programming-v1.md)
-stands until this proposal is decided.
+for the general class only. That supersession is recorded as ledger amendment
+`DD-031/A01` rather than as an edit to the decision text, so a reader of
+DD-031 sees the semantics moved instead of reading a superseded sentence as
+current. Everything the row rejects outside the general class — anonymous
+conditional, mapped, and inferred type expressions — is untouched by this
+proposal and stays rejected.
 
 This is one half of the decision split recorded on #1130. This document owns
 the **termination axis**: whether recursion whose measure is not a structural
 subterm is admissible, and what bounds it. The **kind axis** — `Nat`,
 `Symbol`, and `Bool` as type-level data — is
-[RFC-0009](0009-type-level-kinds-v1.md), proposed for
-[#1133](https://github.com/kofun-lang/kofun/issues/1133). Stated plainly, as
+[RFC-0009](0009-type-level-kinds-v1.md), accepted for
+[#1133](https://github.com/kofun-lang/kofun/issues/1133) on the same day as
+this one, so the conditional passages below that ask "if RFC-0009 is also
+accepted" all resolve to yes. Stated plainly, as
 the #1130 analysis requires: **accepted alone, this proposal does not deliver
 the typed router or the units library.** Those are kind-blocked first. What
 this proposal alone delivers is the recursion class that no kind can:
