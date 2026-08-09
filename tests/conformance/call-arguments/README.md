@@ -11,9 +11,16 @@ each expression once in a function-local `int64_t` temporary through the C11
 comma operator before making the declaration-order call.
 
 The executable slice is intentionally limited to direct top-level functions
-whose parameters and result are all `Int`. Wider carriers, ownership-bearing
-values, pipeline subjects, the trailing-lambda form, and direct-native/Wasm
-lowering retain E2S158 and remain owned by #882.
+whose parameters and result are `Int`, `Text`, or `List[Int]` — the carriers
+the positional path already executes. `source_order_carriers.kofun` mixes all
+three in one call written out of declaration order: the markers `1` and `3`
+print before the callee body's `42`, proving source-order exactly-once
+evaluation, and each slot is reserved with its own C type, because an
+`int64_t` slot holding a `Text` would compile and then truncate.
+
+Optional and enum/record carriers, ownership-bearing values, pipeline
+subjects, the trailing-lambda form, labelled calls inside lifted lambdas, and
+direct-native/Wasm lowering retain E2S158 and remain owned by #882.
 
 `shadowed_callable.kofun` keeps lexical resolution load-bearing: a callable
 parameter named like a supported top-level function must not be redirected to

@@ -3768,12 +3768,53 @@ fn emit_argument(
     return emit_expression(source, hir, start, end)
 }
 
-# #1097 deliberately lowers only the first executable labelled-call profile:
-# a direct top-level function whose parameters and result are all Int.  The
-# fixed-slot binding pass has already rejected unknown/duplicate/missing
-# labels; this predicate keeps every wider carrier and backend shape at the
-# explicit E2S158 boundary owned by #882.
-fn labelled_int_call_supported(
+# The C carrier a fixed call slot is declared with, or "" for a type this
+# lowering does not carry. One mapping serves the labelled (#1097/#1107) and
+# direct List[Int] (#1103) slot paths, so a widened carrier cannot become
+# executable in one and silently stay unknown in the other.
+fn call_slot_c_type(carrier: Text) -> Text {
+    if carrier == "Int" {
+        return "int64_t"
+    }
+    if carrier == "Text" {
+        return "const char *"
+    }
+    if carrier == "List[Int]" {
+        return "KofunIntListValue"
+    }
+    return ""
+}
+
+# The separator between a slot's carrier and its name, so pointer spacing is
+# decided here instead of at each emitter. A pointer carrier already ends in
+# `*`, which is how the rest of the emitted surface spells `const char *name`.
+fn call_slot_separator(carrier: Text) -> Text {
+    if call_slot_c_type(carrier) == "const char *" {
+        return ""
+    }
+    return " "
+}
+
+# The declared zero for that carrier. A slot is assigned before the call in
+# every path that declares it, so this only has to be a valid value of the
+# type — never a null the emitted C could dereference.
+fn call_slot_zero(carrier: Text) -> Text {
+    if carrier == "Text" {
+        return "\"\""
+    }
+    if carrier == "List[Int]" {
+        return "KOFUN_LIST_INT_ZERO"
+    }
+    return "INT64_C(0)"
+}
+
+# #1097 lowered the first executable labelled-call profile — a direct
+# top-level function whose parameters and result are all Int — and #1107
+# widened its carriers to Text and List[Int], the two the positional path
+# already executes. The fixed-slot binding pass has already rejected
+# unknown/duplicate/missing labels; this predicate keeps every wider carrier
+# and backend shape at the explicit E2S158 boundary owned by #882.
+fn labelled_call_supported(
     source: Text,
     hir: Text,
     call_start: Int,
@@ -3798,7 +3839,8 @@ fn labelled_int_call_supported(
         return false
     }
     let declaration = function_start_named(source, callee)
-    if declaration < 0 || function_return_type(source, callee) != "Int" {
+    if declaration < 0 ||
+       len(call_slot_c_type(function_return_type(source, callee))) == 0 {
         return false
     }
     let count = parameter_count(source, declaration)
@@ -3807,7 +3849,8 @@ fn labelled_int_call_supported(
     }
     let mut index = 0
     while index < count {
-        if function_parameter_type(source, callee, index) != "Int" {
+        let carrier = function_parameter_type(source, callee, index)
+        if len(call_slot_c_type(carrier)) == 0 {
             return false
         }
         index = index + 1
@@ -3818,7 +3861,7 @@ fn labelled_int_call_supported(
 # Map a source-order argument back to the declaration/ABI slot that #881
 # validated. Positional arguments form a prefix, so their source index is
 # already their slot; labelled arguments compare against external names.
-fn labelled_int_argument_slot(
+fn labelled_argument_slot(
     source: Text,
     callee: Text,
     argument: Int,
@@ -3873,7 +3916,7 @@ fn labelled_int_argument_slot(
     return -1
 }
 
-fn labelled_int_argument_value(source: Text, argument: Int) -> Int {
+fn labelled_argument_value(source: Text, argument: Int) -> Int {
     let colon = skip_trivia(source, token_end(source, argument))
     if (token_kind(source, argument) == "identifier" ||
         token_kind(source, argument) == "keyword") &&
@@ -3887,7 +3930,7 @@ fn labelled_int_argument_value(source: Text, argument: Int) -> Int {
 # comma expression is sequenced, so assign source-order values first and only
 # then invoke the declaration-order ABI vector.  Temporary names contain no
 # source labels and are declared once at the containing function scope.
-fn emit_labelled_int_call(
+fn emit_labelled_call(
     source: Text,
     hir: Text,
     call_start: Int,
@@ -3902,7 +3945,7 @@ fn emit_labelled_int_call(
     let mut source_index = 0
     while argument < end && token_text(source, argument) != ")" {
         let bound = argument_end(source, argument)
-        let slot = labelled_int_argument_slot(
+        let slot = labelled_argument_slot(
             source,
             callee,
             argument,
@@ -3912,7 +3955,7 @@ fn emit_labelled_int_call(
             return "error[E2S158]: labelled-call fixed-slot projection failed at byte " +
             to_text(argument)
         }
-        let value_start = labelled_int_argument_value(source, argument)
+        let value_start = labelled_argument_value(source, argument)
         let value = emit_argument(
             source,
             hir,
@@ -3948,10 +3991,10 @@ fn emit_labelled_int_call(
     return emitted + "))"
 }
 
-# Reserve the fixed Int slots before any statement in the containing function.
-# The call-start byte makes nested and repeated call sites distinct without
-# carrying an external label into generated artifacts.
-fn emit_labelled_int_call_temporaries(
+# Reserve the fixed carrier slots before any statement in the containing
+# function. The call-start byte makes nested and repeated call sites distinct
+# without carrying an external label into generated artifacts.
+fn emit_labelled_call_temporaries(
     source: Text,
     hir: Text,
     function_open: Int
@@ -3967,7 +4010,7 @@ fn emit_labelled_int_call_temporaries(
             let open = skip_trivia(source, token_end(source, cursor))
             if open < close && token_text(source, open) == "(" {
                 let callee = token_text(source, cursor)
-                if labelled_int_call_supported(
+                if labelled_call_supported(
                     source,
                     hir,
                     cursor,
@@ -3978,9 +4021,17 @@ fn emit_labelled_int_call_temporaries(
                     let count = parameter_count(source, declaration)
                     let mut slot = 0
                     while slot < count {
-                        emitted = emitted + "    int64_t kofun_call_arg_" +
-                            to_text(cursor) + "_" + to_text(slot) +
-                            " = INT64_C(0);\n"
+                        let carrier = function_parameter_type(
+                            source,
+                            callee,
+                            slot
+                        )
+                        emitted = emitted + "    " +
+                            call_slot_c_type(carrier) +
+                            call_slot_separator(carrier) +
+                            "kofun_call_arg_" + to_text(cursor) + "_" +
+                            to_text(slot) +
+                            " = " + call_slot_zero(carrier) + ";\n"
                         slot = slot + 1
                     }
                 }
@@ -4131,21 +4182,17 @@ fn emit_direct_list_int_call_temporaries(
                     let count = parameter_count(source, declaration)
                     let mut slot = 0
                     while slot < count {
-                        let mut c_type = "int64_t"
-                        if function_parameter_type(
+                        let carrier = function_parameter_type(
                             source,
                             callee,
                             slot
-                        ) == "List[Int]" {
-                            c_type = "KofunIntListValue"
-                        }
-                        let mut initial = "INT64_C(0)"
-                        if c_type == "KofunIntListValue" {
-                            initial = "KOFUN_LIST_INT_ZERO"
-                        }
-                        emitted = emitted + "    " + c_type +
-                        " kofun_list_call_arg_" + to_text(cursor) + "_" +
-                        to_text(slot) + " = " + initial + ";\n"
+                        )
+                        emitted = emitted + "    " +
+                        call_slot_c_type(carrier) +
+                        call_slot_separator(carrier) +
+                        "kofun_list_call_arg_" + to_text(cursor) + "_" +
+                        to_text(slot) + " = " + call_slot_zero(carrier) +
+                        ";\n"
                         slot = slot + 1
                     }
                 }
@@ -4587,14 +4634,14 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
                 name
             )
         }
-        if labelled_int_call_supported(
+        if labelled_call_supported(
             source,
             hir,
             cursor,
             name,
             open
         ) {
-            return emit_labelled_int_call(
+            return emit_labelled_call(
                 source,
                 hir,
                 cursor,
@@ -11236,7 +11283,7 @@ fn lower_body(
             source,
             function_open
         )
-        emitted = emitted + emit_labelled_int_call_temporaries(
+        emitted = emitted + emit_labelled_call_temporaries(
             source,
             hir,
             function_open

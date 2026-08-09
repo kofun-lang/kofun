@@ -1,0 +1,28 @@
+fn mark(marker: Int, value: Int) -> Int {
+    print(marker)
+    return value
+}
+
+fn mark_text(marker: Int, value: Text) -> Text {
+    print(marker)
+    return value
+}
+
+fn describe(
+    as_label caption: Text,
+    as_values numbers: List[Int],
+    as_count count: Int
+) -> Text {
+    print(numbers[0] + count)
+    return caption
+}
+
+fn main() -> Int {
+    let numbers = [40, 50]
+    print(describe(
+        as_count: mark(1, 2),
+        as_label: mark_text(3, "done"),
+        as_values: numbers
+    ))
+    return 0
+}

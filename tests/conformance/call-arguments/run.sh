@@ -110,6 +110,38 @@ if grep -E 'as_first|as_second|label_(map|dictionary)|malloc|calloc|realloc' \
     fail 'generated C retained labels, runtime dispatch, or allocation'
 fi
 
+# #1107 widened the same fixed-slot lowering to the Text and List[Int]
+# carriers the positional path already executes. Mixing all three in one call,
+# written in an order that is not the declaration order, is what distinguishes
+# source-order evaluation from ABI order: `1` and `3` print before the callee
+# body's `42`, and each marker prints exactly once. Each slot must also carry
+# its own C type — an int64_t Text slot would compile and then truncate.
+"$temporary/stage2" "$cases/source_order_carriers.kofun" \
+    "$temporary/carriers.c" "$temporary/carriers.ir" \
+    "$temporary/carriers.tokens" >"$temporary/carriers.compiler"
+"$compiler" -std=c11 -O2 -Wall -Wextra -Werror -I "$root/unicode" \
+    "$temporary/carriers.c" -o "$temporary/carriers"
+"$temporary/carriers" >"$temporary/carriers.stdout"
+cmp "$cases/source_order_carriers.stdout" "$temporary/carriers.stdout" ||
+    fail 'mixed-carrier labelled call did not evaluate once in source order'
+
+grep -E 'const char \*kofun_call_arg_[0-9]+_0 = "";' \
+    "$temporary/carriers.c" >/dev/null ||
+    fail 'the Text slot did not reserve a const char * temporary'
+grep -E 'KofunIntListValue kofun_call_arg_[0-9]+_1 = KOFUN_LIST_INT_ZERO;' \
+    "$temporary/carriers.c" >/dev/null ||
+    fail 'the List[Int] slot did not reserve a KofunIntListValue temporary'
+grep -E 'int64_t kofun_call_arg_[0-9]+_2 = INT64_C\(0\);' \
+    "$temporary/carriers.c" >/dev/null ||
+    fail 'the Int slot did not reserve an int64_t temporary'
+grep -E 'kofun_call_arg_[0-9]+_2 = .*kofun_call_arg_[0-9]+_0 = .*kofun_call_arg_[0-9]+_1 = .*kofun_fn_describe\(kofun_call_arg_[0-9]+_0, kofun_call_arg_[0-9]+_1, kofun_call_arg_[0-9]+_2\)' \
+    "$temporary/carriers.c" >/dev/null ||
+    fail 'mixed-carrier C did not sequence source order before ABI order'
+if grep -E 'as_label|as_values|as_count|label_(map|dictionary)|malloc|calloc|realloc' \
+    "$temporary/carriers.c" >/dev/null; then
+    fail 'mixed-carrier C retained labels, runtime dispatch, or allocation'
+fi
+
 # Wider carriers and lexical callable bindings remain explicit unsupported
 # lowering. They may retain parsed IR/tokens, but must not commit C. The
 # shadow case is particularly important: spelling alone must never redirect a
@@ -149,4 +181,4 @@ unsupported_case "$cases/lifted_lambda_call.kofun" \
     'labelled call inside a lifted lambda'
 
 printf '%s\n' \
-    'PASS: labelled calls bind fixed HIR slots and the all-Int C11 slice evaluates once in source order; #882 retains wider carriers and backends'
+    'PASS: labelled calls bind fixed HIR slots and the Int/Text/List[Int] C11 slice evaluates once in source order into per-carrier temporaries; #882 retains Optional/enum/record carriers, lambda bodies, and other backends'
