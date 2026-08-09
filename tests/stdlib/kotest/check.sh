@@ -129,6 +129,46 @@ grep -q '✓ failing_test.test_that_passes_beside_failures' "$WORK/red.out" ||
 grep -q 'Tests  2 failed | 1 passed (3 total, 1 suites)' "$WORK/red.out" ||
     fail 'failing fixture summary is wrong'
 
+# ------------------------------------------------- build-failure coordinates
+# A build diagnostic must point into the file the author wrote (#1129). The
+# unit is the kotest library, the companion, and the suite concatenated, so an
+# untranslated offset lands roughly a library's length past the defect and
+# moves whenever the library is edited.
+#
+# The expected offset is computed from the fixture here rather than written
+# down, so the assertion cannot go stale against an edited fixture, and it is
+# compared against what the compiler reports for the companion on its own —
+# which is the whole claim: through kotest, the same defect gets the same
+# coordinate as outside it.
+OFFSETS_COMPANION="$ROOT/tests/stdlib/kotest/fixtures/offsets.kofun"
+expected_offset=$(LC_ALL=C awk '
+    { if (index($0, "while ") > 0) { print pos + index($0, "while ") - 1; exit } }
+    { pos += length($0) + 1 }
+' "$OFFSETS_COMPANION")
+test -n "$expected_offset" ||
+    fail 'offsets fixture no longer contains the marker construct'
+
+set +e
+sh "$RUNNER" "$ROOT/tests/stdlib/kotest/fixtures/offsets_test.kofun" \
+    --no-color >"$WORK/offsets.out" 2>&1
+offsets_status=$?
+set -e
+test "$offsets_status" -eq 2 ||
+    fail "offsets fixture exited $offsets_status instead of 2 (build failure)"
+grep -q 'kotest: BUILD FAIL' "$WORK/offsets.out" ||
+    fail 'offsets fixture did not report a build failure'
+grep -q "fixtures/offsets.kofun byte $expected_offset" "$WORK/offsets.out" ||
+    fail "build diagnostic did not name offsets.kofun byte $expected_offset
+$(sed 's/^/    /' "$WORK/offsets.out")"
+
+# The defect is in the companion, so the suite must not be blamed for it.
+grep -q "offsets_test.kofun byte" "$WORK/offsets.out" &&
+    fail 'build diagnostic attributed the companion defect to the suite'
+
+# And the raw unit offset must not be what the reader is sent to.
+grep -Eq 'statement at byte [0-9]+' "$WORK/offsets.out" &&
+    fail 'build diagnostic still reports a bare unit offset'
+
 # ------------------------------------------------------------------ filter
 sh "$RUNNER" "$SAMPLES/list_sample_test.kofun" --filter test_fold \
     --no-color >"$WORK/filter.out" 2>&1 ||
