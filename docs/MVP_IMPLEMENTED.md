@@ -15,6 +15,7 @@
 | typed-sidecar documentation index | bounded KIF-filtered projection: canonical public and exact-package internal declaration views with explicit partial/stale trust and atomic publication | `task documentation-index` | `documentation-index` |
 | qualified module aliases | bounded same-package `import a.b as local`; local-only `AliasBindingId` preserves target identity, with no public/per-name/external aliases or `bin/kofun` routing | `tests/conformance/modules/import-aliases/run.sh`, `task import-aliases` | `module-aliases` |
 | C11 user-function calls | bounded Int Core: recursion and forward calls | `bootstrap/stage2/check.sh` | `c11-function-calls` |
+| C11 bounded List[Int] values and mutable local writes | bounded by-value 64-element locals and direct function carriers; standalone mutable-local element assignment with checked positive, negative, constant, and dynamic indices | `task list-int-values`, `task list-int-signatures` | `c11-list-int-values` |
 | x86-64 native user-function calls | bounded Int Core: six arguments, guarded returns, recursion | `tests/conformance/functions` | `native-x86-64-function-calls` |
 | x86-64/AArch64 native Text-returning calls | bounded compiler-shaped profile with parameters, locals, concatenation, forwarding, and direct calls | `bootstrap/native/check.sh` | `native-text-returning-calls` |
 | AArch64 native user-function calls | same bounded Int Core lowered to AArch64; executed under `qemu-aarch64` | `tests/conformance/functions`, `bootstrap/native/check.sh` | `native-aarch64-function-calls` |
