@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 26,
+  "open_issues": 25,
   "issues": [
     {
       "number": 26,
@@ -749,18 +749,6 @@
           "agent_id": "codex-refresh-995-20260808",
           "status": "released"
         }
-      ]
-    },
-    {
-      "number": 1107,
-      "title": "Stage 2 C11: lower labelled calls with Text and List[Int] carriers",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "862bb4b7acdea40ac01a4efa4a6e723adec02275"
       ]
     },
     {
