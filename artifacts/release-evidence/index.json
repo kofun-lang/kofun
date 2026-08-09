@@ -655,7 +655,7 @@
     }
   ],
   "evidence_digests": {
-    "Taskfile.yml": "2f83c387dbc36f9fbf891808792c7b038024d9fbcec8715f2dba715c665f3e0c",
+    "Taskfile.yml": "91d1ef34f3dde9bb76eb16edcbd88970ff3963479542aee3acf22bc301e86675",
     "bootstrap/native/check.sh": "fea94cb623757e1bf17e4497f43d656b1e8ff57a39a92ece871d8ff257c0f2ef",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/driver/corpus_builtin_rejects.tsv": "b1fa0b26247581aef797a81880554a94233a34109215530641706d76777087d4",
@@ -676,7 +676,7 @@
     "docs/MEMORY_MODEL.md": "1da0ddfe263d6c399ee6c8b511a03d10580052e1802c48dd2d30e6a57332b56d",
     "docs/MVP_IMPLEMENTED.md": "2c85eea749bb2aa429e13eb36e7643571835f98ee9f0c5491bacfcbc3704c799",
     "docs/NATIVE_BACKEND.md": "ab16b7bc6ae59071f9ae73c6fafde44732c887d122bb711104eb231297680bfe",
-    "docs/ROADMAP.md": "74d0ec0e8704740d14340eb52301a45c3d82b0a3a0d2207462ba27f09528f6bc",
+    "docs/ROADMAP.md": "197f12635b7409edbb4ebcc67efb5af0a1980b7268b2aad81ab1c99a1d1fa1e9",
     "docs/RUST_CRATE_SHIMS.md": "4365b064cbc9a05733710d3a609c1db2623b28cb9ed4ba0e48536e35f9d58c47",
     "docs/SECURITY.md": "b3bdb09876ab1f4c39be2d2dc7ca8d819b5163a88a2b69da0fc4b1e40365c4fe",
     "docs/SELF_HOSTING.md": "46195e8254f2ad63c478bd64d3e0095c7485d94ee9968178006d5cb5f56d083d",
