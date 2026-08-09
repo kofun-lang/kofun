@@ -1,7 +1,8 @@
 # Scoped parallelism v1
 
-Status: normative contract and bounded executable model; production parsing,
-checking, lowering, and scheduling are not implemented.
+Status: accepted normative contract (RFC-0003, decided 2026-08-09) and bounded
+executable model; production parsing, checking, lowering, and scheduling are
+not implemented.
 
 Issue: [#555](https://github.com/kofun-lang/kofun/issues/555)
 
@@ -278,7 +279,9 @@ ownership/place analysis, runtime/scheduler, diagnostics, and backend work. It
 must preserve every rejection and lifecycle rule here. Passing this model is
 not evidence that any production component is implemented.
 
-This document is a normative input to proposed
-[`RFC-0003`](../../rfcs/0003-scoped-parallelism.md). Until the shepherd closes
-review and the ledger records an explicit decision, this document and model are
-proposal evidence, not an accepted RFC and not a shipped feature.
+This document is the normative contract of accepted
+[`RFC-0003`](../../rfcs/0003-scoped-parallelism.md), decided 2026-08-09. The
+decision is in force; the feature is not shipped. No parser, ownership checker,
+scheduler, or backend implements it, and the compiler refuses `par` by name
+with `E2S154` — which is the separation between an accepted decision and an
+implemented capability, not a gap in the decision.

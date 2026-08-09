@@ -2,7 +2,8 @@
 
 - Shepherd: hjosugi
 - Opened: 2026-08-02
-- Status: proposed
+- Status: accepted
+- Decided: 2026-08-09
 
 Proposal for [#907](https://github.com/kofun-lang/kofun/issues/907), the bounded
 child of [#570](https://github.com/kofun-lang/kofun/issues/570). Review opened with the ledger's announced window; it closes when the

@@ -609,13 +609,15 @@
       "id": "RFC-0002",
       "title": "Environment access requires attenuated affine authority",
       "provenance": "rfc",
-      "state": "proposed",
+      "state": "accepted",
       "shepherd": "hjosugi",
       "source": "rfcs/0002-environment-authority.md",
       "document": "rfcs/0002-environment-authority.md",
       "proposal": "https://github.com/kofun-lang/kofun/issues/569",
       "dates": {
-        "opened_on": "2026-08-02"
+        "opened_on": "2026-08-02",
+        "review_closed_on": "2026-08-09",
+        "decided_on": "2026-08-09"
       },
       "normative_spec": [
         "rfcs/0002-environment-authority.md"
@@ -656,13 +658,15 @@
       "id": "RFC-0004",
       "title": "Ownership kind is classified structurally through ADTs, tuples, and generic instantiation",
       "provenance": "rfc",
-      "state": "proposed",
+      "state": "accepted",
       "shepherd": "hjosugi",
       "source": "rfcs/0004-ownership-kind-classification.md",
       "document": "rfcs/0004-ownership-kind-classification.md",
       "proposal": "https://github.com/kofun-lang/kofun/issues/907",
       "dates": {
-        "opened_on": "2026-08-02"
+        "opened_on": "2026-08-02",
+        "review_closed_on": "2026-08-09",
+        "decided_on": "2026-08-09"
       },
       "normative_spec": [
         "rfcs/0004-ownership-kind-classification.md"
@@ -703,13 +707,15 @@
       "id": "RFC-0006",
       "title": "A module-level binding is language surface, and v1 is the immutable integer constant",
       "provenance": "rfc",
-      "state": "proposed",
+      "state": "accepted",
       "shepherd": "hjosugi",
       "source": "rfcs/0006-module-level-bindings.md",
       "document": "rfcs/0006-module-level-bindings.md",
       "proposal": "https://github.com/hjosugi/kofun/issues/955",
       "dates": {
-        "opened_on": "2026-08-05"
+        "opened_on": "2026-08-05",
+        "review_closed_on": "2026-08-09",
+        "decided_on": "2026-08-09"
       },
       "normative_spec": [
         "rfcs/0006-module-level-bindings.md"

@@ -501,18 +501,16 @@ On the target branch today:
   `'equal'` nor `Equal`, and that the supertrait message names a delimiter and
   not `Base`. Those negative assertions are the boundary — the goldens cannot be
   re-blessed into member-scope diagnostics without them failing first.
-- `sh tests/rfc/check-registry.sh` — this row is `proposed`, so it carries no
-  implementation record and no `decided_on`.
+- `sh tests/rfc/check-registry.sh` — this row is `accepted` and carries no
+  implementation record, which is the separation the ledger exists to keep.
 
-What will prove the *decided* behaviour is #942's `E370` fixture. This proposal
+What will prove the *decided* behaviour is #942's `E370` fixture. This decision
 claims no implementation, and its ledger row carries none.
 
-Nothing in this document is in force. The ledger row is `proposed` with
-`opened_on: 2026-08-02` and deliberately no closing date and no
-`decided_on`, which `tests/rfc/validate-registry.mjs` requires of a proposal
-under review. The decision is recorded separately, on or after the day review
-closes, and #995 stays open until then — so neither #942's blocker nor #31's
-child state changes by publishing this.
+This decision is in force and nothing in the compiler changed by recording it.
+The ledger row is `accepted`, decided 2026-08-09, with no implementation
+record. #942 stays blocked on #31 for the two-member capability that any
+member-scope check needs before it can execute.
 
 ## Unresolved questions
 

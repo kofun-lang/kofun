@@ -503,15 +503,16 @@ warned about — `@unchecked Sendable` became the migration strategy because it
 was available and quiet — by not providing the hatch, rather than by choosing a
 default for it.
 
-Both answers are recorded in proposed
-[`RFC-0003`](../rfcs/0003-scoped-parallelism.md). Until its review closes on
-2026-08-16 they are a proposal under review, not an accepted decision.
+Both answers are recorded in accepted
+[`RFC-0003`](../rfcs/0003-scoped-parallelism.md), decided 2026-08-09. They are
+the language's position now, and a substantive change to any normative v1 rule
+reopens review rather than being folded into implementation.
 
 ### Still open
 
-The decision itself: RFC-0003 is `proposed`, and a substantive change to any
-normative v1 rule restarts its review rather than being folded into
-implementation.
+Not the decision — the implementation. Nothing in the production compiler
+executes `par`: no capture derivation, ownership checking, scheduling, or
+lowering exists, and the compiler refuses the construct by name with `E2S154`.
 
 Everything v1 deliberately excludes needs its own later proposal — detached
 tasks, long-lived isolated state, channels, actors, session types, a

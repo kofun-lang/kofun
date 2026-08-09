@@ -2,7 +2,8 @@
 
 - Shepherd: hjosugi
 - Opened: 2026-08-05
-- Status: proposed
+- Status: accepted
+- Decided: 2026-08-09
 
 ## Summary
 
