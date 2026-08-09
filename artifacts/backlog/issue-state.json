@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 25,
+  "open_issues": 28,
   "issues": [
     {
       "number": 26,
@@ -138,6 +138,7 @@
         272
       ],
       "evidence_commits": [
+        "4695608b88cf173436ae3ea523358f7db1071297",
         "b8bcaa9b24281ad8ec4e1300c8a444cffe352331"
       ],
       "claims": [
@@ -760,6 +761,42 @@
       "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": []
+    },
+    {
+      "number": 1112,
+      "title": "selfhost gates: adopt the shared generation library and the Stage 2 builder",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "4695608b88cf173436ae3ea523358f7db1071297"
+      ]
+    },
+    {
+      "number": 1113,
+      "title": "Stage 2: merge the labelled and direct List[Int] fixed-slot call lowering",
+      "state_labels": [
+        "needs-detail"
+      ],
+      "state_line": "needs-detail",
+      "blocked_by": [],
+      "evidence_commits": [
+        "4695608b88cf173436ae3ea523358f7db1071297"
+      ]
+    },
+    {
+      "number": 1114,
+      "title": "B6 slice 1: declare every reproduction input and fail closed on drift",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "4695608b88cf173436ae3ea523358f7db1071297"
+      ]
     }
   ]
 }
