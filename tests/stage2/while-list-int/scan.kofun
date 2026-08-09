@@ -1,10 +1,10 @@
 # The other shapes the same lowering admits: a linear scan, an accumulating
 # sum, and a two-pointer walk. All read-only over a borrowed List[Int].
 #
-# Each element is bound before it is compared. Comparing an index expression
-# directly in a condition — `if values[i] == target` — is refused by a
-# pre-existing defect unrelated to loops (it types the whole `i] == target`
-# span as the index), and it reproduces with no loop in sight.
+# Each element is bound before it is compared. That was once the only spelling
+# that worked — comparing an index expression directly in a condition was
+# refused until #1158 — and it stays here deliberately, because both spellings
+# must keep working. `index_in_condition.kofun` covers the direct one.
 
 fn index_of(values: List[Int], target: Int) -> Int {
     let mut i = 0
