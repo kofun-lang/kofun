@@ -727,6 +727,29 @@
         "result": "`75`, `23` and `2` at 2b7581ff, the audited commit. Of 75 top-level `let` declarations across 23 tracked `.kofun` sources, 73 are exactly `let NAME = <integer literal>` and are admitted by v1. The 2 exceptions are `let mut LIMIT = 1` and `let LIMIT = 1 + 2`, which are the refusal fixtures this slice adds, so the count of tracked sources outside the new fixtures requiring migration is 0. Restricted to the standard library the same query returns 61 declarations across 15 sources, all of them admitted.",
         "evidence": "tests/module-constants/mutable.stdout"
       }
+    },
+    {
+      "id": "RFC-0007",
+      "title": "Derive v1 is a closed compiler-owned set, specified as the expansion a library derive would produce",
+      "provenance": "rfc",
+      "state": "proposed",
+      "shepherd": "hjosugi",
+      "source": "rfcs/0007-derive-v1.md",
+      "document": "rfcs/0007-derive-v1.md",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/988",
+      "dates": {
+        "opened_on": "2026-08-09"
+      },
+      "normative_spec": [
+        "rfcs/0007-derive-v1.md"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "`@derive` is refused today by tests/security/generated-meta-access.sh as a fail-closed producer boundary, so no program that compiles uses the surface and none can change meaning. New surface is the `@derive(...)` attribute on a `type` declaration, one closed-set member `eq` over concrete nominal records with `Int` or `Bool` fields, the `kofun expand` command, and the five codes E380 through E384. Those sit in a free band: E370 through E372 belong to RFC-0005 and E373 through E379 are unallocated, so nothing is touched. Generated declarations are ordinary declarations, so DD-032 coherence and the orphan rule apply to them unchanged rather than being widened.",
+        "corpus_query": "git grep -c '@derive' -- '*.kofun' | wc -l",
+        "result": "`0` at 6b7c060f, the audited commit. No tracked Kofun source uses the surface, so no program requires migration.",
+        "evidence": "tests/security/generated-meta-access.sh"
+      }
     }
   ]
 }
