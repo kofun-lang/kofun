@@ -371,7 +371,13 @@ function evidenceIndex(manifest, manifestText, schemaText) {
     return {
         schema: 'kofun.release-evidence/v1',
         manifest_version: manifest.manifest_version,
+        // The version this pack describes. A pack that did not say which
+        // version it was generated for could be read as current for any of
+        // them, which is the same defect as a claim without a gate: a true
+        // statement with nothing binding it to what it is true of.
+        version: readRepositoryFile('VERSION').trim(),
         inputs: {
+            'VERSION': sha256(readRepositoryFile('VERSION')),
             [MANIFEST_PATH]: sha256(manifestText),
             [SCHEMA_PATH]: sha256(schemaText),
         },
