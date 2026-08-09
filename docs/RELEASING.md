@@ -25,8 +25,11 @@ states the project status; this section says what the digits mean.
 
 The `-seed` suffix is dropped, and a compatibility policy replaces this
 section, when the milestones in `docs/ROADMAP.md` say it may — not before.
-`docs/ROADMAP.md` §M4 lists what 1.0 requires; none of it is a version-number
-decision.
+`docs/ROADMAP.md` §M4 lists what 1.0 requires and, for each item, where it
+stands with the command that measured it; none of it is a version-number
+decision. Six of the sixteen items are documents nobody has started, and four
+of those need a decision rather than engineering time, so the distance to 1.0
+is not something a release procedure can shorten.
 
 ## The number lives in one place
 
