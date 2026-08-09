@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 29,
+  "open_issues": 31,
   "issues": [
     {
       "number": 26,
@@ -153,31 +153,6 @@
       ]
     },
     {
-      "number": 555,
-      "title": "Scoped parallelism v1: specify spawn/join ownership semantics and executable model",
-      "state_labels": [
-        "needs-detail"
-      ],
-      "state_line": "needs-detail",
-      "blocked_by": [],
-      "evidence_commits": [
-        "041816f714eb82ed72e4a773c0112ed87f71b93b",
-        "486d72deb17a6be11325a425e1138822d058121d",
-        "516e8fb3925088dd64b291e8cd749764a41891b1",
-        "b297880239f0db9cb832df50de379f5f678abf6c"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-555-decision-audit-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-555-decision-audit-20260808",
-          "status": "released"
-        }
-      ]
-    },
-    {
       "number": 569,
       "title": "RFC: define affine authority capabilities for environment access",
       "state_labels": [
@@ -251,6 +226,14 @@
         {
           "agent_id": "codex-637-post-1100-topology-20260809",
           "status": "released"
+        },
+        {
+          "agent_id": "claude-637-semantic-fact-completion-20260810",
+          "status": "active"
+        },
+        {
+          "agent_id": "claude-637-semantic-fact-completion-20260810",
+          "status": "pr-open"
         }
       ]
     },
@@ -380,7 +363,7 @@
       "number": 784,
       "title": "ownership: an affine handle whose owned state cannot be duplicated (#644)",
       "state_labels": [
-        "ready"
+        "needs-decision"
       ],
       "state_line": "ready",
       "blocked_by": [],
@@ -654,16 +637,6 @@
       ]
     },
     {
-      "number": 1108,
-      "title": "release-claims: join executable claim states to the bootstrap manifest gates they describe",
-      "state_labels": [
-        "needs-detail"
-      ],
-      "state_line": "needs-detail",
-      "blocked_by": [],
-      "evidence_commits": []
-    },
-    {
       "number": 1113,
       "title": "Stage 2: merge the labelled and direct List[Int] fixed-slot call lowering",
       "state_labels": [
@@ -690,40 +663,6 @@
       ]
     },
     {
-      "number": 1121,
-      "title": "Traits C11: execute a two-slot dictionary",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "8e07d273aa77063a90b4fa8870cda104edb353b9"
-      ],
-      "claims": [
-        {
-          "agent_id": "claude-1121-two-slot-c11-20260809",
-          "status": "active"
-        },
-        {
-          "agent_id": "claude-1121-two-slot-c11-20260809",
-          "status": "released"
-        }
-      ]
-    },
-    {
-      "number": 1127,
-      "title": "Executable slice: mutable List[Int] bindings block every in-place algorithm (E2S157)",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "b8aeca7b4db8a93f0c5e4d4e3665fd17f60a02bb"
-      ]
-    },
-    {
       "number": 1128,
       "title": "Executable slice: iterative while over an indexed List[Int] (E2S10) — binary search does not run",
       "state_labels": [
@@ -733,58 +672,126 @@
       "blocked_by": [],
       "evidence_commits": [
         "b8aeca7b4db8a93f0c5e4d4e3665fd17f60a02bb"
+      ],
+      "claims": [
+        {
+          "agent_id": "claude-merge-sweep",
+          "status": "pr-open"
+        }
       ]
     },
     {
-      "number": 1129,
-      "title": "kotest reports byte offsets into the generated unit, not the source file",
+      "number": 1156,
+      "title": "The \"audited\" correction stopped at four surfaces; 27 usages remain outside the gate",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 1158,
+      "title": "An index expression compared in a condition types the comparison as the index (E2S157)",
+      "state_labels": [],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 1160,
+      "title": "Scoped parallelism: parse `par`/`spawn`/`join` into HIR identities",
       "state_labels": [
         "ready"
       ],
       "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
-        "b8aeca7b4db8a93f0c5e4d4e3665fd17f60a02bb"
+        "37905efa0e4fcf1b821a97e2799722a47ab942f2"
       ]
     },
     {
-      "number": 1130,
-      "title": "Type-level programming v2: accept Turing-complete type computation, bounded by fuel rather than structure",
+      "number": 1161,
+      "title": "Scoped parallelism: derive task captures from checked bodies and resolved calls",
       "state_labels": [
-        "needs-decision"
+        "blocked"
       ],
-      "state_line": "needs-decision",
-      "blocked_by": [],
-      "evidence_commits": [],
-      "claims": [
-        {
-          "agent_id": "claude-fable-typelevel-v2",
-          "status": "active"
-        },
-        {
-          "agent_id": "claude-fable-typelevel-v2",
-          "status": "pr-open"
-        }
+      "state_line": "blocked",
+      "blocked_by": [
+        1160
+      ],
+      "evidence_commits": [
+        "37905efa0e4fcf1b821a97e2799722a47ab942f2"
       ]
     },
     {
-      "number": 1133,
-      "title": "Type-level kinds v1: Nat, Symbol, and Bool as type-level data",
+      "number": 1162,
+      "title": "Scoped parallelism: enforce liveness, overlap, take, and parent conflicts in the ownership checker",
       "state_labels": [
-        "needs-decision"
+        "blocked"
       ],
-      "state_line": "needs-decision",
-      "blocked_by": [],
-      "evidence_commits": [],
-      "claims": [
-        {
-          "agent_id": "claude-fable-typelevel-v2",
-          "status": "active"
-        },
-        {
-          "agent_id": "claude-fable-typelevel-v2",
-          "status": "pr-open"
-        }
+      "state_line": "blocked",
+      "blocked_by": [
+        1161
+      ],
+      "evidence_commits": [
+        "37905efa0e4fcf1b821a97e2799722a47ab942f2"
+      ]
+    },
+    {
+      "number": 1163,
+      "title": "Scoped parallelism: allocate stable compiler diagnostics for the six contract classes",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1162
+      ],
+      "evidence_commits": [
+        "37905efa0e4fcf1b821a97e2799722a47ab942f2"
+      ]
+    },
+    {
+      "number": 1164,
+      "title": "Scoped parallelism: bounded scheduler, scope-exit drain, panic precedence, and cancellation",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1163
+      ],
+      "evidence_commits": [
+        "37905efa0e4fcf1b821a97e2799722a47ab942f2"
+      ]
+    },
+    {
+      "number": 1166,
+      "title": "Scoped parallelism: lower par/spawn/join in each backend",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1164
+      ],
+      "evidence_commits": [
+        "37905efa0e4fcf1b821a97e2799722a47ab942f2"
+      ]
+    },
+    {
+      "number": 1167,
+      "title": "Scoped parallelism: capability and release evidence for executing targets",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1166
+      ],
+      "evidence_commits": [
+        "37905efa0e4fcf1b821a97e2799722a47ab942f2"
       ]
     }
   ]
