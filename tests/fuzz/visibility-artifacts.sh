@@ -428,7 +428,18 @@ assert_clean_artifact "sidecar-ok dump" "$WORK/cases/sidecar-ok.json"
 
 # Stable seed, stable case order: the same mutant set every run, on every
 # machine. The generator is the one from tests/fuzz/grammar.sh.
-seed=305419896
+# The default is the seed this corpus was recorded with, so `task verify`
+# generates the same programs it always has. It is overridable so a lane
+# that runs more than once can explore more than one input set; a fixed
+# seed means accumulated machine time buys no coverage.
+seed=${KOFUN_VISIBILITY_ARTIFACTS_FUZZ_SEED:-305419896}
+case $seed in
+    ''|*[!0-9]*)
+        printf '%s\n' "visibility-artifacts fuzz: KOFUN_VISIBILITY_ARTIFACTS_FUZZ_SEED must be a non-negative integer" >&2
+        exit 2
+        ;;
+esac
+printf '%s\n' "visibility-artifacts fuzz: seed=$seed"
 next_random() {
     seed=$(((seed * 1103515245 + 12345) % 2147483648))
 }

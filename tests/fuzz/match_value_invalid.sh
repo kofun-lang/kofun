@@ -27,7 +27,18 @@ fail() {
     exit 1
 }
 
-seed=1831565813
+# The default is the seed this corpus was recorded with, so `task verify`
+# generates the same programs it always has. It is overridable so a lane
+# that runs more than once can explore more than one input set; a fixed
+# seed means accumulated machine time buys no coverage.
+seed=${KOFUN_MATCH_VALUE_INVALID_FUZZ_SEED:-1831565813}
+case $seed in
+    ''|*[!0-9]*)
+        printf '%s\n' "match_value_invalid fuzz: KOFUN_MATCH_VALUE_INVALID_FUZZ_SEED must be a non-negative integer" >&2
+        exit 2
+        ;;
+esac
+printf '%s\n' "match_value_invalid fuzz: seed=$seed"
 next_random() {
     seed=$(((seed * 1103515245 + 12345) % 2147483648))
 }

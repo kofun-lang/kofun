@@ -43,7 +43,18 @@ mkdir -p "$WORK"
     "$ROOT/bootstrap/stage2/optional_frontend.c" \
     -o "$WORK/kofun-optional-sanitize"
 
-seed=1885172317
+# The default is the seed this corpus was recorded with, so `task verify`
+# generates the same programs it always has. It is overridable so a lane
+# that runs more than once can explore more than one input set; a fixed
+# seed means accumulated machine time buys no coverage.
+seed=${KOFUN_OPTIONAL_NARROWING_FUZZ_SEED:-1885172317}
+case $seed in
+    ''|*[!0-9]*)
+        printf '%s\n' "optional_narrowing fuzz: KOFUN_OPTIONAL_NARROWING_FUZZ_SEED must be a non-negative integer" >&2
+        exit 2
+        ;;
+esac
+printf '%s\n' "optional_narrowing fuzz: seed=$seed"
 next_random() {
     seed=$(((seed * 1103515245 + 12345) % 2147483648))
 }
