@@ -7390,8 +7390,8 @@ static char *emit_list_int_literal(
 }
 
 /* A whole List[Int] value crosses function boundaries in one fixed-capacity
- * by-value carrier. Literals are copied only at immutable local bindings;
- * direct literal arguments and returns stay outside this bounded slice. */
+ * by-value carrier. Literals are copied at local bindings; direct literal
+ * arguments and returns stay outside this bounded slice. */
 static char *emit_list_int_value(
     const char *source,
     const char *hir,
@@ -7471,6 +7471,124 @@ static char *emit_list_int_value(
         );
     }
     return emit_primary(source, hir, cursor, end);
+}
+
+/* Validate one List[Int] subscript once for both reads and writes, then return
+ * the emitted Int index. The caller owns the operation-specific C wrapper. */
+static char *emit_list_int_index_value(
+    const char *source,
+    const char *hir,
+    int64_t binding_start,
+    int64_t open
+) {
+    char *binding_id = hir_use_binding_id(hir, binding_start);
+    char *binding_type = hir_binding_field(hir, binding_id, 5);
+    if (strcmp(binding_type, "List[Int]") != 0) {
+        Buffer message;
+        buffer_init(&message);
+        buffer_format(
+            &message,
+            "indexing requires List[Int], got %s",
+            binding_type
+        );
+        free(binding_type);
+        free(binding_id);
+        char *error = lower_error(
+            "E2S157",
+            message.data,
+            binding_start
+        );
+        free(message.data);
+        return error;
+    }
+    free(binding_type);
+    free(binding_id);
+    int64_t index_start = skip_trivia(source, token_end(source, open));
+    int64_t index_end = expression_end(source, index_start);
+    int64_t close = index_end < 0 ? -1 : skip_trivia(source, index_end);
+    if (
+        index_end < 0 ||
+        close >= source_length(source) ||
+        !token_equal(source, close, "]")
+    ) {
+        return lower_error(
+            "E2S157",
+            "malformed List[Int] index",
+            open
+        );
+    }
+    char *index_type = initializer_type(
+        source,
+        hir,
+        enclosing_function_open(source, index_start),
+        index_start
+    );
+    if (strcmp(index_type, "Int") != 0) {
+        Buffer message;
+        buffer_init(&message);
+        buffer_format(
+            &message,
+            "List[Int] index must have type Int, got %s",
+            index_type
+        );
+        free(index_type);
+        char *error = lower_error(
+            "E2S157",
+            message.data,
+            index_start
+        );
+        free(message.data);
+        return error;
+    }
+    free(index_type);
+    int64_t constant = 0;
+    int64_t literal_count = list_int_binding_literal_count(
+        source,
+        hir,
+        binding_start
+    );
+    if (
+        literal_count >= 0 &&
+        list_int_constant_index(
+            source,
+            index_start,
+            index_end,
+            &constant
+        ) &&
+        (constant < -literal_count || constant >= literal_count)
+    ) {
+        Buffer message;
+        buffer_init(&message);
+        buffer_format(
+            &message,
+            "List[Int] index %" PRId64
+            " is out of range for length %" PRId64,
+            constant,
+            literal_count
+        );
+        char *error = lower_error(
+            "E2S157",
+            message.data,
+            index_start
+        );
+        free(message.data);
+        return error;
+    }
+    return emit_expression(source, hir, index_start, index_end);
+}
+
+static int64_t list_int_index_close(const char *source, int64_t open) {
+    int64_t index_start = skip_trivia(source, token_end(source, open));
+    int64_t index_end = expression_end(source, index_start);
+    if (index_end < 0) return -1;
+    int64_t close = skip_trivia(source, index_end);
+    if (
+        close >= source_length(source) ||
+        !token_equal(source, close, "]")
+    ) {
+        return -1;
+    }
+    return close;
 }
 
 static char *emit_primary(
@@ -7760,122 +7878,11 @@ static char *emit_primary(
         if (open >= end || !token_equal(source, open, "(")) {
             char *binding_id = hir_use_binding_id(hir, cursor);
             if (open < end && token_equal(source, open, "[")) {
-                char *binding_type = hir_binding_field(
-                    hir,
-                    binding_id,
-                    5
-                );
-                if (strcmp(binding_type, "List[Int]") != 0) {
-                    Buffer message;
-                    buffer_init(&message);
-                    buffer_format(
-                        &message,
-                        "indexing requires List[Int], got %s",
-                        binding_type
-                    );
-                    free(binding_type);
-                    free(binding_id);
-                    free(name);
-                    free(output.data);
-                    char *error = lower_error(
-                        "E2S157",
-                        message.data,
-                        cursor
-                    );
-                    free(message.data);
-                    return error;
-                }
-                free(binding_type);
-                int64_t index_start = skip_trivia(
-                    source,
-                    token_end(source, open)
-                );
-                int64_t index_end = expression_end(source, index_start);
-                int64_t close = index_end < 0
-                    ? -1
-                    : skip_trivia(source, index_end);
-                if (
-                    index_end < 0 ||
-                    close >= source_length(source) ||
-                    !token_equal(source, close, "]")
-                ) {
-                    free(binding_id);
-                    free(name);
-                    free(output.data);
-                    return lower_error(
-                        "E2S157",
-                        "malformed List[Int] index",
-                        open
-                    );
-                }
-                char *index_type = initializer_type(
+                char *index_value = emit_list_int_index_value(
                     source,
                     hir,
-                    enclosing_function_open(source, index_start),
-                    index_start
-                );
-                if (strcmp(index_type, "Int") != 0) {
-                    Buffer message;
-                    buffer_init(&message);
-                    buffer_format(
-                        &message,
-                        "List[Int] index must have type Int, got %s",
-                        index_type
-                    );
-                    free(index_type);
-                    free(binding_id);
-                    free(name);
-                    free(output.data);
-                    char *error = lower_error(
-                        "E2S157",
-                        message.data,
-                        index_start
-                    );
-                    free(message.data);
-                    return error;
-                }
-                free(index_type);
-                int64_t constant = 0;
-                int64_t literal_count = list_int_binding_literal_count(
-                    source,
-                    hir,
-                    cursor
-                );
-                if (
-                    literal_count >= 0 &&
-                    list_int_constant_index(
-                        source,
-                        index_start,
-                        index_end,
-                        &constant
-                    ) &&
-                    (constant < -literal_count || constant >= literal_count)
-                ) {
-                    Buffer message;
-                    buffer_init(&message);
-                    buffer_format(
-                        &message,
-                        "List[Int] index %" PRId64
-                        " is out of range for length %" PRId64,
-                        constant,
-                        literal_count
-                    );
-                    free(binding_id);
-                    free(name);
-                    free(output.data);
-                    char *error = lower_error(
-                        "E2S157",
-                        message.data,
-                        index_start
-                    );
-                    free(message.data);
-                    return error;
-                }
-                char *index_value = emit_expression(
-                    source,
-                    hir,
-                    index_start,
-                    index_end
+                    cursor,
+                    open
                 );
                 if (strncmp(index_value, "error[", 6) == 0) {
                     free(binding_id);
@@ -17761,19 +17768,11 @@ static char *lower_body(
             } else if (strcmp(binding_type, "List[Int]") == 0) {
                 c_type = "KofunIntListValue";
             }
-            if (mutable && strcmp(binding_type, "List[Int]") == 0) {
-                free(binding_type);
-                free(value);
-                free(binding_id);
-                free(name);
-                free(emitted.data);
-                return lower_error(
-                    "E2S157",
-                    "mutable List[Int] bindings are outside this lowering slice",
-                    value_start
-                );
-            }
-            if (mutable && strcmp(binding_type, "Int") != 0) {
+            if (
+                mutable &&
+                strcmp(binding_type, "Int") != 0 &&
+                strcmp(binding_type, "List[Int]") != 0
+            ) {
                 free(binding_type);
                 free(value);
                 free(binding_id);
@@ -18860,7 +18859,174 @@ static char *lower_body(
             int64_t assignment_start = cursor;
             char *name = token_copy(source, cursor);
             int64_t equals = skip_trivia(source, token_end(source, cursor));
-            if (equals < length && token_equal(source, equals, "=")) {
+            if (equals < length && token_equal(source, equals, "[")) {
+                char *binding_id = hir_use_binding_id(
+                    hir,
+                    assignment_start
+                );
+                if (
+                    binding_id[0] == '\0' ||
+                    strcmp(binding_id, "-1") == 0
+                ) {
+                    char *error = assignment_error(
+                        "unknown assignment target",
+                        name,
+                        assignment_start,
+                        "declare it before assignment"
+                    );
+                    free(binding_id);
+                    free(name);
+                    free(emitted.data);
+                    return error;
+                }
+                char *mutability = hir_binding_field(hir, binding_id, 4);
+                if (strcmp(mutability, "mutable") != 0) {
+                    char *error = assignment_error(
+                        "cannot assign through immutable List[Int] binding",
+                        name,
+                        assignment_start,
+                        "declare it with `let mut`"
+                    );
+                    free(mutability);
+                    free(binding_id);
+                    free(name);
+                    free(emitted.data);
+                    return error;
+                }
+                char *index_value = emit_list_int_index_value(
+                    source,
+                    hir,
+                    assignment_start,
+                    equals
+                );
+                if (strncmp(index_value, "error[", 6) == 0) {
+                    free(mutability);
+                    free(binding_id);
+                    free(name);
+                    free(emitted.data);
+                    return index_value;
+                }
+                int64_t close = list_int_index_close(source, equals);
+                if (close < 0) {
+                    free(index_value);
+                    free(mutability);
+                    free(binding_id);
+                    free(name);
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S157",
+                        "malformed List[Int] index",
+                        equals
+                    );
+                }
+                int64_t indexed_equals = skip_trivia(
+                    source,
+                    token_end(source, close)
+                );
+                if (
+                    indexed_equals >= length ||
+                    !token_equal(source, indexed_equals, "=")
+                ) {
+                    free(index_value);
+                    free(mutability);
+                    free(binding_id);
+                    free(name);
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S157",
+                        "expected `=` after List[Int] index",
+                        indexed_equals
+                    );
+                }
+                int64_t value_start = skip_trivia(
+                    source,
+                    token_end(source, indexed_equals)
+                );
+                int64_t value_end = expression_end(source, value_start);
+                if (value_end < 0) {
+                    free(index_value);
+                    free(mutability);
+                    free(binding_id);
+                    free(name);
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S157",
+                        "List[Int] element assignment requires an Int expression",
+                        value_start
+                    );
+                }
+                char *value_type = initializer_type(
+                    source,
+                    hir,
+                    function_open,
+                    value_start
+                );
+                if (strcmp(value_type, "Int") != 0) {
+                    Buffer message;
+                    buffer_init(&message);
+                    buffer_format(
+                        &message,
+                        "List[Int] element assignment requires Int, got %s",
+                        value_type
+                    );
+                    free(value_type);
+                    free(index_value);
+                    free(mutability);
+                    free(binding_id);
+                    free(name);
+                    free(emitted.data);
+                    char *error = lower_error(
+                        "E2S157",
+                        message.data,
+                        value_start
+                    );
+                    free(message.data);
+                    return error;
+                }
+                free(value_type);
+                char *value = emit_expression(
+                    source,
+                    hir,
+                    value_start,
+                    value_end
+                );
+                if (strncmp(value, "error[", 6) == 0) {
+                    free(index_value);
+                    free(mutability);
+                    free(binding_id);
+                    free(name);
+                    free(emitted.data);
+                    return value;
+                }
+                buffer_format(
+                    &emitted,
+                    "    {\n"
+                    "        int64_t kofun_index = %s;\n"
+                    "        if (kofun_failed) return %s;\n"
+                    "        uint64_t kofun_position = UINT64_C(0);\n"
+                    "        if (!kofun_list_int_resolve_index(k_b%s.length, "
+                    "kofun_index, &kofun_position)) return %s;\n"
+                    "        int64_t kofun_replacement = %s;\n"
+                    "        if (kofun_failed) return %s;\n"
+                    "        k_b%s.elements[kofun_position] = "
+                    "kofun_replacement;\n"
+                    "    }\n",
+                    index_value,
+                    failure_result,
+                    binding_id,
+                    failure_result,
+                    value,
+                    failure_result,
+                    binding_id
+                );
+                free(value);
+                free(index_value);
+                free(mutability);
+                free(binding_id);
+                cursor = skip_trivia(source, value_end);
+            } else if (
+                equals < length && token_equal(source, equals, "=")
+            ) {
                 char *binding_id = hir_use_binding_id(
                     hir,
                     assignment_start
@@ -22074,15 +22240,20 @@ static char *lower_c_body(const char *source, const char *hir) {
         "static inline uint64_t kofun_list_int_value_length(KofunIntListValue list) {\n"
         "    return list.length;\n"
         "}\n"
-        "static inline int64_t kofun_list_int_index(KofunIntList list, int64_t index) {\n"
-        "    uint64_t length = kofun_list_int_length(list);\n"
+        "static inline bool kofun_list_int_resolve_index(uint64_t length, int64_t index, uint64_t *resolved) {\n"
         "    if (index < 0) index += (int64_t)length;\n"
         "    if (index < 0 || (uint64_t)index >= length) {\n"
-        "        kofun_error(\"error[R023]: bounded List[Int] index out of range\"); return 0;\n"
+        "        kofun_error(\"error[R023]: bounded List[Int] index out of range\"); return false;\n"
         "    }\n"
+        "    *resolved = (uint64_t)index; return true;\n"
+        "}\n"
+        "static inline int64_t kofun_list_int_index(KofunIntList list, int64_t index) {\n"
+        "    uint64_t length = kofun_list_int_length(list);\n"
+        "    uint64_t resolved = UINT64_C(0);\n"
+        "    if (!kofun_list_int_resolve_index(length, index, &resolved)) return 0;\n"
         "    int64_t value = INT64_C(0);\n"
         "    size_t offset = KOFUN_LIST_INT_PAYLOAD_OFFSET +\n"
-        "        (size_t)index * KOFUN_LIST_INT_ELEMENT_SIZE;\n"
+        "        (size_t)resolved * KOFUN_LIST_INT_ELEMENT_SIZE;\n"
         "    memcpy(&value, list + offset, sizeof value); return value;\n"
         "}\n"
     );

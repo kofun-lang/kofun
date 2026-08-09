@@ -21,7 +21,18 @@ rm -rf "$WORK"
 mkdir -p "$WORK"
 kofun_stage2_build "$ROOT" "$WORK/kofun-stage2"
 
-seed=12648430
+# The default is the seed this corpus was recorded with, so `task verify`
+# generates the same programs it always has. It is overridable so a lane
+# that runs more than once can explore more than one input set; a fixed
+# seed means accumulated machine time buys no coverage.
+seed=${KOFUN_GRAMMAR_FUZZ_SEED:-12648430}
+case $seed in
+    ''|*[!0-9]*)
+        printf '%s\n' "grammar fuzz: KOFUN_GRAMMAR_FUZZ_SEED must be a non-negative integer" >&2
+        exit 2
+        ;;
+esac
+printf '%s\n' "grammar fuzz: seed=$seed"
 next_random() {
     seed=$(((seed * 1103515245 + 12345) % 2147483648))
 }

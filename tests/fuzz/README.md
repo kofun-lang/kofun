@@ -97,3 +97,39 @@ These are bounded CI smoke budgets, not a replacement for long-running
 coverage-guided fuzzing. The semantic gate uses the active C11 reference
 because a general Kofun interpreter is not yet part of the Python-free
 toolchain.
+
+## Seeds
+
+Every generator prints the seed it ran with and takes it from an environment
+variable, defaulting to the value the corpus was recorded with. `task fuzz`
+therefore generates the programs it always has, byte for byte, and a run that
+wants different programs asks for them:
+
+```sh
+KOFUN_GRAMMAR_FUZZ_SEED=20260810 sh tests/fuzz/grammar.sh
+```
+
+| Gate | Variable |
+|---|---|
+| `grammar.sh` | `KOFUN_GRAMMAR_FUZZ_SEED` |
+| `semantic_differential.sh` | `KOFUN_SEMANTIC_FUZZ_SEED` |
+| `value_if.sh` | `KOFUN_VALUE_IF_FUZZ_SEED` |
+| `match_guard.sh` | `KOFUN_MATCH_GUARD_FUZZ_SEED` |
+| `match_value.sh` | `KOFUN_MATCH_VALUE_FUZZ_SEED` |
+| `match_value_invalid.sh` | `KOFUN_MATCH_VALUE_INVALID_FUZZ_SEED` |
+| `enum_match.sh` | `KOFUN_ENUM_MATCH_FUZZ_SEED` |
+| `optional_narrowing.sh` | `KOFUN_OPTIONAL_NARROWING_FUZZ_SEED` |
+| `visibility-artifacts.sh` | `KOFUN_VISIBILITY_ARTIFACTS_FUZZ_SEED` |
+| `hm_levels.sh` | `KOFUN_HM_LEVELS_SEED` |
+
+A non-integer value is refused with exit 2 rather than silently falling back,
+so a lane that computes a seed cannot quietly run the default one instead.
+
+This matters for a claim the project has not yet earned.
+[`docs/ROADMAP.md`](../../docs/ROADMAP.md) §M4 requires *sustained* fuzzing,
+and while every seed was a constant, accumulated machine time bought no
+coverage at all: ten thousand runs explored exactly the inputs one run did.
+Varying the seed is necessary for that criterion and nowhere near sufficient —
+a scheduled lane, a persisted corpus, coverage instrumentation, and a findings
+register are all still absent — but it was the part that made the rest
+pointless to build.

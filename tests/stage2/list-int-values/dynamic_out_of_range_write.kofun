@@ -1,0 +1,12 @@
+fn observed_replacement() -> Int {
+    print(99)
+    return 9
+}
+
+fn main() -> Int {
+    let mut values = [1, 2, 3]
+    let index = 3
+    values[index] = observed_replacement()
+    print(values[0])
+    return 0
+}

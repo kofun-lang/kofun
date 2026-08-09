@@ -158,7 +158,18 @@ run_invalid() {
         "$label token artifact"
 }
 
-seed=1516993677
+# The default is the seed this corpus was recorded with, so `task verify`
+# generates the same programs it always has. It is overridable so a lane
+# that runs more than once can explore more than one input set; a fixed
+# seed means accumulated machine time buys no coverage.
+seed=${KOFUN_ENUM_MATCH_FUZZ_SEED:-1516993677}
+case $seed in
+    ''|*[!0-9]*)
+        printf '%s\n' "enum_match fuzz: KOFUN_ENUM_MATCH_FUZZ_SEED must be a non-negative integer" >&2
+        exit 2
+        ;;
+esac
+printf '%s\n' "enum_match fuzz: seed=$seed"
 next_random() {
     seed=$(((seed * 1103515245 + 12345) % 2147483648))
 }

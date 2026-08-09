@@ -41,7 +41,7 @@
     "canonical_source": "bootstrap/stage1/compiler.kofun",
     "canonical_source_sha256": "2595b8dad461bf02ec75d765295da6b03f40dd02f34daa2b0ebd8b3fab8e596d",
     "trusted_seed": "bootstrap/stage2/compiler.c",
-    "trusted_seed_sha256": "9b37bf3f92d401a63ede54d0f642b05580029b38143372f08417a57bd7ba5e96",
+    "trusted_seed_sha256": "6d66b9e4d1d2a02e3772e5b9a5549d9a0dd70f6e5f27d83d655c7871d80aac8a",
     "corpus_sha256": "74b63ee4951ca95330ed1c503b56bd4edb0b25b71359a7d648a0206b0bf614a6",
     "c1_sha256": "48a30a19d85c79bae44b03daf2fc66248fd5464fde67694ec308d8772ecfd491",
     "c2_sha256": "82005a8b89a32f1763bfc7ba5f030b5e109b25ed2a1aff307356ee174f1b887a",
@@ -72,7 +72,7 @@
     "stage1_self_recompile": "working",
     "generated_c_three_generation_equivalence": "working",
     "stage1_stage2_artifact_equivalence": "working",
-    "diverse_double_compilation": "open"
+    "diverse_double_compilation": "working"
   },
-  "truthful_status": "The repository contains a Python-free Kofun-written compiler seed, a frozen first self-host profile, and a compiler-produced compiler that reproduces itself: three generations reach the #271 fixed-point criterion (C2 == C3, A2 == A3) under the selfhost-fixed-point gate. Independent reproduction (B6) and diverse double compilation (B7) remain open strengthening tracks."
+  "truthful_status": "The repository contains a Python-free Kofun-written compiler seed, a frozen first self-host profile, and a compiler-produced compiler that reproduces itself: three generations reach the #271 fixed-point criterion (C2 == C3, A2 == A3) under the selfhost-fixed-point gate. Diverse double compilation (B7, #1136) is closed by the selfhost-diverse-double-compilation gate: two unrelated host C compilers build Kofun compilers that emit byte-identical C and agree on every driver corpus case, so a payload in one host toolchain cannot survive unnoticed. Independent reproduction (B6, #274) remains open, and B7 does not narrow it: both chains run on one machine, one libc, and one kernel, from one checkout, so a payload below the C compiler is shared by both chains and is invisible to this gate."
 }

@@ -28,11 +28,19 @@ byte for byte — the criterion decided on
 hash-pinned runnable provenance — closing
 [#272](https://github.com/kofun-lang/kofun/issues/272) and B4/B5.
 
-The remaining bootstrap path is:
+Diverse double compilation, B7
+([#1136](https://github.com/kofun-lang/kofun/issues/1136)), is closed:
+`task selfhost-diverse-double-compilation` builds the chain under two host C
+compilers that are different binaries reporting different identities and
+requires the resulting Kofun compilers to emit byte-identical C and to agree
+on every driver corpus case. It is the only chain gate that runs a toolchain
+which did not produce the checked-in evidence, which is what a payload
+recorded into that evidence hides from every other gate.
 
-1. independent clean-builder reproduction, B6
-   ([#274](https://github.com/kofun-lang/kofun/issues/274)); and
-2. diverse double compilation, B7, still `open` in `bootstrap/manifest.json`.
+The remaining bootstrap path is independent clean-builder reproduction, B6
+([#274](https://github.com/kofun-lang/kofun/issues/274)). B7 does not narrow
+it: both of its chains share one machine, one libc, and one kernel, so it
+bounds the trusted set rather than emptying it.
 
 Widening the fixed point past the frozen profile to the full language is
 separate from both, and is what the language slices below feed.

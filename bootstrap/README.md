@@ -11,6 +11,8 @@
 - `native/check.sh`: Kofun Core to executable Linux image gate
 - `c_abi/compiler.c`: audited canonical compiler for the bounded C ABI profile
 - `c_abi/check.sh`: libc, archive, Rust cdylib, and C caller ABI gate
+- `selfhost/check-diverse-double-compilation.sh`: B7, the two-toolchain gate
+- `selfhost/check-diverse-double-compilation-refusals.sh`: its refusal corpus
 - `fixtures/answer.kofun`: arithmetic Core compatibility fixture
 
 Run the four listed checkpoints:
@@ -30,6 +32,37 @@ Native builds and executes a static ELF64 fixture.
 The C ABI profile deliberately uses the host C compiler and dynamic linker; it
 is not part of the static direct-native path. Semantic self-recompilation is
 closed for the frozen profile — `task selfhost-fixed-point` proves
-`C2 == C3` and `A2 == A3`. Independent reproduction (B6), diverse double
-compilation (B7), a Kofun-written C ABI compiler, and a general native
-compiler remain open.
+`C2 == C3` and `A2 == A3`.
+
+## Diverse double compilation, and what it is worth
+
+`task selfhost-diverse-double-compilation` closes B7. It builds the whole
+generation chain twice, under two host C compilers that are different
+binaries reporting different identities, and requires that the two resulting
+Kofun compilers **emit the same bytes**: C1 and C2 byte-identical, and every
+driver corpus case agreeing in emitted C, stdout, stderr, and exit status.
+The executables differ, and that difference is reported rather than required
+— equality there would be a claim about GCC and Clang, not about Kofun.
+
+The gate is worth stating carefully, in both directions.
+
+**What it buys.** Every other chain gate compares this checkout against
+evidence checked into it, and that evidence was recorded by one toolchain. A
+payload present in that toolchain when the evidence was recorded is pinned
+along with it, and reproduces forever. This is demonstrable rather than
+theoretical: with a payload wrapper that alters the compiler it builds while
+restoring the source it found — so every `SHA256SUMS` still verifies — and
+the checked-in evidence regenerated from that chain,
+`bootstrap/selfhost/build-a1-a2.sh` exits 0 with every check green. The same
+tree under two diverse toolchains exits 1, naming the toolchain that
+disagrees and the byte it disagrees at. B7 is the gate that runs a compiler
+which did not produce the baseline.
+
+**What it does not buy.** It does not close B6 (#274). Both chains run on one
+machine, against one libc and one kernel, from one checkout. A payload below
+the C compiler is shared by both chains and survives this gate untouched. B7
+narrows the trusted set to what the two toolchains have in common; it does
+not empty it.
+
+Independent reproduction (B6), a Kofun-written C ABI compiler, and a general
+native compiler remain open.

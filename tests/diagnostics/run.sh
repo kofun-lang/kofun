@@ -26,13 +26,14 @@ KOFUN_RECORD_FRONTEND_WORK="$WORK/record-frontend.diagnostics"
 KOFUN_GENERICS_FRONTEND_WORK="$WORK/generics-frontend.diagnostics"
 KOFUN_CONST_GENERICS_FRONTEND_WORK="$WORK/const-generics-frontend.diagnostics"
 KOFUN_HM_LEVELS_WORK="$ROOT/build/hm-levels.diagnostics"
+KOFUN_TRAITS_FRONTEND_WORK="$WORK/traits-frontend.diagnostics"
 KOFUN_ADT_EXHAUSTIVENESS_WORK="$WORK/adt-exhaustiveness.diagnostics"
 KOFUN_MODULE_SYMBOLS_WORK="$WORK/module-symbols.diagnostics"
 KOFUN_IMPORTS_SELECTIVE_WORK="$WORK/imports-selective.diagnostics"
 KOFUN_RE_EXPORTS_WORK="$WORK/re-exports.diagnostics"
 export KOFUN_ADT_FRONTEND_WORK KOFUN_RECORD_FRONTEND_WORK
 export KOFUN_GENERICS_FRONTEND_WORK KOFUN_CONST_GENERICS_FRONTEND_WORK
-export KOFUN_HM_LEVELS_WORK
+export KOFUN_HM_LEVELS_WORK KOFUN_TRAITS_FRONTEND_WORK
 export KOFUN_ADT_EXHAUSTIVENESS_WORK KOFUN_MODULE_SYMBOLS_WORK
 export KOFUN_IMPORTS_SELECTIVE_WORK KOFUN_RE_EXPORTS_WORK
 
@@ -71,6 +72,24 @@ test "$KOFUN_CONST_GENERICS_FRONTEND_WORK" = "$expected_const_generics_work" || 
 test -f "$expected_const_generics_work/backends.stdout" || {
     printf '%s\n' \
         'diagnostic registry: const-generics adapter did not use its isolated work directory' \
+        >&2
+    exit 1
+}
+
+# The traits runner likewise has a direct top-level task. It does not derive a
+# path from KOFUN_GATE_WORK_NAMESPACE, so pin the explicit override here; an
+# executable produced under this path proves the adapter did not race the
+# direct task in build/traits-frontend.
+expected_traits_work="$WORK/traits-frontend.diagnostics"
+test "$KOFUN_TRAITS_FRONTEND_WORK" = "$expected_traits_work" || {
+    printf '%s\n' \
+        'diagnostic registry: traits adapter work directory is not isolated' \
+        >&2
+    exit 1
+}
+test -x "$expected_traits_work/kofun-traits-sanitize" || {
+    printf '%s\n' \
+        'diagnostic registry: traits adapter did not use its isolated work directory' \
         >&2
     exit 1
 }

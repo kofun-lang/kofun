@@ -12,8 +12,8 @@ states the project status; this section says what the digits mean.
 `MAJOR.MINOR.PATCH-seed` while the leading digit is `0`:
 
 - **`-seed`** marks every release cut before the compiler is a general parser
-  and type checker. It is not decoration: `release/claims.json` records 33 of
-  46 capabilities as bounded checkpoints, and a `-seed` release promises
+  and type checker. It is not decoration: `release/claims.json` records 34 of
+  47 capabilities as bounded checkpoints, and a `-seed` release promises
   exactly the bounded slices that manifest evidences, and nothing wider.
 - **MINOR** rises when a published claim's state rises, when a claim is added,
   or when a bounded slice widens.

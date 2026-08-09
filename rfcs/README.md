@@ -42,8 +42,10 @@ current.
 
 ## Current contents
 
-Every recorded decision is `migrated`: its text was written before this process
-existed, and it is indexed so the ledger is complete rather than convenient.
+The ledger holds two provenances. Most decisions are `migrated`: their text was
+written before this process existed, and each is indexed so the ledger is
+complete rather than convenient. The rest are `rfc` — proposals native to this
+process, each carrying an immutable `NNNN-<slug>.md` document.
 `task rfc-registry` prints how many there are and how the states divide, so
 this file does not keep a second copy of that list — a hand-written inventory
 beside the ledger drifts silently, which is the defect `DD-022` describes.
