@@ -149,8 +149,27 @@ directories, asserts `C2 == C3` and `A2 == A3` byte for byte, runs the full
 driver corpus through A3 against the bundle's promoted A1 observations, and
 asserts the machine-independent digests recorded in
 `bootstrap/manifest.json`'s `fixed_point_closure` entry against its own
-measurements. `task selfhost-fixed-point` is the gate. Independent
-reproduction (B6) and diverse double compilation (B7) stay open.
+measurements. `task selfhost-fixed-point` is the gate.
+
+`sh bootstrap/selfhost/declare-inputs.sh OUTPUT` writes the acquisition set:
+every file the chain reads, by role, with a content digest, plus the two set
+digests the generation gates verify, the toolchain the recorded C digests came
+from, and what a builder should conclude from a toolchain mismatch. It answers
+the question `provenance.tsv` cannot — that file describes a build that already
+happened in a checkout an independent reproducer is trying to establish rather
+than assume.
+
+`sh bootstrap/selfhost/check-declared-inputs.sh OUTPUT` refuses three classes
+by name: a declared input **missing** from the checkout, one **altered**, and
+an input the checkout carries that the manifest does not declare — **extra**.
+The third is the one a digest list alone cannot catch and the one reproduction
+depends on, because a build that silently reads an undeclared file is not
+reproducible from the declared set however well every declared digest matches.
+`task selfhost-declared-inputs` runs both.
+
+That is the producer-owned half of B6. The reproduction itself — by a builder
+that did not produce the evidence — stays open as #274, and diverse double
+compilation (B7) stays open too.
 
 The implementation order is
 [#619](https://github.com/kofun-lang/kofun/issues/619) through
