@@ -9,6 +9,7 @@ re-exports	tests/conformance/modules/re-exports/run.sh	verify	tests/diagnostics/
 adt-exhaustiveness	tests/conformance/adt-exhaustiveness/run.sh	verify	tests/diagnostics/reports/adt-exhaustiveness.tsv
 generics	tests/conformance/generics/run.sh	verify	tests/diagnostics/reports/generics.tsv
 const-generics	tests/conformance/const-generics/run.sh	verify	tests/diagnostics/reports/const-generics.tsv
+traits	tests/conformance/traits/run.sh	verify	tests/diagnostics/reports/traits.tsv
 hm-levels	tests/conformance/inference/hm-levels/run.sh	verify	tests/diagnostics/reports/hm-levels.tsv
 optional-narrowing	tests/conformance/optional-narrowing/run.sh	verify	tests/diagnostics/reports/optional-narrowing.tsv
 optional-construction	tests/conformance/optional-construction/run.sh	verify	tests/diagnostics/reports/optional-construction.tsv

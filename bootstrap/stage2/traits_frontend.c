@@ -865,17 +865,35 @@ static bool parse_trait(Frontend *frontend, size_t *cursor, bool local) {
         method->owner_trait = trait_index;
         method->slot = trait->method_count;
         method->start = method_start;
-        /* Value parameters stay keyed by the trait, not by the member. Two
-         * members of one trait therefore cannot share a parameter spelling
-         * yet, and a duplicate member still surfaces as that parameter
-         * collision. Re-keying it is the member-scope seam #942 owns, and
-         * doing it here would decide the shape of that diagnostic. */
+        /* The member key is (owner identity, value namespace, normalized
+         * name), so two members of one owner sharing a name is a member-scope
+         * collision and is refused as one below. Value parameters are scoped
+         * to the member rather than to the trait, because `left` in one
+         * member and `left` in another are different declarations in
+         * different scopes -- keying them by the trait reported that as a
+         * duplicate parameter, which named neither member nor owner. */
+        for (size_t seen = 0; seen < trait->method_count; ++seen) {
+            const Method *existing =
+                &frontend->methods[trait->method_start + seen];
+            if (strcmp(existing->name, method_name) != 0) continue;
+            set_error(frontend, "E370", method->start,
+                token_end(frontend, *cursor - 1),
+                "trait '%s' declares member '%s' twice in the value "
+                "namespace; the first is at bytes %zu..%zu. A member scope "
+                "holds one declaration per normalized name, and v1 has no "
+                "override to offer instead, so rename one",
+                trait->name,
+                method_name,
+                existing->start,
+                existing->end);
+            return false;
+        }
         if (!parse_parameter_list(
                 frontend,
                 cursor,
                 OWNER_TRAIT_METHOD,
                 trait_index,
-                trait_index,
+                frontend->method_count,
                 &method->parameter_start,
                 &method->parameter_count)) {
             return false;

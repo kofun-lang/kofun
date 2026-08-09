@@ -706,7 +706,7 @@
     "tests/conformance/records/stage2_unsupported_field.kofun": "2ac9b2e9ca754689330a836304a349a49cdf9820be6523e3d02be8158fba4eae",
     "tests/conformance/syntax/issues_35_47/enum_payload_unsupported_field.kofun": "e1b4ce6cda998dac0a955ed016c8eb2f81a9effaed91b823011572cf68f6c59e",
     "tests/diagnostics/README.md": "32bc26bdeca5e1de63698ac97a53b6438d7c38af995677efd0288c52f195fc65",
-    "tests/diagnostics/registry.tsv": "cba6605c933245754680a34b05c5b8e81007215a05fa938660aba6268906b79a",
+    "tests/diagnostics/registry.tsv": "5c205f5fec83a8c361852b4c0393636babbf32d261ca6472e85ec84287191fcb",
     "tests/diagnostics/stage2/e2s10_unsupported_statement.kofun": "664c4d3b0d4bcd9265fee34b3ae60d8bf0eb58c9ce5c2b504579c1249aa16f2d",
     "tests/diagnostics/visibility-api-leaks.sh": "014a84aa787662eff8bba397056cbc5ca40cd9adbead0047d8a4b9f75395560e",
     "tests/docs/documentation_index_test.mjs": "2cc6cea953f21ef1cbf5e8c6be3ab58edacc8e6599f17d76b44130647714550b",

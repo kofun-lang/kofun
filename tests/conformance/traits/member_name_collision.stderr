@@ -1,1 +1,1 @@
-error[E2S127]: parameter 'left' is declared twice at bytes 70..77
+error[E370]: trait 'Equal' declares member 'equal' twice in the value namespace; the first is at bytes 21..56. A member scope holds one declaration per normalized name, and v1 has no override to offer instead, so rename one at bytes 61..69
