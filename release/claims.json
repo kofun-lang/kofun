@@ -1251,20 +1251,20 @@
     {
       "id": "self-recompile",
       "public_wording": "semantic compiler self-recompile",
-      "public_status": "first runnable compiler generation implemented; three-generation fixed point open",
+      "public_status": "three-generation fixed point reached for the frozen profile: C2 == C3 and A2 == A3 byte for byte",
       "state": "checkpoint",
       "area": "self-hosting",
-      "bounded_capability": "The frozen profile reaches a runnable compiler-produced compiler. The three-generation semantic fixed point is not reached and is not claimed.",
+      "bounded_capability": "The frozen profile reaches the three-generation semantic fixed point: A1(S) -> C2/A2, A2(S) -> C3/A3, with C2 == C3 and A2 == A3 byte for byte and C1/A1 as hash-pinned runnable provenance. Full-language self-hosting is not claimed.",
       "targets": [
         "selfhost"
       ],
       "specification": [
         "docs/SELF_HOSTING.md"
       ],
-      "compatibility": "Only the first generation is promised; reaching the fixed point will be a release-note event.",
+      "compatibility": "The fixed point covers the frozen bootstrap profile; widening it to the full language, and independent reproduction (B6), remain release-note events.",
       "positive_gate": {
-        "command": "sh bootstrap/selfhost/check-compiler-driver.sh",
-        "observation": "The compiler-produced compiler emits byte-identical C to the audited seed for every accept corpus, including all 15 profile builtins, and agrees on all 30 builtin arity/type refusals."
+        "command": "task selfhost-fixed-point",
+        "observation": "A2 compiles canonical S into a C3 byte-identical to C2 and rebuilds an A3 byte-identical to A2, twice in normalized clean directories, with all 45 driver corpus cases agreeing across A1 and A3 in emitted C, stdout, stderr, and exit status."
       },
       "negative_boundary": {
         "kind": "rejection",

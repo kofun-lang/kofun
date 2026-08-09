@@ -97,11 +97,16 @@ the compiler source.
       inventory in `bootstrap/selfhost/`.
 - [x] Stage 2 source/token/IR projection is deterministic.
 - [x] A deliberately small integer Core lowers and executes deterministically.
-- [ ] Stage 1 accepts every construct in its canonical source.
-- [ ] The trusted seed produces `C1/A1`, and `A1` successfully compiles `S`.
-- [ ] `A1` and `A2` produce `C2/A2` and `C3/A3`.
-- [ ] `C1`, `C2`, and `C3` are byte-identical.
-- [ ] `A1`, `A2`, and `A3` are byte-identical executables.
-- [ ] The bootstrap corpus has identical values, statuses, and diagnostics.
-- [ ] `bootstrap/manifest.json` closes both self-recompile gates and records
-      the required hashes.
+- [x] Stage 1 accepts every construct in its canonical source
+      (`task selfhost-self-compile`).
+- [x] The trusted seed produces `C1/A1`, and `A1` successfully compiles `S`
+      (`task selfhost-generations`, #271).
+- [x] `A1` and `A2` produce `C2/A2` and `C3/A3`
+      (`task selfhost-fixed-point`, #272).
+- [x] `C2 == C3` and `A2 == A3` byte for byte — the criterion above; `C1/A1`
+      are recorded provenance and `C1 == C2` is reported, not required.
+- [x] The bootstrap corpus has identical values, statuses, and diagnostics
+      across `A1`, `A2`, and `A3`.
+- [x] `bootstrap/manifest.json` closes the B4/B5 gates and records the
+      required hashes in `fixed_point_closure`, which the fixed-point gate
+      asserts against its own measurements.

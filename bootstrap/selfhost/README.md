@@ -127,22 +127,29 @@ byte for byte, and requiring it would freeze both emitters together forever.
 Direct-native compiler reproduction is a separate strengthening track; it does
 not block this first C11 fixed point.
 
+The generation gates share one vocabulary, `generations-lib.sh` — criterion
+string, declared flags, normalized environment (`LC_ALL=C`, `TZ=UTC`,
+`umask 022`), resource bounds, digest helpers, generation derivation, and the
+corpus differential — the same role `bootstrap/stage2/build.sh` plays for the
+Stage 2 compile line.
+
 `sh bootstrap/selfhost/build-a1-a2.sh OUTPUT` is the one documented generation
 command: it verifies every declared input digest, derives `C1/A1` and `C2/A2`
 twice in normalized clean directories (each generation's C under the same
 basename), requires the two runs to agree byte for byte, runs the full driver
-corpus through A1 and A2 differentially, and writes the artifacts with
-path-independent provenance under `OUTPUT` only.
+corpus through A1 and A2 differentially, and promotes the artifacts, the A1
+corpus observations, and path-independent provenance under `OUTPUT` only.
 `sh bootstrap/selfhost/check-a1-a2.sh OUTPUT` rejects missing, empty, stale,
 or non-runnable output; `task selfhost-generations` runs both.
 
-`sh bootstrap/selfhost/check-fixed-point.sh OUTPUT` closes the loop: it
-rebuilds and validates that bundle under a declared normalized environment
-(`LC_ALL=C`, `TZ=UTC`, `umask 022`), derives `C3/A3` from `A2(S)` twice in
-normalized clean directories, asserts `C2 == C3` and `A2 == A3` byte for
-byte, and runs the full driver corpus through A3 against A1. The fixed point
-is closed in `bootstrap/manifest.json` (`fixed_point_closure` records the
-measurement); `task selfhost-fixed-point` is the gate. Independent
+`sh bootstrap/selfhost/check-fixed-point.sh OUTPUT [BUNDLE]` closes the loop:
+it consumes an existing validated bundle (or rebuilds one itself when no
+`BUNDLE` is given), derives `C3/A3` from `A2(S)` twice in normalized clean
+directories, asserts `C2 == C3` and `A2 == A3` byte for byte, runs the full
+driver corpus through A3 against the bundle's promoted A1 observations, and
+asserts the machine-independent digests recorded in
+`bootstrap/manifest.json`'s `fixed_point_closure` entry against its own
+measurements. `task selfhost-fixed-point` is the gate. Independent
 reproduction (B6) and diverse double compilation (B7) stay open.
 
 The implementation order is

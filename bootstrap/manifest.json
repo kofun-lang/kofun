@@ -34,8 +34,9 @@
     }
   },
   "fixed_point_closure": {
-    "schema": "kofun.selfhost-fixed-point/v1",
-    "criterion": "C2 == C3 and A2 == A3 byte for byte from generation 2 on (#271); C1/A1 are hash-pinned runnable provenance",
+    "schema": "kofun.selfhost-fixed-point-closure/v1",
+    "criterion": "byte equality from generation 2 on - C2 == C3 and A2 == A3 (#271); C1/A1 are hash-pinned runnable provenance",
+    "gate": "selfhost-fixed-point",
     "reproduction_command": "sh bootstrap/selfhost/check-fixed-point.sh build/selfhost-fixed-point",
     "canonical_source": "bootstrap/stage1/compiler.kofun",
     "canonical_source_sha256": "2595b8dad461bf02ec75d765295da6b03f40dd02f34daa2b0ebd8b3fab8e596d",
