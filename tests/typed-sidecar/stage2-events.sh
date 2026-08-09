@@ -414,8 +414,8 @@ done <"$WORK/plain/repository-error-companions"
 # that makes a refusal executable lowers it. Both are expected edits — what
 # this number refuses is a companion silently gaining or losing its stream,
 # code, or exit status without anyone noticing.
-test "$repository_error_cases" -eq 326 ||
-    fail "expected all 326 repository error companions, saw $repository_error_cases"
+test "$repository_error_cases" -eq 329 ||
+    fail "expected all 329 repository error companions, saw $repository_error_cases"
 
 # Project-owned valid Stage 2 profiles cover functions, value control, concrete
 # enums, nested lexical scopes, and shadowing.  Producer and compiler must both
