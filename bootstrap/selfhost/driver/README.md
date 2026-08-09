@@ -18,11 +18,11 @@ filename or hash special case.
   digest; `check-compiler-driver.sh` re-derives it byte for byte, twice.
 - `corpus_answer.kofun` / `.c` / `.stdout` — the success corpus: the
   compiler built from `S.c` compiles this Core input to C that is
-  byte-identical to what the audited Stage 1 seed emits, prints the
+  byte-identical to what the trusted Stage 1 seed emits, prints the
   same stdout, and the compiled program reproduces the pinned output.
 - `corpus_function.kofun` / `.c` / `.stdout` — the declaration corpus:
   a non-main function with an explicit result type lowers byte-identically
-  through the compiler built from `S.c` and the audited hand-port, then its
+  through the compiler built from `S.c` and the hand-port, then its
   ordinary call from `main` reproduces the pinned output.
 - `corpus_profile_complete.kofun` / `.c` / `.stdout` — closes four profile
   evidence gaps in one bounded source: a parameterized Void helper owns a
@@ -124,13 +124,13 @@ previous output bytes).
 For #751 the same gate goes one generation further: A1 compiles the exact
 canonical `bootstrap/stage1/compiler.kofun` bytes under distinct source names
 in two distinct directories, requires both nonempty C2 files to be
-byte-identical, compares C2 with the audited hand-port's independently emitted
+byte-identical, compares C2 with the hand-port's independently emitted
 bytes, and compiles C2 under strict C11 warnings. On shells that provide
 `ulimit -v`, each S compilation is capped at 1.5 GiB by default;
 `KOFUN_SELFHOST_VMEM_KIB` can set another positive bound. Where the host
 provides `timeout`, `KOFUN_SELFHOST_TIMEOUT` sets its 120-second default.
 
-The host boundary in generated programs is the audited runtime shim documented
+The host boundary in generated programs is the runtime shim documented
 in `../c11/README.md`: bounded argument decoding through `kofun_rt_args` (the
 program name is excluded, exactly like the trusted seed), whole-file
 `read_text`/`write_text` with explicit `R010` failures, and `print` as

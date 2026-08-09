@@ -438,7 +438,7 @@ through `E2S94`. Semantic failure removes every requested artifact.
 
 `bootstrap/stage2/semantic_events.h` is the compiler-owned, bounded semantic
 sink boundary for tooling. `semantic_producer.c` attaches that sink to the
-audited Stage 2 compiler-owned compile or focused-ownership outcome. It
+Stage 2 compiler-owned compile or focused-ownership outcome. It
 projects type, constructor, and function declarations from committed parser
 IR and scopes, bindings, and uses from committed scope HIR; it does not
 reclassify rejected source. Diagnostics are captured as structured records at
@@ -448,7 +448,7 @@ bindings, and uses that precede a later failure. Lowering hooks similarly
 publish only successfully validated calls, constructors, patterns, and
 control expressions. These nullable hooks are seed-only C instrumentation
 enabled by the internal semantic-event process; ordinary `compiler.c`
-execution leaves them disabled. The canonical source and audited C seed both
+execution leaves them disabled. The canonical source and C seed both
 accept basic visibility on bounded top-level functions and nominal types. The
 internal event executable remains a process boundary for the later projector,
 not a user-facing `bin/kofun` option.
@@ -500,7 +500,7 @@ Adoption is not yet complete. `bootstrap/stage2/check.sh`,
 and therefore rebuild `compiler.c` even when the variable is set — the debt
 this file exists to pay down, measured rather than assumed.
 
-The check validates the canonical-source and seed hashes, compiles the audited
+The check validates the canonical-source and seed hashes, compiles the
 C11 seed, round-trips the fixture, current Stage 1 compiler, and Stage 2
 compiler byte-for-byte, inspects their function IR, checks token-tape
 determinism, and rejects a missing closing brace. It also lowers
@@ -606,7 +606,7 @@ allowed, denied, and unsupported results. The focused qualified-import
 resolver calls it for each cross-file target; the main CLI is not routed
 through that resolver yet.
 
-`compiler.c` is an audited executable transliteration of the Kofun source so
+`compiler.c` is an executable transliteration of the Kofun source so
 this checkpoint can run before Stage 1 accepts all of Stage 2. It is part of the
 temporary trusted seed, not evidence that Kofun has completed self-hosting. The
 integer Core lowering is real, but Stage 2 still cannot lower its own Text,
@@ -735,7 +735,7 @@ unsupported until the later #868 record-field increments land.
 
 The paragraphs above describe `optional_frontend.c`, which is still
 frontend-only. Separately, the canonical `compiler.kofun` source and its
-audited `compiler.c` seed make **one** optional type executable:
+`compiler.c` seed make **one** optional type executable:
 `Optional(Int)`.
 
 The representation is not chosen here. `spec/aggregate-layout-v1/examples/

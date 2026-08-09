@@ -123,7 +123,7 @@ typed arguments; their results are `Int`, `Bool`, `Text`, `List[Text]`, or
 Only programs using this extended host surface receive its conditional runtime,
 `<ctype.h>`, and `#include "kofun_unicode.c"`; compile those emitted programs
 with the repository's `unicode/` directory on the include path. The Unicode
-shim uses the real Unicode tables. The audited Stage 1 compiler process retains
+shim uses the real Unicode tables. The Stage 1 compiler process retains
 its historical non-ASCII `is_xid_continue` approximation, so the seed
 differential deliberately tests that predicate with ASCII while separately
 linking and executing real Unicode source validation.

@@ -448,7 +448,7 @@
       "public_status": "implemented: nested-block and looping Int/Bool/Text/List[Text] Core with 15 typed profile builtins",
       "state": "implemented",
       "area": "bootstrap",
-      "bounded_capability": "The Stage 1 seed is written in Kofun and kept beside a hand-audited C transliteration. Its line-oriented Core lowers checked Int arithmetic, six comparisons, Bool equality, Bool literals and bindings, unary `!`, short-circuiting `&&`/`||`, Text literals/concatenation/equality, byte-oriented Text/List indexing, nested `if`/`else if`/`else` blocks, and `while`/half-open `for` ranges. The 15 builtins used by the frozen self-host source have exact arity and typed lowering: `args`, `chars`, `contains`, `find`, `is_digit`, `is_space`, `is_xid_continue`, `len`, `print`, `read_text`, `starts_with`, `text_slice`, `trim`, `validate_unicode_source`, and `write_text`; the Core still has no assignment or non-main function declaration.",
+      "bounded_capability": "The Stage 1 seed is written in Kofun and kept beside a hand-written C transliteration. Its line-oriented Core lowers checked Int arithmetic, six comparisons, Bool equality, Bool literals and bindings, unary `!`, short-circuiting `&&`/`||`, Text literals/concatenation/equality, byte-oriented Text/List indexing, nested `if`/`else if`/`else` blocks, and `while`/half-open `for` ranges. The 15 builtins used by the frozen self-host source have exact arity and typed lowering: `args`, `chars`, `contains`, `find`, `is_digit`, `is_space`, `is_xid_continue`, `len`, `print`, `read_text`, `starts_with`, `text_slice`, `trim`, `validate_unicode_source`, and `write_text`; the Core still has no assignment or non-main function declaration.",
       "targets": [
         "stage1"
       ],
@@ -464,7 +464,7 @@
       ],
       "positive_gate": {
         "command": "sh bootstrap/stage1/check.sh",
-        "observation": "The audited C seed accepts and executes one corpus covering all 15 typed profile builtins, both `len` overloads, argv/file I/O, Text operations, character predicates, Unicode validation, and stdout. All 30 builtin arity/type boundary rows exit nonzero and write no C, while the older corpora remain byte-identical."
+        "observation": "The C seed accepts and executes one corpus covering all 15 typed profile builtins, both `len` overloads, argv/file I/O, Text operations, character predicates, Unicode validation, and stdout. All 30 builtin arity/type boundary rows exit nonzero and write no C, while the older corpora remain byte-identical."
       },
       "negative_boundary": {
         "kind": "rejection",
@@ -1309,7 +1309,7 @@
       "public_status": "implemented example",
       "state": "checkpoint",
       "area": "interop",
-      "bounded_capability": "One vendored Rust crate is reached through an audited C ABI shim, as a worked example. It is not a general Rust interop story.",
+      "bounded_capability": "One vendored Rust crate is reached through a gated C ABI shim, as a worked example. It is not a general Rust interop story.",
       "targets": [
         "host-c",
         "linux-x86_64"

@@ -33,12 +33,12 @@ parse, resolve, and type the frozen self-host source `S`
   bindings against the independent scope-HIR inference, and runs the
   execution differential. Run it with `task selfhost-profile` or directly.
 
-## Canonical source and audited seed
+## Canonical source and seed
 
 The emitter lives in both halves of the Stage 2 lockstep pair: the
 canonical Kofun source (`bootstrap/stage2/compiler.kofun`, the
 `selfhost_*` functions and the `--emit-selfhost-hir` entry) and the
-audited C seed (`bootstrap/stage2/compiler.c`), with both digests pinned
+C seed (`bootstrap/stage2/compiler.c`), with both digests pinned
 together in `bootstrap/stage2/SHA256SUMS`. The canonical port mirrors the
 seed record for record: the same parse order, the same diagnostic codes,
 spans, and message bytes, and the same pre-order renumbering, so the seed

@@ -25,12 +25,12 @@ URI-like, backslash, empty, `.`/`..`, and Unicode-control path forms. Producers
 must apply this public validator before invoking compiler authority or any sink
 callback; the reference sink applies the same validator again at begin.
 
-`semantic_producer.c` is the production source adapter. It invokes the audited
+`semantic_producer.c` is the production source adapter. It invokes the
 Stage 2 lexer, parser, scope-HIR builder, and ownership checker directly in the
 compiler translation unit, buffers only the bounded values defined in
 `semantic_events.h`, and then emits them in phase order. It does not parse
 rendered command output. Nullable parser, scope-HIR, and lowering observation
-hooks exist only in the audited C seed when the internal adapter is compiled;
+hooks exist only in the C seed when the internal adapter is compiled;
 ordinary seed execution leaves them null. They neither alter compiler output
 nor claim a corresponding sink surface in canonical `compiler.kofun`.
 The adapter covers the current single-file subset:

@@ -41,7 +41,7 @@ raw linker flags are not accepted. A shared object therefore produces a
 dynamic ELF, while an archive can be selected explicitly. This input is a
 native-code trust boundary.
 
-`compiler.c` is the active, audited canonical implementation. The current
+`compiler.c` is the active canonical implementation. The current
 bootstrap Kofun Core cannot yet express and lower this record-rich parser, so
 the compiler remains in the temporary C11 trusted base. A Kofun-written
 replacement is a later bootstrap milestone; this profile does not claim one.

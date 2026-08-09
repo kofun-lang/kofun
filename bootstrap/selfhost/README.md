@@ -55,8 +55,8 @@ completion checks for the c11 cells owned by the Text/function slice
 and the mutation/loop/List slice. #622 completed the remaining host
 cells and every other evidence column, and
 `check-compiler-driver.sh` proves the trusted seed compiles the frozen
-`S` into a runnable compiler whose Core-corpus behavior matches the
-audited Stage 1 seed byte for byte (`driver/`).
+`S` into a runnable compiler whose Core-corpus behavior matches that
+seed byte for byte (`driver/`).
 
 ## What the status columns mean
 
@@ -93,7 +93,7 @@ requires the row's key to be in it. `A1` itself is built once from the reviewed
 property, so this gate reads it rather than re-deriving it. Set
 `KOFUN_SELFHOST_A1` to reuse an already-built binary.
 
-The full self-compile proof — determinism, path independence, the audited
+The full self-compile proof — determinism, path independence, the
 hand-port differential, and the strict-C11 host boundary — stays in
 `check-compiler-driver.sh` and is not re-implemented here.
 
