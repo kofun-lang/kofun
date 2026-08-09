@@ -119,6 +119,15 @@ coverage: EXECUTED/TOTAL cases executed by BACKEND
 This makes lost coverage a gate failure when an existing supported backend
 regresses or a new backend is registered.
 
+The skip count is a literal `0`, and always will be for this runner. The line
+shape is shared with `bin/kofun`, which counts per-case skips and reports a
+real number there; the conformance runner has no per-case skip to count,
+because an unsupported target is declared per corpus in `capabilities.tsv` and
+never reaches a case, and a missing executor is reported as `UNAVAILABLE`
+instead. Reading that zero as an observation would be reading a constant as a
+measurement, so a reader comparing two backends should use the `coverage:`
+line and the `UNAVAILABLE`/`refused:` reports, which do move.
+
 The common runner treats missing executables, crashes, signals, and timeouts as
 failures. It compares output files with `cmp` so trailing newlines and empty
 streams remain observable. Fixture exit statuses are limited to 0 through 127;
