@@ -106,6 +106,14 @@ Good starting points carry both
 [`curated`](https://github.com/kofun-lang/kofun/issues?q=is%3Aopen+label%3Acurated)
 and [`ready`](https://github.com/kofun-lang/kofun/issues?q=is%3Aopen+label%3Aready).
 
+## Releases
+
+[Releasing](docs/RELEASING.md) states what a version number promises and how a
+release is cut. `VERSION` is the only place the number is written, the `-seed`
+suffix marks every release cut before the compiler is a general parser and
+type checker, and `0.x` carries no compatibility promise — a claim in
+`release/claims.json` is the promise, not the version.
+
 ## License
 
 Licensed under [Apache-2.0](LICENSE-APACHE) or [MIT](LICENSE-MIT), at your

@@ -1,0 +1,91 @@
+name: Release
+
+# A tag used to do nothing. Nothing bound the tag to `VERSION`, nothing
+# proved the tagged commit passed its gates, and every published release
+# carried zero assets, so a reproducer had no archive with a digest to
+# start from.
+#
+# This runs on a version tag and refuses one that disagrees with the tree
+# it names.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish the tagged source archive
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      # The tag is `v` followed by VERSION, exactly. Two names for one
+      # release that can disagree is the drift `VERSION` was made the single
+      # authority to end, and a tag is the one place it would reappear.
+      - name: Require the tag to be the version
+        run: |
+          version=$(cat VERSION)
+          expected="v$version"
+          actual="${GITHUB_REF_NAME}"
+          if test "$actual" != "$expected"; then
+            printf '%s\n' \
+              "FAIL: tag \`$actual\` does not name VERSION \`$version\`" \
+              "Repair: tag \`$expected\`, or set VERSION to match the tag you meant" >&2
+            exit 1
+          fi
+          printf 'PASS: tag %s names VERSION %s\n' "$actual" "$version"
+
+      - name: Install go-task
+        uses: arduino/setup-task@c0bc642852239c2689f73f4ea6459c29405f3c52 # v3.0.0
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install AArch64 user-mode emulator
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends qemu-user
+
+      # A release is cut from a commit that passes its own gates. Running
+      # them here rather than trusting the branch run means a tag placed on
+      # an older commit is proven at that commit.
+      - run: task verify
+
+      # `git archive` from the tag is reproducible: same tag, same bytes.
+      # This is the acquisition artifact an independent builder starts from,
+      # and the digest is what makes "the right bytes" checkable.
+      - name: Build the source archive
+        run: |
+          version=$(cat VERSION)
+          archive="kofun-$version.tar.gz"
+          git archive --format=tar --prefix="kofun-$version/" "$GITHUB_REF_NAME" \
+            | gzip -n >"$archive"
+          sha256sum "$archive" >"$archive.sha256"
+          printf 'archive: %s\n' "$(cat "$archive.sha256")"
+
+      - name: Attach the archive to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version=$(cat VERSION)
+          archive="kofun-$version.tar.gz"
+          # The `-seed` suffix and the pre-release flag say the same thing;
+          # docs/RELEASING.md requires they not disagree.
+          prerelease=""
+          case "$version" in
+            *-seed) prerelease="--prerelease" ;;
+          esac
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$archive" "$archive.sha256" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes \
+              $prerelease \
+              "$archive" "$archive.sha256"
+          fi

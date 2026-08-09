@@ -692,6 +692,34 @@ tasks:
           count=$(grep -cE '^[[:space:]]*"[^"]*",?$' scripts/verify_repository.kofun)
           printf 'PASS: all %s paths named by verify_repository.kofun exist\n' "$count"
         silent: true
+      # `bin/kofun --version` used to print a literal, and it drifted eleven
+      # tags behind the repository while `tests/cli.sh` asserted the stale
+      # string -- two copies of one fact, with the test pinning the wrong one.
+      # VERSION is now the only place the number is written; this refuses a
+      # second copy coming back and refuses a shape no tag can be made from.
+      - cmd: |-
+          version=$(cat VERSION 2>/dev/null || true)
+          if test -z "$version"; then
+            printf '%s\n' 'FAIL: VERSION is missing or empty' >&2
+            exit 1
+          fi
+          case $version in
+            *[!0-9.a-z-]* | *' '*)
+              printf '%s\n' "FAIL: VERSION \`$version\` is not a tag-shaped version" >&2
+              exit 1 ;;
+          esac
+          reported=$(./bin/kofun --version)
+          if test "$reported" != "Kofun Stage 1 $version"; then
+            printf '%s\n' "FAIL: \`kofun --version\` reports \`$reported\`, not VERSION \`$version\`" >&2
+            exit 1
+          fi
+          literals=$(git grep -nE '[0-9]+\.[0-9]+\.[0-9]+-seed' -- bin tests/cli.sh || true)
+          if test -n "$literals"; then
+            printf '%s\n' 'FAIL: a version literal is written outside VERSION:' "$literals" >&2
+            exit 1
+          fi
+          printf 'PASS: VERSION is the only version literal, and the CLI reports it\n'
+        silent: true
 
   # A gate that fails without printing anything turns a specific defect into a
   # bare exit code, and #814 counted 460 assertions that do exactly that. This

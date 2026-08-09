@@ -835,7 +835,16 @@ EOF
 
 case ${1-} in
     --version|-V|version)
-        printf '%s\n' "Kofun Stage 1 0.3.38-seed"
+        # VERSION is the one authority. Reporting a literal here is how the
+        # reported version drifted eleven tags behind the repository while a
+        # test asserted the stale string, so the number is read rather than
+        # written twice.
+        version=$(cat "$ROOT/VERSION" 2>/dev/null) || version=""
+        test -n "$version" || {
+            printf '%s\n' "kofun: VERSION is missing or empty" >&2
+            exit 1
+        }
+        printf '%s\n' "Kofun Stage 1 $version"
         ;;
     bootstrap)
         test "$#" -eq 1 || { usage >&2; exit 2; }
