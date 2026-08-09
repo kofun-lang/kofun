@@ -24,8 +24,9 @@ temporary=${TMPDIR:-/tmp}/kofun-selfhost-frontend.$$
 trap 'rm -rf "$temporary"' EXIT HUP INT TERM
 mkdir -p "$temporary"
 
-"$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
-    bootstrap/stage2/compiler.c -o "$temporary/kofun-stage2"
+. "$repo_root/bootstrap/stage2/build.sh"
+kofun_stage2_build "$repo_root" "$temporary/kofun-stage2" ||
+    fail "the Stage 2 seed compiler did not build"
 
 # The frozen S emits one complete typed kofun.selfhost-hir/v1 document,
 # byte-identical to the checked-in evidence and across repeated runs. The

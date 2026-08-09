@@ -17,8 +17,9 @@ fail() {
 rm -rf "$WORK"
 mkdir -p "$WORK"
 
-"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
-    "$ROOT/bootstrap/stage2/compiler.c" -o "$WORK/kofun-stage2"
+. "$ROOT/bootstrap/stage2/build.sh"
+kofun_stage2_build "$ROOT" "$WORK/kofun-stage2" ||
+    fail "the Stage 2 seed compiler did not build"
 
 profile_digest=$(awk -F '|' '$1 == "source_sha256" { print $2 }' \
     "$ROOT/bootstrap/selfhost/profile.meta")
