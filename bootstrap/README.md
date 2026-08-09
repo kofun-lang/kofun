@@ -28,5 +28,8 @@ short-circuit, nested-block, loop, Text runtime, `chars`/`len`, and Text/List
 indexing profile. Stage 2 validates a deterministic semantic-frontend boundary.
 Native builds and executes a static ELF64 fixture.
 The C ABI profile deliberately uses the host C compiler and dynamic linker; it
-is not part of the static direct-native path. Semantic self-recompilation, a
-Kofun-written C ABI compiler, and a general native compiler remain open.
+is not part of the static direct-native path. Semantic self-recompilation is
+closed for the frozen profile — `task selfhost-fixed-point` proves
+`C2 == C3` and `A2 == A3`. Independent reproduction (B6), diverse double
+compilation (B7), a Kofun-written C ABI compiler, and a general native
+compiler remain open.

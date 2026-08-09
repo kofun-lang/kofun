@@ -84,63 +84,96 @@ printf '%s\n' "$duplicate" |
     "$diagnostics/e2s166_internal_name_as_label.kofun" E2S166 text ||
     fail 'E2S166 declaration-related span changed'
 
-# #1097: compile the canonical Stage 2 seed itself, then make source order
-# disagree with declaration order. C11's comma operator must assign the
-# fixed temporaries as written before the ABI-ordered call runs.
+# Compile the canonical Stage 2 seed itself, then make source order disagree
+# with declaration order. C11's comma operator must assign the fixed
+# temporaries as written before the ABI-ordered call runs.
 "$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
     "$root/bootstrap/stage2/compiler.c" -o "$temporary/stage2"
-"$temporary/stage2" "$cases/source_order_int.kofun" \
-    "$temporary/source-order.c" "$temporary/source-order.ir" \
-    "$temporary/source-order.tokens" >"$temporary/source-order.compiler"
-"$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
-    "$temporary/source-order.c" -o "$temporary/source-order"
-"$temporary/source-order" >"$temporary/source-order.stdout"
-cmp "$cases/source_order_int.stdout" "$temporary/source-order.stdout" ||
-    fail 'labelled Int call did not evaluate once in source order'
 
+# Lower one case and run it against its golden. `stem` names the fixture and
+# the artifacts, so a second case cannot silently assert against the first
+# one's output.
+executes_case() {
+    stem=$1
+    label=$2
+    "$temporary/stage2" "$cases/$stem.kofun" \
+        "$temporary/$stem.c" "$temporary/$stem.ir" \
+        "$temporary/$stem.tokens" >"$temporary/$stem.compiler"
+    "$compiler" -std=c11 -O2 -Wall -Wextra -Werror -I "$root/unicode" \
+        "$temporary/$stem.c" -o "$temporary/$stem.program"
+    "$temporary/$stem.program" >"$temporary/$stem.stdout"
+    cmp "$cases/$stem.stdout" "$temporary/$stem.stdout" ||
+        fail "$label did not evaluate once in source order"
+}
+
+# The emitted artifact must carry no trace of the surface labels and no
+# runtime machinery to resolve them.
+no_runtime_dispatch() {
+    emitted=$1
+    labels=$2
+    label=$3
+    if grep -E "$labels"'|label_(map|dictionary)|malloc|calloc|realloc' \
+        "$emitted" >/dev/null; then
+        fail "$label retained labels, runtime dispatch, or allocation"
+    fi
+}
+
+# The call-start byte keys every temporary at one call site. Reading it from
+# slot 0 and interpolating it into the other patterns is what makes these
+# assertions describe a single call rather than three unrelated sites.
+call_site_key() {
+    sed -n 's/.*kofun_call_arg_\([0-9][0-9]*\)_0 .*/\1/p' "$1" | sed -n 1p
+}
+
+# #1097: the all-Int slice.
+executes_case source_order_int 'labelled Int call'
 temporary_count=$(grep -c 'int64_t kofun_call_arg_[0-9][0-9]*_[01] = INT64_C(0);' \
-    "$temporary/source-order.c")
+    "$temporary/source_order_int.c")
 test "$temporary_count" -eq 2 ||
     fail 'labelled Int call did not reserve exactly two fixed temporaries'
-grep -E 'kofun_call_arg_[0-9]+_1 = .*kofun_call_arg_[0-9]+_0 = .*kofun_fn_combine\(kofun_call_arg_[0-9]+_0, kofun_call_arg_[0-9]+_1\)' \
-    "$temporary/source-order.c" >/dev/null ||
+int_key=$(call_site_key "$temporary/source_order_int.c")
+test -n "$int_key" ||
+    fail 'labelled Int call reserved no keyed temporary'
+grep -F "(kofun_call_arg_${int_key}_1 = " "$temporary/source_order_int.c" \
+    >/dev/null ||
+    fail 'labelled Int call did not key both temporaries to one call site'
+grep -E "kofun_call_arg_${int_key}_1 = .*kofun_call_arg_${int_key}_0 = .*kofun_fn_combine\(kofun_call_arg_${int_key}_0, kofun_call_arg_${int_key}_1\)" \
+    "$temporary/source_order_int.c" >/dev/null ||
     fail 'generated C did not sequence source order before ABI order'
-if grep -E 'as_first|as_second|label_(map|dictionary)|malloc|calloc|realloc' \
-    "$temporary/source-order.c" >/dev/null; then
-    fail 'generated C retained labels, runtime dispatch, or allocation'
-fi
+no_runtime_dispatch "$temporary/source_order_int.c" 'as_first|as_second' \
+    'generated C'
 
 # #1107 widened the same fixed-slot lowering to the Text and List[Int]
 # carriers the positional path already executes. Mixing all three in one call,
 # written in an order that is not the declaration order, is what distinguishes
 # source-order evaluation from ABI order: `1` and `3` print before the callee
-# body's `42`, and each marker prints exactly once. Each slot must also carry
-# its own C type — an int64_t Text slot would compile and then truncate.
-"$temporary/stage2" "$cases/source_order_carriers.kofun" \
-    "$temporary/carriers.c" "$temporary/carriers.ir" \
-    "$temporary/carriers.tokens" >"$temporary/carriers.compiler"
-"$compiler" -std=c11 -O2 -Wall -Wextra -Werror -I "$root/unicode" \
-    "$temporary/carriers.c" -o "$temporary/carriers"
-"$temporary/carriers" >"$temporary/carriers.stdout"
-cmp "$cases/source_order_carriers.stdout" "$temporary/carriers.stdout" ||
-    fail 'mixed-carrier labelled call did not evaluate once in source order'
-
-grep -E 'const char \*kofun_call_arg_[0-9]+_0 = "";' \
-    "$temporary/carriers.c" >/dev/null ||
+# body's `42`, and each marker prints exactly once.
+#
+# The per-slot declaration assertions below pin the carrier each slot is
+# reserved with. A carrier regression would also fail the `-Werror` build two
+# lines up, but as an opaque diagnostic inside generated C; these name the
+# defect instead.
+executes_case source_order_carriers 'mixed-carrier labelled call'
+carriers_key=$(call_site_key "$temporary/source_order_carriers.c")
+test -n "$carriers_key" ||
+    fail 'mixed-carrier call reserved no keyed temporary'
+grep -F "const char *kofun_call_arg_${carriers_key}_0 = \"\";" \
+    "$temporary/source_order_carriers.c" >/dev/null ||
     fail 'the Text slot did not reserve a const char * temporary'
-grep -E 'KofunIntListValue kofun_call_arg_[0-9]+_1 = KOFUN_LIST_INT_ZERO;' \
-    "$temporary/carriers.c" >/dev/null ||
+grep -F "KofunIntListValue kofun_call_arg_${carriers_key}_1 = KOFUN_LIST_INT_ZERO;" \
+    "$temporary/source_order_carriers.c" >/dev/null ||
     fail 'the List[Int] slot did not reserve a KofunIntListValue temporary'
-grep -E 'int64_t kofun_call_arg_[0-9]+_2 = INT64_C\(0\);' \
-    "$temporary/carriers.c" >/dev/null ||
+grep -F "int64_t kofun_call_arg_${carriers_key}_2 = INT64_C(0);" \
+    "$temporary/source_order_carriers.c" >/dev/null ||
     fail 'the Int slot did not reserve an int64_t temporary'
-grep -E 'kofun_call_arg_[0-9]+_2 = .*kofun_call_arg_[0-9]+_0 = .*kofun_call_arg_[0-9]+_1 = .*kofun_fn_describe\(kofun_call_arg_[0-9]+_0, kofun_call_arg_[0-9]+_1, kofun_call_arg_[0-9]+_2\)' \
-    "$temporary/carriers.c" >/dev/null ||
+# Newlines are squeezed out first: the sequencing property is about operator
+# order, not about the emitter keeping the expression on one physical line.
+tr -d '\n' <"$temporary/source_order_carriers.c" |
+    grep -E "kofun_call_arg_${carriers_key}_2 = .*kofun_call_arg_${carriers_key}_0 = .*kofun_call_arg_${carriers_key}_1 = .*kofun_fn_describe\(kofun_call_arg_${carriers_key}_0, kofun_call_arg_${carriers_key}_1, kofun_call_arg_${carriers_key}_2\)" \
+    >/dev/null ||
     fail 'mixed-carrier C did not sequence source order before ABI order'
-if grep -E 'as_label|as_values|as_count|label_(map|dictionary)|malloc|calloc|realloc' \
-    "$temporary/carriers.c" >/dev/null; then
-    fail 'mixed-carrier C retained labels, runtime dispatch, or allocation'
-fi
+no_runtime_dispatch "$temporary/source_order_carriers.c" \
+    'as_label|as_values|as_count' 'mixed-carrier C'
 
 # Wider carriers and lexical callable bindings remain explicit unsupported
 # lowering. They may retain parsed IR/tokens, but must not commit C. The

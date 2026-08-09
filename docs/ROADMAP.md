@@ -20,20 +20,28 @@ they have implementation evidence to advance.
 
 ## Current critical-path order
 
-The smallest compiler source `S`, its typed profile, deterministic C11
-lowering, and the first runnable compiler-produced compiler are active. The
-remaining fixed-point path is intentionally short:
+The frozen-profile fixed point is reached. The smallest compiler source `S`,
+its typed profile, and deterministic C11 lowering produce `C1/A1`, `C2/A2`,
+and `C3/A3`, and `task selfhost-fixed-point` proves `C2 == C3` and `A2 == A3`
+byte for byte — the criterion decided on
+[#271](https://github.com/kofun-lang/kofun/issues/271), with `C1/A1` as
+hash-pinned runnable provenance — closing
+[#272](https://github.com/kofun-lang/kofun/issues/272) and B4/B5.
 
-1. use the generated compiler to produce `C2/A2` and `C3/A3`
-   ([#271](https://github.com/kofun-lang/kofun/issues/271)); and
-2. require equivalent C sources and executables across the three generations
-   ([#272](https://github.com/kofun-lang/kofun/issues/272)).
+The remaining bootstrap path is:
 
-That gate may use one declared, normalized host C11 compiler. Direct x86-64
-and AArch64 compiler reproduction is a separate strengthening track; both
-native backends already execute bounded Int, function, `List[Int]`, and UTF-8
-`Text` profiles. The [implemented-status matrix](MVP_IMPLEMENTED.md) is the
-authority for their exact active boundary.
+1. independent clean-builder reproduction, B6
+   ([#274](https://github.com/kofun-lang/kofun/issues/274)); and
+2. diverse double compilation, B7, still `open` in `bootstrap/manifest.json`.
+
+Widening the fixed point past the frozen profile to the full language is
+separate from both, and is what the language slices below feed.
+
+The closed gate uses one declared, normalized host C11 compiler. Direct
+x86-64 and AArch64 compiler reproduction is a separate strengthening track;
+both native backends already execute bounded Int, function, `List[Int]`, and
+UTF-8 `Text` profiles. The [implemented-status matrix](MVP_IMPLEMENTED.md) is
+the authority for their exact active boundary.
 
 The heterogeneous record design is settled, not pending: [#546](https://github.com/kofun-lang/kofun/issues/546)
 closed once [`spec/records-v1.md`](../spec/records-v1.md) was accepted, and
@@ -44,12 +52,17 @@ The concrete-first law system, `Result` sequencing, and the small-core reactive
 protocol are settled the same way, as DD-035, DD-036 and DD-037 in
 [Design decisions](DESIGN_DECISIONS.md); what remains for each is implementation
 rather than design. Function-call ergonomics
-([#625](https://github.com/kofun-lang/kofun/issues/625)) is the syntax decision
-still open. Read `docs/DESIGN_DECISIONS.md` rather than an issue number for
-whether a design is settled — issues close as their decisions land, so a list of
-numbers here rots. None of this expands the frozen string-scanning profile
-before B4/B5. Advanced effects, dependent or refinement types, concurrency
-runtime implementation, and an optional second backend remain later. The
+([#625](https://github.com/kofun-lang/kofun/issues/625)) is settled the same
+way: [`spec/syntax/call-arguments-v1.md`](../spec/syntax/call-arguments-v1.md)
+is the accepted contract, its surface and front end landed, and labelled calls
+execute for `Int`/`Text`/`List[Int]` carriers — what remains is the lowering
+shapes #882 still owns. Read `docs/DESIGN_DECISIONS.md` rather than an issue
+number for whether a design is settled — issues close as their decisions land,
+so a list of numbers here rots. None of this expanded the frozen
+string-scanning profile before B4/B5, and widening it now is deliberate,
+gated work rather than a side effect. Advanced effects, dependent or
+refinement types, concurrency runtime implementation, and an optional second
+backend remain later. The
 evidence and keep/defer/reject decisions are indexed in the
 [implemented-status matrix](MVP_IMPLEMENTED.md).
 

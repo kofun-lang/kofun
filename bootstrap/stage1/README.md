@@ -184,5 +184,9 @@ a line that tries is refused as an unknown structural line rather than by a
 mutability rule. `corpus_reject_loop_assignment.kofun` pins that refusal so the
 mutable-local slice cannot make a loop bound assignable by accident.
 
-It does not yet semantically compile its complete own source, so the Stage 2
-fixed-point gate remains open.
+This file is the canonical `S` of the self-host chain: `task
+selfhost-self-compile` proves the seed accepts every construct in it, and
+`task selfhost-fixed-point` closed the three-generation gate on it —
+`C2 == C3` and `A2 == A3` byte for byte. That fixed point covers this frozen
+profile, not the full language; independent reproduction (B6) and diverse
+double compilation (B7) are the remaining bootstrap tracks.

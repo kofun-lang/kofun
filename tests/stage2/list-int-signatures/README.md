@@ -29,8 +29,10 @@ is instead pinned by the canonical compiler-pair checks and the generated
 `KofunIntListValue` C prototype.
 
 Direct list-literal arguments/returns, mutable lists, `List[Text]`, nested or
-general lists, labelled list calls, indirect calls, lambdas, record fields,
-and non-C11 backends remain explicit boundaries. The general
+general lists, indirect calls, lambdas, record fields, and non-C11 backends
+remain explicit boundaries. Labelled list calls are no longer among them:
+#1107 widened the labelled fixed-slot lowering to `Text` and `List[Int]`, so
+`labelled_argument.kofun` is an accept case here. The general
 `c11-stage2/list` capability therefore remains unsupported until #868's later
 record-field increments land.
 

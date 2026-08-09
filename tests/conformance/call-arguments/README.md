@@ -15,8 +15,13 @@ whose parameters and result are `Int`, `Text`, or `List[Int]` — the carriers
 the positional path already executes. `source_order_carriers.kofun` mixes all
 three in one call written out of declaration order: the markers `1` and `3`
 print before the callee body's `42`, proving source-order exactly-once
-evaluation, and each slot is reserved with its own C type, because an
-`int64_t` slot holding a `Text` would compile and then truncate.
+evaluation.
+
+Each slot is also asserted to be reserved with its own C carrier. A carrier
+regression would already fail the strict `-Werror` build of the generated C,
+but as an opaque diagnostic inside emitted code; these assertions name the
+defect instead. They share one call-site key read out of slot 0, so they
+describe a single call rather than three unrelated sites.
 
 Optional and enum/record carriers, ownership-bearing values, pipeline
 subjects, the trailing-lambda form, labelled calls inside lifted lambdas, and
