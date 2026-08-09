@@ -5,7 +5,7 @@
     "trusted_seed": {
       "implementation": "bootstrap/stage1/compiler.c",
       "status": "working",
-      "role": "audited C11 artifact used to start the Kofun-written compiler"
+      "role": "trusted C11 artifact used to start the Kofun-written compiler"
     },
     "stage1": {
       "implementation": "bootstrap/stage1/compiler.kofun",

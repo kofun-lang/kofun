@@ -98,7 +98,7 @@ A complete compiler change normally has four parts:
 
 ### Stage 1
 
-`bootstrap/stage1/compiler.kofun` is canonical and `compiler.c` is the audited
+`bootstrap/stage1/compiler.kofun` is canonical and `compiler.c` is the trusted
 seed. Read `bootstrap/stage1/README.md`, `check.sh`, and `SHA256SUMS` before
 editing. The gate must prove both the source/artifact relationship and public
 fixture behavior. Never adjust only `SHA256SUMS` to accept unexplained bytes.
@@ -367,12 +367,12 @@ scripts to that inventory when they become part of the repository gate.
   grammar draft.
 - Keep trusted intrinsics and foreign-code boundaries explicit.
 
-### Generated and audited files
+### Generated and committed files
 
 - `build/` and `.kofun/` are disposable ignored output.
 - Tree-sitter generated parser files are committed and must be regenerated from
   `grammar.js`.
-- Bootstrap C seeds and checksum manifests are committed, audited artifacts;
+- Bootstrap C seeds and checksum manifests are committed, hash-pinned artifacts;
   follow their stage-specific reproduction/check procedure.
 - Diagnostic goldens and expected stdout/stderr are public test evidence; use
   the owning bless procedure and inspect the diff.
@@ -433,7 +433,7 @@ A contribution is complete when:
 - the correct canonical source owns the behavior;
 - the smallest regression test fails without the change and passes with it;
 - negative and explicit unsupported behavior remain honest;
-- generated or audited artifacts were updated through their documented flow;
+- generated or committed artifacts were updated through their documented flow;
 - the implemented-status and subsystem docs match the evidence;
 - focused and relevant aggregate gates pass;
 - `git diff --check` is clean;
