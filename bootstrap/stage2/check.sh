@@ -26,8 +26,9 @@ temporary=${TMPDIR:-/tmp}/kofun-stage2-check.$$
 trap 'rm -rf "$temporary"' EXIT HUP INT TERM
 mkdir -p "$temporary"
 
-"$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
-    "$stage2/compiler.c" -o "$temporary/kofun-stage2"
+. "$root/bootstrap/stage2/build.sh"
+kofun_stage2_build "$root" "$temporary/kofun-stage2" ||
+    { echo "stage2 check: the Stage 2 compiler did not build" >&2; exit 1; }
 
 round_trip() {
     name=$1

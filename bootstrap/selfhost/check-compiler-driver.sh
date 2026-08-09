@@ -30,8 +30,9 @@ temporary=${TMPDIR:-/tmp}/kofun-selfhost-driver.$$
 trap 'rm -rf "$temporary"' EXIT HUP INT TERM
 mkdir -p "$temporary"
 
-"$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
-    bootstrap/stage2/compiler.c -o "$temporary/kofun-stage2"
+. "$repo_root/bootstrap/stage2/build.sh"
+kofun_stage2_build "$repo_root" "$temporary/kofun-stage2" ||
+    fail "the Stage 2 seed compiler did not build"
 
 # The trusted seed compiles the frozen S as one ordinary source-to-C
 # command with no hidden fallback, deterministically, byte-identical to
