@@ -622,6 +622,15 @@ tasks:
     cmds:
       - "sh tests/docs/documentation-index.sh"
 
+  # Holds the prose surfaces against the roadmap (#1138): while "audited
+  # bootstrap chain" is an open M4 deliverable, no document may describe the
+  # bootstrap artifacts as already audited. Closing the deliverable relaxes the
+  # gate in the same commit, so the two cannot drift apart again.
+  audited-claim:
+    desc: "Refuse an audited-bootstrap claim while that deliverable is open"
+    cmds:
+      - "sh tests/docs/audited-claim.sh"
+
   ownership-view:
     desc: "Verify bounded current-file ScopeId and BindingId ownership views"
     cmds:
@@ -940,6 +949,7 @@ tasks:
             typed-sidecar-projector \
             upgrade-patch \
             documentation-index \
+            audited-claim \
             ownership-view \
             artifact-qualification \
             syntax \
