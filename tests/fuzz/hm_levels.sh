@@ -6,6 +6,13 @@ CC=${CC:-cc}
 NODE=${NODE:-node}
 CASES=${KOFUN_HM_LEVELS_CASES:-128}
 SEED=${KOFUN_HM_LEVELS_SEED:-5572026}
+case $SEED in
+    ''|*[!0-9]*)
+        printf '%s\n' "hm_levels fuzz: KOFUN_HM_LEVELS_SEED must be a non-negative integer" >&2
+        exit 2
+        ;;
+esac
+printf '%s\n' "hm_levels fuzz: seed=$SEED"
 WORK=${KOFUN_HM_LEVELS_FUZZ_WORK:-"$ROOT/build/hm-levels-fuzz"}
 
 fail() {

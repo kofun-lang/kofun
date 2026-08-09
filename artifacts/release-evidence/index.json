@@ -711,7 +711,7 @@
     "tests/diagnostics/visibility-api-leaks.sh": "014a84aa787662eff8bba397056cbc5ca40cd9adbead0047d8a4b9f75395560e",
     "tests/docs/documentation_index_test.mjs": "2cc6cea953f21ef1cbf5e8c6be3ab58edacc8e6599f17d76b44130647714550b",
     "tests/fuzz/SEMANTIC_PROTOCOL.md": "95644005013d2aae82a042deb341785a083552c766abafa71bdbf4335deea522",
-    "tests/fuzz/semantic_differential.sh": "f86c3afb9c4e6aa8be68159f40215451d536ef29c821aea9f160def2613c0b7d",
+    "tests/fuzz/semantic_differential.sh": "177185179f22ad295f185def9e9b311e25a8b18fea4f5ecd53576d3daa6b875b",
     "tests/http/check.sh": "b3fcbd128033bb7a3c0b7e4f89b679743e0e5e49e9eaa1bdc9573cbb5794aafd",
     "tests/interop/bindgen-c/fuzz/corpus/partial-declaration.h": "c5dce5c70ff456a593e7fa33db772a3c2430905340c4b44e9a79f0be681e50e2",
     "tests/lsp/performance_test.js": "9be9916dd14466b33b631fe1435ddcc038c44288f80c320e1458bcb16d2aab33",
