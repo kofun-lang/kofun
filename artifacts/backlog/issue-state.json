@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 24,
+  "open_issues": 26,
   "issues": [
     {
       "number": 26,
@@ -750,6 +750,28 @@
           "status": "released"
         }
       ]
+    },
+    {
+      "number": 1107,
+      "title": "Stage 2 C11: lower labelled calls with Text and List[Int] carriers",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "862bb4b7acdea40ac01a4efa4a6e723adec02275"
+      ]
+    },
+    {
+      "number": 1108,
+      "title": "release-claims: join executable claim states to the bootstrap manifest gates they describe",
+      "state_labels": [
+        "needs-detail"
+      ],
+      "state_line": "needs-detail",
+      "blocked_by": [],
+      "evidence_commits": []
     }
   ]
 }
