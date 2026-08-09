@@ -1,0 +1,18 @@
+# The loop runs one step past the end. The bounds check inside the loop body
+# traps rather than reading off the end, and the trap ends the loop instead of
+# spinning in it.
+
+fn walk(values: List[Int]) -> Int {
+    let mut i = 0
+    let mut sum = 0
+    while i <= len(values) {
+        sum = sum + values[i]
+        i = i + 1
+    }
+    return sum
+}
+
+fn main() {
+    let data = [1, 2, 3]
+    print(walk(data))
+}

@@ -65,7 +65,12 @@ division/modulo behavior for negative operands. Assignment evaluates and checks
 the replacement value before changing the binding. Conditions evaluate once
 and only the selected branch executes. Value `if` requires one final Int
 expression in each branch; general typed value blocks, `else if`, general Bool
-expressions, and loops remain outside this Core slice. Bool match uses a finite
+expressions, and loop forms other than `while` remain outside this Core slice.
+`while` lowers as of #1128: the condition is re-evaluated each iteration, which
+is why it is emitted inside the loop rather than hoisted above it, and a
+condition that traps ends the loop instead of spinning in it. `for ... in` is
+still refused, and `bootstrap/stage2/unsupported_core.kofun` holds that
+refusal. Bool match uses a finite
 `{true, false}` coverage check; `E2S25` names missing patterns and `E2S26`
 rejects duplicate or unreachable arms. Guards run only after their pattern
 matches; false continues to the next arm, and guarded arms do not provide
@@ -785,9 +790,10 @@ chaining before emitting a backend artifact.
 Two bounds are worth stating rather than leaving to be discovered. Every `Int?`
 binding this slice lowers is immutable, so the invalidation rules that need
 mutation cannot arise — the declaration that would create one is refused first,
-and the frontend gate still pins those rules for the mutable spelling. And
-`while` is not lowered by this C11 slice at all, independently of Optional, so
-the loop-backedge *positive* is not expressible here. The gate is
+and the frontend gate still pins those rules for the mutable spelling. That is
+also what keeps the loop-backedge *positive* out of reach: `while` itself lowers
+as of #1128, but expressing a backedge invalidation needs an `Int?` this slice
+will not let you mutate. The gate is
 `tests/conformance/optional-construction/run.sh`, which recomputes the
 descriptor with `spec/aggregate-layout-v1/layout.mjs` rather than reading a
 checked-in copy, so a drift on either side fails it. The companion

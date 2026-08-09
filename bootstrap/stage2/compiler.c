@@ -18141,6 +18141,106 @@ static char *lower_body(
                 condition_start,
                 condition_close
             );
+        } else if (token_equal(source, cursor, "while")) {
+            /*
+             * #1128. Structurally `if` without the else, but the condition
+             * belongs *inside* the emitted loop: emit_condition_into returns a
+             * C prelude that computes into the target, so hoisting it above
+             * `for` would evaluate it once and never again.
+             */
+            int64_t statement_start = cursor;
+            int64_t condition_start = skip_trivia(
+                source,
+                token_end(source, cursor)
+            );
+            int64_t condition_close = condition_end(source, condition_start);
+            if (condition_close < 0) {
+                free(emitted.data);
+                return lower_error(
+                    "E2S23",
+                    "while condition must be Bool or an Int comparison",
+                    condition_start
+                );
+            }
+            int64_t body_open = skip_trivia(source, condition_close);
+            if (
+                body_open >= length ||
+                !token_equal(source, body_open, "{")
+            ) {
+                free(emitted.data);
+                return lower_error(
+                    "E2S18",
+                    "expected `{` after while condition",
+                    body_open
+                );
+            }
+            int64_t body_close = balanced_end(source, body_open, "{", "}");
+            if (body_close < 0) {
+                free(emitted.data);
+                return lower_error(
+                    "E2S18",
+                    "missing `}` after while body",
+                    body_open
+                );
+            }
+            char *loop_body = lower_body(
+                source,
+                hir,
+                body_open,
+                is_main,
+                false,
+                function_open
+            );
+            if (strncmp(loop_body, "error[", 6) == 0) {
+                free(emitted.data);
+                return loop_body;
+            }
+            char *condition = emit_condition_into(
+                source,
+                hir,
+                condition_start,
+                condition_close,
+                "kofun_condition",
+                failure_result,
+                "        "
+            );
+            /* A rejected condition became the statement's C prelude. */
+            if (strncmp(condition, "error[", 6) == 0) {
+                free(loop_body);
+                free(emitted.data);
+                return condition;
+            }
+            /*
+             * The trap check is what `if` does not need. A condition that traps
+             * leaves kofun_condition unusable, and a loop that ignored that
+             * would spin on it instead of failing.
+             */
+            buffer_format(
+                &emitted,
+                "    for (;;) {\n"
+                "%s"
+                "        if (kofun_failed) return %s;\n"
+                "        if (!kofun_condition) {\n"
+                "            break;\n"
+                "        }\n"
+                "%s"
+                "    }\n",
+                condition,
+                failure_result,
+                loop_body
+            );
+            free(condition);
+            free(loop_body);
+            int64_t statement_end = token_end(source, body_close);
+            cursor = skip_trivia(source, body_close);
+            stage2_semantic_observe(
+                "control|while|%" PRId64 "|%" PRId64 "|Unit|%" PRId64
+                "|%" PRId64 "\n",
+                statement_start,
+                statement_end,
+                condition_start,
+                condition_close
+            );
         } else if (token_equal(source, cursor, "match")) {
             int64_t match_start = cursor;
             int64_t value_start = skip_trivia(

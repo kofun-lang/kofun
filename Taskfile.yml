@@ -292,6 +292,15 @@ tasks:
     cmds:
       - "sh tests/conformance/text-results/run.sh"
 
+  # #1128. `while` became a Core statement, so an iterative scan over an
+  # indexed List[Int] executes — binary search, linear search, two-pointer
+  # walks. The corpus is bounded by a wall clock, because the regression this
+  # slice can introduce is a loop that never returns rather than a wrong answer.
+  while-list-int:
+    desc: "Execute iterative while loops over an indexed List[Int]"
+    cmds:
+      - "sh tests/stage2/while-list-int/run.sh"
+
   list-int-values:
     desc: "Verify bounded Stage 2 List[Int] locals, len, and indexing"
     cmds:
@@ -889,6 +898,7 @@ tasks:
             optional-pair \
             text-results \
             list-int-values \
+            while-list-int \
             list-int-signatures \
             adt-exhaustiveness \
             enum-match-value \

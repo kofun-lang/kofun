@@ -4,9 +4,9 @@
   "version": "0.4.0-seed",
   "inputs": {
     "VERSION": "60eee96ee38418a0ef903b570d0d12ce2d82ea79f129cc2c6c1245a072c04349",
-    "release/claims.json": "bc84f661f804c73e0abf8696b6d6b907db1ffbedaf17eead58cf22671ac15765",
+    "release/claims.json": "dd19a137fe7301db8ebd5470c4b902ec9b119455849affee79e648c1028c39e7",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
-    "bootstrap/manifest.json": "dcd68eae1df996fe216e27d7b3c875a4d0b7c877b897165e2fc76b87c8238adc"
+    "bootstrap/manifest.json": "011c508c3e634b71c9c2f7a46c8bd986005b4b873bc3ebd62f8cee22bf823db0"
   },
   "states": {
     "implemented": 9,
@@ -688,7 +688,7 @@
     }
   ],
   "evidence_digests": {
-    "Taskfile.yml": "063dd4a8c957b27d2d4d7f379a9cd83b48e18d5399911b4424bcf30ebe691680",
+    "Taskfile.yml": "37a2294181638a64498d86862be8c437532fedc22aa0dc9ae95f0e026f3620fd",
     "bootstrap/native/check.sh": "fea94cb623757e1bf17e4497f43d656b1e8ff57a39a92ece871d8ff257c0f2ef",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/check-diverse-double-compilation-refusals.sh": "55fc39166070b9bc612fca6898086938b1a8ca122b1c1fb8e928f1a5d4cde572",
@@ -697,7 +697,7 @@
     "bootstrap/selfhost/driver/corpus_reject.stdout": "b11ae682acae186b10022c3469af65b54cd03c2e88a4756eba1cbe5b0e9356f9",
     "bootstrap/stage1/README.md": "e9095d857b971fd455068262783dd33570881dd7b2b115a1b0631a41573ad816",
     "bootstrap/stage1/SHA256SUMS": "0dc3d2677f03dfe3bd6f9da9f923315dd5f30dcaeca4768f3c63ec1f66744b94",
-    "bootstrap/stage2/README.md": "f51fa6ed1729bfd4d73eafa777c729744899b0d314f62440c2872ab8ed97c7b5",
+    "bootstrap/stage2/README.md": "b59b82451d719ed827427e2aa8cba2b11def5f04bdc52cd8d07a0525bc5217b3",
     "bootstrap/stage2/fixtures/borrowed_move_text.kofun": "34502461891e7c8f42c9017e9fbfc857e54b10ca4fe59551be9ab9ab22d2c1b6",
     "bootstrap/wasm/fixtures/unsupported_text.kofun": "e0a45136410ddb85e9f5b3e5c39e7903d96da39aa53aaf3078d2555b4f383864",
     "bootstrap/wasm/object_arena_check.sh": "da7938dfd6dc6a441e52f5f1adb262c4e65bd5a25b0fb8108140ccbc7eafdf9a",

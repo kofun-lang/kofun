@@ -260,7 +260,7 @@
       "public_status": "bounded by-value 64-element locals and direct function carriers; standalone mutable-local element assignment with checked positive, negative, constant, and dynamic indices",
       "state": "checkpoint",
       "area": "c-backend",
-      "bounded_capability": "Stage 2 C11 lowers bounded `List[Int]` literals, immutable or mutable locals, direct parameters and results, `len`, checked reads, and standalone mutable-local element writes through one fixed-capacity by-value carrier. Reads and writes share positive, negative, constant, and dynamic bounds behavior. General `List[T]`, growth, mutation through parameters or immutable bindings, assignment expressions, list fields, indirect calls, and non-C11 backends remain outside the slice.",
+      "bounded_capability": "Stage 2 C11 lowers bounded `List[Int]` literals, immutable or mutable locals, direct parameters and results, `len`, checked reads, and standalone mutable-local element writes through one fixed-capacity by-value carrier. Reads and writes share positive, negative, constant, and dynamic bounds behavior. General `List[T]`, growth, mutation through parameters or immutable bindings, assignment expressions, list fields, indirect calls, and non-C11 backends remain outside the slice. An iterative `while` may drive those reads: the loop condition is re-evaluated each iteration, so a scan over an indexed `List[Int]` executes and terminates (#1128).",
       "targets": [
         "c11",
         "stage2"
