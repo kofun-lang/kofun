@@ -125,6 +125,10 @@ typedef struct {
     char qualified_name[KOFUN_STAGE2_DISCOVERY_QUALIFIED_NAME_BYTES];
     char module_name[KOFUN_STAGE2_DISCOVERY_MODULE_NAME_BYTES];
     char signature[KOFUN_STAGE2_DISCOVERY_FACT_TEXT_BYTES];
+    /* The validated effect requirement the compiler committed for this
+     * candidate — currently the direct `io` root fact.  Empty when the
+     * candidate is pure or when no requirement was safely disclosable. */
+    char effect[KOFUN_STAGE2_DISCOVERY_FACT_TEXT_BYTES];
 } KofunStage2DiscoveryCandidate;
 
 typedef struct {

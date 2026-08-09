@@ -161,12 +161,14 @@ const char *kofun_discovery_reason_name(KofunDiscoveryReason reason);
 
 /*
  * The current-core slice deliberately covers direct functions and members
- * only. Imports, extensions, traits, macros, and general effects are excluded
- * by the issue's own scope, which is why `generic_requirements`, `effects`, and
- * `dependencies` are emitted as empty arrays here rather than modelled: an
- * empty array is what the contract requires for a row that genuinely has none,
- * and inventing a representation for rows this slice cannot produce would be
- * guessing at #293/#316's semantics ahead of them.
+ * only. Imports, extensions, traits, and macros are excluded by the issue's
+ * own scope, which is why `generic_requirements` and `dependencies` are
+ * emitted as empty arrays here rather than modelled: an empty array is what
+ * the contract requires for a row that genuinely has none, and inventing a
+ * representation for rows this slice cannot produce would be guessing at
+ * #293/#316's semantics ahead of them.  `effects` carries the effect
+ * requirements the compiler committed for a row — currently the direct `io`
+ * fact — and stays empty for a pure row.
  */
 
 #define KOFUN_DISCOVERY_MAX_REJECTION_REASONS 10u
@@ -174,6 +176,8 @@ const char *kofun_discovery_reason_name(KofunDiscoveryReason reason);
 #define KOFUN_DISCOVERY_MAX_QUALIFIED_NAME_BYTES 4096u
 #define KOFUN_DISCOVERY_MAX_SIGNATURE_BYTES 16384u
 #define KOFUN_DISCOVERY_MAX_DISPLAY_BYTES 4096u
+#define KOFUN_DISCOVERY_MAX_OPERATION_EFFECTS 8u
+#define KOFUN_DISCOVERY_MAX_EFFECT_DISPLAY_BYTES 256u
 
 typedef enum {
     KOFUN_DISCOVERY_FACT_VALIDATED = 1,
@@ -256,6 +260,19 @@ typedef struct {
     KofunDiscoveryIdentity module_identity;
 } KofunDiscoveryOrigin;
 
+/*
+ * One `EffectRequirement`. The contract requires `identity`, `display`, and
+ * `status`; the identity, when present, is a compiler-issued `SymbolId` or
+ * `TypeId`, and `kind = KOFUN_DISCOVERY_IDENTITY_NONE` encodes JSON `null`
+ * for a requirement the compiler committed without a symbol of its own —
+ * the current direct `io` fact.  Discovery never performs the effect.
+ */
+typedef struct {
+    KofunDiscoveryIdentity identity;
+    char display[KOFUN_DISCOVERY_MAX_EFFECT_DISPLAY_BYTES + 1u];
+    KofunDiscoveryFactStatus status;
+} KofunDiscoveryEffectRequirement;
+
 typedef struct {
     KofunDiscoveryFactStatus status;
     KofunDiscoveryIdentity identity; /* SymbolId */
@@ -264,6 +281,9 @@ typedef struct {
     char signature[KOFUN_DISCOVERY_MAX_SIGNATURE_BYTES + 1u];
     bool has_signature;
     KofunDiscoveryReceiverMode receiver_mode;
+    KofunDiscoveryEffectRequirement
+        effects[KOFUN_DISCOVERY_MAX_OPERATION_EFFECTS];
+    size_t effect_count;
     KofunDiscoveryOrigin origin;
     KofunDiscoveryVisibility visibility;
     bool callable;

@@ -807,6 +807,44 @@ static void sort_omissions(KofunDiscoveryOmission *omissions, size_t count) {
     }
 }
 
+/* Effects sort with non-null compiler identity `(kind, value)` first, then
+ * null identities by display bytes. The identity-kind enum values are in the
+ * same order as their ASCII spellings, so the enum doubles as the key. */
+static int compare_effects(const KofunDiscoveryEffectRequirement *left,
+                           const KofunDiscoveryEffectRequirement *right) {
+    bool left_identified = left->identity.kind != KOFUN_DISCOVERY_IDENTITY_NONE;
+    bool right_identified =
+        right->identity.kind != KOFUN_DISCOVERY_IDENTITY_NONE;
+    int order;
+    if (left_identified != right_identified) {
+        return left_identified ? -1 : 1;
+    }
+    if (left_identified) {
+        if (left->identity.kind != right->identity.kind) {
+            return left->identity.kind < right->identity.kind ? -1 : 1;
+        }
+        order = strcmp(left->identity.value, right->identity.value);
+        if (order != 0) {
+            return order;
+        }
+    }
+    return strcmp(left->display, right->display);
+}
+
+static void sort_effects(KofunDiscoveryEffectRequirement *effects,
+                         size_t count) {
+    size_t index;
+    for (index = 1; index < count; index++) {
+        KofunDiscoveryEffectRequirement pivot = effects[index];
+        size_t scan = index;
+        while (scan > 0 && compare_effects(&effects[scan - 1], &pivot) > 0) {
+            effects[scan] = effects[scan - 1];
+            scan--;
+        }
+        effects[scan] = pivot;
+    }
+}
+
 /*
  * The invariants that make a fact-bearing result well formed. Checking them
  * here rather than trusting each caller is the point: a provider that gets one
@@ -873,6 +911,7 @@ static bool facts_are_permitted(KofunDiscoveryStatus status,
     for (index = 0; index < operation_count; index++) {
         const KofunDiscoveryOperationFact *operation = &operations[index];
         bool validated = operation->status == KOFUN_DISCOVERY_FACT_VALIDATED;
+        size_t effect_index;
 
         if (fact_status_name(operation->status) == NULL ||
             identity_kind_name(operation->identity.kind) == NULL ||
@@ -891,6 +930,36 @@ static bool facts_are_permitted(KofunDiscoveryStatus status,
         if (operation->origin.module_identity.kind !=
             KOFUN_DISCOVERY_IDENTITY_MODULE_ID) {
             return false;
+        }
+        /* Effects: a required display, a closed status vocabulary, an
+         * identity that is absent or compiler-issued, a duplicate-free
+         * sorted set, and — on a callable row — nothing short of
+         * validated. */
+        if (operation->effect_count > KOFUN_DISCOVERY_MAX_OPERATION_EFFECTS) {
+            return false;
+        }
+        for (effect_index = 0; effect_index < operation->effect_count;
+             effect_index++) {
+            const KofunDiscoveryEffectRequirement *effect =
+                &operation->effects[effect_index];
+            if (fact_status_name(effect->status) == NULL ||
+                effect->display[0] == '\0') {
+                return false;
+            }
+            if (effect->identity.kind != KOFUN_DISCOVERY_IDENTITY_NONE &&
+                effect->identity.kind != KOFUN_DISCOVERY_IDENTITY_SYMBOL_ID &&
+                effect->identity.kind != KOFUN_DISCOVERY_IDENTITY_TYPE_ID) {
+                return false;
+            }
+            if (effect_index > 0 &&
+                compare_effects(&operation->effects[effect_index - 1],
+                                effect) >= 0) {
+                return false;
+            }
+            if (operation->callable &&
+                effect->status != KOFUN_DISCOVERY_FACT_VALIDATED) {
+                return false;
+            }
         }
         /* A callable row needs a validated origin, a signature, a receiver
          * mode, and no rejections. */
@@ -968,8 +1037,30 @@ static void put_operation(Sink *sink,
     put(sink, "\",\n      \"dependencies\": [],\n      \"diagnostic_ids\": "
               "[],\n      \"display_name\": \"");
     put(sink, operation->display_name);
-    put(sink, "\",\n      \"documentation\": null,\n      "
-              "\"effects\": [],\n      \"generic_requirements\": [],\n      "
+    put(sink, "\",\n      \"documentation\": null,\n      \"effects\": ");
+    if (operation->effect_count == 0) {
+        put(sink, "[]");
+    } else {
+        put(sink, "[\n");
+        for (index = 0; index < operation->effect_count; index++) {
+            const KofunDiscoveryEffectRequirement *effect =
+                &operation->effects[index];
+            put(sink, "        {\n          \"display\": \"");
+            put(sink, effect->display);
+            put(sink, "\",\n          \"identity\": ");
+            if (effect->identity.kind == KOFUN_DISCOVERY_IDENTITY_NONE) {
+                put(sink, "null");
+            } else {
+                put_identity(sink, "          ", &effect->identity);
+            }
+            put(sink, ",\n          \"status\": \"");
+            put(sink, fact_status_name(effect->status));
+            put(sink, "\"\n        }");
+            put(sink, index + 1u < operation->effect_count ? ",\n" : "\n");
+        }
+        put(sink, "      ]");
+    }
+    put(sink, ",\n      \"generic_requirements\": [],\n      "
               "\"identity\": ");
     put_identity(sink, "      ", &operation->identity);
     put(sink, ",\n      \"origin\": {\n        \"implementation_identity\": "
@@ -1041,6 +1132,11 @@ size_t kofun_discovery_result_emit(
     for (index = 0; index < operation_count; index++) {
         sort_rejections(operations[index].rejection_reasons,
                         operations[index].rejection_reason_count);
+        if (operations[index].effect_count <=
+            KOFUN_DISCOVERY_MAX_OPERATION_EFFECTS) {
+            sort_effects(operations[index].effects,
+                         operations[index].effect_count);
+        }
     }
     sort_operations(operations, operation_count);
     sort_omissions(omissions, omission_count);

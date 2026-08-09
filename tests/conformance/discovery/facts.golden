@@ -318,6 +318,80 @@ provisional-type: 798 bytes
     "status": "provisional"
   }
 }
+validated-effects: 2050 bytes
+{
+  "analysis": {
+    "file_id": "1111111111111111111111111111111111111111111111111111111111111111",
+    "generation": 17,
+    "interface_set_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+    "semantic_compatibility": "stage2-v1",
+    "source_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "authoritative": false,
+  "diagnostics": [],
+  "limit_profile": "kofun.discovery/default-v1",
+  "omissions": [],
+  "operations": [
+    {
+      "availability": "callable",
+      "dependencies": [],
+      "diagnostic_ids": [],
+      "display_name": "length",
+      "documentation": null,
+      "effects": [
+        {
+          "display": "clock",
+          "identity": null,
+          "status": "validated"
+        },
+        {
+          "display": "io",
+          "identity": null,
+          "status": "validated"
+        }
+      ],
+      "generic_requirements": [],
+      "identity": {
+        "kind": "SymbolId",
+        "value": "7777777777777777777777777777777777777777777777777777777777777777"
+      },
+      "origin": {
+        "implementation_identity": null,
+        "kind": "member",
+        "module": "core.list",
+        "module_identity": {
+          "kind": "ModuleId",
+          "value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "status": "validated",
+        "trait": null,
+        "trait_identity": null
+      },
+      "qualified_name": "core.list.length",
+      "receiver_mode": "read",
+      "rejection_reasons": [],
+      "signature": "(read List[Text]) -> Int",
+      "source": null,
+      "status": "validated",
+      "visibility": "pub"
+    }
+  ],
+  "reason": null,
+  "schema": "kofun.discovery.result/v1",
+  "status": "complete",
+  "truncated": false,
+  "type": {
+    "dependencies": [],
+    "diagnostic_ids": [],
+    "display": "List[Text]",
+    "identity": {
+      "kind": "TypeId",
+      "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "reason": null,
+    "status": "validated"
+  }
+}
 omissions-sorted: 1064 bytes
 {
   "analysis": {

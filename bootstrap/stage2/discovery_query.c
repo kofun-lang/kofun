@@ -62,6 +62,10 @@ static bool query_snapshot_strings_are_bounded(
             !query_bytes(
                 candidate->signature,
                 sizeof(candidate->signature),
+                &ignored) ||
+            !query_bytes(
+                candidate->effect,
+                sizeof(candidate->effect),
                 &ignored)) {
             return false;
         }
@@ -342,7 +346,11 @@ size_t kofun_stage2_discovery_query(
                 !query_bytes(
                     candidate->signature,
                     sizeof(candidate->signature),
-                    &record->signature)) {
+                    &record->signature) ||
+                !query_bytes(
+                    candidate->effect,
+                    sizeof(candidate->effect),
+                    &record->effect)) {
                 free(records);
                 free(operations);
                 free(omissions);
@@ -384,8 +392,19 @@ size_t kofun_stage2_discovery_query(
         );
     }
 
-    if (type.status != KOFUN_DISCOVERY_FACT_VALIDATED || truncated ||
-        omission_count != 0u) {
+    /*
+     * A `hidden-by-visibility` omission is a correct, final answer — the
+     * private names were deliberately withheld, not left unanalyzed — so it
+     * does not make the disclosed facts incomplete.  Every other omission
+     * reason reports something this analysis could not produce.
+     */
+    for (index = 0u; index < omission_count; index += 1u) {
+        if (omissions[index].reason !=
+            KOFUN_DISCOVERY_OMISSION_HIDDEN_BY_VISIBILITY) {
+            complete = false;
+        }
+    }
+    if (type.status != KOFUN_DISCOVERY_FACT_VALIDATED || truncated) {
         complete = false;
     }
     for (index = 0u; index < operation_count; index += 1u) {

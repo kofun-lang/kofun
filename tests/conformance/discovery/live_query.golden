@@ -4,7 +4,7 @@ source-sha256=aede30ee5317620c21fa2a94729606d9d7a96bfbca039feccbc9564da1338f66
 generation=19
 expression=122..128
 expressions=5 candidates=5 hidden=yes
-result-bytes=5745 repeated=identical
+result-bytes=5858 repeated=identical
 stale=stale-source span=invalid-position source-buffer=refused
 invalid-visibility-kind-status=hidden
 unterminated-snapshot-text=refused
@@ -27,7 +27,7 @@ unterminated-snapshot-text=refused
   ],
   "operations": [
     {
-      "availability": "unavailable",
+      "availability": "callable",
       "dependencies": [],
       "diagnostic_ids": [],
       "display_name": "double",
@@ -46,27 +46,31 @@ unterminated-snapshot-text=refused
           "kind": "ModuleId",
           "value": "5db3d8a33be4661e3887b6197d5ccce073f37e0e3a103a458e6f9a8a7369afd9"
         },
-        "status": "provisional",
+        "status": "validated",
         "trait": null,
         "trait_identity": null
       },
       "qualified_name": "synthetic-root.double",
       "receiver_mode": "none",
-      "rejection_reasons": [
-        "incomplete-analysis"
-      ],
-      "signature": null,
+      "rejection_reasons": [],
+      "signature": "Int -> Int",
       "source": null,
-      "status": "provisional",
+      "status": "validated",
       "visibility": "internal"
     },
     {
-      "availability": "unavailable",
+      "availability": "callable",
       "dependencies": [],
       "diagnostic_ids": [],
       "display_name": "scan",
       "documentation": null,
-      "effects": [],
+      "effects": [
+        {
+          "display": "io",
+          "identity": null,
+          "status": "validated"
+        }
+      ],
       "generic_requirements": [],
       "identity": {
         "kind": "SymbolId",
@@ -80,18 +84,16 @@ unterminated-snapshot-text=refused
           "kind": "ModuleId",
           "value": "5db3d8a33be4661e3887b6197d5ccce073f37e0e3a103a458e6f9a8a7369afd9"
         },
-        "status": "provisional",
+        "status": "validated",
         "trait": null,
         "trait_identity": null
       },
       "qualified_name": "synthetic-root.scan",
       "receiver_mode": "none",
-      "rejection_reasons": [
-        "incomplete-analysis"
-      ],
-      "signature": null,
+      "rejection_reasons": [],
+      "signature": "List[Text] -> Int",
       "source": null,
-      "status": "provisional",
+      "status": "validated",
       "visibility": "pub"
     },
     {
@@ -191,16 +193,19 @@ unterminated-snapshot-text=refused
       "visibility": "pub"
     }
   ],
-  "reason": "incomplete-current-file-facts",
+  "reason": null,
   "schema": "kofun.discovery.result/v1",
-  "status": "partial",
+  "status": "complete",
   "truncated": false,
   "type": {
     "dependencies": [],
     "diagnostic_ids": [],
     "display": "List[Text]",
-    "identity": null,
-    "reason": "incomplete-analysis",
-    "status": "provisional"
+    "identity": {
+      "kind": "TypeId",
+      "value": "125ac3100e11a7150fb950247e5ecde776975fb10c5fb7a0deaaefdb38bd82c5"
+    },
+    "reason": null,
+    "status": "validated"
   }
 }
