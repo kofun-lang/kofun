@@ -94,7 +94,11 @@ assert_grep \
     "fixed 64-element by-value carrier" \
     -Fq 'int64_t elements[64]' "$work/capacity.c"
 
-for stem in direct_call_return nested_calls
+# `labelled_argument` passes its List[Int] through an external label. #1107
+# widened the labelled fixed-slot lowering to the Text and List[Int] carriers
+# this path already executed positionally, so it is an accept case here; the
+# call-arguments gate owns the source-order and no-label-in-artifact evidence.
+for stem in direct_call_return nested_calls labelled_argument
 do
     compile_success "$stem" "$fixtures/$stem.kofun"
     "$work/$stem" >"$work/$stem.stdout" 2>"$work/$stem.stderr"
@@ -211,7 +215,6 @@ for stem in \
     lambda_nested_list_parameter \
     lambda_parameter \
     lambda_parenthesized_result \
-    labelled_argument \
     list_text_parameter \
     nested_parameter \
     read_parameter \
