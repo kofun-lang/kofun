@@ -2,12 +2,23 @@
 
 ## Design target
 
-The Kofun type system has two entry points.
+This section is the target, not a description of the compiler. The Kofun type
+system is designed around two entry points.
 
 1. Beginners can write local programs without annotations.
-2. Advanced users can use ADTs, traits, effects, row polymorphism, and type-level computation.
+2. Advanced users can use ADTs, traits, effects, row polymorphism, and
+   type-level computation.
 
-Code that does not use the hard type features does not pay for their complexity.
+Code that does not use the hard type features does not pay for their
+complexity.
+
+**What the active compiler does today is narrower than either line.** ADTs,
+traits, and effects exist as bounded slices; row polymorphism and type-level
+computation have no implementation at all. Each section below states its own
+boundary, and
+[the implemented-status matrix](https://kofun-lang.github.io/kofun/docs/implemented-status/)
+is the authority for what is claimed. Reading this page as a feature list is
+the misreading it is written to prevent.
 
 ## Primitive types
 

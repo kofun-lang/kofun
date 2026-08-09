@@ -681,7 +681,7 @@
     "docs/SECURITY.md": "b3bdb09876ab1f4c39be2d2dc7ca8d819b5163a88a2b69da0fc4b1e40365c4fe",
     "docs/SELF_HOSTING.md": "46195e8254f2ad63c478bd64d3e0095c7485d94ee9968178006d5cb5f56d083d",
     "docs/SEMANTICS.md": "6e1d210890f5f53f281ea32fe28a0b4118b2804f5cb1caa4260a36c961b9cb92",
-    "docs/TYPE_SYSTEM.md": "305b7e6e10cde54b34b8c4bcc38e2d455932cd7df54696a9503e0229145a764e",
+    "docs/TYPE_SYSTEM.md": "75d25999ad21708385b58f5fa6b3a5dec94df4928a95025fcbdb846c2ad36efb",
     "examples/rust-shim/check.sh": "4cffb7e16d964122e2dff480f533cff5eacd0bd939a35fe5a71f71b447139500",
     "examples/wasm_arithmetic.kofun": "ea73b3ee6b5172a4c8080ed5b4540fb23288d31000dd6ccd59a473e97836c246",
     "spec/enum-match-exhaustiveness.md": "ac383d5cdc76a3d0817bc7cacb12a473c4b18d099551d2e9a098928cc4980f43",

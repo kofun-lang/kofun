@@ -42,6 +42,14 @@ It is never an anonymous expression language embedded at a use site.
 
 The selected profile is named `kofun.type-reduction/default-v1`.
 
+The last row is the one under active challenge. Issue #1130 requests a v2 that
+admits non-structural recursion under a per-declaration fuel budget, trading
+"checking terminates" for "non-termination is a bounded, attributable
+diagnostic" — the trade GHC (`UndecidableInstances` plus `-freduction-depth`)
+and TypeScript (its instantiation-depth limit) both arrived at in practice.
+This document is not amended by that request: it records what v1 selected, and
+a supersession requires the versioned specification change described below.
+
 ## Haskell reference points
 
 Kofun adopts five lessons from Haskell/GHC without copying its full type

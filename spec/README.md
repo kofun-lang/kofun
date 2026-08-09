@@ -55,7 +55,12 @@ executable bootstrap implementation.
   not that it ships.
 - `type-level-programming-v1.md` defines the Type-only, named, structurally
   terminating type-function profile, its fixed reduction/display budgets, and
-  the requirement that type-level features ship with inspectable traces.
+  the requirement that type-level features ship with inspectable traces. No
+  compiler implements the profile, and `task type-reduction-trace` gates the
+  trace contract rather than any reducer. V1 rejects Turing-complete type
+  computation as a language goal; #1130 is the open request to supersede that
+  row with a fuel-bounded v2, so the rejection is the current accepted answer
+  and not a closed question.
 - `effects/validation-accumulation.md` defines the accumulating validation
   contract for issue #742: three result states, independent combination that
   collects every issue in deterministic source order, dependent sequencing
