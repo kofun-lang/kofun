@@ -2,7 +2,8 @@
 
 - Shepherd: hjosugi
 - Opened: 2026-08-02
-- Status: proposed
+- Status: accepted
+- Decided: 2026-08-09
 
 ## Summary
 
@@ -507,7 +508,7 @@ What will prove the *decided* behaviour is #942's `E370` fixture. This proposal
 claims no implementation, and its ledger row carries none.
 
 Nothing in this document is in force. The ledger row is `proposed` with
-`opened_on: 2026-08-02` and `review_closed_on: 2026-08-16` and deliberately no
+`opened_on: 2026-08-02` and deliberately no closing date and no
 `decided_on`, which `tests/rfc/validate-registry.mjs` requires of a proposal
 under review. The decision is recorded separately, on or after the day review
 closes, and #995 stays open until then — so neither #942's blocker nor #31's

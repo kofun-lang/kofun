@@ -585,13 +585,15 @@
       "id": "RFC-0001",
       "title": "Allocator choice is a scoped, effect-tracked capability",
       "provenance": "rfc",
-      "state": "proposed",
+      "state": "accepted",
       "shepherd": "hjosugi",
       "source": "rfcs/0001-allocator-capability.md",
       "document": "rfcs/0001-allocator-capability.md",
       "proposal": "https://github.com/kofun-lang/kofun/issues/573",
       "dates": {
-        "opened_on": "2026-08-01"
+        "opened_on": "2026-08-01",
+        "review_closed_on": "2026-08-09",
+        "decided_on": "2026-08-09"
       },
       "normative_spec": [
         "rfcs/0001-allocator-capability.md"
@@ -629,13 +631,15 @@
       "id": "RFC-0003",
       "title": "Scoped parallelism uses lexical spawn/join ownership",
       "provenance": "rfc",
-      "state": "proposed",
+      "state": "accepted",
       "shepherd": "hjosugi",
       "source": "rfcs/0003-scoped-parallelism.md",
       "document": "rfcs/0003-scoped-parallelism.md",
       "proposal": "https://github.com/kofun-lang/kofun/issues/555",
       "dates": {
-        "opened_on": "2026-08-02"
+        "opened_on": "2026-08-02",
+        "review_closed_on": "2026-08-09",
+        "decided_on": "2026-08-09"
       },
       "normative_spec": [
         "rfcs/0003-scoped-parallelism.md",
@@ -674,13 +678,15 @@
       "id": "RFC-0005",
       "title": "A trait or type member scope is closed under direct declaration",
       "provenance": "rfc",
-      "state": "proposed",
+      "state": "accepted",
       "shepherd": "hjosugi",
       "source": "rfcs/0005-trait-member-scope-closure.md",
       "document": "rfcs/0005-trait-member-scope-closure.md",
       "proposal": "https://github.com/kofun-lang/kofun/issues/995",
       "dates": {
-        "opened_on": "2026-08-02"
+        "opened_on": "2026-08-02",
+        "review_closed_on": "2026-08-09",
+        "decided_on": "2026-08-09"
       },
       "normative_spec": [
         "rfcs/0005-trait-member-scope-closure.md"
