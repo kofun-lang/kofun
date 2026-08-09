@@ -346,8 +346,12 @@ do
         sed -n 's/^error\[\([^]]*\)\].*/\1/p' "$expected" |
             sed -n '1p'
     )
+    # The Stage 2 language-error bands. `E3xx` joined them when RFC-0005
+    # allocated `E370` for the member scope; a band left out here drops
+    # silently out of the census rather than failing, which is how a
+    # companion could change code and take itself out of this check.
     case $companion_code in
-        E2S*|E007) ;;
+        E2S*|E007|E3[0-9][0-9]) ;;
         *) continue ;;
     esac
     repository_error_cases=$((repository_error_cases + 1))
