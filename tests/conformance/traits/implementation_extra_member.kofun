@@ -1,0 +1,12 @@
+trait Equal[T] {
+    fn equal(left: T, right: T) -> Bool
+}
+
+impl Equal[Int] for Int {
+    fn equal(left: Int, right: Int) -> Bool {
+        return true
+    }
+    fn extra(value: Int) -> Bool {
+        return true
+    }
+}

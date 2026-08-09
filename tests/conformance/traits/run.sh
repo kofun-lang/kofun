@@ -113,8 +113,36 @@ implementations=$(grep -c '^implementation|' "$WORK/positive.first.ir")
 test "$dictionaries" -eq "$implementations" ||
     fail "expected one dictionary per implementation, found $dictionaries for $implementations"
 entries=$(grep -c '^dictionary-entry|' "$WORK/positive.first.ir")
-test "$entries" -eq "$dictionaries" ||
-    fail "expected one slot entry per one-method dictionary, found $entries for $dictionaries"
+slots=$(sed -n 's/^dictionary|.*|slots=\([0-9][0-9]*\)|.*/\1/p' \
+    "$WORK/positive.first.ir" | awk '{ total += $1 } END { print total + 0 }')
+test "$entries" -eq "$slots" ||
+    fail "expected one slot entry per declared slot, found $entries for $slots"
+
+# A trait may declare more than one member. The implementation writes them in
+# the opposite order, so matching by name rather than by position is what the
+# slot table has to prove: slot 0 holds the first declared member whichever
+# order it was implemented in, and the second member is reachable through the
+# same dictionary parameter as the first.
+"$WORK/kofun-traits-frontend" "$CASES/two_members.kofun" \
+    "$WORK/two_members.ir" "$WORK/two_members.tokens" ||
+    fail 'a trait with two members was refused'
+grep -F 'slots=2|slot-methods=method:trait:local:Ordered:0,method:trait:local:Ordered:1' \
+    "$WORK/two_members.ir" >/dev/null ||
+    fail 'the two-member descriptor is missing its ordered slot table'
+grep -F '|slot=0|method=method:trait:local:Ordered:0|implementation-method=equal' \
+    "$WORK/two_members.ir" >/dev/null ||
+    fail 'slot 0 is not filled by the member of that name'
+grep -F '|slot=1|method=method:trait:local:Ordered:1|implementation-method=before' \
+    "$WORK/two_members.ir" >/dev/null ||
+    fail 'slot 1 is not filled by the member of that name'
+grep -F 'caller=function:earlier|method=method:trait:local:Ordered:1' \
+    "$WORK/two_members.ir" >/dev/null ||
+    fail 'the second member is not reachable from a bounded call'
+grep -F 'method-slot=1' "$WORK/two_members.ir" >/dev/null ||
+    fail 'a call to the second member did not record its slot'
+two_member_entries=$(grep -c '^dictionary-entry|' "$WORK/two_members.ir")
+test "$two_member_entries" -eq 2 ||
+    fail "expected two slot entries, found $two_member_entries"
 
 # A DictionaryId is its ImplementationId with the `impl:` tag replaced and the
 # `/decl=N` ordinal dropped. Deriving one field from the other and comparing
@@ -176,6 +204,9 @@ failures='
 blanket_implementation:E2S132
 default_method:E2S132
 duplicate_trait:E2S127
+implementation_duplicate_member:E2S127
+implementation_extra_member:E2S127
+implementation_missing_member:E2S127
 inherited_member_source:E2S127
 member_name_collision:E2S127
 method_arity_mismatch:E2S128
@@ -357,6 +388,8 @@ printf '%s\n' \
     'PASS: the #403 orphan rule admits and refuses exactly its cases' \
     'PASS: bound resolution yields one implementation or a stable diagnostic' \
     'PASS: dictionary descriptors, values, parameters, and arguments elaborate' \
+    'PASS: two members fill their slots by name, in declared order, and both dispatch' \
+    'PASS: a missing, unknown, or twice-written implementation member is refused' \
     'PASS: each DictionaryId derives from its ImplementationId and ignores order' \
     'PASS: a member collision and an inherited member source are both refused' \
     'PASS: typed-only boundaries, GCC analyzer, and ASan/UBSan remain clean'

@@ -616,8 +616,9 @@ same-line return that contains the element. It does not claim full inference,
 borrow lifetimes, `take` call resolution, or collection code generation.
 
 The trait frontend is bounded in the same deliberate way. `traits_frontend.c`
-accepts one-method traits with one type parameter, concrete implementations,
-and generic functions carrying exactly one explicit non-recursive bound. Inside
+accepts traits with one type parameter and any number of members, concrete
+implementations supplying them, and generic functions carrying exactly one
+explicit non-recursive bound. Inside
 that shape it is complete: it assigns `TraitId`, `MethodId`, and
 `ImplementationId`, checks method signatures after substitution, enforces the
 coherence and orphan rules `docs/TYPE_SYSTEM.md` records, and writes the
