@@ -377,7 +377,11 @@ rejected as a goal. Higher-kinded and effectful type computation is deferred,
 not refused: it needs separate kind, capability, and evidence decisions.
 
 [`spec/type-level-programming-v1.md`](../spec/type-level-programming-v1.md) is
-normative.
+normative. No compiler implements the profile, which is what makes the
+rejection cheap to revisit: #1130 asks to supersede it with a v2 admitting
+non-structural recursion under a fuel budget, so non-termination becomes a
+bounded diagnostic rather than a hang. Until that is accepted, this decision
+stands as written.
 
 ## DD-032: `trait`, with a local-trait-or-local-outer-type orphan rule
 
