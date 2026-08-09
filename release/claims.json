@@ -72,7 +72,7 @@
       "public_status": "bounded stage-1 generator; raw and trusted, not safe",
       "state": "checkpoint",
       "area": "interop",
-      "bounded_capability": "One self-contained C header becomes raw `extern \"C\"` declarations in the checked C ABI profile plus a machine-readable audit report, deterministically and with the interpretation context pinned by a digest. Sizes, alignments, field offsets, enum values, and the calling convention are verified against the C compiler rather than recorded from the generator's own arithmetic. Constructs outside the profile — macros, variadics, unions, bitfields, flexible arrays, inline functions, explicit calling conventions — are reported with a reason and never bound. Generated code is marked `raw-trusted-foreign` and is not safe: pointer ownership, lifetime, thread affinity, callback duration, and error conventions are recorded as unreviewed review rows, not checked. Arbitrary C is not supported, a safe facade is hand-written reviewed work, and `kofun migrate-c` does not exist.",
+      "bounded_capability": "One self-contained C header becomes raw `extern \"C\"` declarations in the checked C ABI profile plus a machine-readable audit report, deterministically and with the interpretation context pinned by a digest. Sizes, alignments, field offsets, enum values, and the calling convention are verified against the C compiler rather than recorded from the generator's own arithmetic. Constructs outside the profile \u2014 macros, variadics, unions, bitfields, flexible arrays, inline functions, explicit calling conventions \u2014 are reported with a reason and never bound. Generated code is marked `raw-trusted-foreign` and is not safe: pointer ownership, lifetime, thread affinity, callback duration, and error conventions are recorded as unreviewed review rows, not checked. Arbitrary C is not supported, a safe facade is hand-written reviewed work, and `kofun migrate-c` does not exist.",
       "targets": [
         "host-c",
         "linux-x86_64"
@@ -458,6 +458,10 @@
         "spec/semantics.md"
       ],
       "compatibility": "The pre-existing arithmetic, Bool, nested-block, loop, Text, Text-equality-only, and List corpora remain byte-identical because the extended host runtime is emitted only when one of its new shims is used. The profile runtime declares its `unicode/` include dependency. The seed pair changes together, its digest records the change, and every corpus differentials both compiler paths.",
+      "manifest_gates": [
+        "python_free_bootstrap",
+        "stage1_compiles_fixture"
+      ],
       "positive_gate": {
         "command": "sh bootstrap/stage1/check.sh",
         "observation": "The audited C seed accepts and executes one corpus covering all 15 typed profile builtins, both `len` overloads, argv/file I/O, Text operations, character predicates, Unicode validation, and stdout. All 30 builtin arity/type boundary rows exit nonzero and write no C, while the older corpora remain byte-identical."
@@ -559,6 +563,50 @@
       }
     },
     {
+      "id": "diverse-double-compilation",
+      "public_wording": "diverse double compilation",
+      "public_status": "two unrelated host C compilers build Kofun compilers that emit byte-identical C; independent reproduction (B6) stays open",
+      "state": "checkpoint",
+      "area": "bootstrap",
+      "bounded_capability": "Two unrelated host C compilers each build a Kofun compiler, and the two emit byte-identical C and agree on every driver corpus case, so a payload carried by one host toolchain cannot survive unnoticed. Both chains run on one machine, one libc, one kernel and one checkout, so a payload below the C compiler is shared by both and is invisible here; independent reproduction by a builder that did not produce the evidence is #274 and remains open.",
+      "targets": [
+        "host-c",
+        "selfhost"
+      ],
+      "specification": [
+        "docs/SELF_HOSTING.md"
+      ],
+      "compatibility": "The promise is agreement between two diverse host C compilers on this machine, not reproduction across machines, libcs, or kernels.",
+      "manifest_gates": [
+        "diverse_double_compilation"
+      ],
+      "positive_gate": {
+        "command": "task selfhost-diverse-double-compilation",
+        "observation": "Both toolchains' compilers emit byte-identical C and agree on the driver corpus."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": "bootstrap/selfhost/check-diverse-double-compilation-refusals.sh",
+        "observation": "A divergence between the two chains fails the gate instead of being reported as agreement."
+      },
+      "safety": {
+        "classification": "refusal-boundary",
+        "threat_model": "docs/SECURITY.md",
+        "negative_test": "bootstrap/selfhost/check-diverse-double-compilation-refusals.sh"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "task selfhost-diverse-double-compilation",
+        "prerequisites": [
+          "cc",
+          "gcc",
+          "clang"
+        ]
+      }
+    },
+    {
       "id": "documentation-index",
       "public_wording": "typed-sidecar documentation index",
       "public_status": "bounded KIF-filtered projection: canonical public and exact-package internal declaration views with explicit partial/stale trust and atomic publication",
@@ -613,6 +661,9 @@
         "docs/NATIVE_BACKEND.md"
       ],
       "compatibility": "Emitted images are byte-deterministic for a given source and target.",
+      "manifest_gates": [
+        "native_elf64_exit_fixture"
+      ],
       "positive_gate": {
         "command": "sh bootstrap/native/check.sh",
         "observation": "A static ELF64 image is written and executes."
@@ -1225,6 +1276,10 @@
         "docs/SELF_HOSTING.md"
       ],
       "compatibility": "Byte reproduction is promised for the documented host toolchain, not across arbitrary compilers.",
+      "manifest_gates": [
+        "seed_hash_verification",
+        "stage1_builds_from_seed"
+      ],
       "positive_gate": {
         "command": "sh bootstrap/stage1/check.sh",
         "observation": "Regeneration reproduces the checked-in Stage 1 artifact and its digest."
@@ -1299,6 +1354,12 @@
         "docs/SELF_HOSTING.md"
       ],
       "compatibility": "The fixed point covers the frozen bootstrap profile; widening it to the full language, and independent reproduction (B6), remain release-note events.",
+      "manifest_gates": [
+        "selfhost_source_profile",
+        "stage1_self_recompile",
+        "generated_c_three_generation_equivalence",
+        "stage1_stage2_artifact_equivalence"
+      ],
       "positive_gate": {
         "command": "task selfhost-fixed-point",
         "observation": "A2 compiles canonical S into a C3 byte-identical to C2 and rebuilds an A3 byte-identical to A2, twice in normalized clean directories, with all 45 driver corpus cases agreeing across A1 and A3 in emitted C, stdout, stderr, and exit status."
@@ -1443,6 +1504,9 @@
         "docs/COMPILER_ARCHITECTURE.md"
       ],
       "compatibility": "The accepted source set is the integer Core; growth is gated by conformance cases.",
+      "manifest_gates": [
+        "stage2_frontend_round_trip"
+      ],
       "positive_gate": {
         "command": "sh bootstrap/stage2/check.sh",
         "observation": "Integer Core sources lex, parse, lower and execute."
@@ -1559,6 +1623,9 @@
         "docs/NATIVE_BACKEND.md"
       ],
       "compatibility": "Success and errno-failure behaviour are both gated; silent failure is not permitted.",
+      "manifest_gates": [
+        "syscall_file_round_trip_execution"
+      ],
       "positive_gate": {
         "command": "sh stdlib/tests/verify.sh",
         "observation": "The file round-trip succeeds and returns the written bytes."
@@ -1595,6 +1662,9 @@
         "docs/ROADMAP.md"
       ],
       "compatibility": "The contract is source-level; signatures are gated but the surface is still growing.",
+      "manifest_gates": [
+        "syscall_stdlib_source_contract"
+      ],
       "positive_gate": {
         "command": "sh stdlib/tests/verify.sh",
         "observation": "The declared syscall and stdlib contracts check and execute."

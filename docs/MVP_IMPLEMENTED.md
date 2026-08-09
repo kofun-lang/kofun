@@ -9,6 +9,7 @@
 | build/run/check/test CLI | Core only | `tests/cli.sh` | `cli-commands` |
 | explicit skip reporting and coverage | implemented | `kofun test` | `test-skip-reporting` |
 | semantic compiler self-recompile | three-generation fixed point reached for the frozen profile: C2 == C3 and A2 == A3 byte for byte | `task selfhost-fixed-point` | `self-recompile` |
+| diverse double compilation | two unrelated host C compilers build Kofun compilers that emit byte-identical C; independent reproduction (B6) stays open | `task selfhost-diverse-double-compilation` | `diverse-double-compilation` |
 | Stage 2 lexer, parser, and integer Core lowering | checkpoint implemented | `bootstrap/stage2/check.sh` | `stage2-core-lowering` |
 | Stage 2 semantic tooling output | bounded compiler-derived KSE projects one-way into canonical non-authoritative typed-sidecar v1 for explicit single-file `kofun check`; compiler/KIF/cache consumers remain forbidden | `task stage2-events`, `task typed-sidecar-projector` | `stage2-typed-sidecar` |
 | compiled visibility interfaces | bounded Stage 2 KIF v2: exact resolved flat-nominal function/payload refs and parameter labels; public/internal/private leak rejection; atomic public/internal filtering | `task visibility-filtering`, `task visibility-api-leaks`, `task module-interface-artifact` | `compiled-visibility-interfaces` |

@@ -4,12 +4,13 @@
   "version": "0.4.0-seed",
   "inputs": {
     "VERSION": "60eee96ee38418a0ef903b570d0d12ce2d82ea79f129cc2c6c1245a072c04349",
-    "release/claims.json": "adb9479689a3d099dcc4f7af8eede353f1751c8977e2a467fa6fd80870ef71b6",
-    "spec/release-claim.schema.json": "8cf649858ac955e79ef2e05a5cd01d5234b6b1d87b2fd64a998e2a9ec6af3485"
+    "release/claims.json": "bc84f661f804c73e0abf8696b6d6b907db1ffbedaf17eead58cf22671ac15765",
+    "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
+    "bootstrap/manifest.json": "dcd68eae1df996fe216e27d7b3c875a4d0b7c877b897165e2fc76b87c8238adc"
   },
   "states": {
     "implemented": 9,
-    "checkpoint": 34,
+    "checkpoint": 35,
     "design": 1,
     "open": 3
   },
@@ -219,6 +220,23 @@
       "reproduction": "task fuzz",
       "prerequisites": [
         "cc"
+      ]
+    },
+    {
+      "id": "diverse-double-compilation",
+      "state": "checkpoint",
+      "area": "bootstrap",
+      "targets": [
+        "host-c",
+        "selfhost"
+      ],
+      "positive_gate": "task selfhost-diverse-double-compilation",
+      "negative_boundary": "bootstrap/selfhost/check-diverse-double-compilation-refusals.sh",
+      "reproduction": "task selfhost-diverse-double-compilation",
+      "prerequisites": [
+        "cc",
+        "gcc",
+        "clang"
       ]
     },
     {
@@ -673,6 +691,7 @@
     "Taskfile.yml": "0f6d2f6d54600b8a139118df5a8ec04103262fd89ba0d13ad65e7a5fa20cc91e",
     "bootstrap/native/check.sh": "fea94cb623757e1bf17e4497f43d656b1e8ff57a39a92ece871d8ff257c0f2ef",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
+    "bootstrap/selfhost/check-diverse-double-compilation-refusals.sh": "55fc39166070b9bc612fca6898086938b1a8ca122b1c1fb8e928f1a5d4cde572",
     "bootstrap/selfhost/driver/corpus_builtin_rejects.tsv": "b1fa0b26247581aef797a81880554a94233a34109215530641706d76777087d4",
     "bootstrap/selfhost/driver/corpus_reject.kofun": "2593f52fbcf8237c4e3f6cdf1302115e7ef0d42a4b9133456e001edfc721adec",
     "bootstrap/selfhost/driver/corpus_reject.stdout": "b11ae682acae186b10022c3469af65b54cd03c2e88a4756eba1cbe5b0e9356f9",
@@ -690,7 +709,7 @@
     "docs/LAW_SYSTEM.md": "b974f0ad762bec778ee76afa5d0a2176423ac96a3a583739eee55dcb8dca5043",
     "docs/LINGUIST_RECOGNITION.md": "279f9afa7157c90e41d656974c2f5020f8b6d25acbbd389ee760efbb2d6d6166",
     "docs/MEMORY_MODEL.md": "1da0ddfe263d6c399ee6c8b511a03d10580052e1802c48dd2d30e6a57332b56d",
-    "docs/MVP_IMPLEMENTED.md": "9029d258339b86bc6226e18f3b39341512c1fe3ae82626d23ee503d9545daf7b",
+    "docs/MVP_IMPLEMENTED.md": "07c0632c44a52002963a54f114819d2af2196d4be3881edb0ec4bc25d1d2fb1b",
     "docs/NATIVE_BACKEND.md": "ab16b7bc6ae59071f9ae73c6fafde44732c887d122bb711104eb231297680bfe",
     "docs/ROADMAP.md": "5c52f3fc44a429b788f02d71787b3bdcc215647a5a1cfaf3fdd28e318260411a",
     "docs/RUST_CRATE_SHIMS.md": "4365b064cbc9a05733710d3a609c1db2623b28cb9ed4ba0e48536e35f9d58c47",

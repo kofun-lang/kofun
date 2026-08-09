@@ -152,6 +152,35 @@ const MUTATIONS = {
             manifest.areas = manifest.areas.filter((area) => area !== 'native')
         },
     },
+
+    // The #1108 incident, reproduced from the side this file can reach. The
+    // original ran the other way — `bootstrap/manifest.json` flipped three
+    // B4/B5 keys to `working` while the claim went on saying the fixed point
+    // was open — but the contradiction the checker sees is the same one, and
+    // it is symmetric: a claim that does not rest on executable evidence may
+    // not name a bootstrap gate that passes.
+    'manifest-gate-contradiction': {
+        blame: 'general-native-lowering',
+        apply(manifest) {
+            find(manifest, 'general-native-lowering').manifest_gates =
+                ['diverse_double_compilation']
+        },
+    },
+    // A key that no longer exists is a join that silently stopped joining.
+    'unknown-manifest-gate': {
+        blame: 'self-recompile',
+        apply(manifest) {
+            find(manifest, 'self-recompile').manifest_gates = ['a_gate_nobody_declares']
+        },
+    },
+    // And a bootstrap gate no claim names is a status nobody has to keep true,
+    // which is how `diverse_double_compilation` reached `working` unpublished.
+    'unjoined-manifest-gate': {
+        blame: 'bootstrap/manifest.json',
+        apply(manifest) {
+            delete find(manifest, 'diverse-double-compilation').manifest_gates
+        },
+    },
 }
 
 function find(manifest, id) {

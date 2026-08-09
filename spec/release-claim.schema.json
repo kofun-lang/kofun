@@ -292,6 +292,16 @@
         "evidence_artifact": {
           "$ref": "#/$defs/evidenceArtifact"
         },
+        "manifest_gates": {
+          "description": "Gate keys in bootstrap/manifest.json whose status this claim depends on. validate-claims.mjs requires each named key to exist and its status to agree with this claim's state, so flipping a bootstrap gate without moving the claim it describes fails the gate instead of drifting silently.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]+$"
+          }
+        },
         "safety": {
           "$ref": "#/$defs/safety"
         },
