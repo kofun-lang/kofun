@@ -123,7 +123,6 @@ run_backend() (
 
     passed=0
     failed=0
-    skipped=0
     total=0
     built=0
     refused=0
@@ -324,8 +323,15 @@ run_backend() (
     fi
 
     executed=$((passed + failed))
+    # The skip field is a literal, and the format is shared with `bin/kofun`,
+    # which does count per-case skips. This runner has none to count: an
+    # unsupported target is declared per corpus in capabilities.tsv and never
+    # reaches a case, and a missing executor is reported as UNAVAILABLE. A
+    # variable here would imply a measurement that is never taken, which is how
+    # `0 explicitly skipped` came to read as an observation rather than a
+    # constant. spec/backend-differential-contract.md pins the same literal.
     printf '%s\n' \
-        "$passed passed; $failed failed; $skipped explicitly skipped" \
+        "$passed passed; $failed failed; 0 explicitly skipped" \
         "coverage: $executed/$total cases executed by $BACKEND_NAME"
     if test "$refused" -ne 0; then
         printf '%s\n' \
