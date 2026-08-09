@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 28,
+  "open_issues": 29,
   "issues": [
     {
       "number": 26,
@@ -680,57 +680,9 @@
         {
           "agent_id": "codex-prune-930-child-preservation-20260808",
           "status": "released"
-        }
-      ]
-    },
-    {
-      "number": 942,
-      "title": "Member-scope duplicates: methods, associated values, and inherited or default members",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "9fc27d8da59aa4d5ba92e24d7e76bd05be575257"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-refresh-942-20260808",
-          "status": "active"
         },
         {
-          "agent_id": "codex-refresh-942-20260808",
-          "status": "released"
-        },
-        {
-          "agent_id": "claude-942-member-scope-20260809",
-          "status": "active"
-        }
-      ]
-    },
-    {
-      "number": 988,
-      "title": "RFC: choose the derive v1 expansion authority and inspection contract",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "041816f714eb82ed72e4a773c0112ed87f71b93b"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-988-rfc-audit-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-988-rfc-audit-20260808",
-          "status": "released"
-        },
-        {
-          "agent_id": "claude-988-derive-rfc-20260809",
+          "agent_id": "claude-930-alloc-seed-20260809",
           "status": "active"
         }
       ]
@@ -755,24 +707,6 @@
       "blocked_by": [],
       "evidence_commits": [
         "4695608b88cf173436ae3ea523358f7db1071297"
-      ]
-    },
-    {
-      "number": 1114,
-      "title": "B6 slice 1: declare every reproduction input and fail closed on drift",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "4695608b88cf173436ae3ea523358f7db1071297"
-      ],
-      "claims": [
-        {
-          "agent_id": "claude-1114-declared-inputs-20260809",
-          "status": "active"
-        }
       ]
     },
     {
@@ -810,6 +744,52 @@
           "status": "released"
         }
       ]
+    },
+    {
+      "number": 1127,
+      "title": "Executable slice: mutable List[Int] bindings block every in-place algorithm (E2S157)",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "b8aeca7b4db8a93f0c5e4d4e3665fd17f60a02bb"
+      ]
+    },
+    {
+      "number": 1128,
+      "title": "Executable slice: iterative while over an indexed List[Int] (E2S10) — binary search does not run",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "b8aeca7b4db8a93f0c5e4d4e3665fd17f60a02bb"
+      ]
+    },
+    {
+      "number": 1129,
+      "title": "kotest reports byte offsets into the generated unit, not the source file",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "b8aeca7b4db8a93f0c5e4d4e3665fd17f60a02bb"
+      ]
+    },
+    {
+      "number": 1130,
+      "title": "Type-level programming v2: accept Turing-complete type computation, bounded by fuel rather than structure",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": []
     }
   ]
 }
