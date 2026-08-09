@@ -144,6 +144,17 @@ tasks:
     cmds:
       - "sh bootstrap/selfhost/check-fixed-point.sh build/{{.NAMESPACE}}selfhost-fixed-point build/{{.NAMESPACE}}selfhost-generations"
 
+  # The acquisition set an independent builder needs, and the refusal that
+  # keeps it honest. This is the producer-owned half of B6 (#1114); the
+  # reproduction by a builder that did not produce the evidence stays #274.
+  selfhost-declared-inputs:
+    desc: "Declare every reproduction input and refuse missing, altered, or extra ones"
+    vars:
+      NAMESPACE: '{{if .KOFUN_GATE_WORK_NAMESPACE}}{{.KOFUN_GATE_WORK_NAMESPACE}}/{{end}}'
+    cmds:
+      - "sh bootstrap/selfhost/declare-inputs.sh build/{{.NAMESPACE}}selfhost-inputs"
+      - "sh bootstrap/selfhost/check-declared-inputs.sh build/{{.NAMESPACE}}selfhost-inputs"
+
   selfhost-frontend:
     desc: "Gate #619 typed-frontend evidence (all 46 cells)"
     cmds:
@@ -793,6 +804,7 @@ tasks:
             selfhost-c11-control \
             selfhost-generations \
             selfhost-fixed-point \
+            selfhost-declared-inputs \
             selfhost-native \
             stage2 \
             stage2-events \
