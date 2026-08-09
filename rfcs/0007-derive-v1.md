@@ -173,8 +173,9 @@ same file beyond the two rules above.
 | `E383` | the same derive named twice on one type | the derive and both attribute spans |
 | `E384` | a generated declaration colliding with an existing one | both declarations and both spans, in canonical order, with the remedy being to remove one |
 
-`E385`–`E389` stay unallocated in this band. `E370`–`E372` are RFC-0005's and
-`E390`+ are unclaimed.
+`E385`–`E389` stay unallocated in this band. `E370`–`E372` are RFC-0005's,
+`E390`–`E393` are RFC-0008's, `E394`–`E401` are RFC-0009's, and `E402`+ are
+unclaimed.
 
 ## Ownership and effects
 

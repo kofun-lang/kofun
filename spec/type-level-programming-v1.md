@@ -383,3 +383,27 @@ Every proposal that adds or changes a type-level form must state:
 
 A proposal without bounded reduction and inspectable named traces is
 incomplete and cannot be described as implemented.
+
+Two proposals currently answer this checklist, and both are `proposed` in the
+decision ledger — neither amends this document:
+
+- [`rfcs/0008-type-level-general-v2.md`](../rfcs/0008-type-level-general-v2.md)
+  ([#1130](https://github.com/kofun-lang/kofun/issues/1130)) owns the
+  termination axis. It proposes a `type fn general` cost class reduced under a
+  second named profile whose limits are versioned language semantics, so a
+  non-structural recursion is refused with an attributable diagnostic instead
+  of being unspellable.
+- [`rfcs/0009-type-level-kinds-v1.md`](../rfcs/0009-type-level-kinds-v1.md)
+  ([#1133](https://github.com/kofun-lang/kofun/issues/1133)) owns the kind
+  axis. It proposes `Nat`, `Symbol`, and `Bool` as type-level data beside
+  `Type`, keeping the structural termination discipline this document fixes
+  and adding a third named profile, because the 32-frame limit above — not
+  the step budget — is what a scalar-by-scalar descent over a string reaches
+  first.
+
+They are separable, and the split is deliberate: the Type-only restriction and
+the structural-termination restriction block different programs, so accepting
+either one alone is a different language than accepting both. Neither is an
+implementation-defined knob: each proposal's limits belong to its named
+profile and version with it, which is the property the row above calls
+deterministic checking.
