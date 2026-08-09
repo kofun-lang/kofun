@@ -410,9 +410,13 @@ do
 done <"$WORK/plain/repository-error-companions"
 # Optional coalescing adds six exact compile-time refusal companions and
 # retires its one former construction refusal: 303 + 6 - 1 = 308. #1103 adds
-# nineteen exact List signature/lambda/ownership boundary companions.
-test "$repository_error_cases" -eq 327 ||
-    fail "expected all 327 repository error companions, saw $repository_error_cases"
+# nineteen exact List signature/lambda/ownership boundary companions. #1107
+# retires one: `list-int-signatures/labelled_argument` refused a labelled
+# List[Int] argument and now executes it, so the census is 327 - 1 = 326. A
+# widening that makes a refusal executable is expected to move this count;
+# leaving it would keep asserting a boundary the compiler no longer has.
+test "$repository_error_cases" -eq 326 ||
+    fail "expected all 326 repository error companions, saw $repository_error_cases"
 
 # Project-owned valid Stage 2 profiles cover functions, value control, concrete
 # enums, nested lexical scopes, and shadowing.  Producer and compiler must both
