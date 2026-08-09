@@ -55,6 +55,25 @@ test "$(grep -Fxc '        return true' "$CASES/equal_int.kofun")" -eq 1 ||
     fail 'the fixed C11 callback no longer matches the fixture method body'
 
 for pass in first second; do
+    "$WORK/kofun-traits-frontend" "$CASES/ordered_int.kofun" \
+        "$WORK/ordered_int.$pass.ir" "$WORK/ordered_int.$pass.tokens" \
+        >"$WORK/ordered-producer.$pass.stdout" \
+        2>"$WORK/ordered-producer.$pass.stderr"
+    test ! -s "$WORK/ordered-producer.$pass.stdout" ||
+        fail "ordered producer $pass pass wrote stdout"
+    test ! -s "$WORK/ordered-producer.$pass.stderr" ||
+        fail "ordered producer $pass pass wrote stderr"
+done
+cmp "$WORK/ordered_int.first.ir" "$WORK/ordered_int.second.ir" ||
+    fail 'repeated Ordered[Int] trait IR differs'
+cmp "$WORK/ordered_int.first.tokens" "$WORK/ordered_int.second.tokens" ||
+    fail 'repeated Ordered[Int] token tape differs'
+cmp "$CASES/ordered_int.ir" "$WORK/ordered_int.first.ir" ||
+    fail 'Ordered[Int] typed IR differs from its golden'
+test "$(grep -Fxc '        return true' "$CASES/ordered_int.kofun")" -eq 2 ||
+    fail 'the two fixed C11 callbacks no longer match the fixture method bodies'
+
+for pass in first second; do
     "$WORK/kofun-traits-dictionary-c11" "$WORK/equal_int.first.ir" \
         >"$WORK/consumer.$pass.stdout" 2>"$WORK/consumer.$pass.stderr"
     cmp "$CASES/equal_int.stdout" "$WORK/consumer.$pass.stdout" ||
@@ -65,6 +84,19 @@ done
 cmp "$WORK/consumer.first.stdout" "$WORK/consumer.second.stdout" ||
     fail 'repeated C11 observations differ'
 
+for pass in first second; do
+    "$WORK/kofun-traits-dictionary-c11" "$WORK/ordered_int.first.ir" \
+        >"$WORK/ordered-consumer.$pass.stdout" \
+        2>"$WORK/ordered-consumer.$pass.stderr"
+    cmp "$CASES/ordered_int.stdout" "$WORK/ordered-consumer.$pass.stdout" ||
+        fail "ordered consumer $pass observation differs"
+    test ! -s "$WORK/ordered-consumer.$pass.stderr" ||
+        fail "ordered consumer $pass wrote stderr"
+done
+cmp "$WORK/ordered-consumer.first.stdout" \
+    "$WORK/ordered-consumer.second.stdout" ||
+    fail 'repeated two-slot C11 observations differ'
+
 "$WORK/kofun-traits-dictionary-c11-sanitize" \
     "$WORK/equal_int.first.ir" >"$WORK/sanitize.stdout" \
     2>"$WORK/sanitize.stderr"
@@ -72,6 +104,14 @@ cmp "$CASES/equal_int.stdout" "$WORK/sanitize.stdout" ||
     fail 'sanitized C11 observation differs'
 test ! -s "$WORK/sanitize.stderr" ||
     fail 'sanitized C11 execution wrote stderr'
+
+"$WORK/kofun-traits-dictionary-c11-sanitize" \
+    "$WORK/ordered_int.first.ir" >"$WORK/ordered-sanitize.stdout" \
+    2>"$WORK/ordered-sanitize.stderr"
+cmp "$CASES/ordered_int.stdout" "$WORK/ordered-sanitize.stdout" ||
+    fail 'sanitized two-slot C11 observation differs'
+test ! -s "$WORK/ordered-sanitize.stderr" ||
+    fail 'sanitized two-slot C11 execution wrote stderr'
 
 expect_refusal() {
     stem=$1
@@ -89,7 +129,7 @@ expect_refusal() {
 
 sed 's#^dictionary|dictionary-id=dictionary:abi1/#dictionary|dictionary-id=dictionary:abi2/#' \
     "$WORK/equal_int.first.ir" >"$WORK/wrong-identity.ir"
-expect_refusal wrong-identity "field 'dictionary-id' is 'dictionary:abi2/"
+expect_refusal wrong-identity "has no dictionary selected by dictionary-id='dictionary:abi2/"
 
 sed 's/|slots=1|slot-methods=/|slots=2|slot-methods=/' \
     "$WORK/equal_int.first.ir" >"$WORK/wrong-slot-count.ir"
@@ -97,7 +137,23 @@ expect_refusal wrong-slot-count "field 'slots' is '2', expected '1'"
 
 sed '/^dictionary-entry|/d' "$WORK/equal_int.first.ir" \
     >"$WORK/missing-entry.ir"
-expect_refusal missing-entry 'profile must contain exactly one trait/method/dictionary/bound/dispatch, two type parameters/functions, and 14 records'
+expect_refusal missing-entry \
+    "Equal[Int] profile is missing dictionary-entry selected by slot='0'"
+
+sed '/^dictionary-entry|.*|slot=1|/d' "$WORK/ordered_int.first.ir" \
+    >"$WORK/ordered-missing-slot-1.ir"
+expect_refusal ordered-missing-slot-1 \
+    "Ordered[Int] profile is missing dictionary-entry selected by slot='1'"
+
+sed '/^dictionary-entry|.*|slot=1|/s/|slot=1|/|slot=0|/' \
+    "$WORK/ordered_int.first.ir" >"$WORK/ordered-duplicate-slot.ir"
+expect_refusal ordered-duplicate-slot \
+    "duplicate dictionary-entry selected by slot='0'"
+
+sed '/^dictionary-descriptor|/s#slot-methods=method:trait:local:Ordered:0,method:trait:local:Ordered:1#slot-methods=method:trait:local:Ordered:1,method:trait:local:Ordered:0#' \
+    "$WORK/ordered_int.first.ir" >"$WORK/ordered-slot-order.ir"
+expect_refusal ordered-slot-order \
+    "field 'slot-methods' is 'method:trait:local:Ordered:1,method:trait:local:Ordered:0', expected 'method:trait:local:Ordered:0,method:trait:local:Ordered:1'"
 
 sed 's#|dictionary-arguments=dictionary:abi1/#|dictionary-arguments=dictionary:abi2/#' \
     "$WORK/equal_int.first.ir" >"$WORK/wrong-argument.ir"
@@ -141,11 +197,12 @@ expect_refusal extra-equals-span "field 'span' is '0..58=writer', expected '0..5
 
 awk '{ print; if ($0 ~ /^method\|/) print }' "$WORK/equal_int.first.ir" \
     >"$WORK/duplicate-method.ir"
-expect_refusal duplicate-method 'profile must contain exactly one trait/method/dictionary/bound/dispatch, two type parameters/functions, and 14 records'
+expect_refusal duplicate-method \
+    "duplicate method selected by method-id='method:trait:local:Equal:0'"
 
 awk '{ print; if ($0 ~ /^bound\|/) print }' "$WORK/equal_int.first.ir" \
     >"$WORK/extra-bound.ir"
-expect_refusal extra-bound 'profile must contain exactly one trait/method/dictionary/bound/dispatch, two type parameters/functions, and 14 records'
+expect_refusal extra-bound "duplicate bound selected by owner='function:same'"
 
 awk 'NR < 15 { print } NR == 15 { printf "%s", $0 }' \
     "$WORK/equal_int.first.ir" >"$WORK/truncated.ir"

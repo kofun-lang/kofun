@@ -1,0 +1,7 @@
+profile=trait-dictionary-c11/v2
+dictionary-id=dictionary:abi1/package:local/trait:local:Ordered/args=builtin:Int/self=builtin:Int
+same-method-slot=0
+same[Int](7,9)=true
+earlier-method-slot=1
+earlier[Int](7,9)=true
+dispatch-count=2

@@ -1,11 +1,11 @@
 /*
- * Bounded C11 consumer for the one-method Equal[Int] dictionary profile.
+ * Bounded C11 consumer for two deliberately closed Int dictionary profiles.
  *
- * The general trait frontend remains a typed-IR producer.  This consumer
- * validates one deliberately closed kofun-traits-ir/v2 shape and then
- * executes the already-elaborated dictionary argument/parameter/slot wiring.
- * It does not lower arbitrary method bodies, generic layouts, vtables, or
- * runtime instance search.
+ * The general trait frontend remains a typed-IR producer. This consumer
+ * validates either the one-method Equal[Int] profile or the two-method
+ * Ordered[Int] profile, then executes the already-elaborated dictionary
+ * parameter and slot wiring. It does not lower arbitrary method bodies,
+ * generic layouts, vtables, or runtime instance search.
  */
 
 #include <stdbool.h>
@@ -17,22 +17,8 @@
 #define LINE_LIMIT 2048u
 #define RECORD_LIMIT 64u
 #define PROFILE_FIELD_LIMIT 16u
+#define EXPECTED_RECORD_LIMIT 24u
 #define ARRAY_COUNT(values) (sizeof(values) / sizeof((values)[0]))
-
-static const char *const TRAIT_ID = "trait:local:Equal";
-static const char *const METHOD_ID = "method:trait:local:Equal:0";
-static const char *const DESCRIPTOR_ID =
-    "dictionary-descriptor:abi1/trait:local:Equal";
-static const char *const IMPLEMENTATION_ID =
-    "impl:abi1/package:local/trait:local:Equal/args=builtin:Int/"
-    "self=builtin:Int/decl=0";
-static const char *const DICTIONARY_ID =
-    "dictionary:abi1/package:local/trait:local:Equal/args=builtin:Int/"
-    "self=builtin:Int";
-static const char *const TYPE_PARAMETER_ID =
-    "type-parameter:function:same:0";
-static const char *const DICTIONARY_PARAMETER_ID =
-    "dictionary-parameter:function:same:0";
 
 static const char *const TRAIT_FIELDS[] = {
     "trait-id", "name", "package", "type-parameters", "methods", "span"
@@ -83,34 +69,227 @@ typedef enum {
     FIELD_INVALID
 } FieldStatus;
 
+typedef enum {
+    PROFILE_EQUAL_INT,
+    PROFILE_ORDERED_INT
+} ProfileKind;
+
 typedef struct {
+    const char *selector_key;
+    const char *selector_value;
+    const char *line;
+} ExpectedRecord;
+
+typedef struct {
+    ProfileKind kind;
+    const char *name;
+    const char *trait_id;
+    const ExpectedRecord *records;
+    size_t record_count;
+} ProfileSpec;
+
+typedef struct {
+    const ProfileSpec *spec;
     size_t records;
-    size_t traits;
-    size_t type_parameters;
-    size_t methods;
-    size_t descriptors;
-    size_t implementations;
-    size_t dictionaries;
-    size_t entries;
-    size_t functions;
-    size_t bounds;
-    size_t dictionary_parameters;
-    size_t method_calls;
-    size_t calls;
-    bool trait_type_parameter;
-    bool function_type_parameter;
-    bool same_function;
-    bool use_int_function;
+    bool seen[EXPECTED_RECORD_LIMIT];
     char implementation_id[512];
     char dictionary_id[512];
 } Profile;
 
-typedef bool (*EqualIntMethod)(int64_t left, int64_t right);
+#define EXPECTED(key, value, record) {key, value, record}
+
+static const ExpectedRecord EQUAL_INT_RECORDS[] = {
+    EXPECTED("trait-id", "trait:local:Equal",
+        "trait|trait-id=trait:local:Equal|name=Equal|package=local|"
+        "type-parameters=1|methods=1|span=0..58"),
+    EXPECTED("type-parameter-id", "type-parameter:trait:local:Equal:0",
+        "type-parameter|type-parameter-id=type-parameter:trait:local:Equal:0|"
+        "owner=trait:local:Equal|name=T|index=0|span=12..13"),
+    EXPECTED("type-parameter-id", "type-parameter:function:same:0",
+        "type-parameter|type-parameter-id=type-parameter:function:same:0|"
+        "owner=function:same|name=T|index=0|span=169..170"),
+    EXPECTED("method-id", "method:trait:local:Equal:0",
+        "method|method-id=method:trait:local:Equal:0|owner=trait:local:Equal|"
+        "name=equal|slot=0|parameters=2|result=builtin:Bool|span=21..56"),
+    EXPECTED("descriptor-id", "dictionary-descriptor:abi1/trait:local:Equal",
+        "dictionary-descriptor|descriptor-id=dictionary-descriptor:abi1/"
+        "trait:local:Equal|trait=trait:local:Equal|abi=abi1|slots=1|"
+        "slot-methods=method:trait:local:Equal:0|span=0..58"),
+    EXPECTED("implementation-id",
+        "impl:abi1/package:local/trait:local:Equal/args=builtin:Int/"
+        "self=builtin:Int/decl=0",
+        "implementation|implementation-id=impl:abi1/package:local/"
+        "trait:local:Equal/args=builtin:Int/self=builtin:Int/decl=0|"
+        "trait=trait:local:Equal|type-arguments=builtin:Int|"
+        "self-type=builtin:Int|method=equal|span=60..159"),
+    EXPECTED("dictionary-id",
+        "dictionary:abi1/package:local/trait:local:Equal/args=builtin:Int/"
+        "self=builtin:Int",
+        "dictionary|dictionary-id=dictionary:abi1/package:local/"
+        "trait:local:Equal/args=builtin:Int/self=builtin:Int|descriptor="
+        "dictionary-descriptor:abi1/trait:local:Equal|implementation="
+        "impl:abi1/package:local/trait:local:Equal/args=builtin:Int/"
+        "self=builtin:Int/decl=0|trait=trait:local:Equal|"
+        "self-type=builtin:Int|slots=1|span=60..159"),
+    EXPECTED("slot", "0",
+        "dictionary-entry|dictionary=dictionary:abi1/package:local/"
+        "trait:local:Equal/args=builtin:Int/self=builtin:Int|slot=0|"
+        "method=method:trait:local:Equal:0|implementation-method=equal|"
+        "span=93..129"),
+    EXPECTED("function-id", "function:same",
+        "function|function-id=function:same|name=same|type-parameters=1|"
+        "parameters=2|result=builtin:Bool|span=161..248"),
+    EXPECTED("function-id", "function:use_int",
+        "function|function-id=function:use_int|name=use_int|type-parameters=0|"
+        "parameters=2|result=builtin:Bool|span=250..329"),
+    EXPECTED("owner", "function:same",
+        "bound|owner=function:same|type-parameter="
+        "type-parameter:function:same:0|trait=trait:local:Equal|"
+        "type-arguments=type-parameter:function:same:0|span=170..180"),
+    EXPECTED("dictionary-parameter-id", "dictionary-parameter:function:same:0",
+        "dictionary-parameter|dictionary-parameter-id="
+        "dictionary-parameter:function:same:0|owner=function:same|index=0|"
+        "descriptor=dictionary-descriptor:abi1/trait:local:Equal|"
+        "discharges-bound=type-parameter:function:same:0|"
+        "trait=trait:local:Equal|span=170..180"),
+    EXPECTED("caller", "function:same",
+        "method-call|caller=function:same|method=method:trait:local:Equal:0|"
+        "via-bound=type-parameter:function:same:0|dictionary-parameter="
+        "dictionary-parameter:function:same:0|method-slot=0|"
+        "value-arguments=2|result=builtin:Bool|use-span=222..246"),
+    EXPECTED("caller", "function:use_int",
+        "call|caller=function:use_int|callee=function:same|"
+        "type-arguments=builtin:Int|value-arguments=2|result=builtin:Bool|"
+        "selected-implementation=impl:abi1/package:local/trait:local:Equal/"
+        "args=builtin:Int/self=builtin:Int/decl=0|dictionary-arguments="
+        "dictionary:abi1/package:local/trait:local:Equal/args=builtin:Int/"
+        "self=builtin:Int|dictionary-parameter="
+        "dictionary-parameter:function:same:0|use-span=305..327|"
+        "declaration-span=161..248")
+};
+
+static const ExpectedRecord ORDERED_INT_RECORDS[] = {
+    EXPECTED("trait-id", "trait:local:Ordered",
+        "trait|trait-id=trait:local:Ordered|name=Ordered|package=local|"
+        "type-parameters=1|methods=2|span=0..103"),
+    EXPECTED("type-parameter-id", "type-parameter:trait:local:Ordered:0",
+        "type-parameter|type-parameter-id=type-parameter:trait:local:Ordered:0|"
+        "owner=trait:local:Ordered|name=T|index=0|span=14..15"),
+    EXPECTED("type-parameter-id", "type-parameter:function:same:0",
+        "type-parameter|type-parameter-id=type-parameter:function:same:0|"
+        "owner=function:same|name=T|index=0|span=291..292"),
+    EXPECTED("type-parameter-id", "type-parameter:function:earlier:0",
+        "type-parameter|type-parameter-id=type-parameter:function:earlier:0|"
+        "owner=function:earlier|name=T|index=0|span=387..388"),
+    EXPECTED("method-id", "method:trait:local:Ordered:0",
+        "method|method-id=method:trait:local:Ordered:0|"
+        "owner=trait:local:Ordered|name=equal|slot=0|parameters=2|"
+        "result=builtin:Bool|span=23..58"),
+    EXPECTED("method-id", "method:trait:local:Ordered:1",
+        "method|method-id=method:trait:local:Ordered:1|"
+        "owner=trait:local:Ordered|name=before|slot=1|parameters=2|"
+        "result=builtin:Bool|span=63..101"),
+    EXPECTED("descriptor-id", "dictionary-descriptor:abi1/trait:local:Ordered",
+        "dictionary-descriptor|descriptor-id=dictionary-descriptor:abi1/"
+        "trait:local:Ordered|trait=trait:local:Ordered|abi=abi1|slots=2|"
+        "slot-methods=method:trait:local:Ordered:0,"
+        "method:trait:local:Ordered:1|span=0..103"),
+    EXPECTED("implementation-id",
+        "impl:abi1/package:local/trait:local:Ordered/args=builtin:Int/"
+        "self=builtin:Int/decl=0",
+        "implementation|implementation-id=impl:abi1/package:local/"
+        "trait:local:Ordered/args=builtin:Int/self=builtin:Int/decl=0|"
+        "trait=trait:local:Ordered|type-arguments=builtin:Int|"
+        "self-type=builtin:Int|method=before,equal|span=105..281"),
+    EXPECTED("dictionary-id",
+        "dictionary:abi1/package:local/trait:local:Ordered/args=builtin:Int/"
+        "self=builtin:Int",
+        "dictionary|dictionary-id=dictionary:abi1/package:local/"
+        "trait:local:Ordered/args=builtin:Int/self=builtin:Int|descriptor="
+        "dictionary-descriptor:abi1/trait:local:Ordered|implementation="
+        "impl:abi1/package:local/trait:local:Ordered/args=builtin:Int/"
+        "self=builtin:Int/decl=0|trait=trait:local:Ordered|"
+        "self-type=builtin:Int|slots=2|span=105..281"),
+    EXPECTED("slot", "0",
+        "dictionary-entry|dictionary=dictionary:abi1/package:local/"
+        "trait:local:Ordered/args=builtin:Int/self=builtin:Int|slot=0|"
+        "method=method:trait:local:Ordered:0|implementation-method=equal|"
+        "span=215..251"),
+    EXPECTED("slot", "1",
+        "dictionary-entry|dictionary=dictionary:abi1/package:local/"
+        "trait:local:Ordered/args=builtin:Int/self=builtin:Int|slot=1|"
+        "method=method:trait:local:Ordered:1|implementation-method=before|"
+        "span=140..179"),
+    EXPECTED("function-id", "function:same",
+        "function|function-id=function:same|name=same|type-parameters=1|"
+        "parameters=2|result=builtin:Bool|span=283..374"),
+    EXPECTED("function-id", "function:earlier",
+        "function|function-id=function:earlier|name=earlier|type-parameters=1|"
+        "parameters=2|result=builtin:Bool|span=376..475"),
+    EXPECTED("owner", "function:same",
+        "bound|owner=function:same|type-parameter="
+        "type-parameter:function:same:0|trait=trait:local:Ordered|"
+        "type-arguments=type-parameter:function:same:0|span=292..304"),
+    EXPECTED("owner", "function:earlier",
+        "bound|owner=function:earlier|type-parameter="
+        "type-parameter:function:earlier:0|trait=trait:local:Ordered|"
+        "type-arguments=type-parameter:function:earlier:0|span=388..400"),
+    EXPECTED("dictionary-parameter-id", "dictionary-parameter:function:same:0",
+        "dictionary-parameter|dictionary-parameter-id="
+        "dictionary-parameter:function:same:0|owner=function:same|index=0|"
+        "descriptor=dictionary-descriptor:abi1/trait:local:Ordered|"
+        "discharges-bound=type-parameter:function:same:0|"
+        "trait=trait:local:Ordered|span=292..304"),
+    EXPECTED("dictionary-parameter-id",
+        "dictionary-parameter:function:earlier:0",
+        "dictionary-parameter|dictionary-parameter-id="
+        "dictionary-parameter:function:earlier:0|owner=function:earlier|"
+        "index=0|descriptor=dictionary-descriptor:abi1/trait:local:Ordered|"
+        "discharges-bound=type-parameter:function:earlier:0|"
+        "trait=trait:local:Ordered|span=388..400"),
+    EXPECTED("caller", "function:same",
+        "method-call|caller=function:same|"
+        "method=method:trait:local:Ordered:0|"
+        "via-bound=type-parameter:function:same:0|dictionary-parameter="
+        "dictionary-parameter:function:same:0|method-slot=0|"
+        "value-arguments=2|result=builtin:Bool|use-span=346..372"),
+    EXPECTED("caller", "function:earlier",
+        "method-call|caller=function:earlier|"
+        "method=method:trait:local:Ordered:1|"
+        "via-bound=type-parameter:function:earlier:0|dictionary-parameter="
+        "dictionary-parameter:function:earlier:0|method-slot=1|"
+        "value-arguments=2|result=builtin:Bool|use-span=444..473")
+};
+
+static const ProfileSpec PROFILE_SPECS[] = {
+    {
+        PROFILE_EQUAL_INT,
+        "Equal[Int]",
+        "trait:local:Equal",
+        EQUAL_INT_RECORDS,
+        ARRAY_COUNT(EQUAL_INT_RECORDS)
+    },
+    {
+        PROFILE_ORDERED_INT,
+        "Ordered[Int]",
+        "trait:local:Ordered",
+        ORDERED_INT_RECORDS,
+        ARRAY_COUNT(ORDERED_INT_RECORDS)
+    }
+};
+
+typedef bool (*IntMethod)(int64_t left, int64_t right);
 
 typedef struct {
     const char *identity;
-    EqualIntMethod slot0;
+    IntMethod slot0;
 } EqualIntDictionary;
+
+typedef struct {
+    const char *identity;
+    IntMethod slot0;
+    IntMethod slot1;
+} OrderedIntDictionary;
 
 static size_t dispatch_count;
 
@@ -255,7 +434,8 @@ static bool require_field(
     }
     if (strcmp(value, expected) != 0) {
         snprintf(diagnostic, sizeof(diagnostic),
-            "field '%s' is '%s', expected '%s'", key, value, expected);
+            "field '%.96s' is '%.400s', expected '%.400s'",
+            key, value, expected);
         return reject(line_number, diagnostic);
     }
     return true;
@@ -275,6 +455,154 @@ static bool copy_field(
         status == FIELD_MISSING ? "missing field '%s'" :
         "duplicate, empty, or oversized field '%s'", key);
     return reject(line_number, diagnostic);
+}
+
+static bool fields_for_kind(
+    const char *kind,
+    const char *const **fields,
+    size_t *field_count
+) {
+#define SELECT_FIELDS(record_kind_name, values) \
+    if (strcmp(kind, record_kind_name) == 0) { \
+        *fields = values; \
+        *field_count = ARRAY_COUNT(values); \
+        return true; \
+    }
+    SELECT_FIELDS("trait", TRAIT_FIELDS)
+    SELECT_FIELDS("type-parameter", TYPE_PARAMETER_FIELDS)
+    SELECT_FIELDS("method", METHOD_FIELDS)
+    SELECT_FIELDS("dictionary-descriptor", DESCRIPTOR_FIELDS)
+    SELECT_FIELDS("implementation", IMPLEMENTATION_FIELDS)
+    SELECT_FIELDS("dictionary", DICTIONARY_FIELDS)
+    SELECT_FIELDS("dictionary-entry", ENTRY_FIELDS)
+    SELECT_FIELDS("function", FUNCTION_FIELDS)
+    SELECT_FIELDS("bound", BOUND_FIELDS)
+    SELECT_FIELDS("dictionary-parameter", DICTIONARY_PARAMETER_FIELDS)
+    SELECT_FIELDS("method-call", METHOD_CALL_FIELDS)
+    SELECT_FIELDS("call", CALL_FIELDS)
+#undef SELECT_FIELDS
+    return false;
+}
+
+static bool select_profile(Profile *profile, const char *line, size_t number) {
+    char trait_id[256];
+    if (!copy_field(line, number, "trait-id", trait_id, sizeof(trait_id))) {
+        return false;
+    }
+    for (size_t index = 0u; index < ARRAY_COUNT(PROFILE_SPECS); ++index) {
+        if (strcmp(trait_id, PROFILE_SPECS[index].trait_id) == 0) {
+            if (PROFILE_SPECS[index].record_count > EXPECTED_RECORD_LIMIT) {
+                return reject(0u, "internal expected record limit is too small");
+            }
+            profile->spec = &PROFILE_SPECS[index];
+            return true;
+        }
+    }
+    return reject(number, "trait is outside the closed C11 profiles");
+}
+
+static bool validate_expected_fields(
+    const ExpectedRecord *expected,
+    const char *line,
+    size_t number,
+    const char *const *fields,
+    size_t field_count
+) {
+    for (size_t index = 0u; index < field_count; ++index) {
+        char value[768];
+        if (field_value(expected->line, fields[index], value,
+                sizeof(value)) != FIELD_PRESENT) {
+            return reject(0u, "internal expected record is malformed");
+        }
+        if (!require_field(line, number, fields[index], value)) return false;
+    }
+    return true;
+}
+
+static bool validate_record(Profile *profile, const char *line, size_t number) {
+    char kind[64];
+    const char *const *fields;
+    size_t field_count;
+    const char *selector_key = NULL;
+    char selector_value[768];
+    size_t match = 0u;
+    bool found = false;
+    char diagnostic[1024];
+
+    if (!record_kind(line, kind, sizeof(kind))) {
+        return reject(number, "missing or oversized record kind");
+    }
+    profile->records += 1u;
+    if (profile->records > RECORD_LIMIT) {
+        return reject(number, "profile exceeds 64 records");
+    }
+    if (!fields_for_kind(kind, &fields, &field_count)) {
+        return reject(number, "record kind is outside the closed C11 profiles");
+    }
+    if (!validate_fields(line, number, kind, fields, field_count)) return false;
+    if (profile->spec == NULL) {
+        if (strcmp(kind, "trait") != 0) {
+            return reject(number, "the trait record must identify the profile first");
+        }
+        if (!select_profile(profile, line, number)) return false;
+    }
+
+    for (size_t index = 0u; index < profile->spec->record_count; ++index) {
+        char expected_kind[64];
+        const ExpectedRecord *candidate = &profile->spec->records[index];
+        if (!record_kind(candidate->line, expected_kind,
+                sizeof(expected_kind))) {
+            return reject(0u, "internal expected record kind is malformed");
+        }
+        if (strcmp(kind, expected_kind) != 0) continue;
+        if (selector_key == NULL) {
+            selector_key = candidate->selector_key;
+            if (!copy_field(line, number, selector_key, selector_value,
+                    sizeof(selector_value))) {
+                return false;
+            }
+        }
+        if (strcmp(selector_key, candidate->selector_key) != 0) {
+            return reject(0u, "internal record selectors are inconsistent");
+        }
+        if (strcmp(selector_value, candidate->selector_value) == 0) {
+            match = index;
+            found = true;
+            break;
+        }
+    }
+    if (selector_key == NULL) {
+        snprintf(diagnostic, sizeof(diagnostic),
+            "%s profile does not admit record kind '%s'",
+            profile->spec->name, kind);
+        return reject(number, diagnostic);
+    }
+    if (!found) {
+        snprintf(diagnostic, sizeof(diagnostic),
+            "%s profile has no %s selected by %s='%s'",
+            profile->spec->name, kind, selector_key, selector_value);
+        return reject(number, diagnostic);
+    }
+    if (profile->seen[match]) {
+        snprintf(diagnostic, sizeof(diagnostic),
+            "duplicate %s selected by %s='%s'", kind, selector_key,
+            selector_value);
+        return reject(number, diagnostic);
+    }
+    if (!validate_expected_fields(&profile->spec->records[match], line,
+            number, fields, field_count)) {
+        return false;
+    }
+    profile->seen[match] = true;
+    if (strcmp(kind, "implementation") == 0) {
+        return copy_field(line, number, "implementation-id",
+            profile->implementation_id, sizeof(profile->implementation_id));
+    }
+    if (strcmp(kind, "dictionary") == 0) {
+        return copy_field(line, number, "dictionary-id",
+            profile->dictionary_id, sizeof(profile->dictionary_id));
+    }
+    return true;
 }
 
 static bool derive_dictionary_id(
@@ -311,296 +639,50 @@ static bool derive_dictionary_id(
     return true;
 }
 
-static bool validate_trait(Profile *profile, const char *line, size_t number) {
-    profile->traits += 1u;
-    return require_field(line, number, "trait-id", TRAIT_ID) &&
-        require_field(line, number, "name", "Equal") &&
-        require_field(line, number, "package", "local") &&
-        require_field(line, number, "type-parameters", "1") &&
-        require_field(line, number, "methods", "1") &&
-        require_field(line, number, "span", "0..58");
-}
-
-static bool validate_type_parameter(
-    Profile *profile,
-    const char *line,
-    size_t number
-) {
-    char identity[256];
-    profile->type_parameters += 1u;
-    if (!copy_field(line, number, "type-parameter-id", identity,
-            sizeof(identity))) {
-        return false;
-    }
-    if (strcmp(identity, "type-parameter:trait:local:Equal:0") == 0) {
-        if (profile->trait_type_parameter) {
-            return reject(number, "duplicate Equal type parameter");
-        }
-        profile->trait_type_parameter = true;
-        return require_field(line, number, "owner", TRAIT_ID) &&
-            require_field(line, number, "name", "T") &&
-            require_field(line, number, "index", "0") &&
-            require_field(line, number, "span", "12..13");
-    }
-    if (strcmp(identity, TYPE_PARAMETER_ID) == 0) {
-        if (profile->function_type_parameter) {
-            return reject(number, "duplicate same type parameter");
-        }
-        profile->function_type_parameter = true;
-        return require_field(line, number, "owner", "function:same") &&
-            require_field(line, number, "name", "T") &&
-            require_field(line, number, "index", "0") &&
-            require_field(line, number, "span", "169..170");
-    }
-    return reject(number, "profile contains an unexpected type parameter");
-}
-
-static bool validate_method(Profile *profile, const char *line, size_t number) {
-    profile->methods += 1u;
-    return require_field(line, number, "method-id", METHOD_ID) &&
-        require_field(line, number, "owner", TRAIT_ID) &&
-        require_field(line, number, "name", "equal") &&
-        require_field(line, number, "slot", "0") &&
-        require_field(line, number, "parameters", "2") &&
-        require_field(line, number, "result", "builtin:Bool") &&
-        require_field(line, number, "span", "21..56");
-}
-
-static bool validate_descriptor(
-    Profile *profile,
-    const char *line,
-    size_t number
-) {
-    profile->descriptors += 1u;
-    return require_field(line, number, "descriptor-id", DESCRIPTOR_ID) &&
-        require_field(line, number, "trait", TRAIT_ID) &&
-        require_field(line, number, "abi", "abi1") &&
-        require_field(line, number, "slots", "1") &&
-        require_field(line, number, "slot-methods", METHOD_ID) &&
-        require_field(line, number, "span", "0..58");
-}
-
-static bool validate_implementation(
-    Profile *profile,
-    const char *line,
-    size_t number
-) {
-    profile->implementations += 1u;
-    return copy_field(line, number, "implementation-id",
-            profile->implementation_id,
-            sizeof(profile->implementation_id)) &&
-        require_field(line, number, "implementation-id", IMPLEMENTATION_ID) &&
-        require_field(line, number, "trait", TRAIT_ID) &&
-        require_field(line, number, "type-arguments", "builtin:Int") &&
-        require_field(line, number, "self-type", "builtin:Int") &&
-        require_field(line, number, "method", "equal") &&
-        require_field(line, number, "span", "60..159");
-}
-
-static bool validate_dictionary(
-    Profile *profile,
-    const char *line,
-    size_t number
-) {
-    profile->dictionaries += 1u;
-    return copy_field(line, number, "dictionary-id", profile->dictionary_id,
-            sizeof(profile->dictionary_id)) &&
-        require_field(line, number, "dictionary-id", DICTIONARY_ID) &&
-        require_field(line, number, "descriptor", DESCRIPTOR_ID) &&
-        require_field(line, number, "implementation", IMPLEMENTATION_ID) &&
-        require_field(line, number, "trait", TRAIT_ID) &&
-        require_field(line, number, "self-type", "builtin:Int") &&
-        require_field(line, number, "slots", "1") &&
-        require_field(line, number, "span", "60..159");
-}
-
-static bool validate_entry(Profile *profile, const char *line, size_t number) {
-    profile->entries += 1u;
-    return require_field(line, number, "dictionary", DICTIONARY_ID) &&
-        require_field(line, number, "slot", "0") &&
-        require_field(line, number, "method", METHOD_ID) &&
-        require_field(line, number, "implementation-method", "equal") &&
-        require_field(line, number, "span", "93..129");
-}
-
-static bool validate_function(Profile *profile, const char *line, size_t number) {
-    char name[64];
-    profile->functions += 1u;
-    if (!copy_field(line, number, "name", name, sizeof(name))) return false;
-    if (strcmp(name, "same") == 0) {
-        if (profile->same_function) {
-            return reject(number, "duplicate same function");
-        }
-        profile->same_function = true;
-        return require_field(line, number, "function-id", "function:same") &&
-            require_field(line, number, "type-parameters", "1") &&
-            require_field(line, number, "parameters", "2") &&
-            require_field(line, number, "result", "builtin:Bool") &&
-            require_field(line, number, "span", "161..248");
-    }
-    if (strcmp(name, "use_int") == 0) {
-        if (profile->use_int_function) {
-            return reject(number, "duplicate use_int function");
-        }
-        profile->use_int_function = true;
-        return require_field(line, number, "function-id", "function:use_int") &&
-            require_field(line, number, "type-parameters", "0") &&
-            require_field(line, number, "parameters", "2") &&
-            require_field(line, number, "result", "builtin:Bool") &&
-            require_field(line, number, "span", "250..329");
-    }
-    return reject(number, "profile contains a function other than same/use_int");
-}
-
-static bool validate_bound(Profile *profile, const char *line, size_t number) {
-    profile->bounds += 1u;
-    return require_field(line, number, "owner", "function:same") &&
-        require_field(line, number, "type-parameter", TYPE_PARAMETER_ID) &&
-        require_field(line, number, "trait", TRAIT_ID) &&
-        require_field(line, number, "type-arguments", TYPE_PARAMETER_ID) &&
-        require_field(line, number, "span", "170..180");
-}
-
-static bool validate_dictionary_parameter(
-    Profile *profile,
-    const char *line,
-    size_t number
-) {
-    profile->dictionary_parameters += 1u;
-    return require_field(line, number, "dictionary-parameter-id",
-            DICTIONARY_PARAMETER_ID) &&
-        require_field(line, number, "owner", "function:same") &&
-        require_field(line, number, "index", "0") &&
-        require_field(line, number, "descriptor", DESCRIPTOR_ID) &&
-        require_field(line, number, "discharges-bound", TYPE_PARAMETER_ID) &&
-        require_field(line, number, "trait", TRAIT_ID) &&
-        require_field(line, number, "span", "170..180");
-}
-
-static bool validate_method_call(
-    Profile *profile,
-    const char *line,
-    size_t number
-) {
-    profile->method_calls += 1u;
-    return require_field(line, number, "caller", "function:same") &&
-        require_field(line, number, "method", METHOD_ID) &&
-        require_field(line, number, "via-bound", TYPE_PARAMETER_ID) &&
-        require_field(line, number, "dictionary-parameter",
-            DICTIONARY_PARAMETER_ID) &&
-        require_field(line, number, "method-slot", "0") &&
-        require_field(line, number, "value-arguments", "2") &&
-        require_field(line, number, "result", "builtin:Bool") &&
-        require_field(line, number, "use-span", "222..246");
-}
-
-static bool validate_call(Profile *profile, const char *line, size_t number) {
-    profile->calls += 1u;
-    return require_field(line, number, "caller", "function:use_int") &&
-        require_field(line, number, "callee", "function:same") &&
-        require_field(line, number, "type-arguments", "builtin:Int") &&
-        require_field(line, number, "value-arguments", "2") &&
-        require_field(line, number, "result", "builtin:Bool") &&
-        require_field(line, number, "selected-implementation",
-            IMPLEMENTATION_ID) &&
-        require_field(line, number, "dictionary-arguments", DICTIONARY_ID) &&
-        require_field(line, number, "dictionary-parameter",
-            DICTIONARY_PARAMETER_ID) &&
-        require_field(line, number, "use-span", "305..327") &&
-        require_field(line, number, "declaration-span", "161..248");
-}
-
-static bool validate_record(
-    Profile *profile,
-    const char *line,
-    size_t number
-) {
-    char kind[64];
-    if (!record_kind(line, kind, sizeof(kind))) {
-        return reject(number, "missing or oversized record kind");
-    }
-    profile->records += 1u;
-    if (profile->records > RECORD_LIMIT) {
-        return reject(number, "profile exceeds 64 records");
-    }
-    if (strcmp(kind, "trait") == 0) {
-        if (!validate_fields(line, number, kind, TRAIT_FIELDS,
-                ARRAY_COUNT(TRAIT_FIELDS))) return false;
-        return validate_trait(profile, line, number);
-    }
-    if (strcmp(kind, "type-parameter") == 0) {
-        if (!validate_fields(line, number, kind, TYPE_PARAMETER_FIELDS,
-                ARRAY_COUNT(TYPE_PARAMETER_FIELDS))) return false;
-        return validate_type_parameter(profile, line, number);
-    }
-    if (strcmp(kind, "method") == 0) {
-        if (!validate_fields(line, number, kind, METHOD_FIELDS,
-                ARRAY_COUNT(METHOD_FIELDS))) return false;
-        return validate_method(profile, line, number);
-    }
-    if (strcmp(kind, "dictionary-descriptor") == 0) {
-        if (!validate_fields(line, number, kind, DESCRIPTOR_FIELDS,
-                ARRAY_COUNT(DESCRIPTOR_FIELDS))) return false;
-        return validate_descriptor(profile, line, number);
-    }
-    if (strcmp(kind, "implementation") == 0) {
-        if (!validate_fields(line, number, kind, IMPLEMENTATION_FIELDS,
-                ARRAY_COUNT(IMPLEMENTATION_FIELDS))) return false;
-        return validate_implementation(profile, line, number);
-    }
-    if (strcmp(kind, "dictionary") == 0) {
-        if (!validate_fields(line, number, kind, DICTIONARY_FIELDS,
-                ARRAY_COUNT(DICTIONARY_FIELDS))) return false;
-        return validate_dictionary(profile, line, number);
-    }
-    if (strcmp(kind, "dictionary-entry") == 0) {
-        if (!validate_fields(line, number, kind, ENTRY_FIELDS,
-                ARRAY_COUNT(ENTRY_FIELDS))) return false;
-        return validate_entry(profile, line, number);
-    }
-    if (strcmp(kind, "function") == 0) {
-        if (!validate_fields(line, number, kind, FUNCTION_FIELDS,
-                ARRAY_COUNT(FUNCTION_FIELDS))) return false;
-        return validate_function(profile, line, number);
-    }
-    if (strcmp(kind, "bound") == 0) {
-        if (!validate_fields(line, number, kind, BOUND_FIELDS,
-                ARRAY_COUNT(BOUND_FIELDS))) return false;
-        return validate_bound(profile, line, number);
-    }
-    if (strcmp(kind, "dictionary-parameter") == 0) {
-        if (!validate_fields(line, number, kind, DICTIONARY_PARAMETER_FIELDS,
-                ARRAY_COUNT(DICTIONARY_PARAMETER_FIELDS))) return false;
-        return validate_dictionary_parameter(profile, line, number);
-    }
-    if (strcmp(kind, "method-call") == 0) {
-        if (!validate_fields(line, number, kind, METHOD_CALL_FIELDS,
-                ARRAY_COUNT(METHOD_CALL_FIELDS))) return false;
-        return validate_method_call(profile, line, number);
-    }
-    if (strcmp(kind, "call") == 0) {
-        if (!validate_fields(line, number, kind, CALL_FIELDS,
-                ARRAY_COUNT(CALL_FIELDS))) return false;
-        return validate_call(profile, line, number);
-    }
-    return reject(number, "record kind is outside the Equal[Int] profile");
-}
-
 static bool validate_counts(const Profile *profile) {
-    if (profile->records != 14u || profile->traits != 1u ||
-        profile->type_parameters != 2u ||
-        profile->methods != 1u || profile->descriptors != 1u ||
-        profile->implementations != 1u || profile->dictionaries != 1u ||
-        profile->entries != 1u || profile->functions != 2u ||
-        profile->bounds != 1u ||
-        profile->dictionary_parameters != 1u ||
-        profile->method_calls != 1u || profile->calls != 1u ||
-        !profile->trait_type_parameter ||
-        !profile->function_type_parameter || !profile->same_function ||
-        !profile->use_int_function) {
-        return reject(0u,
-            "profile must contain exactly one trait/method/dictionary/bound/"
-            "dispatch, two type parameters/functions, and 14 records");
+    char diagnostic[1024];
+    if (profile->records != profile->spec->record_count) {
+        for (size_t index = 0u; index < profile->spec->record_count; ++index) {
+            if (!profile->seen[index]) {
+                char kind[64];
+                const ExpectedRecord *missing = &profile->spec->records[index];
+                if (!record_kind(missing->line, kind, sizeof(kind))) {
+                    return reject(0u, "internal expected record kind is malformed");
+                }
+                snprintf(diagnostic, sizeof(diagnostic),
+                    "%s profile is missing %s selected by %s='%s'",
+                    profile->spec->name, kind, missing->selector_key,
+                    missing->selector_value);
+                return reject(0u, diagnostic);
+            }
+        }
+        snprintf(diagnostic, sizeof(diagnostic),
+            "%s profile has %zu records, expected %zu", profile->spec->name,
+            profile->records, profile->spec->record_count);
+        return reject(0u, diagnostic);
+    }
+    for (size_t index = 0u; index < profile->spec->record_count; ++index) {
+        if (!profile->seen[index]) {
+            return reject(0u, "profile record accounting is inconsistent");
+        }
+    }
+    return true;
+}
+
+static bool preflight_record_limit(FILE *input) {
+    char line[LINE_LIMIT];
+    size_t lines = 0u;
+    while (fgets(line, sizeof(line), input) != NULL) {
+        lines += 1u;
+        if (lines > RECORD_LIMIT + 1u) {
+            return reject(0u, "profile exceeds 64 records");
+        }
+    }
+    if (ferror(input) != 0) {
+        return reject(0u, "failed while reading input IR");
+    }
+    if (fseek(input, 0L, SEEK_SET) != 0) {
+        return reject(0u, "cannot rewind input IR");
     }
     return true;
 }
@@ -611,6 +693,10 @@ static bool validate_profile(const char *path, Profile *profile) {
     size_t line_number = 0u;
     bool header = false;
     if (input == NULL) return reject(0u, "cannot open input IR");
+    if (!preflight_record_limit(input)) {
+        fclose(input);
+        return false;
+    }
 
     while (fgets(line, sizeof(line), input) != NULL) {
         size_t length;
@@ -643,6 +729,7 @@ static bool validate_profile(const char *path, Profile *profile) {
     }
     if (fclose(input) != 0) return reject(0u, "failed to close input IR");
     if (!header) return reject(0u, "input IR is empty");
+    if (profile->spec == NULL) return reject(0u, "profile contains no trait");
     if (!validate_counts(profile)) return false;
     {
         char derived[512];
@@ -665,6 +752,13 @@ static bool equal_int_profile(int64_t left, int64_t right) {
     return true;
 }
 
+static bool before_int_profile(int64_t left, int64_t right) {
+    (void)left;
+    (void)right;
+    dispatch_count += 1u;
+    return true;
+}
+
 static bool same_int(
     const EqualIntDictionary *dictionary,
     int64_t left,
@@ -673,17 +767,26 @@ static bool same_int(
     return dictionary->slot0(left, right);
 }
 
-int main(int argc, char **argv) {
-    Profile profile = {0};
+static bool ordered_same_int(
+    const OrderedIntDictionary *dictionary,
+    int64_t left,
+    int64_t right
+) {
+    return dictionary->slot0(left, right);
+}
+
+static bool earlier_int(
+    const OrderedIntDictionary *dictionary,
+    int64_t left,
+    int64_t right
+) {
+    return dictionary->slot1(left, right);
+}
+
+static int execute_equal_int(const Profile *profile) {
     EqualIntDictionary dictionary;
     bool result;
-    if (argc != 2) {
-        fprintf(stderr, "usage: traits_dictionary_c11 INPUT.ir\n");
-        return 2;
-    }
-    if (!validate_profile(argv[1], &profile)) return 1;
-
-    dictionary.identity = profile.dictionary_id;
+    dictionary.identity = profile->dictionary_id;
     dictionary.slot0 = equal_int_profile;
     result = same_int(&dictionary, 7, 9);
     if (!result || dispatch_count != 1u) {
@@ -697,4 +800,41 @@ int main(int argc, char **argv) {
     printf("same[Int](7,9)=%s\n", result ? "true" : "false");
     printf("dispatch-count=%zu\n", dispatch_count);
     return 0;
+}
+
+static int execute_ordered_int(const Profile *profile) {
+    OrderedIntDictionary dictionary;
+    bool same_result;
+    bool earlier_result;
+    dictionary.identity = profile->dictionary_id;
+    dictionary.slot0 = equal_int_profile;
+    dictionary.slot1 = before_int_profile;
+    same_result = ordered_same_int(&dictionary, 7, 9);
+    earlier_result = earlier_int(&dictionary, 7, 9);
+    if (!same_result || !earlier_result || dispatch_count != 2u) {
+        reject(0u, "two-slot dispatch produced an invalid observation");
+        return 1;
+    }
+
+    printf("profile=trait-dictionary-c11/v2\n");
+    printf("dictionary-id=%s\n", dictionary.identity);
+    printf("same-method-slot=0\n");
+    printf("same[Int](7,9)=%s\n", same_result ? "true" : "false");
+    printf("earlier-method-slot=1\n");
+    printf("earlier[Int](7,9)=%s\n", earlier_result ? "true" : "false");
+    printf("dispatch-count=%zu\n", dispatch_count);
+    return 0;
+}
+
+int main(int argc, char **argv) {
+    Profile profile = {0};
+    if (argc != 2) {
+        fprintf(stderr, "usage: traits_dictionary_c11 INPUT.ir\n");
+        return 2;
+    }
+    if (!validate_profile(argv[1], &profile)) return 1;
+    if (profile.spec->kind == PROFILE_EQUAL_INT) {
+        return execute_equal_int(&profile);
+    }
+    return execute_ordered_int(&profile);
 }
