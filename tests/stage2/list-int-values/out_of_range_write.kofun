@@ -1,0 +1,5 @@
+fn main() -> Int {
+    let mut values = [1, 2, 3]
+    values[3] = 9
+    return 0
+}

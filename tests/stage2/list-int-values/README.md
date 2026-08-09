@@ -4,12 +4,16 @@ This focused gate owns issue #919's local-value slice. It proves that both an
 explicit `List[Int]` annotation and an inferred integer-list literal reach the
 scope HIR, lower to one AggregateLayout v1 reference addressing an exact-size
 `u64 length` plus `Int` payload object, execute `len`, and perform positive,
-negative, and dynamic checked index reads.
+negative, and dynamic checked index reads. A mutable local uses the same
+fixed-capacity by-value carrier: assignment through positive, negative, and
+dynamic indices is bounds-checked before the right-hand side or write, and a
+copy initialized from another list cannot mutate its source.
 
 The capacity is 64 elements. A larger literal, a non-`Int` element or index,
-an out-of-range literal index, a mutable list, and any local list annotation
-other than exactly `List[Int]` fail compilation with `E2S157` and no C
-artifact. A dynamic out-of-range index exits 1 with `R023` before printing.
+an out-of-range literal index or write, a non-`Int` write value, and any local
+list annotation other than exactly `List[Int]` fail compilation with `E2S157`
+and no C artifact. Assignment through an immutable list fails with `E2S22`.
+A dynamic out-of-range read or write exits 1 with `R023` before printing.
 Direct top-level `List[Int]` parameters and results are covered by the
 separate `tests/stage2/list-int-signatures` gate. This local-value gate keeps
 the argument fixture that proves a list still cannot cross an `Int` parameter

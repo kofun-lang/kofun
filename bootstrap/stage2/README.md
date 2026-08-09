@@ -697,27 +697,31 @@ the `optional-narrowing` adapter. `E2S134`-`E2S141` are still unregistered:
 see the note in `tests/conformance/optional/README.md` for why the registry's
 completeness check cannot see codes emitted from a separate frontend.
 
-### Executable bounded `List[Int]` in the C11 slice (#919, #1103)
+### Executable bounded `List[Int]` in the C11 slice (#919, #1103, #1127)
 
-The ordinary Stage 2 path admits immutable `List[Int]` literals and locals up
-to 64 elements. The AggregateLayout view remains a checked `u64` length
-followed by contiguous `Int` payload bytes; `len` and positive, negative, or
-dynamic indexing use that view, with runtime `R023` on a dynamic out-of-range
-read.
+The ordinary Stage 2 path admits `List[Int]` literals and immutable or mutable
+locals up to 64 elements. The AggregateLayout view remains a checked `u64`
+length followed by contiguous `Int` payload bytes; `len` and positive,
+negative, or dynamic indexing use that view. Mutable locals also admit one
+standalone element-assignment statement. Reads and writes share their index
+normalization and bounds check, with runtime `R023` before a dynamic
+out-of-range read or before evaluating the right-hand side of a write.
 
 Direct top-level function signatures now carry the same bounded value (#1103).
 The generated ABI uses `KofunIntListValue`, a fixed-capacity structure passed
 and returned by value. A literal is copied into that carrier at its immutable
-local binding; whole bindings and same-typed calls may then cross direct
-function parameters/results without a heap allocation or pointer alias in the
-ABI. Calls containing a list parameter evaluate every list and companion `Int`
+or mutable local binding; whole bindings and same-typed calls may then cross
+direct function parameters/results without a heap allocation or pointer alias
+in the ABI. Copying into a mutable local therefore cannot mutate its source.
+Calls containing a list parameter evaluate every list and companion `Int`
 argument exactly once in written order through typed C11 temporary slots.
 
-This is not general list lowering. Direct literal arguments/returns, mutable
-lists, `List[Text]`, nested/general lists, indirect list calls, list fields in
-nominal records, non-C11 backends, variable capacities, and collection
-ownership inference remain refused. Labelled `List[Int]` calls do execute
-since #1107, through the same fixed-slot temporaries. The focused gates are
+This is not general list lowering. Direct literal arguments/returns, mutation
+through parameters or immutable bindings, assignment expressions,
+`List[Text]`, nested/general lists, indirect list calls, list fields in nominal
+records, non-C11 backends, variable capacities, and collection ownership
+inference remain refused. Labelled `List[Int]` calls do execute since #1107,
+through the same fixed-slot temporaries. The focused gates are
 `tests/stage2/list-int-values/run.sh` and
 `tests/stage2/list-int-signatures/run.sh`; the general list capability remains
 unsupported until the later #868 record-field increments land.
