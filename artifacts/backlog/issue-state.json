@@ -654,44 +654,6 @@
       ]
     },
     {
-      "number": 930,
-      "title": "Allocator seed: canonical `stdlib/alloc` contract and pinned Stage 2 projection (RFC-0001 stage 1)",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "4736fbf5e92375bdf6ce10ec63cf4164f65e5e9a"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-refresh-930-allocator-seed-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-refresh-930-allocator-seed-20260808",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-prune-930-child-preservation-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-prune-930-child-preservation-20260808",
-          "status": "released"
-        },
-        {
-          "agent_id": "claude-930-alloc-seed-20260809",
-          "status": "active"
-        },
-        {
-          "agent_id": "claude-930-alloc-seed-20260809",
-          "status": "pr-open"
-        }
-      ]
-    },
-    {
       "number": 1108,
       "title": "release-claims: join executable claim states to the bootstrap manifest gates they describe",
       "state_labels": [
@@ -793,7 +755,29 @@
       ],
       "state_line": "needs-decision",
       "blocked_by": [],
-      "evidence_commits": []
+      "evidence_commits": [],
+      "claims": [
+        {
+          "agent_id": "claude-fable-typelevel-v2",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "number": 1133,
+      "title": "Type-level kinds v1: Nat, Symbol, and Bool as type-level data",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": [],
+      "claims": [
+        {
+          "agent_id": "claude-fable-typelevel-v2",
+          "status": "active"
+        }
+      ]
     }
   ]
 }
