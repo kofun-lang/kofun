@@ -1,0 +1,21 @@
+trait Ordered[T] {
+    fn equal(left: T, right: T) -> Bool
+    fn before(first: T, second: T) -> Bool
+}
+
+impl Ordered[Int] for Int {
+    fn before(first: Int, second: Int) -> Bool {
+        return true
+    }
+    fn equal(left: Int, right: Int) -> Bool {
+        return true
+    }
+}
+
+fn same[T: Ordered[T]](left: T, right: T) -> Bool {
+    return Ordered.equal(left, right)
+}
+
+fn earlier[T: Ordered[T]](first: T, second: T) -> Bool {
+    return Ordered.before(first, second)
+}
