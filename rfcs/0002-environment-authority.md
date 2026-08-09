@@ -4,8 +4,8 @@
 - Opened: 2026-08-02
 - Status: proposed
 
-Proposal for [#569](https://github.com/kofun-lang/kofun/issues/569). Review is
-scheduled to close on 2026-08-16, the ledger's 14-day minimum. This document
+Proposal for [#569](https://github.com/kofun-lang/kofun/issues/569). Review opened with the ledger's announced window; it closes when the
+shepherd closes it, and the ledger records that day. This document
 specifies target semantics only. It does not claim that the compiler,
 runtime, standard library, package tooling, or documentation generator
 implements them.
@@ -609,7 +609,7 @@ not evidence produced here.
 | ID | Gate or artifact | Required evidence |
 |---|---|---|
 | R1 | `node tests/rfc/validate-registry.mjs schema` | ledger schema passes |
-| R2 | `node tests/rfc/validate-registry.mjs validate` | RFC-0002 is `proposed`, has a 14-day review window, no implementation record, and valid compatibility evidence |
+| R2 | `node tests/rfc/validate-registry.mjs validate` | RFC-0002 is `proposed`, carries no closing or decision date while proposed, no implementation record, and valid compatibility evidence |
 | R3 | `nix shell nixpkgs#go-task -c task rfc-registry` | focused registry gate passes without changing RFC-0001 |
 | C1 | `accept_environment_partition.kofun` | root derives `{API_HOST, DB_URL}`; partition yields two disjoint children; each reads only its key |
 | C2 | pinned forge/copy/serialize/widen/moved/escape negatives | each maps to the exact `E351`–`E355` code and message shape |
