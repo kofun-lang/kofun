@@ -2,10 +2,11 @@
 
 - Shepherd: hjosugi
 - Opened: 2026-08-01
-- Status: proposed
+- Status: accepted
+- Decided: 2026-08-09
 
-Proposal for [#573](https://github.com/kofun-lang/kofun/issues/573). Review is
-scheduled to close on 2026-08-15, the ledger's 14-day minimum.
+Proposal for [#573](https://github.com/kofun-lang/kofun/issues/573). Review opened with the ledger's announced window; it closes when the
+shepherd closes it, and the ledger records that day.
 
 ## Summary
 

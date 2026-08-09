@@ -2,11 +2,12 @@
 
 - Shepherd: hjosugi
 - Opened: 2026-08-02
-- Status: proposed
+- Status: accepted
+- Decided: 2026-08-09
 
 Proposal for [#907](https://github.com/kofun-lang/kofun/issues/907), the bounded
-child of [#570](https://github.com/kofun-lang/kofun/issues/570). Review is
-scheduled to close on 2026-08-16, the ledger's 14-day minimum. This proposal
+child of [#570](https://github.com/kofun-lang/kofun/issues/570). Review opened with the ledger's announced window; it closes when the
+shepherd closes it, and the ledger records that day. This proposal
 records target semantics only. No parser, checker, classifier, diagnostic,
 backend, standard-library type, or release capability is implemented by it, and
 `docs/MVP_IMPLEMENTED.md` continues to record general ownership checking as
@@ -701,7 +702,7 @@ not that any classification runs.
 
 | Layer | Command | Evidence |
 |---|---|---|
-| Ledger schema and semantics | `sh tests/rfc/check-registry.sh` | RFC-0004 is counted `proposed`, carries no implementation record, observes the 14-day window, and every mutation stays refused — including `proposed-claiming-a-decision-date`, which is why this row carries `opened_on` and `review_closed_on` and no `decided_on` |
+| Ledger schema and semantics | `sh tests/rfc/check-registry.sh` | RFC-0004 is counted `proposed`, carries no implementation record, carries `opened_on` alone while proposed, and every mutation stays refused — including `proposed-claiming-a-decision-date` and `proposed-claiming-a-closed-review`, which is why this row carries no closing or decision date |
 | Focused ledger gate | `task rfc-registry` | green with the new row and its review dates |
 | Diagnostics | `task diagnostics` | unchanged; `E360`–`E364` are proposed identifiers and are deliberately **not** registered by this RFC, because registering a code no emitter produces would be a claim of behaviour |
 | Claim boundary | `task release-claims` | unchanged; no capability claim gained or lost |

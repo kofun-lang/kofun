@@ -19,7 +19,7 @@
       "minimum": 1
     },
     "review_period_days": {
-      "description": "Minimum calendar days a native proposal stays open before it may be decided.",
+      "description": "The review window a native proposal is announced with, in calendar days. Guidance for shepherds, not a gate: review closes when the shepherd closes it, and `review_closed_on` records the day that happened.",
       "type": "integer",
       "minimum": 1
     },
@@ -82,12 +82,15 @@
       "additionalProperties": false,
       "properties": {
         "opened_on": {
+          "description": "The day the proposal opened for review. A recorded fact, never a schedule.",
           "$ref": "#/$defs/date"
         },
         "review_closed_on": {
+          "description": "The day the shepherd closed review. Absent while the row is `proposed`, because a review that has not closed has no closing day, and writing the intended one would make a schedule indistinguishable from a fact.",
           "$ref": "#/$defs/date"
         },
         "decided_on": {
+          "description": "The day the disposition was recorded, on or after `review_closed_on`. Absent while the row is `proposed`.",
           "$ref": "#/$defs/date"
         },
         "recorded_on": {

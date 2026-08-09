@@ -164,7 +164,15 @@ export function validateRegistry(registry, schema, registryPath = REGISTRY_PATH)
     const tracked = trackedFiles()
     const targets = taskfileTasks(ROOT)
     const claims = claimStates()
-    const reviewPeriod = registry.review_period_days ?? 14
+    // The day this run treats as today. `KOFUN_RFC_TODAY` pins it so the
+    // mutation corpus stays deterministic and a fixture cannot start failing
+    // because the calendar moved.
+    const today = process.env.KOFUN_RFC_TODAY ?? new Date().toISOString().slice(0, 10)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) {
+        report.fail('ledger', `KOFUN_RFC_TODAY is \`${today}\`, which is not a YYYY-MM-DD date`,
+            'set KOFUN_RFC_TODAY to a calendar date, or unset it to use the system date')
+        return report
+    }
 
     const byId = new Map()
     let previous = ''
@@ -243,42 +251,61 @@ export function validateRegistry(registry, schema, registryPath = REGISTRY_PATH)
             } else {
                 checkPath(report, subject, 'document', rfc.document, tracked)
             }
-            // A proposal under review has not been decided. Requiring
-            // `decided_on` of it would force a date to be invented, and a
+            // Every date here is a recorded fact, never a schedule. A
             // scheduled date is indistinguishable from a real one once
             // written down -- which is exactly the confusion this ledger
-            // exists to prevent.
-            for (const field of ['opened_on', 'review_closed_on']) {
-                if (dates[field] === undefined) {
-                    report.fail(subject, `is a native RFC missing \`${field}\``,
-                        'a native RFC records when it opened and when review closed')
-                }
+            // exists to prevent -- so a proposal under review carries the
+            // day it opened and nothing else. Review closes when the
+            // shepherd closes it, and that day is written down then,
+            // beside the decision it produced.
+            if (dates.opened_on === undefined) {
+                report.fail(subject, 'is a native RFC missing `opened_on`',
+                    'a native RFC records the day it opened')
             }
             if (rfc.state === 'proposed') {
-                if (dates.decided_on !== undefined) {
-                    report.fail(subject, 'is `proposed` but records a decision date',
-                        'a proposal under review has no decision date; add `decided_on` when the decision is recorded')
+                for (const field of ['review_closed_on', 'decided_on']) {
+                    if (dates[field] !== undefined) {
+                        report.fail(subject,
+                            `is \`proposed\` but records \`${field}\``,
+                            `review has not closed, so \`${field}\` would be a schedule rather than a fact; record it when the shepherd closes review`)
+                    }
                 }
-            } else if (dates.decided_on === undefined) {
-                report.fail(subject, `is \`${rfc.state}\` but records no \`decided_on\``,
-                    'a decided native RFC records the day it was decided')
+            } else {
+                for (const field of ['review_closed_on', 'decided_on']) {
+                    if (dates[field] === undefined) {
+                        report.fail(subject,
+                            `is \`${rfc.state}\` but records no \`${field}\``,
+                            'a decided native RFC records the day review closed and the day it was decided')
+                    }
+                }
             }
             if (dates.recorded_on !== undefined) {
                 report.fail(subject, 'is a native RFC carrying `recorded_on`',
                     '`recorded_on` belongs to migrated decisions; use the review dates')
             }
-            if (dates.opened_on !== undefined && dates.review_closed_on !== undefined) {
-                const open = daysBetween(dates.opened_on, dates.review_closed_on)
-                if (open < reviewPeriod) {
-                    report.fail(subject,
-                        `review lasted ${open} days, short of the ${reviewPeriod}-day minimum`,
-                        'extend review to the minimum period; a substantive late change restarts it')
-                }
+            // Ordering between the three recorded days. The review window's
+            // length is guidance in rfcs/README.md, not a rule here: a
+            // shepherd who has read the responses may close early, and a
+            // gate that refused that would only push the fiction into the
+            // dates.
+            if (dates.opened_on !== undefined && dates.review_closed_on !== undefined &&
+                daysBetween(dates.opened_on, dates.review_closed_on) < 0) {
+                report.fail(subject, 'closed review before it opened',
+                    'record `review_closed_on` on or after `opened_on`')
             }
             if (dates.review_closed_on !== undefined && dates.decided_on !== undefined &&
                 daysBetween(dates.review_closed_on, dates.decided_on) < 0) {
                 report.fail(subject, 'was decided before review closed',
                     'record the decision on or after the day review closed')
+            }
+            // A recorded fact cannot be in the future. With the window's
+            // length no longer gating, this is what keeps a date honest.
+            for (const field of ['opened_on', 'review_closed_on', 'decided_on']) {
+                if (dates[field] !== undefined && daysBetween(today, dates[field]) > 0) {
+                    report.fail(subject,
+                        `records \`${field}\` as ${dates[field]}, which has not happened yet`,
+                        'every ledger date is a recorded fact; record it on the day it happens')
+                }
             }
         } else {
             if (dates.recorded_on === undefined) {

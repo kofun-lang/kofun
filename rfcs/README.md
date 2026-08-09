@@ -53,6 +53,25 @@ repository — rather than a review window. Inventing an `opened_on` for a
 decision that predates the process would be exactly the fabricated evidence
 this ledger exists to prevent, and the checker refuses it.
 
+## Every date here is a recorded fact
+
+A native proposal carries `opened_on` and nothing else while it is `proposed`.
+It gains `review_closed_on` and `decided_on` at the moment the shepherd closes
+review and records the disposition, and the checker refuses any date that has
+not happened yet.
+
+`review_period_days` is the window a proposal is *announced* with. It is
+guidance for shepherds, not a gate. A shepherd who has read the responses may
+close review early, and one who has not may leave it open longer; either way
+`review_closed_on` says which day it actually happened.
+
+The ledger deliberately does not hold a scheduled closing date. It used to,
+and that was the same defect it refuses everywhere else: a scheduled date and
+a real one are indistinguishable once written down, so a row that promised to
+close on a future day read, to anything joining on that field, as a row whose
+review had a definite end. It did not. The window is now stated in the
+proposal document as an intention, and the ledger records only what occurred.
+
 Four rows exercise the states that matter, and are worth reading before adding
 a fifth kind:
 

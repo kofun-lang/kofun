@@ -36,10 +36,10 @@ document with an executable gate and no ledger row. A target-profile decision
 recorded two different ways in two adjacent months would make the ledger harder
 to read, not more complete.
 
-The review window decides it either way. A native RFC may not be `accepted`
-until 14 days after it opened (`review_period_days` in `rfcs/index.json`, and
-the check in `tests/rfc/validate-registry.mjs`), and it may not carry a
-`decided_on` while it is `proposed`. Filing this as an RFC would leave #1001,
+The review window decides it either way. A native RFC is announced with the
+window `review_period_days` in `rfcs/index.json` states, and carries no
+`review_closed_on` or `decided_on` while it is `proposed`
+(`tests/rfc/validate-registry.mjs`). Filing this as an RFC would leave #1001,
 #1002, and #1004 blocked for two weeks on a decision that is not about language
 semantics. The checkable-ness the ledger provides is provided here instead by
 `sh spec/wasm-host-profile-v1/check.sh`, which is stronger for this subject:

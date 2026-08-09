@@ -122,7 +122,37 @@ const MUTATIONS = {
             find(ledger, 'DD-013').dates.opened_on = '2026-07-01'
         },
     },
-    'review-window-too-short': {
+    'review-closed-before-it-opened': {
+        blame: 'DD-013',
+        apply(ledger) {
+            const rfc = find(ledger, 'DD-013')
+            rfc.provenance = 'rfc'
+            rfc.document = 'rfcs/TEMPLATE.md'
+            rfc.dates = {
+                opened_on: '2026-07-23',
+                review_closed_on: '2026-07-20',
+                decided_on: '2026-07-23',
+            }
+        },
+    },
+    // A scheduled date and a real one look identical once written down, so a
+    // proposal that carries either closing date reads as closed to anything
+    // that joins on that field.
+    'proposed-claiming-a-decision-date': {
+        blame: 'RFC-0001',
+        apply(ledger) {
+            find(ledger, 'RFC-0001').dates.decided_on = '2026-08-15'
+        },
+    },
+    'proposed-claiming-a-closed-review': {
+        blame: 'RFC-0001',
+        apply(ledger) {
+            find(ledger, 'RFC-0001').dates.review_closed_on = '2026-08-15'
+        },
+    },
+    // Every ledger date is a fact. One that has not happened yet is a promise
+    // wearing a fact's clothes, and joins on it read as history.
+    'decided-in-the-future': {
         blame: 'DD-013',
         apply(ledger) {
             const rfc = find(ledger, 'DD-013')
@@ -130,18 +160,9 @@ const MUTATIONS = {
             rfc.document = 'rfcs/TEMPLATE.md'
             rfc.dates = {
                 opened_on: '2026-07-20',
-                review_closed_on: '2026-07-23',
-                decided_on: '2026-07-23',
+                review_closed_on: '2999-01-01',
+                decided_on: '2999-01-02',
             }
-        },
-    },
-    // A scheduled date and a real one look identical once written down, so a
-    // proposal that carries `decided_on` reads as decided to anything that
-    // joins on that field.
-    'proposed-claiming-a-decision-date': {
-        blame: 'RFC-0001',
-        apply(ledger) {
-            find(ledger, 'RFC-0001').dates.decided_on = '2026-08-15'
         },
     },
     'native-rfc-without-document': {
