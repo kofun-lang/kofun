@@ -370,7 +370,23 @@
         "statement": "The `kofun.type-reduction/default-v1` profile adds a module-level declaration form. Anonymous type expressions and general recursive type programs are refused by the profile rather than removed from the language, because neither form exists today.",
         "corpus_query": "git grep -nE '^type fn ' -- '*.kofun' | wc -l",
         "result": "0 sites. No tracked Kofun source declares a type-level function."
-      }
+      },
+      "amendments": [
+        {
+          "id": "A01",
+          "recorded_on": "2026-08-09",
+          "change": "https://github.com/kofun-lang/kofun/issues/1130",
+          "delta": "General recursive and mutually recursive type programs are admissible when declared `type fn general`, and Turing-complete type programming is no longer rejected as a goal. A general declaration reduces under the new profile `kofun.type-reduction/general-v2`, whose frame, step and node limits are versioned language semantics; exhausting one is a deterministic type error naming the declaration, the limit, the measured counts and the top consumers, rather than a hang. Structural termination becomes a checked property of the unmarked `type fn` instead of the only admissible form, and a structural declaration may not call a general one, so a `kofun.type-reduction/default-v1` root keeps the v1 guarantee compositionally. RFC-0009 separately adds the `Nat`, `Symbol` and `Bool` data kinds and the `kofun.type-reduction/kinds-v1` profile, which the Type-only wording of this decision did not admit. The rejection of anonymous conditional, mapped and inferred type expressions is not amended and stands as written.",
+          "original_semantics": "Type-level logic is a module-level declaration with a stable identity and never an anonymous type expression at a use site. The v1 profile `kofun.type-reduction/default-v1` is Type-only, named, and structurally terminating. Anonymous conditional, mapped, or inferred type expressions are rejected because diagnostics would depend on anonymous internals. General recursive and mutually recursive type programs are rejected because termination, cost, and error size are not statically bounded, and Turing-complete type programming is rejected as a goal. Higher-kinded and effectful type computation is deferred, not refused.",
+          "compatibility": {
+            "category": "additive",
+            "statement": "No program changes meaning and none stops compiling. The amendment widens what the profile admits and removes no accepted form: the unmarked `type fn` keeps every v1 rule, its limits, and its trace byte for byte, and the new surface -- the `general` modifier, the `general-v2` and `kinds-v1` profiles, the three data kinds, the eleven builtins, the two views, the `kofun.type-reduction-trace/v2` schema, and codes E390 through E401 -- is reachable only from declarations that do not exist. No active compiler parses `type fn` at all, so no tracked source can observe the widened profile, and the deferral of higher-kinded and effectful type computation is narrowed only where RFC-0009 decides the kind axis; effectful type computation stays deferred.",
+            "corpus_query": "git grep -nE '^type fn ' -- '*.kofun' | wc -l; git grep -nE '^type fn general ' -- '*.kofun' | wc -l; git grep -nE '\\[[A-Za-z_]+:[[:space:]]*(Nat|Symbol|Bool)\\b' -- '*.kofun' | wc -l",
+            "result": "`0`, `0` and `0` at 2cfa9bdd, the audited commit. No tracked Kofun source declares a type-level function, declares a general one, or annotates a type parameter with a data kind, so the count of tracked programs whose meaning the amendment changes is 0.",
+            "evidence": "spec/type-level-programming-v1.md"
+          }
+        }
+      ]
     },
     {
       "id": "DD-032",
@@ -755,13 +771,15 @@
       "id": "RFC-0008",
       "title": "Type-level programming v2: general type functions under a versioned fuel profile",
       "provenance": "rfc",
-      "state": "proposed",
+      "state": "accepted",
       "shepherd": "hjosugi",
       "source": "rfcs/0008-type-level-general-v2.md",
       "document": "rfcs/0008-type-level-general-v2.md",
       "proposal": "https://github.com/kofun-lang/kofun/issues/1130",
       "dates": {
-        "opened_on": "2026-08-09"
+        "opened_on": "2026-08-09",
+        "review_closed_on": "2026-08-09",
+        "decided_on": "2026-08-09"
       },
       "normative_spec": [
         "rfcs/0008-type-level-general-v2.md"
@@ -778,13 +796,15 @@
       "id": "RFC-0009",
       "title": "Type-level kinds v1: Nat, Symbol, and Bool as type-level data",
       "provenance": "rfc",
-      "state": "proposed",
+      "state": "accepted",
       "shepherd": "hjosugi",
       "source": "rfcs/0009-type-level-kinds-v1.md",
       "document": "rfcs/0009-type-level-kinds-v1.md",
       "proposal": "https://github.com/kofun-lang/kofun/issues/1133",
       "dates": {
-        "opened_on": "2026-08-09"
+        "opened_on": "2026-08-09",
+        "review_closed_on": "2026-08-09",
+        "decided_on": "2026-08-09"
       },
       "normative_spec": [
         "rfcs/0009-type-level-kinds-v1.md"
