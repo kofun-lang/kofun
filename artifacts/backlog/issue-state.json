@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 29,
+  "open_issues": 28,
   "issues": [
     {
       "number": 26,
@@ -687,13 +687,10 @@
       "number": 942,
       "title": "Member-scope duplicates: methods, associated values, and inherited or default members",
       "state_labels": [
-        "blocked"
+        "ready"
       ],
-      "state_line": "blocked",
-      "blocked_by": [
-        31,
-        995
-      ],
+      "state_line": "ready",
+      "blocked_by": [],
       "evidence_commits": [
         "9fc27d8da59aa4d5ba92e24d7e76bd05be575257"
       ],
@@ -705,6 +702,10 @@
         {
           "agent_id": "codex-refresh-942-20260808",
           "status": "released"
+        },
+        {
+          "agent_id": "claude-942-member-scope-20260809",
+          "status": "active"
         }
       ]
     },
@@ -727,28 +728,10 @@
         {
           "agent_id": "codex-988-rfc-audit-20260808",
           "status": "released"
-        }
-      ]
-    },
-    {
-      "number": 995,
-      "title": "Trait member override v1: inherited and default member collision contract",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "9fc27d8da59aa4d5ba92e24d7e76bd05be575257"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-refresh-995-20260808",
-          "status": "active"
         },
         {
-          "agent_id": "codex-refresh-995-20260808",
-          "status": "released"
+          "agent_id": "claude-988-derive-rfc-20260809",
+          "status": "active"
         }
       ]
     },
@@ -761,18 +744,6 @@
       "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": []
-    },
-    {
-      "number": 1112,
-      "title": "selfhost gates: adopt the shared generation library and the Stage 2 builder",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "4695608b88cf173436ae3ea523358f7db1071297"
-      ]
     },
     {
       "number": 1113,
@@ -796,23 +767,47 @@
       "blocked_by": [],
       "evidence_commits": [
         "4695608b88cf173436ae3ea523358f7db1071297"
+      ],
+      "claims": [
+        {
+          "agent_id": "claude-1114-declared-inputs-20260809",
+          "status": "active"
+        }
       ]
     },
     {
-      "number": 1117,
-      "title": "Traits: let a trait declare two members and an implementation supply both",
+      "number": 1119,
+      "title": "M4 tracker: the ten 1.0 deliverables and six exit criteria",
+      "state_labels": [],
+      "state_line": "blocked",
+      "blocked_by": [
+        30,
+        31,
+        274
+      ],
+      "evidence_commits": [
+        "fd680a7e630ad85e51940062601728c4c1a1f6d2"
+      ]
+    },
+    {
+      "number": 1121,
+      "title": "Traits C11: execute a two-slot dictionary",
       "state_labels": [
         "ready"
       ],
       "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
-        "9edcdcb84dcb00f3b2526f8bc3d072467ba3be77"
+        "8e07d273aa77063a90b4fa8870cda104edb353b9"
       ],
       "claims": [
         {
-          "agent_id": "claude-1117-two-member-traits-20260809",
+          "agent_id": "claude-1121-two-slot-c11-20260809",
           "status": "active"
+        },
+        {
+          "agent_id": "claude-1121-two-slot-c11-20260809",
+          "status": "released"
         }
       ]
     }
