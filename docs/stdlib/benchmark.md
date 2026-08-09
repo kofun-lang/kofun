@@ -4,8 +4,9 @@
 
 This document is the accepted contract for GitHub issue
 [#640](https://github.com/kofun-lang/kofun/issues/640). No public harness is
-implemented: `benchmarks/` scripts are repository evidence, not a library
-contract. The first slice is #646 — the canonical raw-sample report,
+implemented: the harnesses in
+[`kofun-lang/kofun-benchmarks`](https://github.com/kofun-lang/kofun-benchmarks)
+are repository evidence, not a library contract. The first slice is #646 — the canonical raw-sample report,
 deterministic summaries, and explicit unavailable metrics — before any live
 runner or counters.
 
@@ -165,8 +166,8 @@ to a convention.
 
 **Keep shell timing scripts.** Merits: zero new surface. Demerits: no
 anti-elision, no clock discipline, no machine-readable identity — exactly
-the ad-hoc state #640 exists to end. Rejected as the public story;
-`benchmarks/` remains internal evidence.
+the ad-hoc state #640 exists to end. Rejected as the public story; the
+harnesses in `kofun-lang/kofun-benchmarks` remain internal evidence.
 
 **Statistical engine first (Criterion-style bootstrapping, outlier
 rejection).** Merits: sophisticated confidence intervals. Demerits:
