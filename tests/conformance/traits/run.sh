@@ -208,7 +208,7 @@ implementation_duplicate_member:E2S127
 implementation_extra_member:E2S127
 implementation_missing_member:E2S127
 inherited_member_source:E2S127
-member_name_collision:E2S127
+member_name_collision:E370
 method_arity_mismatch:E2S128
 method_name_mismatch:E2S127
 method_parameter_mismatch:E2S128
@@ -258,26 +258,41 @@ grep -F 'nominal:foreign:Duration' \
     "$CASES/orphan_alias_ownership.stderr" >/dev/null ||
     fail 'the alias refusal did not resolve to the foreign type'
 
-# These two fixtures pin current behaviour in the member-scope domain. They
-# assert what this frontend does today and nothing about what it should do:
-# RFC-0005 (#995) is a proposal under review, not accepted semantics, so no
-# assertion here depends on its rule being adopted.
-#
-# `member_name_collision` declares one normalized member name twice under one
-# owner. #942 recorded that shape as refused by `E2S132` for carrying two
-# methods. It is not: the parameter table is keyed by the trait rather than by
-# the member, so the collision is refused first as a duplicate *parameter*.
-# The message names `left`, and names neither the colliding member `equal` nor
-# its owning trait `Equal` — the refusal lands in the parameter scope. That
-# observation stands on its own; RFC-0005 proposes `E370` to replace it, and
-# whether that happens is decided after review closes.
-grep -F "parameter 'left' is declared twice" \
+# RFC-0005 is accepted (decided 2026-08-09), so the member key
+# `(owner identity, value namespace, normalized name)` is normative and the
+# duplicate refusal is `E370`. These assertions replaced the anti-blessing
+# guards that stood while it was under review: those required the refusal to
+# land in the *parameter* scope and to name neither the member nor its owner,
+# because a collision keyed by the trait could not see the member. They did
+# their job -- nothing blessed the proposal before it was decided -- and are
+# now the wrong shape to assert.
+grep -F 'error[E370]' "$CASES/member_name_collision.stderr" >/dev/null ||
+    fail 'a duplicate member is not refused as a member-scope collision'
+grep -F "declares member 'equal' twice" \
     "$CASES/member_name_collision.stderr" >/dev/null ||
-    fail 'a duplicate member is no longer refused in the parameter scope'
-! grep -F "'equal'" "$CASES/member_name_collision.stderr" >/dev/null ||
-    fail 'the duplicate-member refusal now names the colliding member'
-! grep -F 'Equal' "$CASES/member_name_collision.stderr" >/dev/null ||
-    fail 'the duplicate-member refusal now names the owning trait'
+    fail 'the duplicate-member refusal does not name the colliding member'
+grep -F "trait 'Equal'" "$CASES/member_name_collision.stderr" >/dev/null ||
+    fail 'the duplicate-member refusal does not name the owning trait'
+grep -F 'value namespace' "$CASES/member_name_collision.stderr" >/dev/null ||
+    fail 'the duplicate-member refusal does not name the collided namespace'
+grep -F 'the first is at bytes' \
+    "$CASES/member_name_collision.stderr" >/dev/null ||
+    fail 'the duplicate-member refusal does not carry both declaration spans'
+grep -F 'rename one' "$CASES/member_name_collision.stderr" >/dev/null ||
+    fail 'the duplicate-member refusal states no remedy'
+
+# The same spelling under a different owner stays legal: the key is scoped to
+# the owner, so two traits may each declare `equal`.
+"$WORK/kofun-traits-frontend" "$CASES/member_name_distinct_owners.kofun" \
+    "$WORK/distinct_owners.ir" "$WORK/distinct_owners.tokens" ||
+    fail 'the same member name under two owners was refused'
+
+# Two members of one owner may share a parameter spelling. Value parameters
+# are scoped to the member, which is what keying the collision by the member
+# rather than by the trait made possible.
+"$WORK/kofun-traits-frontend" "$CASES/member_shared_parameter_names.kofun" \
+    "$WORK/shared_parameters.ir" "$WORK/shared_parameters.tokens" ||
+    fail 'two members sharing a parameter spelling were refused'
 
 # `inherited_member_source` is the inherited-member source shape a reader would
 # reach for. No inheritance edge exists to recognise it, so it is refused as
@@ -391,5 +406,6 @@ printf '%s\n' \
     'PASS: two members fill their slots by name, in declared order, and both dispatch' \
     'PASS: a missing, unknown, or twice-written implementation member is refused' \
     'PASS: each DictionaryId derives from its ImplementationId and ignores order' \
-    'PASS: a member collision and an inherited member source are both refused' \
+    'PASS: a duplicate member is refused as E370 naming both declarations; the same name under another owner is legal' \
+    'PASS: two members of one owner may share a parameter spelling' \
     'PASS: typed-only boundaries, GCC analyzer, and ASan/UBSan remain clean'
