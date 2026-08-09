@@ -81,6 +81,10 @@ LC_ALL=C sort -u "$work/declared" >"$work/declared.sorted"
 {
     ls unicode/*.h
     ls bootstrap/selfhost/driver/corpus_*.kofun
+    ls bootstrap/selfhost/driver/corpus_*.c
+    ls bootstrap/selfhost/driver/corpus_*.stdout
+    ls vendor/utf8proc/utf8proc.c vendor/utf8proc/utf8proc_data.c \
+        vendor/utf8proc/utf8proc.h
 } | LC_ALL=C sort -u >"$work/present"
 extra=$(comm -13 "$work/declared.sorted" "$work/present")
 if test -n "$extra"; then
@@ -100,14 +104,20 @@ test "$(sed -n 's/^set|name=runtime-headers|sha256=//p' "$manifest")" = \
 
 # The reconstruction command must resolve, or the manifest names a path to
 # nowhere.
+# The reconstruction command has to be runnable by a builder holding the
+# acquisition set and nothing else, so it must name a declared file. Naming a
+# task was the earlier form and could not be run from the manifest: neither
+# Taskfile.yml nor go-task is an input, and neither is obtainable from here.
 reconstruct=$(recorded_value "$manifest" reconstruct)
 case "$reconstruct" in
-    'task '*)
-        target=${reconstruct#task }
-        grep -qE "^  ${target}:" Taskfile.yml ||
-            fail "the reconstruction command names the missing task \`$target\`"
+    'sh '*)
+        target=$(printf '%s\n' "$reconstruct" | awk '{ print $2 }')
+        test -f "$target" ||
+            fail "the reconstruction command names the missing file \`$target\`"
+        grep -qxF "$target" "$work/declared.sorted" ||
+            fail "the reconstruction command names \`$target\`, which the manifest does not declare as an input"
         ;;
-    *) fail "the reconstruction command \`$reconstruct\` is not a task" ;;
+    *) fail "the reconstruction command \`$reconstruct\` does not invoke a declared script" ;;
 esac
 
 test -n "$(recorded_value "$manifest" recorded_with)" ||
@@ -116,5 +126,5 @@ test -n "$(recorded_value "$manifest" toolchain_policy)" ||
     fail "the manifest states no policy for a toolchain mismatch"
 
 printf 'PASS: %s declared inputs are present with their declared bytes\n' "$declared"
-printf 'PASS: the checkout carries no corpus or runtime input the manifest omits\n'
-printf 'PASS: the set digests, reconstruction command, and toolchain policy all resolve\n'
+printf 'PASS: the checkout carries no corpus, evidence, runtime, or vendored input the manifest omits\n'
+printf 'PASS: the set digests and toolchain policy resolve, and the reconstruction command names a declared file\n'
