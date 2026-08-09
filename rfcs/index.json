@@ -750,6 +750,52 @@
         "result": "`0` at 6b7c060f, the audited commit. No tracked Kofun source uses the surface, so no program requires migration.",
         "evidence": "tests/security/generated-meta-access.sh"
       }
+    },
+    {
+      "id": "RFC-0008",
+      "title": "Type-level programming v2: general type functions under a versioned fuel profile",
+      "provenance": "rfc",
+      "state": "proposed",
+      "shepherd": "hjosugi",
+      "source": "rfcs/0008-type-level-general-v2.md",
+      "document": "rfcs/0008-type-level-general-v2.md",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/1130",
+      "dates": {
+        "opened_on": "2026-08-09"
+      },
+      "normative_spec": [
+        "rfcs/0008-type-level-general-v2.md"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "No program changes meaning and none stops compiling: the active compiler does not parse `type fn`, so neither the existing structural form nor the new `general` modifier exists in any tracked source. New surface is the `general` modifier on a `type fn` declaration, the reduction profile `kofun.type-reduction/general-v2` with its three fixed limits, the tail-replacement and cycle-witness rules that make those limits reproducible, the `kofun.type-reduction-trace/v2` schema as a new sibling name rather than an extension of v1, and the four codes E390 through E393. Those sit in a free band: E380 through E384 belong to RFC-0007, E385 through E389 are unallocated, and E394 through E401 are RFC-0009's. The `kofun.type-reduction/default-v1` profile, its limits, and its trace schema are unchanged, a default-v1 root still emits the v1 trace byte for byte, and a structural declaration may not call a general one, so a v1 root keeps the v1 guarantee compositionally. Trace v2 is defined jointly with RFC-0009 over disjoint field sets, so either proposal may be accepted alone and land the schema carrying only its own contribution. If this proposal is accepted, DD-031's rejection of Turing-complete type programming is superseded for the general class by a recorded ledger amendment rather than by an edit to the decision text.",
+        "corpus_query": "git grep -nE '^type fn ' -- '*.kofun' | wc -l",
+        "result": "`0` at a654f7fe, the audited commit. No tracked Kofun source declares a type-level function, so no program can observe the new cost class, the new profile, or the new trace schema.",
+        "evidence": "spec/type-level-programming-v1.md"
+      }
+    },
+    {
+      "id": "RFC-0009",
+      "title": "Type-level kinds v1: Nat, Symbol, and Bool as type-level data",
+      "provenance": "rfc",
+      "state": "proposed",
+      "shepherd": "hjosugi",
+      "source": "rfcs/0009-type-level-kinds-v1.md",
+      "document": "rfcs/0009-type-level-kinds-v1.md",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/1133",
+      "dates": {
+        "opened_on": "2026-08-09"
+      },
+      "normative_spec": [
+        "rfcs/0009-type-level-kinds-v1.md"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "No program changes meaning and none stops compiling: no tracked source annotates a type parameter with a kind, declares a type-level function, or declares a type whose name this proposal reserves, and `Nat`, `Symbol` and `Bool` become type-namespace names in kind position only, so no existing nominal type is shadowed. New surface is the three data kinds beside `Type`, their literal forms with a 64-bit `Nat` bound and a 65,536-byte `Symbol` bound, erased data-kind parameters on nominal type declarations with equality decided on reduced normal forms and stuck terms compared syntactically, eleven constant-step builtin type functions occupying reserved names, the two kind-directed pattern views `Succ` and `Cons` with binder-only subpatterns, the reduction profile `kofun.type-reduction/kinds-v1` with tail replacement, and the eight codes E394 through E401. Those sit in a free band: E390 through E393 belong to RFC-0008 and E402 onward is unclaimed. Data-kind values and the new `builtin-application` step record are contributed to the `kofun.type-reduction-trace/v2` schema defined jointly with RFC-0008 over disjoint field sets, so either proposal may be accepted alone; no existing sidecar, semantic-event or v1 trace reader gains a field, and a default-v1 root still emits the v1 trace byte for byte. Indices are erased and no term may occupy an index position, so layout, ownership and the refinement, const and shape solvers are untouched.",
+        "corpus_query": "git grep -nE '\\[[A-Za-z_]+:[[:space:]]*(Nat|Symbol|Bool)\\b' -- '*.kofun' | wc -l",
+        "result": "`0` at a654f7fe, the audited commit. No tracked Kofun source annotates a type parameter with a data kind. Two companion queries return `0` at the same commit: `git grep -nE '^type fn ' -- '*.kofun' | wc -l`, so no declaration can take a data-kind parameter either, and `git grep -nE '^type (Add|Mul|Monus|Div|Mod|NatEq|NatLt|NatLe|Concat|Length|SymbolEq)\\b' -- '*.kofun' | wc -l`, so no tracked type declaration collides with a reserved builtin name.",
+        "evidence": "spec/type-level-programming-v1.md"
+      }
     }
   ]
 }
