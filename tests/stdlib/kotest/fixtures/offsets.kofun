@@ -1,0 +1,26 @@
+# Companion for the source-coordinate gate (#1129).  It must not compile, and
+# the construct that stops it must sit *after* a `fn main` demo block that the
+# runner strips: the bytes before a removed block and the bytes after it land
+# at different distances from their source offsets, so an offset translated by
+# subtracting the prelude length alone is wrong here and right nowhere useful.
+#
+# The gate finds the marker below by searching this file, so the offsets stay
+# correct when this fixture is edited.
+
+fn early(x: Int) -> Int {
+    return x + 1
+}
+
+fn main() -> Int {
+    print("this demo block is removed before the unit is built")
+    print("it is several lines long on purpose, so that a translation")
+    print("which ignores it is off by a visible amount")
+    return 0
+}
+
+fn late(x: Int) -> Int {
+    while x > 0 {
+        x = x - 1
+    }
+    return x
+}
