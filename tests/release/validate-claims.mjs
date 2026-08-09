@@ -27,6 +27,21 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const SCHEMA_PATH = 'spec/release-claim.schema.json'
 const MANIFEST_PATH = 'release/claims.json'
 const README_PATH = 'README.md'
+const BOOTSTRAP_MANIFEST_PATH = 'bootstrap/manifest.json'
+
+// The second status registry (#1108). `bootstrap/manifest.json` records
+// whether each bootstrap gate works; `release/claims.json` records what the
+// repository publishes about the same capabilities. On 2026-08-09 the first
+// flipped three B4/B5 keys to `working` while the second went on saying the
+// fixed point was open, every gate stayed green, and review — not a gate —
+// caught it.
+//
+// The gate vocabulary is exactly two words, so agreement is binary: a gate is
+// `working` or it is `open`, and a claim either rests on executable evidence
+// (`implemented`, `checkpoint`) or does not. Nothing here interprets the
+// wording; a claim states which keys it depends on, and this asserts the two
+// registries answer "does it work?" the same way.
+const EXECUTABLE_STATES = new Set(['implemented', 'checkpoint'])
 
 const PREFIX = 'release-claims'
 
@@ -139,6 +154,27 @@ function checkCommand(report, subject, field, value, tracked, targets) {
         'write it as `task <name>` or `sh <tracked-script>` so the checker can resolve it')
 }
 
+// Reads the bootstrap gate statuses this manifest joins against. A missing or
+// malformed file is reported once, as a manifest-level failure, rather than
+// once per claim that names a key from it.
+function bootstrapGateStatuses(report) {
+    let parsed
+    try {
+        parsed = JSON.parse(readRepositoryFile(BOOTSTRAP_MANIFEST_PATH))
+    } catch (error) {
+        report.fail('manifest', `${BOOTSTRAP_MANIFEST_PATH} is missing or is not JSON (${error.message})`,
+            `restore ${BOOTSTRAP_MANIFEST_PATH}; claims join its gate statuses`)
+        return null
+    }
+    const gates = parsed.gates
+    if (gates === null || typeof gates !== 'object' || Array.isArray(gates)) {
+        report.fail('manifest', `${BOOTSTRAP_MANIFEST_PATH} has no \`gates\` object`,
+            'keep the bootstrap gate statuses under a `gates` object')
+        return null
+    }
+    return new Map(Object.entries(gates))
+}
+
 function validateManifest(manifest, schema, manifestPath = MANIFEST_PATH) {
     const report = new Report()
 
@@ -151,6 +187,7 @@ function validateManifest(manifest, schema, manifestPath = MANIFEST_PATH) {
 
     const tracked = trackedFiles()
     const targets = taskfileTasks(ROOT)
+    const bootstrapGates = bootstrapGateStatuses(report)
     const areas = new Set(manifest.areas)
     const declaredTargets = new Set(manifest.targets)
 
@@ -269,6 +306,48 @@ function validateManifest(manifest, schema, manifestPath = MANIFEST_PATH) {
 
         checkCommand(report, subject, 'reproduction command',
             claim.reproduction.command, tracked, targets)
+
+        // The join itself. `executable` above is already the claim's answer to
+        // "does it work?"; each named gate must give the same answer.
+        for (const key of claim.manifest_gates ?? []) {
+            if (bootstrapGates === null) break
+            const status = bootstrapGates.get(key)
+            if (status === undefined) {
+                report.fail(subject, `manifest gate \`${key}\` is not in ${BOOTSTRAP_MANIFEST_PATH}`,
+                    `name a gate the bootstrap manifest declares, or drop the key if the gate was removed`)
+                continue
+            }
+            if (status !== 'working' && status !== 'open') {
+                report.fail(subject, `manifest gate \`${key}\` has unknown status ${JSON.stringify(status)}`,
+                    'a bootstrap gate is `working` or `open`; teach this checker a new word before using one')
+                continue
+            }
+            const gateWorks = status === 'working'
+            if (gateWorks !== executable) {
+                report.fail(subject,
+                    `state \`${claim.state}\` contradicts ${BOOTSTRAP_MANIFEST_PATH} gate \`${key}\` (\`${status}\`)`,
+                    gateWorks
+                        ? `the bootstrap gate passes, so raise this claim to \`checkpoint\` or \`implemented\` — or flip \`${key}\` back to \`open\``
+                        : `the bootstrap gate is open, so lower this claim to \`open\` — or flip \`${key}\` to \`working\` once it passes`)
+            }
+        }
+    }
+
+    // Coverage, the direction the incident ran in: a bootstrap gate that no
+    // claim joins is a status nobody has to keep true. B7's
+    // `diverse_double_compilation` landed as `working` with no published claim
+    // at all, which is the same drift with the registries swapped.
+    if (bootstrapGates !== null) {
+        const joined = new Set()
+        for (const claim of manifest.claims) {
+            for (const key of claim.manifest_gates ?? []) joined.add(key)
+        }
+        for (const key of bootstrapGates.keys()) {
+            if (!joined.has(key)) {
+                report.fail(BOOTSTRAP_MANIFEST_PATH, `gate \`${key}\` is joined by no claim`,
+                    'add the key to the `manifest_gates` of the claim it bounds, so flipping it cannot go unpublished')
+            }
+        }
     }
 
     // Coverage: every published capability row joins exactly one claim, and no
@@ -380,6 +459,10 @@ function evidenceIndex(manifest, manifestText, schemaText) {
             'VERSION': sha256(readRepositoryFile('VERSION')),
             [MANIFEST_PATH]: sha256(manifestText),
             [SCHEMA_PATH]: sha256(schemaText),
+            // Claims now join this file's gate statuses (#1108), so it is an
+            // input to the pack: editing a bootstrap gate moves the pack, the
+            // way editing a claim already does.
+            [BOOTSTRAP_MANIFEST_PATH]: sha256(readRepositoryFile(BOOTSTRAP_MANIFEST_PATH)),
         },
         states: manifest.claims.reduce((counts, claim) => {
             counts[claim.state] = (counts[claim.state] ?? 0) + 1
