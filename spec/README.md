@@ -3,8 +3,14 @@
 This directory separates normative language contracts from the smaller
 executable bootstrap implementation.
 
-- `grammar.ebnf` is the full-language grammar draft. The active Stage 1 and
-  Stage 2 checkpoints intentionally accept smaller subsets.
+- `grammar.ebnf` states what the Stage 2 checkpoint accepts (#943), and its
+  header names it `Kofun Stage 0 grammar, draft 0.2-bootstrap`. It is smaller
+  than the language, not larger: there are no productions for `trait`, `enum`,
+  `import`, `pub`, `effect`, `macro`, or `match`. A full-language grammar is
+  part of the "complete specification" deliverable measured in
+  [`docs/ROADMAP.md`](../docs/ROADMAP.md) §M4. The file carries its own draft
+  number, which moves with the accepted grammar rather than with the
+  specification version recorded at the end of this document.
 - `semantics.md` records the semantic contract that every executable backend
   must preserve for the constructs it accepts.
 - `backend-differential-contract.md` defines exact cross-backend observations

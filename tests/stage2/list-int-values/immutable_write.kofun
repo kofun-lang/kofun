@@ -1,0 +1,5 @@
+fn main() -> Int {
+    let values = [1, 2, 3]
+    values[0] = 9
+    return 0
+}

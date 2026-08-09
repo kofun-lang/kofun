@@ -204,5 +204,31 @@ distribution trust, but do not replace recomputation of semantic identity.
 The trusted computing base is the checked-in Kofun sources, C11 seeds and C ABI
 compiler, the host C compiler/linker, and the operating system. Stage 1, Stage
 2, and C ABI artifact checks are reproducibility gates, not a defense against a
-malicious seed and host compiler acting together. Diverse double compilation
-remains open in `bootstrap/manifest.json`.
+malicious seed and host compiler acting together.
+
+`task selfhost-diverse-double-compilation` removes one member of that set from
+the part that has to be trusted alone. It builds the generation chain under two
+host C compilers that are different binaries reporting different identities and
+requires the resulting Kofun compilers to emit byte-identical C and to agree on
+every driver corpus case, so a payload present in **only one** of the two host
+compilers is caught rather than pinned.
+
+The rest of the base is unchanged, and the gate is worth reading for what it
+leaves behind:
+
+- a payload in the **checked-in seed** is not caught. Both chains build the
+  seed from the same `bootstrap/stage2/compiler.c`, so a seed payload is shared
+  by both and reproduces identically.
+- a payload **shared by both host compilers**, or living **below** them — in
+  libc, the kernel, or the operating system — is likewise shared and invisible.
+  Both chains run on one machine.
+- reproduction by a builder that did not produce the evidence, B6
+  ([#274](https://github.com/kofun-lang/kofun/issues/274)), remains open. It is
+  what would narrow the machine-shared part of the base, and diverse double
+  compilation does not substitute for it.
+
+What the gate changes is that the pinned artifact checks are no longer the only
+evidence. Those compare this checkout against evidence recorded by one
+toolchain, so a payload present when that evidence was recorded is pinned along
+with it and passes forever; diverse double compilation is the one chain gate
+that runs a compiler which did not produce the baseline.

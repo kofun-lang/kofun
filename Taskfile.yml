@@ -144,6 +144,20 @@ tasks:
     cmds:
       - "sh bootstrap/selfhost/check-fixed-point.sh build/{{.NAMESPACE}}selfhost-fixed-point build/{{.NAMESPACE}}selfhost-generations"
 
+  # B7 (#1136). The chain gates above pin artifacts against checked-in
+  # evidence, and that evidence was recorded by one toolchain — so a payload
+  # present when it was recorded is pinned along with it and reproduces
+  # forever. This gate is the one that runs a toolchain which did not produce
+  # the baseline. It does not close B6: both chains share a machine, a libc,
+  # and a kernel.
+  selfhost-diverse-double-compilation:
+    desc: "Prove two diverse host C compilers build Kofun compilers that emit the same bytes"
+    vars:
+      NAMESPACE: '{{if .KOFUN_GATE_WORK_NAMESPACE}}{{.KOFUN_GATE_WORK_NAMESPACE}}/{{end}}'
+    cmds:
+      - "sh bootstrap/selfhost/check-diverse-double-compilation.sh build/{{.NAMESPACE}}selfhost-ddc"
+      - "sh bootstrap/selfhost/check-diverse-double-compilation-refusals.sh build/{{.NAMESPACE}}selfhost-ddc-refusals"
+
   # The acquisition set an independent builder needs, and the two refusals that
   # keep it honest. This is the producer-owned half of B6 (#1114); the
   # reproduction by a builder that did not produce the evidence stays #274.
@@ -846,6 +860,7 @@ tasks:
             selfhost-c11-control \
             selfhost-generations \
             selfhost-fixed-point \
+            selfhost-diverse-double-compilation \
             selfhost-declared-inputs \
             selfhost-native \
             stage2 \

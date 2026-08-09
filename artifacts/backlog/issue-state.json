@@ -760,6 +760,10 @@
         {
           "agent_id": "claude-fable-typelevel-v2",
           "status": "active"
+        },
+        {
+          "agent_id": "claude-fable-typelevel-v2",
+          "status": "pr-open"
         }
       ]
     },
@@ -776,6 +780,10 @@
         {
           "agent_id": "claude-fable-typelevel-v2",
           "status": "active"
+        },
+        {
+          "agent_id": "claude-fable-typelevel-v2",
+          "status": "pr-open"
         }
       ]
     }

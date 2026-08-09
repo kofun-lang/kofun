@@ -1,5 +1,26 @@
+fn identity(values: List[Int]) -> List[Int] {
+    return values
+}
+
+fn swap_first_two(values: List[Int]) -> List[Int] {
+    let mut out: List[Int] = values
+    let keep = out[0]
+    out[0] = out[1]
+    out[1] = keep
+    return out
+}
+
 fn main() -> Int {
-    let mut values: List[Int] = [1, 2, 3]
-    print(len(values))
+    let source = [10, 20, 30]
+    let changed = swap_first_two(source)
+    let mut direct = identity(changed)
+    direct[-1] = direct[-1] + 1
+    print(source[0])
+    print(source[1])
+    print(changed[0])
+    print(changed[1])
+    print(changed[-1])
+    print(direct[-1])
+    print(len(direct))
     return 0
 }

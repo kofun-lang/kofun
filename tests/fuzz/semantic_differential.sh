@@ -7,7 +7,18 @@ CASES=${KOFUN_SEMANTIC_FUZZ_CASES:-48}
 MANIFEST="$ROOT/tests/fuzz/families/arithmetic.tsv"
 RUNNER="$ROOT/tests/fuzz/semantic_runner.sh"
 GENERATOR=arithmetic-lcg-v1
-INITIAL_SEED=195936478
+# The default is the seed this corpus was recorded with, so `task verify`
+# generates the same programs it always has. It is overridable so a lane
+# that runs more than once can explore more than one input set; a fixed
+# seed means accumulated machine time buys no coverage.
+INITIAL_SEED=${KOFUN_SEMANTIC_FUZZ_SEED:-195936478}
+case $INITIAL_SEED in
+    ''|*[!0-9]*)
+        printf '%s\n' "semantic_differential fuzz: KOFUN_SEMANTIC_FUZZ_SEED must be a non-negative integer" >&2
+        exit 2
+        ;;
+esac
+printf '%s\n' "semantic_differential fuzz: seed=$INITIAL_SEED"
 
 if test "${1-}" = --replay; then
     test "$#" -eq 2 || {

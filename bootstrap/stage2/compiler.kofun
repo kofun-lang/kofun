@@ -4310,8 +4310,8 @@ fn emit_list_int_literal(
 
 # A whole List[Int] value crosses function boundaries in one fixed-capacity
 # by-value carrier. Literals remain the compact AggregateLayout view emitted
-# above and are copied into the carrier only at an immutable local binding;
-# direct literal arguments and returns stay outside this bounded slice.
+# above and are copied into the carrier at a local binding; direct literal
+# arguments and returns stay outside this bounded slice.
 fn emit_list_int_value(
     source: Text,
     hir: Text,
@@ -4360,6 +4360,71 @@ fn emit_list_int_value(
         to_text(cursor)
     }
     return emit_primary(source, hir, cursor, end)
+}
+
+# Validate one List[Int] subscript once for both reads and writes, then return
+# the emitted Int index. The caller owns the operation-specific C wrapper.
+fn emit_list_int_index_value(
+    source: Text,
+    hir: Text,
+    binding_start: Int,
+    open: Int
+) -> Text {
+    let binding_id = hir_use_binding_id(hir, binding_start)
+    let binding_type = hir_binding_field(hir, binding_id, 5)
+    if binding_type != "List[Int]" {
+        return "error[E2S157]: indexing requires List[Int], got " +
+        binding_type + " at byte " + to_text(binding_start)
+    }
+    let index_start = skip_trivia(source, token_end(source, open))
+    let index_end = expression_end(source, index_start)
+    let mut close = -1
+    if index_end >= 0 {
+        close = skip_trivia(source, index_end)
+    }
+    if index_end < 0 || close >= len(source) ||
+       token_text(source, close) != "]" {
+        return "error[E2S157]: malformed List[Int] index at byte " +
+        to_text(open)
+    }
+    let index_type = initializer_type(
+        source,
+        hir,
+        enclosing_function_open(source, index_start),
+        index_start
+    )
+    if index_type != "Int" {
+        return "error[E2S157]: List[Int] index must have type Int, got " +
+        index_type + " at byte " + to_text(index_start)
+    }
+    let constant = list_int_constant_index(source, index_start, index_end)
+    let literal_count = list_int_binding_literal_count(
+        source,
+        hir,
+        binding_start
+    )
+    if len(constant) > 0 && literal_count >= 0 {
+        let numeric = decimal_value(constant)
+        if numeric < 0 - literal_count || numeric >= literal_count {
+            return "error[E2S157]: List[Int] index " + constant +
+            " is out of range for length " + to_text(literal_count) +
+            " at byte " + to_text(index_start)
+        }
+    }
+    return emit_expression(source, hir, index_start, index_end)
+}
+
+fn list_int_index_close(source: Text, open: Int) -> Int {
+    let index_start = skip_trivia(source, token_end(source, open))
+    let index_end = expression_end(source, index_start)
+    if index_end < 0 {
+        return -1
+    }
+    let close = skip_trivia(source, index_end)
+    if close >= len(source) || token_text(source, close) != "]" {
+        return -1
+    }
+    return close
 }
 
 fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
@@ -4495,63 +4560,8 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
         if open >= end || token_text(source, open) != "(" {
             let binding_id = hir_use_binding_id(hir, cursor)
             if open < end && token_text(source, open) == "[" {
-                let binding_type = hir_binding_field(
-                    hir,
-                    binding_id,
-                    5
-                )
-                if binding_type != "List[Int]" {
-                    return "error[E2S157]: indexing requires List[Int], got " +
-                    binding_type + " at byte " + to_text(cursor)
-                }
-                let index_start = skip_trivia(
-                    source,
-                    token_end(source, open)
-                )
-                let index_end = expression_end(source, index_start)
-                let mut close = -1
-                if index_end >= 0 {
-                    close = skip_trivia(source, index_end)
-                }
-                if index_end < 0 || close >= len(source) ||
-                   token_text(source, close) != "]" {
-                    return "error[E2S157]: malformed List[Int] index at byte " +
-                    to_text(open)
-                }
-                let index_type = initializer_type(
-                    source,
-                    hir,
-                    enclosing_function_open(source, index_start),
-                    index_start
-                )
-                if index_type != "Int" {
-                    return "error[E2S157]: List[Int] index must have type Int, got " +
-                    index_type + " at byte " + to_text(index_start)
-                }
-                let constant = list_int_constant_index(
-                    source,
-                    index_start,
-                    index_end
-                )
-                let literal_count = list_int_binding_literal_count(
-                    source,
-                    hir,
-                    cursor
-                )
-                if len(constant) > 0 && literal_count >= 0 {
-                    let numeric = decimal_value(constant)
-                    if numeric < 0 - literal_count || numeric >= literal_count {
-                        return "error[E2S157]: List[Int] index " + constant +
-                        " is out of range for length " +
-                        to_text(literal_count) + " at byte " +
-                        to_text(index_start)
-                    }
-                }
-                let index_value = emit_expression(
-                    source,
-                    hir,
-                    index_start,
-                    index_end
+                let index_value = emit_list_int_index_value(
+                    source, hir, cursor, open
                 )
                 if starts_with(index_value, "error[") {
                     return index_value
@@ -11705,11 +11715,8 @@ fn lower_body(
                 } else if inferred_type == "List[Int]" {
                     c_type = "KofunIntListValue"
                 }
-                if mutable && inferred_type == "List[Int]" {
-                    return "error[E2S157]: mutable List[Int] bindings are outside this lowering slice at byte " +
-                    to_text(value_start)
-                }
-                if mutable && inferred_type != "Int" {
+                if mutable && inferred_type != "Int" &&
+                   inferred_type != "List[Int]" {
                     return "error[E2S144]: mutable Decimal, DecimalResult, Float, and Text bindings are outside this lowering slice at byte " +
                     to_text(value_start)
                 }
@@ -12356,7 +12363,78 @@ fn lower_body(
             let assignment_start = cursor
             let name = token_text(source, cursor)
             let equals = skip_trivia(source, token_end(source, cursor))
-            if equals < len(source) && token_text(source, equals) == "=" {
+            if equals < len(source) && token_text(source, equals) == "[" {
+                let binding_id = hir_use_binding_id(hir, assignment_start)
+                if binding_id == "-1" || len(binding_id) == 0 {
+                    return "error[E2S22]: unknown assignment target `" + name +
+                    "` at byte " + to_text(assignment_start) +
+                    "; declare it before assignment"
+                }
+                let mutability = hir_binding_field(hir, binding_id, 4)
+                if mutability != "mutable" {
+                    return "error[E2S22]: cannot assign through immutable List[Int] binding `" +
+                    name + "` at byte " + to_text(assignment_start) +
+                    "; declare it with `let mut`"
+                }
+                let index_value = emit_list_int_index_value(
+                    source,
+                    hir,
+                    assignment_start,
+                    equals
+                )
+                if starts_with(index_value, "error[") {
+                    return index_value
+                }
+                let close = list_int_index_close(source, equals)
+                if close < 0 {
+                    return "error[E2S157]: malformed List[Int] index at byte " +
+                    to_text(equals)
+                }
+                let indexed_equals = skip_trivia(source, token_end(source, close))
+                if indexed_equals >= len(source) ||
+                   token_text(source, indexed_equals) != "=" {
+                    return "error[E2S157]: expected `=` after List[Int] index at byte " +
+                    to_text(indexed_equals)
+                }
+                let value_start = skip_trivia(
+                    source,
+                    token_end(source, indexed_equals)
+                )
+                let value_end = expression_end(source, value_start)
+                if value_end < 0 {
+                    return "error[E2S157]: List[Int] element assignment requires an Int expression at byte " +
+                    to_text(value_start)
+                }
+                let value_type = initializer_type(
+                    source,
+                    hir,
+                    function_open,
+                    value_start
+                )
+                if value_type != "Int" {
+                    return "error[E2S157]: List[Int] element assignment requires Int, got " +
+                    value_type + " at byte " + to_text(value_start)
+                }
+                let value = emit_expression(source, hir, value_start, value_end)
+                if starts_with(value, "error[") {
+                    return value
+                }
+                emitted = emitted +
+                "    {\n" +
+                "        int64_t kofun_index = " + index_value + ";\n" +
+                "        if (kofun_failed) return " + failure_result + ";\n" +
+                "        uint64_t kofun_position = UINT64_C(0);\n" +
+                "        if (!kofun_list_int_resolve_index(k_b" +
+                binding_id + ".length, kofun_index, &kofun_position)) " +
+                "return " + failure_result + ";\n" +
+                "        int64_t kofun_replacement = " + value + ";\n" +
+                "        if (kofun_failed) return " + failure_result + ";\n" +
+                "        k_b" + binding_id +
+                ".elements[kofun_position] = kofun_replacement;\n" +
+                "    }\n"
+                cursor = skip_trivia(source, value_end)
+            } else if equals < len(source) &&
+                      token_text(source, equals) == "=" {
                 let binding_id = hir_use_binding_id(hir, assignment_start)
                 if binding_id == "-1" || len(binding_id) == 0 {
                     return "error[E2S22]: unknown assignment target `" + name +
@@ -14032,15 +14110,20 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     "static inline uint64_t kofun_list_int_value_length(KofunIntListValue list) {\n" +
     "    return list.length;\n" +
     "}\n" +
-    "static inline int64_t kofun_list_int_index(KofunIntList list, int64_t index) {\n" +
-    "    uint64_t length = kofun_list_int_length(list);\n" +
+    "static inline bool kofun_list_int_resolve_index(uint64_t length, int64_t index, uint64_t *resolved) {\n" +
     "    if (index < 0) index += (int64_t)length;\n" +
     "    if (index < 0 || (uint64_t)index >= length) {\n" +
-    "        kofun_error(\"error[R023]: bounded List[Int] index out of range\"); return 0;\n" +
+    "        kofun_error(\"error[R023]: bounded List[Int] index out of range\"); return false;\n" +
     "    }\n" +
+    "    *resolved = (uint64_t)index; return true;\n" +
+    "}\n" +
+    "static inline int64_t kofun_list_int_index(KofunIntList list, int64_t index) {\n" +
+    "    uint64_t length = kofun_list_int_length(list);\n" +
+    "    uint64_t resolved = UINT64_C(0);\n" +
+    "    if (!kofun_list_int_resolve_index(length, index, &resolved)) return 0;\n" +
     "    int64_t value = INT64_C(0);\n" +
     "    size_t offset = KOFUN_LIST_INT_PAYLOAD_OFFSET +\n" +
-    "        (size_t)index * KOFUN_LIST_INT_ELEMENT_SIZE;\n" +
+    "        (size_t)resolved * KOFUN_LIST_INT_ELEMENT_SIZE;\n" +
     "    memcpy(&value, list + offset, sizeof value); return value;\n" +
     "}\n" +
     "enum { KOFUN_TEXT_TEMPORARY_LIMIT = 4096 };\n" +
