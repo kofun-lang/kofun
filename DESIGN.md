@@ -3,7 +3,7 @@
 ## Active implementation
 
 The active toolchain is the Kofun-written arithmetic compiler at
-`bootstrap/stage1/compiler.kofun`. Its audited C11 seed starts the compiler
+`bootstrap/stage1/compiler.kofun`. Its hash-pinned C11 seed starts the compiler
 without a Python runtime. `bootstrap/stage1/check.sh` is the executable gate.
 `bootstrap/stage2/` additionally owns bounded semantic checkpoints, including
 the Copy/borrow rule below; these do not yet constitute a general type checker.

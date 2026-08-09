@@ -42,7 +42,7 @@ for setup, supported targets, examples, and the complete CLI guide.
 | C backend | bounded C11 emission |
 | Frameworks | HTTP, CLI, and TUI gates |
 | Frontend | focused Stage 2 parsing, typing, and diagnostics |
-| Interop | explicit C ABI and audited Rust shim checkpoints |
+| Interop | explicit C ABI and gated Rust shim checkpoints |
 | Native | direct x86-64 and AArch64 checkpoints |
 | Quality | conformance, diagnostic, Unicode, and fuzz gates |
 | Self-hosting | frozen-profile three-generation fixed point reached; full-language self-hosting open |
@@ -63,8 +63,8 @@ unsupported boundary. `task release-claims` fails when those disagree.
 Looking for the compiler itself? It is
 [`bootstrap/stage2/compiler.kofun`](bootstrap/stage2/compiler.kofun), the
 canonical front end written in Kofun, paired with
-[`bootstrap/stage2/compiler.c`](bootstrap/stage2/compiler.c), the audited C11
-seed that actually executes when you run the CLI.
+[`bootstrap/stage2/compiler.c`](bootstrap/stage2/compiler.c), the hash-pinned
+C11 seed that actually executes when you run the CLI.
 [Compiler architecture](docs/COMPILER_ARCHITECTURE.md#where-the-compiler-actually-is)
 explains which file runs when, and why a feature-named file under
 `bootstrap/stage2/` does not mean that feature compiles.

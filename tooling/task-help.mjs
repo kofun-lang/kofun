@@ -88,7 +88,7 @@ export const GROUPS = Object.freeze([
         title: 'Repository and release',
         hint: 'Repository policy, claim/evidence joins, decisions, generated evidence, and cleanup.',
         tasks: [
-            'repository-check', 'assertions', 'example-law-evidence',
+            'repository-check', 'assertions', 'audited-claim', 'example-law-evidence',
             'backlog', 'backlog-refresh',
             'release-claims', 'release-evidence', 'rfc-registry', 'clean'
         ]
