@@ -255,6 +255,43 @@
       }
     },
     {
+      "id": "c11-list-int-values",
+      "public_wording": "C11 bounded List[Int] values and mutable local writes",
+      "public_status": "bounded by-value 64-element locals and direct function carriers; standalone mutable-local element assignment with checked positive, negative, constant, and dynamic indices",
+      "state": "checkpoint",
+      "area": "c-backend",
+      "bounded_capability": "Stage 2 C11 lowers bounded `List[Int]` literals, immutable or mutable locals, direct parameters and results, `len`, checked reads, and standalone mutable-local element writes through one fixed-capacity by-value carrier. Reads and writes share positive, negative, constant, and dynamic bounds behavior. General `List[T]`, growth, mutation through parameters or immutable bindings, assignment expressions, list fields, indirect calls, and non-C11 backends remain outside the slice.",
+      "targets": [
+        "c11",
+        "stage2"
+      ],
+      "specification": [
+        "bootstrap/stage2/README.md"
+      ],
+      "compatibility": "The accepted C11 source slice and its checked bounds behavior are gated; the fixed carrier has no public or FFI ABI promise, and wider list operations require separate evidence.",
+      "positive_gate": {
+        "command": "task list-int-values",
+        "observation": "Bounded list locals, direct-call copies, positive and negative reads and writes, source isolation, dynamic traps, exact refusals, and sanitizer execution agree."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": "tests/stage2/list-int-values/out_of_range_write.kofun",
+        "observation": "A constant out-of-range write is refused as `E2S157` with no C artifact; the same gate proves dynamic out-of-range writes trap as `R023` before evaluating their right-hand side."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "task list-int-values",
+        "prerequisites": [
+          "cc"
+        ]
+      }
+    },
+    {
       "id": "checked-int64-contract",
       "public_wording": "checked Int64 contract",
       "public_status": "implemented for Core",

@@ -95,6 +95,41 @@ assert_file_empty "complete runtime stderr" "$work/complete.stderr"
 cmp "$work/complete.stdout" "$work/complete-repeat.stdout"
 cmp "$work/complete.stderr" "$work/complete-repeat.stderr"
 
+# Mutable lists are still by-value carriers. The fixture copies a parameter,
+# writes positive and negative indices, copies a direct-call result, and then
+# proves both source values stayed unchanged.
+compile_success mutable "$fixtures/mutable.kofun"
+assert_grep \
+    "annotated mutable List[Int] binding reaches typed HIR" \
+    -Fq "|out|mutable|List[Int]|gc|initialized|" \
+    "$work/mutable.ir"
+assert_grep \
+    "inferred mutable List[Int] binding reaches typed HIR" \
+    -Fq "|direct|mutable|List[Int]|gc|initialized|" \
+    "$work/mutable.ir"
+"$work/mutable" >"$work/mutable.stdout" 2>"$work/mutable.stderr"
+cmp "$fixtures/mutable.stdout" "$work/mutable.stdout"
+assert_file_empty "mutable runtime stderr" "$work/mutable.stderr"
+
+# Exercise the new write path under the host sanitizers when the selected C11
+# compiler supports them. Unsupported sanitizer flags are not a product
+# failure, but a supported instrumented build must run byte-identically.
+if "$compiler" -std=c11 -O1 -g -Wall -Wextra -Werror -pedantic \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I"$root/bootstrap/stage2" \
+    "$work/mutable.c" -o "$work/mutable-sanitized" \
+    >"$work/mutable-sanitize.stdout" \
+    2>"$work/mutable-sanitize.stderr"
+then
+    "$work/mutable-sanitized" \
+        >"$work/mutable-sanitized.stdout" \
+        2>"$work/mutable-sanitized.stderr"
+    cmp "$fixtures/mutable.stdout" "$work/mutable-sanitized.stdout"
+    assert_file_empty \
+        "mutable sanitizer runtime stderr" \
+        "$work/mutable-sanitized.stderr"
+fi
+
 # The native Core C reference is independent of the Stage 2 lowerer. Its
 # binding observation and the emitted C11 program must agree byte for byte.
 "$compiler" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
@@ -157,13 +192,35 @@ cmp \
     "$fixtures/dynamic_out_of_range.stderr" \
     "$work/dynamic-out-of-range.stderr"
 
+# A dynamic out-of-range write is checked before its observable RHS call, the
+# write, and every later observation. It uses the same R023 resolver as a read.
+compile_success \
+    dynamic-out-of-range-write \
+    "$fixtures/dynamic_out_of_range_write.kofun"
+set +e
+"$work/dynamic-out-of-range-write" \
+    >"$work/dynamic-out-of-range-write.stdout" \
+    2>"$work/dynamic-out-of-range-write.stderr"
+dynamic_write_status=$?
+set -e
+assert_num "dynamic out-of-range write status" "$dynamic_write_status" -eq 1
+assert_file_empty \
+    "dynamic out-of-range write stdout" \
+    "$work/dynamic-out-of-range-write.stdout"
+cmp \
+    "$fixtures/dynamic_out_of_range_write.stderr" \
+    "$work/dynamic-out-of-range-write.stderr"
+
 # Every compile-time refusal is transactional: stable stdout, empty compiler
 # stderr, status 1, and no partial C artifact.
 for stem in \
     argument_boundary \
-    mutable \
+    immutable_write \
     non_int_index \
+    non_int_write_index \
+    non_int_write_value \
     out_of_range \
+    out_of_range_write \
     oversized \
     unsupported_annotation \
     unsupported_element

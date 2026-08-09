@@ -21,6 +21,7 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | `bounded-tzdb-producer` | rejection | `tests/stdlib/tzdb/tzdb.kofun` | Malformed magic, unsupported version, digest mismatch, invalid zone, truncation, trailing bytes, arithmetic overflow, oversized input, and transition-limit exhaustion are distinct closed values. |
 | `c-abi-profile` | limit | `tests/conformance/capabilities.tsv` | Backends outside the host-C profile are recorded as unsupported with a stated reason. |
 | `c11-function-calls` | rejection | `tests/diagnostics/stage2/e2s10_unsupported_statement.kofun` | Statements outside the lowered slice are refused with `E2S10` rather than mis-lowered. |
+| `c11-list-int-values` | rejection | `tests/stage2/list-int-values/out_of_range_write.kofun` | A constant out-of-range write is refused as `E2S157` with no C artifact; the same gate proves dynamic out-of-range writes trap as `R023` before evaluating their right-hand side. |
 | `checked-int64-contract` | trap | `tests/conformance/numeric/reject_slash_operator.kofun` | Operations that cannot be represented are refused or trapped rather than wrapping. |
 | `cli-commands` | rejection | `tests/cli_stage2_outcomes.sh` | Non-Core sources produce a refusal outcome instead of a partial build. |
 | `cli-framework` | limit | `tests/conformance/capabilities.tsv` | Targets outside Linux x86-64 are recorded as unsupported with a stated reason. |

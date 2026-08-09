@@ -10,6 +10,7 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | `bounded-tzdb-producer` | `sh tests/stdlib/tzdb/check.sh` | Typed HIR, emitted C11, the reference executor, and two repeated backend runs agree on exact normal/gap/fold, provenance, malformed, and resource-limit observations. |
 | `c-abi-profile` | `sh bootstrap/c_abi/check.sh` | The C ABI profile builds and round-trips through host C. |
 | `c11-function-calls` | `sh bootstrap/stage2/check.sh` | Int Core user-function calls lower and execute through C11. |
+| `c11-list-int-values` | `task list-int-values` | Bounded list locals, direct-call copies, positive and negative reads and writes, source isolation, dynamic traps, exact refusals, and sanitizer execution agree. |
 | `checked-int64-contract` | `sh tests/conformance/run.sh` | The numeric conformance corpus passes on every supported backend. |
 | `cli-commands` | `sh tests/cli.sh` | Each subcommand succeeds on Core sources. |
 | `cli-framework` | `sh framework/cli/check.sh` | The declarative CLI example builds statically and runs. |
