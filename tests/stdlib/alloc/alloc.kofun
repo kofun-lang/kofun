@@ -1,0 +1,229 @@
+# Executable allocator-contract projection for issue #930 (RFC-0001 stage 1).
+#
+# The canonical contract is stdlib/alloc/alloc.kofun. That file holds the
+# records, the closed ADTs, and the decision functions over them. This file is
+# a projection of the same decisions into the vocabulary the Stage 2 Core
+# accepts today: `let` binds Int expressions, functions take and return Int,
+# and there are no records, ADTs, or loops.
+#
+# The projection keeps every decision the canonical surface makes. It only
+# spells values differently, and tests/stdlib/alloc/check.sh pins both against
+# each other so the two cannot drift.
+#
+# Encodings, all of them checked by the gate:
+#
+#   kind         0 arena, 1 quota, 2 tracing, 3 fixed
+#   error        0 exhausted, 1 quota exceeded, 2 region closed,
+#                3 wrong allocator
+#   decision     >= 0 admitted, carrying the resulting `used`;
+#                < 0 refused, carrying -(error + 1)
+#
+# A refusal is encoded as a negative number rather than a second return value
+# because the Core has no sum type yet. The canonical surface returns
+# `AllocDecision`, and the gate proves the two agree case by case.
+
+fn alloc_kind_arena() -> Int {
+    return 0
+}
+
+fn alloc_kind_quota() -> Int {
+    return 1
+}
+
+fn alloc_kind_tracing() -> Int {
+    return 2
+}
+
+fn alloc_kind_fixed() -> Int {
+    return 3
+}
+
+fn alloc_error_exhausted() -> Int {
+    return 0
+}
+
+fn alloc_error_quota_exceeded() -> Int {
+    return 1
+}
+
+fn alloc_error_region_closed() -> Int {
+    return 2
+}
+
+fn alloc_error_wrong_allocator() -> Int {
+    return 3
+}
+
+# The canonical surface takes an `AllocKind` and an `AllocError`; here the
+# code is already the value, so these are identities. They exist so the drift
+# pin sees every canonical decision on both surfaces rather than treating an
+# identity as an absence.
+fn alloc_kind_code(kind: Int) -> Int {
+    return kind
+}
+
+fn alloc_error_code(error: Int) -> Int {
+    return error
+}
+
+fn alloc_refuse(error: Int) -> Int {
+    return 0 - error - 1
+}
+
+# Predicates return 1 or 0 rather than Bool: the Core admits Int parameters
+# and returns, and the canonical surface is where the type is `Bool`.
+fn alloc_arena_open(open: Int) -> Int {
+    if open != 0 {
+        return 1
+    }
+    return 0
+}
+
+fn alloc_authority_admits(
+    authority_arena: Int,
+    authority_generation: Int,
+    arena_id: Int,
+    generation: Int
+) -> Int {
+    # Both conditions are required, written as nested `if` rather than `&&`
+    # because the Core admits a comparison as an `if` condition and not yet a
+    # conjunction of two.
+    if authority_arena == arena_id {
+        if authority_generation == generation {
+            return 1
+        }
+    }
+    return 0
+}
+
+fn alloc_remaining(limit: Int, used: Int) -> Int {
+    if limit <= used {
+        return 0
+    }
+    return limit - used
+}
+
+# The whole policy, in the same order the canonical `alloc_decide` applies it:
+# a mismatched authority first, because that caller has not asked this arena
+# anything; then a closed region, which has no budget to be within; then the
+# budget itself, whose error depends on the kind.
+fn alloc_decide(
+    kind: Int,
+    limit: Int,
+    used: Int,
+    open: Int,
+    arena_id: Int,
+    generation: Int,
+    authority_arena: Int,
+    authority_generation: Int,
+    bytes: Int
+) -> Int {
+    let admits = alloc_authority_admits(
+        authority_arena,
+        authority_generation,
+        arena_id,
+        generation
+    )
+    if admits == 0 {
+        return alloc_refuse(alloc_error_wrong_allocator())
+    }
+    if alloc_arena_open(open) == 0 {
+        return alloc_refuse(alloc_error_region_closed())
+    }
+    if bytes < 0 {
+        return alloc_refuse(alloc_error_exhausted())
+    }
+    if bytes > alloc_remaining(limit, used) {
+        if kind == alloc_kind_quota() {
+            return alloc_refuse(alloc_error_quota_exceeded())
+        }
+        return alloc_refuse(alloc_error_exhausted())
+    }
+    return used + bytes
+}
+
+fn alloc_promotable(kind: Int) -> Int {
+    if kind != alloc_kind_fixed() {
+        return 1
+    }
+    return 0
+}
+
+fn alloc_promote_decide(kind: Int, used: Int, open: Int, bytes: Int) -> Int {
+    if alloc_promotable(kind) == 0 {
+        return alloc_refuse(alloc_error_wrong_allocator())
+    }
+    if alloc_arena_open(open) == 0 {
+        return alloc_refuse(alloc_error_region_closed())
+    }
+    if bytes < 0 {
+        return alloc_refuse(alloc_error_exhausted())
+    }
+    if bytes > used {
+        return alloc_refuse(alloc_error_exhausted())
+    }
+    return used - bytes
+}
+
+# The scripted failing allocator: admits `admit_count` requests and refuses
+# every one after that with the scripted error, so an exhaustion path is
+# reachable without a real allocator running out.
+fn alloc_scripted_decide(
+    admit_count: Int,
+    served: Int,
+    scripted: Int,
+    bytes: Int
+) -> Int {
+    if served >= admit_count {
+        return alloc_refuse(scripted)
+    }
+    if bytes < 0 {
+        return alloc_refuse(alloc_error_exhausted())
+    }
+    return served + 1
+}
+
+fn main() -> Int {
+    # The kind codes, printed so the encoding this file documents is observed
+    # rather than asserted only in a comment.
+    print(alloc_kind_arena())
+    print(alloc_kind_quota())
+    print(alloc_kind_tracing())
+    print(alloc_kind_fixed())
+    print(alloc_kind_code(alloc_kind_quota()))
+    print(alloc_error_code(alloc_error_region_closed()))
+
+    # An ordinary admitted request: arena kind, 100-byte limit, 10 used, open,
+    # matching authority, asking for 30.
+    print(alloc_decide(0, 100, 10, 1, 7, 3, 7, 3, 30))
+
+    # The same request with an authority for a different arena.
+    print(alloc_decide(0, 100, 10, 1, 7, 3, 9, 3, 30))
+
+    # The same request with a stale generation.
+    print(alloc_decide(0, 100, 10, 1, 7, 3, 7, 2, 30))
+
+    # The same request against a closed region.
+    print(alloc_decide(0, 100, 10, 0, 7, 3, 7, 3, 30))
+
+    # Over budget on an arena kind, then on a quota kind: the error names the
+    # policy that refused it.
+    print(alloc_decide(0, 100, 90, 1, 7, 3, 7, 3, 30))
+    print(alloc_decide(1, 100, 90, 1, 7, 3, 7, 3, 30))
+
+    # Exactly at the limit is admitted; one byte more is not.
+    print(alloc_decide(0, 100, 70, 1, 7, 3, 7, 3, 30))
+    print(alloc_decide(0, 100, 71, 1, 7, 3, 7, 3, 30))
+
+    # Promotion: admitted from an arena, refused from a fixed kind because a
+    # fixed arena has no heap behind it.
+    print(alloc_promote_decide(0, 40, 1, 25))
+    print(alloc_promote_decide(3, 40, 1, 25))
+
+    # The scripted allocator admits two, then refuses with its script.
+    print(alloc_scripted_decide(2, 0, 1, 8))
+    print(alloc_scripted_decide(2, 1, 1, 8))
+    print(alloc_scripted_decide(2, 2, 1, 8))
+
+    return 0
+}

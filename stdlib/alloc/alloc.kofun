@@ -1,0 +1,183 @@
+# The canonical allocator contract (RFC-0001, stage 1).
+#
+# This file is the source of truth for the allocator vocabulary. It declares
+# the types and the pure decision functions over them; it grants no authority,
+# infers no effect, opens no scope, and enforces no region. Those are stages 2
+# through 6 of the RFC's plan and are deliberately absent here.
+#
+# An allocator is three roles at three layers, which is what keeps them from
+# collapsing into each other:
+#
+#   the arena          an owned resource with deterministic cleanup
+#   the authority      an affine capability naming what may be allocated from
+#   the kind           what policy the arena implements
+#
+# Nothing in this file allocates. `AllocDecision` answers "would this request
+# be admitted, and if not why" as a value, so the policy is testable before
+# any runtime exists to enforce it.
+
+# The closed allocation-error set. Capability-path exhaustion is an
+# anticipated policy outcome carried in a value; the managed default path
+# instead traps as runtime error R030, which is why no `Managed` case appears
+# here. An error domain that could mean either would make callers guess.
+type AllocError =
+    | Exhausted
+    | QuotaExceeded
+    | RegionClosed
+    | WrongAllocator
+
+# What policy an arena implements. `promote` moves a value out of an arena
+# into the managed heap, and only some kinds admit it -- a fixed arena has no
+# heap behind it to promote into.
+type AllocKind =
+    | ArenaAlloc
+    | QuotaAlloc
+    | TracingAlloc
+    | FixedAlloc
+
+# An arena's observable state. `limit` is the byte budget the kind enforces;
+# `used` is what has been taken from it. Both are ordinary Int values so the
+# decision functions below are pure arithmetic rather than runtime queries.
+type Arena = {
+    kind: AllocKind,
+    limit: Int,
+    used: Int,
+    open: Int,
+}
+
+# The affine capability. `arena` names which arena this authority admits
+# requests to, so presenting an authority for one arena to another is
+# `WrongAllocator` rather than an unchecked coincidence. `generation`
+# advances with the arena it names; a copy kept behind is at a dead
+# generation, which is the shape `stdlib/clock`'s handle already uses and
+# which #784 decided for resource handles generally.
+type AllocAuthority = {
+    arena: Int,
+    generation: Int,
+}
+
+# A request's outcome as a value, before anything is allocated.
+type AllocDecision =
+    | Admitted(Int)
+    | Refused(AllocError)
+
+fn alloc_kind_code(kind: AllocKind) -> Int {
+    match kind {
+        ArenaAlloc => { return 0 }
+        QuotaAlloc => { return 1 }
+        TracingAlloc => { return 2 }
+        FixedAlloc => { return 3 }
+    }
+}
+
+fn alloc_error_code(error: AllocError) -> Int {
+    match error {
+        Exhausted => { return 0 }
+        QuotaExceeded => { return 1 }
+        RegionClosed => { return 2 }
+        WrongAllocator => { return 3 }
+    }
+}
+
+# A closed arena refuses every request, including a zero-byte one. The
+# alternative -- admitting requests that happen to need nothing -- would make
+# closure depend on the size asked for.
+fn alloc_arena_open(arena: Arena) -> Bool {
+    return arena.open != 0
+}
+
+# Only an authority naming this arena, at its live generation, may be
+# presented. Both conditions are required: a stale generation is a copy kept
+# past a transition, and a different arena is a capability for somewhere else.
+fn alloc_authority_admits(
+    authority: AllocAuthority,
+    arena_id: Int,
+    generation: Int
+) -> Bool {
+    return authority.arena == arena_id && authority.generation == generation
+}
+
+fn alloc_remaining(arena: Arena) -> Int {
+    if arena.limit <= arena.used {
+        return 0
+    }
+    return arena.limit - arena.used
+}
+
+# The whole policy, as one decision. The order of the checks is the order of
+# the reasons: a closed region is refused before a quota, because a closed
+# region has no budget to be within, and a mismatched authority is refused
+# first of all, because a caller holding the wrong capability has not asked
+# this arena anything.
+fn alloc_decide(
+    arena: Arena,
+    arena_id: Int,
+    generation: Int,
+    authority: AllocAuthority,
+    bytes: Int
+) -> AllocDecision {
+    if !alloc_authority_admits(authority, arena_id, generation) {
+        return Refused(WrongAllocator)
+    }
+    if !alloc_arena_open(arena) {
+        return Refused(RegionClosed)
+    }
+    if bytes < 0 {
+        return Refused(Exhausted)
+    }
+    if bytes > alloc_remaining(arena) {
+        match arena.kind {
+            QuotaAlloc => { return Refused(QuotaExceeded) }
+            ArenaAlloc => { return Refused(Exhausted) }
+            TracingAlloc => { return Refused(Exhausted) }
+            FixedAlloc => { return Refused(Exhausted) }
+        }
+    }
+    return Admitted(arena.used + bytes)
+}
+
+# `promote` moves a value out of an arena into the managed heap. A fixed
+# arena has no heap behind it, so promotion from one is `WrongAllocator`
+# rather than exhaustion: the request names an operation this kind does not
+# have, not a budget it cannot meet.
+fn alloc_promotable(kind: AllocKind) -> Bool {
+    match kind {
+        ArenaAlloc => { return true }
+        QuotaAlloc => { return true }
+        TracingAlloc => { return true }
+        FixedAlloc => { return false }
+    }
+}
+
+fn alloc_promote_decide(arena: Arena, bytes: Int) -> AllocDecision {
+    if !alloc_promotable(arena.kind) {
+        return Refused(WrongAllocator)
+    }
+    if !alloc_arena_open(arena) {
+        return Refused(RegionClosed)
+    }
+    if bytes < 0 || bytes > arena.used {
+        return Refused(Exhausted)
+    }
+    return Admitted(arena.used - bytes)
+}
+
+# The scripted failing allocator the later failure corpus needs. It admits
+# exactly `admit_count` requests and refuses every one after that with the
+# scripted error, so a test can reach an exhaustion path without depending on
+# a real allocator running out.
+type ScriptedAlloc = {
+    admit_count: Int,
+    served: Int,
+    scripted: AllocError,
+}
+
+fn alloc_scripted_decide(script: ScriptedAlloc, bytes: Int) -> AllocDecision {
+    if script.served >= script.admit_count {
+        return Refused(script.scripted)
+    }
+    if bytes < 0 {
+        return Refused(Exhausted)
+    }
+    return Admitted(script.served + 1)
+}
