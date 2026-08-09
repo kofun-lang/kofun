@@ -108,3 +108,40 @@ Earlier measurement, the register allocator (#665) against `fdb8e6d`, kept for
 comparison: `fib35` 84,250 us → 39,570 us (−53.03%), `mutual_fib32` 20,168 us →
 9,905 us (−50.89%), `six_argument_fib30` 15,272 us → 6,758 us (−55.75%), with
 the C `fib(35)` ratio going from 7.635x to 3.586x.
+
+## How it runs (#1139)
+
+`benchmark.sh` enforces nothing until it is told which revision to compare
+against, and for a long time nothing told it. `check.sh` is what invokes it,
+and it does not invent the pair: `results.json` already records both halves —
+`baseline_revision` and `budgets.declared_improvements` — so the gate and the
+numbers published above cannot describe different comparisons. Recording a new
+measurement is what moves the pin, which puts the move at the moment a person
+looked at the numbers.
+
+A named revision rather than committed numbers, because the harness builds that
+revision's producer and measures it in the same run on the same machine,
+interleaving rounds. Numbers recorded elsewhere would measure the hardware
+instead — the ones above came from a laptop, and CI runners are neither that
+laptop nor each other. A *moving* baseline such as `HEAD~1` would be worse than
+either: the 5% per-comparison allowance would let performance decay without
+limit while every run stayed green.
+
+The gate is split in two, because enforcing it costs two producer builds and
+needs the baseline commit in the object store:
+
+```sh
+task native-functions-baseline    # the pin is coherent — no benchmark, no history
+task native-functions-benchmark   # the real thing, against the pinned revision
+```
+
+`native-functions-baseline` is in `task verify`. It proves the pin still names
+a real revision and that every claim names a workload the harness measures,
+which is what rots silently; it reads no history and runs nothing.
+
+`native-functions-benchmark` is not in `verify`. It runs in its own scheduled
+lane, `.github/workflows/benchmark.yml`, daily and on demand, with full history
+checked out. Not on pull requests: a shared runner's neighbours are not this
+repository's business, and a timing gate that goes red for a reason a pull
+request's author cannot fix teaches people to ignore it. On `main` the same
+failure is a true signal.

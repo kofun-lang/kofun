@@ -488,6 +488,27 @@ tasks:
     cmds:
       - "sh tests/stdlib/benchmark-summary/check.sh"
 
+  # `benchmark-summary` above gates the stdlib quantile library and measures no
+  # compiler performance; these two are the compiler regression gate (#1139).
+  # They are split because the enforcing half costs two producer builds and
+  # needs full git history, which is a scheduled lane's budget, not `verify`'s.
+  #
+  # This half is `verify`'s: it proves the pinned comparison is still coherent —
+  # a real revision, and claims that name workloads the harness measures — which
+  # is what rots silently. It runs no benchmark and reads no history.
+  native-functions-baseline:
+    desc: "Check the pinned native-function regression baseline and its claims"
+    cmds:
+      - "sh benchmarks/native-functions/check.sh structure"
+
+  # The enforcing half. Not in `verify`: it builds the baseline revision's
+  # producer as well as this one, and CI reaches it through .github/workflows/
+  # benchmark.yml, which checks out full history and runs it on a schedule.
+  native-functions-benchmark:
+    desc: "Enforce the native-function budgets against the pinned baseline revision"
+    cmds:
+      - "sh benchmarks/native-functions/check.sh measure"
+
   move-assertion:
     desc: "Verify the unstable compile-time move assertion and its erasure"
     cmds:
@@ -914,6 +935,7 @@ tasks:
             affine-resumption \
             example-law-evidence \
             benchmark-summary \
+            native-functions-baseline \
             move-assertion \
             usability-corpus \
             capabilities \

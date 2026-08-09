@@ -81,7 +81,8 @@ export const GROUPS = Object.freeze([
         hint: 'Host integration, measured costs, and the executable standard-library capability surface.',
         tasks: [
             'rust-shim', 'http', 'stdlib', 'alloc-contract', 'kotest', 'tzdb', 'clock-adapters',
-            'benchmark-summary', 'capabilities'
+            'benchmark-summary', 'native-functions-baseline', 'native-functions-benchmark',
+            'capabilities'
         ]
     },
     {

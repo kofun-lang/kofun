@@ -1,0 +1,50 @@
+name: Benchmark
+
+# The compiler performance regression gate (#1139). `docs/ROADMAP.md` §M4 lists
+# performance regression gates as a 1.0 exit criterion; the enforcement has
+# existed in `benchmarks/native-functions/benchmark.sh` since it was written and
+# nothing invoked it, so it enforced nothing.
+#
+# Its own lane rather than a job in CI, for two reasons that both come from what
+# the gate does. It builds the pinned baseline revision's producer in addition
+# to this revision's, so it costs about twice a normal build — too much to add
+# to every pull request for a signal that changes on almost none of them. And it
+# needs the baseline commit in the object store, which the default shallow
+# checkout does not provide.
+#
+# Not on `pull_request`, for the reason the backlog lane is not either: a shared
+# runner's neighbours are not this repository's business, and a timing gate that
+# goes red for a reason a pull request's author cannot fix teaches people to
+# ignore it. On a schedule the same failure is a true signal about `main`.
+
+on:
+  schedule:
+    # 04:00 UTC daily, off the hour that everything else on shared runners
+    # starts on.
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+# A slow run is better than two interleaved ones: concurrent jobs would be
+# measuring each other.
+concurrency:
+  group: benchmark
+  cancel-in-progress: false
+
+jobs:
+  native-functions:
+    name: Native function budgets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # The gate builds the pinned baseline revision from source; a shallow
+          # checkout does not contain it, and the gate says so rather than
+          # reporting the absence as a regression.
+          fetch-depth: 0
+      - name: Install go-task
+        uses: arduino/setup-task@c0bc642852239c2689f73f4ea6459c29405f3c52 # v3.0.0
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Enforce the budgets against the pinned baseline
+        run: task native-functions-benchmark
