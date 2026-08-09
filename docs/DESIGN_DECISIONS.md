@@ -377,11 +377,35 @@ rejected as a goal. Higher-kinded and effectful type computation is deferred,
 not refused: it needs separate kind, capability, and evidence decisions.
 
 [`spec/type-level-programming-v1.md`](../spec/type-level-programming-v1.md) is
-normative. No compiler implements the profile, which is what makes the
-rejection cheap to revisit: #1130 asks to supersede it with a v2 admitting
-non-structural recursion under a fuel budget, so non-termination becomes a
-bounded diagnostic rather than a hang. Until that is accepted, this decision
-stands as written.
+normative for the v1 profile.
+
+**Amended: `DD-031/A01` (2026-08-09).** The two paragraphs above are the
+original wording and are preserved as written; they are no longer current on
+two points, and a reader should not take them as such.
+
+- **General recursion is admissible, and Turing-completeness is no longer
+  rejected as a goal.** [RFC-0008](../rfcs/0008-type-level-general-v2.md),
+  accepted for #1130, adds the `type fn general` modifier and the
+  `kofun.type-reduction/general-v2` profile. Termination is bounded by
+  versioned frame, step, and node limits instead of by structure, and
+  exhausting one is a deterministic type error naming the declaration, the
+  limit, the measured counts, and the top consumers — a bounded diagnostic
+  rather than a hang. Structural termination becomes a *checked property* of
+  the unmarked `type fn` rather than the only admissible form, and a
+  structural declaration may not call a general one, so a `default-v1` root
+  keeps the v1 guarantee compositionally.
+- **The profile is no longer Type-only.**
+  [RFC-0009](../rfcs/0009-type-level-kinds-v1.md), accepted for #1133, adds
+  the `Nat`, `Symbol`, and `Bool` data kinds and the
+  `kofun.type-reduction/kinds-v1` profile. This narrows the "higher-kinded
+  computation is deferred" sentence to the kind axis only; effectful type
+  computation stays deferred.
+
+What the amendment does **not** move: anonymous conditional, mapped, and
+inferred type expressions are still rejected, for the reason originally
+given. Both RFCs are `accepted`, which decides semantics and nothing else —
+no compiler implements either, and `release/claims.json` remains the
+authority on what the compiler can currently do.
 
 ## DD-032: `trait`, with a local-trait-or-local-outer-type orphan rule
 

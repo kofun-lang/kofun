@@ -2,11 +2,21 @@
 
 - Shepherd: hjosugi
 - Opened: 2026-08-09
-- Status: proposed
+- Review closed: 2026-08-09
+- Decided: 2026-08-09
+- Status: accepted
 
 Proposal for [#1133](https://github.com/kofun-lang/kofun/issues/1133). This
 document records target semantics only; nothing in it is parsed, kinded, or
-reduced by any active compiler.
+reduced by any active compiler. Acceptance decides the semantics and nothing
+else — the three data kinds, the `kofun.type-reduction/kinds-v1` profile, the
+eleven builtins, the two views, and `E394`–`E401` are decided target
+semantics with no implementation behind them, and `release/claims.json`
+remains the authority on what the compiler can actually do.
+
+This proposal does not amend DD-031's rejection row. The row is owned by the
+termination axis, and [RFC-0008](0008-type-level-general-v2.md) carries the
+amendment that moves it.
 
 This is the other half of the decision split recorded on
 [#1130](https://github.com/kofun-lang/kofun/issues/1130).

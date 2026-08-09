@@ -42,13 +42,29 @@ It is never an anonymous expression language embedded at a use site.
 
 The selected profile is named `kofun.type-reduction/default-v1`.
 
-The last row is the one under active challenge. Issue #1130 requests a v2 that
-admits non-structural recursion under a per-declaration fuel budget, trading
-"checking terminates" for "non-termination is a bounded, attributable
-diagnostic" — the trade GHC (`UndecidableInstances` plus `-freduction-depth`)
-and TypeScript (its instantiation-depth limit) both arrived at in practice.
-This document is not amended by that request: it records what v1 selected, and
-a supersession requires the versioned specification change described below.
+**Three of those rows have been superseded — see `DD-031/A01` (2026-08-09).**
+The table above records what v1 selected and is preserved as written; it is no
+longer the whole accepted boundary. The versioned specification change that
+row 6 requires has happened, in two parts, both `accepted` on 2026-08-09:
+
+| Superseded row | Superseded by | Now |
+| --- | --- | --- |
+| General recursive or mutually recursive type programs — *rejected* | [RFC-0008](../rfcs/0008-type-level-general-v2.md), issue #1130 | admissible when declared `type fn general`, under `kofun.type-reduction/general-v2` |
+| Turing-complete type programming — *rejected as a language goal* | [RFC-0008](../rfcs/0008-type-level-general-v2.md), issue #1130 | accepted as a goal; bounded by versioned frame/step/node limits, and exhaustion is a deterministic error rather than a hang |
+| Higher-kinded or effectful type computation — *deferred* | [RFC-0009](../rfcs/0009-type-level-kinds-v1.md), issue #1133 | narrowed to the effectful half. The `Nat`, `Symbol`, and `Bool` data kinds are decided, under `kofun.type-reduction/kinds-v1`. Effectful type computation stays deferred. |
+
+Rows 1 through 3 are **not** superseded. Anonymous conditional, mapped, and
+inferred type expressions stay rejected, for the reason given.
+
+Everything else in this document remains the normative description of
+`kofun.type-reduction/default-v1`, which is unchanged: its limits, its
+validation sequence, and its trace contract are what an unmarked `type fn`
+still gets, byte for byte. A structural declaration may not call a general
+one, so a default-v1 root keeps the v1 guarantee compositionally.
+
+As before, no active compiler implements this profile — and none implements
+either successor. `release/claims.json` is the authority on what the compiler
+can currently do.
 
 ## Haskell reference points
 
