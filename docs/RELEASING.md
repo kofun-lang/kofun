@@ -79,20 +79,30 @@ Run from a clean checkout of `main`, with the working tree clean.
    git push origin "v$(cat VERSION)"
    ```
 
-7. **Publish the notes.** Create the release from that tag. Until the
-   compiler is a general parser and type checker, mark it a pre-release; the
-   `-seed` suffix and the pre-release flag say the same thing and should not
-   disagree.
+   Pushing that tag runs `.github/workflows/release.yml`, which **refuses a
+   tag that disagrees with `VERSION`**, runs `task verify` at the tagged
+   commit rather than trusting the branch run, builds a reproducible source
+   archive with `git archive`, and attaches it with its SHA-256 to the
+   release. A `-seed` version is published as a pre-release, because the
+   suffix and the flag say the same thing and must not disagree.
 
-   Notes state what changed in terms of claims: which capability rose, which
-   bounded slice widened, and which refusals moved. `artifacts/release-evidence/CLAIMS.md`
-   is the source for that wording — the release notes and the claims manifest
-   must not describe the capability two different ways.
+7. **Write the notes.** The workflow generates notes from the commit range;
+   replace them with what changed in terms of claims — which capability rose,
+   which bounded slice widened, which refusals moved.
+   `artifacts/release-evidence/CLAIMS.md` is the source for that wording, so
+   the release notes and the claims manifest do not describe one capability
+   two different ways.
 
-## What a release does not include
+## What a release includes, and what it does not
 
-No binaries, archives, or checksums are attached today. Every published
-release carries zero assets, and a user installs by cloning and building.
-Saying so here is deliberate: an install path is an M4 deliverable
-(`docs/ROADMAP.md` §M4, "multi-platform release"), and pretending one exists
-would be the same defect this document was written to close.
+**It includes** a source archive and its SHA-256. That is the acquisition
+artifact an independent builder starts from, and the digest is what makes
+"the right bytes" checkable — the same question
+`bootstrap/selfhost/declare-inputs.sh` answers file by file.
+
+**It does not include binaries for any platform.** A user builds from source.
+An install path is an M4 deliverable (`docs/ROADMAP.md` §M4, "multi-platform
+release"); the compiler is Linux x86-64 only today, AArch64 evidence is
+qemu-gated, and there is no macOS or Windows support to ship. Saying so is
+deliberate: pretending an install path exists would be the same defect this
+document was written to close.
