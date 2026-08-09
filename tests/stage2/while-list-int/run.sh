@@ -44,7 +44,7 @@ run_bounded() {
 }
 
 # ------------------------------------------------------------------ accepted
-for stem in binary_search scan; do
+for stem in binary_search scan index_in_condition; do
     run_bounded "$stem"
     assert_num "$stem exit status" "$status" -eq 0
     assert_file_empty "$stem stderr" "$work/$stem.stderr"
@@ -59,6 +59,12 @@ assert_grep "binary search finds the first element" \
     -Fqx -e "0" "$work/binary_search.stdout"
 assert_grep "binary search reports a miss as -1" \
     -Fqx -e "-1" "$work/binary_search.stdout"
+
+# #1158: the element comparison that used to be refused. Its absence from the
+# accepted set was the reason `scan.kofun` binds each element before comparing
+# it; that spelling stays, because both must keep working.
+assert_grep "an index compared in a condition finds its element" \
+    -Fqx -e "2" "$work/index_in_condition.stdout"
 
 # ------------------------------------------------------------------ refused
 # A non-Bool condition is refused before any C is written, the same as `if`.

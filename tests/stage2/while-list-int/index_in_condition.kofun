@@ -1,0 +1,47 @@
+# #1158. An index expression compared inside a condition used to be refused:
+# the index classification ran past the `]` and typed the whole
+# `i] == target` span, so the diagnostic said the index was a Bool.
+#
+# This is the natural spelling for every scan that inspects an element rather
+# than accumulating it, and the workaround — binding the element first — reads
+# like a style choice rather than the boundary it was.
+
+fn index_of(values: List[Int], target: Int) -> Int {
+    let mut i = 0
+    while i < len(values) {
+        if values[i] == target {
+            return i
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+fn count_above(values: List[Int], floor: Int) -> Int {
+    let mut i = 0
+    let mut seen = 0
+    while i < len(values) {
+        if values[i] > floor {
+            seen = seen + 1
+        }
+        i = i + 1
+    }
+    return seen
+}
+
+# No loop involved: the defect reproduced with a bare `if` too.
+fn first_is(values: List[Int], expected: Int) -> Int {
+    if values[0] == expected {
+        return 1
+    }
+    return 0
+}
+
+fn main() {
+    let data = [2, 4, 6, 8]
+    print(index_of(data, 6))
+    print(index_of(data, 5))
+    print(count_above(data, 3))
+    print(first_is(data, 2))
+    print(first_is(data, 9))
+}

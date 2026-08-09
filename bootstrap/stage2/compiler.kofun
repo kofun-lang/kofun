@@ -4387,11 +4387,16 @@ fn emit_list_int_index_value(
         return "error[E2S157]: malformed List[Int] index at byte " +
         to_text(open)
     }
-    let index_type = initializer_type(
+    # Bounded at the `]` (#1158). Unbounded, the classification runs past the
+    # subscript and swallows whatever follows it, so `values[i] == target`
+    # typed the whole `i] == target` span and reported the index as Bool. This
+    # is the defect `initializer_type_bounded` already exists for.
+    let index_type = initializer_type_bounded(
         source,
         hir,
         enclosing_function_open(source, index_start),
-        index_start
+        index_start,
+        index_end
     )
     if index_type != "Int" {
         return "error[E2S157]: List[Int] index must have type Int, got " +
