@@ -81,7 +81,15 @@ assert_grep "bootstrap/manifest.json" \
     '"generated_c_three_generation_equivalence": "working"' \
     "$ROOT/bootstrap/manifest.json"
 assert_grep "bootstrap/manifest.json" \
-    -q '"diverse_double_compilation": "open"' "$ROOT/bootstrap/manifest.json"
+    -q '"diverse_double_compilation": "working"' "$ROOT/bootstrap/manifest.json"
+# B7 (#1136) moved from `open` to `working`, so this row now asserts the gate
+# that earned it exists rather than only the manifest word. A manifest that
+# claims `working` with no gate behind it is the drift the row is here for.
+assert_regular_file "bootstrap/selfhost/check-diverse-double-compilation.sh" \
+    "$ROOT/bootstrap/selfhost/check-diverse-double-compilation.sh"
+assert_regular_file \
+    "bootstrap/selfhost/check-diverse-double-compilation-refusals.sh" \
+    "$ROOT/bootstrap/selfhost/check-diverse-double-compilation-refusals.sh"
 
 assert_executable "tooling/lsp/kofun-lsp" "$ROOT/tooling/lsp/kofun-lsp"
 assert_regular_file "tooling/lsp/server.js" "$ROOT/tooling/lsp/server.js"
@@ -99,5 +107,5 @@ sh "$ROOT/tests/lsp/check.sh"
 
 printf '%s\n' \
     "PASS: current Stage 2 integer Core probe printed -3 and 2, then exited 42" \
-    "PASS: Stage 2 self-recompile and artifact-equivalence gates are closed working; B7 stays open" \
+    "PASS: Stage 2 self-recompile, artifact-equivalence, and B7 diverse double compilation gates are closed working; B6 stays open" \
     "PASS: the stdio language server is present and its gate runs"
