@@ -1,0 +1,1 @@
+error[E2S127]: trait 'Ordered' declares method 'before' but the implementation does not at bytes 105..206

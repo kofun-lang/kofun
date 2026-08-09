@@ -1,1 +1,1 @@
-error[E2S132]: a default method is unsupported in this trait frontend slice; this slice is bounded to one-method traits with one type parameter, concrete implementations, and one explicit non-recursive bound at bytes 57..58
+error[E2S132]: a default method is unsupported in this trait frontend slice; this slice is bounded to traits with one type parameter, concrete implementations, and one explicit non-recursive bound at bytes 57..58

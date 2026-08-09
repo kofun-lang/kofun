@@ -1,0 +1,10 @@
+trait Ordered[T] {
+    fn equal(left: T, right: T) -> Bool
+    fn before(first: T, second: T) -> Bool
+}
+
+impl Ordered[Int] for Int {
+    fn equal(left: Int, right: Int) -> Bool {
+        return true
+    }
+}

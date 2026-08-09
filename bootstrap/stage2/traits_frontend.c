@@ -1,10 +1,10 @@
 /*
  * Bounded trait declaration and implementation frontend (#332).
  *
- * This slice is frontend-only. It parses one-method traits with one type
- * parameter, concrete implementations, and generic functions carrying exactly
- * one explicit bound; it assigns stable TraitId/MethodId/ImplementationId
- * identities and emits typed IR.
+ * This slice is frontend-only. It parses traits with one type parameter and
+ * any number of members, concrete implementations supplying them, and generic
+ * functions carrying exactly one explicit bound; it assigns stable
+ * TraitId/MethodId/ImplementationId identities and emits typed IR.
  *
  * #923 adds dictionary elaboration to that typed IR: a descriptor per trait, a
  * dictionary value per admissible implementation, a dictionary parameter per
@@ -151,18 +151,27 @@ typedef struct {
     size_t end;
 } Trait;
 
+/* One method written inside an `impl` block. This mirrors `Method` on the
+ * trait side: an implementation holds a range into a shared array rather
+ * than one inline method, so a trait with several members can be
+ * implemented without the two shapes disagreeing about how many there are. */
+typedef struct {
+    char name[TEXT_LIMIT];
+    size_t parameter_start;
+    size_t parameter_count;
+    TypeRef result;
+    size_t start;
+    size_t end;
+} ImplementationMethod;
+
 typedef struct {
     size_t trait_index;
     TypeRef type_arguments[TYPE_ARGUMENT_LIMIT];
     size_t type_argument_count;
     TypeRef self_type;
     size_t ordinal;
-    char method_name[TEXT_LIMIT];
-    size_t parameter_start;
-    size_t parameter_count;
-    TypeRef result;
     size_t method_start;
-    size_t method_end;
+    size_t method_count;
     size_t start;
     size_t end;
 } Implementation;
@@ -263,6 +272,8 @@ typedef struct {
     size_t method_count;
     Implementation implementations[IMPLEMENTATION_LIMIT];
     size_t implementation_count;
+    ImplementationMethod implementation_methods[METHOD_LIMIT];
+    size_t implementation_method_count;
     Function functions[FUNCTION_LIMIT];
     size_t function_count;
     TypeParameter type_parameters[TYPE_PARAMETER_LIMIT];
@@ -702,11 +713,19 @@ static bool add_parameter(
 }
 
 /* Parses `(name: Type, ...)` and returns the parameter range. */
+/*
+ * `owner_index` resolves type names -- a trait method's `T` belongs to the
+ * trait, so every method of one trait shares that index. `scope_index`
+ * scopes the value parameters, and is per method: sharing the type index
+ * for both made two methods that each take `left` collide as a duplicate
+ * parameter, which is why a trait could only ever hold one method.
+ */
 static bool parse_parameter_list(
     Frontend *frontend,
     size_t *cursor,
     OwnerKind owner_kind,
     size_t owner_index,
+    size_t scope_index,
     size_t *parameter_start,
     size_t *parameter_count
 ) {
@@ -729,7 +748,7 @@ static bool parse_parameter_list(
         }
         end = token_end(frontend, *cursor - 1);
         if (!add_parameter(
-                frontend, name, owner_kind, owner_index, type, start, end)) {
+                frontend, name, owner_kind, scope_index, type, start, end)) {
             return false;
         }
         *parameter_count += 1;
@@ -753,8 +772,8 @@ static bool reject_advanced_form(
         token_start(frontend, cursor),
         token_end(frontend, cursor),
         "%s is unsupported in this trait frontend slice; "
-        "this slice is bounded to one-method traits with one type parameter, "
-        "concrete implementations, and one explicit non-recursive bound",
+        "this slice is bounded to traits with one type parameter, concrete "
+        "implementations, and one explicit non-recursive bound",
         what
     );
     return false;
@@ -846,10 +865,16 @@ static bool parse_trait(Frontend *frontend, size_t *cursor, bool local) {
         method->owner_trait = trait_index;
         method->slot = trait->method_count;
         method->start = method_start;
+        /* Value parameters stay keyed by the trait, not by the member. Two
+         * members of one trait therefore cannot share a parameter spelling
+         * yet, and a duplicate member still surfaces as that parameter
+         * collision. Re-keying it is the member-scope seam #942 owns, and
+         * doing it here would decide the shape of that diagnostic. */
         if (!parse_parameter_list(
                 frontend,
                 cursor,
                 OWNER_TRAIT_METHOD,
+                trait_index,
                 trait_index,
                 &method->parameter_start,
                 &method->parameter_count)) {
@@ -873,11 +898,9 @@ static bool parse_trait(Frontend *frontend, size_t *cursor, bool local) {
     }
     if (!expect_token(frontend, cursor, "}")) return false;
     trait->end = token_end(frontend, *cursor - 1);
-    if (trait->method_count != 1) {
+    if (trait->method_count < 1) {
         set_error(frontend, "E2S132", trait->start, trait->end,
-            "a trait with %zu methods is unsupported in this slice; "
-            "exactly one is accepted",
-            trait->method_count);
+            "a trait declares no method; at least one is required");
         return false;
     }
     return true;
@@ -1238,44 +1261,73 @@ static bool parse_implementation(Frontend *frontend, size_t *cursor) {
         return false;
     }
     if (!expect_token(frontend, cursor, "{")) return false;
-    if (!expect_token(frontend, cursor, "fn")) return false;
-    if (!expect_identifier(frontend, cursor, method_name)) return false;
-    memcpy(implementation->method_name, method_name, TEXT_LIMIT);
-    implementation->method_start = token_start(frontend, *cursor - 1);
-    if (!parse_parameter_list(
-            frontend,
-            cursor,
-            OWNER_IMPLEMENTATION_METHOD,
-            index,
-            &implementation->parameter_start,
-            &implementation->parameter_count)) {
-        return false;
-    }
-    if (!expect_token(frontend, cursor, "->")) return false;
-    if (!parse_type_ref(
-            frontend,
-            cursor,
-            OWNER_IMPLEMENTATION_METHOD,
-            index,
-            &implementation->result)) {
-        return false;
-    }
-    implementation->method_end = token_end(frontend, *cursor - 1);
-    /* The body is not typed by this slice; it is scanned to its matching
-     * brace so the declaration boundary stays exact. */
-    if (!expect_token(frontend, cursor, "{")) return false;
-    {
-        size_t depth = 1;
-        while (depth > 0) {
-            if (*cursor >= frontend->token_count) {
-                set_error(frontend, "E2S127", start, start,
-                    "implementation body is not closed");
-                return false;
-            }
-            if (token_is(frontend, *cursor, "{")) depth += 1;
-            if (token_is(frontend, *cursor, "}")) depth -= 1;
-            *cursor += 1;
+    implementation->method_start = frontend->implementation_method_count;
+    implementation->method_count = 0;
+    while (!token_is(frontend, *cursor, "}")) {
+        ImplementationMethod *method;
+        size_t method_index = frontend->implementation_method_count;
+        size_t method_head;
+
+        if (frontend->implementation_method_count >= METHOD_LIMIT) {
+            set_error(frontend, "E2S133", start, start,
+                "method count exceeds %u", METHOD_LIMIT);
+            return false;
         }
+        if (!expect_token(frontend, cursor, "fn")) return false;
+        if (!expect_identifier(frontend, cursor, method_name)) return false;
+        method_head = token_start(frontend, *cursor - 1);
+        for (size_t seen = 0; seen < implementation->method_count; ++seen) {
+            const ImplementationMethod *existing =
+                &frontend->implementation_methods[
+                    implementation->method_start + seen];
+            if (strcmp(existing->name, method_name) != 0) continue;
+            set_error(frontend, "E2S127", method_head,
+                token_end(frontend, *cursor - 1),
+                "method '%s' is implemented twice", method_name);
+            return false;
+        }
+        method = &frontend->implementation_methods[method_index];
+        memset(method, 0, sizeof(*method));
+        memcpy(method->name, method_name, TEXT_LIMIT);
+        method->start = method_head;
+        if (!parse_parameter_list(
+                frontend,
+                cursor,
+                OWNER_IMPLEMENTATION_METHOD,
+                index,
+                method_index,
+                &method->parameter_start,
+                &method->parameter_count)) {
+            return false;
+        }
+        if (!expect_token(frontend, cursor, "->")) return false;
+        if (!parse_type_ref(
+                frontend,
+                cursor,
+                OWNER_IMPLEMENTATION_METHOD,
+                index,
+                &method->result)) {
+            return false;
+        }
+        method->end = token_end(frontend, *cursor - 1);
+        /* The body is not typed by this slice; it is scanned to its matching
+         * brace so the declaration boundary stays exact. */
+        if (!expect_token(frontend, cursor, "{")) return false;
+        {
+            size_t depth = 1;
+            while (depth > 0) {
+                if (*cursor >= frontend->token_count) {
+                    set_error(frontend, "E2S127", start, start,
+                        "implementation body is not closed");
+                    return false;
+                }
+                if (token_is(frontend, *cursor, "{")) depth += 1;
+                if (token_is(frontend, *cursor, "}")) depth -= 1;
+                *cursor += 1;
+            }
+        }
+        frontend->implementation_method_count += 1;
+        implementation->method_count += 1;
     }
     if (!expect_token(frontend, cursor, "}")) return false;
     implementation->end = token_end(frontend, *cursor - 1);
@@ -1437,6 +1489,7 @@ static bool parse_function_header(Frontend *frontend, size_t *cursor) {
             cursor,
             OWNER_FUNCTION,
             index,
+            index,
             &function->parameter_start,
             &function->parameter_count)) {
         return false;
@@ -1547,7 +1600,6 @@ static bool check_implementations(Frontend *frontend) {
     for (size_t index = 0; index < frontend->implementation_count; ++index) {
         Implementation *implementation = &frontend->implementations[index];
         const Trait *trait = &frontend->traits[implementation->trait_index];
-        const Method *method = &frontend->methods[trait->method_start];
 
         if (!implementation_is_admissible(frontend, implementation)) {
             char owner[IDENTITY_LIMIT];
@@ -1566,72 +1618,155 @@ static bool check_implementations(Frontend *frontend) {
                 self);
             return false;
         }
-        if (strcmp(implementation->method_name, method->name) != 0) {
-            set_error(frontend, "E2S127",
-                implementation->method_start,
-                implementation->method_end,
-                "trait '%s' declares method '%s' but the implementation "
-                "declares '%s'",
-                trait->name,
-                method->name,
-                implementation->method_name);
-            return false;
-        }
-        if (implementation->parameter_count != method->parameter_count) {
-            set_error(frontend, "E2S128",
-                implementation->method_start,
-                implementation->method_end,
-                "method '%s' takes %zu parameter(s) but the implementation "
-                "declares %zu",
-                method->name,
-                method->parameter_count,
-                implementation->parameter_count);
-            return false;
-        }
-        for (size_t slot = 0; slot < method->parameter_count; ++slot) {
-            const Parameter *declared =
-                &frontend->parameters[method->parameter_start + slot];
-            const Parameter *written =
-                &frontend->parameters[implementation->parameter_start + slot];
-            TypeRef expected = substitute_for_implementation(
-                frontend, declared->type, implementation);
-            if (type_equal(frontend, expected, written->type)) continue;
+        /* Every declared slot is matched by name against the implementation's
+         * own methods, so the members are checked pairwise rather than by
+         * position: an implementation may write them in any order, and a
+         * missing or unknown member is named rather than mistaken for a
+         * signature mismatch on whichever member happened to be first. */
+        for (size_t slot = 0; slot < trait->method_count; ++slot) {
+            const Method *declared_method =
+                &frontend->methods[trait->method_start + slot];
+            const ImplementationMethod *written_method = NULL;
+
+            for (size_t seen = 0; seen < implementation->method_count; ++seen) {
+                const ImplementationMethod *candidate =
+                    &frontend->implementation_methods[
+                        implementation->method_start + seen];
+                if (strcmp(candidate->name, declared_method->name) != 0) {
+                    continue;
+                }
+                written_method = candidate;
+                break;
+            }
+            if (written_method == NULL) {
+                /* When exactly one written member is unmatched, the two
+                 * facts are one misspelling, so name it and point at it
+                 * rather than making the reader find it. */
+                const ImplementationMethod *stray = NULL;
+                size_t stray_count = 0;
+                for (size_t seen = 0;
+                        seen < implementation->method_count; ++seen) {
+                    const ImplementationMethod *candidate =
+                        &frontend->implementation_methods[
+                            implementation->method_start + seen];
+                    bool matched = false;
+                    for (size_t at = 0; at < trait->method_count; ++at) {
+                        if (strcmp(
+                                frontend->methods[trait->method_start + at].name,
+                                candidate->name) != 0) {
+                            continue;
+                        }
+                        matched = true;
+                        break;
+                    }
+                    if (matched) continue;
+                    stray = candidate;
+                    stray_count += 1;
+                }
+                if (stray_count == 1) {
+                    set_error(frontend, "E2S127",
+                        stray->start,
+                        stray->end,
+                        "trait '%s' declares method '%s' but the "
+                        "implementation declares '%s'",
+                        trait->name,
+                        declared_method->name,
+                        stray->name);
+                    return false;
+                }
+                set_error(frontend, "E2S127",
+                    implementation->start,
+                    implementation->end,
+                    "trait '%s' declares method '%s' but the implementation "
+                    "does not",
+                    trait->name,
+                    declared_method->name);
+                return false;
+            }
+            if (written_method->parameter_count !=
+                declared_method->parameter_count) {
+                set_error(frontend, "E2S128",
+                    written_method->start,
+                    written_method->end,
+                    "method '%s' takes %zu parameter(s) but the implementation "
+                    "declares %zu",
+                    declared_method->name,
+                    declared_method->parameter_count,
+                    written_method->parameter_count);
+                return false;
+            }
+            for (size_t at = 0; at < declared_method->parameter_count; ++at) {
+                const Parameter *declared =
+                    &frontend->parameters[
+                        declared_method->parameter_start + at];
+                const Parameter *written =
+                    &frontend->parameters[
+                        written_method->parameter_start + at];
+                TypeRef expected = substitute_for_implementation(
+                    frontend, declared->type, implementation);
+                if (type_equal(frontend, expected, written->type)) continue;
+                {
+                    char wanted[IDENTITY_LIMIT];
+                    char actual[IDENTITY_LIMIT];
+                    type_id(frontend, expected, wanted, sizeof(wanted));
+                    type_id(frontend, written->type, actual, sizeof(actual));
+                    set_error(frontend, "E2S128",
+                        written->start,
+                        written->end,
+                        "parameter '%s' of method '%s' is %s after "
+                        "substitution but the implementation declares %s",
+                        declared->name,
+                        declared_method->name,
+                        wanted,
+                        actual);
+                    return false;
+                }
+            }
             {
-                char wanted[IDENTITY_LIMIT];
-                char actual[IDENTITY_LIMIT];
-                type_id(frontend, expected, wanted, sizeof(wanted));
-                type_id(frontend, written->type, actual, sizeof(actual));
-                set_error(frontend, "E2S128",
-                    written->start,
-                    written->end,
-                    "parameter '%s' of method '%s' is %s after substitution "
-                    "but the implementation declares %s",
-                    declared->name,
-                    method->name,
-                    wanted,
-                    actual);
-                return false;
+                TypeRef expected = substitute_for_implementation(
+                    frontend, declared_method->result, implementation);
+                if (!type_equal(frontend, expected, written_method->result)) {
+                    char wanted[IDENTITY_LIMIT];
+                    char actual[IDENTITY_LIMIT];
+                    type_id(frontend, expected, wanted, sizeof(wanted));
+                    type_id(frontend, written_method->result, actual,
+                        sizeof(actual));
+                    set_error(frontend, "E2S128",
+                        written_method->result.start,
+                        written_method->result.end,
+                        "method '%s' returns %s after substitution but the "
+                        "implementation declares %s",
+                        declared_method->name,
+                        wanted,
+                        actual);
+                    return false;
+                }
             }
         }
-        {
-            TypeRef expected = substitute_for_implementation(
-                frontend, method->result, implementation);
-            if (!type_equal(frontend, expected, implementation->result)) {
-                char wanted[IDENTITY_LIMIT];
-                char actual[IDENTITY_LIMIT];
-                type_id(frontend, expected, wanted, sizeof(wanted));
-                type_id(frontend, implementation->result, actual,
-                    sizeof(actual));
-                set_error(frontend, "E2S128",
-                    implementation->result.start,
-                    implementation->result.end,
-                    "method '%s' returns %s after substitution but the "
-                    "implementation declares %s",
-                    method->name,
-                    wanted,
-                    actual);
-                return false;
+        /* An implementation method the trait never declared is refused here
+         * rather than ignored, so a typo does not become dead code that
+         * looks implemented. */
+        for (size_t seen = 0; seen < implementation->method_count; ++seen) {
+            const ImplementationMethod *written_method =
+                &frontend->implementation_methods[
+                    implementation->method_start + seen];
+            bool declared = false;
+            for (size_t slot = 0; slot < trait->method_count; ++slot) {
+                if (strcmp(frontend->methods[trait->method_start + slot].name,
+                        written_method->name) != 0) {
+                    continue;
+                }
+                declared = true;
+                break;
             }
+            if (declared) continue;
+            set_error(frontend, "E2S127",
+                written_method->start,
+                written_method->end,
+                "trait '%s' declares no method '%s'",
+                trait->name,
+                written_method->name);
+            return false;
         }
         /* Overlap is refused where implementations are declared, so no
          * candidate set is ever ordered at a use site. */
@@ -1716,7 +1851,7 @@ static bool parse_method_call(
 ) {
     Function *function = &frontend->functions[function_index];
     const Trait *trait = &frontend->traits[trait_index];
-    const Method *method = &frontend->methods[trait->method_start];
+    const Method *method = NULL;
     MethodCall *call;
     char method_name[TEXT_LIMIT];
     size_t start = token_start(frontend, *cursor);
@@ -1747,7 +1882,15 @@ static bool parse_method_call(
     *cursor += 1;  /* the trait name */
     if (!expect_token(frontend, cursor, ".")) return false;
     if (!expect_identifier(frontend, cursor, method_name)) return false;
-    if (strcmp(method_name, method->name) != 0) {
+    /* The call names its member, so the slot comes from that name rather
+     * than from being the only one. */
+    for (size_t slot = 0; slot < trait->method_count; ++slot) {
+        const Method *candidate = &frontend->methods[trait->method_start + slot];
+        if (strcmp(candidate->name, method_name) != 0) continue;
+        method = candidate;
+        break;
+    }
+    if (method == NULL) {
         set_error(frontend, "E2S127", start,
             token_end(frontend, *cursor - 1),
             "trait '%s' has no method '%s'", trait->name, method_name);
@@ -2372,18 +2515,40 @@ static bool write_ir(const Frontend *frontend, const char *path) {
             sizeof(arguments)
         );
         type_id(frontend, implementation->self_type, self, sizeof(self));
-        fprintf(
-            file,
-            "implementation|implementation-id=%s|trait=%s|type-arguments=%s"
-            "|self-type=%s|method=%s|span=%zu..%zu\n",
-            identity,
-            owner,
-            arguments,
-            self,
-            implementation->method_name,
-            implementation->start,
-            implementation->end
-        );
+        {
+            /* Members in declared slot order, so the row reads the same way
+             * the descriptor's `slot-methods` does. */
+            char members[IDENTITY_LIMIT];
+            size_t written = 0;
+            members[0] = '\0';
+            for (size_t seen = 0; seen < implementation->method_count; ++seen) {
+                const ImplementationMethod *method =
+                    &frontend->implementation_methods[
+                        implementation->method_start + seen];
+                int printed = snprintf(
+                    members + written,
+                    sizeof(members) - written,
+                    "%s%s",
+                    seen == 0 ? "" : ",",
+                    method->name
+                );
+                if (printed < 0) break;
+                written += (size_t)printed;
+                if (written >= sizeof(members)) break;
+            }
+            fprintf(
+                file,
+                "implementation|implementation-id=%s|trait=%s|type-arguments=%s"
+                "|self-type=%s|method=%s|span=%zu..%zu\n",
+                identity,
+                owner,
+                arguments,
+                self,
+                members,
+                implementation->start,
+                implementation->end
+            );
+        }
     }
     for (size_t index = 0; index < frontend->dictionary_count; ++index) {
         const Dictionary *dictionary = &frontend->dictionaries[index];
@@ -2430,10 +2595,23 @@ static bool write_ir(const Frontend *frontend, const char *path) {
         for (size_t slot = 0; slot < descriptor->slot_count; ++slot) {
             const Method *method =
                 &frontend->methods[descriptor->method_start + slot];
+            const ImplementationMethod *written = NULL;
             char declared[IDENTITY_LIMIT];
             method_id(
                 frontend, method->owner_trait, method->slot, declared,
                 sizeof(declared));
+            /* The checker has already proved every slot has exactly one
+             * implementation method of that name, so this lookup cannot
+             * miss; the slot is filled by name, never by position. */
+            for (size_t seen = 0; seen < implementation->method_count; ++seen) {
+                const ImplementationMethod *candidate =
+                    &frontend->implementation_methods[
+                        implementation->method_start + seen];
+                if (strcmp(candidate->name, method->name) != 0) continue;
+                written = candidate;
+                break;
+            }
+            if (written == NULL) continue;
             fprintf(
                 file,
                 "dictionary-entry|dictionary=%s|slot=%zu|method=%s"
@@ -2441,9 +2619,9 @@ static bool write_ir(const Frontend *frontend, const char *path) {
                 identity,
                 slot,
                 declared,
-                implementation->method_name,
-                implementation->method_start,
-                implementation->method_end
+                written->name,
+                written->start,
+                written->end
             );
         }
     }

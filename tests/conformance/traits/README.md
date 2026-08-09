@@ -1,8 +1,9 @@
 # Bounded trait declaration and implementation frontend
 
 Executable evidence for #332 and #923. `bootstrap/stage2/traits_frontend.c`
-parses one-method traits with one type parameter, concrete implementations, and
-generic functions carrying exactly one explicit bound; it assigns
+parses traits with one type parameter and any number of members, concrete
+implementations supplying them, and generic functions carrying exactly one
+explicit bound; it assigns
 TraitId/MethodId/ImplementationId identities, elaborates the dictionary shape,
 and emits typed IR.
 
