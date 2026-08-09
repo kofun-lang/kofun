@@ -147,9 +147,10 @@ and refuses the byte signatures the previous lowering emitted for every
 operand — `mov rax,[rbp+disp32]` + `push rax`, `push rax` + `pop rdi` and
 `pop rcx` + `pop rax` on x86-64, and `str x0,[sp,#-16]!`, `ldr x0,[sp],#16`
 and `ldr x1,[sp],#16` on AArch64 — across the register, fibonacci, Text, and
-overflow images of each target. `benchmarks/native-functions/` records the
-measured effect; its `README.md` documents the method and `results.json` the
-raw samples.
+overflow images of each target. `native-functions/` in
+[`kofun-lang/kofun-benchmarks`](https://github.com/kofun-lang/kofun-benchmarks)
+records the measured effect; its `README.md` documents the method and
+`results.json` the raw samples.
 
 ## Returned calls become branches on both targets
 

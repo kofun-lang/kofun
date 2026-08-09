@@ -10,7 +10,6 @@
 # zeroes, are in #814.
 #
 # count	path
-0	benchmarks/http/benchmark.sh
 0	bootstrap/c_abi/check.sh
 0	bootstrap/native/check.sh
 0	bootstrap/native/emit-fixture.sh
