@@ -89,5 +89,4 @@
 #                     comments on #645 extract to zero events. An inert claim
 #                     is worse than none: its author believes the signal is
 #                     published.
-unnamed-blocker	569	-	RFC: define affine authority capabilities for environment 
 capability-blocker	885	-	Typed upgrade patches slice 1: validate schema and compute

@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 28,
+  "open_issues": 29,
   "issues": [
     {
       "number": 26,
@@ -156,9 +156,9 @@
       "number": 555,
       "title": "Scoped parallelism v1: specify spawn/join ownership semantics and executable model",
       "state_labels": [
-        "needs-decision"
+        "needs-detail"
       ],
-      "state_line": "needs-decision",
+      "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
         "041816f714eb82ed72e4a773c0112ed87f71b93b",
@@ -181,9 +181,9 @@
       "number": 569,
       "title": "RFC: define affine authority capabilities for environment access",
       "state_labels": [
-        "blocked"
+        "needs-detail"
       ],
-      "state_line": "blocked",
+      "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
         "041816f714eb82ed72e4a773c0112ed87f71b93b"
@@ -380,9 +380,9 @@
       "number": 784,
       "title": "ownership: an affine handle whose owned state cannot be duplicated (#644)",
       "state_labels": [
-        "needs-decision"
+        "ready"
       ],
-      "state_line": "needs-decision",
+      "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
         "1639a8deb811d3f04acc5d84a4fd73f7630e8be0"
@@ -604,9 +604,9 @@
       "number": 902,
       "title": "bindgen-c: enforce a mechanical raw-binding import boundary",
       "state_labels": [
-        "needs-decision"
+        "needs-detail"
       ],
-      "state_line": "needs-decision",
+      "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
         "041816f714eb82ed72e4a773c0112ed87f71b93b",
@@ -657,9 +657,9 @@
       "number": 930,
       "title": "Allocator seed: canonical `stdlib/alloc` contract and pinned Stage 2 projection (RFC-0001 stage 1)",
       "state_labels": [
-        "needs-decision"
+        "ready"
       ],
-      "state_line": "needs-decision",
+      "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
         "4736fbf5e92375bdf6ce10ec63cf4164f65e5e9a"
@@ -712,9 +712,9 @@
       "number": 988,
       "title": "RFC: choose the derive v1 expansion authority and inspection contract",
       "state_labels": [
-        "needs-decision"
+        "ready"
       ],
-      "state_line": "needs-decision",
+      "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
         "041816f714eb82ed72e4a773c0112ed87f71b93b"
@@ -734,9 +734,9 @@
       "number": 995,
       "title": "Trait member override v1: inherited and default member collision contract",
       "state_labels": [
-        "needs-decision"
+        "ready"
       ],
-      "state_line": "needs-decision",
+      "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
         "9fc27d8da59aa4d5ba92e24d7e76bd05be575257"
@@ -796,6 +796,24 @@
       "blocked_by": [],
       "evidence_commits": [
         "4695608b88cf173436ae3ea523358f7db1071297"
+      ]
+    },
+    {
+      "number": 1117,
+      "title": "Traits: let a trait declare two members and an implementation supply both",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "9edcdcb84dcb00f3b2526f8bc3d072467ba3be77"
+      ],
+      "claims": [
+        {
+          "agent_id": "claude-1117-two-member-traits-20260809",
+          "status": "active"
+        }
       ]
     }
   ]
