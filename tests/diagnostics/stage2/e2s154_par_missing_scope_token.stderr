@@ -1,0 +1,1 @@
+error[E2S154]: scoped parallelism `par` expects a scope token between `|` and `|` at byte 267

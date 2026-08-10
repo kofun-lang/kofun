@@ -1,0 +1,1 @@
+error[E2S154]: scoped parallelism `par` expects `{` after `|scope|` at byte 447

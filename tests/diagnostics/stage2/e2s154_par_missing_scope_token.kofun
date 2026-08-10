@@ -1,0 +1,11 @@
+# diagnostic-mode: compile
+# expect-code: E2S154
+# expect-span: byte 267
+# The other end of the same production. `par | |` has the bars and no scope
+# token between them, which is a different mistake from a missing block and now
+# reads as one.
+fn main() {
+    par | | {
+        let x = 1
+    }
+}

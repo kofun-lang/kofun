@@ -1,0 +1,17 @@
+# diagnostic-mode: compile
+# expect-code: E2S154
+# expect-span: byte 526
+# RFC-0003 v1 requires a scope's spawn sites to be finite and lexically
+# enumerable. A loop makes the count depend on execution, which the
+# specification leaves unsupported rather than inferred — so it is refused by
+# name, not folded into the generic "specified but not implemented" answer that
+# would tell a reader the shape itself is fine.
+fn main() {
+    par |scope| {
+        let mut i = 0
+        while i < 2 {
+            let handle = scope.spawn(fn() => 1)
+            i = i + 1
+        }
+    }
+}

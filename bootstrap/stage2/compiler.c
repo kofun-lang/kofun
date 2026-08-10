@@ -13829,6 +13829,9 @@ static char *scope_hir_error(
     return lower_error("E2S35", message, cursor);
 }
 
+/* #1160: defined below build_scope_hir_mode, which is its earliest user. */
+static char *par_production_error(const char *source, int64_t at);
+
 static char *build_scope_hir_mode(
     const char *source,
     bool preserve_pattern_candidates
@@ -14887,6 +14890,24 @@ static char *build_scope_hir_mode(
              * scope token between the bars and blames it as an unknown
              * binding. The construct is refused, so its token is never a use. */
             if (token_equal(source, cursor, "par")) {
+                /*
+                 * Shape first, so a mistyped `par` is reported where it is
+                 * wrong rather than at `par` (#1160). This is the earliest
+                 * site that sees the construct, so it is the one that decides
+                 * which byte the reader is sent to.
+                 */
+                char *par_fault = par_production_error(source, cursor);
+                if (par_fault != NULL) {
+                    stage2_diagnostic_set(
+                        "E2S154",
+                        cursor,
+                        token_end(source, cursor),
+                        true,
+                        par_fault
+                    );
+                    free(hir.data);
+                    return par_fault;
+                }
                 Buffer message;
                 buffer_init(&message);
                 buffer_format(
@@ -17044,6 +17065,159 @@ static char *lower_record_binding(
  * parenthesis: `type P = { join: Int }` is legal Kofun, and a bare `p.join`
  * read is a field access this must not claim.
  */
+/*
+ * The `par |scope| { ... }` production (#1160). Returns NULL when the form is
+ * well shaped, and otherwise the refusal for the token that does not fit.
+ *
+ * Without this every malformed `par` reported the same sentence at the `par`
+ * token: a missing block, a missing scope name and a missing bar were one
+ * message at one byte, so the diagnostic said a construct was unimplemented
+ * rather than that it was mistyped. The construct is still unimplemented --
+ * that refusal is at the call site, reached only when the shape is right.
+ */
+/*
+ * The first `.spawn(` between `open` and `close`, or -1. Scanned rather than
+ * resolved: this runs before any binding exists, and the rule it serves is
+ * lexical by definition.
+ */
+static int64_t par_spawn_site_within(
+    const char *source,
+    int64_t open,
+    int64_t close
+) {
+    int64_t cursor = skip_trivia(source, token_end(source, open));
+    while (cursor < close) {
+        if (token_equal(source, cursor, ".")) {
+            int64_t member = skip_trivia(source, token_end(source, cursor));
+            if (member < close && token_equal(source, member, "spawn")) {
+                int64_t call = skip_trivia(source, token_end(source, member));
+                if (call < close && token_equal(source, call, "(")) {
+                    return member;
+                }
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return -1;
+}
+
+/* The block a loop header opens, or -1 when it opens none before `limit`. */
+static int64_t par_loop_block_open(
+    const char *source,
+    int64_t at,
+    int64_t limit
+) {
+    int64_t cursor = skip_trivia(source, token_end(source, at));
+    while (cursor < limit) {
+        if (token_equal(source, cursor, "{")) return cursor;
+        if (token_equal(source, cursor, "}")) return -1;
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return -1;
+}
+
+/*
+ * The v1 finite lexical spawn-site rule (RFC-0003, #1160). Two shapes the
+ * specification leaves unsupported rather than inferred, refused by name so a
+ * reader is not told they are merely unimplemented like the scope itself:
+ *
+ *   - a `par` inside a `par` block -- v1 has one scope, not a tree of them;
+ *   - a `spawn` inside a loop -- a scope's spawn sites must be finite and
+ *     lexically enumerable, and a loop makes the count depend on execution.
+ */
+static char *par_scope_rule_error(
+    const char *source,
+    int64_t block_open,
+    int64_t block_close
+) {
+    int64_t cursor = skip_trivia(source, token_end(source, block_open));
+    while (cursor < block_close) {
+        if (token_equal(source, cursor, "par")) {
+            return lower_error(
+                "E2S154",
+                "scoped parallelism v1 has one scope; a `par` scope may not contain another",
+                cursor
+            );
+        }
+        if (
+            token_equal(source, cursor, "while") ||
+            token_equal(source, cursor, "for")
+        ) {
+            int64_t loop_open = par_loop_block_open(source, cursor, block_close);
+            if (loop_open >= 0) {
+                int64_t loop_close = balanced_end(source, loop_open, "{", "}");
+                if (loop_close >= 0) {
+                    int64_t spawn_at = par_spawn_site_within(
+                        source,
+                        loop_open,
+                        loop_close
+                    );
+                    if (spawn_at >= 0) {
+                        return lower_error(
+                            "E2S154",
+                            "scoped parallelism v1 needs finite lexical spawn sites; `spawn` inside a loop is not supported",
+                            spawn_at
+                        );
+                    }
+                }
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return NULL;
+}
+
+static char *par_production_error(const char *source, int64_t at)
+{
+    int64_t length = source_length(source);
+    int64_t bar_open = skip_trivia(source, token_end(source, at));
+    if (bar_open >= length || !token_equal(source, bar_open, "|")) {
+        return lower_error(
+            "E2S154",
+            "scoped parallelism `par` expects `|scope|`",
+            bar_open
+        );
+    }
+    int64_t name = skip_trivia(source, token_end(source, bar_open));
+    if (
+        name >= length ||
+        strcmp(token_kind(source, name), "identifier") != 0
+    ) {
+        return lower_error(
+            "E2S154",
+            "scoped parallelism `par` expects a scope token between `|` and `|`",
+            name
+        );
+    }
+    int64_t bar_close = skip_trivia(source, token_end(source, name));
+    if (bar_close >= length || !token_equal(source, bar_close, "|")) {
+        return lower_error(
+            "E2S154",
+            "scoped parallelism `par` expects `|` after the scope token",
+            bar_close
+        );
+    }
+    int64_t block = skip_trivia(source, token_end(source, bar_close));
+    if (block >= length || !token_equal(source, block, "{")) {
+        return lower_error(
+            "E2S154",
+            "scoped parallelism `par` expects `{` after `|scope|`",
+            block
+        );
+    }
+    int64_t block_close = balanced_end(source, block, "{", "}");
+    if (block_close >= 0) {
+        char *rule_fault = par_scope_rule_error(source, block, block_close);
+        if (rule_fault != NULL) return rule_fault;
+    }
+    /*
+     * No check for an unbalanced block: an unclosed `{` leaves the enclosing
+     * function unbalanced too, and `E2S03: malformed function` is reported
+     * before this is reached. A branch here would be unreachable.
+     */
+    return NULL;
+}
+
 static int64_t scoped_parallel_member(const char *source, int64_t start)
 {
     int64_t length = source_length(source);
@@ -17154,6 +17328,12 @@ static char *lower_body(
         /* See sh_parse_primary: refuse `par` before the dispatch below can
          * read the scope token as an ordinary binding and blame it instead. */
         if (token_equal(source, cursor, "par")) {
+            /* Shape first, so a mistyped `par` is reported where it is wrong. */
+            char *par_fault = par_production_error(source, cursor);
+            if (par_fault != NULL) {
+                free(emitted.data);
+                return par_fault;
+            }
             free(emitted.data);
             return lower_error(
                 "E2S154",

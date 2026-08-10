@@ -1,0 +1,11 @@
+# diagnostic-mode: compile
+# expect-code: E2S154
+# expect-span: byte 447
+# Every malformed `par` used to report the same sentence at the `par` token, so
+# a missing block, a missing scope name and a missing bar were one message at
+# one byte — the diagnostic said the construct was unimplemented rather than
+# that it was mistyped. The shape is checked first now, and the byte named is
+# the token that does not fit.
+fn main() {
+    par |scope|
+}
