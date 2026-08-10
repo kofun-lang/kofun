@@ -879,6 +879,31 @@
         "result": "`28` and `19` at 43d53d38, the audited commit, across 1067 tracked `.kofun` sources. Twenty-eight record fields are typed `List[...]`; nineteen of them, across six files, are `List[Int]` and are the ones this proposal admits. The remaining nine name `List[Text]`, `List[LogField]`, `List[Transition]`, `List[IntMapEntry]`, `List[TomlEntry]`, `List[RegexPiece]`, `List[Waiter]` and `List[List[Text]]`, and stay refused.",
         "evidence": "spec/aggregate-layout-v1/layout.mjs"
       }
+    },
+    {
+      "id": "RFC-0012",
+      "title": "A raw foreign binding is classified by its source, and crossed once explicitly",
+      "provenance": "rfc",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "rfcs/0012-raw-foreign-module-trust.md",
+      "document": "rfcs/0012-raw-foreign-module-trust.md",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/902",
+      "dates": {
+        "opened_on": "2026-08-10",
+        "review_closed_on": "2026-08-10",
+        "decided_on": "2026-08-10"
+      },
+      "normative_spec": [
+        "rfcs/0012-raw-foreign-module-trust.md"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "No tracked program changes meaning and none stops compiling. Every construct is new surface: an optional `trust` line on a module header, the single closed-set value `raw-foreign`, the contextual `trusted import` crossing, KIF required tag `0x800A` carrying the class and participating in both semantic digests, and the refusals for ordinary/aliased/selective import, re-export, unknown or unattached trust values, and raw externs in anonymous mode. Absence of the line means ordinary, and no tracked source writes it, so nothing acquires a trust class. The `trust` and `trusted` contextual keywords collide with no tracked source. The one non-source effect is that KIF artifacts rebuild once: the existing rule that a tag with bit `0x8000` set is required already makes an old reader reject `0x800A` with a rebuild instruction rather than misread it, and this proposal requires a new reader to reject an artifact missing it rather than assume safe. DD-025 is not amended: the source `module` header remains the sole module-path authority, and the trust class joins that same authority under the same no-repair-from-path refusals.",
+        "corpus_query": "git grep -nE '^[[:space:]]*trust[[:space:]]' -- '*.kofun' | wc -l; git grep -nE '^[[:space:]]*trusted[[:space:]]+import' -- '*.kofun' | wc -l; git ls-files '*.raw.kofun' | wc -l",
+        "result": "`0`, `0` and `0` at 1c27baa8, the audited commit, across 1067 tracked `.kofun` sources carrying 109 module headers. No tracked source begins a line with `trust`, none writes `trusted import`, and no generated raw binding is committed, so the two contextual keywords collide with nothing and no tracked module acquires a class.",
+        "evidence": "spec/modules/module-identity.md"
+      }
     }
   ]
 }
