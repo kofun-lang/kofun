@@ -1,0 +1,21 @@
+# The other half of the same claim. Identical to `short_circuit_taken.kofun`
+# except that the first branch is not taken, so the trapping condition *is*
+# reached and must trap. Without this, a lowering that skipped every later
+# condition unconditionally would pass the first fixture.
+
+fn pick(values: List[Int], n: Int) -> Int {
+    let mut r = 0
+    if n == 1 {
+        r = 100
+    } else if values[99] == 5 {
+        r = 200
+    } else {
+        r = 300
+    }
+    return r
+}
+
+fn main() {
+    let data = [1, 2, 3]
+    print(pick(data, 2))
+}

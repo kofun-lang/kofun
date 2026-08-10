@@ -6,7 +6,7 @@
     "VERSION": "60eee96ee38418a0ef903b570d0d12ce2d82ea79f129cc2c6c1245a072c04349",
     "release/claims.json": "f660063e10adb59571927bddd67498d8a56d5ed3bcf27796568bb34db2f10524",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
-    "bootstrap/manifest.json": "49535f90962242b23333f10b15cf822d8ec218a8632d4bae01602818c75223ba"
+    "bootstrap/manifest.json": "4b00e4f9b2778a9c493bde831388c531d831a6263bc5ac9ea031005a12d3668e"
   },
   "states": {
     "implemented": 9,
@@ -688,7 +688,7 @@
     }
   ],
   "evidence_digests": {
-    "Taskfile.yml": "37a2294181638a64498d86862be8c437532fedc22aa0dc9ae95f0e026f3620fd",
+    "Taskfile.yml": "0ac56ecfff98434b3c18527d366b21de62608dd6d1c8cc5004a63fdeab7b814f",
     "bootstrap/native/check.sh": "fea94cb623757e1bf17e4497f43d656b1e8ff57a39a92ece871d8ff257c0f2ef",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/check-diverse-double-compilation-refusals.sh": "55fc39166070b9bc612fca6898086938b1a8ca122b1c1fb8e928f1a5d4cde572",
@@ -697,7 +697,7 @@
     "bootstrap/selfhost/driver/corpus_reject.stdout": "b11ae682acae186b10022c3469af65b54cd03c2e88a4756eba1cbe5b0e9356f9",
     "bootstrap/stage1/README.md": "449e52413da5d35eafee5b56a7c243ee0363774b8d4110d2a3a998a49f95d52f",
     "bootstrap/stage1/SHA256SUMS": "0dc3d2677f03dfe3bd6f9da9f923315dd5f30dcaeca4768f3c63ec1f66744b94",
-    "bootstrap/stage2/README.md": "5a98965ba4a360dde428a714cfe6e51886b73f8ddac0f8d0e227b9bc95661fee",
+    "bootstrap/stage2/README.md": "24dc2d3fcd9079cb9c5df369e2a364074172662414972e2ad8c2b2ad2eb03401",
     "bootstrap/stage2/fixtures/borrowed_move_text.kofun": "34502461891e7c8f42c9017e9fbfc857e54b10ca4fe59551be9ab9ab22d2c1b6",
     "bootstrap/wasm/fixtures/unsupported_text.kofun": "e0a45136410ddb85e9f5b3e5c39e7903d96da39aa53aaf3078d2555b4f383864",
     "bootstrap/wasm/object_arena_check.sh": "da7938dfd6dc6a441e52f5f1adb262c4e65bd5a25b0fb8108140ccbc7eafdf9a",

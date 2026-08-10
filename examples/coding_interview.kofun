@@ -1,19 +1,14 @@
 # Binary search: the smallest program most people write to evaluate a new
 # language, and the one #1128 was filed about because it did not run.
 #
-# The loop is what changed. `while` is now a Stage 2 Core statement, so an
-# iterative scan over an indexed `List[Int]` executes rather than stopping at
-# `E2S10`.
+# Two things had to change for it to read the way it is written elsewhere.
+# `while` became a Core statement (#1128), so the loop executes; and chained
+# `else if` lowers (#1174), so the miss branch is a comparison ladder rather
+# than a nest.
 #
-# Two spellings here are narrower than the language reads, and both are
-# boundaries rather than style:
-#
-#   - the miss branch nests `else { if ... }` instead of `else if`, because
-#     chained `else if` is not yet a Core form;
-#   - `main` binds `data` before passing it, because a `List[Int]` literal is
-#     refused as a call argument.
-#
-# Neither has anything to do with looping; both reproduce with no loop present.
+# One spelling here is still narrower than the language reads: `main` binds
+# `data` before passing it, because a `List[Int]` literal is refused as a call
+# argument. That has nothing to do with looping or branching.
 
 fn binary_search(values: List[Int], target: Int) -> Int {
     let mut left = 0
@@ -21,15 +16,12 @@ fn binary_search(values: List[Int], target: Int) -> Int {
 
     while left <= right {
         let middle = left + (right - left) // 2
-        let value = values[middle]
-        if value == target {
+        if values[middle] == target {
             return middle
+        } else if values[middle] < target {
+            left = middle + 1
         } else {
-            if value < target {
-                left = middle + 1
-            } else {
-                right = middle - 1
-            }
+            right = middle - 1
         }
     }
     return -1
