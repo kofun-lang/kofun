@@ -9,8 +9,8 @@
 #     error[E2S35]: unknown lexical binding `take` at byte 70
 #
 # An Int-only record on purpose. The records suite's own `use_after_move.kofun`
-# carries a `Text` field, which the Stage 2 Int/Bool slice refuses earlier with
-# E2S32 — so it cannot be reused to gate this path, as the issue records.
+# gates the standalone `record_frontend.c`; this one gates the production path.
+# Int-only was once forced by that file's `Text` field, which #1181 admitted.
 type Token = {
     start: Int,
 }

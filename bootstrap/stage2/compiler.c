@@ -2745,7 +2745,7 @@ static int64_t record_declaration_start(
 
 /*
  * Validate and count one bounded record declaration.  `-2` means a field type
- * outside the Stage 2 Int/Bool slice, `-3` malformed or duplicate fields, and
+ * outside the Stage 2 Int/Bool/Text slice, `-3` malformed or duplicate fields, and
  * `-4` the per-record 128-field ceiling.  AggregateLayout v1 remains the
  * authority for the corresponding declaration-order C layout.
  */
@@ -2788,9 +2788,15 @@ static int64_t record_field_count(
             free(covered.data);
             return -3;
         }
+        /*
+         * #1181: `Text` is one reference, which spec/aggregate-layout-v1
+         * already models as a pointer carrier, so admitting it changes the
+         * field's C spelling and nothing about placement.
+         */
         if (
             !token_equal(source, field_type, "Int") &&
-            !token_equal(source, field_type, "Bool")
+            !token_equal(source, field_type, "Bool") &&
+            !token_equal(source, field_type, "Text")
         ) {
             free(covered.data);
             return -2;
@@ -3586,7 +3592,7 @@ static char *parse_program(const char *source) {
                     buffer_format(
                         &error,
                         "error[E2S32]: record `%s` has a field type outside "
-                        "the Stage 2 Int/Bool slice at byte %" PRId64,
+                        "the Stage 2 Int/Bool/Text slice at byte %" PRId64,
                         name,
                         type_start
                     );
@@ -21175,8 +21181,16 @@ static char *emit_record_c_declaration(
                     true
                 );
                 char *c_field = record_c_field_name(field);
+                /*
+                 * #1181: a `Text` field is one reference. On this target that
+                 * is the same width as `Int`, so the placement arithmetic and
+                 * the emitted offset assertions are unchanged; only the C
+                 * spelling of the field differs.
+                 */
                 const char *c_field_type =
-                    strcmp(field_type, "Bool") == 0 ? "bool" : "int64_t";
+                    strcmp(field_type, "Bool") == 0 ? "bool" :
+                    strcmp(field_type, "Text") == 0 ? "const char *" :
+                    "int64_t";
                 int64_t field_size =
                     strcmp(field_type, "Bool") == 0 ? 1 : 8;
                 int64_t field_alignment = field_size;

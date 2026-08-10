@@ -273,13 +273,25 @@ expect_stage2_failure() {
 }
 
 expect_stage2_failure stage2_unsupported_field
+
+# #1181: `Text` joined the field slice, so the boundary fixture above moved to
+# `List[Int]` rather than being deleted, and the admitted shape owes execution
+# evidence here — construction, both field reads, a Text field passed to a
+# function taking Text, and a record mixing all three carriers.
+"$ROOT/bin/kofun" run "$CASES/text_field.kofun" \
+    >"$WORK/text_field.stdout" 2>"$WORK/text_field.stderr" ||
+    fail 'text_field did not run'
+test ! -s "$WORK/text_field.stderr" ||
+    fail 'text_field wrote stderr'
+cmp "$CASES/text_field.stdout" "$WORK/text_field.stdout" ||
+    fail 'text_field output differs from the golden'
 expect_stage2_failure stage2_direct_construction
 expect_stage2_failure stage2_labelled_call
 
 # #946: the whole-binding move rule reaching the compiler a user runs. The
 # fixtures beside these — `use_after_move.kofun`, `double_take.kofun`, and
 # `partial_move.kofun` — carry a `Text` field and are refused earlier by the
-# Int/Bool slice, so they cannot gate the production path; these are Int-only
+# Int/Bool/Text slice, so they cannot gate the production path; these are Int-only
 # for exactly that reason, and pin the standalone frontend's wording so the two
 # producers stay one language.
 #
@@ -380,7 +392,7 @@ printf '%s\n' \
     'PASS: layout is untagged and identical on x86-64 and AArch64' \
     'PASS: blocks, conditions, loops, and lists stay separable from records' \
     'PASS: duplicate, missing, unknown, wrong-type, mutation, and move diagnostics are exact' \
-    'PASS: Stage 2 executes nominal Int/Bool records in AggregateLayout order' \
+    'PASS: Stage 2 executes nominal Int/Bool/Text records in AggregateLayout order' \
     'PASS: a rejected record argument fails the compile instead of reaching the C' \
     'PASS: the rejection survives let, return, arithmetic, and condition positions' \
     'PASS: the compiler a user runs accepts, lowers, and runs a whole-binding move' \

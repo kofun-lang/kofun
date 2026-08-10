@@ -1,11 +1,11 @@
 # A partial move refused by the compiler a user runs (#946).
 #
 # `partial_move.kofun` beside this file makes the same claim against the
-# standalone `bootstrap/stage2/record_frontend.c`, and carries a `Text` field
-# that the Stage 2 Int/Bool slice refuses with E2S32 before ownership is ever
-# consulted — so it cannot gate the production path. This one is Int-only for
-# that reason and pins the same wording, because two frontends that disagree
-# about what `take value.field` is called would be two languages.
+# standalone `bootstrap/stage2/record_frontend.c`; this one gates the
+# production path and pins the same wording, because two frontends that
+# disagree about what `take value.field` is called would be two languages.
+# Int-only was once forced by that file's `Text` field, which #1181 admitted;
+# what remains is which frontend is under test.
 #
 # `take token.start` moved nothing before #946: the production frontend read
 # `take` as a name nobody declared, and once that was fixed the statement was

@@ -1,1 +1,1 @@
-error[E2S122]: partial move `take value.start` is rejected in v1; move the whole record instead at bytes 899..915
+error[E2S122]: partial move `take value.start` is rejected in v1; move the whole record instead at bytes 863..879

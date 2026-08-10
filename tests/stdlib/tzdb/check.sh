@@ -69,8 +69,13 @@ if "$ROOT/bin/kofun" check "$canonical" \
 then
     fail "canonical source unexpectedly claimed executable codegen: $canonical"
 fi
+# The boundary moved past `ZoneId` when #1181 admitted `Text` record fields:
+# `ZoneId` is `{ name: Text }` and now declares. `Transition` is the next
+# record out, carrying `Instant` and `UtcOffset` fields, so it is what the
+# canonical source stops at today. The assertion names the record rather than
+# the file so that when the boundary moves again the failure says which one.
 assert_grep 'canonical source did not stop at the documented compiler boundary' \
-    -Fq -- 'error[E2S32]: record `ZoneId` has a field type outside the Stage 2 Int/Bool slice' \
+    -Fq -- 'error[E2S32]: record `Transition` has a field type outside the Stage 2 Int/Bool/Text slice' \
     "$WORK/canonical.stderr"
 
 assert_regular_file 'Kofun tzdb producer' "$producer"

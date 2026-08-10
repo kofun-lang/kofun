@@ -1,0 +1,29 @@
+# A nominal record carrying a Text field alongside Int and Bool (#1181).
+# Construction, both field reads, and passing a Text field to a function that
+# takes Text — the shapes increment 4 of #868 owes.
+
+type Token = {
+    name: Text,
+    count: Int,
+}
+
+type Row = {
+    label: Text,
+    ok: Bool,
+    n: Int,
+}
+
+fn width(s: Text) -> Int {
+    return len(s)
+}
+
+fn main() {
+    let t: Token = Token(name: "kofun", count: 2)
+    print(t.name)
+    print(t.count)
+    print(width(t.name))
+
+    let r: Row = Row(label: "row", ok: true, n: 7)
+    print(r.label)
+    print(r.n)
+}

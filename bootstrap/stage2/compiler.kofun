@@ -1846,8 +1846,12 @@ fn record_field_count(source: Text, record_type: Text) -> Int {
            token_kind(source, field_type) != "identifier" {
             return -3
         }
+        # #1181: `Text` is one reference, which spec/aggregate-layout-v1
+        # already models as a pointer carrier, so admitting it changes the
+        # field's C spelling and nothing about placement.
         if token_text(source, field_type) != "Int" &&
-           token_text(source, field_type) != "Bool" {
+           token_text(source, field_type) != "Bool" &&
+           token_text(source, field_type) != "Text" {
             return -2
         }
         count = count + 1
@@ -2562,7 +2566,7 @@ fn parse_program(source: Text) -> Text {
                 }
                 if fields == -2 {
                     return "error[E2S32]: record `" + name +
-                    "` has a field type outside the Stage 2 Int/Bool slice at byte " +
+                    "` has a field type outside the Stage 2 Int/Bool/Text slice at byte " +
                     to_text(cursor)
                 }
                 if fields == -4 {
@@ -13805,11 +13809,16 @@ fn emit_record_c_declaration(
             index,
             true
         )
+        # #1181: a `Text` field is one reference. On this target that is the
+        # same width as `Int`, so the placement arithmetic and the emitted
+        # offset assertions are unchanged; only the C spelling differs.
         let mut c_field_type = "int64_t"
         let mut field_size = 8
         if field_type == "Bool" {
             c_field_type = "bool"
             field_size = 1
+        } else if field_type == "Text" {
+            c_field_type = "const char *"
         }
         let offset = record_align_up(extent, field_size)
         if field_size > record_alignment {
