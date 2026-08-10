@@ -15,7 +15,7 @@ it open during your first changes.
    or open issue is not an implementation claim. Active claims name a fixture
    and gate.
 4. **Canonical sources and checked artifacts can coexist.** For example,
-   Kofun-authored compiler source and an audited C seed are both committed.
+   Kofun-authored compiler source and a trusted C seed are both committed.
    The nearest README and `check.sh` define their relationship.
 5. **Specifications, implementation, and explanation are separate.**
    `spec/` defines normative contracts, implementation lives primarily under
@@ -137,20 +137,20 @@ Root files are also part of the architecture:
 Stage 1 is the Python-free bootstrap seed.
 
 - `compiler.kofun` is the canonical Kofun source.
-- `compiler.c` is the checked-in audited C11 seed.
+- `compiler.c` is the checked-in C11 seed.
 - `SHA256SUMS` pins the source/artifact relationship.
 - `check.sh` builds the seed and verifies its bounded nested-block
   Int/Bool/Text/List[Text] Core.
 
 Do not edit only a digest to make a gate pass. A Stage 1 change must explain
-which source is canonical, how the audited artifact was produced, and why its
+which source is canonical, how the artifact was produced, and why its
 fixtures still establish the claimed behavior.
 
 ### `bootstrap/stage2/`
 
 Stage 2 contains the broadest collection of semantic frontend checkpoints:
 
-- canonical `compiler.kofun` plus audited `compiler.c`;
+- canonical `compiler.kofun` plus seed `compiler.c`;
 - the transactional lexer/parser, scopes, typing slices, diagnostics, and
   bounded C11 lowering;
 - focused ADT, generic, module, import, visibility, re-export, KIF, and
@@ -173,7 +173,7 @@ bounded claim about it is checked, not that the feature compiles:
 `error[E2S03]: malformed function at byte 0`.
 
 The two files that *are* the user-facing compiler are `compiler.kofun`
-(canonical) and `compiler.c` (the audited seed that executes). See
+(canonical) and `compiler.c` (the trusted seed that executes). See
 [`docs/COMPILER_ARCHITECTURE.md`](COMPILER_ARCHITECTURE.md#where-the-compiler-actually-is).
 
 The detailed [`bootstrap/stage2/README.md`](../bootstrap/stage2/README.md)

@@ -46,7 +46,7 @@ infers semantics from spelling.
 
 ## Runtime shim
 
-Generated programs embed one audited C runtime: the checked Int
+Generated programs embed one C runtime: the checked Int
 arithmetic helpers of the existing Core slice plus `kofun_rt_*` text
 helpers whose observable semantics match the trusted Stage 1 seed
 prelude byte for byte — byte-counted `len`, byte-offset `text_slice`
@@ -65,7 +65,7 @@ document node id, so argument evaluation is exactly once and left to
 right, and `&&`/`||` keep short-circuit evaluation through guarded
 blocks.
 
-## Canonical source and audited seed
+## Canonical source and seed
 
 The lowering lives in both halves of the Stage 2 lockstep pair — the
 `selfhost_c11_*` functions in `bootstrap/stage2/compiler.kofun` and the

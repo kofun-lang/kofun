@@ -50,7 +50,7 @@ requires each to print its pinned golden (`corpus_core.stdout` is `42`;
    compiles the frozen Core to deterministic C11, which `cc` links into a native
    binary.
 2. **Direct-native path.** `kofun build ... --target x86_64-linux` and
-   `--target aarch64-linux` drive the audited `bootstrap/native/core_compiler.c`
+   `--target aarch64-linux` drive the `bootstrap/native/core_compiler.c`
    backend, which writes a statically linked ELF64 image directly, with no
    assembler, linker, or `cc`.
 

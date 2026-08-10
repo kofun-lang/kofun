@@ -362,7 +362,7 @@ The List profile additionally emits frame-backed locals, stack temporaries,
 indexed 64-bit loads/stores, generated loop branches, and a leaf Linux AArch64
 `mmap` helper. Its failure fixups target exact OOM and list-index diagnostics.
 
-`core_compiler.c` is the audited C11 bootstrap driver used until the Kofun
+`core_compiler.c` is the C11 bootstrap driver used until the Kofun
 compiler can self-compile the complete `List[Int]` encoder. It shares one
 frontend across both targets and uses no Python, assembler, linker, or target
 cross-compiler when compiling a program.
@@ -535,7 +535,7 @@ success/failure images twice and validating deterministic bytes, ELF metadata,
 encoded instructions, and x86-64/reference parity.
 
 The shell does not choose headers or instructions. Those values are authored
-in Kofun and mirrored by the audited bootstrap seed. No Python, assembly, or
+in Kofun and mirrored by the bootstrap seed. No Python, assembly, or
 linker participates.
 
 ## Honest boundary
@@ -586,7 +586,7 @@ Implemented here:
 
 Still open:
 
-- replacing the audited C11 Native Core driver after lists and calls
+- replacing the C11 Native Core driver after lists and calls
   self-compile;
 - general local bindings and statement/control-flow lowering inside
   user-defined functions;
