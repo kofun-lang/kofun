@@ -9,5 +9,6 @@ validated-type-without-identity: refused
 callable-with-provisional-effect: refused
 effect-without-display: refused
 duplicate-effect: refused
+effects-sharing-one-identity: refused
 partial-without-facts: refused
 stale-is-not-factbearing: refused

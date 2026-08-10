@@ -547,6 +547,28 @@ int main(int argc, char **argv) {
                    KOFUN_DISCOVERY_REASON_NONE, &type, operations, 1u, NULL, 0u,
                    0);
 
+        /*
+         * Uniqueness is by *identity*, which is stricter than the sort key.
+         * Two requirements carrying one compiler identity are one
+         * requirement however differently they render, so a check that
+         * compared the whole key would find these unequal, sort them
+         * adjacent, and emit both.
+         */
+        operations[0] = fixture_operation('7', "length", "(read List[Text]) -> Int",
+                                          KOFUN_DISCOVERY_RECEIVER_READ);
+        add_effect(&operations[0], "io.read", KOFUN_DISCOVERY_FACT_VALIDATED);
+        add_effect(&operations[0], "io.write", KOFUN_DISCOVERY_FACT_VALIDATED);
+        operations[0].effects[0].identity.kind =
+            KOFUN_DISCOVERY_IDENTITY_SYMBOL_ID;
+        fill_id(operations[0].effects[0].identity.value, 'e');
+        operations[0].effects[1].identity.kind =
+            KOFUN_DISCOVERY_IDENTITY_SYMBOL_ID;
+        fill_id(operations[0].effects[1].identity.value, 'e');
+        emit_facts("effects-sharing-one-identity",
+                   KOFUN_DISCOVERY_STATUS_COMPLETE,
+                   KOFUN_DISCOVERY_REASON_NONE, &type, operations, 1u, NULL, 0u,
+                   0);
+
         /* `partial` with no facts at all explains nothing. */
         emit_facts("partial-without-facts", KOFUN_DISCOVERY_STATUS_PARTIAL,
                    KOFUN_DISCOVERY_REASON_INCOMPLETE_CURRENT_FILE_FACTS, NULL,

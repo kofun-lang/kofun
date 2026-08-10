@@ -1,0 +1,21 @@
+pub type Known =
+    | Alpha
+
+pub fn closed(read values: List[Text]) -> Int {
+    for value in values {
+        print(value)
+    }
+    return 0
+}
+
+pub fn nominal_result(value: Int) -> Known {
+    return Alpha
+}
+
+pub fn open_result(value: Int) -> Wibble {
+    return value
+}
+
+pub fn open_nullary() -> Wibble {
+    return 0
+}

@@ -808,8 +808,11 @@ static void sort_omissions(KofunDiscoveryOmission *omissions, size_t count) {
 }
 
 /* Effects sort with non-null compiler identity `(kind, value)` first, then
- * null identities by display bytes. The identity-kind enum values are in the
- * same order as their ASCII spellings, so the enum doubles as the key. */
+ * null identities by display bytes. The enum doubles as the kind key only
+ * because an effect identity is restricted to `SymbolId` and `TypeId`, whose
+ * enum order happens to match their ASCII order; that is not true of the
+ * identity-kind enum in general, so admitting a third kind here means
+ * choosing the key deliberately rather than inheriting this one. */
 static int compare_effects(const KofunDiscoveryEffectRequirement *left,
                            const KofunDiscoveryEffectRequirement *right) {
     bool left_identified = left->identity.kind != KOFUN_DISCOVERY_IDENTITY_NONE;
@@ -951,10 +954,26 @@ static bool facts_are_permitted(KofunDiscoveryStatus status,
                 effect->identity.kind != KOFUN_DISCOVERY_IDENTITY_TYPE_ID) {
                 return false;
             }
-            if (effect_index > 0 &&
-                compare_effects(&operation->effects[effect_index - 1],
-                                effect) >= 0) {
-                return false;
+            /*
+             * Sorted, and unique — but unique *by identity* when one is
+             * present, which is stricter than the sort key. Two requirements
+             * sharing a compiler identity are the same requirement however
+             * differently they render, so comparing the whole key would let
+             * `SymbolId eee…/"io.read"` and `SymbolId eee…/"io.write"` sit
+             * adjacent, compare unequal, and both be emitted.
+             */
+            if (effect_index > 0) {
+                const KofunDiscoveryEffectRequirement *previous =
+                    &operation->effects[effect_index - 1];
+                if (compare_effects(previous, effect) >= 0) {
+                    return false;
+                }
+                if (effect->identity.kind != KOFUN_DISCOVERY_IDENTITY_NONE &&
+                    previous->identity.kind == effect->identity.kind &&
+                    strcmp(previous->identity.value,
+                           effect->identity.value) == 0) {
+                    return false;
+                }
             }
             if (operation->callable &&
                 effect->status != KOFUN_DISCOVERY_FACT_VALIDATED) {
