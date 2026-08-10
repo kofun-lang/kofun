@@ -10615,6 +10615,14 @@ fn build_scope_hir_mode(
             # unknown binding. The construct is refused, so its token is never
             # a use.
             if token_text(source, cursor) == "par" {
+                # Shape first, so a mistyped `par` is reported where it is
+                # wrong rather than at `par` (#1160). This is the earliest site
+                # that sees the construct, so it is the one that decides which
+                # byte the reader is sent to.
+                let par_fault = par_production_error(source, cursor)
+                if len(par_fault) > 0 {
+                    return par_fault
+                }
                 return "error[E2S154]: scoped parallelism `par` is specified " +
                 "but not implemented at byte " + to_text(cursor)
             }
@@ -11327,6 +11335,41 @@ fn lower_record_binding(
 # Neither word is reserved, so this deliberately requires the call parenthesis:
 # `type P = { join: Int }` is legal Kofun, and a bare `p.join` read is a field
 # access this must not claim.
+# The `par |scope| { ... }` production (#1160). Returns "" when the form is
+# well shaped, and otherwise the refusal for the token that does not fit.
+#
+# Without this every malformed `par` reported the same sentence at the `par`
+# token: a missing block, a missing scope name and a missing bar were one
+# message at one byte, so the diagnostic said a construct was unimplemented
+# rather than that it was mistyped. The construct is still unimplemented — that
+# refusal is below, and reached only when the shape is right.
+fn par_production_error(source: Text, at: Int) -> Text {
+    let bar_open = skip_trivia(source, token_end(source, at))
+    if bar_open >= len(source) || token_text(source, bar_open) != "|" {
+        return "error[E2S154]: scoped parallelism `par` expects `|scope|` at byte " +
+        to_text(bar_open)
+    }
+    let name = skip_trivia(source, token_end(source, bar_open))
+    if name >= len(source) || token_kind(source, name) != "identifier" {
+        return "error[E2S154]: scoped parallelism `par` expects a scope token between `|` and `|` at byte " +
+        to_text(name)
+    }
+    let bar_close = skip_trivia(source, token_end(source, name))
+    if bar_close >= len(source) || token_text(source, bar_close) != "|" {
+        return "error[E2S154]: scoped parallelism `par` expects `|` after the scope token at byte " +
+        to_text(bar_close)
+    }
+    let block = skip_trivia(source, token_end(source, bar_close))
+    if block >= len(source) || token_text(source, block) != "{" {
+        return "error[E2S154]: scoped parallelism `par` expects `{` after `|scope|` at byte " +
+        to_text(block)
+    }
+    # No check for an unbalanced block: an unclosed `{` leaves the enclosing
+    # function unbalanced too, and `E2S03: malformed function` is reported
+    # before this is reached. A branch here would be unreachable.
+    return ""
+}
+
 fn scoped_parallel_member(source: Text, start: Int) -> Int {
     if token_kind(source, start) != "identifier" {
         return -1
@@ -11415,6 +11458,11 @@ fn lower_body(
         # See selfhost_parse_primary: refuse `par` before the dispatch below can
         # read the scope token as an ordinary binding and blame it instead.
         if statement == "par" {
+            # Shape first, so a mistyped `par` is reported where it is wrong.
+            let par_fault = par_production_error(source, cursor)
+            if len(par_fault) > 0 {
+                return par_fault
+            }
             return "error[E2S154]: scoped parallelism `par` is specified " +
             "but not implemented at byte " + to_text(cursor)
         }

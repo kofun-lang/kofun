@@ -13829,6 +13829,9 @@ static char *scope_hir_error(
     return lower_error("E2S35", message, cursor);
 }
 
+/* #1160: defined below build_scope_hir_mode, which is its earliest user. */
+static char *par_production_error(const char *source, int64_t at);
+
 static char *build_scope_hir_mode(
     const char *source,
     bool preserve_pattern_candidates
@@ -14887,6 +14890,24 @@ static char *build_scope_hir_mode(
              * scope token between the bars and blames it as an unknown
              * binding. The construct is refused, so its token is never a use. */
             if (token_equal(source, cursor, "par")) {
+                /*
+                 * Shape first, so a mistyped `par` is reported where it is
+                 * wrong rather than at `par` (#1160). This is the earliest
+                 * site that sees the construct, so it is the one that decides
+                 * which byte the reader is sent to.
+                 */
+                char *par_fault = par_production_error(source, cursor);
+                if (par_fault != NULL) {
+                    stage2_diagnostic_set(
+                        "E2S154",
+                        cursor,
+                        token_end(source, cursor),
+                        true,
+                        par_fault
+                    );
+                    free(hir.data);
+                    return par_fault;
+                }
                 Buffer message;
                 buffer_init(&message);
                 buffer_format(
@@ -17044,6 +17065,62 @@ static char *lower_record_binding(
  * parenthesis: `type P = { join: Int }` is legal Kofun, and a bare `p.join`
  * read is a field access this must not claim.
  */
+/*
+ * The `par |scope| { ... }` production (#1160). Returns NULL when the form is
+ * well shaped, and otherwise the refusal for the token that does not fit.
+ *
+ * Without this every malformed `par` reported the same sentence at the `par`
+ * token: a missing block, a missing scope name and a missing bar were one
+ * message at one byte, so the diagnostic said a construct was unimplemented
+ * rather than that it was mistyped. The construct is still unimplemented --
+ * that refusal is at the call site, reached only when the shape is right.
+ */
+static char *par_production_error(const char *source, int64_t at)
+{
+    int64_t length = source_length(source);
+    int64_t bar_open = skip_trivia(source, token_end(source, at));
+    if (bar_open >= length || !token_equal(source, bar_open, "|")) {
+        return lower_error(
+            "E2S154",
+            "scoped parallelism `par` expects `|scope|`",
+            bar_open
+        );
+    }
+    int64_t name = skip_trivia(source, token_end(source, bar_open));
+    if (
+        name >= length ||
+        strcmp(token_kind(source, name), "identifier") != 0
+    ) {
+        return lower_error(
+            "E2S154",
+            "scoped parallelism `par` expects a scope token between `|` and `|`",
+            name
+        );
+    }
+    int64_t bar_close = skip_trivia(source, token_end(source, name));
+    if (bar_close >= length || !token_equal(source, bar_close, "|")) {
+        return lower_error(
+            "E2S154",
+            "scoped parallelism `par` expects `|` after the scope token",
+            bar_close
+        );
+    }
+    int64_t block = skip_trivia(source, token_end(source, bar_close));
+    if (block >= length || !token_equal(source, block, "{")) {
+        return lower_error(
+            "E2S154",
+            "scoped parallelism `par` expects `{` after `|scope|`",
+            block
+        );
+    }
+    /*
+     * No check for an unbalanced block: an unclosed `{` leaves the enclosing
+     * function unbalanced too, and `E2S03: malformed function` is reported
+     * before this is reached. A branch here would be unreachable.
+     */
+    return NULL;
+}
+
 static int64_t scoped_parallel_member(const char *source, int64_t start)
 {
     int64_t length = source_length(source);
@@ -17154,6 +17231,12 @@ static char *lower_body(
         /* See sh_parse_primary: refuse `par` before the dispatch below can
          * read the scope token as an ordinary binding and blame it instead. */
         if (token_equal(source, cursor, "par")) {
+            /* Shape first, so a mistyped `par` is reported where it is wrong. */
+            char *par_fault = par_production_error(source, cursor);
+            if (par_fault != NULL) {
+                free(emitted.data);
+                return par_fault;
+            }
             free(emitted.data);
             return lower_error(
                 "E2S154",
