@@ -41,7 +41,7 @@
     "canonical_source": "bootstrap/stage1/compiler.kofun",
     "canonical_source_sha256": "2595b8dad461bf02ec75d765295da6b03f40dd02f34daa2b0ebd8b3fab8e596d",
     "trusted_seed": "bootstrap/stage2/compiler.c",
-    "trusted_seed_sha256": "5fe9022ae1b6629da1c8c2608239d1ec1455a9326dc82bf57e68558d93ab698e",
+    "trusted_seed_sha256": "2ad18e56fa89bf7a3b0b06f25f90869f60300b650a4a702019d3f5c1ea2a7ede",
     "corpus_sha256": "74b63ee4951ca95330ed1c503b56bd4edb0b25b71359a7d648a0206b0bf614a6",
     "c1_sha256": "48a30a19d85c79bae44b03daf2fc66248fd5464fde67694ec308d8772ecfd491",
     "c2_sha256": "82005a8b89a32f1763bfc7ba5f030b5e109b25ed2a1aff307356ee174f1b887a",

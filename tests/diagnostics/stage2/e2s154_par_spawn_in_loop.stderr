@@ -1,0 +1,1 @@
+error[E2S154]: scoped parallelism v1 needs finite lexical spawn sites; `spawn` inside a loop is not supported at byte 526

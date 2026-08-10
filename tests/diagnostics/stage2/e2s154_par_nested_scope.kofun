@@ -1,0 +1,13 @@
+# diagnostic-mode: compile
+# expect-code: E2S154
+# expect-span: byte 324
+# v1 has one scope, not a tree of them. A `par` inside a `par` block is refused
+# where the inner one starts, so the reader is not left to infer that nesting
+# was merely unimplemented along with everything else.
+fn main() {
+    par |outer| {
+        par |inner| {
+            let x = 1
+        }
+    }
+}
