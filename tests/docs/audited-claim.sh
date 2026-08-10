@@ -39,7 +39,33 @@ cd "$ROOT"
 # `audited bootstrap chain` row cites this path as its evidence.
 AUDIT_RECORD=bootstrap/AUDIT.md
 
-SURFACES="README.md DESIGN.md bootstrap/README.md docs/SECURITY.md"
+# Discovered, not enumerated. The four surfaces this started with were the
+# ones #1138 happened to name, and #1156 then measured the rest: the claim
+# also sat in nine places across the two contributor guides -- which teach a
+# newcomer what the seeds are before they ever open a bootstrap README -- and
+# in nine more bootstrap documents this list did not reach.
+#
+# An enumerated list is how the next document arrives unscanned, so the
+# bootstrap ones are globbed. `hir-v1.md` and `wasm/README.md` carry no
+# occurrence today and are covered anyway; that is the point of globbing
+# rather than listing what currently matches.
+SURFACES=$(
+    printf '%s\n' \
+        README.md \
+        DESIGN.md \
+        docs/SECURITY.md \
+        docs/CONTRIBUTING.md \
+        docs/REPOSITORY_GUIDE.md
+    git ls-files -- 'bootstrap/*.md'
+)
+
+# What this still cannot see, recorded so it is a known boundary rather than
+# an assumed absence: structured metadata. `bootstrap/manifest.json`'s `role`
+# strings and `release/claims.json`'s `public_wording` are machine-read, carry
+# more authority than any README, and no prose scan reaches them. #1156 found
+# the seed described as an "audited C11 artifact" in the manifest -- three
+# lines below `bootstrap_model: trusted-c11-seed`, contradicting it inside one
+# object. That surface needs its own scan.
 
 # "audited <noun>" describes the artifacts as having been audited. "can be
 # independently audited" states a property, and the ROADMAP deliverable and any
