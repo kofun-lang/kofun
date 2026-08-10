@@ -1,9 +1,14 @@
 # A second move refused by the compiler a user runs (#946).
 #
 # The mirror of `double_take.kofun`, which makes the same claim against the
-# standalone `bootstrap/stage2/record_frontend.c` and cannot gate this path
-# because its `Token` carries a `Text` field the Stage 2 Int/Bool slice refuses
-# with E2S32 first.
+# standalone `bootstrap/stage2/record_frontend.c`. This one gates the
+# production path — the compiler `./bin/kofun check` actually runs — so the two
+# frontends are held to one wording rather than drifting apart.
+#
+# It is Int-only. That was once forced, because the sibling's `Text` field was
+# refused by the field slice before ownership was consulted; #1181 admitted
+# `Text`, so the separation is now about which frontend is under test, not
+# about what the slice accepts.
 #
 # Moving twice and reading after a move are one condition and two sentences.
 # The second `take` is not a use of the value, so it is not reported as one:

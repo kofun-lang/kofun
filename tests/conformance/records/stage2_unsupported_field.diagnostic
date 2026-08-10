@@ -1,1 +1,1 @@
-error[E2S32]: record `Unsupported` has a field type outside the Stage 2 Int/Bool slice at byte 0
+error[E2S32]: record `Unsupported` has a field type outside the Stage 2 Int/Bool/Text slice at byte 364

@@ -1,1 +1,1 @@
-error[E2S123]: `token` was already moved by `take` at bytes 828..838; first moved by `take` at bytes 813..823
+error[E2S123]: `token` was already moved by `take` at bytes 1134..1144; first moved by `take` at bytes 1119..1129

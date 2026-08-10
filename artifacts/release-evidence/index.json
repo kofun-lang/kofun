@@ -4,9 +4,9 @@
   "version": "0.4.0-seed",
   "inputs": {
     "VERSION": "60eee96ee38418a0ef903b570d0d12ce2d82ea79f129cc2c6c1245a072c04349",
-    "release/claims.json": "f660063e10adb59571927bddd67498d8a56d5ed3bcf27796568bb34db2f10524",
+    "release/claims.json": "600855e3e196f52e9f294ca370fd63f8b1a7032ad6a4ea76c3f8b9f89be7ed6c",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
-    "bootstrap/manifest.json": "f9c696b04bd019a94821d35916452d220cde4467596c854b715f24e76cb6b195"
+    "bootstrap/manifest.json": "f9c9da7c376dd811da0183d52a6b04a3dd970b9f27065b6515778531d2fef446"
   },
   "states": {
     "implemented": 9,
@@ -738,7 +738,7 @@
     "tests/conformance/modules/re-exports/run.sh": "39d91f56a27e5c7469d26309a3f709431a8307359715452f6cfbcaf9843f6b12",
     "tests/conformance/numeric/reject_slash_operator.kofun": "49a14dbd0392e6920a681168af44018182f78175a921592283631c9942045c24",
     "tests/conformance/records/partial_move.kofun": "7d418d3ab0531f864cbd61256cbdeaeb46f7a65b213d62bf776229ddcfa67b85",
-    "tests/conformance/records/stage2_unsupported_field.kofun": "2ac9b2e9ca754689330a836304a349a49cdf9820be6523e3d02be8158fba4eae",
+    "tests/conformance/records/stage2_unsupported_field.kofun": "ce02c4fe80b4a5fc3f5d1f12ade45c2c47b7a4a20e10c3709ca1f72a90111284",
     "tests/conformance/syntax/issues_35_47/enum_payload_unsupported_field.kofun": "e1b4ce6cda998dac0a955ed016c8eb2f81a9effaed91b823011572cf68f6c59e",
     "tests/diagnostics/README.md": "32bc26bdeca5e1de63698ac97a53b6438d7c38af995677efd0288c52f195fc65",
     "tests/diagnostics/registry.tsv": "5c205f5fec83a8c361852b4c0393636babbf32d261ca6472e85ec84287191fcb",

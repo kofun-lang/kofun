@@ -1209,7 +1209,7 @@
       "negative_boundary": {
         "kind": "rejection",
         "evidence": "tests/conformance/records/stage2_unsupported_field.kofun",
-        "observation": "The production Stage 2 C11 path refuses a field type outside its Int/Bool slice before emitting an artifact."
+        "observation": "The production Stage 2 C11 path refuses a field type outside its Int/Bool/Text slice before emitting an artifact."
       },
       "safety": {
         "classification": "memory-safety",

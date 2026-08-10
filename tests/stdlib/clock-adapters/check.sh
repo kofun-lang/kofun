@@ -139,7 +139,7 @@ canonical_boundary() {
 }
 
 canonical_boundary "$canonical" \
-    'error[E2S32]: record `ClockIdentity` has a field type outside the Stage 2 Int/Bool slice'
+    'error[E2S32]: record `ClockIdentity` has a field type outside the Stage 2 Int/Bool/Text slice'
 canonical_boundary "$adapter" \
     'error[E2S02]: expected top-level `fn`, `type`, or `let`'
 
