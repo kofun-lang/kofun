@@ -1147,15 +1147,27 @@ size_t kofun_discovery_result_emit(
         return 0;
     }
 
-    /* Ordering first: uniqueness is checked against sorted neighbours. */
+    /*
+     * Ordering first: uniqueness is checked against sorted neighbours.
+     *
+     * Both counts are bounded here rather than only in
+     * `facts_are_permitted`, because sorting happens first and a sort reads
+     * and writes the whole count it is handed. A caller reporting more
+     * entries than its fixed-size array holds would otherwise run off the
+     * end before the check that refuses it ever ran — the refusal is at the
+     * wrong end of the function to prevent the overrun it exists to catch.
+     */
     for (index = 0; index < operation_count; index++) {
+        if (operations[index].rejection_reason_count >
+                KOFUN_DISCOVERY_MAX_REJECTION_REASONS ||
+            operations[index].effect_count >
+                KOFUN_DISCOVERY_MAX_OPERATION_EFFECTS) {
+            return 0;
+        }
         sort_rejections(operations[index].rejection_reasons,
                         operations[index].rejection_reason_count);
-        if (operations[index].effect_count <=
-            KOFUN_DISCOVERY_MAX_OPERATION_EFFECTS) {
-            sort_effects(operations[index].effects,
-                         operations[index].effect_count);
-        }
+        sort_effects(operations[index].effects,
+                     operations[index].effect_count);
     }
     sort_operations(operations, operation_count);
     sort_omissions(omissions, omission_count);

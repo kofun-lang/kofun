@@ -10,5 +10,7 @@ callable-with-provisional-effect: refused
 effect-without-display: refused
 duplicate-effect: refused
 effects-sharing-one-identity: refused
+rejection-count-past-its-array: refused
+effect-count-past-its-array: refused
 partial-without-facts: refused
 stale-is-not-factbearing: refused

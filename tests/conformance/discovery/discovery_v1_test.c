@@ -1,6 +1,7 @@
 #include "discovery_v1.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /*
@@ -568,6 +569,52 @@ int main(int argc, char **argv) {
                    KOFUN_DISCOVERY_STATUS_COMPLETE,
                    KOFUN_DISCOVERY_REASON_NONE, &type, operations, 1u, NULL, 0u,
                    0);
+
+        /*
+         * A count larger than the array that holds it.
+         *
+         * The refusal must happen before anything sorts that array: a sort
+         * walks the whole count it is handed, so a check placed after the
+         * ordering pass is at the wrong end of the function to prevent the
+         * overrun it exists to catch.
+         *
+         * The row is heap-allocated on its own rather than reused from
+         * `operations` above, and the count is far past the struct rather
+         * than one past the array. Both are deliberate: an overrun that
+         * stays inside a neighbouring array element is invisible to the
+         * sanitizer, and the "refused" line alone reads identically whether
+         * the bound is checked before the sort or after it. With its own
+         * allocation this case fails as a heap overflow in the sanitizer
+         * lane if that ordering is ever reversed.
+         */
+        {
+            KofunDiscoveryOperationFact *lone =
+                malloc(sizeof(KofunDiscoveryOperationFact));
+            if (lone == NULL) {
+                printf("rejection-count-past-its-array: allocation failed\n");
+                printf("effect-count-past-its-array: allocation failed\n");
+            } else {
+                *lone = fixture_operation('7', "length",
+                                          "(read List[Text]) -> Int",
+                                          KOFUN_DISCOVERY_RECEIVER_READ);
+                lone->callable = false;
+                lone->rejection_reason_count = 4096u;
+                emit_facts("rejection-count-past-its-array",
+                           KOFUN_DISCOVERY_STATUS_PARTIAL,
+                           KOFUN_DISCOVERY_REASON_INCOMPLETE_CURRENT_FILE_FACTS,
+                           &type, lone, 1u, NULL, 0u, 0);
+
+                *lone = fixture_operation('7', "length",
+                                          "(read List[Text]) -> Int",
+                                          KOFUN_DISCOVERY_RECEIVER_READ);
+                lone->effect_count = 4096u;
+                emit_facts("effect-count-past-its-array",
+                           KOFUN_DISCOVERY_STATUS_COMPLETE,
+                           KOFUN_DISCOVERY_REASON_NONE, &type, lone, 1u, NULL,
+                           0u, 0);
+                free(lone);
+            }
+        }
 
         /* `partial` with no facts at all explains nothing. */
         emit_facts("partial-without-facts", KOFUN_DISCOVERY_STATUS_PARTIAL,
