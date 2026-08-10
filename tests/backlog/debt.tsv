@@ -90,4 +90,3 @@
 #                     is worse than none: its author believes the signal is
 #                     published.
 capability-blocker	885	-	Typed upgrade patches slice 1: validate schema and compute
-state-disagreement	784	needs-decision/ready	ownership: an affine handle whose owned state cannot be duplicated (#644)

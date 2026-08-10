@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 31,
+  "open_issues": 32,
   "issues": [
     {
       "number": 26,
@@ -175,69 +175,6 @@
       ]
     },
     {
-      "number": 637,
-      "title": "Discovery query v1: project inferred types and callable operations from semantic facts",
-      "state_labels": [
-        "needs-detail"
-      ],
-      "state_line": "needs-detail",
-      "blocked_by": [],
-      "evidence_commits": [
-        "8e831320736f2c0aa53eea228ec77ef8f41e3c33",
-        "cf1a1fcfecdc31a84681c867a369542b2a966979"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-637-post-1080-audit-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-637-post-1080-audit-20260808",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-637-closeability-audit-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-637-closeability-audit-20260808",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-637-1094-split-audit-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-637-1094-split-audit-20260808",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-637-list-text-ops-child-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-637-list-text-ops-child-20260808",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-637-post-1100-topology-20260809",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-637-post-1100-topology-20260809",
-          "status": "released"
-        },
-        {
-          "agent_id": "claude-637-semantic-fact-completion-20260810",
-          "status": "active"
-        },
-        {
-          "agent_id": "claude-637-semantic-fact-completion-20260810",
-          "status": "pr-open"
-        }
-      ]
-    },
-    {
       "number": 644,
       "title": "HTTP/1.1 client core: bounded request and response state machine over scripted transport",
       "state_labels": [
@@ -365,7 +302,7 @@
       "state_labels": [
         "needs-decision"
       ],
-      "state_line": "ready",
+      "state_line": "needs-decision",
       "blocked_by": [],
       "evidence_commits": [
         "1639a8deb811d3f04acc5d84a4fd73f7630e8be0"
@@ -793,6 +730,26 @@
       "evidence_commits": [
         "37905efa0e4fcf1b821a97e2799722a47ab942f2"
       ]
+    },
+    {
+      "number": 1170,
+      "title": "The audited-claim gate cannot see structured metadata, where the claim carries the most authority",
+      "state_labels": [],
+      "state_line": "ready",
+      "blocked_by": [
+        1156
+      ],
+      "evidence_commits": [
+        "5b43e4817a083ea29ef22c3732f5d9b66ced861a"
+      ]
+    },
+    {
+      "number": 1171,
+      "title": "kotest says \"unit kept at\" a path it then deletes",
+      "state_labels": [],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": []
     }
   ]
 }
