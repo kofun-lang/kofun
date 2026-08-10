@@ -171,6 +171,45 @@ grep -q "offsets_test.kofun byte" "$WORK/offsets.out" &&
 grep -Eq 'statement at byte [0-9]+' "$WORK/offsets.out" &&
     fail 'build diagnostic still reports a bare unit offset'
 
+# ------------------------------------------------- kept work directory
+# The build-failure notice named the generated unit unconditionally while every
+# exit path deleted it (#1171), so it pointed at a file that never survived the
+# run that printed it. The gate is that the promise and the file agree — which
+# means following the path, not matching the sentence.
+set +e
+KOTEST_KEEP_WORK=1 sh "$RUNNER" \
+    "$ROOT/tests/stdlib/kotest/fixtures/offsets_test.kofun" \
+    --no-color >"$WORK/keep.out" 2>&1
+keep_status=$?
+set -e
+test "$keep_status" -eq 2 ||
+    fail "kept-work run exited $keep_status instead of 2"
+
+kept_unit=$(sed -n 's/^ *unit kept at //p' "$WORK/keep.out")
+test -n "$kept_unit" ||
+    fail "kept-work run did not name the unit
+$(sed 's/^/    /' "$WORK/keep.out")"
+test -e "$kept_unit" ||
+    fail "the notice named $kept_unit, which does not exist"
+grep -q "^fn main" "$kept_unit" ||
+    fail "the kept path is not the generated unit: $kept_unit"
+
+kept_dir=$(sed -n 's/^kotest: work directory kept at //p' "$WORK/keep.out")
+test -n "$kept_dir" && test -d "$kept_dir" ||
+    fail "kept-work run did not report a surviving work directory"
+rm -rf "$kept_dir"
+
+# Without the flag, nothing may claim the unit was kept — a promise this
+# runner cannot honour, because the directory is removed on the way out.
+set +e
+sh "$RUNNER" "$ROOT/tests/stdlib/kotest/fixtures/offsets_test.kofun" \
+    --no-color >"$WORK/nokeep.out" 2>&1
+set -e
+grep -q "unit kept at" "$WORK/nokeep.out" &&
+    fail "the default run still promises a unit it deletes"
+grep -q "KOTEST_KEEP_WORK=1" "$WORK/nokeep.out" ||
+    fail "the default run does not say how to keep the unit"
+
 # ------------------------------------------------------------------ filter
 sh "$RUNNER" "$SAMPLES/list_sample_test.kofun" --filter test_fold \
     --no-color >"$WORK/filter.out" 2>&1 ||

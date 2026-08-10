@@ -7,6 +7,10 @@
 #   tooling/kotest/run.sh [PATH ...] [--filter SUBSTRING] [--list]
 #                         [--watch] [--no-color] [--keep-going]
 #
+# KOTEST_KEEP_WORK=1 keeps the per-run work directory, so the generated unit
+# survives a build failure and can be read. Without it the directory is
+# removed on every exit path.
+#
 # Test discovery:
 #   - a file named *_test.kofun is a test suite: it must not define fn main,
 #     and every `fn test_<name>() -> Int` in it is collected.
@@ -29,7 +33,7 @@ CFLAGS_KOTEST="-std=c11 -O2 -Wall -Wextra -Werror \
     -Wno-unused-function -Wno-unused-variable -Wno-unused-parameter"
 
 usage() {
-    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 # ------------------------------------------------------------------ options
@@ -39,6 +43,16 @@ watch=false
 keep_going=false
 color=auto
 paths=''
+# The generated unit lives under a per-run temporary directory that every exit
+# path removed, while the build-failure notice named that path unconditionally
+# (#1171) — so it pointed at a file that was already gone by the time anyone
+# read it, on every run this tool has ever made.
+#
+# The unit is still worth reaching when you suspect the runner rather than your
+# own code: a wrong prelude, a mis-stripped `fn main`, a bad harness. So it is
+# kept on request instead of being promised by default.
+keep_work=false
+[ -z "${KOTEST_KEEP_WORK:-}" ] || keep_work=true
 while [ "$#" -gt 0 ]; do
     case $1 in
     --filter)
@@ -68,6 +82,17 @@ else
     C_YELLOW=$(printf '\033[33m'); C_DIM=$(printf '\033[2m')
     C_BOLD=$(printf '\033[1m'); C_OFF=$(printf '\033[0m')
 fi
+
+# Every exit path goes through this, so a new one cannot silently delete a
+# directory the caller asked to keep.
+cleanup_work() {
+    if $keep_work; then
+        printf '%skotest: work directory kept at %s%s\n' \
+            "$C_DIM" "$1" "$C_OFF"
+    else
+        rm -rf "$1"
+    fi
+}
 
 # ---------------------------------------------------------------- discovery
 discover() {
@@ -340,7 +365,12 @@ run_unit() {
         printf '%skotest: BUILD FAIL %s%s\n' "$C_RED" "$source_file" "$C_OFF"
         translate_diagnostics "$unit_map" <"$work/$stem.emit.log" |
             sed 's/^/    /'
-        printf '    %sunit kept at %s%s\n' "$C_DIM" "$unit" "$C_OFF"
+        if $keep_work; then
+            printf '    %sunit kept at %s%s\n' "$C_DIM" "$unit" "$C_OFF"
+        else
+            printf '    %sre-run with KOTEST_KEEP_WORK=1 to keep the generated unit%s\n' \
+                "$C_DIM" "$C_OFF"
+        fi
         return 2
     fi
     # shellcheck disable=SC2086
@@ -372,7 +402,7 @@ run_pass() {
     files=$(discover)
     if [ -z "$files" ]; then
         printf 'kotest: no test files found\n' >&2
-        rm -rf "$work"
+        cleanup_work "$work"
         return 2
     fi
 
@@ -387,7 +417,7 @@ run_pass() {
                 printf '%s.%s\n' "$stem" "$name"
             done
         done
-        rm -rf "$work"
+        cleanup_work "$work"
         return 0
     fi
 
@@ -409,7 +439,7 @@ run_pass() {
         *)
             overall=1
             if ! $keep_going && [ "$unit_status" -eq 2 ]; then
-                rm -rf "$work"
+                cleanup_work "$work"
                 return 2
             fi
             ;;
@@ -442,7 +472,7 @@ run_pass() {
             "$C_RED" "$pass_failed" "$C_OFF" \
             "$((pass_total - pass_failed))" "$pass_total" "$pass_suites"
     fi
-    rm -rf "$work"
+    cleanup_work "$work"
     return "$overall"
 }
 
