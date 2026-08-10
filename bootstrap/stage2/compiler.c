@@ -7935,12 +7935,55 @@ static char *emit_primary(
                     binding_id[0] == '\0' ||
                     field_type[0] == '\0'
                 ) {
+                    /*
+                     * Scoped parallelism v1 (#1160). `scope.spawn(...)` and
+                     * `handle.join()` are RFC-0003 postfix forms, and reaching
+                     * here means the member is not a record field, so the
+                     * generic answer was `E2S32: unknown nominal record field
+                     * read` -- sending the reader to a record they never
+                     * wrote. The construct stays refused; it is now refused as
+                     * itself.
+                     *
+                     * Only `spawn` and `join` are named, and only when called:
+                     * neither is a reserved word, so `type P = { spawn: Int }`
+                     * is legal and `p.spawn` on such a record must still read
+                     * the field. That case never reaches this branch, because
+                     * the field lookup above succeeds.
+                     */
+                    int64_t member_call = skip_trivia(
+                        source,
+                        token_end(source, field_cursor)
+                    );
+                    bool parallel_form =
+                        (strcmp(field, "spawn") == 0 ||
+                         strcmp(field, "join") == 0) &&
+                        member_call < source_length(source) &&
+                        token_equal(source, member_call, "(");
+                    Buffer parallel;
+                    buffer_init(&parallel);
+                    if (parallel_form) {
+                        buffer_format(
+                            &parallel,
+                            "scoped parallelism `%s` is specified but not implemented",
+                            field
+                        );
+                    }
                     free(field_type);
                     free(field);
                     free(binding_type);
                     free(binding_id);
                     free(name);
                     free(output.data);
+                    if (parallel_form) {
+                        char *refusal = lower_error(
+                            "E2S154",
+                            parallel.data,
+                            field_cursor
+                        );
+                        free(parallel.data);
+                        return refusal;
+                    }
+                    free(parallel.data);
                     return lower_error(
                         "E2S32",
                         "unknown nominal record field read",
@@ -16991,6 +17034,35 @@ static char *lower_record_binding(
     return emitted.data;
 }
 
+/*
+ * The RFC-0003 postfix forms, recognised as themselves rather than left to a
+ * generic refusal (#1160). Returns the byte of the `spawn` or `join` token
+ * when the statement starting at `start` is `<name>.spawn(` or `<name>.join(`,
+ * and -1 otherwise.
+ *
+ * Neither word is reserved, so this deliberately requires the call
+ * parenthesis: `type P = { join: Int }` is legal Kofun, and a bare `p.join`
+ * read is a field access this must not claim.
+ */
+static int64_t scoped_parallel_member(const char *source, int64_t start)
+{
+    int64_t length = source_length(source);
+    if (strcmp(token_kind(source, start), "identifier") != 0) return -1;
+    int64_t dot = skip_trivia(source, token_end(source, start));
+    if (dot >= length || !token_equal(source, dot, ".")) return -1;
+    int64_t member = skip_trivia(source, token_end(source, dot));
+    if (member >= length) return -1;
+    if (
+        !token_equal(source, member, "spawn") &&
+        !token_equal(source, member, "join")
+    ) {
+        return -1;
+    }
+    int64_t open_paren = skip_trivia(source, token_end(source, member));
+    if (open_paren >= length || !token_equal(source, open_paren, "(")) return -1;
+    return member;
+}
+
 static char *lower_body(
     const char *source,
     const char *hir,
@@ -17088,6 +17160,34 @@ static char *lower_body(
                 "scoped parallelism `par` is specified but not implemented",
                 cursor
             );
+        }
+        /*
+         * The other two RFC-0003 forms, refused here for the same reason `par`
+         * is (#1160). Left to the dispatch below, `handle.join()` is partly
+         * consumed as an expression and the refusal lands on the leftover `)`
+         * -- the reader is sent to punctuation instead of to `join`.
+         */
+        {
+            int64_t parallel_member = scoped_parallel_member(source, cursor);
+            if (parallel_member >= 0) {
+                char *member = token_copy(source, parallel_member);
+                Buffer parallel;
+                buffer_init(&parallel);
+                buffer_format(
+                    &parallel,
+                    "scoped parallelism `%s` is specified but not implemented",
+                    member
+                );
+                free(member);
+                free(emitted.data);
+                char *refusal = lower_error(
+                    "E2S154",
+                    parallel.data,
+                    parallel_member
+                );
+                free(parallel.data);
+                return refusal;
+            }
         }
         if (move_assertion_head(source, cursor)) {
             /*
@@ -23772,6 +23872,29 @@ static ShStmt *sh_parse_stmt(
                 "scoped parallelism `par` is specified but not implemented",
                 at);
         return NULL;
+    }
+    /*
+     * The other two RFC-0003 forms (#1160). `handle.join()` reaches no
+     * dispatch below, so the generic refusal blamed the whole statement --
+     * the reader was told byte 36 was an unsupported statement when the
+     * construct at fault is `join` at byte 38. Name it, at its own token.
+     */
+    {
+        int64_t parallel_member = scoped_parallel_member(sh->source, at);
+        if (parallel_member >= 0) {
+            char *member = token_copy(sh->source, parallel_member);
+            Buffer parallel;
+            buffer_init(&parallel);
+            buffer_format(
+                &parallel,
+                "scoped parallelism `%s` is specified but not implemented",
+                member
+            );
+            sh_fail(sh, "E2S154", parallel.data, parallel_member);
+            free(parallel.data);
+            free(member);
+            return NULL;
+        }
     }
     if (token_equal(sh->source, at, "let")) {
         int64_t name = skip_trivia(sh->source, token_end(sh->source, at));

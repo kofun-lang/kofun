@@ -6,7 +6,7 @@
     "VERSION": "60eee96ee38418a0ef903b570d0d12ce2d82ea79f129cc2c6c1245a072c04349",
     "release/claims.json": "f660063e10adb59571927bddd67498d8a56d5ed3bcf27796568bb34db2f10524",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
-    "bootstrap/manifest.json": "4b00e4f9b2778a9c493bde831388c531d831a6263bc5ac9ea031005a12d3668e"
+    "bootstrap/manifest.json": "eb894238e5a2ddf24da13da1e46f0651c34045ae4403b039bec668556a1ed43d"
   },
   "states": {
     "implemented": 9,
