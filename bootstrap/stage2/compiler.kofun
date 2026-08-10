@@ -6412,7 +6412,7 @@ fn argument_end(source: Text, start: Int) -> Int {
 fn call_argument_parameter_property(
     source: Text,
     target: Int,
-    ownership: Bool
+    property: Text
 ) -> Text {
     let mut cursor = skip_trivia(source, 0)
     while cursor < target && cursor < len(source) {
@@ -6446,6 +6446,16 @@ fn call_argument_parameter_property(
                             }
                         }
                         if argument == target || value == target {
+                            # Whether this argument was written with a label is
+                            # decided by the same walk that resolves its slot,
+                            # so the ownership rule and the slot it names can
+                            # never disagree about which argument matched.
+                            if property == "labelled" {
+                                if label >= 0 {
+                                    return "yes"
+                                }
+                                return "no"
+                            }
                             let callee = token_text(source, cursor)
                             let mut slot = positional_index
                             if label >= 0 {
@@ -6489,7 +6499,7 @@ fn call_argument_parameter_property(
                                     }
                                 }
                             }
-                            if ownership {
+                            if property == "mode" {
                                 return function_parameter_mode(
                                     source,
                                     callee,
@@ -6536,11 +6546,15 @@ fn call_argument_parameter_property(
 }
 
 fn call_argument_expected_type(source: Text, target: Int) -> Text {
-    return call_argument_parameter_property(source, target, false)
+    return call_argument_parameter_property(source, target, "type")
 }
 
 fn call_argument_expected_mode(source: Text, target: Int) -> Text {
-    return call_argument_parameter_property(source, target, true)
+    return call_argument_parameter_property(source, target, "mode")
+}
+
+fn call_argument_labelled(source: Text, target: Int) -> Text {
+    return call_argument_parameter_property(source, target, "labelled")
 }
 
 # #924 Optional(Int) source judgements. The C seed memoizes the annotation
@@ -14175,6 +14189,16 @@ fn move_use_position(source: Text, previous: Int, cursor: Int) -> Bool {
 # semantic transfer as a written whole-binding `take`. Compound expressions,
 # constructors, and literals may produce a value for a take slot but do not
 # name a source binding for this bounded source-order invalidation pass.
+#
+# The argument must also be *labelled*. That is the boundary this increment
+# was scoped to, and it is load-bearing rather than cosmetic: the accepted
+# RFC-0010 handle model in `tests/ownership/affine-resource-handle` calls
+# `affine_transport_write(initial, 5)` positionally into a `take` slot and
+# then writes `take initial` as the transfer. Treating the positional call as
+# the move makes that written `take` a second one, so dropping this guard
+# refuses a program the ownership gate requires the compiler to accept.
+# Widening to positional calls is a change to that accepted model, not to
+# this lowering slice, and is owned by #882 rather than assumed here.
 fn move_call_binding(
     source: Text,
     hir: Text,
@@ -14182,7 +14206,8 @@ fn move_call_binding(
 ) -> Bool {
     if token_kind(source, cursor) != "identifier" ||
        len(hir_use_binding_id(hir, cursor)) == 0 ||
-       call_argument_expected_mode(source, cursor) != "take" {
+       call_argument_expected_mode(source, cursor) != "take" ||
+       call_argument_labelled(source, cursor) != "yes" {
         return false
     }
     return expression_end(source, cursor) == token_end(source, cursor)

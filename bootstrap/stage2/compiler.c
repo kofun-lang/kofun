@@ -5591,7 +5591,7 @@ static bool call_has_labelled_argument(const char *source, int64_t open) {
 static char *call_argument_parameter_property(
     const char *source,
     int64_t target,
-    bool ownership
+    const char *property
 ) {
     int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, 0);
@@ -5629,6 +5629,14 @@ static char *call_argument_parameter_property(
                             }
                         }
                         if (argument == target || value == target) {
+                            /* Whether this argument was written with a label
+                             * is decided by the same walk that resolves its
+                             * slot, so the ownership rule and the slot it
+                             * names can never disagree about which argument
+                             * matched. */
+                            if (strcmp(property, "labelled") == 0) {
+                                return owned_text(label >= 0 ? "yes" : "no");
+                            }
                             char *callee = token_copy(source, cursor);
                             int64_t slot = positional_index;
                             if (label >= 0) {
@@ -5712,7 +5720,7 @@ static char *call_argument_parameter_property(
                                     ++slot;
                                 }
                             }
-                            char *type = ownership
+                            char *type = strcmp(property, "mode") == 0
                                 ? function_parameter_mode(
                                     source,
                                     callee,
@@ -5754,14 +5762,21 @@ static char *call_argument_expected_type(
     const char *source,
     int64_t target
 ) {
-    return call_argument_parameter_property(source, target, false);
+    return call_argument_parameter_property(source, target, "type");
 }
 
 static char *call_argument_expected_mode(
     const char *source,
     int64_t target
 ) {
-    return call_argument_parameter_property(source, target, true);
+    return call_argument_parameter_property(source, target, "mode");
+}
+
+static char *call_argument_labelled(
+    const char *source,
+    int64_t target
+) {
+    return call_argument_parameter_property(source, target, "labelled");
 }
 
 /*
@@ -21866,7 +21881,17 @@ static bool move_use_position(
 /* A bare resolved binding in a parameter slot declared `take` is the same
  * semantic transfer as a written whole-binding `take`. Compound expressions,
  * constructors, and literals may produce a value for a take slot but do not
- * name a source binding for this bounded source-order invalidation pass. */
+ * name a source binding for this bounded source-order invalidation pass.
+ *
+ * The argument must also be *labelled*. That is the boundary this increment
+ * was scoped to, and it is load-bearing rather than cosmetic: the accepted
+ * RFC-0010 handle model in `tests/ownership/affine-resource-handle` calls
+ * `affine_transport_write(initial, 5)` positionally into a `take` slot and
+ * then writes `take initial` as the transfer. Treating the positional call as
+ * the move makes that written `take` a second one, so dropping this guard
+ * refuses a program the ownership gate requires the compiler to accept.
+ * Widening to positional calls is a change to that accepted model, not to
+ * this lowering slice, and is owned by #882 rather than assumed here. */
 static bool move_call_binding(
     const char *source,
     const char *hir,
@@ -21880,7 +21905,12 @@ static bool move_call_binding(
     char *mode = call_argument_expected_mode(source, cursor);
     bool taken = strcmp(mode, "take") == 0;
     free(mode);
-    return taken && expression_end(source, cursor) == token_end(source, cursor);
+    if (!taken) return false;
+    char *labelled = call_argument_labelled(source, cursor);
+    bool written_with_label = strcmp(labelled, "yes") == 0;
+    free(labelled);
+    return written_with_label &&
+        expression_end(source, cursor) == token_end(source, cursor);
 }
 
 /*
