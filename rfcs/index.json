@@ -428,7 +428,23 @@
         "category": "additive",
         "statement": "The contract defines byte layout only and does not change code generation. A backend that does not claim AggregateLayout v1 is unaffected; one that does must agree with the golden vectors, and its own check asserts that a 32-bit and a 64-bit target do not produce identical descriptors.",
         "evidence": "spec/aggregate-layout-v1/check.sh"
-      }
+      },
+      "amendments": [
+        {
+          "id": "A01",
+          "recorded_on": "2026-08-10",
+          "change": "https://github.com/kofun-lang/kofun/issues/1183",
+          "delta": "AggregateLayout v1 admits a sixth value kind, `bounded_list`: a fixed-capacity list stored inline and by value, with a `u64` length at offset 0, a fixed element array beginning at `align_up(8, element_align)`, alignment `max(header_align, element_align)` rather than size, the element pointer bitmap repeated per slot, and trivial drop when that bitmap is empty. Capacity is part of type identity. The `list` kind is not amended: a `List` value is still exactly one reference, with unchanged size, alignment, pointer bitmap and managed drop, and every committed golden vector stays byte-identical. What moves is that `List` is no longer the only way a list-shaped value may be laid out, so the sentence \"a Text or List value is exactly one reference\" now describes kind `list` rather than every list-shaped field. RFC-0011 separately decides that the Stage 2 C11 bootstrap profile lowers a `List[Int]` record field to `bounded_list[Int, 64]`; that mapping is a property of the profile, not of `List[Int]` in the language, and no other element type is admitted. The target-parameterization decision itself is not amended and stands as written: a `bounded_list` descriptor is still computed from the declared target, and a 32-bit and a 64-bit target still disagree.",
+          "original_semantics": "`Text`, `List`, flat records, and flat ADT variants get deterministic byte layouts computed from a declared `TargetDataLayout`. Layout identity is the v1 schema plus the complete target parameters plus type identity, so one type on two targets is two descriptors and neither is privileged: a 32-bit target gets 4-byte references and a 64-bit target 8-byte references without either one changing source semantics. One byte-identical layout on every target is rejected — it decides wasm32 pointer width in advance and hides that decision inside a diff that looks like formatting. An opaque handle for every aggregate is rejected as the default representation, because it costs an allocation and a dereference per aggregate and forfeits the predictable native layout this contract exists to give.",
+          "compatibility": {
+            "category": "additive",
+            "statement": "No tracked program changes meaning and none stops compiling. `bounded_list` is a new kind name reachable from no existing layout vector, and the `list`, `text`, `scalar`, `record`, `adt` and `optional` kinds are unchanged, so the committed golden vectors and the target-divergence assertion in `spec/aggregate-layout-v1/check.sh` are unaffected. The change is additive in the direction that matters: record fields that the Stage 2 backend refuses today become lowerable, and nothing that lowers today is refused.",
+            "corpus_query": "git grep -nE '^[[:space:]]*[a-z_][A-Za-z0-9_]*:[[:space:]]*List\\[Int\\]' -- '*.kofun' | wc -l; git grep -c 'outside the Stage 2 Int/Bool/Text slice' -- 'stdlib/**/verify.sh' | wc -l",
+            "result": "`19` and `11` at 43d53d38, the audited commit. Nineteen record fields across six tracked files are typed `List[Int]`, and eleven standard-library verify scripts assert the current refusal verbatim; four of those eleven — `stdlib/array`, `stdlib/binary_heap`, `stdlib/set` and `stdlib/vector` — guard records whose refused field is one of the nineteen, so the count of tracked sources whose Stage 2 result changes is 4.",
+            "evidence": "spec/aggregate-layout-v1/layout.mjs"
+          }
+        }
+      ]
     },
     {
       "id": "DD-034",
@@ -815,6 +831,53 @@
         "corpus_query": "git grep -nE '\\[[A-Za-z_]+:[[:space:]]*(Nat|Symbol|Bool)\\b' -- '*.kofun' | wc -l",
         "result": "`0` at a654f7fe, the audited commit. No tracked Kofun source annotates a type parameter with a data kind. Two companion queries return `0` at the same commit: `git grep -nE '^type fn ' -- '*.kofun' | wc -l`, so no declaration can take a data-kind parameter either, and `git grep -nE '^type (Add|Mul|Monus|Div|Mod|NatEq|NatLt|NatLe|Concat|Length|SymbolEq)\\b' -- '*.kofun' | wc -l`, so no tracked type declaration collides with a reserved builtin name.",
         "evidence": "spec/type-level-programming-v1.md"
+      }
+    },
+    {
+      "id": "RFC-0010",
+      "title": "A resource handle is an affine per-type protocol with a closed transition table",
+      "provenance": "rfc",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "rfcs/0010-affine-resource-handle-v1.md",
+      "document": "rfcs/0010-affine-resource-handle-v1.md",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/784",
+      "dates": {
+        "opened_on": "2026-08-10",
+        "review_closed_on": "2026-08-10",
+        "decided_on": "2026-08-10"
+      },
+      "normative_spec": [
+        "rfcs/0010-affine-resource-handle-v1.md"
+      ],
+      "compatibility": {
+        "category": "none",
+        "statement": "Nothing is implemented, so no program changes meaning and none stops compiling. The decision binds a future implementation: a resource handle is a nominal record carrying a generation token, its transitions are ordinary functions that `take` the handle and return a successor, `read` observes without advancing state, `close` and `cancel` are terminal and return a copyable summary rather than borrowing the consumed handle, and reuse exists exactly where a successor handle does. No new keyword, no `own` domain, and no new compile-time diagnostic: the static refusals are `E2S122` and `E2S123`, which are already registered and keep their current meaning and messages. The only new code is the runtime backstop `EARH01`, reachable from no tracked program because no type declares a transition table. `docs/MVP_IMPLEMENTED.md` continues to record general ownership and law checking as `open`, and the `general-ownership-checking` claim is not edited."
+      }
+    },
+    {
+      "id": "RFC-0011",
+      "title": "AggregateLayout gains a bounded inline list kind, and Stage 2 record fields use it",
+      "provenance": "rfc",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "rfcs/0011-bounded-inline-list-layout.md",
+      "document": "rfcs/0011-bounded-inline-list-layout.md",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/1183",
+      "dates": {
+        "opened_on": "2026-08-10",
+        "review_closed_on": "2026-08-10",
+        "decided_on": "2026-08-10"
+      },
+      "normative_spec": [
+        "rfcs/0011-bounded-inline-list-layout.md"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "No tracked program changes meaning and none stops compiling; source the Stage 2 backend refuses today begins to compile, and nothing that compiles today is refused. New surface is the `bounded_list` value kind in AggregateLayout v1 — capacity-generic, inline, `u64` length at offset 0, alignment derived from the element rather than from size, trivial drop when the element bitmap is empty — and the Stage 2 C11 bootstrap profile's mapping of a `List[Int]` record field onto `bounded_list[Int, 64]`. The `list` kind is unchanged and every committed golden vector stays byte-identical, so this is recorded against DD-033 as the amendment `DD-033/A01` rather than as an edit to the layout decision text. No new diagnostic code: `E2S32` keeps the refusal and widens the slice its message names, and every other element type stays refused.",
+        "corpus_query": "git grep -nE '^[[:space:]]*[a-z_][A-Za-z0-9_]*:[[:space:]]*List\\[' -- '*.kofun' | wc -l; git grep -nE '^[[:space:]]*[a-z_][A-Za-z0-9_]*:[[:space:]]*List\\[Int\\]' -- '*.kofun' | wc -l",
+        "result": "`28` and `19` at 43d53d38, the audited commit, across 1067 tracked `.kofun` sources. Twenty-eight record fields are typed `List[...]`; nineteen of them, across six files, are `List[Int]` and are the ones this proposal admits. The remaining nine name `List[Text]`, `List[LogField]`, `List[Transition]`, `List[IntMapEntry]`, `List[TomlEntry]`, `List[RegexPiece]`, `List[Waiter]` and `List[List[Text]]`, and stay refused.",
+        "evidence": "spec/aggregate-layout-v1/layout.mjs"
       }
     }
   ]

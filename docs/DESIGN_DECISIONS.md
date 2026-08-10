@@ -444,6 +444,28 @@ and forfeits the predictable native layout this contract exists to give.
 
 [`spec/aggregate-layout-v1.md`](../spec/aggregate-layout-v1.md) is normative.
 
+**Amended: `DD-033/A01` (2026-08-10).** The two paragraphs above are the
+original wording and are preserved as written. They remain current on the
+decision they were written to make — layout is target-parameterized, and a
+32-bit and a 64-bit target still disagree — but they are no longer the complete
+list of how a list-shaped value may be laid out.
+
+[RFC-0011](../rfcs/0011-bounded-inline-list-layout.md), accepted for
+[#1183](https://github.com/kofun-lang/kofun/issues/1183), adds a sixth value
+kind, `bounded_list`: a fixed-capacity list stored inline and by value, with a
+`u64` length at offset 0, alignment taken from its element rather than from its
+size, and trivial drop when the element carries no pointers. Capacity is part of
+type identity.
+
+The `list` kind is not amended. A `List` value is still exactly one reference,
+with unchanged size, alignment, pointer bitmap and managed drop, and every
+committed golden vector stays byte-identical — so `spec/aggregate-layout-v1.md`'s
+sentence that "a Text or List value is exactly one reference" now describes kind
+`list` rather than every list-shaped field. RFC-0011 separately decides that the
+Stage 2 C11 bootstrap profile lowers a `List[Int]` record field to
+`bounded_list[Int, 64]`; that mapping belongs to the profile, not to `List[Int]`
+in the language, and no other element type is admitted.
+
 ## DD-034: Validation accumulates in `Validated`, not `Result`
 
 `Validated[T, E]` is `Valid(T)`, `Disputed(T, Issues[E])`, or
