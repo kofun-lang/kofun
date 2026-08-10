@@ -17,16 +17,45 @@ issue's `## Metadata` block. **They must agree.** Two copies of one fact with
 nothing binding them is the drift this repository gates against everywhere
 else, and it had already happened: see *Measured evidence* below.
 
+The vocabulary is the six words in `STATE_LABELS` in
+[`tests/backlog/extract.mjs`](../tests/backlog/extract.mjs). Each is a real
+GitHub label, and the description below is that label's own description, so this
+table and the label list are one fact rather than two:
+
 | State | Label description | Exit criterion |
 |---|---|---|
 | `needs-detail` | Outcome known; scope or validation needs refinement | the Definition of Ready below is satisfied |
 | `needs-decision` | Blocked on an explicit design or product decision | the decision is recorded in the issue or a `spec/` document |
 | `ready` | Definition of Ready is satisfied | the work is done and its gate is green |
-| `blocked` | — | a named blocker remains open |
+| `blocked` | A named hard dependency prevents completion | a named blocker remains open |
+| `deferred` | Valid work outside the active milestone | the milestone it belongs to becomes active |
+| `in-progress` | Actively implemented by an assignee or linked PR | the work merges, or the claim is released |
 
-`blocked` has no label. An issue whose body says `State: blocked` while
-carrying the `ready` label is not ready, whatever the label says. Use the
-blocker's issue number in `## Dependencies` and remove the `ready` label.
+Measured 2026-08-10 across 27 open issues: `blocked` 12, `needs-detail` 11,
+`needs-decision` 2, `ready` 1, `deferred` 0, `in-progress` 0. The count is dated
+for the reason the `planning` paragraph below gives — an enumeration with no date
+reads as current forever — and the invariant, not the count, is the rule: every
+open issue carries exactly one of these six.
+
+**`blocked` is a label like the other five.** This document used to say it had
+none, and listed only the first four states. Both were wrong in the direction
+that costs: the checker's own repair text tells an author to "use a state
+`docs/ISSUE_READINESS.md` defines", so a state missing here reads as a state that
+may not be used, and a label this document tells people not to apply is one the
+extractor still reads. Twelve open issues carried `blocked` while this file said
+it did not exist.
+
+An issue whose body says `State: blocked` while carrying the `ready` label is
+not ready, whatever the label says. Use the blocker's issue number in
+`## Dependencies` and remove the `ready` label.
+
+Leaving the label off entirely is the quieter failure, because it does not
+disagree with anything. The state is carried twice on purpose, and an issue that
+carries it once — a `State:` line with no state label — satisfies the agreement
+rule vacuously and is skipped by every rule keyed on the label, including the
+closed-blocker rule. The coverage lines below are what make that visible: a
+denominator of 26 against 27 open issues is one issue whose state nothing
+checked.
 
 A `blocked` issue with a nonempty blocker list must be re-refined when every
 named blocker has closed. Closure does not prove the blocked work is now
