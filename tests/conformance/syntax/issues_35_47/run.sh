@@ -672,7 +672,11 @@ fi
 printf '%s\n' "PASS: one callable notation, its rejected alternatives, and its rewrite"
 
 expect_stage2_unsupported "$CASES/unsupported_owned_binding.kofun"
-expect_stage2_unsupported "$CASES/unsupported_else_if.kofun"
+
+# `else if` was refused here until #1174 lowered it. Like `while` before it,
+# the fixture changes sides rather than being deleted: a subject that reaches
+# the Core still has to be executed by this gate.
+expect_stage2_lowers "$CASES/lowered_else_if.kofun"
 expect_stage2_unsupported "$CASES/unsupported_for.kofun"
 
 # `while` was refused here until #1128 lowered it. The fixture changed sides
@@ -723,4 +727,4 @@ printf '%s\n' "PASS diagnostic: invalid if condition"
 
 printf '%s\n' \
     "PASS: syntax issues #35-#47 bootstrap capability checkpoint" \
-    "coverage: 13 subjects; 5 partial; 5 Core-implemented; 3 unsupported via 3 fixtures"
+    "coverage: 13 subjects; 5 partial; 6 Core-implemented; 2 unsupported via 2 fixtures"

@@ -1,0 +1,25 @@
+# `spec/semantics.md`: "A branch that is not taken evaluates neither its body
+# nor a later `else if` condition."
+#
+# Asserting that by reading the emitted C would prove nothing. Instead the
+# later condition is one that *traps* when evaluated — an index far outside a
+# 3-element list. The first branch is taken here, so the program must print
+# 100 and exit 0. If the chain were lowered as independent `if`s, or the
+# conditions hoisted, this would trap instead.
+
+fn pick(values: List[Int], n: Int) -> Int {
+    let mut r = 0
+    if n == 1 {
+        r = 100
+    } else if values[99] == 5 {
+        r = 200
+    } else {
+        r = 300
+    }
+    return r
+}
+
+fn main() {
+    let data = [1, 2, 3]
+    print(pick(data, 1))
+}

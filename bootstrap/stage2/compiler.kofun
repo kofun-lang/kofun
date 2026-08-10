@@ -11871,85 +11871,126 @@ fn lower_body(
             returned = true
             cursor = skip_trivia(source, branch_end)
         } else if statement == "if" {
-            let condition_start = skip_trivia(
-                source,
-                token_end(source, cursor)
-            )
-            let condition_close = condition_end(source, condition_start)
-            if condition_close < 0 {
-                return "error[E2S23]: if condition must be Bool or an Int comparison at byte " +
-                to_text(condition_start)
-            }
-            let branch_open = skip_trivia(source, condition_close)
-            if branch_open >= len(source) ||
-               token_text(source, branch_open) != "{" {
-                return "error[E2S18]: expected `{` after if condition at byte " +
-                to_text(branch_open)
-            }
-            let branch_close = balanced_end(source, branch_open, "{", "}")
-            if branch_close < 0 {
-                return "error[E2S18]: missing `}` after if branch at byte " +
-                to_text(branch_open)
-            }
-            let branch_body = lower_body(
-                source,
-                hir,
-                branch_open,
-                is_main,
-                false,
-                function_open
-            )
-            if starts_with(branch_body, "error[") {
-                return branch_body
-            }
-            let condition = emit_condition_into(
-                source,
-                hir,
-                condition_start,
-                condition_close,
-                "kofun_condition",
-                failure_result,
-                "        "
-            )
-            # A rejected condition became the statement's C prelude.
-            if starts_with(condition, "error[") {
-                return condition
-            }
-            emitted = emitted +
-            "    {\n" +
-            condition +
-            "        if (kofun_condition) {\n" +
-            branch_body +
-            "        }"
-            cursor = skip_trivia(source, branch_close)
-            if cursor < len(source) && token_text(source, cursor) == "else" {
-                let else_open = skip_trivia(
+            # `else if` is two keywords, not a compound one
+            # (spec/syntax/FOUNDATIONS_AND_CONTROL.md), and
+            # `spec/semantics.md` already states its evaluation rule: a branch
+            # that is not taken evaluates neither its body nor a later
+            # `else if` condition. Emitting each link inside the previous
+            # link's `else` is what makes that true here, because a later
+            # condition's C prelude is then only reached when every earlier
+            # condition was false.
+            #
+            # So the chain is emitted iteratively: each `else if` opens one
+            # `else {` that stays open until the chain ends, and the opened
+            # braces are closed together afterwards. `chain_depth` counts them.
+            let mut chain_depth = 0
+            let mut chain_open = cursor
+            let mut chaining = true
+            while chaining {
+                chaining = false
+                let condition_start = skip_trivia(
                     source,
-                    token_end(source, cursor)
+                    token_end(source, chain_open)
                 )
-                if else_open >= len(source) ||
-                   token_text(source, else_open) != "{" {
-                    return "error[E2S18]: expected `{` after `else` at byte " +
-                    to_text(else_open)
+                let condition_close = condition_end(source, condition_start)
+                if condition_close < 0 {
+                    return "error[E2S23]: if condition must be Bool or an Int comparison at byte " +
+                    to_text(condition_start)
                 }
-                let else_close = balanced_end(source, else_open, "{", "}")
-                if else_close < 0 {
-                    return "error[E2S18]: missing `}` after else branch at byte " +
-                    to_text(else_open)
+                let branch_open = skip_trivia(source, condition_close)
+                if branch_open >= len(source) ||
+                   token_text(source, branch_open) != "{" {
+                    return "error[E2S18]: expected `{` after if condition at byte " +
+                    to_text(branch_open)
                 }
-                let else_body = lower_body(
+                let branch_close = balanced_end(source, branch_open, "{", "}")
+                if branch_close < 0 {
+                    return "error[E2S18]: missing `}` after if branch at byte " +
+                    to_text(branch_open)
+                }
+                let branch_body = lower_body(
                     source,
                     hir,
-                    else_open,
+                    branch_open,
                     is_main,
                     false,
                     function_open
                 )
-                if starts_with(else_body, "error[") {
-                    return else_body
+                if starts_with(branch_body, "error[") {
+                    return branch_body
                 }
-                emitted = emitted + " else {\n" + else_body + "        }"
-                cursor = skip_trivia(source, else_close)
+                let condition = emit_condition_into(
+                    source,
+                    hir,
+                    condition_start,
+                    condition_close,
+                    "kofun_condition",
+                    failure_result,
+                    "        "
+                )
+                # A rejected condition became the statement's C prelude.
+                if starts_with(condition, "error[") {
+                    return condition
+                }
+                if chain_depth == 0 {
+                    emitted = emitted + "    {\n"
+                }
+                emitted = emitted +
+                condition +
+                "        if (kofun_condition) {\n" +
+                branch_body +
+                "        }"
+                cursor = skip_trivia(source, branch_close)
+                if cursor < len(source) && token_text(source, cursor) == "else" {
+                    let else_open = skip_trivia(
+                        source,
+                        token_end(source, cursor)
+                    )
+                    if else_open < len(source) &&
+                       token_text(source, else_open) == "if" {
+                        # Another link. Its condition is lowered on the next
+                        # pass, inside the `else` opened here.
+                        emitted = emitted + " else {\n"
+                        chain_depth = chain_depth + 1
+                        chain_open = else_open
+                        chaining = true
+                    } else {
+                        if else_open >= len(source) ||
+                           token_text(source, else_open) != "{" {
+                            return "error[E2S18]: expected `{` after `else` at byte " +
+                            to_text(else_open)
+                        }
+                        let else_close = balanced_end(
+                            source,
+                            else_open,
+                            "{",
+                            "}"
+                        )
+                        if else_close < 0 {
+                            return "error[E2S18]: missing `}` after else branch at byte " +
+                            to_text(else_open)
+                        }
+                        let else_body = lower_body(
+                            source,
+                            hir,
+                            else_open,
+                            is_main,
+                            false,
+                            function_open
+                        )
+                        if starts_with(else_body, "error[") {
+                            return else_body
+                        }
+                        emitted = emitted +
+                        " else {\n" + else_body + "        }"
+                        cursor = skip_trivia(source, else_close)
+                    }
+                }
+            }
+            let mut chain_closed = 0
+            while chain_closed < chain_depth {
+                emitted = emitted + "\n        }"
+                chain_closed = chain_closed + 1
             }
             emitted = emitted + "\n    }\n"
         } else if statement == "while" {
