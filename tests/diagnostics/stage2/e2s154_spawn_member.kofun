@@ -1,0 +1,11 @@
+# diagnostic-mode: compile
+# expect-code: E2S154
+# expect-span: byte 430
+# `spawn` is an RFC-0003 postfix form, and it is not a reserved word, so before
+# #1160 it fell through to the record-field check and was refused as
+# `E2S32: unknown nominal record field read` — naming a record the author never
+# wrote. It is still refused; it is refused as itself, at its own token.
+fn main() {
+    let scope = 1
+    let handle = scope.spawn(fn() => 1)
+}

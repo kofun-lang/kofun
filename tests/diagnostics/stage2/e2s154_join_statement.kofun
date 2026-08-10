@@ -1,0 +1,10 @@
+# diagnostic-mode: compile
+# expect-code: E2S154
+# expect-span: byte 330
+# `join` in statement position is partly consumed as an expression before any
+# dispatch claims it, so the refusal used to land on the leftover `)` and sent
+# the reader to punctuation. It is now refused at `join`.
+fn main() {
+    let handle = 1
+    handle.join()
+}

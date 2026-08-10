@@ -4592,6 +4592,29 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
                        binding_type,
                        field
                    )) == 0 {
+                    # Scoped parallelism v1 (#1160). `scope.spawn(...)` and
+                    # `handle.join()` are RFC-0003 postfix forms, and reaching
+                    # here means the member is not a record field, so the
+                    # generic answer was `E2S32: unknown nominal record field
+                    # read` — sending the reader to a record they never wrote.
+                    # The construct stays refused; it is now refused as itself.
+                    #
+                    # Only `spawn` and `join` are named, and only when called:
+                    # neither is a reserved word, so `type P = { spawn: Int }`
+                    # is legal and `p.spawn` on such a record must still read
+                    # the field. That case never reaches this branch, because
+                    # the field lookup above succeeds.
+                    let member_call = skip_trivia(
+                        source,
+                        token_end(source, field_cursor)
+                    )
+                    if (field == "spawn" || field == "join") &&
+                       member_call < len(source) &&
+                       token_text(source, member_call) == "(" {
+                        return "error[E2S154]: scoped parallelism `" + field +
+                        "` is specified but not implemented at byte " +
+                        to_text(field_cursor)
+                    }
                     return "error[E2S32]: unknown nominal record field read at byte " +
                     to_text(field_cursor)
                 }
@@ -11296,6 +11319,37 @@ fn lower_record_binding(
     return emitted
 }
 
+# The RFC-0003 postfix forms, recognised as themselves rather than left to a
+# generic refusal (#1160). Returns the byte of the `spawn` or `join` token when
+# the statement starting at `start` is `<name>.spawn(` or `<name>.join(`, and
+# -1 otherwise.
+#
+# Neither word is reserved, so this deliberately requires the call parenthesis:
+# `type P = { join: Int }` is legal Kofun, and a bare `p.join` read is a field
+# access this must not claim.
+fn scoped_parallel_member(source: Text, start: Int) -> Int {
+    if token_kind(source, start) != "identifier" {
+        return -1
+    }
+    let dot = skip_trivia(source, token_end(source, start))
+    if dot >= len(source) || token_text(source, dot) != "." {
+        return -1
+    }
+    let member = skip_trivia(source, token_end(source, dot))
+    if member >= len(source) {
+        return -1
+    }
+    let name = token_text(source, member)
+    if name != "spawn" && name != "join" {
+        return -1
+    }
+    let open = skip_trivia(source, token_end(source, member))
+    if open >= len(source) || token_text(source, open) != "(" {
+        return -1
+    }
+    return member
+}
+
 fn lower_body(
     source: Text,
     hir: Text,
@@ -11363,6 +11417,17 @@ fn lower_body(
         if statement == "par" {
             return "error[E2S154]: scoped parallelism `par` is specified " +
             "but not implemented at byte " + to_text(cursor)
+        }
+        # The other two RFC-0003 forms, refused here for the same reason `par`
+        # is (#1160). Left to the dispatch below, `handle.join()` is partly
+        # consumed as an expression and the refusal lands on the leftover `)`
+        # — the reader is sent to punctuation instead of to `join`.
+        let parallel_member = scoped_parallel_member(source, cursor)
+        if parallel_member >= 0 {
+            return "error[E2S154]: scoped parallelism `" +
+            token_text(source, parallel_member) +
+            "` is specified but not implemented at byte " +
+            to_text(parallel_member)
         }
         if move_statement_head(source, cursor) {
             # #946: the whole-binding move statement. `validate_move_uses` has
@@ -16184,6 +16249,18 @@ fn selfhost_leading_statement(
     counters: Text
 ) -> Text {
     let at = cursor
+    # Scoped parallelism v1 (#1160). `handle.join()` reaches no dispatch below
+    # and was refused as an unsupported statement blamed on the whole line.
+    # Name the construct, at its own token.
+    let parallel_member = scoped_parallel_member(source, at)
+    if parallel_member >= 0 {
+        return selfhost_error(
+            "E2S154",
+            parallel_member,
+            "scoped parallelism `" + token_text(source, parallel_member) +
+            "` is specified but not implemented"
+        )
+    }
     let after = skip_trivia(source, token_end(source, at))
     let statement = selfhost_counter(counters, 0)
     let void_id = to_text(selfhost_scalar_id(types, "Void"))
