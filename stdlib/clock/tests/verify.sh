@@ -87,7 +87,7 @@ canonical_status=$?
 set -e
 [ "$canonical_status" -ne 0 ] ||
     fail 'canonical record/ADT source unexpectedly claimed executable codegen'
-grep -Fq 'error[E2S32]: record `Instant` has a field type outside the Stage 2 Int/Bool/Text slice' \
+grep -Fq 'error[E2S32]: record `Instant` has a field type outside the Stage 2 Int/Bool/Text/List[Int] slice' \
     "$work/canonical.check.stderr" ||
     fail 'canonical API did not expose the documented compiler boundary'
 

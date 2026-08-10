@@ -75,7 +75,7 @@ fi
 # canonical source stops at today. The assertion names the record rather than
 # the file so that when the boundary moves again the failure says which one.
 assert_grep 'canonical source did not stop at the documented compiler boundary' \
-    -Fq -- 'error[E2S32]: record `Transition` has a field type outside the Stage 2 Int/Bool/Text slice' \
+    -Fq -- 'error[E2S32]: record `Transition` has a field type outside the Stage 2 Int/Bool/Text/List[Int] slice' \
     "$WORK/canonical.stderr"
 
 assert_regular_file 'Kofun tzdb producer' "$producer"

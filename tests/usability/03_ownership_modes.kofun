@@ -28,7 +28,7 @@
 # (bootstrap/stage2/record_frontend.c) and by nothing else. Run this same
 # file through `./bin/kofun check` and it is refused — here on the `Text`
 # field, which Stage 2 reaches first: "record `Session` has a field type
-# outside the Stage 2 Int/Bool/Text slice" (E2S32). Remove the `Text` field and
+# outside the Stage 2 Int/Bool/Text/List[Int] slice" (E2S32). Remove the `Text` field and
 # Stage 2 gets one step further and then reports "unknown lexical binding
 # `session`", because it has parsed `read session: Session` as a parameter
 # named `read` and never bound `session` at all. The word that makes

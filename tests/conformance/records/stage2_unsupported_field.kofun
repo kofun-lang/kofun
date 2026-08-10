@@ -1,12 +1,17 @@
 # The record-field boundary, held by whatever is currently outside it.
 #
-# It was `text: Text` until #1181 admitted `Text`, and it moved rather than
-# being deleted: what this fixture proves is that a field type outside the
-# slice is refused before any C is written, not that any particular type is.
-# `List[Int]` is the next one, and #1181's sibling increment.
+# It was `text: Text` until #1181 admitted `Text`, then `samples: List[Int]`
+# until #1183 admitted that. It moves rather than being deleted: what this
+# fixture proves is that a field type outside the slice is refused before any
+# C is written, not that any particular type is.
+#
+# `List[Text]` is the next one out. RFC-0011 admits exactly `List[Int]` as the
+# `bounded_list` kind and no other element type, so this is the nearest
+# neighbour of what was just admitted — which is the property that makes it a
+# boundary fixture rather than an arbitrary rejection.
 
 type Unsupported = {
-    samples: List[Int],
+    labels: List[Text],
 }
 
 fn main() -> Int {
