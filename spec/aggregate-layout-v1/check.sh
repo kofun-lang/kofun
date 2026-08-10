@@ -90,6 +90,50 @@ assert_grep "SPEC" -q 'declaration order' "$SPEC"
 assert_grep "SPEC" -q 'decimal string' "$SPEC"
 assert_grep "SPEC" -q 'not a compatibility requirement' "$SPEC"
 
+# The carrier and the contract must agree about the bounded List[Int] value.
+#
+# They did not, and that disagreement is what #1183 was filed against: the
+# Stage 2 backend stores a `List[Int]` by value in 520 bytes while the
+# contract described every list value as one reference. RFC-0011 resolved it
+# by adding the `bounded_list` kind, and this is the join that keeps the two
+# from drifting apart again. Reading `_Static_assert` numbers out of the
+# emitter is deliberate: they are the numbers the emitted C actually enforces,
+# so a change to either side fails here rather than at the next increment.
+STAGE2="$ROOT/bootstrap/stage2/compiler.kofun"
+descriptor_field() {
+    node -e '
+        const fs = require("node:fs")
+        const doc = JSON.parse(fs.readFileSync(process.argv[1], "utf8"))
+        const found = doc.layouts.find((entry) => entry.id === process.argv[2])
+        if (found === undefined) {
+            process.stderr.write(`no layout ${process.argv[2]}\n`)
+            process.exit(1)
+        }
+        process.stdout.write(String(found[process.argv[3]]))
+    ' "$HERE/examples/core.x86_64-linux.json" "BoundedList[Int, 64]" "$1"
+}
+carrier_assert() {
+    sed -n "s/.*_Static_assert($1 == \([0-9]*\).*/\1/p" "$STAGE2" | head -n 1
+}
+
+assert_num "bounded List[Int] carrier size" \
+    "$(descriptor_field size)" -eq "$(carrier_assert 'sizeof(KofunIntListValue)')"
+assert_num "bounded List[Int] carrier alignment" \
+    "$(descriptor_field align)" -eq "$(carrier_assert '_Alignof(KofunIntListValue)')"
+assert_num "bounded List[Int] length offset" \
+    "$(descriptor_field length_offset)" \
+    -eq "$(carrier_assert 'offsetof(KofunIntListValue, length)')"
+assert_num "bounded List[Int] elements offset" \
+    "$(descriptor_field elements_offset)" \
+    -eq "$(carrier_assert 'offsetof(KofunIntListValue, elements)')"
+
+# A bounded list of a reference element keeps a pointer per slot, so the kind
+# is not silently "the trivial one". Without this, an implementation could
+# drop the per-slot bitmap and every vector above would still pass.
+assert_grep "x86-64 descriptors" -q '"BoundedList\[Text, 3\]"' \
+    "$HERE/examples/core.x86_64-linux.json"
+
 printf '%s\n' \
     'PASS: AggregateLayout v1 descriptors are deterministic and target-parameterized' \
-    'PASS: overflow, recursive layout, and unsupported targets are refused without a descriptor'
+    'PASS: overflow, recursive layout, and unsupported targets are refused without a descriptor' \
+    'PASS: the bounded List[Int] descriptor agrees with the Stage 2 carrier assertions'

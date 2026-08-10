@@ -7,6 +7,32 @@
     { "id": "List[Int]", "kind": "list", "element": "Int" },
     { "id": "List[Text]", "kind": "list", "element": "Text" },
     {
+      "id": "BoundedList[Int, 64]",
+      "kind": "bounded_list",
+      "element": "Int",
+      "capacity": "64"
+    },
+    {
+      "id": "BoundedList[Int, 2]",
+      "kind": "bounded_list",
+      "element": "Int",
+      "capacity": "2"
+    },
+    {
+      "id": "BoundedList[Text, 3]",
+      "kind": "bounded_list",
+      "element": "Text",
+      "capacity": "3"
+    },
+    {
+      "id": "Bag",
+      "kind": "record",
+      "fields": [
+        { "name": "samples", "type": "BoundedList[Int, 64]" },
+        { "name": "count", "type": "Int" }
+      ]
+    },
+    {
       "id": "Counter",
       "kind": "record",
       "fields": [

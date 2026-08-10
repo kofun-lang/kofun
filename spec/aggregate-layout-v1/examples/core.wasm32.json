@@ -56,6 +56,74 @@
       "drop": "managed"
     },
     {
+      "id": "BoundedList[Int, 64]",
+      "kind": "bounded_list",
+      "size": "520",
+      "align": "8",
+      "element": "Int",
+      "capacity": "64",
+      "length_offset": "0",
+      "length_size": "8",
+      "elements_offset": "8",
+      "element_size": "8",
+      "pointers": [],
+      "drop": "trivial"
+    },
+    {
+      "id": "BoundedList[Int, 2]",
+      "kind": "bounded_list",
+      "size": "24",
+      "align": "8",
+      "element": "Int",
+      "capacity": "2",
+      "length_offset": "0",
+      "length_size": "8",
+      "elements_offset": "8",
+      "element_size": "8",
+      "pointers": [],
+      "drop": "trivial"
+    },
+    {
+      "id": "BoundedList[Text, 3]",
+      "kind": "bounded_list",
+      "size": "24",
+      "align": "8",
+      "element": "Text",
+      "capacity": "3",
+      "length_offset": "0",
+      "length_size": "8",
+      "elements_offset": "8",
+      "element_size": "4",
+      "pointers": [
+        "8",
+        "12",
+        "16"
+      ],
+      "drop": "managed"
+    },
+    {
+      "id": "Bag",
+      "kind": "record",
+      "size": "528",
+      "align": "8",
+      "fields": [
+        {
+          "name": "samples",
+          "type": "BoundedList[Int, 64]",
+          "offset": "0",
+          "size": "520"
+        },
+        {
+          "name": "count",
+          "type": "Int",
+          "offset": "520",
+          "size": "8"
+        }
+      ],
+      "pointers": [],
+      "drop": "trivial"
+    },
+    {
       "id": "Counter",
       "kind": "record",
       "size": "16",

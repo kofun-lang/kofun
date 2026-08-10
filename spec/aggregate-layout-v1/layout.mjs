@@ -196,6 +196,59 @@ class Solver {
           drop: "managed",
         };
       }
+      case "bounded_list": {
+        /* A bounded list is the one list-shaped value that is NOT a
+         * reference: it is stored inline, by value, with a fixed capacity.
+         * The `list` kind above is unchanged and still describes `List`.
+         * See RFC-0011 and the ledger amendment DD-033/A01.
+         *
+         * Alignment comes from the element and the header, never from the
+         * size — a 520-byte carrier is 8-aligned, and deriving alignment
+         * from size is the defect this kind exposes. */
+        if (typeof type.element !== "string") {
+          fail(`${type.id}: bounded_list needs an element type`);
+        }
+        const capacity = quantity(type.capacity, `${type.id}: capacity`);
+        if (capacity <= 0n) fail(`${type.id}: capacity must be positive`);
+        const inner = this.layout(type.element, stack);
+        const align = inner.align > t.headerAlign ? inner.align : t.headerAlign;
+        const start = t.alignUp(t.headerSize, inner.align, `${type.id} elements offset`);
+        const end = t.add(
+          start,
+          t.multiply(capacity, inner.size, `${type.id} elements`),
+          `${type.id} end`
+        );
+        /* Every slot carries the element's bitmap, because a bounded list
+         * holds its elements rather than addressing them. An element with
+         * no pointers therefore makes the whole carrier trivially
+         * droppable and copyable, which is what separates this kind from
+         * `list` for the purpose of deciding whether a record is Copy. */
+        const pointers = [];
+        for (let slot = 0n; slot < capacity; slot += 1n) {
+          const base = t.add(
+            start,
+            t.multiply(slot, inner.size, `${type.id} slot ${slot}`),
+            `${type.id} slot ${slot} offset`
+          );
+          for (const pointer of inner.pointers) {
+            pointers.push(t.add(base, pointer, `${type.id} slot ${slot} pointer`));
+          }
+        }
+        return {
+          id: type.id,
+          kind: "bounded_list",
+          size: t.alignUp(end, align, `${type.id} size`),
+          align,
+          element: type.element,
+          capacity,
+          length_offset: 0n,
+          length_size: t.headerSize,
+          elements_offset: start,
+          element_size: inner.size,
+          pointers,
+          drop: pointers.length === 0 ? "trivial" : "managed",
+        };
+      }
       case "record": {
         if (!Array.isArray(type.fields)) fail(`${type.id}: record needs a fields array`);
         let end = 0n;
