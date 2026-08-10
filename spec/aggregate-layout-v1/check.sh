@@ -112,20 +112,33 @@ descriptor_field() {
         process.stdout.write(String(found[process.argv[3]]))
     ' "$HERE/examples/core.x86_64-linux.json" "BoundedList[Int, 64]" "$1"
 }
-carrier_assert() {
-    sed -n "s/.*_Static_assert($1 == \([0-9]*\).*/\1/p" "$STAGE2" | head -n 1
+# A join is only as good as its ability to notice it has stopped joining. If
+# the emitter renames or reshapes an assertion, this must say so rather than
+# compare against an empty string — a check that passes because it could not
+# look is the failure this whole contract exists to remove. The emptiness
+# test runs here rather than inside a command substitution, because `exit`
+# in a substitution ends only the subshell and the comparison would still run.
+assert_carrier() {
+    label=$1
+    field=$2
+    pattern=$3
+    expected=$(sed -n "s/.*_Static_assert($pattern == \([0-9]*\).*/\1/p" "$STAGE2" | head -n 1)
+    test -n "$expected" ||
+        {
+            printf '%s\n' \
+                "FAIL: aggregate-layout: no _Static_assert($pattern == ...) in $STAGE2;" \
+                "      the bounded List[Int] carrier moved and this join no longer reaches it" >&2
+            exit 1
+        }
+    assert_num "$label" "$(descriptor_field "$field")" -eq "$expected"
 }
 
-assert_num "bounded List[Int] carrier size" \
-    "$(descriptor_field size)" -eq "$(carrier_assert 'sizeof(KofunIntListValue)')"
-assert_num "bounded List[Int] carrier alignment" \
-    "$(descriptor_field align)" -eq "$(carrier_assert '_Alignof(KofunIntListValue)')"
-assert_num "bounded List[Int] length offset" \
-    "$(descriptor_field length_offset)" \
-    -eq "$(carrier_assert 'offsetof(KofunIntListValue, length)')"
-assert_num "bounded List[Int] elements offset" \
-    "$(descriptor_field elements_offset)" \
-    -eq "$(carrier_assert 'offsetof(KofunIntListValue, elements)')"
+assert_carrier "bounded List[Int] carrier size" size 'sizeof(KofunIntListValue)'
+assert_carrier "bounded List[Int] carrier alignment" align '_Alignof(KofunIntListValue)'
+assert_carrier "bounded List[Int] length offset" length_offset \
+    'offsetof(KofunIntListValue, length)'
+assert_carrier "bounded List[Int] elements offset" elements_offset \
+    'offsetof(KofunIntListValue, elements)'
 
 # A bounded list of a reference element keeps a pointer per slot, so the kind
 # is not silently "the trivial one". Without this, an implementation could
