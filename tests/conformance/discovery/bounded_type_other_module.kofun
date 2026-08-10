@@ -1,0 +1,22 @@
+pub fn width(read values: List[Text]) -> Int {
+    for value in values {
+        print(value)
+    }
+    return 0
+}
+
+pub fn depth(read counts: List[Int]) -> Int {
+    for count in counts {
+        print(count)
+    }
+    return 0
+}
+
+pub fn plain(value: Int) -> Int {
+    return value
+}
+
+pub fn label(word: Text) -> Int {
+    print(word)
+    return 0
+}

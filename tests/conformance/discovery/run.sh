@@ -66,6 +66,67 @@ fail() {
     "$CASES/nominal_typeid_test.c" \
     -o "$WORK/nominal-typeid-test"
 
+"$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic \
+    -DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY \
+    -I"$ROOT/bootstrap/stage2" \
+    "$ROOT/bootstrap/stage2/semantic_producer.c" \
+    "$ROOT/bootstrap/stage2/semantic_events.c" \
+    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$ROOT/bootstrap/stage2/discovery_v1.c" \
+    "$ROOT/bootstrap/stage2/discovery_provider.c" \
+    "$ROOT/bootstrap/stage2/discovery_query.c" \
+    "$CASES/bounded_typeid_test.c" \
+    -o "$WORK/bounded-typeid-test"
+
+# One process per fixture: an identity that only holds inside a single
+# analysis process is not an identity, and the compiler's per-pass caches are
+# keyed on the source address a second analysis could reuse.
+bounded_typeid() {
+    binary=$1
+    output=$2
+    : >"$output"
+    for fixture in live_list_text bounded_type_other_module \
+        bounded_type_shadowed
+    do
+        case $fixture in
+        live_list_text) fixture_generation=19 ;;
+        bounded_type_other_module) fixture_generation=31 ;;
+        *) fixture_generation=37 ;;
+        esac
+        ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+        UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+            "$binary" "$CASES/$fixture.kofun" \
+            "tests/conformance/discovery/$fixture.kofun" \
+            "$fixture_generation" >>"$output"
+    done
+}
+
+# The equalities the golden displays are also asserted, so a future golden
+# refresh cannot quietly accept an identity that stopped being one.
+bounded_typeid_properties() {
+    output=$1
+    id_of() {
+        sed -n "s/^$1: identity=\\([0-9a-f]*\\) .*/\\1/p" "$output" | sed -n "$2p"
+    }
+    first=$(id_of 'List\[Text\]' 1)
+    second=$(id_of 'List\[Text\]' 2)
+    list_int=$(id_of 'List\[Int\]' 1)
+    int_id=$(id_of Int 1)
+    text_id=$(id_of Text 1)
+    [ -n "$first" ] && [ "$first" = "$second" ] ||
+        fail "constructed List[Text] identity differs across modules"
+    [ "$(id_of Int 1)" = "$(id_of Int 2)" ] ||
+        fail "builtin Int identity differs across modules"
+    for other in "$list_int" "$int_id" "$text_id"; do
+        [ -n "$other" ] && [ "$first" != "$other" ] ||
+            fail "distinct bounded type references share one identity"
+    done
+    [ "$list_int" != "$int_id" ] && [ "$int_id" != "$text_id" ] ||
+        fail "distinct builtin type references share one identity"
+    grep -q '^List\[Choice\]: identity=null display=List\[Choice\]' "$output" ||
+        fail "current-file declaration was answered by the builtin catalog"
+}
+
 golden() {
     name=$1
     shift
@@ -153,6 +214,17 @@ cmp "$CASES/nominal_typeid.golden" "$WORK/nominal_typeid.observed" ||
     fail "nominal TypeId observation changed"
 printf '%s\n' "PASS: nominal-typeid"
 
+# The bounded builtin/constructed identity owner. A source spelling is not an
+# identity authority, so the properties that separate the two are the ones
+# checked: one identity per constructed reference across files, modules, and
+# generations; distinct identities for distinct components; and a refusal —
+# not a fabricated identity — when a current-file declaration owns the name.
+bounded_typeid "$WORK/bounded-typeid-test" "$WORK/bounded_typeid.observed"
+cmp "$CASES/bounded_typeid.golden" "$WORK/bounded_typeid.observed" ||
+    fail "bounded type identity observation changed"
+bounded_typeid_properties "$WORK/bounded_typeid.observed"
+printf '%s\n' "PASS: bounded-typeid"
+
 # Discovery is a tooling-only library.  The release Stage 2 sources must still
 # match their pinned pre-adapter bytes, and enabling a no-op discovery-disabled
 # build flag must produce the exact same compiler artifact.
@@ -224,6 +296,18 @@ then
         "$ROOT/bootstrap/stage2/discovery_query.c" \
         "$CASES/nominal_typeid_test.c" \
         -o "$WORK/nominal-typeid-sanitized"
+    "$CC" -std=c11 -O1 -g -Wall -Wextra -Werror -pedantic \
+        -fno-omit-frame-pointer -fsanitize=address,undefined \
+        -DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY \
+        -I"$ROOT/bootstrap/stage2" \
+        "$ROOT/bootstrap/stage2/semantic_producer.c" \
+        "$ROOT/bootstrap/stage2/semantic_events.c" \
+        "$ROOT/bootstrap/stage2/sha256.c" \
+        "$ROOT/bootstrap/stage2/discovery_v1.c" \
+        "$ROOT/bootstrap/stage2/discovery_provider.c" \
+        "$ROOT/bootstrap/stage2/discovery_query.c" \
+        "$CASES/bounded_typeid_test.c" \
+        -o "$WORK/bounded-typeid-sanitized"
     ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
     UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
         "$WORK/live-query-sanitized" "$CASES/live_list_text.kofun" \
@@ -239,6 +323,11 @@ then
     cmp "$CASES/nominal_typeid.golden" \
         "$WORK/nominal_typeid.sanitized" ||
         fail "sanitized nominal TypeId observation changed"
+    bounded_typeid "$WORK/bounded-typeid-sanitized" \
+        "$WORK/bounded_typeid.sanitized"
+    cmp "$CASES/bounded_typeid.golden" \
+        "$WORK/bounded_typeid.sanitized" ||
+        fail "sanitized bounded type identity observation changed"
     printf '%s\n' "PASS: AddressSanitizer and UndefinedBehaviorSanitizer"
 else
     printf '%s\n' "SKIP: sanitizers unavailable"

@@ -1,0 +1,10 @@
+logical-path=tests/conformance/discovery/live_list_text.kofun generation=19
+List[Text]: identity=125ac3100e11a7150fb950247e5ecde776975fb10c5fb7a0deaaefdb38bd82c5 display=List[Text] status=validated
+Int: identity=afe837fe53b4ad8052ed1a7eaa259bb6d09dc46162452c38f25a947f45ffdad5 display=Int status=validated
+logical-path=tests/conformance/discovery/bounded_type_other_module.kofun generation=31
+List[Text]: identity=125ac3100e11a7150fb950247e5ecde776975fb10c5fb7a0deaaefdb38bd82c5 display=List[Text] status=validated
+List[Int]: identity=be803c16f796a586e630b83dfef19255e5665ad38cc8815e4a27ccfc1d3181ab display=List[Int] status=validated
+Int: identity=afe837fe53b4ad8052ed1a7eaa259bb6d09dc46162452c38f25a947f45ffdad5 display=Int status=validated
+Text: identity=535c2ee4cd637345bb8bf3448e5d47524e6c43d7ca45ac9c453306c4db6c99f2 display=Text status=validated
+logical-path=tests/conformance/discovery/bounded_type_shadowed.kofun generation=37
+List[Choice]: identity=null display=List[Choice] status=validated
