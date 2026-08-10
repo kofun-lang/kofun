@@ -90,6 +90,63 @@ assert_grep "SPEC" -q 'declaration order' "$SPEC"
 assert_grep "SPEC" -q 'decimal string' "$SPEC"
 assert_grep "SPEC" -q 'not a compatibility requirement' "$SPEC"
 
+# The carrier and the contract must agree about the bounded List[Int] value.
+#
+# They did not, and that disagreement is what #1183 was filed against: the
+# Stage 2 backend stores a `List[Int]` by value in 520 bytes while the
+# contract described every list value as one reference. RFC-0011 resolved it
+# by adding the `bounded_list` kind, and this is the join that keeps the two
+# from drifting apart again. Reading `_Static_assert` numbers out of the
+# emitter is deliberate: they are the numbers the emitted C actually enforces,
+# so a change to either side fails here rather than at the next increment.
+STAGE2="$ROOT/bootstrap/stage2/compiler.kofun"
+descriptor_field() {
+    node -e '
+        const fs = require("node:fs")
+        const doc = JSON.parse(fs.readFileSync(process.argv[1], "utf8"))
+        const found = doc.layouts.find((entry) => entry.id === process.argv[2])
+        if (found === undefined) {
+            process.stderr.write(`no layout ${process.argv[2]}\n`)
+            process.exit(1)
+        }
+        process.stdout.write(String(found[process.argv[3]]))
+    ' "$HERE/examples/core.x86_64-linux.json" "BoundedList[Int, 64]" "$1"
+}
+# A join is only as good as its ability to notice it has stopped joining. If
+# the emitter renames or reshapes an assertion, this must say so rather than
+# compare against an empty string — a check that passes because it could not
+# look is the failure this whole contract exists to remove. The emptiness
+# test runs here rather than inside a command substitution, because `exit`
+# in a substitution ends only the subshell and the comparison would still run.
+assert_carrier() {
+    label=$1
+    field=$2
+    pattern=$3
+    expected=$(sed -n "s/.*_Static_assert($pattern == \([0-9]*\).*/\1/p" "$STAGE2" | head -n 1)
+    test -n "$expected" ||
+        {
+            printf '%s\n' \
+                "FAIL: aggregate-layout: no _Static_assert($pattern == ...) in $STAGE2;" \
+                "      the bounded List[Int] carrier moved and this join no longer reaches it" >&2
+            exit 1
+        }
+    assert_num "$label" "$(descriptor_field "$field")" -eq "$expected"
+}
+
+assert_carrier "bounded List[Int] carrier size" size 'sizeof(KofunIntListValue)'
+assert_carrier "bounded List[Int] carrier alignment" align '_Alignof(KofunIntListValue)'
+assert_carrier "bounded List[Int] length offset" length_offset \
+    'offsetof(KofunIntListValue, length)'
+assert_carrier "bounded List[Int] elements offset" elements_offset \
+    'offsetof(KofunIntListValue, elements)'
+
+# A bounded list of a reference element keeps a pointer per slot, so the kind
+# is not silently "the trivial one". Without this, an implementation could
+# drop the per-slot bitmap and every vector above would still pass.
+assert_grep "x86-64 descriptors" -q '"BoundedList\[Text, 3\]"' \
+    "$HERE/examples/core.x86_64-linux.json"
+
 printf '%s\n' \
     'PASS: AggregateLayout v1 descriptors are deterministic and target-parameterized' \
-    'PASS: overflow, recursive layout, and unsupported targets are refused without a descriptor'
+    'PASS: overflow, recursive layout, and unsupported targets are refused without a descriptor' \
+    'PASS: the bounded List[Int] descriptor agrees with the Stage 2 carrier assertions'

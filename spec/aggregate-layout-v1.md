@@ -89,7 +89,7 @@ descriptor.
 | Field | Meaning |
 |---|---|
 | `id` | type identity |
-| `kind` | `scalar`, `text`, `list`, `record`, `adt`, or `optional` |
+| `kind` | `scalar`, `text`, `list`, `bounded_list`, `record`, `adt`, or `optional` |
 | `size` | total bytes, always a multiple of `align` |
 | `align` | alignment in bytes, a power of two |
 | `fields` | records only: `name`, `type`, `offset`, `size` in declaration order |
@@ -98,6 +98,12 @@ descriptor.
 | `payload_offset` | `adt`/`optional` only: first payload byte |
 | `payload_size` | `adt`/`optional` only: the largest payload |
 | `constructors` | `adt`/`optional` only: `name`, `tag`, `payload`, `payload_size` |
+| `element` | `bounded_list` only: the element type's identity |
+| `capacity` | `bounded_list` only: the fixed slot count, part of type identity |
+| `length_offset` | `bounded_list` only: always `0` in v1 |
+| `length_size` | `bounded_list` only: the `u64` length, eight bytes |
+| `elements_offset` | `bounded_list` only: first element byte |
+| `element_size` | `bounded_list` only: one slot's size |
 | `pointers` | ascending offsets holding a reference — the pointer bitmap |
 | `drop` | `trivial` when `pointers` is empty, otherwise `managed` |
 
@@ -142,6 +148,34 @@ described separately. The object headers are `byte_length: u64` and
 32-bit reference address a header a 64-bit producer wrote. Immutable `List`
 v1 has no capacity field.
 
+**Bounded list values.** `bounded_list` is the one list-shaped value that is
+not a reference. It is stored inline, by value: a `u64` length at offset 0,
+then `capacity` element slots beginning at `align_up(8, element_align)`, with
+no separate object and no indirection. `capacity` is part of type identity, so
+two bounded lists differing only in capacity are two types with two
+descriptors, exactly as one type on two targets is two descriptors.
+
+Its alignment is `max(8, element_align)` and is never derived from its size —
+a 520-byte carrier is 8-aligned. Its pointer bitmap is the element's bitmap
+repeated at every slot, because a bounded list holds its elements rather than
+addressing them, so a bounded list of a scalar has an empty bitmap and
+`trivial` drop. That is what separates it from `list` for deciding whether a
+record containing one is `Copy`: `List[Int]` as a field contributes one
+pointer and `managed` drop, while `bounded_list` of `Int` contributes neither.
+
+Slots at or beyond the length hold unspecified bytes and may not be read. They
+are still copied, so two bounded lists with equal lengths and equal elements
+may differ byte for byte past the length: comparing whole values as bytes is
+not comparing them as values, and a canonical-bytes producer must serialize
+from the length.
+
+This kind exists because the Stage 2 C11 backend stores a `List[Int]` by value
+in 520 bytes while this contract described every list value as one reference.
+`spec/aggregate-layout-v1/check.sh` now joins the two, reading the emitter's
+own `_Static_assert` numbers, so the carrier and the contract cannot drift
+apart again. Added by RFC-0011 and recorded as the ledger amendment
+`DD-033/A01`; the `list` kind is unchanged.
+
 An object has no trailing padding: it is individually referenced and never
 inlined into an array, so nothing follows it that would need alignment.
 
@@ -167,6 +201,10 @@ Recomputed and byte-compared by `check.sh`. Full descriptors are in
 | `Text` | 8 / 8 | **4 / 4** | [0] | managed |
 | `List[Int]` | 8 / 8 | **4 / 4** | [0] | managed |
 | `List[Text]` | 8 / 8 | **4 / 4** | [0] | managed |
+| `BoundedList[Int, 64]` | 520 / 8 | 520 / 8 | — | trivial |
+| `BoundedList[Int, 2]` | 24 / 8 | 24 / 8 | — | trivial |
+| `BoundedList[Text, 3]` | **32** / 8 | **24** / 8 | **[8, 16, 24]** / **[8, 12, 16]** | managed |
+| `Bag { samples: BoundedList[Int, 64], count: Int }` | 528 / 8 | 528 / 8 | — | trivial |
 | `Counter { flag: Bool, count: Int }` | 16 / 8 | 16 / 8 | — | trivial |
 | `Maybe = Missing \| Present(Int)` | 16 / 8 | 16 / 8 | — | trivial |
 | `Shape = Narrow(Bool) \| Wide(Int) \| Handle(Text)` | 16 / 8 | 16 / 8 | [8] | managed |
