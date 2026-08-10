@@ -1,0 +1,14 @@
+type AffineTransport = {
+    identity: Int,
+    generation: Int,
+}
+
+fn read_after_cancel(handle: AffineTransport) -> Int {
+    take handle
+    return handle.identity
+}
+
+fn main() -> Int {
+    let handle: AffineTransport = AffineTransport(identity: 17, generation: 0)
+    return read_after_cancel(handle)
+}

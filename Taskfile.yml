@@ -503,6 +503,11 @@ tasks:
     cmds:
       - "sh spec/effects/affine-resumption/check.sh"
 
+  affine-resource-handle:
+    desc: "Verify the bounded affine resource-handle protocol and runtime backstop"
+    cmds:
+      - "sh tests/ownership/affine-resource-handle/check.sh"
+
   example-law-evidence:
     desc: "Bind example law evidence to its exact source and honest status"
     cmds:
@@ -955,6 +960,7 @@ tasks:
             schedule-trace \
             type-reduction-trace \
             affine-resumption \
+            affine-resource-handle \
             example-law-evidence \
             benchmark-summary \
             move-assertion \

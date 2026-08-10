@@ -4,17 +4,32 @@
   "version": "0.4.0-seed",
   "inputs": {
     "VERSION": "60eee96ee38418a0ef903b570d0d12ce2d82ea79f129cc2c6c1245a072c04349",
-    "release/claims.json": "600855e3e196f52e9f294ca370fd63f8b1a7032ad6a4ea76c3f8b9f89be7ed6c",
+    "release/claims.json": "2a5bd48982049da253ed75a5c0fc6ac3aa843dc7c4afd8652506a12095476727",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
     "bootstrap/manifest.json": "4d9ab808f646fd4ab8bb79e860d8f50cc329a0ccb0091a4f40f6ca0cd375c537"
   },
   "states": {
+    "checkpoint": 36,
     "implemented": 9,
-    "checkpoint": 35,
     "design": 1,
     "open": 3
   },
   "claims": [
+    {
+      "id": "affine-resource-handle",
+      "state": "checkpoint",
+      "area": "frontend",
+      "targets": [
+        "c11",
+        "stage2"
+      ],
+      "positive_gate": "task affine-resource-handle",
+      "negative_boundary": "tests/ownership/affine-resource-handle/runtime_model.c",
+      "reproduction": "task affine-resource-handle",
+      "prerequisites": [
+        "cc"
+      ]
+    },
     {
       "id": "arithmetic-core",
       "state": "implemented",
@@ -688,7 +703,7 @@
     }
   ],
   "evidence_digests": {
-    "Taskfile.yml": "0e9209ea837a04e15af4e8f8eb6019ca90eb0d90905c926fd6ec66af427e5b15",
+    "Taskfile.yml": "6c0a413bca0a18ee809afe998a065060a9aaad9468fc7ff4679d302a6341616d",
     "bootstrap/native/check.sh": "fea94cb623757e1bf17e4497f43d656b1e8ff57a39a92ece871d8ff257c0f2ef",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/check-diverse-double-compilation-refusals.sh": "55fc39166070b9bc612fca6898086938b1a8ca122b1c1fb8e928f1a5d4cde572",
@@ -708,8 +723,8 @@
     "docs/GETTING_STARTED.md": "f0e48a73e7c024d4da46668f6b16221c1f5fba5595bf56942527297c0efa4e96",
     "docs/LAW_SYSTEM.md": "b974f0ad762bec778ee76afa5d0a2176423ac96a3a583739eee55dcb8dca5043",
     "docs/LINGUIST_RECOGNITION.md": "279f9afa7157c90e41d656974c2f5020f8b6d25acbbd389ee760efbb2d6d6166",
-    "docs/MEMORY_MODEL.md": "068f822b4167d17bd706b44913a6e3f5204e7643c57425bc5cb367f02b5ead50",
-    "docs/MVP_IMPLEMENTED.md": "07c0632c44a52002963a54f114819d2af2196d4be3881edb0ec4bc25d1d2fb1b",
+    "docs/MEMORY_MODEL.md": "de53b0f5fde8408777366d2022fbeed6267e26c2c0ebbd9f15648033259c5eda",
+    "docs/MVP_IMPLEMENTED.md": "674498a019067e1754f9baa19e4f537f1ea814bb09a70ae98765e3c2c04d50a2",
     "docs/NATIVE_BACKEND.md": "ab16b7bc6ae59071f9ae73c6fafde44732c887d122bb711104eb231297680bfe",
     "docs/ROADMAP.md": "881f24ac026aa50b2102a325f2683979c62afda69003071122796215d8c4cad9",
     "docs/RUST_CRATE_SHIMS.md": "4365b064cbc9a05733710d3a609c1db2623b28cb9ed4ba0e48536e35f9d58c47",
@@ -719,6 +734,7 @@
     "docs/TYPE_SYSTEM.md": "75d25999ad21708385b58f5fa6b3a5dec94df4928a95025fcbdb846c2ad36efb",
     "examples/rust-shim/check.sh": "4cffb7e16d964122e2dff480f533cff5eacd0bd939a35fe5a71f71b447139500",
     "examples/wasm_arithmetic.kofun": "ea73b3ee6b5172a4c8080ed5b4540fb23288d31000dd6ccd59a473e97836c246",
+    "rfcs/0010-affine-resource-handle-v1.md": "0deef14c3d575a97acbd92907757707fd49680c1f18c4171e1d2bf6a54d2656e",
     "spec/enum-match-exhaustiveness.md": "ac383d5cdc76a3d0817bc7cacb12a473c4b18d099551d2e9a098928cc4980f43",
     "spec/modules/module-identity.md": "9fc02e1888a5d585aa9c747e3800e9d72d947eaa9d722a60fa4e4a7b385ae5a0",
     "spec/modules/re-exports.md": "adaaaa3af3a08302b979a1d92871d6a552f0dd76838a67147d876c510ef95ce3",
@@ -741,7 +757,7 @@
     "tests/conformance/records/stage2_unsupported_field.kofun": "ce02c4fe80b4a5fc3f5d1f12ade45c2c47b7a4a20e10c3709ca1f72a90111284",
     "tests/conformance/syntax/issues_35_47/enum_payload_unsupported_field.kofun": "e1b4ce6cda998dac0a955ed016c8eb2f81a9effaed91b823011572cf68f6c59e",
     "tests/diagnostics/README.md": "32bc26bdeca5e1de63698ac97a53b6438d7c38af995677efd0288c52f195fc65",
-    "tests/diagnostics/registry.tsv": "5c205f5fec83a8c361852b4c0393636babbf32d261ca6472e85ec84287191fcb",
+    "tests/diagnostics/registry.tsv": "4dc99255095d9af2fdaa087f13e254e832b623baef840210f9983b1d07eeb594",
     "tests/diagnostics/stage2/e2s10_unsupported_statement.kofun": "664c4d3b0d4bcd9265fee34b3ae60d8bf0eb58c9ce5c2b504579c1249aa16f2d",
     "tests/diagnostics/visibility-api-leaks.sh": "014a84aa787662eff8bba397056cbc5ca40cd9adbead0047d8a4b9f75395560e",
     "tests/docs/documentation_index_test.mjs": "2cc6cea953f21ef1cbf5e8c6be3ab58edacc8e6599f17d76b44130647714550b",
@@ -750,6 +766,8 @@
     "tests/http/check.sh": "f2db6a18f3e879e9dec665b4bffa51a273c8dc7dd77fbc9f77853462f13ffb4c",
     "tests/interop/bindgen-c/fuzz/corpus/partial-declaration.h": "c5dce5c70ff456a593e7fa33db772a3c2430905340c4b44e9a79f0be681e50e2",
     "tests/lsp/performance_test.js": "9be9916dd14466b33b631fe1435ddcc038c44288f80c320e1458bcb16d2aab33",
+    "tests/ownership/affine-resource-handle/README.md": "875ffe196d066176acba03d82ef4ab4ed70afec452d21bd131392b4bc5f2dc40",
+    "tests/ownership/affine-resource-handle/runtime_model.c": "30b1e68a830a46d41b369a836fd5a2a0a41638e6df518a954b7ed5c998123f57",
     "tests/security/module-interface-artifact.sh": "f84c338ae61fc66ac2e8738d209049e53ad4274f31e42e2d4dd52d60fc44ddb7",
     "tests/stage2/list-int-values/out_of_range_write.kofun": "7c423a2725fb644a5770a494c020fc837c2ef8ec82192584e3f10c90af61acf3",
     "tests/stdlib/tzdb/README.md": "3ebada786546085ecd463e11f35740e9f304e0c873d9c66fd648c758e9f32848",

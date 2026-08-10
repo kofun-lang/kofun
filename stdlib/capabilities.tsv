@@ -39,6 +39,7 @@ http-client	module	specified	docs/stdlib/http-client.md	accepted contract (#638)
 date-time-core	portable	specified	docs/stdlib/date-time.md	accepted contract (#639); core calendar and strict RFC 3339 slice is #645
 time-zone-data	module	specified	docs/stdlib/date-time.md	accepted contract (#639); `task tzdb` executes a bounded injected-bytes reader with gap/fold resolution (#878); the IANA database, a file adapter, and the full date/time core remain #648
 clock-adapters	adapter	implemented	task clock-adapters	explicit monotonic/system identities, affine handles, deterministic fake time and waiters; Linux x86-64 gate checks read/sleep units and errno behavior
+affine-resource-handle	portable	implemented	task affine-resource-handle	one bounded per-type read/write/drain/close/cancel table; E2S123 static moves and EARH01 generation backstop, not a general ownership pass
 benchmark-harness	portable	specified	docs/stdlib/benchmark.md	accepted contract (#640); raw-sample report schema slice is #646
 concurrency	portable	planned	#555 #736	scoped parallelism only, after the runtime contract exists
 stream-protocol	portable	specified	docs/stdlib/stream-protocol.md	accepted protocol contract (#627); no operators, scheduler, or adapters implemented

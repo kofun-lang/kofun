@@ -1,0 +1,14 @@
+type AffineTransport = {
+    identity: Int,
+    generation: Int,
+}
+
+fn invalid_after_write(handle: AffineTransport) -> Int {
+    take handle
+    return handle.generation
+}
+
+fn main() -> Int {
+    let handle: AffineTransport = AffineTransport(identity: 17, generation: 0)
+    return invalid_after_write(handle)
+}

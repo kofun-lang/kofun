@@ -15,6 +15,7 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 
 | Claim | Kind | Evidence | Observation |
 |---|---|---|---|
+| `affine-resource-handle` | trap | `tests/ownership/affine-resource-handle/runtime_model.c` | A dead generation and the second of two adversarial copies both exit 1 with empty stdout and exact `EARH01: affine resource handle already consumed` stderr. |
 | `arithmetic-core` | rejection | `tests/conformance/numeric/reject_slash_operator.kofun` | `/` on `Int` is refused with one diagnostic instead of being lowered. |
 | `bindgen-c-stage1` | rejection | `tests/interop/bindgen-c/fuzz/corpus/partial-declaration.h` | A header whose macros expand to an unbalanced declaration is refused with the cause named and no output directory; the same holds for expansion past the declaration and captured-output bounds, and for a clang that never answers. |
 | `borrowed-list-ownership` | rejection | `bootstrap/stage2/fixtures/borrowed_move_text.kofun` | `--check-ownership` refuses `E007` on the borrowed-`List[Text]` return, matching the pinned `borrowed_move_text.stderr` byte for byte. |

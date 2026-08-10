@@ -1,0 +1,161 @@
+# Bounded affine resource-handle checkpoint for RFC-0010 and #784.
+#
+# The handle is an ordinary nominal record. `read` borrows it; every other
+# transition receives it through `take`, constructs at most one successor,
+# and ends its local authority with a whole-binding move. The executable model
+# beside this source owns the generation/identity check at the host boundary;
+# this source owns the ordinary Kofun table and its successful transitions.
+
+type AffineTransport = {
+    identity: Int,
+    generation: Int,
+    payload: Int,
+    unread: Bool,
+}
+
+type TerminalSummary = {
+    terminal: Int,
+    reusable: Bool,
+    generation: Int,
+}
+
+# `read` is the sole observing transition. It leaves generation and state
+# unchanged and therefore returns only an observation.
+fn affine_transport_read(
+    read handle: AffineTransport
+) -> Int {
+    return handle.payload
+}
+
+# `write` consumes the old handle and grants one successor at generation + 1.
+fn affine_transport_write(
+    take handle: AffineTransport,
+    amount: Int
+) -> AffineTransport {
+    let successor: AffineTransport = AffineTransport(
+        identity: handle.identity,
+        generation: handle.generation + 1,
+        payload: handle.payload + amount,
+        unread: true,
+    )
+    take handle
+    return successor
+}
+
+# `drain` is the only unfinished-to-reusable transition.
+fn affine_transport_drain(
+    take handle: AffineTransport
+) -> AffineTransport {
+    let successor: AffineTransport = AffineTransport(
+        identity: handle.identity,
+        generation: handle.generation + 1,
+        payload: handle.payload,
+        unread: false,
+    )
+    take handle
+    return successor
+}
+
+# `close` is terminal. Its summary is copyable and contains no handle.
+fn affine_transport_close(
+    take handle: AffineTransport
+) -> TerminalSummary {
+    let summary: TerminalSummary = TerminalSummary(
+        terminal: 1,
+        reusable: false,
+        generation: handle.generation + 1,
+    )
+    take handle
+    return summary
+}
+
+# `cancel` is separately observable and terminal, with no successor.
+fn affine_transport_cancel(
+    take handle: AffineTransport
+) -> TerminalSummary {
+    let summary: TerminalSummary = TerminalSummary(
+        terminal: 2,
+        reusable: false,
+        generation: handle.generation + 1,
+    )
+    take handle
+    return summary
+}
+
+fn initial_handle() -> AffineTransport {
+    let initial: AffineTransport = AffineTransport(
+        identity: 17,
+        generation: 0,
+        payload: 10,
+        unread: false,
+    )
+    return initial
+}
+
+fn read_observation() -> Int {
+    let initial: AffineTransport = initial_handle()
+    return affine_transport_read(initial)
+}
+
+fn drained_generation() -> Int {
+    let initial: AffineTransport = initial_handle()
+    let written: AffineTransport = affine_transport_write(initial, 5)
+    take initial
+    let drained: AffineTransport = affine_transport_drain(written)
+    take written
+    return drained.generation
+}
+
+fn drained_reuse_observation() -> Int {
+    let initial: AffineTransport = initial_handle()
+    let written: AffineTransport = affine_transport_write(initial, 5)
+    take initial
+    let drained: AffineTransport = affine_transport_drain(written)
+    take written
+    return affine_transport_read(drained)
+}
+
+fn normal_close_terminal() -> Int {
+    let initial: AffineTransport = initial_handle()
+    let summary: TerminalSummary = affine_transport_close(initial)
+    take initial
+    return summary.terminal
+}
+
+fn normal_close_reuse() -> Int {
+    let initial: AffineTransport = initial_handle()
+    let summary: TerminalSummary = affine_transport_close(initial)
+    take initial
+    if summary.reusable {
+        return 1
+    }
+    return 0
+}
+
+fn cancel_terminal() -> Int {
+    let initial: AffineTransport = initial_handle()
+    let summary: TerminalSummary = affine_transport_cancel(initial)
+    take initial
+    return summary.terminal
+}
+
+fn cancel_reuse() -> Int {
+    let initial: AffineTransport = initial_handle()
+    let summary: TerminalSummary = affine_transport_cancel(initial)
+    take initial
+    if summary.reusable {
+        return 1
+    }
+    return 0
+}
+
+fn main() -> Int {
+    print(read_observation())
+    print(drained_generation())
+    print(drained_reuse_observation())
+    print(normal_close_terminal())
+    print(normal_close_reuse())
+    print(cancel_terminal())
+    print(cancel_reuse())
+    return 0
+}

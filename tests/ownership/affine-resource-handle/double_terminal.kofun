@@ -1,0 +1,15 @@
+type AffineTransport = {
+    identity: Int,
+    generation: Int,
+}
+
+fn double_terminal(handle: AffineTransport) -> Int {
+    take handle
+    take handle
+    return 0
+}
+
+fn main() -> Int {
+    let handle: AffineTransport = AffineTransport(identity: 17, generation: 0)
+    return double_terminal(handle)
+}

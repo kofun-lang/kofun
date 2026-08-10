@@ -17,7 +17,7 @@ report a pass it did not observe.
 | Prerequisite | Claims that need it |
 |---|---|
 | `cargo` | `rust-crate-shim` |
-| `cc` | `bindgen-c-stage1`, `bounded-tzdb-producer`, `c-abi-profile`, `c11-function-calls`, `c11-list-int-values`, `compiled-visibility-interfaces`, `compiler-seed`, `decimal-arithmetic-v1`, `deterministic-fuzzing`, `diverse-double-compilation`, `documentation-index`, `enum-matching`, `http-framework`, `nominal-records`, `reproducible-bootstrap`, `self-recompile`, `stage2-core-lowering` |
+| `cc` | `affine-resource-handle`, `bindgen-c-stage1`, `bounded-tzdb-producer`, `c-abi-profile`, `c11-function-calls`, `c11-list-int-values`, `compiled-visibility-interfaces`, `compiler-seed`, `decimal-arithmetic-v1`, `deterministic-fuzzing`, `diverse-double-compilation`, `documentation-index`, `enum-matching`, `http-framework`, `nominal-records`, `reproducible-bootstrap`, `self-recompile`, `stage2-core-lowering` |
 | `clang` | `bindgen-c-stage1`, `diverse-double-compilation` |
 | `gcc` | `diverse-double-compilation` |
 | `node` | `bindgen-c-stage1`, `compiled-visibility-interfaces`, `documentation-index`, `stage2-typed-sidecar`, `stdio-language-server`, `wasm32-arithmetic-core`, `wasm32-hostabi1-object-arena` |
@@ -29,6 +29,7 @@ report a pass it did not observe.
 
 | Claim | Command |
 |---|---|
+| `affine-resource-handle` | `task affine-resource-handle` |
 | `arithmetic-core` | `task test` |
 | `bindgen-c-stage1` | `task bindgen-c` |
 | `borrowed-list-ownership` | `task stage2` |

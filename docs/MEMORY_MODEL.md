@@ -545,22 +545,23 @@ memory-safety proof.
 
 ### What refuses an ownership error today
 
-Three mechanisms exist. They share no diagnostic family, and none of them is on
-the path `bin/kofun build` takes.
+Four bounded mechanisms exist. They do not form one general ownership pass.
 
 | Mechanism | What it refuses | Code | Gate |
 |---|---|---|---|
 | Stage 2 `--check-ownership` | a non-Copy element moved out of a borrowed `List` | `E007` | `sh bootstrap/stage2/check.sh` |
-| the record frontend | a record used after it was moved | `E2S123` | `sh tests/conformance/records/run.sh` |
+| production and standalone record frontends | a whole nominal record used after an explicit `take`, or a partial/double move | `E2S122`, `E2S123` | `task records` |
 | `stdlib/clock` affine handles | a consumed clock handle used again | none; the type carries it | `task clock-adapters` |
-| the default `bin/kofun build` path | nothing | — | — |
+| bounded affine resource handle | use after a transition move; a stale, foreign, or adversarially duplicated generation at the host boundary | `E2S123`, `EARH01` | `task affine-resource-handle` |
 
-The first is an opt-in subcommand of the Stage 2 binary. The second is a
-separate frontend that emits `.ir`, `.layout`, and `.run` and does not lower to
-a backend. The third is a library type rather than a compiler pass. A program
-built the ordinary way is therefore subject to none of them, and `own`, `read`,
-and `take` are not keywords on that path — §3 and §4 describe the target
-language, not what the shipped driver parses.
+The first is an opt-in subcommand of the Stage 2 binary. The second now reaches
+the ordinary Stage 2 C11 path for explicit, source-order whole-record moves,
+while the standalone evaluator keeps the same messages. The third is a clock
+library type, and the fourth is one RFC-0010 per-type table plus a host-boundary
+generation check. `bin/kofun build` therefore understands `read`/`take`
+parameters and explicit whole-binding `take` only in that bounded record slice;
+it still has no `let own`, inferred moves, alias graph, branch/loop ownership,
+borrow lifetime, destructor, or general cleanup analysis.
 
 `E3xx` is not a live family. No `E3xx` code has ever been in
 `tests/diagnostics/registry.tsv`, and `examples/check.sh` fails any example

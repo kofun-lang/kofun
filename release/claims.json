@@ -31,6 +31,46 @@
   ],
   "claims": [
     {
+      "id": "affine-resource-handle",
+      "public_wording": "bounded affine resource-handle protocol",
+      "public_status": "bounded Stage 2/C11 checkpoint",
+      "state": "checkpoint",
+      "area": "frontend",
+      "bounded_capability": "One nominal `AffineTransport` implements the closed RFC-0010 read/write/drain/close/cancel table. The standalone record evaluator and emitted Stage 2 C11 agree on the normal observations; production E2S123 checks refuse three moved-handle misuses; and a scripted C11 host boundary refuses stale or adversarially duplicated generations as EARH01. This is not a general ownership pass or environment authority.",
+      "targets": [
+        "c11",
+        "stage2"
+      ],
+      "specification": [
+        "rfcs/0010-affine-resource-handle-v1.md",
+        "tests/ownership/affine-resource-handle/README.md"
+      ],
+      "compatibility": "Only the declared `AffineTransport` table and scripted host-boundary generation check are checkpointed. No inferred move, alias, branch, loop, lifetime, destructor, cleanup, environment-authority, or general ownership behaviour is claimed.",
+      "positive_gate": {
+        "command": "task affine-resource-handle",
+        "observation": "The reference evaluator, emitted Stage 2 C11, and scripted C11 host model agree on read, write, drain, close, cancel, terminal, and reuse observations."
+      },
+      "negative_boundary": {
+        "kind": "trap",
+        "evidence": "tests/ownership/affine-resource-handle/runtime_model.c",
+        "observation": "A dead generation and the second of two adversarial copies both exit 1 with empty stdout and exact `EARH01: affine resource handle already consumed` stderr."
+      },
+      "safety": {
+        "classification": "refusal-boundary",
+        "threat_model": "rfcs/0010-affine-resource-handle-v1.md",
+        "negative_test": "tests/ownership/affine-resource-handle/runtime_model.c"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "task affine-resource-handle",
+        "prerequisites": [
+          "cc"
+        ]
+      }
+    },
+    {
       "id": "arithmetic-core",
       "public_wording": "arithmetic Core validation/emission",
       "public_status": "implemented",

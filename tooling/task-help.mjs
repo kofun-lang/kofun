@@ -40,7 +40,7 @@ export const GROUPS = Object.freeze([
             'move-assertion', 'usability-corpus', 'call-arguments',
             'call-arguments-spec',
             'call-arguments-surface',
-            'affine-resumption',
+            'affine-resumption', 'affine-resource-handle',
             'scoped-parallelism', 'schedule-trace', 'type-reduction-trace',
             'generics', 'const-generics', 'hm-levels', 'effect-inference', 'traits',
             'trait-dictionary-c11',

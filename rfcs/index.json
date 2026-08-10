@@ -837,7 +837,7 @@
       "id": "RFC-0010",
       "title": "A resource handle is an affine per-type protocol with a closed transition table",
       "provenance": "rfc",
-      "state": "accepted",
+      "state": "implemented",
       "shepherd": "hjosugi",
       "source": "rfcs/0010-affine-resource-handle-v1.md",
       "document": "rfcs/0010-affine-resource-handle-v1.md",
@@ -852,7 +852,15 @@
       ],
       "compatibility": {
         "category": "none",
-        "statement": "Nothing is implemented, so no program changes meaning and none stops compiling. The decision binds a future implementation: a resource handle is a nominal record carrying a generation token, its transitions are ordinary functions that `take` the handle and return a successor, `read` observes without advancing state, `close` and `cancel` are terminal and return a copyable summary rather than borrowing the consumed handle, and reuse exists exactly where a successor handle does. No new keyword, no `own` domain, and no new compile-time diagnostic: the static refusals are `E2S122` and `E2S123`, which are already registered and keep their current meaning and messages. The only new code is the runtime backstop `EARH01`, reachable from no tracked program because no type declares a transition table. `docs/MVP_IMPLEMENTED.md` continues to record general ownership and law checking as `open`, and the `general-ownership-checking` claim is not edited."
+        "statement": "The bounded implementation adds one test-owned `AffineTransport` table and its focused gate; no existing program changes meaning and none stops compiling. A resource handle remains a nominal record carrying a generation token, its transitions are ordinary functions that `take` the handle and return a successor, `read` observes without advancing state, `close` and `cancel` are terminal and return a copyable summary rather than borrowing the consumed handle, and reuse exists exactly where a successor handle does. No new keyword, no `own` domain, and no new compile-time diagnostic are added: the static refusals remain E2S122 and E2S123. The only new identity is the runtime backstop EARH01, executed by the scripted host boundary. `general-ownership-checking` remains open."
+      },
+      "implementation": {
+        "change": "https://github.com/kofun-lang/kofun/issues/784",
+        "enablement": "Enabled as one bounded `AffineTransport` table in `task affine-resource-handle`: the standalone record evaluator and Stage 2 C11 execute the same read/write/drain/close/cancel transition bodies, the production move slice refuses three E2S123 misuse shapes, and the scripted C11 host boundary refuses dead or duplicated generations with EARH01. There is no new keyword, `own` domain, environment authority, or general ownership pass.",
+        "gate": "task affine-resource-handle",
+        "claims": [
+          "affine-resource-handle"
+        ]
       }
     },
     {

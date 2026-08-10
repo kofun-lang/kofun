@@ -20,4 +20,5 @@ selfhost-a1	tests/diagnostics/selfhost-a1/run.sh	verify	tests/diagnostics/report
 unicode	tests/diagnostics/unicode/run.sh	verify	tests/diagnostics/reports/unicode.tsv
 native	tests/diagnostics/native/run.sh	verify	tests/diagnostics/reports/native.tsv
 c-abi	tests/diagnostics/c-abi/run.sh	verify	tests/diagnostics/reports/c-abi.tsv
+affine-resource-handle	tests/ownership/affine-resource-handle/check.sh	verify	tests/diagnostics/reports/affine-resource-handle.tsv
 runtime	tests/diagnostics/runtime/run.sh	verify	tests/diagnostics/reports/runtime.tsv

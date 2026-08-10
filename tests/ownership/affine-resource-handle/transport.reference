@@ -1,0 +1,9 @@
+kofun-record-run/v1
+call|function=initial_handle|result=AffineTransport(identity: 17, generation: 0, payload: 10, unread: false)
+call|function=read_observation|result=10
+call|function=drained_generation|result=2
+call|function=drained_reuse_observation|result=15
+call|function=normal_close_terminal|result=1
+call|function=normal_close_reuse|result=0
+call|function=cancel_terminal|result=2
+call|function=cancel_reuse|result=0

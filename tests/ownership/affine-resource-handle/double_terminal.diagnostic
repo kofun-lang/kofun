@@ -1,0 +1,1 @@
+error[E2S123]: `handle` was already moved by `take` at bytes 141..152; first moved by `take` at bytes 125..136

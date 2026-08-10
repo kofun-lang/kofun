@@ -65,11 +65,12 @@ record carrying a code that maps one-to-one onto a `ClockError` constructor
 instead of `Result[T, ClockError]`, and the waiter table is three named slots
 instead of a `List`.
 
-The affine rule is a generation token rather than a move checker, because the
-Stage 2 Core has no move checking to lean on: a handle names the generation it
-was minted at, the owner of the state names the live one, and only a match is
-accepted. #784 is the open design issue for a general affine handle; its
-decision has not landed, so this projection does not pre-empt it.
+The affine rule is a generation token rather than a general move checker: a
+handle names the generation it was minted at, the owner of the state names the
+live one, and only a match is accepted. RFC-0010 records that bounded per-type
+rule, and `task affine-resource-handle` now executes its closed transition
+table and `EARH01` backstop. This clock projection remains type-specific and
+does not claim the still-open general ownership pass.
 
 The deterministic gate pins both files, so the canonical surface cannot drift
 away from the projection that proves it. The separate Linux x86-64 gate is

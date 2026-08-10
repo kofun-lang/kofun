@@ -2,8 +2,9 @@
 
 - Shepherd: hjosugi
 - Opened: 2026-08-10
-- Status: accepted
+- Status: implemented
 - Decided: 2026-08-10
+- Implemented: 2026-08-10
 
 Proposal for [#784](https://github.com/kofun-lang/kofun/issues/784), the
 producer prerequisite named by [#644](https://github.com/kofun-lang/kofun/issues/644).
@@ -13,6 +14,18 @@ implemented by it, and `docs/MVP_IMPLEMENTED.md` continues to record general
 ownership and law checking as `open` with "no active general pass".
 
 Measured against `origin/main@43d53d38ef30ec5ef234eb976c3e39a7ae949bb5`.
+
+## Implementation status
+
+Implemented as the bounded `AffineTransport` checkpoint owned by
+`task affine-resource-handle`. The same ordinary Kofun transition table is
+evaluated by the standalone record reference backend and emitted through Stage
+2 C11; production `E2S123` fixtures own moved-handle misuse, and a scripted C11
+host boundary owns `EARH01` for stale or adversarially duplicated generations.
+
+The implementation is intentionally the per-type slice this RFC selected. It
+adds no keyword, `own` domain, environment authority, inferred move, alias or
+lifetime analysis, and `general-ownership-checking` remains open.
 
 ## Summary
 
@@ -263,9 +276,10 @@ The existing precedents stay green and are part of the gate set: `task records`,
 `task clock-adapters`, `task affine-resumption`, `task diagnostics`,
 `task release-claims`, and `task verify`.
 
-This proposal records no `implementation` in the ledger, because nothing is
-implemented. `release/claims.json` is not edited by it, and
-`general-ownership-checking` keeps its current wording.
+The decision-only change recorded no implementation. The later bounded
+checkpoint is joined from the ledger to the `affine-resource-handle` release
+claim and `task affine-resource-handle`; `general-ownership-checking` keeps its
+open wording.
 
 ## Unresolved questions
 
