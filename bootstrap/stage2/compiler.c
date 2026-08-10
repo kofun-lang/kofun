@@ -21186,6 +21186,15 @@ static char *emit_record_c_declaration(
                  * is the same width as `Int`, so the placement arithmetic and
                  * the emitted offset assertions are unchanged; only the C
                  * spelling of the field differs.
+                 *
+                 * Size and alignment are carried separately even though every
+                 * field type admitted here has size == alignment. They are
+                 * different quantities, and the next admitted type is the one
+                 * that separates them: RFC-0011's `bounded_list[Int, 64]` is
+                 * 520 bytes and 8-aligned, so aligning by the size would align
+                 * a record to 520. Deriving alignment from size is right only
+                 * by coincidence for 1- and 8-byte scalars, and the
+                 * coincidence ends at #1183.
                  */
                 const char *c_field_type =
                     strcmp(field_type, "Bool") == 0 ? "bool" :
@@ -21193,7 +21202,8 @@ static char *emit_record_c_declaration(
                     "int64_t";
                 int64_t field_size =
                     strcmp(field_type, "Bool") == 0 ? 1 : 8;
-                int64_t field_alignment = field_size;
+                int64_t field_alignment =
+                    strcmp(field_type, "Bool") == 0 ? 1 : 8;
                 int64_t offset = record_align_up(
                     extent,
                     field_alignment
@@ -21229,9 +21239,18 @@ static char *emit_record_c_declaration(
                     true
                 );
                 char *c_field = record_c_field_name(field);
+                /*
+                 * The offset walk must place fields exactly as the struct
+                 * emitter above does, so it carries the same size/alignment
+                 * split. Two walks that agree only because both derive
+                 * alignment from size would drift apart the moment one of
+                 * them stopped.
+                 */
                 int64_t field_size =
                     strcmp(field_type, "Bool") == 0 ? 1 : 8;
-                int64_t offset = record_align_up(running, field_size);
+                int64_t field_alignment =
+                    strcmp(field_type, "Bool") == 0 ? 1 : 8;
+                int64_t offset = record_align_up(running, field_alignment);
                 buffer_format(
                     &declarations,
                     "_Static_assert(offsetof(%s, %s) == %" PRId64

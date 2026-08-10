@@ -13812,17 +13812,27 @@ fn emit_record_c_declaration(
         # #1181: a `Text` field is one reference. On this target that is the
         # same width as `Int`, so the placement arithmetic and the emitted
         # offset assertions are unchanged; only the C spelling differs.
+        #
+        # Size and alignment are carried separately even though every field
+        # type admitted here has size == alignment. They are different
+        # quantities, and the next admitted type is the one that separates
+        # them: RFC-0011's `bounded_list[Int, 64]` is 520 bytes and 8-aligned,
+        # so `record_align_up(extent, field_size)` would align a record to 520.
+        # Deriving alignment from size is right only by coincidence for 1- and
+        # 8-byte scalars, and the coincidence ends at #1183.
         let mut c_field_type = "int64_t"
         let mut field_size = 8
+        let mut field_alignment = 8
         if field_type == "Bool" {
             c_field_type = "bool"
             field_size = 1
+            field_alignment = 1
         } else if field_type == "Text" {
             c_field_type = "const char *"
         }
-        let offset = record_align_up(extent, field_size)
-        if field_size > record_alignment {
-            record_alignment = field_size
+        let offset = record_align_up(extent, field_alignment)
+        if field_alignment > record_alignment {
+            record_alignment = field_alignment
         }
         extent = offset + field_size
         declarations = declarations + "    " + c_field_type +
@@ -13846,11 +13856,17 @@ fn emit_record_c_declaration(
             index,
             true
         )
+        # The offset walk must place fields exactly as the struct emitter
+        # above does, so it carries the same size/alignment split. Two walks
+        # that agree only because both derive alignment from size would drift
+        # apart the moment one of them stopped.
         let mut field_size = 8
+        let mut field_alignment = 8
         if field_type == "Bool" {
             field_size = 1
+            field_alignment = 1
         }
-        let offset = record_align_up(running, field_size)
+        let offset = record_align_up(running, field_alignment)
         declarations = declarations +
         "_Static_assert(offsetof(" + c_type + ", " +
         record_c_field_name(field) + ") == " + to_text(offset) +
