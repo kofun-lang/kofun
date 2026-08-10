@@ -4670,6 +4670,13 @@ static char *initializer_type(
     int64_t function_open,
     int64_t initializer
 );
+static char *initializer_type_bounded(
+    const char *source,
+    const char *hir,
+    int64_t function_open,
+    int64_t initializer,
+    int64_t bounded_end
+);
 static int64_t hir_binding_declaration_start(
     const char *hir,
     const char *binding_id
@@ -7517,11 +7524,18 @@ static char *emit_list_int_index_value(
             open
         );
     }
-    char *index_type = initializer_type(
+    /*
+     * Bounded at the `]` (#1158). Unbounded, the classification runs past the
+     * subscript and swallows whatever follows it, so `values[i] == target`
+     * typed the whole `i] == target` span and reported the index as Bool. This
+     * is the defect initializer_type_bounded already exists for.
+     */
+    char *index_type = initializer_type_bounded(
         source,
         hir,
         enclosing_function_open(source, index_start),
-        index_start
+        index_start,
+        index_end
     );
     if (strcmp(index_type, "Int") != 0) {
         Buffer message;
