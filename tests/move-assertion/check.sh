@@ -109,8 +109,14 @@ done
 
 # Every accepted shape owes this evidence, not just the straight-line one:
 # #904 admits a second acceptance path, so the terminal-arm pair is checked
-# the same way.
-for pair in zero_footprint zero_footprint_terminal; do
+# the same way, and #915's loop-local last use is a third.
+#
+# The loop pair is the one that could not exist before: `while` did not lower
+# until #1128, so no positive loop case could execute and the rule that a
+# loop-local binding is a genuine last use could only be argued. It is the
+# counterpart to loop_repeat.kofun, which stays rejected because its binding
+# lives outside the loop.
+for pair in zero_footprint zero_footprint_terminal zero_footprint_loop; do
     with="$CASES/${pair}_with.kofun"
     without="$CASES/${pair}_without.kofun"
     expected="$CASES/$pair.stdout"

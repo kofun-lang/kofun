@@ -619,8 +619,11 @@ decide today:
   over statements, not source order: a nested `if` counts only when both of
   its arms terminate, and a loop between the assertion and the arm's
   `return` refuses outright, because it may re-enter. An assertion inside a
-  loop, or in an arm the binding outlives, is still rejected rather than
-  analysed;
+  loop is decided by where its binding lives (#915): a binding declared
+  inside the loop body is fresh each iteration, so the assertion is that
+  iteration's last use and is accepted, while a binding declared outside is
+  read again by the next iteration and is rejected. An assertion in an arm
+  the binding outlives is still rejected rather than analysed;
 - the binding has no use at any later byte and no use inside any lambda;
 - every earlier read is provably alias-free: an operand of `==`/`!=`, or an
   argument to a call whose result is a Copy value or no value. A read that
@@ -635,8 +638,10 @@ warning and never falls back to another compiler: a source file that both
 contains the assertion and steps outside the Stage 2 slice is rejected by
 the seed compiler, which does not accept the syntax.
 
-The general inference — last-use over loops and aggregates, allocation
-counters, and optimization remarks — remains future work under #572; proving
-a loop-local last use rather than refusing every loop is #915, and the
-in-place ADT reuse built on top of this assertion is #576. The gate is
+The general inference — last-use over aggregates, allocation counters, and
+optimization remarks — remains future work under #572, and the in-place ADT
+reuse built on top of this assertion is #576. The loop-local last use is
+#915, closed by the scope-chain rule above: the analysis already decided it
+correctly, and what was missing was any way to run a positive loop case,
+because `while` did not lower until #1128. The gate is
 `tests/move-assertion/check.sh`.
