@@ -285,15 +285,33 @@ test ! -s "$WORK/text_field.stderr" ||
     fail 'text_field wrote stderr'
 cmp "$CASES/text_field.stdout" "$WORK/text_field.stdout" ||
     fail 'text_field output differs from the golden'
+
+# #1183 / RFC-0011: a bounded `List[Int]` record field, stored inline by value.
+#
+# `Reading` is the load-bearing case, not `Bag`. It puts a 1-byte `Bool` before
+# the 520-byte list, so the list lands at offset 8 — which is only true because
+# a field's alignment comes from its type rather than its size. Reintroduce
+# that coupling and the emitted C stops compiling: the offsets become 520 and
+# 1560, and `_Static_assert` rejects them. The layout claim is therefore made
+# by building this fixture, not by anything it prints.
+"$ROOT/bin/kofun" run "$CASES/list_field.kofun" \
+    >"$WORK/list_field.stdout" 2>"$WORK/list_field.stderr" ||
+    fail 'list_field did not run'
+test ! -s "$WORK/list_field.stderr" ||
+    fail 'list_field wrote stderr'
+cmp "$CASES/list_field.stdout" "$WORK/list_field.stdout" ||
+    fail 'list_field output differs from the golden'
 expect_stage2_failure stage2_direct_construction
 expect_stage2_failure stage2_labelled_call
 
 # #946: the whole-binding move rule reaching the compiler a user runs. The
 # fixtures beside these — `use_after_move.kofun`, `double_take.kofun`, and
-# `partial_move.kofun` — carry a `Text` field and are refused earlier by the
-# Int/Bool/Text slice, so they cannot gate the production path; these are Int-only
-# for exactly that reason, and pin the standalone frontend's wording so the two
-# producers stay one language.
+# `partial_move.kofun` — pin the standalone frontend's wording, so the two
+# producers stay one language. The split is about which frontend is under test,
+# not about which field types the slice admits: those three carry a `Text`
+# field and reach their ownership diagnostics today. This comment used to say
+# the slice refused them first, which stopped being true when #1181 admitted
+# `Text` and is doubly untrue now that #1183 admits `List[Int]`.
 #
 expect_stage2_failure production_use_after_move
 expect_stage2_failure production_double_take
@@ -392,7 +410,8 @@ printf '%s\n' \
     'PASS: layout is untagged and identical on x86-64 and AArch64' \
     'PASS: blocks, conditions, loops, and lists stay separable from records' \
     'PASS: duplicate, missing, unknown, wrong-type, mutation, and move diagnostics are exact' \
-    'PASS: Stage 2 executes nominal Int/Bool/Text records in AggregateLayout order' \
+    'PASS: Stage 2 executes nominal Int/Bool/Text/List[Int] records in AggregateLayout order' \
+    'PASS: a bounded List[Int] field lands at its aligned offset, not its size' \
     'PASS: a rejected record argument fails the compile instead of reaching the C' \
     'PASS: the rejection survives let, return, arithmetic, and condition positions' \
     'PASS: the compiler a user runs accepts, lowers, and runs a whole-binding move' \
