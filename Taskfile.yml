@@ -645,6 +645,13 @@ tasks:
     desc: "Refuse an audited-bootstrap claim while that deliverable is open"
     cmds:
       - "sh tests/docs/audited-claim.sh"
+      # The prose scan above reads Markdown. The claim also lives in JSON that
+      # no line-oriented scan reaches, and which tooling quotes onward (#1170):
+      # #1156 found the seed called an "audited C11 artifact" in the manifest,
+      # three lines below `bootstrap_model: trusted-c11-seed`. Both halves key
+      # off the same audit record, so they cannot disagree about whether the
+      # word is available.
+      - "node tests/docs/audited-claim-metadata.mjs"
 
   ownership-view:
     desc: "Verify bounded current-file ScopeId and BindingId ownership views"
