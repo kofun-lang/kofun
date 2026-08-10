@@ -15,6 +15,8 @@ runner is POSIX shell ([`run.sh`](run.sh)); the gate is
 ./bin/kofun unittest --filter spy          # tests whose name contains "spy"
 ./bin/kofun unittest --list                # enumerate without running
 ./bin/kofun unittest --watch               # hot reload: re-run on change
+
+KOTEST_KEEP_WORK=1 ./bin/kofun unittest    # keep the generated unit on a build failure
 ```
 
 Output is vitest-shaped: `❯` per suite, green `✓` / red `✗` per test,
