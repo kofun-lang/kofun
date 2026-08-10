@@ -78,6 +78,18 @@ fail() {
     "$CASES/bounded_typeid_test.c" \
     -o "$WORK/bounded-typeid-test"
 
+"$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic \
+    -DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY \
+    -I"$ROOT/bootstrap/stage2" \
+    "$ROOT/bootstrap/stage2/semantic_producer.c" \
+    "$ROOT/bootstrap/stage2/semantic_events.c" \
+    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$ROOT/bootstrap/stage2/discovery_v1.c" \
+    "$ROOT/bootstrap/stage2/discovery_provider.c" \
+    "$ROOT/bootstrap/stage2/discovery_query.c" \
+    "$CASES/closure_test.c" \
+    -o "$WORK/closure-test"
+
 # One process per fixture: an identity that only holds inside a single
 # analysis process is not an identity, and the compiler's per-pass caches are
 # keyed on the source address a second analysis could reuse.
@@ -225,6 +237,17 @@ cmp "$CASES/bounded_typeid.golden" "$WORK/bounded_typeid.observed" ||
 bounded_typeid_properties "$WORK/bounded_typeid.observed"
 printf '%s\n' "PASS: bounded-typeid"
 
+# The two ways a row can claim a closure it does not have. Both produce a
+# well-formed result, so neither is visible from the shape of the answer: a
+# result type appears in no dependency list and so escapes a check that walks
+# one, and a record this build cannot read is withheld correctly but was
+# counted as a completed analysis. Each is observed as a status.
+"$WORK/closure-test" "$CASES/unidentified_result.kofun" \
+    >"$WORK/closure.observed" 2>&1
+cmp "$CASES/closure.golden" "$WORK/closure.observed" ||
+    fail "candidate closure observation changed"
+printf '%s\n' "PASS: closure"
+
 # Discovery is a tooling-only library.  The release Stage 2 sources must still
 # match their pinned pre-adapter bytes, and enabling a no-op discovery-disabled
 # build flag must produce the exact same compiler artifact.
@@ -308,6 +331,18 @@ then
         "$ROOT/bootstrap/stage2/discovery_query.c" \
         "$CASES/bounded_typeid_test.c" \
         -o "$WORK/bounded-typeid-sanitized"
+    "$CC" -std=c11 -O1 -g -Wall -Wextra -Werror -pedantic \
+        -fno-omit-frame-pointer -fsanitize=address,undefined \
+        -DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY \
+        -I"$ROOT/bootstrap/stage2" \
+        "$ROOT/bootstrap/stage2/semantic_producer.c" \
+        "$ROOT/bootstrap/stage2/semantic_events.c" \
+        "$ROOT/bootstrap/stage2/sha256.c" \
+        "$ROOT/bootstrap/stage2/discovery_v1.c" \
+        "$ROOT/bootstrap/stage2/discovery_provider.c" \
+        "$ROOT/bootstrap/stage2/discovery_query.c" \
+        "$CASES/closure_test.c" \
+        -o "$WORK/closure-sanitized"
     ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
     UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
         "$WORK/live-query-sanitized" "$CASES/live_list_text.kofun" \
@@ -328,6 +363,12 @@ then
     cmp "$CASES/bounded_typeid.golden" \
         "$WORK/bounded_typeid.sanitized" ||
         fail "sanitized bounded type identity observation changed"
+    ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+    UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+        "$WORK/closure-sanitized" "$CASES/unidentified_result.kofun" \
+        >"$WORK/closure.sanitized" 2>&1
+    cmp "$CASES/closure.golden" "$WORK/closure.sanitized" ||
+        fail "sanitized candidate closure observation changed"
     printf '%s\n' "PASS: AddressSanitizer and UndefinedBehaviorSanitizer"
 else
     printf '%s\n' "SKIP: sanitizers unavailable"

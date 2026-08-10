@@ -1,0 +1,6 @@
+closed: status=validated signature=List[Text] -> Int
+nominal_result: status=validated signature=Int -> Known
+open_result: status=provisional signature=(none)
+open_nullary: status=provisional signature=(none)
+result-closure: status=partial open-result-row-callable=no
+unreadable-record: status=partial name-disclosed=no omission=hidden-by-visibility

@@ -3879,6 +3879,27 @@ static bool producer_fact_bindings_identity_closed(
     return true;
 }
 
+/*
+ * A type reference some owner in this analysis has issued an identity for:
+ * a current-file declaration, or the bounded builtin/constructed catalog.
+ *
+ * The signature fact's dependencies are its parameter bindings and nothing
+ * else, so a function's result type appears in no dependency list and cannot
+ * be reached by walking one. Checking it separately is what keeps
+ * `fn f(v: Int) -> Undeclared` out of a validated callable row: its rendered
+ * signature reads perfectly well, and reading well is exactly what must not
+ * be mistaken for a closed closure.
+ */
+static bool producer_type_reference_is_identified(
+    Producer *producer,
+    const char *type_name
+) {
+    KofunSemanticId ignored;
+    if (type_name == NULL || type_name[0] == '\0') return false;
+    if (producer_find_type(producer, type_name) != NULL) return true;
+    return producer_bounded_type_reference_id(producer, type_name, &ignored);
+}
+
 static bool producer_add_discovery_candidate(
     const Producer *producer,
     KofunStage2DiscoverySnapshot *snapshot,
@@ -4137,20 +4158,22 @@ static bool producer_build_discovery_snapshot(
             signature->value.status == KOFUN_SEMANTIC_VALIDATED &&
             effect->value.status == KOFUN_SEMANTIC_VALIDATED) {
             /*
-             * A validated candidate needs its whole committed closure: the
-             * signature's parameter bindings must each carry a
-             * compiler-issued type identity, and the effect must be a fact
-             * the current inference commits directly — `pure`, or a direct
-             * `io` root with no callee dependency.  An io requirement is
-             * carried on the candidate rather than blocking validation;
-             * anything less than the full closure stays provisional, and no
-             * rendered signature is disclosed for it.
+             * A validated candidate needs its whole committed closure: every
+             * type its signature names — each parameter binding *and* the
+             * result — must carry a compiler-issued identity, and the effect
+             * must be a fact the current inference commits directly:
+             * `pure`, or a direct `io` root with no callee dependency.  An io
+             * requirement is carried on the candidate rather than blocking
+             * validation; anything less than the full closure stays
+             * provisional, and no rendered signature is disclosed for it.
              */
             bool pure = strcmp(effect->display, "pure") == 0;
             bool io = strcmp(effect->display, "io") == 0;
             status = (pure || io) &&
                     producer_fact_bindings_identity_closed(
                         producer, signature) &&
+                    producer_type_reference_is_identified(
+                        producer, function->return_type) &&
                     effect->value.dependency_count == 0u ?
                 KOFUN_SEMANTIC_VALIDATED :
                 KOFUN_SEMANTIC_PROVISIONAL;

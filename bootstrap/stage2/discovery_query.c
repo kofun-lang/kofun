@@ -88,7 +88,12 @@ static KofunDiscoveryVisibility query_visibility(
     }
 }
 
-static bool query_visible_candidate(
+/*
+ * Every enum in this caller-owned snapshot must be one this build defines.
+ * An unrecognized one is a record the provider cannot read, not a record
+ * that says something.
+ */
+static bool query_readable_candidate(
     const KofunStage2DiscoveryCandidate *candidate
 ) {
     bool valid_kind = candidate->kind == KOFUN_STAGE2_DISCOVERY_FUNCTION ||
@@ -97,10 +102,20 @@ static bool query_visible_candidate(
         candidate->status == KOFUN_SEMANTIC_PROVISIONAL ||
         candidate->status == KOFUN_SEMANTIC_ERROR ||
         candidate->status == KOFUN_SEMANTIC_UNAVAILABLE;
+    bool valid_visibility =
+        candidate->visibility == KOFUN_STAGE2_INTERFACE_PRIVATE ||
+        candidate->visibility == KOFUN_STAGE2_INTERFACE_INTERNAL ||
+        candidate->visibility == KOFUN_STAGE2_INTERFACE_PUBLIC;
+    return valid_kind && valid_status && valid_visibility;
+}
+
+static bool query_visible_candidate(
+    const KofunStage2DiscoveryCandidate *candidate
+) {
     bool visible = candidate->visibility ==
             KOFUN_STAGE2_INTERFACE_INTERNAL ||
         candidate->visibility == KOFUN_STAGE2_INTERFACE_PUBLIC;
-    return valid_kind && valid_status && visible;
+    return query_readable_candidate(candidate) && visible;
 }
 
 static bool query_source(
@@ -233,6 +248,7 @@ size_t kofun_stage2_discovery_query(
     size_t omission_count = 0u;
     bool truncated = false;
     bool complete = true;
+    bool unreadable = false;
     size_t written;
 
     if (analysis == NULL || request_bytes == NULL || output == NULL) return 0u;
@@ -367,6 +383,16 @@ size_t kofun_stage2_discovery_query(
              */
             record->visible_to_query = query_visible_candidate(candidate);
             record->in_current_file = true;
+            /*
+             * Withholding an unreadable record is the right disclosure
+             * decision and the wrong completeness one. It leaves the same
+             * `hidden-by-visibility` omission a genuinely private
+             * declaration does — deliberately, so the two are
+             * indistinguishable from outside — but a record this build
+             * cannot read is analysis that did not complete, so the answer
+             * must not claim it did.
+             */
+            if (!query_readable_candidate(candidate)) unreadable = true;
         }
         if (snapshot->hidden_candidate_present) {
             KofunDiscoverySymbolRecord *hidden = &records[record_count++];
@@ -404,7 +430,8 @@ size_t kofun_stage2_discovery_query(
             complete = false;
         }
     }
-    if (type.status != KOFUN_DISCOVERY_FACT_VALIDATED || truncated) {
+    if (type.status != KOFUN_DISCOVERY_FACT_VALIDATED || truncated ||
+        unreadable) {
         complete = false;
     }
     for (index = 0u; index < operation_count; index += 1u) {
