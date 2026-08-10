@@ -1,0 +1,26 @@
+# Zero-footprint witness for a loop-local last use (#915). The binding is
+# declared inside the loop body, so each iteration creates a fresh one and the
+# assertion is a genuine last use of that iteration's value — unlike
+# loop_repeat.kofun, where the binding lives outside the loop and a later
+# iteration reads the same value again.
+#
+# Before #1128 lowered `while`, no positive loop case could execute at all, so
+# this shape could only be argued rather than shown. The pair differs by
+# exactly the assertion line.
+
+fn shout(label: Text) -> Int {
+    print(label)
+    return len(label)
+}
+
+fn main() -> Int {
+    let mut count = 0
+    while count < 2 {
+        let banner: Text = "banner"
+        print(shout(banner))
+        compiler.ensure_move(banner)
+        count = count + 1
+    }
+    print(count)
+    return 0
+}
