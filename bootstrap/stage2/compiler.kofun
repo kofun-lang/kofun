@@ -11947,6 +11947,68 @@ fn lower_body(
                 cursor = skip_trivia(source, else_close)
             }
             emitted = emitted + "\n    }\n"
+        } else if statement == "while" {
+            # #1128. Structurally `if` without the else, but the condition
+            # belongs *inside* the emitted loop: `emit_condition_into` returns
+            # a C prelude that computes into the target, so hoisting it above
+            # `for` would evaluate it once and never again.
+            let condition_start = skip_trivia(
+                source,
+                token_end(source, cursor)
+            )
+            let condition_close = condition_end(source, condition_start)
+            if condition_close < 0 {
+                return "error[E2S23]: while condition must be Bool or an Int comparison at byte " +
+                to_text(condition_start)
+            }
+            let body_open = skip_trivia(source, condition_close)
+            if body_open >= len(source) ||
+               token_text(source, body_open) != "{" {
+                return "error[E2S18]: expected `{` after while condition at byte " +
+                to_text(body_open)
+            }
+            let body_close = balanced_end(source, body_open, "{", "}")
+            if body_close < 0 {
+                return "error[E2S18]: missing `}` after while body at byte " +
+                to_text(body_open)
+            }
+            let loop_body = lower_body(
+                source,
+                hir,
+                body_open,
+                is_main,
+                false,
+                function_open
+            )
+            if starts_with(loop_body, "error[") {
+                return loop_body
+            }
+            let condition = emit_condition_into(
+                source,
+                hir,
+                condition_start,
+                condition_close,
+                "kofun_condition",
+                failure_result,
+                "        "
+            )
+            # A rejected condition became the statement's C prelude.
+            if starts_with(condition, "error[") {
+                return condition
+            }
+            # The trap check is what `if` does not need. A condition that traps
+            # leaves `kofun_condition` unusable, and a loop that ignored that
+            # would spin on it instead of failing.
+            emitted = emitted +
+            "    for (;;) {\n" +
+            condition +
+            "        if (kofun_failed) return " + failure_result + ";\n" +
+            "        if (!kofun_condition) {\n" +
+            "            break;\n" +
+            "        }\n" +
+            loop_body +
+            "    }\n"
+            cursor = skip_trivia(source, body_close)
         } else if statement == "match" {
             let match_start = cursor
             let value_start = skip_trivia(

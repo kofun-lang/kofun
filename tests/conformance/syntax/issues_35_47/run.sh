@@ -48,6 +48,34 @@ expect_stage2_unsupported() {
     printf '%s\n' "PASS unsupported: $stem"
 }
 
+# The mirror of the above, for a subject that has crossed into the Core. A
+# feature that stops being refused has to keep being *executed* by something,
+# or its fixture would simply be deleted and the coverage line would quietly
+# shrink.
+expect_stage2_lowers() {
+    source=$1
+    stem=$(basename "${source%.kofun}")
+    set +e
+    "$WORK/kofun-stage2" \
+        "$source" \
+        "$WORK/$stem.c" \
+        "$WORK/$stem.ir" \
+        "$WORK/$stem.tokens" \
+        >"$WORK/$stem.stdout" 2>"$WORK/$stem.stderr"
+    status=$?
+    set -e
+
+    test "$status" -eq 0 ||
+        fail "$stem: Stage 2 returned $status for a Core feature"
+    test -s "$WORK/$stem.c" ||
+        fail "$stem: Stage 2 emitted no C for a Core feature"
+    test ! -s "$WORK/$stem.stderr" ||
+        fail "$stem: Stage 2 wrote an unexpected stderr diagnostic"
+    grep '^error\[E2S' "$WORK/$stem.stdout" >/dev/null &&
+        fail "$stem: Stage 2 reported a diagnostic for a Core feature"
+    printf '%s\n' "PASS lowered: $stem"
+}
+
 expect_stage2_diagnostic() {
     source=$1
     expected=$2
@@ -646,7 +674,11 @@ printf '%s\n' "PASS: one callable notation, its rejected alternatives, and its r
 expect_stage2_unsupported "$CASES/unsupported_owned_binding.kofun"
 expect_stage2_unsupported "$CASES/unsupported_else_if.kofun"
 expect_stage2_unsupported "$CASES/unsupported_for.kofun"
-expect_stage2_unsupported "$CASES/unsupported_while.kofun"
+
+# `while` was refused here until #1128 lowered it. The fixture changed sides
+# rather than being deleted: a subject that reaches the Core still has to be
+# executed by this gate, or nothing here would notice it regressing back out.
+expect_stage2_lowers "$CASES/lowered_while.kofun"
 
 # The block-body lambda, which `spec/syntax/call-arguments-v1.md` states as
 # accepted design and `spec/grammar.ebnf` deliberately does not derive. Pinning
@@ -691,4 +723,4 @@ printf '%s\n' "PASS diagnostic: invalid if condition"
 
 printf '%s\n' \
     "PASS: syntax issues #35-#47 bootstrap capability checkpoint" \
-    "coverage: 13 subjects; 5 partial; 4 Core-implemented; 4 unsupported via 4 fixtures"
+    "coverage: 13 subjects; 5 partial; 5 Core-implemented; 3 unsupported via 3 fixtures"

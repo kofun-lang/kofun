@@ -142,7 +142,9 @@ grep -q 'Tests  2 failed | 1 passed (3 total, 1 suites)' "$WORK/red.out" ||
 # coordinate as outside it.
 OFFSETS_COMPANION="$ROOT/tests/stdlib/kotest/fixtures/offsets.kofun"
 expected_offset=$(LC_ALL=C awk '
-    { if (index($0, "while ") > 0) { print pos + index($0, "while ") - 1; exit } }
+    # Anchored to an indented statement, so prose in the header comment of
+    # the fixture cannot be mistaken for the construct.
+    /^[[:space:]]+for / { print pos + index($0, "for ") - 1; exit }
     { pos += length($0) + 1 }
 ' "$OFFSETS_COMPANION")
 test -n "$expected_offset" ||

@@ -1,8 +1,13 @@
-# Structurally valid Kofun, but loop lowering is outside Stage 2 Core.
+# Structurally valid Kofun, but `for ... in` is outside Stage 2 Core.
+#
+# This fixture holds the E2S10 refusal itself, not any particular statement:
+# it used a `while` loop until #1128 made `while` lower, and moved here rather
+# than being deleted, because what the gate proves is that an unsupported
+# statement is refused before any C is written — not that loops in general are.
 
 fn main() -> Int {
-    while false {
-        return 0
+    for value in [1, 2] {
+        return value
     }
     return 1
 }

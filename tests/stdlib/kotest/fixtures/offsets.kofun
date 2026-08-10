@@ -4,8 +4,11 @@
 # at different distances from their source offsets, so an offset translated by
 # subtracting the prelude length alone is wrong here and right nowhere useful.
 #
-# The gate finds the marker below by searching this file, so the offsets stay
-# correct when this fixture is edited.
+# The construct has to be one Stage 2 Core does not lower. It was a `while`
+# loop until #1128 made those lower; `for ... in` is the current boundary. The
+# gate finds the marker by searching this file rather than hard-coding an
+# offset, so the offsets stay correct when this fixture is edited — but the
+# marker itself has to move with the language.
 
 fn early(x: Int) -> Int {
     return x + 1
@@ -19,8 +22,8 @@ fn main() -> Int {
 }
 
 fn late(x: Int) -> Int {
-    while x > 0 {
-        x = x - 1
+    for step in [1, 2] {
+        return step
     }
     return x
 }

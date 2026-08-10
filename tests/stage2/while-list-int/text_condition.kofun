@@ -1,0 +1,10 @@
+# A `while` condition must be Bool or an Int comparison. A Text condition is
+# refused before any C is written, the same way `if` refuses one.
+
+fn main() -> Int {
+    let name = "kofun"
+    while name {
+        return 1
+    }
+    return 0
+}

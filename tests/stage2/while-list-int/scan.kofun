@@ -1,0 +1,56 @@
+# The other shapes the same lowering admits: a linear scan, an accumulating
+# sum, and a two-pointer walk. All read-only over a borrowed List[Int].
+#
+# Each element is bound before it is compared. Comparing an index expression
+# directly in a condition — `if values[i] == target` — is refused by a
+# pre-existing defect unrelated to loops (it types the whole `i] == target`
+# span as the index), and it reproduces with no loop in sight.
+
+fn index_of(values: List[Int], target: Int) -> Int {
+    let mut i = 0
+    while i < len(values) {
+        let value = values[i]
+        if value == target {
+            return i
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+fn total(values: List[Int]) -> Int {
+    let mut sum = 0
+    let mut i = 0
+    while i < len(values) {
+        sum = sum + values[i]
+        i = i + 1
+    }
+    return sum
+}
+
+fn pair_sum_exists(values: List[Int], target: Int) -> Int {
+    let mut low = 0
+    let mut high = len(values) - 1
+    while low < high {
+        let sum = values[low] + values[high]
+        if sum == target {
+            return 1
+        } else {
+            if sum < target {
+                low = low + 1
+            } else {
+                high = high - 1
+            }
+        }
+    }
+    return 0
+}
+
+fn main() {
+    let data = [2, 4, 6, 8]
+    print(index_of(data, 6))
+    print(index_of(data, 5))
+    print(total(data))
+    print(pair_sum_exists(data, 10))
+    print(pair_sum_exists(data, 11))
+}

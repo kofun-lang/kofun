@@ -46,7 +46,7 @@ export const GROUPS = Object.freeze([
             'trait-dictionary-c11',
             'optional', 'optional-narrowing',
             'optional-construction', 'optional-coalescing', 'optional-pair',
-            'text-results', 'list-int-values', 'list-int-signatures',
+            'text-results', 'list-int-values', 'while-list-int', 'list-int-signatures',
             'adt-exhaustiveness', 'enum-match-value', 'module-constants',
             'decimal', 'decimal-arithmetic',
             'date-time', 'syntax'
