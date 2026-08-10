@@ -18018,143 +18018,197 @@ static char *lower_body(
             returned = true;
             cursor = skip_trivia(source, branch_end);
         } else if (token_equal(source, cursor, "if")) {
-            int64_t statement_start = cursor;
-            int64_t condition_start = skip_trivia(
-                source,
-                token_end(source, cursor)
-            );
-            int64_t condition_close = condition_end(source, condition_start);
-            if (condition_close < 0) {
-                free(emitted.data);
-                return lower_error(
-                    "E2S23",
-                    "if condition must be Bool or an Int comparison",
+            /*
+             * `else if` is two keywords, not a compound one
+             * (spec/syntax/FOUNDATIONS_AND_CONTROL.md), and spec/semantics.md
+             * already states its evaluation rule: a branch that is not taken
+             * evaluates neither its body nor a later `else if` condition.
+             * Emitting each link inside the previous link's `else` is what
+             * makes that true here, because a later condition's C prelude is
+             * then only reached when every earlier condition was false.
+             *
+             * So the chain is emitted iteratively: each `else if` opens one
+             * `else {` that stays open until the chain ends, and the opened
+             * braces are closed together afterwards. chain_depth counts them.
+             */
+            int64_t chain_depth = 0;
+            int64_t chain_open = cursor;
+            bool chaining = true;
+            while (chaining) {
+                chaining = false;
+                int64_t statement_start = chain_open;
+                int64_t condition_start = skip_trivia(
+                    source,
+                    token_end(source, chain_open)
+                );
+                int64_t condition_close = condition_end(
+                    source,
                     condition_start
                 );
-            }
-            int64_t branch_open = skip_trivia(source, condition_close);
-            if (
-                branch_open >= length ||
-                !token_equal(source, branch_open, "{")
-            ) {
-                free(emitted.data);
-                return lower_error(
-                    "E2S18",
-                    "expected `{` after if condition",
-                    branch_open
-                );
-            }
-            int64_t branch_close = balanced_end(
-                source,
-                branch_open,
-                "{",
-                "}"
-            );
-            if (branch_close < 0) {
-                free(emitted.data);
-                return lower_error(
-                    "E2S18",
-                    "missing `}` after if branch",
-                    branch_open
-                );
-            }
-            char *branch_body = lower_body(
-                source,
-                hir,
-                branch_open,
-                is_main,
-                false,
-                function_open
-            );
-            if (strncmp(branch_body, "error[", 6) == 0) {
-                free(emitted.data);
-                return branch_body;
-            }
-            char *condition = emit_condition_into(
-                source,
-                hir,
-                condition_start,
-                condition_close,
-                "kofun_condition",
-                failure_result,
-                "        "
-            );
-            /* A rejected condition became the statement's C prelude. */
-            if (strncmp(condition, "error[", 6) == 0) {
-                free(branch_body);
-                free(emitted.data);
-                return condition;
-            }
-            buffer_format(
-                &emitted,
-                "    {\n"
-                "%s"
-                "        if (kofun_condition) {\n"
-                "%s"
-                "        }",
-                condition,
-                branch_body
-            );
-            free(condition);
-            free(branch_body);
-            int64_t statement_end = token_end(source, branch_close);
-            cursor = skip_trivia(source, branch_close);
-            if (cursor < length && token_equal(source, cursor, "else")) {
-                int64_t else_open = skip_trivia(
-                    source,
-                    token_end(source, cursor)
-                );
+                if (condition_close < 0) {
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S23",
+                        "if condition must be Bool or an Int comparison",
+                        condition_start
+                    );
+                }
+                int64_t branch_open = skip_trivia(source, condition_close);
                 if (
-                    else_open >= length ||
-                    !token_equal(source, else_open, "{")
+                    branch_open >= length ||
+                    !token_equal(source, branch_open, "{")
                 ) {
                     free(emitted.data);
                     return lower_error(
                         "E2S18",
-                        "expected `{` after `else`",
-                        else_open
+                        "expected `{` after if condition",
+                        branch_open
                     );
                 }
-                int64_t else_close = balanced_end(
+                int64_t branch_close = balanced_end(
                     source,
-                    else_open,
+                    branch_open,
                     "{",
                     "}"
                 );
-                if (else_close < 0) {
+                if (branch_close < 0) {
                     free(emitted.data);
                     return lower_error(
                         "E2S18",
-                        "missing `}` after else branch",
-                        else_open
+                        "missing `}` after if branch",
+                        branch_open
                     );
                 }
-                char *else_body = lower_body(
+                char *branch_body = lower_body(
                     source,
                     hir,
-                    else_open,
+                    branch_open,
                     is_main,
                     false,
                     function_open
                 );
-                if (strncmp(else_body, "error[", 6) == 0) {
+                if (strncmp(branch_body, "error[", 6) == 0) {
                     free(emitted.data);
-                    return else_body;
+                    return branch_body;
                 }
-                buffer_format(&emitted, " else {\n%s        }", else_body);
-                free(else_body);
-                statement_end = token_end(source, else_close);
-                cursor = skip_trivia(source, else_close);
+                char *condition = emit_condition_into(
+                    source,
+                    hir,
+                    condition_start,
+                    condition_close,
+                    "kofun_condition",
+                    failure_result,
+                    "        "
+                );
+                /* A rejected condition became the statement's C prelude. */
+                if (strncmp(condition, "error[", 6) == 0) {
+                    free(branch_body);
+                    free(emitted.data);
+                    return condition;
+                }
+                if (chain_depth == 0) {
+                    buffer_append(&emitted, "    {\n");
+                }
+                buffer_format(
+                    &emitted,
+                    "%s"
+                    "        if (kofun_condition) {\n"
+                    "%s"
+                    "        }",
+                    condition,
+                    branch_body
+                );
+                free(condition);
+                free(branch_body);
+                int64_t statement_end = token_end(source, branch_close);
+                cursor = skip_trivia(source, branch_close);
+                if (cursor < length && token_equal(source, cursor, "else")) {
+                    int64_t else_open = skip_trivia(
+                        source,
+                        token_end(source, cursor)
+                    );
+                    if (
+                        else_open < length &&
+                        token_equal(source, else_open, "if")
+                    ) {
+                        /*
+                         * Another link. Its condition is lowered on the next
+                         * pass, inside the `else` opened here.
+                         */
+                        buffer_append(&emitted, " else {\n");
+                        chain_depth = chain_depth + 1;
+                        chain_open = else_open;
+                        chaining = true;
+                    } else {
+                        if (
+                            else_open >= length ||
+                            !token_equal(source, else_open, "{")
+                        ) {
+                            free(emitted.data);
+                            return lower_error(
+                                "E2S18",
+                                "expected `{` after `else`",
+                                else_open
+                            );
+                        }
+                        int64_t else_close = balanced_end(
+                            source,
+                            else_open,
+                            "{",
+                            "}"
+                        );
+                        if (else_close < 0) {
+                            free(emitted.data);
+                            return lower_error(
+                                "E2S18",
+                                "missing `}` after else branch",
+                                else_open
+                            );
+                        }
+                        char *else_body = lower_body(
+                            source,
+                            hir,
+                            else_open,
+                            is_main,
+                            false,
+                            function_open
+                        );
+                        if (strncmp(else_body, "error[", 6) == 0) {
+                            free(emitted.data);
+                            return else_body;
+                        }
+                        buffer_format(
+                            &emitted,
+                            " else {\n%s        }",
+                            else_body
+                        );
+                        free(else_body);
+                        statement_end = token_end(source, else_close);
+                        cursor = skip_trivia(source, else_close);
+                    }
+                }
+                /*
+                 * One event per link, each naming its own condition span. A
+                 * chain is several `if`s, and a reader of the stream that saw
+                 * only the first would not know the later ones ran.
+                 */
+                stage2_semantic_observe(
+                    "control|if|%" PRId64 "|%" PRId64 "|Unit|%" PRId64
+                    "|%" PRId64 "\n",
+                    statement_start,
+                    statement_end,
+                    condition_start,
+                    condition_close
+                );
+            }
+            {
+                int64_t chain_closed = 0;
+                while (chain_closed < chain_depth) {
+                    buffer_append(&emitted, "\n        }");
+                    chain_closed = chain_closed + 1;
+                }
             }
             buffer_append(&emitted, "\n    }\n");
-            stage2_semantic_observe(
-                "control|if|%" PRId64 "|%" PRId64 "|Unit|%" PRId64
-                "|%" PRId64 "\n",
-                statement_start,
-                statement_end,
-                condition_start,
-                condition_close
-            );
         } else if (token_equal(source, cursor, "while")) {
             /*
              * #1128. Structurally `if` without the else, but the condition

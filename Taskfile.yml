@@ -292,6 +292,16 @@ tasks:
     cmds:
       - "sh tests/conformance/text-results/run.sh"
 
+  # #1174. Statement-position `else if` chains. The corpus exists mainly for
+  # one property that a passing program cannot show: a later condition must be
+  # evaluated only when every earlier one was false, so the gate puts a
+  # trapping index in a later condition and requires the trap in exactly one of
+  # two otherwise identical runs.
+  else-if-chain:
+    desc: "Execute else-if chains and prove later conditions are skipped"
+    cmds:
+      - "sh tests/stage2/else-if-chain/run.sh"
+
   # #1128. `while` became a Core statement, so an iterative scan over an
   # indexed List[Int] executes — binary search, linear search, two-pointer
   # walks. The corpus is bounded by a wall clock, because the regression this
@@ -906,6 +916,7 @@ tasks:
             text-results \
             list-int-values \
             while-list-int \
+            else-if-chain \
             list-int-signatures \
             adt-exhaustiveness \
             enum-match-value \

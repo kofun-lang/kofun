@@ -64,8 +64,12 @@ The emitted C11 uses checked arithmetic helpers and preserves Kofun floor
 division/modulo behavior for negative operands. Assignment evaluates and checks
 the replacement value before changing the binding. Conditions evaluate once
 and only the selected branch executes. Value `if` requires one final Int
-expression in each branch; general typed value blocks, `else if`, general Bool
+expression in each branch; general typed value blocks, general Bool
 expressions, and loop forms other than `while` remain outside this Core slice.
+Statement-position `else if` chains lower as of #1174: each link is emitted
+inside the previous link's `else`, which is what makes `spec/semantics.md`'s
+rule true here — a later condition is reached only when every earlier one was
+false. Value-position chains are a different path and still stop earlier.
 `while` lowers as of #1128: the condition is re-evaluated each iteration, which
 is why it is emitted inside the loop rather than hoisted above it, and a
 condition that traps ends the loop instead of spinning in it. `for ... in` is
