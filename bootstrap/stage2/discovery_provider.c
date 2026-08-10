@@ -421,7 +421,9 @@ size_t kofun_discovery_operations_from_symbols(
             !copy_bytes(&record->module_name, operation->origin.module,
                         sizeof(operation->origin.module)) ||
             !copy_bytes(&record->signature, operation->signature,
-                        sizeof(operation->signature))) {
+                        sizeof(operation->signature)) ||
+            !copy_bytes(&record->effect, operation->effects[0].display,
+                        sizeof(operation->effects[0].display))) {
             /* A value too long to represent is not silently clipped: an
              * identity-bearing string that lost bytes is a different name. */
             note_omission(omissions, omission_capacity, &omitted,
@@ -433,6 +435,14 @@ size_t kofun_discovery_operations_from_symbols(
             note_omission(omissions, omission_capacity, &omitted,
                           KOFUN_DISCOVERY_OMISSION_INCOMPLETE_ANALYSIS);
             continue;
+        }
+        if (operation->effects[0].display[0] != '\0') {
+            /* The record disclosed a compiler-validated requirement; the
+             * projection carries it and never invents an identity for it. */
+            operation->effects[0].identity.kind =
+                KOFUN_DISCOVERY_IDENTITY_NONE;
+            operation->effects[0].status = KOFUN_DISCOVERY_FACT_VALIDATED;
+            operation->effect_count = 1u;
         }
 
         operation->has_signature = operation->signature[0] != '\0';

@@ -1036,6 +1036,115 @@ static ProducerType *producer_find_type(Producer *producer, const char *name) {
     return NULL;
 }
 
+/*
+ * Bounded compiler identity owner for builtin and constructed type
+ * references (#637).
+ *
+ * The catalog is closed: the scalar builtins `Int` and `Text`, and the
+ * builtin generic head `List` applied to exactly one scalar builtin
+ * argument.  Identity bytes derive from the language-owned catalog entry
+ * and, for a constructed reference, from the component TypeIds — never from
+ * the file, the module, or the source spelling — so `List[Text]` names one
+ * TypeId in every module, and a rendered display can never be promoted into
+ * an identity this owner did not issue.  This owner is deliberately separate
+ * from the declaration-owned nominal propagation above it in
+ * `producer_collect_scopes_and_bindings`: a current-file ADT keeps the
+ * symbol its declaration committed, and neither mechanism widens the other.
+ */
+static bool producer_builtin_type_id(
+    const char *name,
+    KofunSemanticId *out
+) {
+    if (strcmp(name, "Int") != 0 && strcmp(name, "Text") != 0 &&
+        strcmp(name, "List") != 0) {
+        return false;
+    }
+    producer_hash(
+        "kofun.stage2.builtin-type/v1",
+        (const uint8_t *)name,
+        strlen(name),
+        out
+    );
+    return true;
+}
+
+static void producer_constructed_type_id(
+    const KofunSemanticId *head,
+    const KofunSemanticId *argument,
+    KofunSemanticId *out
+) {
+    uint8_t payload[12u + 2u * KOFUN_SEMANTIC_ID_BYTES];
+    uint8_t *cursor = payload;
+    producer_write_field(
+        &cursor,
+        UINT16_C(0x8001),
+        head->bytes,
+        KOFUN_SEMANTIC_ID_BYTES
+    );
+    producer_write_field(
+        &cursor,
+        UINT16_C(0x8002),
+        argument->bytes,
+        KOFUN_SEMANTIC_ID_BYTES
+    );
+    producer_hash(
+        "kofun.stage2.constructed-type/v1",
+        payload,
+        (size_t)(cursor - payload),
+        out
+    );
+}
+
+static bool producer_bounded_type_reference_id(
+    Producer *producer,
+    const char *type_name,
+    KofunSemanticId *out
+) {
+    const char *open = strchr(type_name, '[');
+    const char *argument;
+    size_t argument_length;
+    char argument_name[PRODUCER_IDENTIFIER_CAPACITY];
+    KofunSemanticId head_id;
+    KofunSemanticId argument_id;
+    if (open == NULL) {
+        /* A bare generic head is not a complete type reference. */
+        return strcmp(type_name, "List") != 0 &&
+            producer_find_type(producer, type_name) == NULL &&
+            producer_builtin_type_id(type_name, out);
+    }
+    argument = open + 1u;
+    argument_length = strlen(argument);
+    if (argument_length < 2u ||
+        argument[argument_length - 1u] != ']' ||
+        argument_length - 1u >= sizeof(argument_name)) {
+        return false;
+    }
+    argument_length -= 1u;
+    if (memchr(argument, '[', argument_length) != NULL ||
+        memchr(argument, ']', argument_length) != NULL ||
+        memchr(argument, ',', argument_length) != NULL) {
+        return false;
+    }
+    memcpy(argument_name, argument, argument_length);
+    argument_name[argument_length] = '\0';
+    /*
+     * A current-file declaration of either component always shadows the
+     * builtin catalog: the declaration owns that identity, and this owner
+     * must not answer for a name it does not define.
+     */
+    if ((size_t)(open - type_name) != strlen("List") ||
+        strncmp(type_name, "List", strlen("List")) != 0 ||
+        strcmp(argument_name, "List") == 0 ||
+        producer_find_type(producer, "List") != NULL ||
+        producer_find_type(producer, argument_name) != NULL ||
+        !producer_builtin_type_id("List", &head_id) ||
+        !producer_builtin_type_id(argument_name, &argument_id)) {
+        return false;
+    }
+    producer_constructed_type_id(&head_id, &argument_id, out);
+    return true;
+}
+
 static bool producer_collect_types(
     Producer *producer,
     const char *program_ir
@@ -1798,33 +1907,52 @@ static bool producer_collect_scopes_and_bindings(Producer *producer) {
             return false;
         }
         nominal_type = producer_find_type(producer, type_name);
-        if (nominal_type != NULL &&
-            nominal_type->kind == KOFUN_STAGE2_INTERFACE_ADT) {
-            ProducerNode *binding_node = producer_find_node_by_id(
-                producer,
-                &binding->node
-            );
-            if (binding_node == NULL) {
-                free(binding_id);
-                free(scope_id);
-                free(name);
-                free(type_name);
-                free(ownership);
-                free(start_text);
-                free(end_text);
-                free(scope_kind);
-                return false;
+        {
+            KofunSemanticId reference_id;
+            bool has_reference_id = false;
+            if (nominal_type != NULL) {
+                if (nominal_type->kind == KOFUN_STAGE2_INTERFACE_ADT) {
+                    /*
+                     * The semantic identity record stays uniquely owned by
+                     * the type declaration. Discovery copies that
+                     * compiler-issued value into its caller-owned snapshot;
+                     * emitting a second identity record for the binding
+                     * would give one stable identity two owners.
+                     */
+                    reference_id = nominal_type->symbol;
+                    has_reference_id = true;
+                }
+            } else if (producer_bounded_type_reference_id(
+                           producer, type_name, &reference_id)) {
+                /*
+                 * Builtin/constructed references have no declaration in this
+                 * file; their identity comes from the bounded catalog owner,
+                 * which a current-file declaration of the same name always
+                 * shadows above.
+                 */
+                has_reference_id = true;
             }
-            /*
-             * The semantic identity record stays uniquely owned by the type
-             * declaration. Discovery copies that compiler-issued value into
-             * its caller-owned snapshot; emitting a second identity record
-             * for the binding would give one stable identity two owners.
-             */
-            binding->has_type_identity = true;
-            binding->type_identity = nominal_type->symbol;
-            binding_node->has_discovery_type_identity = true;
-            binding_node->discovery_type_identity = nominal_type->symbol;
+            if (has_reference_id) {
+                ProducerNode *binding_node = producer_find_node_by_id(
+                    producer,
+                    &binding->node
+                );
+                if (binding_node == NULL) {
+                    free(binding_id);
+                    free(scope_id);
+                    free(name);
+                    free(type_name);
+                    free(ownership);
+                    free(start_text);
+                    free(end_text);
+                    free(scope_kind);
+                    return false;
+                }
+                binding->has_type_identity = true;
+                binding->type_identity = reference_id;
+                binding_node->has_discovery_type_identity = true;
+                binding_node->discovery_type_identity = reference_id;
+            }
         }
         free(binding_id);
         free(scope_id);
@@ -3712,6 +3840,45 @@ static const ProducerIdentity *producer_find_identity(
     return NULL;
 }
 
+static const ProducerBinding *producer_binding_for_node(
+    const Producer *producer,
+    const KofunSemanticId *node_id
+) {
+    size_t index;
+    for (index = 0u; index < producer->binding_count; index += 1u) {
+        if (memcmp(
+                producer->bindings[index].node.bytes,
+                node_id->bytes,
+                KOFUN_SEMANTIC_ID_BYTES) == 0) {
+            return &producer->bindings[index];
+        }
+    }
+    return NULL;
+}
+
+/*
+ * The bounded dependency closure a validated candidate fact needs (#637):
+ * every dependency must be a parameter/local binding whose annotated type
+ * carries a compiler-issued identity — a current-file nominal symbol or a
+ * builtin/constructed TypeId from the bounded owner.  A dependency that is
+ * not a binding, or a binding whose type has no committed identity, leaves
+ * the closure open and the candidate honestly provisional.
+ */
+static bool producer_fact_bindings_identity_closed(
+    const Producer *producer,
+    const ProducerFact *fact
+) {
+    uint16_t index;
+    for (index = 0u; index < fact->value.dependency_count; index += 1u) {
+        const ProducerBinding *binding = producer_binding_for_node(
+            producer,
+            &fact->dependencies[index]
+        );
+        if (binding == NULL || !binding->has_type_identity) return false;
+    }
+    return true;
+}
+
 static bool producer_add_discovery_candidate(
     const Producer *producer,
     KofunStage2DiscoverySnapshot *snapshot,
@@ -3719,6 +3886,7 @@ static bool producer_add_discovery_candidate(
     const KofunSemanticId *symbol_id,
     const char *name,
     const char *signature,
+    const char *effect,
     KofunSemanticStatus status,
     KofunStage2InterfaceVisibility visibility
 ) {
@@ -3727,7 +3895,7 @@ static bool producer_add_discovery_candidate(
     if (snapshot->candidate_count >=
             KOFUN_STAGE2_DISCOVERY_MAX_CANDIDATES ||
         symbol_id == NULL || name == NULL || signature == NULL ||
-        name[0] == '\0') {
+        effect == NULL || name[0] == '\0') {
         return false;
     }
     candidate = &snapshot->candidates[snapshot->candidate_count++];
@@ -3771,6 +3939,15 @@ static bool producer_add_discovery_candidate(
         signature
     );
     if (written < 0 || (size_t)written >= sizeof(candidate->signature)) {
+        return false;
+    }
+    written = snprintf(
+        candidate->effect,
+        sizeof(candidate->effect),
+        "%s",
+        effect
+    );
+    if (written < 0 || (size_t)written >= sizeof(candidate->effect)) {
         return false;
     }
     return true;
@@ -3951,6 +4128,7 @@ static bool producer_build_discovery_snapshot(
             KOFUN_SEMANTIC_FACT_EFFECT
         );
         KofunSemanticStatus status = KOFUN_SEMANTIC_UNAVAILABLE;
+        const char *effect_requirement = "";
         if (function->visibility == KOFUN_STAGE2_INTERFACE_PRIVATE) {
             snapshot->hidden_candidate_present = true;
             continue;
@@ -3958,11 +4136,27 @@ static bool producer_build_discovery_snapshot(
         if (signature != NULL && effect != NULL &&
             signature->value.status == KOFUN_SEMANTIC_VALIDATED &&
             effect->value.status == KOFUN_SEMANTIC_VALIDATED) {
-            status = strcmp(effect->display, "pure") == 0 &&
-                    signature->value.dependency_count == 0u &&
+            /*
+             * A validated candidate needs its whole committed closure: the
+             * signature's parameter bindings must each carry a
+             * compiler-issued type identity, and the effect must be a fact
+             * the current inference commits directly — `pure`, or a direct
+             * `io` root with no callee dependency.  An io requirement is
+             * carried on the candidate rather than blocking validation;
+             * anything less than the full closure stays provisional, and no
+             * rendered signature is disclosed for it.
+             */
+            bool pure = strcmp(effect->display, "pure") == 0;
+            bool io = strcmp(effect->display, "io") == 0;
+            status = (pure || io) &&
+                    producer_fact_bindings_identity_closed(
+                        producer, signature) &&
                     effect->value.dependency_count == 0u ?
                 KOFUN_SEMANTIC_VALIDATED :
                 KOFUN_SEMANTIC_PROVISIONAL;
+            if (status == KOFUN_SEMANTIC_VALIDATED && io) {
+                effect_requirement = effect->display;
+            }
         }
         if (signature == NULL || effect == NULL ||
             !producer_add_discovery_candidate(
@@ -3973,6 +4167,8 @@ static bool producer_build_discovery_snapshot(
                 function->name,
                 status == KOFUN_SEMANTIC_VALIDATED ?
                     signature->display : "",
+                status == KOFUN_SEMANTIC_VALIDATED ?
+                    effect_requirement : "",
                 status,
                 function->visibility)) {
             return false;
@@ -4019,6 +4215,7 @@ static bool producer_build_discovery_snapshot(
                 &constructor->symbol,
                 constructor->name,
                 status == KOFUN_SEMANTIC_VALIDATED ? signature : "",
+                "",
                 status,
                 constructor->visibility)) {
             return false;

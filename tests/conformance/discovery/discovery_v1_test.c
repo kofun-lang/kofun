@@ -181,6 +181,19 @@ static KofunDiscoveryOperationFact fixture_operation(
     return operation;
 }
 
+/* One committed effect requirement, as the live producer reports it: a
+ * validated display carrying no symbol of its own. */
+static void add_effect(KofunDiscoveryOperationFact *operation,
+                       const char *display,
+                       KofunDiscoveryFactStatus status) {
+    KofunDiscoveryEffectRequirement *effect =
+        &operation->effects[operation->effect_count++];
+    memset(effect, 0, sizeof(*effect));
+    effect->identity.kind = KOFUN_DISCOVERY_IDENTITY_NONE;
+    strcpy(effect->display, display);
+    effect->status = status;
+}
+
 static void emit_facts(const char *label, KofunDiscoveryStatus status,
                        KofunDiscoveryReason reason,
                        const KofunDiscoveryTypeFact *type,
@@ -405,6 +418,20 @@ int main(int argc, char **argv) {
                        &provisional, NULL, 0u, NULL, 0u, 0);
         }
 
+        /*
+         * Effects the compiler committed travel with the row. They sort with
+         * identity-bearing requirements first and null identities by display
+         * bytes, so this case is built with the display order reversed: an
+         * emitter that kept production order would put `io` before `clock`.
+         */
+        operations[0] = fixture_operation('7', "length", "(read List[Text]) -> Int",
+                                          KOFUN_DISCOVERY_RECEIVER_READ);
+        add_effect(&operations[0], "io", KOFUN_DISCOVERY_FACT_VALIDATED);
+        add_effect(&operations[0], "clock", KOFUN_DISCOVERY_FACT_VALIDATED);
+        emit_facts("validated-effects", KOFUN_DISCOVERY_STATUS_COMPLETE,
+                   KOFUN_DISCOVERY_REASON_NONE, &type, operations, 1u, NULL, 0u,
+                   0);
+
         /* Extension and trait candidates are omitted without disclosing
          * anything about them. */
         memset(omissions, 0, sizeof(omissions));
@@ -488,6 +515,37 @@ int main(int argc, char **argv) {
                        KOFUN_DISCOVERY_REASON_NONE, &broken, operations, 1u,
                        NULL, 0u, 0);
         }
+
+        /*
+         * A callable row's effect requirements are part of its closure: an
+         * unvalidated requirement means the caller cannot know whether the
+         * call is permitted, so the row may not be presented as callable.
+         */
+        operations[0] = fixture_operation('7', "length", "(read List[Text]) -> Int",
+                                          KOFUN_DISCOVERY_RECEIVER_READ);
+        add_effect(&operations[0], "io", KOFUN_DISCOVERY_FACT_PROVISIONAL);
+        emit_facts("callable-with-provisional-effect",
+                   KOFUN_DISCOVERY_STATUS_COMPLETE,
+                   KOFUN_DISCOVERY_REASON_NONE, &type, operations, 1u, NULL, 0u,
+                   0);
+
+        /* An effect with nothing to display names no requirement at all. */
+        operations[0] = fixture_operation('7', "length", "(read List[Text]) -> Int",
+                                          KOFUN_DISCOVERY_RECEIVER_READ);
+        add_effect(&operations[0], "", KOFUN_DISCOVERY_FACT_VALIDATED);
+        emit_facts("effect-without-display", KOFUN_DISCOVERY_STATUS_COMPLETE,
+                   KOFUN_DISCOVERY_REASON_NONE, &type, operations, 1u, NULL, 0u,
+                   0);
+
+        /* Requirements are a set: a repeated one would let a client read a
+         * count out of an array that carries none. */
+        operations[0] = fixture_operation('7', "length", "(read List[Text]) -> Int",
+                                          KOFUN_DISCOVERY_RECEIVER_READ);
+        add_effect(&operations[0], "io", KOFUN_DISCOVERY_FACT_VALIDATED);
+        add_effect(&operations[0], "io", KOFUN_DISCOVERY_FACT_VALIDATED);
+        emit_facts("duplicate-effect", KOFUN_DISCOVERY_STATUS_COMPLETE,
+                   KOFUN_DISCOVERY_REASON_NONE, &type, operations, 1u, NULL, 0u,
+                   0);
 
         /* `partial` with no facts at all explains nothing. */
         emit_facts("partial-without-facts", KOFUN_DISCOVERY_STATUS_PARTIAL,
