@@ -2743,11 +2743,42 @@ static int64_t record_declaration_start(
     return -1;
 }
 
+static int64_t parameter_list_type_end(
+    const char *source,
+    int64_t type,
+    int64_t limit
+);
+static char *parameter_list_type_text(
+    const char *source,
+    int64_t type,
+    int64_t limit
+);
+
+/*
+ * Where a record field's declared type ends.
+ *
+ * A scalar field type is one token, and every walker over a field list used to
+ * step past that token.  #1183 admits `List[Int]`, which is four, so the step
+ * has to come from the type parser rather than from the identifier.  This
+ * reuses `parameter_list_type_end` instead of restating the `List [ X ]`
+ * shape: two parsers for one syntax is how the two ends of a field list start
+ * disagreeing.
+ */
+static int64_t record_field_type_end(
+    const char *source,
+    int64_t field_type,
+    int64_t limit
+) {
+    int64_t list_end = parameter_list_type_end(source, field_type, limit);
+    return list_end >= 0 ? list_end : token_end(source, field_type);
+}
+
 /*
  * Validate and count one bounded record declaration.  `-2` means a field type
- * outside the Stage 2 Int/Bool/Text slice, `-3` malformed or duplicate fields, and
- * `-4` the per-record 128-field ceiling.  AggregateLayout v1 remains the
- * authority for the corresponding declaration-order C layout.
+ * outside the Stage 2 Int/Bool/Text/List[Int] slice, `-3` malformed or
+ * duplicate fields, and `-4` the per-record 128-field ceiling.
+ * AggregateLayout v1 remains the authority for the corresponding
+ * declaration-order C layout.
  */
 static int64_t record_field_count(
     const char *source,
@@ -2792,8 +2823,24 @@ static int64_t record_field_count(
          * #1181: `Text` is one reference, which spec/aggregate-layout-v1
          * already models as a pointer carrier, so admitting it changes the
          * field's C spelling and nothing about placement.
+         *
+         * #1183: `List[Int]` is several tokens, so the field type ends where
+         * the existing parameter-list type parser says it does rather than at
+         * the identifier.  RFC-0011 admits it as the `bounded_list` kind: 520
+         * bytes stored inline, which is why the emitters below carry size and
+         * alignment separately.
          */
-        if (
+        int64_t list_end = parameter_list_type_end(source, field_type, close);
+        if (list_end >= 0) {
+            char *list_text =
+                parameter_list_type_text(source, field_type, close);
+            bool admitted = strcmp(list_text, "List[Int]") == 0;
+            free(list_text);
+            if (!admitted) {
+                free(covered.data);
+                return -2;
+            }
+        } else if (
             !token_equal(source, field_type, "Int") &&
             !token_equal(source, field_type, "Bool") &&
             !token_equal(source, field_type, "Text")
@@ -2808,7 +2855,7 @@ static int64_t record_field_count(
         }
         int64_t separator = skip_trivia(
             source,
-            token_end(source, field_type)
+            record_field_type_end(source, field_type, close)
         );
         if (separator < close && token_equal(source, separator, ",")) {
             cursor = skip_trivia(source, token_end(source, separator));
@@ -2841,11 +2888,23 @@ static char *record_field_text(
         int64_t colon = skip_trivia(source, token_end(source, cursor));
         int64_t field_type = skip_trivia(source, token_end(source, colon));
         if (index == wanted_index) {
+            /*
+             * #1183: a `List[Int]` field's type is its canonical name, not its
+             * first token.  Callers compare this against carrier names like
+             * `List[Int]`, so returning `List` would make a bounded list field
+             * look like an unknown nominal type.
+             */
+            if (
+                want_type &&
+                parameter_list_type_end(source, field_type, close) >= 0
+            ) {
+                return parameter_list_type_text(source, field_type, close);
+            }
             return token_copy(source, want_type ? field_type : cursor);
         }
         int64_t separator = skip_trivia(
             source,
-            token_end(source, field_type)
+            record_field_type_end(source, field_type, close)
         );
         cursor = token_equal(source, separator, ",")
             ? skip_trivia(source, token_end(source, separator))
@@ -3592,7 +3651,7 @@ static char *parse_program(const char *source) {
                     buffer_format(
                         &error,
                         "error[E2S32]: record `%s` has a field type outside "
-                        "the Stage 2 Int/Bool/Text slice at byte %" PRId64,
+                        "the Stage 2 Int/Bool/Text/List[Int] slice at byte %" PRId64,
                         name,
                         type_start
                     );
@@ -21199,9 +21258,17 @@ static char *emit_record_c_declaration(
                 const char *c_field_type =
                     strcmp(field_type, "Bool") == 0 ? "bool" :
                     strcmp(field_type, "Text") == 0 ? "const char *" :
+                    strcmp(field_type, "List[Int]") == 0
+                        ? "KofunIntListValue" :
                     "int64_t";
+                /*
+                 * #1183 / RFC-0011: the bounded list is stored inline, by
+                 * value.  This is the first field whose size and alignment
+                 * differ, which is why they are separate quantities here.
+                 */
                 int64_t field_size =
-                    strcmp(field_type, "Bool") == 0 ? 1 : 8;
+                    strcmp(field_type, "Bool") == 0 ? 1 :
+                    strcmp(field_type, "List[Int]") == 0 ? 520 : 8;
                 int64_t field_alignment =
                     strcmp(field_type, "Bool") == 0 ? 1 : 8;
                 int64_t offset = record_align_up(
@@ -21247,7 +21314,8 @@ static char *emit_record_c_declaration(
                  * them stopped.
                  */
                 int64_t field_size =
-                    strcmp(field_type, "Bool") == 0 ? 1 : 8;
+                    strcmp(field_type, "Bool") == 0 ? 1 :
+                    strcmp(field_type, "List[Int]") == 0 ? 520 : 8;
                 int64_t field_alignment =
                     strcmp(field_type, "Bool") == 0 ? 1 : 8;
                 int64_t offset = record_align_up(running, field_alignment);

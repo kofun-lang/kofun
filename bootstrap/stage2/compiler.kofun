@@ -1814,6 +1814,21 @@ fn record_declaration_start(source: Text, identity: Text) -> Int {
 
 # `-2` is an unsupported field type, `-3` malformed or duplicate fields, and
 # `-4` the bounded field ceiling. AggregateLayout v1 owns the C layout.
+# Where a record field's declared type ends.
+#
+# A scalar field type is one token, and every walker over a field list used to
+# step past that token. #1183 admits `List[Int]`, which is four, so the step
+# has to come from the type parser rather than from the identifier. This reuses
+# `parameter_list_type_end` instead of restating the `List [ X ]` shape: two
+# parsers for one syntax is how the two ends of a field list start disagreeing.
+fn record_field_type_end(source: Text, field_type: Int, limit: Int) -> Int {
+    let list_end = parameter_list_type_end(source, field_type, limit)
+    if list_end >= 0 {
+        return list_end
+    }
+    return token_end(source, field_type)
+}
+
 fn record_field_count(source: Text, record_type: Text) -> Int {
     let declaration = record_declaration_start(source, record_type)
     if declaration < 0 {
@@ -1849,7 +1864,19 @@ fn record_field_count(source: Text, record_type: Text) -> Int {
         # #1181: `Text` is one reference, which spec/aggregate-layout-v1
         # already models as a pointer carrier, so admitting it changes the
         # field's C spelling and nothing about placement.
-        if token_text(source, field_type) != "Int" &&
+        #
+        # #1183: `List[Int]` is several tokens, so the field type ends where
+        # the existing parameter-list type parser says it does rather than at
+        # the identifier. RFC-0011 admits it as the `bounded_list` kind: 520
+        # bytes stored inline, which is why the emitters below carry size and
+        # alignment separately.
+        let list_end = parameter_list_type_end(source, field_type, close)
+        if list_end >= 0 {
+            if parameter_list_type_text(source, field_type, close) !=
+               "List[Int]" {
+                return -2
+            }
+        } else if token_text(source, field_type) != "Int" &&
            token_text(source, field_type) != "Bool" &&
            token_text(source, field_type) != "Text" {
             return -2
@@ -1860,7 +1887,7 @@ fn record_field_count(source: Text, record_type: Text) -> Int {
         }
         let separator = skip_trivia(
             source,
-            token_end(source, field_type)
+            record_field_type_end(source, field_type, close)
         )
         if separator < close && token_text(source, separator) == "," {
             cursor = skip_trivia(source, token_end(source, separator))
@@ -1900,13 +1927,20 @@ fn record_field_text(
         let field_type = skip_trivia(source, token_end(source, colon))
         if index == wanted_index {
             if want_type {
+                # #1183: a `List[Int]` field's type is its canonical name, not
+                # its first token. Callers compare this against carrier names
+                # like `List[Int]`, so returning `List` would make a bounded
+                # list field look like an unknown nominal type.
+                if parameter_list_type_end(source, field_type, close) >= 0 {
+                    return parameter_list_type_text(source, field_type, close)
+                }
                 return token_text(source, field_type)
             }
             return token_text(source, cursor)
         }
         let separator = skip_trivia(
             source,
-            token_end(source, field_type)
+            record_field_type_end(source, field_type, close)
         )
         if token_text(source, separator) == "," {
             cursor = skip_trivia(source, token_end(source, separator))
@@ -2566,7 +2600,7 @@ fn parse_program(source: Text) -> Text {
                 }
                 if fields == -2 {
                     return "error[E2S32]: record `" + name +
-                    "` has a field type outside the Stage 2 Int/Bool/Text slice at byte " +
+                    "` has a field type outside the Stage 2 Int/Bool/Text/List[Int] slice at byte " +
                     to_text(cursor)
                 }
                 if fields == -4 {
@@ -13829,6 +13863,12 @@ fn emit_record_c_declaration(
             field_alignment = 1
         } else if field_type == "Text" {
             c_field_type = "const char *"
+        } else if field_type == "List[Int]" {
+            # #1183 / RFC-0011: the bounded list is stored inline, by value.
+            # This is the first field whose size and alignment differ, which
+            # is why they are separate quantities here.
+            c_field_type = "KofunIntListValue"
+            field_size = 520
         }
         let offset = record_align_up(extent, field_alignment)
         if field_alignment > record_alignment {
@@ -13865,6 +13905,8 @@ fn emit_record_c_declaration(
         if field_type == "Bool" {
             field_size = 1
             field_alignment = 1
+        } else if field_type == "List[Int]" {
+            field_size = 520
         }
         let offset = record_align_up(running, field_alignment)
         declarations = declarations +
