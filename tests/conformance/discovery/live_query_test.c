@@ -342,13 +342,22 @@ int main(int argc, char **argv) {
         free(source);
         fail("unary Int constructor is not an exact validated candidate");
     }
-    if (scan->status != KOFUN_SEMANTIC_PROVISIONAL ||
-        double_value->status != KOFUN_SEMANTIC_PROVISIONAL ||
-        scan->signature[0] != '\0' || double_value->signature[0] != '\0') {
+    if (scan->status != KOFUN_SEMANTIC_VALIDATED ||
+        strcmp(scan->signature, "List[Text] -> Int") != 0 ||
+        strcmp(scan->effect, "io") != 0) {
         free(first);
         free(second);
         free(source);
-        fail("unrelated incomplete function facts were upgraded");
+        fail("io List[Text] function is not an exact validated candidate");
+    }
+    if (double_value->status != KOFUN_SEMANTIC_VALIDATED ||
+        strcmp(double_value->signature, "Int -> Int") != 0 ||
+        double_value->effect[0] != '\0' ||
+        answer->effect[0] != '\0') {
+        free(first);
+        free(second);
+        free(source);
+        fail("pure builtin-closed function is not an exact validated candidate");
     }
     require_unterminated_refused(
         &analysis,
@@ -419,6 +428,16 @@ int main(int argc, char **argv) {
         second,
         answer->signature,
         sizeof(answer->signature)
+    );
+    require_unterminated_refused(
+        &analysis,
+        source,
+        source_length,
+        request,
+        request_length,
+        second,
+        scan->effect,
+        sizeof(scan->effect)
     );
     saved_visibility = answer->visibility;
     answer->visibility = (KofunStage2InterfaceVisibility)99;

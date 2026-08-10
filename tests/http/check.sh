@@ -18,44 +18,14 @@ for tool in cc ar; do
     fi
 done
 
-RESULTS=benchmarks/http/results.json
-test -f "$RESULTS" || {
-    echo "http integration requires committed benchmark results" >&2
-    exit 1
-}
-assert_grep "RESULTS" \
-    -Fq '"schema": "kofun.http-benchmark/v1"' "$RESULTS"
-assert_grep "RESULTS" -Fq '"sample_count": 5' "$RESULTS"
-assert_num "median_requests_per_second lines in $RESULTS" \
-    "$(grep -c 'median_requests_per_second' "$RESULTS")" -eq 2
-implementation_commit=$(
-    sed -n \
-        's/.*"implementation_commit": "\([0-9a-f][0-9a-f]*\)".*/\1/p' \
-        "$RESULTS"
-)
-assert_num "${#implementation_commit}" "${#implementation_commit}" -eq 40
-
-check_recorded_hash() {
-    key=$1
-    file=$2
-    recorded=$(
-        sed -n \
-            "s/.*\"$key\": \"\\([0-9a-f][0-9a-f]*\\)\".*/\\1/p" \
-            "$RESULTS"
-    )
-    assert_num "length of the recorded $key digest" "${#recorded}" -eq 64
-    actual=$(sha256sum "$file")
-    actual=${actual%% *}
-    test "$recorded" = "$actual" || {
-        echo "http benchmark source hash is stale for $file" >&2
-        exit 1
-    }
-}
-
-check_recorded_hash framework framework/http/src/kofun_http.c
-check_recorded_hash kofun_sample examples/api_server.kofun
-check_recorded_hash load_client benchmarks/http/load_client.c
-check_recorded_hash minimal_server benchmarks/http/minimal_server.c
+# This gate used to also assert that benchmarks/http/results.json was
+# coherent, and to hash-pin four sources against the digests recorded in it.
+# Both left with the benchmark corpus in #1139: the pin existed to prove the
+# recorded numbers were measured on those exact bytes, so with the numbers
+# recorded in kofun-lang/kofun-benchmarks there is nothing here for it to keep
+# honest. What remains is the part that was always the integration test —
+# building a real server from Kofun source, serving it, and refusing an
+# invalid route configuration.
 
 mkdir -p build
 ./framework/http/build.sh examples/api_server.kofun build/http-api-test
@@ -80,5 +50,5 @@ assert_file_empty "build/http-invalid-route.stderr" \
     build/http-invalid-route.stderr
 
 printf '%s\n' \
-    "http integration: rejected invalid Kofun route configuration" \
-    "http integration: benchmark artifact records five real samples per server"
+    "http integration: served a real HTTP server built from Kofun source" \
+    "http integration: rejected invalid Kofun route configuration"

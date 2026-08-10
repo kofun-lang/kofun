@@ -112,6 +112,12 @@ typedef struct {
      * null signature means the fact was missing, and that clients must not
      * reconstruct it. */
     KofunSemanticBytes signature;
+    /* The validated effect requirement the compiler committed for this
+     * candidate, as its canonical display (currently `io`).  Empty when the
+     * candidate has none or none was safely disclosable; the projection
+     * carries it as a validated `EffectRequirement` with a null identity and
+     * never infers one from any other field. */
+    KofunSemanticBytes effect;
     KofunSemanticStatus status;
     KofunDiscoveryReceiverMode receiver_mode;
     KofunDiscoveryVisibility visibility;

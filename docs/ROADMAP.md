@@ -225,15 +225,15 @@ rather than trusting its verdict; that is what the command is for.
 | adoption guide | absent | `docs/GETTING_STARTED.md` onboards contributors to the compiler, not teams adopting the language. Blocked behind the `general-parser-type-checker` claim, whose state is `open` | `grep -rniF "adoption guide" docs/ *.md` → 1 hit, this list |
 | compatibility and edition process | partial | the compatibility half exists as two per-decision ledgers — `rfcs/index.json` with a typed four-value category and 20 of 32 rows carrying a corpus query, and `release/claims.json` with free-text prose and no enum. The edition half is **entirely unbuilt**: a reserved KIF tag, an `unspecified` package-id field, no syntax, no flag, no tool, no policy | `git grep -c -- "--edition" -- bin tooling package` → no matches |
 | audited proof kernel | absent | no kernel. `docs/LAW_SYSTEM.md` opens by stating the active compiler does not parse, type-check, evaluate, or emit evidence for its design. The `proven` assurance level is defined as unreachable by any current path; the one live artifact is `bounded-exhaustive`. Its M2 prerequisites — proof kernel and certificate format — are not started | `grep -oE "proven-finite" release/claims.json \| wc -l` → 0 |
-| audited bootstrap chain | partial | All 13 gates in `bootstrap/manifest.json` read `working` — diverse double compilation closed with [#1137](https://github.com/kofun-lang/kofun/issues/1137) — and since [#1108](https://github.com/kofun-lang/kofun/issues/1108) every one of them is joined to a published claim, so a gate cannot flip without its claim moving. What no gate supplies is the audit: no record exists of who reviewed the 31,808 lines of seed C, when, or against what. [#1138](https://github.com/kofun-lang/kofun/issues/1138) removed the word from the documents that claimed it, and `task audited-claim` refuses it there while this row stays open | `git ls-files \| grep -i audit` → no matches |
+| audited bootstrap chain | partial | All 13 gates in `bootstrap/manifest.json` read `working` — diverse double compilation closed with [#1137](https://github.com/kofun-lang/kofun/issues/1137) — and since [#1108](https://github.com/kofun-lang/kofun/issues/1108) every one of them is joined to a published claim, so a gate cannot flip without its claim moving. What no gate supplies is the audit: no record exists of who reviewed the 31,808 lines of seed C, when, or against what. [#1138](https://github.com/kofun-lang/kofun/issues/1138) removed the word from the documents that claimed it, and `task audited-claim` refuses it there while this row stays open | `test -f bootstrap/AUDIT.md` → absent |
 
 ### Exit criteria
 
 | Exit criterion | Verdict | Measured | Command |
 | --- | --- | --- | --- |
-| external security audit | absent | no audit report exists for anything in the repository | `git ls-files \| grep -i audit` → no matches |
+| external security audit | absent | no audit report exists for anything in the repository | `git ls-files '*AUDIT*'` → no matches |
 | sustained fuzzing without unresolved critical findings | partial | roughly 688 generated programs per commit across 10 gates in `task fuzz` and 2 more under sibling tasks, every one from a hardcoded seed, so ten thousand CI runs explore exactly the inputs one run does. No scheduled lane, no corpus that grows, no coverage instrumentation. The second half is not merely unmet but **unmeasurable**: no findings register exists, so nothing records what was found or triaged | `grep -rniE "schedule:\|cron" .github/workflows/` → no matches |
-| performance regression gates | partial | one gate runs in CI, and it asserts **fixed absolute ceilings** rather than a baseline, so a hover that slows from 4 ms to 40 ms passes. A real 5%-regression gate exists in `benchmarks/native-functions/benchmark.sh` and is referenced by no task and no workflow | `grep -n "benchmarks/" Taskfile.yml` → no matches |
+| performance regression gates | absent | one gate runs in CI, and it asserts **fixed absolute ceilings** rather than a baseline, so a hover that slows from 4 ms to 40 ms passes. The real 5%-regression gate left this repository with the benchmark corpus in [#1139](https://github.com/kofun-lang/kofun/issues/1139) and is now owned by [`kofun-lang/kofun-benchmarks`](https://github.com/kofun-lang/kofun-benchmarks), where nothing schedules it yet. This milestone cannot close on a gate this repository does not run | `git ls-files benchmarks \| wc -l` → 0 |
 | independent production use | absent | no adopter is recorded anywhere | `git grep -ril "adopter\|production use" -- '*.md'` → this list only |
 | governance and funding model | absent | no document. An RFC process and a security reporting process exist as components; neither is a governance model | `grep -rniF "governance" docs/ *.md .github/` → 1 hit, this list |
 | fixed-point self-hosting artifacts reproduced by independent builders | open | B6, [#274](https://github.com/kofun-lang/kofun/issues/274). The producer-owned half landed as #1114; reproduction by a builder that did not produce the evidence has not happened | `task selfhost-declared-inputs` passes; nothing measures the consumer half |
@@ -244,11 +244,14 @@ Three things, none of which is visible from the list alone.
 
 **Nothing here is overstated, and one thing is understated.** Every gap above
 is already disclaimed by the document that owns it — `RELEASING.md` on
-binaries, `tests/fuzz/README.md` on coverage, `benchmarks/README.md` on
-performance claims, `LAW_SYSTEM.md` on the kernel. The exception runs the
-other way: `benchmarks/native-functions/benchmark.sh` implements a complete
-regression gate, with a 5% ceiling and per-workload improvement budgets, that
-nothing invokes. That is the cheapest item on this page.
+binaries, `tests/fuzz/README.md` on coverage, `LAW_SYSTEM.md` on the kernel.
+The exception ran the other way: `benchmarks/native-functions/benchmark.sh`
+implemented a complete regression gate, with a 5% ceiling and per-workload
+improvement budgets, that nothing invoked. #1139 decided that against wiring
+it in — the corpus moved to `kofun-lang/kofun-benchmarks`, because a
+machine-dependent measurement does not belong in a tree whose `task verify`
+must reproduce anywhere. So it is no longer the cheapest item on this page;
+it is an item this repository no longer owns.
 
 **Four items are not late, they are blocked behind earlier milestones.**
 macOS is an M2 exit criterion and Windows an M3 deliverable, so

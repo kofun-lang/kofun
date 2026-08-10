@@ -6,5 +6,8 @@ callable-without-signature: refused
 provisional-but-callable: refused
 duplicate-symbol: refused
 validated-type-without-identity: refused
+callable-with-provisional-effect: refused
+effect-without-display: refused
+duplicate-effect: refused
 partial-without-facts: refused
 stale-is-not-factbearing: refused

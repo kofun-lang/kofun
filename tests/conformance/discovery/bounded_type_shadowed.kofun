@@ -1,0 +1,10 @@
+pub type Choice =
+    | Alpha
+    | Beta
+
+pub fn width(read values: List[Choice]) -> Int {
+    for value in values {
+        print(value)
+    }
+    return 0
+}
