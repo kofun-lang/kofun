@@ -46,13 +46,6 @@ if printf '%s\n' "$scope_hir" |
     fail 'an external label became a lexical body binding'
 fi
 
-optional=$(
-    "$temporary/observer" "$cases/reordered_optional.kofun" diagnostic
-)
-printf '%s\n' "$optional" |
-    grep -F 'error[E2S158]: labelled-call ABI lowering is owned by #882' \
-        >/dev/null ||
-    fail 'a reordered Int? argument did not pass fixed-slot checking'
 mismatch=$(
     "$temporary/observer" \
         "$cases/reordered_optional_mismatch.kofun" diagnostic
@@ -175,6 +168,44 @@ tr -d '\n' <"$temporary/source_order_carriers.c" |
 no_runtime_dispatch "$temporary/source_order_carriers.c" \
     'as_label|as_values|as_count' 'mixed-carrier C'
 
+# #1189 completes the bounded carrier matrix. Optional[Int], concrete enum,
+# and nominal record values each reserve their actual C carrier; the written
+# order 3, 2, 0, 1 is sequenced once before the declaration-order ABI vector.
+executes_case reordered_optional 'reordered Optional[Int] labelled call'
+executes_case source_order_wide 'Optional/enum/record labelled call'
+wide_key=$(call_site_key "$temporary/source_order_wide.c")
+test -n "$wide_key" ||
+    fail 'wide-carrier call reserved no keyed temporary'
+grep -F "KofunOptionalInt kofun_call_arg_${wide_key}_0 = KOFUN_OPTIONAL_INT_NONE;" \
+    "$temporary/source_order_wide.c" >/dev/null ||
+    fail 'the Optional[Int] slot did not reserve its aggregate carrier'
+grep -F "KofunEnumValue kofun_call_arg_${wide_key}_1 = KOFUN_ENUM_ZERO;" \
+    "$temporary/source_order_wide.c" >/dev/null ||
+    fail 'the enum slot did not reserve KofunEnumValue'
+grep -F "KofunRecord_Ticket kofun_call_arg_${wide_key}_2 = ((KofunRecord_Ticket){0});" \
+    "$temporary/source_order_wide.c" >/dev/null ||
+    fail 'the nominal record slot did not reserve its record carrier'
+grep -F "int64_t kofun_call_arg_${wide_key}_3 = INT64_C(0);" \
+    "$temporary/source_order_wide.c" >/dev/null ||
+    fail 'the Int companion slot changed carrier'
+tr -d '\n' <"$temporary/source_order_wide.c" |
+    grep -E "kofun_call_arg_${wide_key}_3 = .*kofun_call_arg_${wide_key}_2 = .*kofun_call_arg_${wide_key}_0 = .*kofun_call_arg_${wide_key}_1 = .*kofun_fn_inspect\(kofun_call_arg_${wide_key}_0, kofun_call_arg_${wide_key}_1, kofun_call_arg_${wide_key}_2, kofun_call_arg_${wide_key}_3\)" \
+    >/dev/null ||
+    fail 'wide-carrier C did not sequence source order before ABI order'
+no_runtime_dispatch "$temporary/source_order_wide.c" \
+    'as_number|as_ticket|as_optional|as_reply' 'wide-carrier C'
+
+# A bare binding placed in a `take` parameter slot is one semantic move even
+# though C implements the fixed slot as an ordinary assignment. Reusing it in
+# a second call must reach the existing registered E2S123 producer.
+executes_case owned_carrier 'ownership-bearing labelled call'
+owned_key=$(call_site_key "$temporary/owned_carrier.c")
+test -n "$owned_key" ||
+    fail 'ownership-bearing call reserved no keyed temporary'
+test "$(grep -c "kofun_call_arg_${owned_key}_0 = k_b" \
+    "$temporary/owned_carrier.c")" -eq 1 ||
+    fail 'ownership-bearing value did not move into its slot exactly once'
+
 # Wider carriers and lexical callable bindings remain explicit unsupported
 # lowering. They may retain parsed IR/tokens, but must not commit C. The
 # shadow case is particularly important: spelling alone must never redirect a
@@ -203,9 +234,9 @@ unsupported_case() {
         fail "$label committed C"
 }
 
-unsupported_case "$cases/reordered_optional.kofun" \
-    'error[E2S158]: labelled-call ABI lowering is owned by #882; fixed-slot checked HIR is available at byte 138' \
-    'unsupported labelled carrier'
+unsupported_case "$cases/double_move_carrier.kofun" \
+    "$(cat "$cases/double_move_carrier.diagnostic")" \
+    'double move through a take-labelled slot'
 unsupported_case "$cases/shadowed_callable.kofun" \
     'error[E2S158]: labelled-call ABI lowering is owned by #882; fixed-slot checked HIR is available at byte 212' \
     'shadowed callable parameter'
@@ -214,4 +245,4 @@ unsupported_case "$cases/lifted_lambda_call.kofun" \
     'labelled call inside a lifted lambda'
 
 printf '%s\n' \
-    'PASS: labelled calls bind fixed HIR slots and the Int/Text/List[Int] C11 slice evaluates once in source order into per-carrier temporaries; #882 retains Optional/enum/record carriers, lambda bodies, and other backends'
+    'PASS: labelled calls bind fixed HIR slots and the Int/Text/List[Int]/Optional/enum/record C11 slice evaluates once in source order; take slots move once and refuse double transfer as E2S123; #882 retains pipeline/trailing/lambda-body forms and other backends'

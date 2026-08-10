@@ -1,13 +1,14 @@
 # Call arguments v1
 
 Status: accepted design contract for issue #625, partly executable. The
-compiler accepts and lowers **direct top-level labelled calls whose parameters
-and result are `Int`, `Text`, or `List[Int]` in any mix**. Every other shape on
-this page — Optional/enum/record carriers, ownership-bearing values, pipeline
-subjects, the trailing-lambda form, labelled calls inside lifted lambdas, and
-the direct-native/Wasm backends — is still refused by name as `E2S158` in
-`bootstrap/stage2/compiler.c` and `bootstrap/stage2/compiler.kofun`, and is
-owned by #882.
+compiler accepts and lowers **direct top-level labelled calls whose fixed
+parameter and result slots use `Int`, `Text`, `List[Int]`, `Int?`, a concrete
+enum, or a nominal record carrier**. A bare binding passed to a parameter
+declared `take` is invalidated in source order and a later transfer is refused
+as `E2S123`. Every other shape on this page — pipeline subjects, the
+trailing-lambda form, labelled calls inside lifted lambdas, indirect/lexical
+callees, and the direct-native/Wasm backends — remains at the explicit
+`E2S158` boundary owned by #882.
 
 The layers landed in order:
 
@@ -19,10 +20,12 @@ The layers landed in order:
   name never bound.
 - **#881** — front end. Labels bind to fixed declaration slots in HIR, with
   checking, callable identity, and the KIF digest.
-- **#1097, #1107** — backend. The Stage 2 C11 emitter assigns each written
+- **#1097, #1107, #1189** — backend. The Stage 2 C11 emitter assigns each written
   argument to a function-local temporary of its own carrier type, in source
   order through the comma operator, then calls the declaration-order ABI
-  vector. `task call-arguments` is the executable gate.
+  vector. #1189 adds `Int?`, concrete enum, and nominal record carriers and
+  preserves a `take` slot as one semantic transfer. `task call-arguments` is
+  the executable gate.
 
 The words MUST, MUST NOT, SHOULD, SHOULD NOT, and MAY are normative.
 
@@ -199,6 +202,12 @@ fn write(take into file: File, bytes data: Bytes) -> Result[Unit, IoError]
 `file` is its internal name. Binding labels never weakens `read`, `edit`, or
 `take`. The ownership and effect check is performed on the already-bound
 declaration-order arguments, while diagnostics retain source-order spans.
+The current executable ownership increment is deliberately smaller than that
+full rule: it recognizes a bare resolved binding in a direct top-level
+labelled argument bound to a `take` slot, invalidates it at that source
+position, and reports the existing `E2S123` on a later transfer. It does not
+infer moves from compound expressions or implement alias, branch, loop,
+lifetime, destructor, or cleanup analysis.
 
 Lowering MUST use ordinary temporaries and fixed parameter slots. It MUST NOT
 allocate a dictionary, construct a label table at runtime, pass labels through
@@ -245,16 +254,18 @@ The decision deliberately separates follow-up work:
 2. #881: HIR/type checking, binding diagnostics, callable identity, and KIF
    digest — landed, gated by `task call-arguments-spec`;
 3. #882: pipeline/trailing lowering plus C11/direct-native differential
-   evidence — its first two children landed (#1097 all-`Int`, #1107 widened to
-   `Text`/`List[Int]`), gated by `task call-arguments`; the remaining shapes
+   evidence — its carrier children landed (#1097 all-`Int`, #1107 widened to
+   `Text`/`List[Int]`, and #1189 widened to `Int?`, concrete enum, nominal
+   record, and a bounded `take` transfer), gated by `task call-arguments`;
+   pipeline attachment, trailing/lambda-body lowering, and non-C11 backends
    stay open.
 
 Each child lifts this document's unsupported-current-compiler boundary exactly
 as far as its own executable gate reaches, and no further. #880 lifted none of
 it: the parser it added deliberately stops short of binding. What that change
 bought was a refusal that names the form, so `E2S158` is what a reader finds
-where the misparse used to be — and it is still what the shapes #882 retains
-produce today.
+where the misparse used to be — and it is still what the unresolved shapes
+#882 retains produce today.
 
 The one place the surface parser touches a signature is trailing-lambda
 attachment, because this document requires it to: the callee's resolved

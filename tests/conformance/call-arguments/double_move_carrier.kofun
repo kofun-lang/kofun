@@ -1,0 +1,16 @@
+type Ticket = {
+    value: Int,
+}
+
+fn consume(take into ticket: Ticket) -> Int {
+    let value = ticket.value
+    take ticket
+    return value
+}
+
+fn main() -> Int {
+    let ticket: Ticket = Ticket(value: 42)
+    print(consume(into: ticket))
+    print(consume(into: ticket))
+    return 0
+}

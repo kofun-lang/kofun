@@ -3336,6 +3336,11 @@ static char *function_parameter_type(
     const char *wanted,
     int64_t index
 );
+static char *function_parameter_mode(
+    const char *source,
+    const char *wanted,
+    int64_t index
+);
 static int64_t function_start_named(const char *source, const char *wanted);
 static bool source_tokens_equal(
     const char *source,
@@ -5572,18 +5577,21 @@ static bool call_has_labelled_argument(const char *source, int64_t open) {
 }
 
 /*
- * Expected type of the call argument beginning exactly at `target`.
+ * Expected type or ownership mode of the call argument beginning exactly at
+ * `target`.
  *
  * The older `call_argument_position` predicate is intentionally cheap and
  * handles single-token function values.  Enum constructors are calls
  * themselves (`Ready(8)`), so their first token is not followed by `,` or `)`.
  * This bounded walk finds the enclosing named call and returns its declared
  * parameter type without confusing the constructor's own parentheses for the
- * outer call.
+ * outer call. One slot lookup serves both properties so labelled binding
+ * cannot disagree between lowering and semantic `take` validation.
  */
-static char *call_argument_expected_type(
+static char *call_argument_parameter_property(
     const char *source,
-    int64_t target
+    int64_t target,
+    bool ownership
 ) {
     int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, 0);
@@ -5704,11 +5712,17 @@ static char *call_argument_expected_type(
                                     ++slot;
                                 }
                             }
-                            char *type = function_parameter_type(
-                                source,
-                                callee,
-                                slot
-                            );
+                            char *type = ownership
+                                ? function_parameter_mode(
+                                    source,
+                                    callee,
+                                    slot
+                                )
+                                : function_parameter_type(
+                                    source,
+                                    callee,
+                                    slot
+                                );
                             free(callee);
                             return type;
                         }
@@ -5734,6 +5748,20 @@ static char *call_argument_expected_type(
         cursor = skip_trivia(source, token_end(source, cursor));
     }
     return owned_text("");
+}
+
+static char *call_argument_expected_type(
+    const char *source,
+    int64_t target
+) {
+    return call_argument_parameter_property(source, target, false);
+}
+
+static char *call_argument_expected_mode(
+    const char *source,
+    int64_t target
+) {
+    return call_argument_parameter_property(source, target, true);
 }
 
 /*
@@ -6721,6 +6749,11 @@ static char *emit_argument(
         callee,
         argument_index
     );
+    if (strcmp(expected_type, "Int?") == 0) {
+        char *value = optional_int_value(source, hir, cursor, end);
+        free(expected_type);
+        return value;
+    }
     if (enum_constructor_count(source, expected_type) >= 0) {
         char *value = emit_enum_value(
             source,
@@ -6861,37 +6894,83 @@ static char *emit_argument(
  * labelled (#1097/#1107) and direct List[Int] (#1103) slot paths, so a
  * widened carrier cannot become executable in one and silently stay unknown
  * in the other. */
-static bool call_slot_carried(const char *carrier) {
+static bool call_slot_carried(
+    const char *source,
+    const char *carrier
+) {
     return strcmp(carrier, "Int") == 0 ||
         strcmp(carrier, "Text") == 0 ||
-        strcmp(carrier, "List[Int]") == 0;
+        strcmp(carrier, "List[Int]") == 0 ||
+        strcmp(carrier, "Int?") == 0 ||
+        enum_constructor_count(source, carrier) >= 0 ||
+        record_declaration_start(source, carrier) >= 0;
 }
 
 /* Everything before the slot's name in its C declaration, so pointer spacing
  * is decided here instead of at each emitter: a pointer carrier already ends
  * in `*`, which is how the rest of the emitted surface spells
  * `const char *name`. */
-static const char *call_slot_declaration_prefix(const char *carrier) {
-    if (strcmp(carrier, "Text") == 0) return "const char *";
-    if (strcmp(carrier, "List[Int]") == 0) return "KofunIntListValue ";
-    return "int64_t ";
+static char *call_slot_declaration_prefix(
+    const char *source,
+    const char *carrier
+) {
+    if (strcmp(carrier, "Text") == 0) return owned_text("const char *");
+    if (strcmp(carrier, "List[Int]") == 0) {
+        return owned_text("KofunIntListValue ");
+    }
+    if (strcmp(carrier, "Int?") == 0) {
+        return owned_text("KofunOptionalInt ");
+    }
+    if (enum_constructor_count(source, carrier) >= 0) {
+        return owned_text("KofunEnumValue ");
+    }
+    if (record_declaration_start(source, carrier) >= 0) {
+        char *c_type = record_c_type_name(carrier);
+        Buffer prefix;
+        buffer_init(&prefix);
+        buffer_format(&prefix, "%s ", c_type);
+        free(c_type);
+        return prefix.data;
+    }
+    return owned_text("int64_t ");
 }
 
 /* The declared zero for that carrier. A slot is assigned before the call in
  * every path that declares it, so this only has to be a valid value of the
  * type, never a null the emitted C could dereference. */
-static const char *call_slot_zero(const char *carrier) {
-    if (strcmp(carrier, "Text") == 0) return "\"\"";
-    if (strcmp(carrier, "List[Int]") == 0) return "KOFUN_LIST_INT_ZERO";
-    return "INT64_C(0)";
+static char *call_slot_zero(
+    const char *source,
+    const char *carrier
+) {
+    if (strcmp(carrier, "Text") == 0) return owned_text("\"\"");
+    if (strcmp(carrier, "List[Int]") == 0) {
+        return owned_text("KOFUN_LIST_INT_ZERO");
+    }
+    if (strcmp(carrier, "Int?") == 0) {
+        return owned_text("KOFUN_OPTIONAL_INT_NONE");
+    }
+    if (enum_constructor_count(source, carrier) >= 0) {
+        return owned_text("KOFUN_ENUM_ZERO");
+    }
+    if (record_declaration_start(source, carrier) >= 0) {
+        char *c_type = record_c_type_name(carrier);
+        Buffer zero;
+        buffer_init(&zero);
+        buffer_format(&zero, "((%s){0})", c_type);
+        free(c_type);
+        return zero.data;
+    }
+    return owned_text("INT64_C(0)");
 }
 
 /* #1097 lowered the first executable labelled-call profile — a direct
  * top-level function whose parameters and result are all Int — and #1107
  * widened its carriers to Text and List[Int], the two the positional path
- * already executes. The fixed-slot binding pass has already rejected
- * unknown/duplicate/missing labels; this predicate keeps every wider carrier
- * and backend shape at the explicit E2S158 boundary owned by #882. */
+ * already executes. #1189 adds Int?, concrete enums, nominal records, and
+ * source-order invalidation for a bare binding placed in a take slot. The
+ * fixed-slot binding pass has already rejected unknown/duplicate/missing
+ * labels; this predicate keeps the remaining call and backend shapes at the
+ * explicit E2S158 boundary owned by #882. */
 static bool labelled_call_supported(
     const char *source,
     const char *hir,
@@ -6920,14 +6999,14 @@ static bool labelled_call_supported(
     }
     int64_t declaration = function_start_named(source, callee);
     char *result = function_return_type(source, callee);
-    bool carries_result = call_slot_carried(result);
+    bool carries_result = call_slot_carried(source, result);
     free(result);
     if (declaration < 0 || !carries_result) return false;
     int64_t count = parameter_count(source, declaration);
     if (count < 1 || count > 8) return false;
     for (int64_t index = 0; index < count; ++index) {
         char *type = function_parameter_type(source, callee, index);
-        bool carried = call_slot_carried(type);
+        bool carried = call_slot_carried(source, type);
         free(type);
         if (!carried) return false;
     }
@@ -6976,14 +7055,16 @@ static int64_t labelled_argument_slot(
             close
         );
         int64_t type_end = callable_type_end(source, type_start);
+        int64_t optional_end = optional_int_type_end(source, type_start);
         int64_t list_end = parameter_list_type_end(
             source,
             type_start,
             close
         );
         if (type_end < 0) {
-            type_end = list_end >= 0
-                ? list_end : annotation_type_end(source, type_start);
+            type_end = optional_end >= 0 ? optional_end :
+                (list_end >= 0
+                    ? list_end : annotation_type_end(source, type_start));
         }
         int64_t separator = skip_trivia(source, type_end);
         parameter = separator < close && token_equal(source, separator, ",")
@@ -7125,15 +7206,22 @@ static char *emit_labelled_call_temporaries(
                             callee,
                             slot
                         );
+                        char *prefix = call_slot_declaration_prefix(
+                            source,
+                            carrier
+                        );
+                        char *zero = call_slot_zero(source, carrier);
                         buffer_format(
                             &output,
                             "    %skofun_call_arg_%" PRId64
                             "_%" PRId64 " = %s;\n",
-                            call_slot_declaration_prefix(carrier),
+                            prefix,
                             cursor,
                             slot,
-                            call_slot_zero(carrier)
+                            zero
                         );
+                        free(zero);
+                        free(prefix);
                         free(carrier);
                     }
                 }
@@ -7294,15 +7382,22 @@ static char *emit_direct_list_int_call_temporaries(
                             callee,
                             slot
                         );
+                        char *prefix = call_slot_declaration_prefix(
+                            source,
+                            carrier
+                        );
+                        char *zero = call_slot_zero(source, carrier);
                         buffer_format(
                             &output,
                             "    %skofun_list_call_arg_%" PRId64
                             "_%" PRId64 " = %s;\n",
-                            call_slot_declaration_prefix(carrier),
+                            prefix,
                             cursor,
                             slot,
-                            call_slot_zero(carrier)
+                            zero
                         );
+                        free(zero);
+                        free(prefix);
                         free(carrier);
                     }
                 }
@@ -9910,11 +10005,19 @@ static bool optional_int_binding(
     if (close < 0) return false;
     int64_t parameter = skip_trivia(source, token_end(source, open));
     while (parameter < close && !token_equal(source, parameter, ")")) {
-        int64_t colon = skip_trivia(source, token_end(source, parameter));
-        if (colon >= close || !token_equal(source, colon, ":")) break;
-        int64_t type_start = skip_trivia(source, token_end(source, colon));
+        int64_t internal = parameter_internal_start(
+            source,
+            parameter,
+            close
+        );
+        int64_t type_start = parameter_type_start(
+            source,
+            parameter,
+            close
+        );
+        if (internal < 0 || type_start < 0) break;
         int64_t type_end = optional_int_type_end(source, type_start);
-        if (type_end >= 0 && token_equal(source, parameter, name)) return true;
+        if (type_end >= 0 && token_equal(source, internal, name)) return true;
         if (type_end < 0) type_end = token_end(source, type_start);
         int64_t separator = skip_trivia(source, type_end);
         if (separator >= close || !token_equal(source, separator, ",")) break;
@@ -13357,6 +13460,67 @@ static char *function_parameter_type(
             return function_parameter_type_at(source, cursor, index);
         }
         cursor = next_function_start(source, function_end(source, cursor));
+    }
+    return owned_text("");
+}
+
+/* Declared ownership mode of one named function parameter. An omitted mode
+ * is the ordinary copy mode; `take` remains semantic even when the current C
+ * carrier is copied into a fixed slot. */
+static char *function_parameter_mode(
+    const char *source,
+    const char *wanted,
+    int64_t wanted_index
+) {
+    int64_t declaration = function_start_named(source, wanted);
+    if (declaration < 0) return owned_text("");
+    int64_t parameters = parameter_open(source, declaration);
+    if (parameters < 0) return owned_text("");
+    int64_t parameters_end = balanced_end(
+        source,
+        parameters,
+        "(",
+        ")"
+    );
+    if (parameters_end < 0) return owned_text("");
+    int64_t parameter = skip_trivia(
+        source,
+        token_end(source, parameters)
+    );
+    int64_t index = 0;
+    while (
+        parameter < parameters_end &&
+        !token_equal(source, parameter, ")")
+    ) {
+        if (index == wanted_index) {
+            return ownership_mode_token(source, parameter)
+                ? token_copy(source, parameter)
+                : owned_text("copy");
+        }
+        int64_t type_start = parameter_type_start(
+            source,
+            parameter,
+            parameters_end
+        );
+        if (type_start < 0) return owned_text("");
+        int64_t type_end = callable_type_end(source, type_start);
+        int64_t optional_end = optional_int_type_end(source, type_start);
+        int64_t list_end = parameter_list_type_end(
+            source,
+            type_start,
+            parameters_end
+        );
+        if (type_end < 0) {
+            type_end = optional_end >= 0 ? optional_end :
+                (list_end >= 0 ? list_end :
+                    annotation_type_end(source, type_start));
+        }
+        int64_t separator = skip_trivia(source, type_end);
+        parameter = separator < parameters_end &&
+            token_equal(source, separator, ",")
+            ? skip_trivia(source, token_end(source, separator))
+            : separator;
+        ++index;
     }
     return owned_text("");
 }
@@ -21699,6 +21863,26 @@ static bool move_use_position(
     return true;
 }
 
+/* A bare resolved binding in a parameter slot declared `take` is the same
+ * semantic transfer as a written whole-binding `take`. Compound expressions,
+ * constructors, and literals may produce a value for a take slot but do not
+ * name a source binding for this bounded source-order invalidation pass. */
+static bool move_call_binding(
+    const char *source,
+    const char *hir,
+    int64_t cursor
+) {
+    if (strcmp(token_kind(source, cursor), "identifier") != 0) return false;
+    char *binding = hir_use_binding_id(hir, cursor);
+    bool resolved = binding[0] != '\0';
+    free(binding);
+    if (!resolved) return false;
+    char *mode = call_argument_expected_mode(source, cursor);
+    bool taken = strcmp(mode, "take") == 0;
+    free(mode);
+    return taken && expression_end(source, cursor) == token_end(source, cursor);
+}
+
 /*
  * The earliest ownership finding in one function, in source order.
  *
@@ -21732,11 +21916,12 @@ static void move_finding_keep(MoveFinding *best, MoveFinding candidate) {
 /*
  * Whole-binding move analysis for the compiler a user actually runs (#946).
  *
- * The bounded slice this issue scopes: `take <binding>`, the move's own span
- * recorded, and any later mention of that binding refused with the use site
- * primary and the move site attached. Loops, branches, and inferred moves stay
- * out — #915 and #922 own those, and a rule that guessed at control flow would
- * refuse programs this one has no business refusing.
+ * The bounded slice this issue scopes: `take <binding>` or a bare binding in a
+ * resolved `take` parameter slot, the move's own span recorded, and any later
+ * mention of that binding refused with the use site primary and the move site
+ * attached. Loops, branches, and optimization-inferred moves stay out — this
+ * walk follows only source-order semantic `take` facts and never guesses
+ * control flow.
  *
  * Conservative in the other direction too: a binding moved on one path and used
  * on another is not proved safe here, it is simply not this slice's subject.
@@ -21748,7 +21933,7 @@ static void move_finding_keep(MoveFinding *best, MoveFinding candidate) {
  * bounded source-order validator; ownership-mode parameters themselves now
  * bind through the production HIR and lowering path (#881).
  */
-static char *validate_move_uses(const char *source) {
+static char *validate_move_uses(const char *source, const char *hir) {
     int64_t length = source_length(source);
     int64_t function_start = next_function_start(source, 0);
     while (function_start < length) {
@@ -21765,12 +21950,18 @@ static char *validate_move_uses(const char *source) {
         }
         int64_t scan = skip_trivia(source, token_end(source, body));
         while (scan < function_close) {
-            if (move_statement_head(source, scan)) {
-                int64_t target = skip_trivia(source, token_end(source, scan));
+            bool explicit_move = move_statement_head(source, scan);
+            bool call_move = move_call_binding(source, hir, scan);
+            if (explicit_move || call_move) {
+                int64_t target = explicit_move
+                    ? skip_trivia(source, token_end(source, scan))
+                    : scan;
                 int64_t move_start = scan;
-                int64_t move_end = move_statement_end(source, target);
+                int64_t move_end = explicit_move
+                    ? move_statement_end(source, target)
+                    : token_end(source, scan);
                 char *moved;
-                if (move_statement_partial(source, target)) {
+                if (explicit_move && move_statement_partial(source, target)) {
                     int64_t dot = skip_trivia(source, token_end(source, target));
                     char *field = token_copy(
                         source, skip_trivia(source, token_end(source, dot))
@@ -21800,20 +21991,28 @@ static char *validate_move_uses(const char *source) {
                 int64_t previous = -1;
                 int64_t use = skip_trivia(source, move_end);
                 while (use < function_close) {
-                    if (move_statement_head(source, use)) {
-                        int64_t again = skip_trivia(
-                            source, token_end(source, use)
-                        );
+                    bool explicit_second = move_statement_head(source, use);
+                    bool call_second = move_call_binding(source, hir, use);
+                    if (explicit_second || call_second) {
+                        int64_t again = explicit_second
+                            ? skip_trivia(source, token_end(source, use))
+                            : use;
+                        int64_t again_end = explicit_second
+                            ? move_statement_end(source, again)
+                            : token_end(source, use);
                         /* A partial move is refused for being partial before
                          * anything asks whether its record still holds a
                          * value, so this scan leaves that statement to the
                          * `E2S122` branch above rather than claiming it. */
-                        if (move_statement_partial(source, again)) break;
+                        if (
+                            explicit_second &&
+                            move_statement_partial(source, again)
+                        ) {
+                            break;
+                        }
                         if (token_equal(source, again, moved)) {
                             MoveFinding candidate;
                             Buffer error;
-                            int64_t again_end =
-                                move_statement_end(source, again);
                             memset(&candidate, 0, sizeof(candidate));
                             buffer_init(&error);
                             buffer_format(
@@ -22397,7 +22596,7 @@ static char *lower_c_body(const char *source, const char *hir) {
     /* #946: the move rule runs before the assertion, so a use-after-move is
      * reported as itself rather than as whatever the erased statement leaves
      * behind. */
-    char *move_use_check = validate_move_uses(source);
+    char *move_use_check = validate_move_uses(source, hir);
     if (strncmp(move_use_check, "error[", 6) == 0) return move_use_check;
     free(move_use_check);
     /* Before every remaining validator: a program that asks for the

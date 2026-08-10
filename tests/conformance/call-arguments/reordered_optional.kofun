@@ -1,8 +1,12 @@
 fn consume(optional maybe: Int?, number value: Int) -> Int {
+    if maybe != null {
+        return maybe
+    }
     return value
 }
 
 fn main() -> Int {
     let input: Int? = null
-    return consume(number: 1, optional: input)
+    print(consume(number: 1, optional: input))
+    return 0
 }
