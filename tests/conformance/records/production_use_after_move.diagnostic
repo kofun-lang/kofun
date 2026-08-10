@@ -1,1 +1,1 @@
-error[E2S123]: `token` was moved by `take` and cannot be used again at bytes 902..907; moved by `take` at bytes 880..890
+error[E2S123]: `token` was moved by `take` and cannot be used again at bytes 785..790; moved by `take` at bytes 763..773
