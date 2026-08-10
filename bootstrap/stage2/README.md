@@ -38,10 +38,11 @@ one zero-argument `fn main()` plus zero or more `Int` Core functions and lowers:
 - `Int` parameters and returns;
 - direct calls in value or statement position, including forward references
   and recursion;
-- direct top-level labelled calls whose parameters and result are `Int`,
-  `Text`, or `List[Int]` in any mix; written arguments are sequenced once into
-  function-local C11 temporaries of each slot's own carrier type before
-  declaration-order ABI placement;
+- direct top-level labelled calls whose fixed parameter and result slots use
+  `Int`, `Text`, `List[Int]`, `Int?`, a concrete enum, or a nominal record;
+  written arguments are sequenced once into function-local C11 temporaries of
+  each slot's own carrier type before declaration-order ABI placement, and a
+  bare binding passed to a `take` slot is one source-order semantic transfer;
 - statement-position `if` with mandatory braces, optional `else`, nesting,
   Bool literals, and integer `==`, `!=`, `<`, `<=`, `>`, `>=` conditions;
 - bounded Int-valued `if` in `let`, `print`, assignment, and `return`, with

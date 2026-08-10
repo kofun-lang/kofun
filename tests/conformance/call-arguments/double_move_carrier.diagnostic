@@ -1,0 +1,1 @@
+error[E2S123]: `ticket` was already moved by `take` at bytes 265..271; first moved by `take` at bytes 232..238

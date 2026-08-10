@@ -3732,6 +3732,9 @@ fn emit_argument(
         callee,
         argument_index
     )
+    if expected_type == "Int?" {
+        return optional_int_value(source, hir, cursor, end)
+    }
     if enum_constructor_count(source, expected_type) >= 0 {
         return emit_enum_value(
             source,
@@ -3810,20 +3813,32 @@ fn emit_argument(
 # labelled (#1097/#1107) and direct List[Int] (#1103) slot paths, so a
 # widened carrier cannot become executable in one and silently stay unknown
 # in the other.
-fn call_slot_carried(carrier: Text) -> Bool {
-    return carrier == "Int" || carrier == "Text" || carrier == "List[Int]"
+fn call_slot_carried(source: Text, carrier: Text) -> Bool {
+    return carrier == "Int" || carrier == "Text" ||
+    carrier == "List[Int]" || carrier == "Int?" ||
+    enum_constructor_count(source, carrier) >= 0 ||
+    record_declaration_start(source, carrier) >= 0
 }
 
 # Everything before the slot's name in its C declaration, so pointer spacing
 # is decided here instead of at each emitter: a pointer carrier already ends
 # in `*`, which is how the rest of the emitted surface spells
 # `const char *name`.
-fn call_slot_declaration_prefix(carrier: Text) -> Text {
+fn call_slot_declaration_prefix(source: Text, carrier: Text) -> Text {
     if carrier == "Text" {
         return "const char *"
     }
     if carrier == "List[Int]" {
         return "KofunIntListValue "
+    }
+    if carrier == "Int?" {
+        return "KofunOptionalInt "
+    }
+    if enum_constructor_count(source, carrier) >= 0 {
+        return "KofunEnumValue "
+    }
+    if record_declaration_start(source, carrier) >= 0 {
+        return record_c_type_name(carrier) + " "
     }
     return "int64_t "
 }
@@ -3831,12 +3846,21 @@ fn call_slot_declaration_prefix(carrier: Text) -> Text {
 # The declared zero for that carrier. A slot is assigned before the call in
 # every path that declares it, so this only has to be a valid value of the
 # type — never a null the emitted C could dereference.
-fn call_slot_zero(carrier: Text) -> Text {
+fn call_slot_zero(source: Text, carrier: Text) -> Text {
     if carrier == "Text" {
         return "\"\""
     }
     if carrier == "List[Int]" {
         return "KOFUN_LIST_INT_ZERO"
+    }
+    if carrier == "Int?" {
+        return "KOFUN_OPTIONAL_INT_NONE"
+    }
+    if enum_constructor_count(source, carrier) >= 0 {
+        return "KOFUN_ENUM_ZERO"
+    }
+    if record_declaration_start(source, carrier) >= 0 {
+        return "((" + record_c_type_name(carrier) + "){0})"
     }
     return "INT64_C(0)"
 }
@@ -3844,9 +3868,11 @@ fn call_slot_zero(carrier: Text) -> Text {
 # #1097 lowered the first executable labelled-call profile — a direct
 # top-level function whose parameters and result are all Int — and #1107
 # widened its carriers to Text and List[Int], the two the positional path
-# already executes. The fixed-slot binding pass has already rejected
-# unknown/duplicate/missing labels; this predicate keeps every wider carrier
-# and backend shape at the explicit E2S158 boundary owned by #882.
+# already executes. #1189 adds Int?, concrete enums, nominal records, and
+# source-order invalidation for a bare binding placed in a take slot. The
+# fixed-slot binding pass has already rejected unknown/duplicate/missing
+# labels; this predicate keeps the remaining call and backend shapes at the
+# explicit E2S158 boundary owned by #882.
 fn labelled_call_supported(
     source: Text,
     hir: Text,
@@ -3873,7 +3899,7 @@ fn labelled_call_supported(
     }
     let declaration = function_start_named(source, callee)
     if declaration < 0 ||
-       !call_slot_carried(function_return_type(source, callee)) {
+       !call_slot_carried(source, function_return_type(source, callee)) {
         return false
     }
     let count = parameter_count(source, declaration)
@@ -3882,7 +3908,10 @@ fn labelled_call_supported(
     }
     let mut index = 0
     while index < count {
-        if !call_slot_carried(function_parameter_type(source, callee, index)) {
+        if !call_slot_carried(
+            source,
+            function_parameter_type(source, callee, index)
+        ) {
             return false
         }
         index = index + 1
@@ -3925,13 +3954,16 @@ fn labelled_argument_slot(
         }
         let type_start = parameter_type_start(source, parameter, close)
         let mut type_end = callable_type_end(source, type_start)
+        let optional_end = optional_int_type_end(source, type_start)
         let list_end = parameter_list_type_end(
             source,
             type_start,
             close
         )
         if type_end < 0 {
-            if list_end >= 0 {
+            if optional_end >= 0 {
+                type_end = optional_end
+            } else if list_end >= 0 {
                 type_end = list_end
             } else {
                 type_end = annotation_type_end(source, type_start)
@@ -4062,10 +4094,10 @@ fn emit_labelled_call_temporaries(
                             slot
                         )
                         emitted = emitted + "    " +
-                            call_slot_declaration_prefix(carrier) +
+                            call_slot_declaration_prefix(source, carrier) +
                             "kofun_call_arg_" + to_text(cursor) + "_" +
                             to_text(slot) +
-                            " = " + call_slot_zero(carrier) + ";\n"
+                            " = " + call_slot_zero(source, carrier) + ";\n"
                         slot = slot + 1
                     }
                 }
@@ -4222,10 +4254,10 @@ fn emit_direct_list_int_call_temporaries(
                             slot
                         )
                         emitted = emitted + "    " +
-                            call_slot_declaration_prefix(carrier) +
+                            call_slot_declaration_prefix(source, carrier) +
                             "kofun_list_call_arg_" + to_text(cursor) + "_" +
                             to_text(slot) +
-                            " = " + call_slot_zero(carrier) + ";\n"
+                            " = " + call_slot_zero(source, carrier) + ";\n"
                         slot = slot + 1
                     }
                 }
@@ -6372,10 +6404,16 @@ fn argument_end(source: Text, start: Int) -> Int {
     return expression_end(source, start)
 }
 
-# Expected type of the call argument beginning exactly at `target`. Enum
-# constructors are calls themselves, so this walks the enclosing named call
-# instead of relying on the single-token function-value predicate above.
-fn call_argument_expected_type(source: Text, target: Int) -> Text {
+# Expected type or ownership mode of the call argument beginning exactly at
+# `target`. Enum constructors are calls themselves, so this walks the enclosing
+# named call instead of relying on the single-token function-value predicate
+# above. One slot lookup serves both properties so labelled binding cannot
+# disagree between lowering and semantic `take` validation.
+fn call_argument_parameter_property(
+    source: Text,
+    target: Int,
+    property: Text
+) -> Text {
     let mut cursor = skip_trivia(source, 0)
     while cursor < target && cursor < len(source) {
         if token_kind(source, cursor) == "identifier" {
@@ -6408,6 +6446,16 @@ fn call_argument_expected_type(source: Text, target: Int) -> Text {
                             }
                         }
                         if argument == target || value == target {
+                            # Whether this argument was written with a label is
+                            # decided by the same walk that resolves its slot,
+                            # so the ownership rule and the slot it names can
+                            # never disagree about which argument matched.
+                            if property == "labelled" {
+                                if label >= 0 {
+                                    return "yes"
+                                }
+                                return "no"
+                            }
                             let callee = token_text(source, cursor)
                             let mut slot = positional_index
                             if label >= 0 {
@@ -6451,6 +6499,13 @@ fn call_argument_expected_type(source: Text, target: Int) -> Text {
                                     }
                                 }
                             }
+                            if property == "mode" {
+                                return function_parameter_mode(
+                                    source,
+                                    callee,
+                                    slot
+                                )
+                            }
                             return function_parameter_type(
                                 source,
                                 callee,
@@ -6488,6 +6543,18 @@ fn call_argument_expected_type(source: Text, target: Int) -> Text {
         cursor = skip_trivia(source, token_end(source, cursor))
     }
     return ""
+}
+
+fn call_argument_expected_type(source: Text, target: Int) -> Text {
+    return call_argument_parameter_property(source, target, "type")
+}
+
+fn call_argument_expected_mode(source: Text, target: Int) -> Text {
+    return call_argument_parameter_property(source, target, "mode")
+}
+
+fn call_argument_labelled(source: Text, target: Int) -> Text {
+    return call_argument_parameter_property(source, target, "labelled")
 }
 
 # #924 Optional(Int) source judgements. The C seed memoizes the annotation
@@ -6607,13 +6674,13 @@ fn optional_int_binding(source: Text, position: Int, name: Text) -> Bool {
     }
     let mut parameter = skip_trivia(source, token_end(source, open))
     while parameter < close && token_text(source, parameter) != ")" {
-        let colon = skip_trivia(source, token_end(source, parameter))
-        if colon >= close || token_text(source, colon) != ":" {
+        let internal = parameter_internal_start(source, parameter, close)
+        let type_start = parameter_type_start(source, parameter, close)
+        if internal < 0 || type_start < 0 {
             break
         }
-        let type_start = skip_trivia(source, token_end(source, colon))
         let mut type_end = optional_int_type_end(source, type_start)
-        if type_end >= 0 && token_text(source, parameter) == name {
+        if type_end >= 0 && token_text(source, internal) == name {
             return true
         }
         if type_end < 0 {
@@ -9756,6 +9823,32 @@ fn function_parameter_type(
         )
     }
     return ""
+}
+
+# Declared ownership mode of one named function parameter. An omitted mode is
+# the ordinary copy mode; `take` remains semantic even when the current C
+# carrier is copied into a fixed slot.
+fn function_parameter_mode(
+    source: Text,
+    wanted: Text,
+    wanted_index: Int
+) -> Text {
+    let declaration = function_start_named(source, wanted)
+    if declaration < 0 {
+        return ""
+    }
+    let parameter = function_parameter_start_at(
+        source,
+        declaration,
+        wanted_index
+    )
+    if parameter < 0 {
+        return ""
+    }
+    if ownership_mode_token(source, parameter) {
+        return token_text(source, parameter)
+    }
+    return "copy"
 }
 
 fn function_return_type_containing(
@@ -14092,13 +14185,42 @@ fn move_use_position(source: Text, previous: Int, cursor: Int) -> Bool {
     return next >= len(source) || token_text(source, next) != ":"
 }
 
+# A bare resolved binding in a parameter slot declared `take` is the same
+# semantic transfer as a written whole-binding `take`. Compound expressions,
+# constructors, and literals may produce a value for a take slot but do not
+# name a source binding for this bounded source-order invalidation pass.
+#
+# The argument must also be *labelled*. That is the boundary this increment
+# was scoped to, and it is load-bearing rather than cosmetic: the accepted
+# RFC-0010 handle model in `tests/ownership/affine-resource-handle` calls
+# `affine_transport_write(initial, 5)` positionally into a `take` slot and
+# then writes `take initial` as the transfer. Treating the positional call as
+# the move makes that written `take` a second one, so dropping this guard
+# refuses a program the ownership gate requires the compiler to accept.
+# Widening to positional calls is a change to that accepted model, not to
+# this lowering slice, and is owned by #882 rather than assumed here.
+fn move_call_binding(
+    source: Text,
+    hir: Text,
+    cursor: Int
+) -> Bool {
+    if token_kind(source, cursor) != "identifier" ||
+       len(hir_use_binding_id(hir, cursor)) == 0 ||
+       call_argument_expected_mode(source, cursor) != "take" ||
+       call_argument_labelled(source, cursor) != "yes" {
+        return false
+    }
+    return expression_end(source, cursor) == token_end(source, cursor)
+}
+
 # Whole-binding move analysis for the compiler a user actually runs (#946).
 #
-# The bounded slice this issue scopes: `take <binding>`, the move's own span
-# recorded, and any later mention of that binding refused with the use site
-# primary and the move site named. Loops, branches, and inferred moves stay
-# out — #915 and #922 own those, and a rule that guessed at control flow would
-# refuse programs this one has no business refusing.
+# The bounded slice this issue scopes: `take <binding>` or a bare binding in a
+# resolved `take` parameter slot, the move's own span recorded, and any later
+# mention of that binding refused with the use site primary and the move site
+# named. Loops, branches, and optimization-inferred moves stay out — this walk
+# follows only source-order semantic `take` facts and never guesses control
+# flow.
 #
 # Conservative in the other direction too: a binding moved on one path and used
 # on another is not proved safe here, it is simply not this slice's subject.
@@ -14116,7 +14238,7 @@ fn move_use_position(source: Text, previous: Int, cursor: Int) -> Bool {
 # with the lowest primary span reorders them back: primary spans of distinct
 # statements cannot overlap, so the lowest is the one a statement walk would
 # have reached first — which is what the standalone frontend reports.
-fn validate_move_uses(source: Text) -> Text {
+fn validate_move_uses(source: Text, hir: Text) -> Text {
     let mut function_start = next_function_start(source, 0)
     while function_start < len(source) {
         let function_close = function_end(source, function_start)
@@ -14136,11 +14258,17 @@ fn validate_move_uses(source: Text) -> Text {
         let mut best_start = 0
         let mut scan = skip_trivia(source, token_end(source, body))
         while scan < function_close {
-            if move_statement_head(source, scan) {
-                let target = skip_trivia(source, token_end(source, scan))
-                let move_start = scan
-                let move_end = move_statement_end(source, target)
-                if move_statement_partial(source, target) {
+            let explicit_move = move_statement_head(source, scan)
+            let call_move = move_call_binding(source, hir, scan)
+            if explicit_move || call_move {
+                let mut target = scan
+                let mut move_start = scan
+                let mut move_end = token_end(source, scan)
+                if explicit_move {
+                    target = skip_trivia(source, token_end(source, scan))
+                    move_end = move_statement_end(source, target)
+                }
+                if explicit_move && move_statement_partial(source, target) {
                     let dot = skip_trivia(source, token_end(source, target))
                     let field = token_text(
                         source,
@@ -14159,24 +14287,38 @@ fn validate_move_uses(source: Text) -> Text {
                     let mut previous = -1
                     let mut use_at = skip_trivia(source, move_end)
                     while use_at < function_close {
-                        if move_statement_head(source, use_at) {
-                            let again = skip_trivia(
-                                source,
-                                token_end(source, use_at)
-                            )
+                        let explicit_second = move_statement_head(
+                            source,
+                            use_at
+                        )
+                        let call_second = move_call_binding(
+                            source,
+                            hir,
+                            use_at
+                        )
+                        if explicit_second || call_second {
+                            let mut again = use_at
+                            let mut again_end = token_end(source, use_at)
+                            if explicit_second {
+                                again = skip_trivia(
+                                    source,
+                                    token_end(source, use_at)
+                                )
+                                again_end = move_statement_end(
+                                    source,
+                                    again
+                                )
+                            }
                             # A partial move is refused for being partial
                             # before anything asks whether its record still
                             # holds a value, so this scan leaves that
                             # statement to the E2S122 branch above rather
                             # than claiming it.
-                            if move_statement_partial(source, again) {
+                            if explicit_second &&
+                               move_statement_partial(source, again) {
                                 break
                             }
                             if token_text(source, again) == moved {
-                                let again_end = move_statement_end(
-                                    source,
-                                    again
-                                )
                                 let second = "error[E2S123]: `" + moved +
                                 "` was already moved by `take` at bytes " +
                                 to_text(use_at) + ".." + to_text(again_end) +
@@ -14237,7 +14379,7 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     # #946: the move rule runs before every other validator, so a
     # use-after-move is reported as itself rather than as whatever the
     # statement it invalidates happens to contain.
-    let move_use_check = validate_move_uses(source)
+    let move_use_check = validate_move_uses(source, hir)
     if starts_with(move_use_check, "error[") {
         return move_use_check
     }

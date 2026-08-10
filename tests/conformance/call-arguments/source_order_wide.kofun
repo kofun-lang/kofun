@@ -1,0 +1,52 @@
+type Reply =
+    | Pending
+    | Ready(value: Int)
+
+type Ticket = {
+    value: Int,
+}
+
+fn mark_int(marker: Int, value: Int) -> Int {
+    print(marker)
+    return value
+}
+
+fn mark_reply(marker: Int, value: Int) -> Reply {
+    print(marker)
+    return Ready(value)
+}
+
+fn mark_ticket(marker: Int, value: Int) -> Ticket {
+    print(marker)
+    let ticket: Ticket = Ticket(value: value)
+    return ticket
+}
+
+fn inspect(
+    as_optional maybe: Int?,
+    as_reply status: Reply,
+    take as_ticket ticket: Ticket,
+    as_number extra: Int
+) -> Int {
+    let mut result = extra
+    if maybe != null {
+        result = result + maybe
+    }
+    match status {
+        Pending => { result = result + 100 },
+        Ready(value) => { result = result + value },
+    }
+    result = result + ticket.value
+    take ticket
+    return result
+}
+
+fn main() -> Int {
+    print(inspect(
+        as_number: mark_int(1, 1),
+        as_ticket: mark_ticket(2, 2),
+        as_optional: mark_int(3, 3),
+        as_reply: mark_reply(4, 4)
+    ))
+    return 0
+}

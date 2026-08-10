@@ -6,7 +6,7 @@
     "VERSION": "fc3fe18d6d955dee3b2206c68289be837839e5de43be2056c36fa583b52cbee6",
     "release/claims.json": "fbd87e17c26ca317a2b9711bc5e9bda09220d48aa01832e29c2f31ae1c23ec02",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
-    "bootstrap/manifest.json": "5855844b3fda3db4def949aacf18659f2dd5f70889a41a5d20c9ccd127228e7a"
+    "bootstrap/manifest.json": "4bb30b96b971e4cc482505436ba1e1a0fb95270dfda59849b5fc8e233be876f3"
   },
   "states": {
     "checkpoint": 36,
@@ -712,7 +712,7 @@
     "bootstrap/selfhost/driver/corpus_reject.stdout": "b11ae682acae186b10022c3469af65b54cd03c2e88a4756eba1cbe5b0e9356f9",
     "bootstrap/stage1/README.md": "449e52413da5d35eafee5b56a7c243ee0363774b8d4110d2a3a998a49f95d52f",
     "bootstrap/stage1/SHA256SUMS": "0dc3d2677f03dfe3bd6f9da9f923315dd5f30dcaeca4768f3c63ec1f66744b94",
-    "bootstrap/stage2/README.md": "24dc2d3fcd9079cb9c5df369e2a364074172662414972e2ad8c2b2ad2eb03401",
+    "bootstrap/stage2/README.md": "10e807af63670542ba1a425d1cc49ca7a18b9323f79f8df6c83b76922a650875",
     "bootstrap/stage2/fixtures/borrowed_move_text.kofun": "34502461891e7c8f42c9017e9fbfc857e54b10ca4fe59551be9ab9ab22d2c1b6",
     "bootstrap/wasm/fixtures/unsupported_text.kofun": "e0a45136410ddb85e9f5b3e5c39e7903d96da39aa53aaf3078d2555b4f383864",
     "bootstrap/wasm/object_arena_check.sh": "da7938dfd6dc6a441e52f5f1adb262c4e65bd5a25b0fb8108140ccbc7eafdf9a",
@@ -723,7 +723,7 @@
     "docs/GETTING_STARTED.md": "f0e48a73e7c024d4da46668f6b16221c1f5fba5595bf56942527297c0efa4e96",
     "docs/LAW_SYSTEM.md": "b974f0ad762bec778ee76afa5d0a2176423ac96a3a583739eee55dcb8dca5043",
     "docs/LINGUIST_RECOGNITION.md": "279f9afa7157c90e41d656974c2f5020f8b6d25acbbd389ee760efbb2d6d6166",
-    "docs/MEMORY_MODEL.md": "de53b0f5fde8408777366d2022fbeed6267e26c2c0ebbd9f15648033259c5eda",
+    "docs/MEMORY_MODEL.md": "2ad150ffa325a6ac8778ce307b6d9d15584916ec116ae697a22028dc2e6c102e",
     "docs/MVP_IMPLEMENTED.md": "674498a019067e1754f9baa19e4f537f1ea814bb09a70ae98765e3c2c04d50a2",
     "docs/NATIVE_BACKEND.md": "ab16b7bc6ae59071f9ae73c6fafde44732c887d122bb711104eb231297680bfe",
     "docs/ROADMAP.md": "881f24ac026aa50b2102a325f2683979c62afda69003071122796215d8c4cad9",
