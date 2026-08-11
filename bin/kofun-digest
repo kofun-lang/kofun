@@ -40,9 +40,21 @@ if [ ! -x "$TOOL" ] ||
    [ "$LIBRARY" -nt "$TOOL" ] ||
    [ "$HEADER" -nt "$TOOL" ]
 then
+    # Build to a private name and rename into place. `task verify` runs gates
+    # concurrently and several of them digest something, so on a cold checkout
+    # they reach this at the same moment. Compiling straight to "$TOOL" lets
+    # one process exec a partially written file while another is still writing
+    # it, which the shell reports as exit 126 -- "cannot execute" -- with no
+    # compiler diagnostic to explain it. `mv` within one directory is atomic,
+    # so every reader sees either the old binary or a complete new one.
+    #
+    # The losing racer's rename simply wins last; both produced the same bytes
+    # from the same sources, so which one lands does not matter.
+    staging="$TOOL.$$"
     "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
         -I"$ROOT/bootstrap/stage2" \
-        "$SOURCE" "$LIBRARY" -o "$TOOL"
+        "$SOURCE" "$LIBRARY" -o "$staging"
+    mv -f "$staging" "$TOOL"
 fi
 
 exec "$TOOL" "$@"
