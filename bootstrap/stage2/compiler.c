@@ -3636,6 +3636,94 @@ static char *validate_trailing_lambda_surface(const char *source) {
     return owned_text("");
 }
 
+static int64_t pipeline_call_end(const char *source, int64_t pipe);
+static char *pipeline_refusal(
+    const char *source,
+    const char *reason,
+    int64_t pipe
+);
+
+/*
+ * The pipeline shapes this slice does not recognize, refused before scope
+ * construction.
+ *
+ * The recognized production survives scope building — its subject is an
+ * ordinary expression and its callee an ordinary name — so it is refused later,
+ * where the semantic observer is live and its spans can be published. These
+ * shapes do not survive: `subject |> callee` with no parentheses reaches
+ * `E2S35 unknown lexical binding` first, because a bare callee is a name the
+ * scope builder cannot resolve. Refusing here is what makes the message about
+ * the pipeline the author wrote rather than about a binding they never meant
+ * to reference.
+ */
+static char *validate_pipeline_shapes(const char *source) {
+    /*
+     * Almost no source contains `|>` at all, and a substring scan settles that
+     * without tokenizing. This is about not doing pointless work rather than
+     * about a measured regression: best-of-3 self-compiles on a quiet machine
+     * put both walks inside the noise (84.2s with, 84.6s without, against ~2.7s
+     * of run-to-run variance).
+     *
+     * Note the guard's worst case is the file this project compiles most often.
+     * `bootstrap/stage2/compiler.kofun` names `|>` in the lexer's
+     * two-character token table, so the self-compile passes the guard and walks
+     * — and is still correct, because the walk compares whole tokens and a
+     * string literal is one token that is not `|>`.
+     */
+    if (strstr(source, "|>") == NULL) return owned_text("");
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, 0);
+    while (cursor < length) {
+        if (token_equal(source, cursor, "|>")) {
+            int64_t call_end = pipeline_call_end(source, cursor);
+            if (call_end < 0) {
+                /* A member target has its parentheses, so saying it lacks them
+                 * would describe the wrong defect. `a.b(...)` is a different
+                 * boundary from `a`, and the two are told apart by the token
+                 * after the callee. */
+                int64_t callee = skip_trivia(
+                    source,
+                    token_end(source, cursor)
+                );
+                int64_t after_callee = callee < length
+                    ? skip_trivia(source, token_end(source, callee))
+                    : -1;
+                bool member = after_callee >= 0 &&
+                    after_callee < length &&
+                    token_equal(source, after_callee, ".");
+                return pipeline_refusal(
+                    source,
+                    member
+                        ? "a pipeline target must be a top-level function, "
+                          "not a member call"
+                        : "a pipeline target must be a direct call written "
+                          "with its parentheses",
+                    cursor
+                );
+            }
+            int64_t after = skip_trivia(source, call_end);
+            if (after < length && token_equal(source, after, "|>")) {
+                return pipeline_refusal(
+                    source,
+                    "a pipeline chain is specified by call-arguments v1 but "
+                    "not recognized",
+                    cursor
+                );
+            }
+            if (trailing_lambda_open(source, call_end) >= 0) {
+                return pipeline_refusal(
+                    source,
+                    "a pipeline with a trailing lambda is specified by "
+                    "call-arguments v1 but not recognized",
+                    cursor
+                );
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return owned_text("");
+}
+
 static char *parse_program(const char *source) {
     /* #882 owns attachment/lowering; refuse before ordinary call analysis can
      * reinterpret the trailing lambda as a separate expression. */
@@ -3644,6 +3732,13 @@ static char *parse_program(const char *source) {
         return surface_check;
     }
     free(surface_check);
+    /* #1190: pipeline shapes outside the recognized production, refused before
+     * scope construction can report a bare callee as an unknown binding. */
+    char *pipeline_shape_check = validate_pipeline_shapes(source);
+    if (strncmp(pipeline_shape_check, "error[", 6) == 0) {
+        return pipeline_shape_check;
+    }
+    free(pipeline_shape_check);
     /* Const generic surface (#916). Both checks run before any declaration is
      * recorded, so a refused source never reaches layout, IR, or an
      * artifact. */
@@ -6341,7 +6436,11 @@ static int64_t optional_int_coalescing_operator(
         : -1;
 }
 
-static int64_t expression_end(const char *source, int64_t start) {
+/* Everything `|>` binds looser than. Split out of `expression_end` so the
+ * pipeline sits strictly outside the coalescing operator: `a ?? b |> f(c)` is
+ * `(a ?? b) |> f(c)`, and a `??` written inside the subject or inside an
+ * argument still binds first. */
+static int64_t coalescing_expression_end(const char *source, int64_t start) {
     int64_t length = source_length(source);
     int64_t left_end = arithmetic_expression_end(source, start);
     if (left_end < 0) return -1;
@@ -6357,6 +6456,49 @@ static int64_t expression_end(const char *source, int64_t start) {
         token_end(source, operator_start)
     );
     return arithmetic_expression_end(source, right_start);
+}
+
+/*
+ * The end of the call on the right of `|>`, or -1 when what follows is not a
+ * direct parenthesised call.
+ *
+ * This is the whole of the production #1190 recognizes: one stage, a bare
+ * top-level callee, one parenthesised argument list. A member, indirect, or
+ * lexical target is deliberately not measured here — those are named refusals,
+ * and measuring them would be the first step toward accepting them.
+ */
+static int64_t pipeline_call_end(const char *source, int64_t pipe) {
+    int64_t length = source_length(source);
+    int64_t callee = skip_trivia(source, token_end(source, pipe));
+    if (callee >= length) return -1;
+    /* `token_kind` already reports a keyword as "keyword", so requiring
+     * "identifier" excludes `fn`, `let` and the rest without a second test. */
+    if (strcmp(token_kind(source, callee), "identifier") != 0) return -1;
+    int64_t open = skip_trivia(source, token_end(source, callee));
+    if (open >= length || !token_equal(source, open, "(")) return -1;
+    return balanced_end(source, open, "(", ")");
+}
+
+/*
+ * `|>` is the lowest-precedence boundary in the expression grammar, so the
+ * whole pipeline is one expression rather than two unrelated ones separated by
+ * an operator.
+ *
+ * When the right side is not the recognized production the span deliberately
+ * stops at the subject, exactly as it did before this production existed. That
+ * keeps every shape outside the slice — bare callee, member or indirect
+ * target, chain, trailing lambda — parsing as it always did, so
+ * `validate_pipeline_calls` can name each one instead of a truncated span
+ * turning it into a parse failure that blames a later token.
+ */
+static int64_t expression_end(const char *source, int64_t start) {
+    int64_t length = source_length(source);
+    int64_t subject_end = coalescing_expression_end(source, start);
+    if (subject_end < 0) return -1;
+    int64_t pipe = skip_trivia(source, subject_end);
+    if (pipe >= length || !token_equal(source, pipe, "|>")) return subject_end;
+    int64_t call_end = pipeline_call_end(source, pipe);
+    return call_end < 0 ? subject_end : call_end;
 }
 
 /* Strip only parentheses enclosing the complete left expression. Returning
@@ -9648,6 +9790,146 @@ static char *validate_record_uses(const char *source) {
                 }
             }
             cursor = skip_trivia(source, token_end(source, cursor));
+        }
+        function_start = next_function_start(source, function_close);
+    }
+    return owned_text("ok");
+}
+
+static char *pipeline_refusal(
+    const char *source,
+    const char *reason,
+    int64_t pipe
+) {
+    Buffer error;
+    buffer_init(&error);
+    buffer_format(
+        &error,
+        "error[E2S158]: %s at byte %" PRId64,
+        reason,
+        pipe
+    );
+    stage2_diagnostic_set(
+        "E2S158",
+        pipe,
+        token_end(source, pipe),
+        true,
+        error.data
+    );
+    stage2_diagnostic_affected(
+        STAGE2_DIAGNOSTIC_AFFECTED_CALL,
+        pipe,
+        token_end(source, pipe)
+    );
+    return error.data;
+}
+
+/*
+ * The start of the expression whose coalescing end is exactly `pipe`.
+ *
+ * The subject's extent cannot be found by scanning left: `|>` binds looser
+ * than everything, so the subject may be an arithmetic or coalescing
+ * expression, and the token before `|>` is only its last token. Instead this
+ * asks the grammar the same question the parser asks — which start position
+ * produces a coalescing expression ending exactly here — and takes the
+ * earliest one, which is the outermost such expression.
+ */
+static int64_t pipeline_subject_start(
+    const char *source,
+    int64_t body_open,
+    int64_t pipe
+) {
+    int64_t candidate = skip_trivia(source, token_end(source, body_open));
+    while (candidate < pipe) {
+        int64_t bound = coalescing_expression_end(source, candidate);
+        if (bound >= 0 && skip_trivia(source, bound) == pipe) return candidate;
+        candidate = skip_trivia(source, token_end(source, candidate));
+    }
+    return -1;
+}
+
+/*
+ * Recognize every `|>` and refuse it by name, before the ordinary call
+ * validators can report the subject's absence as the author's mistake.
+ *
+ * Without this the four canonical shapes reach `E2S164 missing argument` or
+ * `E2S17 expects N, got N-1` — diagnostics that describe an argument list the
+ * author did not get wrong, and that say nothing about the pipeline they did
+ * write. Each shape outside the recognized production gets its own wording, so
+ * a later slice admitting one leaves the others' evidence intact.
+ */
+static char *validate_pipeline_calls(const char *source) {
+    /* Same reasoning as `validate_pipeline_shapes`: skip the walk entirely for
+     * the sources that cannot contain a pipeline. */
+    if (strstr(source, "|>") == NULL) return owned_text("ok");
+    int64_t length = source_length(source);
+    int64_t function_start = next_function_start(source, 0);
+    while (function_start < length) {
+        int64_t function_close = function_end(source, function_start);
+        int64_t parameters = parameter_open(source, function_start);
+        int64_t body_open = parameters >= 0
+            ? balanced_end(source, parameters, "(", ")")
+            : -1;
+        if (body_open >= 0) {
+            int64_t cursor = skip_trivia(source, body_open);
+            while (cursor < function_close) {
+                if (token_equal(source, cursor, "|>")) {
+                    int64_t call_end = pipeline_call_end(source, cursor);
+                    /* Shapes outside the production were already refused by
+                     * `validate_pipeline_shapes`, which has to run before
+                     * scope construction. Reaching here means the production
+                     * parsed and bound its subject as an ordinary
+                     * expression. */
+                    if (call_end < 0) return owned_text("ok");
+                    int64_t subject = pipeline_subject_start(
+                        source,
+                        body_open,
+                        cursor
+                    );
+                    int64_t callee = skip_trivia(
+                        source,
+                        token_end(source, cursor)
+                    );
+                    int64_t open = skip_trivia(
+                        source,
+                        token_end(source, callee)
+                    );
+                    char *name = token_copy(source, callee);
+                    /* The subject's own end, not the pipe's offset. They differ
+                     * by the trivia between them, and a field that silently
+                     * repeats another one is worth nothing to the binder in
+                     * #1226 that has to read these spans. */
+                    int64_t subject_end = subject < 0
+                        ? -1
+                        : coalescing_expression_end(source, subject);
+                    /* The spans this slice owes its successors: every part the
+                     * binder has to address, in source order. `close` is the
+                     * call's `)` itself, so a reader can bound the argument
+                     * list without re-deriving it. */
+                    stage2_semantic_observe(
+                        "pipeline|%s|%" PRId64 "|%" PRId64 "|%" PRId64
+                        "|%" PRId64 "|%" PRId64 "|%" PRId64 "|%" PRId64
+                        "|%" PRId64 "\n",
+                        name,
+                        subject,
+                        subject_end,
+                        cursor,
+                        callee,
+                        open,
+                        call_end - 1,
+                        subject,
+                        call_end
+                    );
+                    free(name);
+                    return pipeline_refusal(
+                        source,
+                        "a pipeline subject is recognized by call-arguments "
+                        "v1; slot binding is owned by #1226",
+                        cursor
+                    );
+                }
+                cursor = skip_trivia(source, token_end(source, cursor));
+            }
         }
         function_start = next_function_start(source, function_close);
     }
@@ -23061,6 +23343,13 @@ static char *lower_c_body(const char *source, const char *hir) {
     char *type_check = validate_core_types(source, hir);
     if (strncmp(type_check, "error[", 6) == 0) return type_check;
     free(type_check);
+    /* Immediately before the call validators, and no earlier. A pipeline that
+     * also trips an earlier rule should still hear that rule first; what this
+     * must beat is only the argument binding and arity checks, which would
+     * otherwise describe the pipeline as a missing or miscounted argument. */
+    char *pipeline_check = validate_pipeline_calls(source);
+    if (strncmp(pipeline_check, "error[", 6) == 0) return pipeline_check;
+    free(pipeline_check);
     char *call_check = validate_core_calls(source, hir);
     if (strncmp(call_check, "error[", 6) == 0) return call_check;
     free(call_check);

@@ -1,0 +1,9 @@
+fn add(base: Int, delta amount: Int) -> Int {
+    return base + amount
+}
+
+fn main() -> Int {
+    let left: Int? = null
+    print(left ?? 4 |> add(delta: 2))
+    return 0
+}

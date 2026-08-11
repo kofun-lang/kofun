@@ -106,19 +106,25 @@ Writing it surfaced things that were not written down anywhere:
   call returning the same type does not.** `let circle: Shape = Circle(5)` is
   required, `let digits = step_digits(source)` is not.
 - **Ownership modes now reach the production parameter parser, but generic
-  nominal parameter types do not.** Row 8 advances past `read` and stops at
-  `Stream[Reading, StreamError]` with `malformed parameter head at byte 2141`;
-  the diagnostic still does not name the unsupported generic type.
+  nominal parameter types do not.** Row 8 used to advance past `read` and stop
+  at `Stream[Reading, StreamError]` with `malformed parameter head at byte
+  2141`, a diagnostic that named neither the unsupported generic type nor the
+  row's real blocker. Since #1190 the pipeline is recognized first and the row
+  stops there instead; the generic parameter type is still unsupported, and now
+  nothing in the corpus exercises that message.
 - **The worst diagnostic in the corpus is row 5's**: `Core function
   'accumulate' expects 3 arguments, got -1`, an argument count that cannot
   exist.
-- **`|>` has no executable form on either backend.** Naming a function
-  without calling it is not an expression, so a pipeline stage has nothing to
-  be: `readings |> filter` fails the native backend with "expected Int
-  expression in native Core function", and `3 |> double` fails Stage 2 with
-  "unknown lexical binding `double`". Neither message mentions pipelines. The
-  decision #49 that #624 lists among its existing decisions cannot be
-  exercised on `main`.
+- **`|>` has no executable form on either backend, but Stage 2 now says so.**
+  This corpus recorded the original complaint: `readings |> filter` failed the
+  native backend with "expected Int expression in native Core function", and
+  `3 |> double` failed Stage 2 with "unknown lexical binding `double`" —
+  **neither message mentioned pipelines**. #1190 made `|>` a recognized
+  production in Stage 2, so it refuses by name there and row 8 stops at
+  `a pipeline target must be a top-level function, not a member call`. The
+  native backend is unchanged and still reports the old message. The decision
+  #49 that #624 lists among its existing decisions still cannot be *exercised*
+  on `main` — recognition is not execution — but it can now be named.
 - **The native backend's `print` promise is 10..99, and outside it the
   program is wrong rather than refused.** Row 1's pipeline over
   `[3, 12, 7, 20, 5, 18]` folds to 114 and prints `;4`. Only *known* constants

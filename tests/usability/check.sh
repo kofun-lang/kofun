@@ -357,8 +357,14 @@ expect_refused 05_higher_order \
     'error[E2S17]: Core function `accumulate` expects 3 arguments, got -1'
 expect_refused 06_monad_laws \
     'error[E2S02]: expected top-level `fn`, `type`, or `let`'
+# #1190 moved this row's refusal, and the move is the point. It used to stop at
+# `Stream[Reading, StreamError]` with `E2S35: malformed parameter head at byte
+# 2141` — a message about a parameter type, for a row whose actual blocker is
+# the pipeline. Now the pipeline is recognized and refused first, and names
+# itself. The row is still blocked on #624; what changed is that its diagnostic
+# finally describes what is unsupported.
 expect_refused 08_stream_pipeline \
-    'error[E2S35]: malformed parameter head at byte 2141'
+    'error[E2S158]: a pipeline target must be a top-level function, not a member call at byte 2264'
 
 # ------------------------------------------------------------- the rubric
 
