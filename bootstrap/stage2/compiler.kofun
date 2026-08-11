@@ -5677,6 +5677,38 @@ fn call_binding_failure(
 # Bind one selected named call to fixed declaration-order slots. The C seed
 # publishes the corresponding source-order observations for semantic tooling;
 # this canonical implementation enforces the same slot and diagnostic rules.
+# Whether the call whose callee token is at `call_start` is a pipeline target.
+#
+# Binding needs the reverse of what recognition needed. `validate_pipeline_calls`
+# walks forward from a `|>` to its call; here the call is what we hold and the
+# `|>` is what we must find. Scanning left token by token is not available, so
+# this re-walks the enclosing body and matches on the callee offset, which is
+# exactly the identity the recognizer used.
+#
+# The C authority resolves the subject's start as well, because it publishes
+# spans. This checkpoint records slots as markers rather than offsets, so
+# whether a subject exists is all it needs.
+fn call_is_pipeline_target(source: Text, call_start: Int) -> Bool {
+    if !contains(source, "|>") {
+        return false
+    }
+    let body_open = enclosing_function_open(source, call_start)
+    if body_open < 0 {
+        return false
+    }
+    let mut cursor = skip_trivia(source, token_end(source, body_open))
+    while cursor < call_start {
+        if token_text(source, cursor) == "|>" {
+            let callee_at = skip_trivia(source, token_end(source, cursor))
+            if callee_at == call_start {
+                return true
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return false
+}
+
 fn validate_declared_call_arguments(
     source: Text,
     callee: Text,
@@ -5706,12 +5738,30 @@ fn validate_declared_call_arguments(
         parameter_external_start(source, parameter, parameters_end) >= 0
         parameter_index = parameter_index + 1
     }
-    if !has_external_parameter && !call_has_labelled_argument(source, open) {
+    # A pipeline supplies slot 0 from outside the parentheses, so it needs this
+    # binder even when nothing in the call is labelled. Without the extra term
+    # `start |> add(2)` would take the ordinary positional path, which binds the
+    # written `2` to slot 0 and never learns the subject exists.
+    let piped = call_is_pipeline_target(source, call_start)
+    if !has_external_parameter && !call_has_labelled_argument(source, open) &&
+       !piped {
         return ""
     }
     let mut bound = "|"
     let mut saw_label = false
     let mut next_positional = 0
+    # The subject claims slot 0 before any explicit argument is read, which is
+    # what makes the rest of this loop correct without further special cases:
+    # positional binding starts at slot 1 because slot 0 is taken, and a label
+    # naming slot 0 lands on the existing duplicate path.
+    #
+    # The C authority also publishes a `call-argument|` observation for the
+    # subject here. This frontend checkpoint emits none, so it records the
+    # binding and nothing else.
+    if piped && count > 0 {
+        bound = bound + "0|"
+        next_positional = 1
+    }
     let mut argument = skip_trivia(source, token_end(source, open))
     let mut scanning = true
     while scanning && argument < close && token_text(source, argument) != ")" {
@@ -6021,9 +6071,31 @@ fn validate_pipeline_calls(source: Text) -> Text {
                     # either — so the two halves agree on the refusal and on
                     # what the production is, and the checkpoint carries no
                     # span helper it would never use.
+                    #
+                    # #1226 binds before the boundary holds. The binder runs
+                    # from here rather than from `validate_core_calls`, because
+                    # this pass returns first and that one would never see the
+                    # call — and it cannot simply be moved after, since the
+                    # arity check would then count the parenthesised arguments
+                    # alone and report the subject as a missing one. Counting
+                    # the subject is #1227's effective arity.
+                    #
+                    # A binding failure is the author's error and outranks the
+                    # boundary, so E2S162-E2S166 are returned as-is.
+                    let callee_at = skip_trivia(source, token_end(source, cursor))
+                    let open_at = skip_trivia(source, token_end(source, callee_at))
+                    let binding = validate_declared_call_arguments(
+                        source,
+                        token_text(source, callee_at),
+                        callee_at,
+                        open_at
+                    )
+                    if starts_with(binding, "error[") {
+                        return binding
+                    }
                     return pipeline_refusal(
-                        "a pipeline subject is recognized by call-arguments " +
-                        "v1; slot binding is owned by #1226",
+                        "a pipeline subject binds slot 0; call-arguments v1 " +
+                        "pipeline lowering is owned by #1228",
                         cursor
                     )
                 }

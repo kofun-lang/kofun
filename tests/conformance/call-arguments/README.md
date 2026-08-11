@@ -56,11 +56,28 @@ boundary in the grammar, which `pipeline_coalescing_subject.kofun` pins from
 the other direction: `left ?? 4 |> add(delta: 2)` has `left ?? 4` as its
 subject, so `??` binds first.
 
-Recognition is the whole of that slice — binding is #1226, checking #1227, and
-C11 lowering #1228 — so both cases still fail closed. What recognition buys is
-the diagnostic. Before it, each of these reported an argument list the author
-had not got wrong (`missing argument \`base\``, or `expects 2 arguments, got
-1`) and never mentioned the pipeline that was actually unsupported.
+What recognition buys is the diagnostic. Before it, each of these reported an
+argument list the author had not got wrong (`missing argument \`base\``, or
+`expects 2 arguments, got 1`) and never mentioned the pipeline that was
+actually unsupported.
+
+#1226 then binds the subject to **slot 0**, before any explicit argument is
+read, which is what keeps the rest of the binder free of special cases:
+positional arguments start at slot 1 because slot 0 is taken, and a label
+naming slot 0 lands on the ordinary duplicate path.
+`pipeline_positional_rest.kofun` is the case where a missing binding would
+otherwise be invisible — without it the written `2` binds slot 0 and the call
+looks well formed. `pipeline_duplicate_slot_zero.kofun` writes `into:`, slot
+0's declared label, and gets E2S163 against the declaration it collides with.
+The externally labelled case proves the rule rather than a coincidence: the
+subject satisfies `into` without that label appearing anywhere in the call.
+
+Checking is #1227 and C11 lowering #1228, so a bound pipeline still fails
+closed and writes no C. The binder runs from inside the pipeline pass rather
+than from `validate_core_calls`, because that pass returns first and the call
+validators would never see the call — and it cannot simply run after them,
+since the arity check counts only the parenthesised arguments and would report
+the subject as a missing one. Counting the subject is #1227's effective arity.
 
 Because a recognizer that refuses everything is indistinguishable from one that
 recognizes nothing, the gate asserts the **spans** the production publishes:
