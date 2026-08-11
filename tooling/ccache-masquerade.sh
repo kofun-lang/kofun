@@ -41,13 +41,27 @@ target=${KOFUN_CCACHE_BIN_DIR:-"${TMPDIR:-/tmp}/kofun-ccache-bin"}
 
 mkdir -p "$target" || fail "cannot create $target"
 
-# Only front compilers that are actually present. Linking a name that does not
-# exist would invent a `clang` on a host that has none, and the selfhost
-# diverse-double-compilation gate chooses its two compilers by what it finds.
-for tool in cc gcc clang c++ g++ ; do
-    if command -v "$tool" >/dev/null 2>&1; then
-        ln -sf "$ccache_binary" "$target/$tool"
-    fi
-done
+# Only `cc` is fronted, and `gcc` and `clang` are deliberately left alone.
+#
+# The first attempt linked all three. `task verify` refused it:
+#
+#   FAIL: selfhost diverse double compilation: `gcc` and `clang` resolve to
+#   the same binary (/usr/bin/ccache): the pair is not diverse
+#
+# That gate exists because a payload living in one host compiler cannot be
+# caught by a chain that only ever uses that compiler, so it requires the two
+# to be genuinely different binaries. Fronting both collapsed them into one
+# and defeated the check -- the cache is transparent to what a compiler
+# *emits*, but the gate is about which compiler ran at all, and it cannot see
+# through a symlink to answer that.
+#
+# Leaving them alone costs almost nothing. Measured over a full serial run:
+# `cc` is 1004 of the 1429 compiler invocations and 987 s of the 1075 s spent
+# compiling -- 92% of it -- against 88 s for `gcc` and `clang` together.
+if command -v cc >/dev/null 2>&1; then
+    ln -sf "$ccache_binary" "$target/cc"
+else
+    fail "no cc on PATH to front"
+fi
 
 printf '%s\n' "$target"

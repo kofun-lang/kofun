@@ -50,8 +50,23 @@ jobs:
               exit 1
               ;;
           esac
-          test "$(command -v cc)" != "$(command -v ccache)" ||
-            printf '%s\n' "note: cc resolves to the ccache binary, as intended"
+          # `selfhost-diverse-double-compilation` needs two genuinely different
+          # compiler binaries: a payload inside one host compiler cannot be
+          # caught by a chain that only ever runs that compiler. Fronting gcc
+          # and clang as well as cc collapsed them into one and the gate
+          # refused, correctly. Prove that has not happened again here, before
+          # forty other gates run, rather than in the middle of the suite.
+          gcc_path=$(command -v gcc || true)
+          clang_path=$(command -v clang || true)
+          if test -n "$gcc_path" && test -n "$clang_path" &&
+             test "$(readlink -f "$gcc_path")" = "$(readlink -f "$clang_path")"
+          then
+            printf '%s\n' \
+              "gcc and clang resolve to one binary; the diverse pair is gone" >&2
+            exit 1
+          fi
+          printf 'gcc: %s\nclang: %s\n' \
+            "$(readlink -f "$gcc_path")" "$(readlink -f "$clang_path")"
       - run: task verify
       - name: Compiler cache statistics
         if: always()
