@@ -29,10 +29,11 @@ It is **not**:
 - **a tutorial.** `docs/tour/` is the interactive tour. This corpus
   deliberately shows the awkward cases the tour has no reason to.
 - **a proposal.** It adds no syntax and changes none. #625's labelled
-  arguments are decided and execute for `Int`/`Text`/`List[Int]` carriers;
-  trailing lambdas stay open behind `E2S158`, and #909 does not decide them —
-  though [05_higher_order.kt](05_higher_order.kt) is written to be the
-  evidence that decision is made against.
+  arguments are decided and execute for `Int`/`Text`/`List[Int]` carriers, and
+  #1191 added the expression-bodied trailing lambda; the block-bodied form
+  stays open behind `E2S158`, and #909 does not decide it — though
+  [05_higher_order.kt](05_higher_order.kt) is written to be the evidence that
+  decision is made against.
 
 ## The eight rows
 

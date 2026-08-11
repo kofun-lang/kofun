@@ -6,7 +6,7 @@
     "VERSION": "fc3fe18d6d955dee3b2206c68289be837839e5de43be2056c36fa583b52cbee6",
     "release/claims.json": "fbd87e17c26ca317a2b9711bc5e9bda09220d48aa01832e29c2f31ae1c23ec02",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
-    "bootstrap/manifest.json": "9d02f8df61e7d1e6db5470b10cbb62fca1b31cde2ea8c589fddd216ad1168f5b"
+    "bootstrap/manifest.json": "153b7c72ea62de69c678d02889278f3a2ffaf286ecd4c446f6864d7e2634fcc7"
   },
   "states": {
     "checkpoint": 36,
@@ -757,7 +757,7 @@
     "tests/conformance/records/stage2_unsupported_field.kofun": "3a2a267549694c0ccf71e682b37992d94ff5b0a59b1b6438726b5384d3c46e82",
     "tests/conformance/syntax/issues_35_47/enum_payload_unsupported_field.kofun": "e1b4ce6cda998dac0a955ed016c8eb2f81a9effaed91b823011572cf68f6c59e",
     "tests/diagnostics/README.md": "32bc26bdeca5e1de63698ac97a53b6438d7c38af995677efd0288c52f195fc65",
-    "tests/diagnostics/registry.tsv": "4dc99255095d9af2fdaa087f13e254e832b623baef840210f9983b1d07eeb594",
+    "tests/diagnostics/registry.tsv": "eeba4776ab5e1c1b3d6da7694ca7fb4795b5433b4231f06bbdf933b12b3ccc11",
     "tests/diagnostics/stage2/e2s10_unsupported_statement.kofun": "664c4d3b0d4bcd9265fee34b3ae60d8bf0eb58c9ce5c2b504579c1249aa16f2d",
     "tests/diagnostics/visibility-api-leaks.sh": "014a84aa787662eff8bba397056cbc5ca40cd9adbead0047d8a4b9f75395560e",
     "tests/docs/documentation_index_test.mjs": "2cc6cea953f21ef1cbf5e8c6be3ab58edacc8e6599f17d76b44130647714550b",
