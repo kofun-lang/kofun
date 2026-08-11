@@ -8,7 +8,7 @@ ASSERT_CONTEXT=stage2
 
 (
     cd "$root"
-    sha256sum -c bootstrap/stage2/SHA256SUMS
+    "$root/bin/kofun-digest" -c bootstrap/stage2/SHA256SUMS
 )
 
 if command -v cc >/dev/null 2>&1; then

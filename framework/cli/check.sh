@@ -16,7 +16,7 @@ require_tool() {
     }
 }
 
-for tool in "$CC" ld readelf file ldd sha256sum cmp sed grep script dd
+for tool in "$CC" ld readelf file ldd "$ROOT/bin/kofun-digest" cmp sed grep script dd
 do
     require_tool "$tool"
 done
@@ -26,7 +26,7 @@ mkdir -p "$WORK/template" "$WORK/spies"
 
 (
     cd "$ROOT/framework/cli"
-    sha256sum -c SHA256SUMS
+    "$ROOT/bin/kofun-digest" -c SHA256SUMS
 )
 
 # Rebuild the audited freestanding runtime twice with the active host toolchain.

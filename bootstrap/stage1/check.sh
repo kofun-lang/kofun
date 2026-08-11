@@ -41,7 +41,7 @@ mkdir -p "$WORK"
 
 (
     cd "$ROOT/bootstrap/stage1"
-    sha256sum -c SHA256SUMS
+    "$ROOT/bin/kofun-digest" -c SHA256SUMS
 )
 
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror "$SEED" -lm -o "$WORK/kofun-stage1"
@@ -130,7 +130,7 @@ cmp "$BUILTINS_C" "$WORK/builtins.c"
 cmp "$BUILTINS_STDOUT" "$WORK/builtins.stdout"
 cmp "$BUILTINS_OUTPUT" "$WORK/builtins.output"
 assert_eq "corpus_answer.c digest" \
-    "$(sha256sum "$ROOT/bootstrap/selfhost/driver/corpus_answer.c" | awk '{ print $1 }')" \
+    "$("$ROOT/bin/kofun-digest" "$ROOT/bootstrap/selfhost/driver/corpus_answer.c" | awk '{ print $1 }')" \
     673d6e62ad7947fc878420eea1dffb9e3f13e942adda71f1f972b31575616499
 
 # A well-typed index may still fail at runtime. Both Text and List[Text] bounds

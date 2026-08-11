@@ -1,6 +1,8 @@
 #!/usr/bin/env sh
 set -eu
 
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+
 CORPUS=${1-}
 test -n "$CORPUS" && test -d "$CORPUS" || {
     printf '%s\n' \
@@ -85,4 +87,4 @@ for source in "$CORPUS"/*.kofun; do
     cat "$work/stderr" >>"$contract"
 done
 
-sha256sum "$contract" | awk '{ print $1 }'
+"$ROOT/bin/kofun-digest" "$contract" | awk '{ print $1 }'

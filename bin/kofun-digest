@@ -1,0 +1,48 @@
+#!/usr/bin/env sh
+set -eu
+
+# The repository's own SHA-256, as a command (#1213).
+#
+# Every digest that anchors the bootstrap used to be computed by GNU
+# `sha256sum`: a tool the project does not ship, does not test, and which is
+# absent outside a GNU userland. This builds `bootstrap/stage2/sha256_tool.c`
+# against `bootstrap/stage2/sha256.c` -- both already in the tree -- so the
+# digests depend on nothing beyond the C11 compiler the bootstrap already
+# requires.
+#
+# The interface is GNU `sha256sum`'s for the three forms this repository uses,
+# so no committed digest and no call site's parsing changes:
+#
+#     bin/kofun-digest FILE...      digest each file, `<hex>  <path>`
+#     bin/kofun-digest              digest standard input, reported as `-`
+#     bin/kofun-digest -c SUMS      verify a SHA256SUMS file
+#
+# `KOFUN_DIGEST_TOOL` names an already-built binary, the same contract
+# `KOFUN_STAGE2_COMPILER` has in `bootstrap/stage2/build.sh`: naming one
+# asserts it is the one to use, and staleness is the caller's business.
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+
+if [ -n "${KOFUN_DIGEST_TOOL:-}" ] && [ -x "${KOFUN_DIGEST_TOOL}" ]; then
+    exec "$KOFUN_DIGEST_TOOL" "$@"
+fi
+
+BUILD_DIR=${KOFUN_DIGEST_BUILD_DIR:-"$ROOT/build/digest"}
+TOOL="$BUILD_DIR/kofun-digest"
+SOURCE="$ROOT/bootstrap/stage2/sha256_tool.c"
+LIBRARY="$ROOT/bootstrap/stage2/sha256.c"
+HEADER="$ROOT/bootstrap/stage2/sha256.h"
+CC=${CC:-cc}
+
+mkdir -p "$BUILD_DIR"
+if [ ! -x "$TOOL" ] ||
+   [ "$SOURCE" -nt "$TOOL" ] ||
+   [ "$LIBRARY" -nt "$TOOL" ] ||
+   [ "$HEADER" -nt "$TOOL" ]
+then
+    "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+        -I"$ROOT/bootstrap/stage2" \
+        "$SOURCE" "$LIBRARY" -o "$TOOL"
+fi
+
+exec "$TOOL" "$@"

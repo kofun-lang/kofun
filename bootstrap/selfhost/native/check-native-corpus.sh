@@ -56,7 +56,7 @@ GOLDEN="$SELF/corpus_core.stdout"
 # The frozen S digest still matches the pinned profile.
 profile_digest=$(awk -F '|' '$1 == "source_sha256" { print $2 }' \
     bootstrap/selfhost/profile.meta)
-actual_digest=$(sha256sum bootstrap/stage1/compiler.kofun | awk '{ print $1 }')
+actual_digest=$("$ROOT/bin/kofun-digest" bootstrap/stage1/compiler.kofun | awk '{ print $1 }')
 test "$profile_digest" = "$actual_digest" ||
     fail "S digest differs from the frozen profile"
 

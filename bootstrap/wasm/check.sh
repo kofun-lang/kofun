@@ -7,7 +7,7 @@ CC=${CC:-cc}
 ASSERT_CONTEXT=wasm
 . "$ROOT/tests/assertions/assert.sh"
 
-for tool in "$CC" node sha256sum cmp
+for tool in "$CC" node "$ROOT/bin/kofun-digest" cmp
 do
     command -v "$tool" >/dev/null 2>&1 || {
         printf '%s\n' "wasm32 gate requires $tool" >&2
@@ -85,7 +85,7 @@ printf '%s\n' \
 
 (
     cd "$ROOT/bootstrap/wasm"
-    sha256sum -c SHA256SUMS
+    "$ROOT/bin/kofun-digest" -c SHA256SUMS
 )
 
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror \

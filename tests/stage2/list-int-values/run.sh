@@ -243,7 +243,7 @@ done
 
 (
     cd "$root"
-    sha256sum -c bootstrap/stage2/SHA256SUMS
+    "$root/bin/kofun-digest" -c bootstrap/stage2/SHA256SUMS
 )
 
 echo "PASS: Stage 2 List[Int] locals, bounded literals, len, and checked indexing"

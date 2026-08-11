@@ -77,7 +77,7 @@ mkdir -p "$work"
     declare_file sums bootstrap/stage1/SHA256SUMS
     declare_file sums bootstrap/stage2/SHA256SUMS
 
-    # Both sums files are verified with `sha256sum -c`, which reads every file
+    # Both sums files are verified with `"$repo_root/bin/kofun-digest" -c`, which reads every file
     # they list, so every listed file is an input whether or not the chain
     # names it directly. Omitting these two made the acquisition set
     # insufficient: a builder who obtained exactly the manifest failed at
