@@ -11510,20 +11510,98 @@ fn par_loop_block_open(source: Text, at: Int, limit: Int) -> Int {
     return -1
 }
 
-# The v1 finite lexical spawn-site rule (RFC-0003, #1160). Two shapes the
+# Whether `name` is the binding a `spawn` produced, by finding its `let` in
+# the scope block and asking what its right-hand side is. An alias binds an
+# identifier rather than a call — `let alias = handle` — so it answers false
+# and its `join` is refused by name instead of followed to the handle. A name
+# with no `let` in the block is not a handle either, so it answers false too.
+fn par_spawn_bound_handle(
+    source: Text,
+    name: Text,
+    block_open: Int,
+    block_close: Int
+) -> Bool {
+    let mut cursor = skip_trivia(source, token_end(source, block_open))
+    while cursor < block_close {
+        if token_text(source, cursor) == "let" {
+            let mut bound = skip_trivia(source, token_end(source, cursor))
+            if bound < block_close && token_text(source, bound) == "mut" {
+                bound = skip_trivia(source, token_end(source, bound))
+            }
+            if bound < block_close && token_text(source, bound) == name {
+                # Step over an optional annotation to the `=`. The `let` guard
+                # stops a malformed binding from running into the next
+                # statement and reading its value as this one's.
+                let mut assign = skip_trivia(source, token_end(source, bound))
+                while assign < block_close &&
+                      token_text(source, assign) != "=" &&
+                      token_text(source, assign) != "let" {
+                    assign = skip_trivia(source, token_end(source, assign))
+                }
+                if assign < block_close && token_text(source, assign) == "=" {
+                    let value = skip_trivia(source, token_end(source, assign))
+                    let member = scoped_parallel_member(source, value)
+                    if member >= 0 && token_text(source, member) == "spawn" {
+                        return true
+                    }
+                }
+                # The first binding of this name decides it; a later one
+                # cannot make an alias into a handle.
+                return false
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return false
+}
+
+# The v1 finite lexical spawn-site rule (RFC-0003, #1160). The four shapes the
 # specification leaves unsupported rather than inferred, refused by name so a
 # reader is not told they are merely unimplemented like the scope itself:
 #
 #   - a `par` inside a `par` block — v1 has one scope, not a tree of them;
 #   - a `spawn` inside a loop — a scope's spawn sites must be finite and
-#     lexically enumerable, and a loop makes the count depend on execution.
-fn par_scope_rule_error(source: Text, block_open: Int, block_close: Int) -> Text {
+#     lexically enumerable, and a loop makes the count depend on execution;
+#   - a `spawn` on anything but the token `par |...|` named — selecting the
+#     scope dynamically is what makes a spawn site unenumerable, and an alias
+#     of the token is already that selection;
+#   - a `join` on anything but the binding a `spawn` produced — following an
+#     alias to its handle is the inference v1 declines to make.
+#
+# The walk reports the first offending construct in source order and names the
+# construct's own token, not the enclosing `par`.
+fn par_scope_rule_error(
+    source: Text,
+    scope_token: Int,
+    block_open: Int,
+    block_close: Int
+) -> Text {
+    let scope_name = token_text(source, scope_token)
     let mut cursor = skip_trivia(source, token_end(source, block_open))
     while cursor < block_close {
         let token = token_text(source, cursor)
         if token == "par" {
             return "error[E2S154]: scoped parallelism v1 has one scope; a `par` scope may not contain another at byte " +
             to_text(cursor)
+        }
+        let member = scoped_parallel_member(source, cursor)
+        if member >= 0 {
+            let member_name = token_text(source, member)
+            if member_name == "spawn" && token != scope_name {
+                return "error[E2S154]: scoped parallelism v1 spawns only on the scope token `" +
+                scope_name + "` that `par` named; `" + token +
+                "` is not it at byte " + to_text(cursor)
+            }
+            if member_name == "join" &&
+               !par_spawn_bound_handle(
+                   source,
+                   token,
+                   block_open,
+                   block_close
+               ) {
+                return "error[E2S154]: scoped parallelism v1 joins only the binding a `spawn` produced; `" +
+                token + "` is not one at byte " + to_text(cursor)
+            }
         }
         if token == "while" || token == "for" {
             let loop_open = par_loop_block_open(source, cursor, block_close)
@@ -11570,7 +11648,12 @@ fn par_production_error(source: Text, at: Int) -> Text {
     }
     let block_close = balanced_end(source, block, "{", "}")
     if block_close >= 0 {
-        let rule_fault = par_scope_rule_error(source, block, block_close)
+        let rule_fault = par_scope_rule_error(
+            source,
+            name,
+            block,
+            block_close
+        )
         if len(rule_fault) > 0 {
             return rule_fault
         }
