@@ -4124,7 +4124,13 @@ fn fixed_slot_call_shape(
     if count < 1 || count > 8 {
         return false
     }
-    if labelled &&
+    # A pipeline always needs fixed slots, whatever it carries. Its subject is
+    # written outside the parentheses and must be assigned before any explicit
+    # argument, which the ordinary unsequenced call cannot express — so it joins
+    # the labelled mode in using the full carrier matrix and in not needing a
+    # `List[Int]` to justify the slots.
+    let piped = call_is_pipeline_target(source, call_start)
+    if (labelled || piped) &&
        !call_slot_carried(source, function_return_type(source, callee)) {
         return false
     }
@@ -4134,7 +4140,7 @@ fn fixed_slot_call_shape(
         let parameter_type = function_parameter_type(source, callee, index)
         let mut carried = parameter_type == "Int" ||
             parameter_type == "List[Int]"
-        if labelled {
+        if labelled || piped {
             carried = call_slot_carried(source, parameter_type)
         }
         if parameter_type == "List[Int]" {
@@ -4145,7 +4151,7 @@ fn fixed_slot_call_shape(
         }
         index = index + 1
     }
-    return labelled || has_list
+    return labelled || piped || has_list
 }
 
 fn fixed_slot_call_supported(
@@ -4316,6 +4322,28 @@ fn emit_fixed_slot_call(
     let mut emitted = "("
     let mut argument = skip_trivia(source, token_end(source, open))
     let mut source_index = 0
+    # The subject is assigned before anything inside the parentheses, because
+    # that is where it is written. Doing it here rather than in a pipeline-only
+    # emitter is what keeps one temporary family and one ABI vector: after this
+    # assignment the loop below is unchanged, and slot 0 is simply already
+    # taken, so a positional rest continues at slot 1 exactly as #1226 bound it.
+    let pipeline_subject = pipeline_subject_for_call(source, call_start)
+    if pipeline_subject >= 0 && parameter_count_value > 0 {
+        let subject_value = emit_argument(
+            source,
+            hir,
+            pipeline_subject,
+            coalescing_expression_end(source, pipeline_subject),
+            callee,
+            0
+        )
+        if starts_with(subject_value, "error[") {
+            return subject_value
+        }
+        emitted = emitted + "(kofun_call_arg_" + to_text(call_start) +
+            "_0 = " + subject_value + "), "
+        source_index = 1
+    }
     while (labelled || source_index < parameter_count_value) &&
           argument < end && token_text(source, argument) != ")" {
         let bound = argument_end(source, argument)
@@ -5252,6 +5280,39 @@ fn emit_arithmetic_expression(
 # suppresses both branches until the surrounding statement observes
 # `kofun_failed`.
 fn emit_expression(source: Text, hir: Text, start: Int, end: Int) -> Text {
+    # `|>` is the lowest-precedence boundary, so it is dispatched before the
+    # coalescing operator here, mirroring `expression_end` exactly. Putting it
+    # any deeper would let `??` or arithmetic claim the subject and leave the
+    # call behind as a separate expression — which is what happened before the
+    # pipeline was a production.
+    let subject_end = coalescing_expression_end(source, start)
+    if subject_end >= 0 {
+        let pipe = skip_trivia(source, subject_end)
+        if pipe < end && token_text(source, pipe) == "|>" {
+            let callee_at = skip_trivia(source, token_end(source, pipe))
+            let call_open = skip_trivia(source, token_end(source, callee_at))
+            let piped_name = token_text(source, callee_at)
+            let piped_labelled = call_has_labelled_argument(source, call_open)
+            if fixed_slot_call_supported(
+                source,
+                hir,
+                callee_at,
+                piped_name,
+                call_open,
+                piped_labelled
+            ) {
+                return emit_fixed_slot_call(
+                    source,
+                    hir,
+                    callee_at,
+                    call_open,
+                    end,
+                    piped_name,
+                    piped_labelled
+                )
+            }
+        }
+    }
     let operator_start = optional_int_coalescing_operator(
         source,
         start,
@@ -5688,6 +5749,52 @@ fn call_binding_failure(
 # The C authority resolves the subject's start as well, because it publishes
 # spans. This checkpoint records slots as markers rather than offsets, so
 # whether a subject exists is all it needs.
+# The start of the expression whose coalescing end is exactly `pipe`.
+#
+# The subject's extent cannot be found by scanning left: `|>` binds looser than
+# everything, so the subject may be an arithmetic or coalescing expression, and
+# the token before `|>` is only its last token. This asks the grammar the same
+# question the parser asks — which start position produces a coalescing
+# expression ending exactly here — and takes the earliest, outermost answer.
+#
+# #1190 left this out of the checkpoint because nothing there published spans.
+# #1228 needs it for a different reason: lowering has to emit the subject's
+# value, so the checkpoint now resolves it too.
+fn pipeline_subject_start(source: Text, body_open: Int, pipe: Int) -> Int {
+    let mut candidate = skip_trivia(source, token_end(source, body_open))
+    while candidate < pipe {
+        let bound = coalescing_expression_end(source, candidate)
+        if bound >= 0 && skip_trivia(source, bound) == pipe {
+            return candidate
+        }
+        candidate = skip_trivia(source, token_end(source, candidate))
+    }
+    return -1
+}
+
+# The subject of the pipeline whose callee token is at `call_start`, or -1 when
+# that call is not a pipeline target.
+fn pipeline_subject_for_call(source: Text, call_start: Int) -> Int {
+    if !contains(source, "|>") {
+        return -1
+    }
+    let body_open = enclosing_function_open(source, call_start)
+    if body_open < 0 {
+        return -1
+    }
+    let mut cursor = skip_trivia(source, token_end(source, body_open))
+    while cursor < call_start {
+        if token_text(source, cursor) == "|>" {
+            let callee_at = skip_trivia(source, token_end(source, cursor))
+            if callee_at == call_start {
+                return pipeline_subject_start(source, body_open, cursor)
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return -1
+}
+
 fn call_is_pipeline_target(source: Text, call_start: Int) -> Bool {
     if !contains(source, "|>") {
         return false
@@ -6151,11 +6258,12 @@ fn validate_pipeline_calls(source: Text) -> Text {
                     if starts_with(checked, "error[") {
                         return checked
                     }
-                    return pipeline_refusal(
-                        "a pipeline subject binds slot 0; call-arguments v1 " +
-                        "pipeline lowering is owned by #1228",
-                        cursor
-                    )
+                    # #1228 admits the checked shape. There is no refusal left
+                    # here: the call reaches the shared fixed-slot emitter,
+                    # which assigns slot 0 from the subject before anything in
+                    # the parentheses. A carrier this slice cannot lower was
+                    # already refused by the carrier-matrix check above.
+                    return "ok"
                 }
                 cursor = skip_trivia(source, token_end(source, cursor))
             }
@@ -6245,7 +6353,14 @@ fn validate_core_calls(source: Text, hir: Text) -> Text {
                         name + "` at byte " + to_text(cursor)
                     }
                 }
-                let actual = call_arity(source, open)
+                # A pipeline supplies slot 0 from outside the parentheses, so
+                # its subject is one of the call's arguments. Counting only what
+                # is written between them is what made every pipeline report
+                # `expects N, got N-1` before #1190.
+                let mut actual = call_arity(source, open)
+                if call_is_pipeline_target(source, cursor) {
+                    actual = actual + 1
+                }
                 if actual != expected {
                     return "error[E2S17]: Core function `" + name +
                     "` expects " + to_text(expected) + " arguments, got " +

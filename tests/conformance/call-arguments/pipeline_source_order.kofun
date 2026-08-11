@@ -1,0 +1,16 @@
+fn observe(marker: Int, value: Int) -> Int {
+    print(marker)
+    return value
+}
+
+fn combine(
+    as_first left: Int,
+    as_second right: Int
+) -> Int {
+    return left * 10 + right
+}
+
+fn main() -> Int {
+    print(observe(1, 1) |> combine(as_second: observe(2, 2)))
+    return 0
+}

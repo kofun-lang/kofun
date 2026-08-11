@@ -291,12 +291,41 @@ unsupported_case "$cases/trailing_lambda_block.kofun" \
 # mentioned the pipeline that was actually unsupported. Each shape outside the
 # production gets its own wording, so a later slice admitting one leaves the
 # others' evidence standing.
-unsupported_case "$cases/pipeline_subject.kofun" \
-    'error[E2S158]: a pipeline subject binds slot 0; call-arguments v1 pipeline lowering is owned by #1228 at byte 127' \
-    'direct-call pipeline subject'
-unsupported_case "$cases/pipeline_coalescing_subject.kofun" \
-    'error[E2S158]: a pipeline subject binds slot 0; call-arguments v1 pipeline lowering is owned by #1228 at byte 139' \
-    'pipeline subject containing a coalescing expression'
+# #1228 admits them. These three were refusal fixtures through #1190, #1226 and
+# #1227; converting rather than deleting them keeps the record that the
+# boundary moved, and each now protects the *behaviour* its refusal used to
+# describe.
+#
+# What each is here for, so a future disagreement is easy to adjudicate:
+#   pipeline_subject           - the labelled rest binds by declaration slot
+#   pipeline_positional_rest   - a positional rest starts at slot 1, not 0
+#   pipeline_coalescing_subject- `??` binds inside the subject, at runtime
+executes_case pipeline_subject 'labelled-rest pipeline'
+executes_case pipeline_positional_rest 'positional-rest pipeline'
+executes_case pipeline_coalescing_subject 'pipeline over a coalescing subject'
+
+# The ordering the whole slice exists for. `1` is the subject and prints first,
+# `2` is the explicit argument, and `12` is the callee reading slots in
+# declaration order — so the subject evaluated first, each value exactly once,
+# and the ABI vector ran only after both assignments.
+executes_case pipeline_source_order 'pipeline evaluates the subject first'
+pipeline_key=$(call_site_key "$temporary/pipeline_source_order.c")
+test -n "$pipeline_key" ||
+    fail 'pipeline reserved no keyed temporary'
+# The subject's assignment precedes the explicit argument's, and the call
+# follows both. A pipeline-only emitter or a second temporary family would
+# break this pattern rather than merely reorder it.
+tr -d '\n' <"$temporary/pipeline_source_order.c" |
+    grep -E "kofun_call_arg_${pipeline_key}_0 = .*kofun_call_arg_${pipeline_key}_1 = .*kofun_fn_combine\(kofun_call_arg_${pipeline_key}_0, kofun_call_arg_${pipeline_key}_1\)" \
+    >/dev/null ||
+    fail 'pipeline C did not assign the subject before the argument and the call'
+# `|>` must not survive into the artifact, and neither may the labels or any
+# runtime dispatch. This is where a second namespace would show first.
+no_runtime_dispatch "$temporary/pipeline_source_order.c" \
+    'as_first|as_second' 'pipeline C'
+if grep -F '|>' "$temporary/pipeline_source_order.c" >/dev/null; then
+    fail 'pipeline C retained the pipe operator'
+fi
 unsupported_case "$cases/pipeline_bare_target.kofun" \
     'error[E2S158]: a pipeline target must be a direct call written with its parentheses at byte 105' \
     'pipeline with a bare callee'
@@ -371,15 +400,19 @@ unsupported_case "$cases/pipeline_take_subject.kofun" \
     'error[E2S123]: `ticket` was moved by `take` and cannot be used again at bytes 280..286; moved by `take` at bytes 241..247' \
     'pipeline subject moves once into a take slot'
 
-# A compound subject transfers nothing: there is no binding for a move to
-# invalidate, so no synthetic move is recorded and the call reaches the
-# boundary. This is the half that a looser bare-binding test would break —
-# and it nearly did, because the pipeline production made `expression_end`
-# swallow the whole call, so the subject's extent must be measured with
-# `coalescing_expression_end`.
-unsupported_case "$cases/pipeline_compound_subject.kofun" \
-    'error[E2S158]: a pipeline subject binds slot 0; call-arguments v1 pipeline lowering is owned by #1228 at byte 162' \
-    'compound pipeline subject records no move'
+# This fixture protects the *code*, not the model: it asserts that something
+# does **not** happen. A compound subject transfers nothing, because there is
+# no binding for a move to invalidate — so `left` is still readable afterwards,
+# and its `1` in the golden is the whole proof. A synthetic move would make
+# that read E2S123 and this case would stop running at all.
+#
+# It has already earned its place once. The bare-binding test measured the
+# subject with `expression_end`, which since #1190 swallows the whole
+# `subject |> callee(...)`; every subject looked compound and no move was ever
+# recorded. Only a case that must keep running distinguished that from a
+# correct rule — the bare case passed either way. The extent must be measured
+# with `coalescing_expression_end`.
+executes_case pipeline_compound_subject 'compound pipeline subject records no move'
 
 # The spans the binder in #1226 inherits. Asserting them here is what makes the
 # production reviewable before anything consumes it: a recognizer that refuses
