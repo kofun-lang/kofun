@@ -220,15 +220,29 @@ static bool fail_line(
  * One checked visit. Every loop and every recursion that can grow with the
  * model calls this before doing its work, so the budget bounds the analysis
  * rather than describing it.
+ *
+ * The budget is headroom, not a working limit. The largest model the other
+ * bounds admit — 128 alternatives over a three-column product, every column
+ * complete, which is the shape that makes the search branch at every level —
+ * costs about 29 000 visits, and the gate pins that number. 65536 is set above
+ * it so this stops a pathology rather than an ordinary model, which is also why
+ * the gate proves the check by rebuilding with a smaller budget instead of by
+ * finding a model that crosses this one.
+ *
+ * The limit is named in the message rather than written into it, so lowering
+ * the constant is the whole mutation.
  */
 static bool step(Program *program) {
+    char message[128];
     program->operations += UINT64_C(1);
     if (program->operations <= OPERATION_LIMIT) return true;
-    return fail(
-        program,
-        CODE_MODEL,
-        "usefulness analysis exceeds 65536 operations"
+    (void)snprintf(
+        message,
+        sizeof(message),
+        "usefulness analysis exceeds %" PRIu64 " operations",
+        OPERATION_LIMIT
     );
+    return fail(program, CODE_MODEL, message);
 }
 
 /* ------------------------------------------------------------------------ */
