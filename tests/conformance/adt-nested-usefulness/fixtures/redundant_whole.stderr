@@ -1,1 +1,0 @@
-error[E2S26]: redundant nested usefulness row at bytes 30..40: case `Wrap(Left)` is already covered by the earlier whole-constructor row at bytes 10..17; hint: remove the redundant row
