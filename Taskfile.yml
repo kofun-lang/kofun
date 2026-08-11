@@ -571,6 +571,11 @@ tasks:
     cmds:
       - "sh tests/tooling/verify-object-reuse/check.sh"
 
+  fuzz-sanitizer-reuse:
+    desc: "Verify runner-scoped fuzz sanitizer compiler object reuse"
+    cmds:
+      - "sh tests/tooling/fuzz-sanitizer-reuse/check.sh"
+
   packages:
     desc: "Verify locked package fetch and offline use"
     cmds:

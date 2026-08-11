@@ -13,6 +13,7 @@ verify_root=$(CDPATH= cd -P -- "$1" && pwd)
 verify_jobs=$2
 shift 2
 . "$verify_root/bootstrap/stage2/semantic-objects.sh"
+. "$verify_root/bootstrap/stage2/fuzz-sanitizer-object.sh"
 
 mkdir -p "$verify_root/build"
 verify_run=$(mktemp -d "$verify_root/build/verify.XXXXXX")
@@ -65,15 +66,35 @@ verify_semantic_objects=$verify_run/semantic-objects
 kofun_stage2_semantic_objects_build \
     "$verify_root" "$verify_semantic_objects"
 
+verify_fuzz_sanitizer_objects=$verify_run/fuzz-sanitizer-object
+verify_fuzz_sanitizer_census=$verify_run/fuzz-sanitizer-census.tsv
+kofun_stage2_fuzz_sanitizer_objects_build \
+    "$verify_root" "$verify_fuzz_sanitizer_objects" \
+    "$verify_fuzz_sanitizer_census" "$verify_real_cc"
+
 KOFUN_STAGE2_COMPILER=$verify_stage2
 KOFUN_STAGE2_SEMANTIC_OBJECT_DIR=$verify_semantic_objects
+KOFUN_STAGE2_FUZZ_SANITIZER_OBJECT_DIR=$verify_fuzz_sanitizer_objects
+KOFUN_STAGE2_FUZZ_SANITIZER_CENSUS_LOG=$verify_fuzz_sanitizer_census
 KOFUN_STAGE2_EVENTS_BUILD_DIR=$verify_run/stage2-events-cli
 KOFUN_STAGE2_KIF_BUILD_DIR=$verify_run/stage2-kif-cli
 export KOFUN_STAGE2_COMPILER KOFUN_STAGE2_SEMANTIC_OBJECT_DIR \
+    KOFUN_STAGE2_FUZZ_SANITIZER_OBJECT_DIR \
+    KOFUN_STAGE2_FUZZ_SANITIZER_CENSUS_LOG \
     KOFUN_STAGE2_EVENTS_BUILD_DIR KOFUN_STAGE2_KIF_BUILD_DIR
 
 task --parallel --failfast -C "$verify_jobs" "$@"
 task roadmap
+
+# The fuzz gate runs after all five consumers have appended their one link row.
+# In runner mode it validates that completed census and the supplied immutable
+# bundle without rebuilding the expensive compiler translation unit.
+KOFUN_FUZZ_SANITIZER_REUSE_WORK=$verify_run/fuzz-sanitizer-reuse
+KOFUN_FUZZ_SANITIZER_REUSE_BUNDLE=$verify_fuzz_sanitizer_objects
+KOFUN_FUZZ_SANITIZER_REUSE_CENSUS=$verify_fuzz_sanitizer_census
+export KOFUN_FUZZ_SANITIZER_REUSE_WORK \
+    KOFUN_FUZZ_SANITIZER_REUSE_BUNDLE KOFUN_FUZZ_SANITIZER_REUSE_CENSUS
+task fuzz-sanitizer-reuse
 
 # This gate runs only after every instrumented consumer is complete.  It sees
 # the final census and still executes its independent source/object

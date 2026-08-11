@@ -7,6 +7,8 @@ CASES=${KOFUN_MATCH_VALUE_FUZZ_CASES:-32}
 CC=${CC:-cc}
 . "$ROOT/tests/fuzz/semantic_protocol.sh"
 . "$ROOT/bootstrap/stage2/build.sh"
+. "$ROOT/bootstrap/stage2/semantic-objects.sh"
+. "$ROOT/bootstrap/stage2/fuzz-sanitizer-object.sh"
 
 case $CASES in
     ''|*[!0-9]*|0)
@@ -18,10 +20,8 @@ esac
 rm -rf "$WORK"
 mkdir -p "$WORK"
 kofun_stage2_build "$ROOT" "$WORK/kofun-stage2"
-"$CC" -std=c11 -O1 -g -Wall -Wextra -Werror \
-    -fsanitize=address,undefined -fno-omit-frame-pointer \
-    "$ROOT/bootstrap/stage2/compiler.c" \
-    -o "$WORK/kofun-stage2-sanitized"
+kofun_stage2_fuzz_sanitized_compiler \
+    "$ROOT" "$WORK/kofun-stage2-sanitized" match-value
 
 # The default is the seed this corpus was recorded with, so `task verify`
 # generates the same programs it always has. It is overridable so a lane
