@@ -1,0 +1,306 @@
+{
+  "file_id": "0101010101010101010101010101010101010101010101010101010101010101",
+  "pars": [
+    {
+      "display": {
+        "disclosure": "visible",
+        "text": "scope"
+      },
+      "lexical_index": 0,
+      "node_id": "0303030303030303030303030303030303030303030303030303030303030303",
+      "parent_scope_id": "0202020202020202020202020202020202020202020202020202020202020202",
+      "scope_id": "0404040404040404040404040404040404040404040404040404040404040404",
+      "scope_token_binding_id": "0505050505050505050505050505050505050505050505050505050505050505",
+      "tasks": [
+        {
+          "display": {
+            "disclosure": "visible",
+            "text": "left"
+          },
+          "handle_binding_id": "0808080808080808080808080808080808080808080808080808080808080808",
+          "join": {
+            "kind": "explicit",
+            "node_id": "0909090909090909090909090909090909090909090909090909090909090909"
+          },
+          "lambda_node_id": "0707070707070707070707070707070707070707070707070707070707070707",
+          "lexical_index": 0,
+          "observations": [
+            {
+              "mode": "read",
+              "origin": {
+                "node_id": "3030303030303030303030303030303030303030303030303030303030303030",
+                "span": {
+                  "end": 110,
+                  "start": 100
+                }
+              },
+              "target": {
+                "base_binding_id": "1010101010101010101010101010101010101010101010101010101010101010",
+                "display": {
+                  "disclosure": "visible",
+                  "text": "items"
+                },
+                "kind": "place",
+                "projections": [
+                  {
+                    "display": {
+                      "disclosure": "visible",
+                      "text": "samples"
+                    },
+                    "kind": "field",
+                    "ordinal": 1,
+                    "owner_type_id": "1111111111111111111111111111111111111111111111111111111111111111"
+                  },
+                  {
+                    "kind": "slice",
+                    "lower": {
+                      "kind": "constant",
+                      "value": "-2"
+                    },
+                    "upper": {
+                      "kind": "node",
+                      "node_id": "1212121212121212121212121212121212121212121212121212121212121212"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "mode": "edit",
+              "origin": {
+                "node_id": "3131313131313131313131313131313131313131313131313131313131313131",
+                "span": {
+                  "end": 130,
+                  "start": 120
+                }
+              },
+              "target": {
+                "base_binding_id": "1010101010101010101010101010101010101010101010101010101010101010",
+                "display": {
+                  "disclosure": "visible",
+                  "text": "renamed_items"
+                },
+                "kind": "place",
+                "projections": [
+                  {
+                    "display": {
+                      "disclosure": "visible",
+                      "text": "renamed_samples"
+                    },
+                    "kind": "field",
+                    "ordinal": 1,
+                    "owner_type_id": "1111111111111111111111111111111111111111111111111111111111111111"
+                  },
+                  {
+                    "kind": "slice",
+                    "lower": {
+                      "kind": "constant",
+                      "value": "-2"
+                    },
+                    "upper": {
+                      "kind": "node",
+                      "node_id": "1212121212121212121212121212121212121212121212121212121212121212"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "mode": "take",
+              "origin": {
+                "node_id": "3232323232323232323232323232323232323232323232323232323232323232",
+                "span": {
+                  "end": 150,
+                  "start": 140
+                }
+              },
+              "target": {
+                "base_binding_id": "1010101010101010101010101010101010101010101010101010101010101010",
+                "display": {
+                  "disclosure": "hidden",
+                  "text": null
+                },
+                "kind": "place",
+                "projections": [
+                  {
+                    "kind": "slice",
+                    "lower": {
+                      "kind": "constant",
+                      "value": "0"
+                    },
+                    "upper": {
+                      "kind": "constant",
+                      "value": "8"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "mode": "read",
+              "origin": {
+                "node_id": "3333333333333333333333333333333333333333333333333333333333333333",
+                "span": {
+                  "end": 170,
+                  "start": 160
+                }
+              },
+              "target": {
+                "kind": "unknown",
+                "reason": "unresolved-call"
+              }
+            },
+            {
+              "mode": "edit",
+              "origin": {
+                "node_id": "3434343434343434343434343434343434343434343434343434343434343434",
+                "span": {
+                  "end": 190,
+                  "start": 180
+                }
+              },
+              "target": {
+                "kind": "unknown",
+                "reason": "unnameable-place"
+              }
+            },
+            {
+              "mode": "read",
+              "origin": {
+                "node_id": "3535353535353535353535353535353535353535353535353535353535353535",
+                "span": {
+                  "end": 210,
+                  "start": 200
+                }
+              },
+              "target": {
+                "base_binding_id": "1313131313131313131313131313131313131313131313131313131313131313",
+                "display": {
+                  "disclosure": "hidden",
+                  "text": null
+                },
+                "kind": "place",
+                "projections": [
+                  {
+                    "display": { "disclosure": "hidden", "text": null },
+                    "kind": "field",
+                    "ordinal": 0,
+                    "owner_type_id": "1414141414141414141414141414141414141414141414141414141414141414"
+                  },
+                  {
+                    "display": { "disclosure": "hidden", "text": null },
+                    "kind": "field",
+                    "ordinal": 1,
+                    "owner_type_id": "1414141414141414141414141414141414141414141414141414141414141414"
+                  },
+                  {
+                    "display": { "disclosure": "hidden", "text": null },
+                    "kind": "field",
+                    "ordinal": 2,
+                    "owner_type_id": "1414141414141414141414141414141414141414141414141414141414141414"
+                  },
+                  {
+                    "display": { "disclosure": "hidden", "text": null },
+                    "kind": "field",
+                    "ordinal": 3,
+                    "owner_type_id": "1414141414141414141414141414141414141414141414141414141414141414"
+                  },
+                  {
+                    "display": { "disclosure": "hidden", "text": null },
+                    "kind": "field",
+                    "ordinal": 4,
+                    "owner_type_id": "1414141414141414141414141414141414141414141414141414141414141414"
+                  },
+                  {
+                    "display": { "disclosure": "hidden", "text": null },
+                    "kind": "field",
+                    "ordinal": 5,
+                    "owner_type_id": "1414141414141414141414141414141414141414141414141414141414141414"
+                  },
+                  {
+                    "display": { "disclosure": "hidden", "text": null },
+                    "kind": "field",
+                    "ordinal": 6,
+                    "owner_type_id": "1414141414141414141414141414141414141414141414141414141414141414"
+                  },
+                  {
+                    "display": { "disclosure": "hidden", "text": null },
+                    "kind": "field",
+                    "ordinal": 7,
+                    "owner_type_id": "1414141414141414141414141414141414141414141414141414141414141414"
+                  },
+                  {
+                    "display": { "disclosure": "hidden", "text": null },
+                    "kind": "field",
+                    "ordinal": 8,
+                    "owner_type_id": "1414141414141414141414141414141414141414141414141414141414141414"
+                  }
+                ]
+              }
+            }
+          ],
+          "spawn_node_id": "0606060606060606060606060606060606060606060606060606060606060606"
+        },
+        {
+          "display": {
+            "disclosure": "hidden",
+            "text": null
+          },
+          "handle_binding_id": "1818181818181818181818181818181818181818181818181818181818181818",
+          "join": {
+            "kind": "scope-exit",
+            "node_id": null
+          },
+          "lambda_node_id": "1717171717171717171717171717171717171717171717171717171717171717",
+          "lexical_index": 1,
+          "observations": [
+            {
+              "mode": "read",
+              "origin": {
+                "node_id": "4040404040404040404040404040404040404040404040404040404040404040",
+                "span": {
+                  "end": 230,
+                  "start": 220
+                }
+              },
+              "target": {
+                "base_binding_id": "1010101010101010101010101010101010101010101010101010101010101010",
+                "display": {
+                  "disclosure": "visible",
+                  "text": "items"
+                },
+                "kind": "place",
+                "projections": [
+                  {
+                    "display": {
+                      "disclosure": "visible",
+                      "text": "samples"
+                    },
+                    "kind": "field",
+                    "ordinal": 1,
+                    "owner_type_id": "1111111111111111111111111111111111111111111111111111111111111111"
+                  },
+                  {
+                    "kind": "slice",
+                    "lower": {
+                      "kind": "constant",
+                      "value": "-2"
+                    },
+                    "upper": {
+                      "kind": "node",
+                      "node_id": "1212121212121212121212121212121212121212121212121212121212121212"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "spawn_node_id": "1616161616161616161616161616161616161616161616161616161616161616"
+        }
+      ]
+    }
+  ],
+  "profile": "kofun.stage2-analysis/scoped-captures/v1",
+  "root_scope_id": "0202020202020202020202020202020202020202020202020202020202020202",
+  "schema": "kofun.scope-capture-observations/v1"
+}

@@ -1,0 +1,298 @@
+{
+  "$defs": {
+    "bound": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "constant" },
+            "value": {
+              "pattern": "^(?:0|-?[1-9][0-9]*)$",
+              "type": "string"
+            }
+          },
+          "required": ["kind", "value"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "node" },
+            "node_id": { "$ref": "#/$defs/id" }
+          },
+          "required": ["kind", "node_id"],
+          "type": "object"
+        }
+      ]
+    },
+    "capture": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "target_kind": { "const": "unknown" }
+            },
+            "required": ["target_kind"]
+          },
+          "then": {
+            "properties": {
+              "origin_node_ids": { "maxItems": 1 }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "capture_id": { "$ref": "#/$defs/id" },
+        "event": { "const": "capture" },
+        "kind": { "const": 13 },
+        "mode": { "enum": ["read", "edit", "take"] },
+        "origin_node_ids": {
+          "items": { "$ref": "#/$defs/id" },
+          "maxItems": 256,
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "target_id": { "$ref": "#/$defs/id" },
+        "target_kind": { "enum": ["place", "unknown"] },
+        "task_id": { "$ref": "#/$defs/id" },
+        "wire_hex": { "$ref": "#/$defs/hexBytes" }
+      },
+      "required": [
+        "capture_id", "event", "kind", "mode", "origin_node_ids", "target_id",
+        "target_kind", "task_id", "wire_hex"
+      ],
+      "type": "object"
+    },
+    "field": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "field" },
+        "ordinal": { "$ref": "#/$defs/u32" },
+        "owner_type_id": { "$ref": "#/$defs/id" }
+      },
+      "required": ["kind", "ordinal", "owner_type_id"],
+      "type": "object"
+    },
+    "hexBytes": {
+      "pattern": "^(?:[0-9a-f]{2})+$",
+      "type": "string"
+    },
+    "id": {
+      "not": {
+        "const": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "join": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "join_kind": { "const": "scope-exit" }
+            }
+          },
+          "then": {
+            "properties": {
+              "node_id": { "type": "null" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "join_kind": { "const": "explicit" }
+            }
+          },
+          "then": {
+            "properties": {
+              "node_id": { "$ref": "#/$defs/id" }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "event": { "const": "join" },
+        "join_id": { "$ref": "#/$defs/id" },
+        "join_kind": { "enum": ["explicit", "scope-exit"] },
+        "kind": { "const": 10 },
+        "node_id": {
+          "oneOf": [
+            { "$ref": "#/$defs/id" },
+            { "type": "null" }
+          ]
+        },
+        "task_id": { "$ref": "#/$defs/id" },
+        "wire_hex": { "$ref": "#/$defs/hexBytes" }
+      },
+      "required": ["event", "join_id", "join_kind", "kind", "node_id", "task_id", "wire_hex"],
+      "type": "object"
+    },
+    "par": {
+      "additionalProperties": false,
+      "properties": {
+        "event": { "const": "par" },
+        "kind": { "const": 8 },
+        "lexical_index": { "$ref": "#/$defs/u32" },
+        "node_id": { "$ref": "#/$defs/id" },
+        "par_id": { "$ref": "#/$defs/id" },
+        "parent_scope_id": { "$ref": "#/$defs/id" },
+        "scope_id": { "$ref": "#/$defs/id" },
+        "scope_token_binding_id": { "$ref": "#/$defs/id" },
+        "wire_hex": { "$ref": "#/$defs/hexBytes" }
+      },
+      "required": [
+        "event", "kind", "lexical_index", "node_id", "par_id", "parent_scope_id",
+        "scope_id", "scope_token_binding_id", "wire_hex"
+      ],
+      "type": "object"
+    },
+    "place": {
+      "additionalProperties": false,
+      "properties": {
+        "base_binding_id": { "$ref": "#/$defs/id" },
+        "canonical_bytes": { "$ref": "#/$defs/hexBytes" },
+        "event": { "const": "place" },
+        "kind": { "const": 11 },
+        "place_id": { "$ref": "#/$defs/id" },
+        "projections": {
+          "items": {
+            "oneOf": [
+              { "$ref": "#/$defs/field" },
+              { "$ref": "#/$defs/slice" }
+            ]
+          },
+          "maxItems": 8,
+          "type": "array"
+        },
+        "wire_hex": { "$ref": "#/$defs/hexBytes" }
+      },
+      "required": [
+        "base_binding_id", "canonical_bytes", "event", "kind", "place_id", "projections", "wire_hex"
+      ],
+      "type": "object"
+    },
+    "slice": {
+      "additionalProperties": false,
+      "description": "When both bounds are constant, lower must be less than or equal to upper; equality is the valid empty half-open slice.",
+      "properties": {
+        "kind": { "const": "slice" },
+        "lower": { "$ref": "#/$defs/bound" },
+        "upper": { "$ref": "#/$defs/bound" }
+      },
+      "required": ["kind", "lower", "upper"],
+      "type": "object"
+    },
+    "task": {
+      "additionalProperties": false,
+      "properties": {
+        "event": { "const": "task" },
+        "handle_binding_id": { "$ref": "#/$defs/id" },
+        "kind": { "const": 9 },
+        "lambda_node_id": { "$ref": "#/$defs/id" },
+        "lexical_index": { "$ref": "#/$defs/u32" },
+        "par_id": { "$ref": "#/$defs/id" },
+        "spawn_node_id": { "$ref": "#/$defs/id" },
+        "task_id": { "$ref": "#/$defs/id" },
+        "wire_hex": { "$ref": "#/$defs/hexBytes" }
+      },
+      "required": [
+        "event", "handle_binding_id", "kind", "lambda_node_id", "lexical_index",
+        "par_id", "spawn_node_id", "task_id", "wire_hex"
+      ],
+      "type": "object"
+    },
+    "u32": {
+      "maximum": 4294967295,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "unknown": {
+      "additionalProperties": false,
+      "properties": {
+        "canonical_bytes": { "$ref": "#/$defs/hexBytes" },
+        "event": { "const": "unknown" },
+        "kind": { "const": 12 },
+        "reason": {
+          "enum": [
+            "unresolved-call",
+            "projection-depth-exceeded",
+            "unnameable-place"
+          ]
+        },
+        "task_id": { "$ref": "#/$defs/id" },
+        "unknown_id": { "$ref": "#/$defs/id" },
+        "wire_hex": { "$ref": "#/$defs/hexBytes" },
+        "witness_node_id": { "$ref": "#/$defs/id" }
+      },
+      "required": [
+        "canonical_bytes", "event", "kind", "reason", "task_id", "unknown_id",
+        "wire_hex", "witness_node_id"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://kofun.dev/schema/kofun.stage2-semantic-events.v2-captures.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "capture_frames_hex": {
+      "pattern": "^[0-9a-f]*$",
+      "type": "string"
+    },
+    "events": {
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/par" },
+          { "$ref": "#/$defs/task" },
+          { "$ref": "#/$defs/join" },
+          { "$ref": "#/$defs/place" },
+          { "$ref": "#/$defs/unknown" },
+          { "$ref": "#/$defs/capture" }
+        ]
+      },
+      "maxItems": 8384,
+      "type": "array"
+    },
+    "file_id": { "$ref": "#/$defs/id" },
+    "limits": {
+      "additionalProperties": false,
+      "properties": {
+        "capture_events": { "const": 8384 },
+        "event_bytes": { "const": 16777216 },
+        "events": { "const": 16384 },
+        "field_bytes": { "const": 16384 },
+        "relations": { "const": 256 }
+      },
+      "required": [
+        "capture_events", "event_bytes", "events", "field_bytes", "relations"
+      ],
+      "type": "object"
+    },
+    "profile": {
+      "const": "kofun.stage2-analysis/scoped-captures/v1"
+    },
+    "root_scope_id": { "$ref": "#/$defs/id" },
+    "schema": {
+      "const": "kofun-stage2-semantic-events/v2"
+    },
+    "section": {
+      "const": "scoped-captures"
+    }
+  },
+  "required": [
+    "capture_frames_hex",
+    "events",
+    "file_id",
+    "limits",
+    "profile",
+    "root_scope_id",
+    "schema",
+    "section"
+  ],
+  "title": "Kofun Stage 2 semantic-events v2 scoped-capture section",
+  "type": "object"
+}

@@ -488,6 +488,11 @@ tasks:
     cmds:
       - "sh spec/concurrency/scoped-parallelism-v1/check.sh"
 
+  concurrency-capture-contract:
+    desc: "Verify the versioned scoped-capture HIR, KSE2, and sidecar contract"
+    cmds:
+      - "sh spec/concurrency/scoped-captures-v1/check.sh"
+
   schedule-trace:
     desc: "Verify deterministic scoped-concurrency schedule traces and replay"
     cmds:
@@ -960,6 +965,7 @@ tasks:
             kotest \
             clock-adapters \
             scoped-parallelism \
+            concurrency-capture-contract \
             schedule-trace \
             type-reduction-trace \
             affine-resumption \
