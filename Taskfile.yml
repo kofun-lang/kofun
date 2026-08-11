@@ -225,9 +225,16 @@ tasks:
       - "sh tests/conformance/adt/run.sh"
 
   records:
-    desc: "Verify bounded nominal record typed frontend"
+    desc: "Verify bounded nominal records and the mixed C11 aggregate bridge"
+    deps: [aggregate-bridge]
     cmds:
       - "sh tests/conformance/records/run.sh"
+
+  aggregate-bridge:
+    desc: "Prove the bounded mixed Text/List[Int]/Int record bridge in C11"
+    run: once
+    cmds:
+      - "sh tests/conformance/aggregate-bridge/run.sh"
 
   generics:
     desc: "Verify explicit generic function typing"
@@ -916,6 +923,7 @@ tasks:
             patterns \
             adt \
             records \
+            aggregate-bridge \
             generics \
             const-generics \
             hm-levels \

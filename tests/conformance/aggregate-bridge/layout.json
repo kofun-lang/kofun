@@ -1,0 +1,23 @@
+{
+  "schema": "kofun.aggregate-layout-document/v1",
+  "types": [
+    { "id": "Int", "kind": "scalar", "scalar": "Int" },
+    { "id": "Text", "kind": "text" },
+    {
+      "id": "BoundedList[Int, 64]",
+      "kind": "bounded_list",
+      "element": "Int",
+      "capacity": "64"
+    },
+    {
+      "id": "BridgeReport",
+      "kind": "record",
+      "fields": [
+        { "name": "identity", "type": "Text" },
+        { "name": "samples", "type": "BoundedList[Int, 64]" },
+        { "name": "count", "type": "Int" }
+      ]
+    }
+  ],
+  "objects": []
+}
