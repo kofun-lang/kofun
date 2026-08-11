@@ -84,10 +84,11 @@ refuses `implemented` unless the evidence is a task target it can find. An open
 generated planning issue (`#35`–`#525`) is **never** implementation evidence;
 the checker cannot tell which issues are generated, so the reviewer must.
 
-The checker also carries nine negative self-tests. Each breaks exactly one rule
-— an unknown state, an `implemented` row citing a path instead of a task, a
-`specified` row citing a file that does not exist, a `non-goal` that smuggles in
-evidence, a duplicated job id — and each must be refused. A checker that
+The checker also carries eleven negative self-tests. Each breaks exactly one
+rule — an unknown state, an `implemented` row citing a path instead of a task, a
+`specified` row citing a file that does not exist, a row with no evidence, a
+`non-goal` that smuggles in evidence, a duplicated job id, or an omitted
+required capability — and each must be refused. A checker that
 silently stopped enforcing one of these would keep reporting PASS on an honest
 matrix, which is why the mutations are run rather than trusted.
 

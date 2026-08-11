@@ -112,7 +112,10 @@ printf '%s\n' "PASS: $row_count capability rows carry a valid tier, state, and r
 REQUIRED='
 collections-sequence
 collections-associative
-filesystem-process-env
+syscall-file-round-trip
+process-spawn
+directory-listing
+environment-authority
 cli-parsing
 http-server
 http-client
@@ -147,13 +150,22 @@ printf '%s\n' "PASS: every capability the charter names has a row"
 
 # Negative self-tests. Each mutation breaks exactly one rule and must be
 # refused; a checker that accepted any of them would still pass above.
+validate_complete() {
+    file=$1
+    validate "$file" >/dev/null || return 1
+    for job in $REQUIRED; do
+        test -n "$job" || continue
+        cut -f1 "$file" | grep -Fxq "$job" || return 1
+    done
+}
+
 mutate() {
     name=$1
     shift
     out="$WORK/$name.tsv"
     cp "$MATRIX" "$out"
     "$@" "$out"
-    if validate "$out" >/dev/null 2>&1; then
+    if validate_complete "$out" >/dev/null 2>&1; then
         fail "mutation '$name' was accepted"
     fi
     printf '%s\n' "PASS [capabilities-negative] $name"
@@ -163,6 +175,7 @@ mutate unknown-state sed -i 's/\timplemented\ttask stdlib\t/\tshipped\ttask stdl
 mutate unknown-tier sed -i 's/\tportable\timplemented\t/\tstandard\timplemented\t/'
 mutate implemented-without-task sed -i 's/\timplemented\ttask stdlib\t/\timplemented\tstdlib\/json\t/'
 mutate implemented-unknown-task sed -i 's/\timplemented\ttask stdlib\t/\timplemented\ttask no-such-target\t/'
+mutate missing-evidence sed -i 's/^syscall-file-round-trip\tadapter\timplemented\ttask stdlib\t/syscall-file-round-trip\tadapter\timplemented\t \t/'
 mutate specified-missing-file sed -i 's|\tspecified\tspec/effects/validation-accumulation.md\t|\tspecified\tspec/effects/does-not-exist.md\t|'
 mutate planned-without-issue sed -i 's/\tplanned\t#555 #736\t/\tplanned\tsoon\t/'
 mutate non-goal-with-evidence sed -i 's/\tnon-goal\tcharter\t/\tnon-goal\ttask stdlib\t/'
@@ -174,5 +187,12 @@ duplicate() {
 }
 mutate duplicate-job duplicate
 
+# Row validity alone cannot detect an omitted capability, so exercise the
+# charter coverage check through the same mutation boundary.
+remove_required_row() {
+    sed -i '/^process-spawn\t/d' "$1"
+}
+mutate missing-required-row remove_required_row
+
 printf '%s\n' \
-    'PASS: the capability matrix states are exact, and 9 mutations are refused'
+    'PASS: the capability matrix states are exact, and 11 mutations are refused'
