@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kofun-lang.org/spec/kofun.bench-report.v1.schema.json",
+  "title": "Kofun benchmark report v1",
+  "description": "Closed structural schema. contract.mjs/model.mjs additionally enforce canonical 16384-byte UTF-8, UTF-8 byte rather than code-point Text limits, Unicode scalar validity, duplicate keys, derived summaries/outliers, and cross-field invariants.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "identity",
+    "clock",
+    "budget",
+    "measurement",
+    "samples",
+    "outliers",
+    "summary",
+    "counters",
+    "digests",
+    "host"
+  ],
+  "properties": {
+    "schema": { "const": "kofun.bench-report/v1" },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["suite", "case", "metric", "unit", "direction"],
+      "properties": {
+        "suite": { "$ref": "#/$defs/identityText" },
+        "case": { "$ref": "#/$defs/identityText" },
+        "parameter": { "$ref": "#/$defs/identityText" },
+        "metric": { "$ref": "#/$defs/identityText" },
+        "unit": { "const": "ns" },
+        "direction": { "enum": ["lower-is-better", "higher-is-better"] }
+      }
+    },
+    "clock": { "enum": ["monotonic", "process-cpu", "wall"] },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["warmup_cap_ns", "sampling_cap_ns", "sample_cap"],
+      "properties": {
+        "warmup_cap_ns": { "type": "integer", "minimum": 0, "maximum": 500000000 },
+        "sampling_cap_ns": { "type": "integer", "minimum": 1, "maximum": 3000000000 },
+        "sample_cap": { "type": "integer", "minimum": 1, "maximum": 100 }
+      }
+    },
+    "measurement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "warmup_iterations",
+        "warmup_stop",
+        "iterations_per_sample",
+        "sample_count",
+        "sampling_stop",
+        "harness_overhead_ns"
+      ],
+      "properties": {
+        "warmup_iterations": { "$ref": "#/$defs/nonnegativeInteger" },
+        "warmup_stop": { "enum": ["disabled", "steady", "time-cap"] },
+        "iterations_per_sample": { "$ref": "#/$defs/positiveInteger" },
+        "sample_count": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "sampling_stop": { "enum": ["sample-cap", "time-cap"] },
+        "harness_overhead_ns": { "$ref": "#/$defs/nonnegativeInteger" }
+      }
+    },
+    "samples": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "items": { "$ref": "#/$defs/nonnegativeInteger" }
+    },
+    "outliers": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "items": { "type": "boolean" }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimum", "maximum", "median", "p25", "p75", "median_absolute_deviation"],
+      "properties": {
+        "minimum": { "$ref": "#/$defs/nonnegativeInteger" },
+        "maximum": { "$ref": "#/$defs/nonnegativeInteger" },
+        "median": { "$ref": "#/$defs/nonnegativeInteger" },
+        "p25": { "$ref": "#/$defs/nonnegativeInteger" },
+        "p75": { "$ref": "#/$defs/nonnegativeInteger" },
+        "median_absolute_deviation": { "$ref": "#/$defs/nonnegativeInteger" }
+      }
+    },
+    "counters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allocated_bytes", "allocation_count", "gc_collections", "vm_peak_bytes", "cpu_cycles"],
+      "properties": {
+        "allocated_bytes": { "$ref": "#/$defs/availableInteger" },
+        "allocation_count": { "$ref": "#/$defs/availableInteger" },
+        "gc_collections": { "$ref": "#/$defs/availableInteger" },
+        "vm_peak_bytes": { "$ref": "#/$defs/availableInteger" },
+        "cpu_cycles": { "$ref": "#/$defs/availableInteger" }
+      }
+    },
+    "digests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["toolchain_sha256", "source_sha256", "artifact_sha256"],
+      "properties": {
+        "toolchain_sha256": { "$ref": "#/$defs/sha256" },
+        "source_sha256": { "$ref": "#/$defs/sha256" },
+        "artifact_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["host_id_sha256", "os", "arch", "cpu", "affinity", "frequency_hz", "noise"],
+      "properties": {
+        "host_id_sha256": { "$ref": "#/$defs/sha256" },
+        "os": { "$ref": "#/$defs/hostText" },
+        "arch": { "$ref": "#/$defs/hostText" },
+        "cpu": { "$ref": "#/$defs/hostText" },
+        "affinity": { "$ref": "#/$defs/availableText" },
+        "frequency_hz": { "$ref": "#/$defs/availableInteger" },
+        "noise": { "type": "string", "maxLength": 255, "description": "At most 255 UTF-8 bytes; the executable model enforces the byte limit." }
+      }
+    }
+  },
+  "$defs": {
+    "nonnegativeInteger": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "positiveInteger": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "identityText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 96,
+      "description": "At most 96 UTF-8 bytes; the executable model enforces the byte limit."
+    },
+    "hostText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "At most 128 UTF-8 bytes; the executable model enforces the byte limit."
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "availableInteger": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state"],
+          "properties": { "state": { "const": "unavailable" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "value"],
+          "properties": {
+            "state": { "const": "available" },
+            "value": { "$ref": "#/$defs/nonnegativeInteger" }
+          }
+        }
+      ]
+    },
+    "availableText": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state"],
+          "properties": { "state": { "const": "unavailable" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "value"],
+          "properties": {
+            "state": { "const": "available" },
+            "value": { "$ref": "#/$defs/hostText" }
+          }
+        }
+      ]
+    }
+  }
+}

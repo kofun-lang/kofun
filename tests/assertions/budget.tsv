@@ -21,6 +21,7 @@
 0	framework/cli/check.sh
 0	framework/tui/check.sh
 0	spec/aggregate-layout-v1/check.sh
+0	spec/benchmark-report-v1/check.sh
 0	spec/roadmap-31-34/verify-current-gates.sh
 0	spec/source-file-mapping/check.sh
 0	spec/typed-sidecar/check.sh

@@ -622,3 +622,7 @@ Shell timing as the public story, statistics over discarded samples,
 privileged host tuning, and an embedded profiler are rejected.
 
 [`docs/stdlib/benchmark.md`](stdlib/benchmark.md) is normative.
+[`spec/benchmark-report-v1.md`](../spec/benchmark-report-v1.md) is its
+executable report-profile amendment: the accepted 100-sample ceiling remains,
+canonical bytes and closed errors are fixed, and its pure gate makes no
+production runner or release claim.
