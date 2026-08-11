@@ -530,6 +530,11 @@ tasks:
     cmds:
       - "sh tests/stdlib/benchmark-summary/check.sh"
 
+  benchmark-report-spec:
+    desc: "Verify the canonical benchmark-report v1 contract and vectors"
+    cmds:
+      - "sh spec/benchmark-report-v1/check.sh"
+
   move-assertion:
     desc: "Verify the unstable compile-time move assertion and its erasure"
     cmds:
@@ -982,6 +987,7 @@ tasks:
             affine-resource-handle \
             example-law-evidence \
             benchmark-summary \
+            benchmark-report-spec \
             move-assertion \
             usability-corpus \
             capabilities \

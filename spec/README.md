@@ -117,6 +117,15 @@ executable bootstrap implementation.
   explicit identification and migration; it is not an active compiler,
   optimizer, cache, or release contract and must never be interpreted as v2.
 
+- `benchmark-report-v1.md`, its closed JSON Schema, bounded pure model, three
+  canonical positive reports, digest-pinned negative byte transformations, and
+  comparison vectors define the executable `kofun.bench-report/v1` profile.
+  `task benchmark-report-spec` preserves the accepted 100-sample ceiling with
+  a 64+36 Stage 2 mapping and fixes canonical bytes, availability, errors,
+  typed non-success output outcomes that never expose partial report bytes as
+  success, and caller-threshold comparison. It is contract evidence,
+  not a production model, codec, runner, counter provider, or capability claim.
+
 - `aggregate-layout-v1.md`, its `aggregate-layout-v1/` reference computer,
   target files, golden vectors, and `aggregate-layout-v1/check.sh` define the
   accepted target-parameterized byte layout for `Text`, `List`, flat records,

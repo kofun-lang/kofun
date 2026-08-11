@@ -92,6 +92,25 @@ observations therefore produce exact integer summaries without an implicit
 rounding mode. A future interpolated statistic requires a new schema version;
 it must not silently change these bytes.
 
+### Executable report profile
+
+[`spec/benchmark-report-v1.md`](../../spec/benchmark-report-v1.md) is the
+normative executable amendment for `kofun.bench-report/v1`. It preserves the
+full 100-sample ceiling and freezes the one-case/one-metric logical model,
+closed fields and availability states, 16-KiB canonical UTF-8 JSON, exact
+integer/Text bounds, typed non-success outcomes that never expose partial
+report bytes as success, and caller-threshold median comparison.
+`task benchmark-report-spec` runs its pure
+model, JSON Schema, canonical positive reports, digest-pinned negative bytes,
+and comparison boundaries.
+
+That gate proves the contract only. Production Kofun values, the bounded
+alias-free Stage 2 storage slice for the Managed `Bytes` carrier, runner,
+clocks, and counter providers are separate implementation work. Filesystem
+publication adapters are independent downstream consumers, not report-codec
+prerequisites. In particular, passing the pure model is not a benchmark
+capability or release claim.
+
 ## Examples
 
 Five cases, because each one is a distinct way to measure the wrong thing.
@@ -141,10 +160,12 @@ bench sort_n(b: Bench) {
 }
 ```
 
-**An unavailable counter.** What a report says when a counter has no provider on
-this backend. The field is present and explicitly `unavailable`; it is never
-zero and never omitted, because a zero would read as *"no allocations"* and an
-omission as *"nobody asked"*.
+**An unavailable counter.** The abbreviated fragment below explains what a
+counter says when it has no provider on this backend; it is not a complete v1
+document. The field is present and explicitly `unavailable`; it is never zero
+and never omitted, because a zero would read as *"no allocations"* and an
+omission as *"nobody asked"*. Complete canonical documents live under
+`spec/benchmark-report-v1/vectors/positive/`.
 
 ```json
 {
