@@ -712,6 +712,11 @@ tasks:
     cmds:
       - "sh tests/digest/check.sh"
 
+  tests-kofun:
+    desc: "Verify the tests/kofun corpus runs or refuses as recorded"
+    cmds:
+      - "sh tests/kofun/check.sh"
+
   call-arguments-spec:
     desc: "Verify labelled call binding and the single trailing-lambda form"
     cmds:
@@ -1011,6 +1016,7 @@ tasks:
             artifact-qualification \
             syntax \
             digest \
+            tests-kofun \
             call-arguments \
             call-arguments-spec \
             call-arguments-surface \
