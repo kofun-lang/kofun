@@ -487,6 +487,14 @@ tasks:
     cmds:
       - "sh tests/http/check.sh"
 
+  # The client-side reference model for #644. Executable specification evidence
+  # over a scripted transport: no socket, no capability, and no claim that a
+  # client exists.
+  http-client-model:
+    desc: "Verify the deterministic HTTP/1.1 reference model and its corpus"
+    cmds:
+      - "sh tests/http/client-model/run.sh"
+
   cli-framework:
     desc: "Verify the direct-static native CLI framework"
     cmds:
@@ -1004,6 +1012,7 @@ tasks:
             bindgen-c \
             rust-shim \
             http \
+            http-client-model \
             cli-framework \
             tui-framework \
             stdlib \

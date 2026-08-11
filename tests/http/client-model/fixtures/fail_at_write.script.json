@@ -1,0 +1,27 @@
+{
+  "schema": "kofun.http-transport-script/v1",
+  "name": "fail_at_write",
+  "request": {
+    "method": "GET",
+    "target": "/index.html",
+    "host": "example.test",
+    "headers": [
+      [
+        "Accept",
+        "*/*"
+      ]
+    ]
+  },
+  "limits": {
+    "max_header_bytes": 4096,
+    "max_headers": 16,
+    "max_body_bytes": 65536,
+    "max_chunk_bytes": 4096
+  },
+  "operations": [
+    {
+      "op": "fail",
+      "at": "write"
+    }
+  ]
+}
