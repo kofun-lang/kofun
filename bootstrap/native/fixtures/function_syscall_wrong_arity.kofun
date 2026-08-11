@@ -1,0 +1,9 @@
+# `__linux_syscall1` takes the syscall number and one argument, so a single
+# value is a missing argument rather than a shorter call.
+fn raw_exit(status: Int) -> Int {
+    return __linux_syscall1(status)
+}
+
+fn main() {
+    print(raw_exit(60))
+}

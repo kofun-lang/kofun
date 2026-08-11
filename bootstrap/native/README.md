@@ -410,6 +410,72 @@ Unlike the page-backed print fixture, this image keeps its message in the RX
 segment. It demonstrates deterministic multi-label rel32 resolution for both a
 forward `call` and a RIP-relative data reference.
 
+## Linux syscall intrinsics
+
+`stdlib/linux_x86_64/abi.kofun` declares `__linux_syscall0` through
+`__linux_syscall6` and builds its entire `raw_*` layer — `raw_read`,
+`raw_write`, `raw_open`, `raw_close`, `raw_exit`, and the typed `SysResult`
+wrappers above them — on those seven names. Nothing implemented them, so none
+of that layer ran; the gates that appeared to cover it check that the
+declarations exist with `grep`, which a declaration satisfies whether or not
+anything can execute it. The x86-64 function profile now lowers them.
+
+The names are recognised at the call site rather than declared in the source
+under compilation: the native Core has no import path, and the stdlib
+declaration is the specification they answer to. Defining a function under one
+of those names is refused, because the call site resolves the intrinsic first
+and the definition would be unreachable while looking authoritative.
+
+`__linux_syscallN` takes `N + 1` values — the number, then the arguments — so
+the six-argument form takes seven, one more than a native Core function may
+take. The intrinsic therefore carries its own argument placement instead of
+reusing the SysV call boundary:
+
+| value | register |
+|---|---|
+| syscall number | `rax` |
+| argument 1 | `rdi` |
+| argument 2 | `rsi` |
+| argument 3 | `rdx` |
+| argument 4 | `r10` |
+| argument 5 | `r8` |
+| argument 6 | `r9` |
+
+The fourth argument is the one place this differs from an ordinary call, which
+would use `rcx`. `syscall` overwrites `rcx` with the return address and `r11`
+with the saved flags, so the kernel ABI moves that argument to `r10`.
+
+`r10` is also the only one of those registers this backend ever allocates, so
+it is filled last: every other value is read out of its home before `r10` is
+written. The emitter proves that premise on each call rather than assuming it.
+
+The clobber is handled where the register file is decided, not at the call.
+`function_expression_calls` reports the intrinsic as a call, which is what moves
+every value live across it into the callee-saved class the kernel preserves —
+including anything that would otherwise have sat in `r11`.
+
+The result is whatever `rax` held, unchanged. A negative return is an errno in
+the form `syscall_result` in `abi.kofun` already expects, so the backend
+classifies nothing.
+
+AArch64 enters the kernel through a different boundary — `x8` carries the
+number — and is a separate checkpoint, so `--target aarch64-linux` diagnoses a
+program that uses the intrinsics instead of emitting an image in which they
+mean nothing.
+
+`check.sh` executes them. `fixtures/function_syscall_probe.kofun` is the `raw_*`
+layer's own bodies: it exercises all seven arities and, for the six-argument
+`mmap`, changes exactly one argument at a time so the kernel's rejection names
+the register that argument travelled in. It ends by writing 32 bytes of a fresh
+anonymous mapping to standard output, which the kernel guarantees is zeroed, so
+the gate compares bytes rather than trusting a returned count.
+`fixtures/function_syscall_exit_status.kofun` leaves with status 97 and an empty
+standard output, which is how the gate knows the process left through the
+syscall and not through the profile's epilogue.
+`fixtures/function_syscall_live_values.kofun` keeps two products live across the
+instruction and prints an exact number, so a value lost to the clobber is a
+wrong answer instead of a crash.
+
 ## Opt-in debug information
 
 The general Native Core CLI accepts `-g` for both Linux targets:
@@ -580,6 +646,11 @@ Implemented here:
   AArch64 adapter;
 - two-digit integer-to-ASCII conversion for the shared scalar fixture;
 - distinct RX and RW mappings;
+- x86-64 lowering of `__linux_syscall0` through `__linux_syscall6`, so the
+  `raw_*` layer `stdlib/linux_x86_64/abi.kofun` declares executes: all seven
+  arities, each kernel-ABI argument register observed by a rejection that names
+  it, negative errno returned unchanged, an exact exit status, bytes of a
+  mapped page on standard output, and values held live across the clobber;
 - three end-to-end Linux x86-64 executable artifact gates;
 - opt-in section headers, symbols, and DWARF v4 line/function information for
   arbitrary source accepted by the general x86-64 and AArch64 Native Core CLI.

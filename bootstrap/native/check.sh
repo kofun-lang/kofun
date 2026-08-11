@@ -2257,6 +2257,117 @@ assert_absent "unsupported" "$unsupported"
 assert_grep "unsupported-native-core.stderr" \
     'unsupported Core' "$WORK/unsupported-native-core.stderr"
 
+# The Linux syscall intrinsics.
+#
+# `stdlib/linux_x86_64/abi.kofun` declares `__linux_syscall0` through
+# `__linux_syscall6` and builds its entire `raw_*` layer on them. Until this
+# lowering existed no compiler implemented the intrinsic, so none of that layer
+# executed — and the three gates that appeared to cover it check that the
+# declarations are present with `grep`, which a declaration satisfies whether or
+# not anything can run it. This section is the difference: the fixtures below
+# are that layer's own bodies, and what follows observes the kernel's answers.
+SYSCALL_PROBE_SOURCE="$NATIVE/fixtures/function_syscall_probe.kofun"
+"$WORK/kofun-native-function-text" \
+    "$SYSCALL_PROBE_SOURCE" x86_64-linux \
+    "$WORK/function-syscall-probe.elf"
+"$KOFUN" build "$SYSCALL_PROBE_SOURCE" \
+    --target x86_64-linux \
+    -o "$WORK/function-syscall-probe-cli.elf" >/dev/null
+cmp \
+    "$WORK/function-syscall-probe.elf" \
+    "$WORK/function-syscall-probe-cli.elf"
+chmod +x "$WORK/function-syscall-probe.elf"
+
+# The probe returns 0 only when all seven arities executed and every argument
+# reached the register the kernel ABI names for it; any other status is the
+# step that disagreed, and the fixture says which. Its standard output is the
+# head of a fresh anonymous mapping — memory the kernel guarantees is zeroed —
+# placed there by `raw_write(1, address, 32)`, so the bytes prove that call
+# carried the address and the length rather than merely returning a plausible
+# number. Both observations are required: a boundary register swapped with
+# `rax` still exits 0, and is caught by the byte count.
+set +e
+"$WORK/function-syscall-probe.elf" \
+    >"$WORK/function-syscall-probe.stdout" \
+    2>"$WORK/function-syscall-probe.stderr"
+syscall_probe_status=$?
+set -e
+assert_num "syscall probe status" "$syscall_probe_status" -eq 0
+assert_file_empty "function-syscall-probe.stderr" \
+    "$WORK/function-syscall-probe.stderr"
+: >"$WORK/function-syscall-zeros"
+syscall_zero_count=0
+while test "$syscall_zero_count" -lt 32; do
+    printf '\000' >>"$WORK/function-syscall-zeros"
+    syscall_zero_count=$((syscall_zero_count + 1))
+done
+cmp \
+    "$WORK/function-syscall-zeros" \
+    "$WORK/function-syscall-probe.stdout"
+
+# `raw_exit(97)` leaves with exactly that status, observed rather than inferred.
+# Empty standard output is the second half of the observation: the `print` that
+# follows the call never ran, so the process left through the syscall and not
+# through the profile's own epilogue.
+"$WORK/kofun-native-function-text" \
+    "$NATIVE/fixtures/function_syscall_exit_status.kofun" x86_64-linux \
+    "$WORK/function-syscall-exit.elf"
+chmod +x "$WORK/function-syscall-exit.elf"
+set +e
+"$WORK/function-syscall-exit.elf" \
+    >"$WORK/function-syscall-exit.stdout" \
+    2>"$WORK/function-syscall-exit.stderr"
+syscall_exit_status=$?
+set -e
+assert_num "syscall exit status" "$syscall_exit_status" -eq 97
+assert_file_empty "function-syscall-exit.stdout" \
+    "$WORK/function-syscall-exit.stdout"
+assert_file_empty "function-syscall-exit.stderr" \
+    "$WORK/function-syscall-exit.stderr"
+
+# `syscall` destroys rcx and r11, and r11 is one of the two caller-saved
+# registers this backend hands to evaluation depths. The fixture keeps two
+# products live across the instruction and prints an exact answer, so a lost
+# value is a wrong number rather than a crash.
+"$WORK/kofun-native-function-text" \
+    "$NATIVE/fixtures/function_syscall_live_values.kofun" x86_64-linux \
+    "$WORK/function-syscall-live.elf"
+chmod +x "$WORK/function-syscall-live.elf"
+"$WORK/function-syscall-live.elf" \
+    >"$WORK/function-syscall-live.stdout" \
+    2>"$WORK/function-syscall-live.stderr"
+cmp \
+    "$NATIVE/fixtures/function_syscall_live_values.stdout" \
+    "$WORK/function-syscall-live.stdout"
+assert_file_empty "function-syscall-live.stderr" \
+    "$WORK/function-syscall-live.stderr"
+
+expect_function_text_rejection \
+    function_syscall_redefined \
+    'native Core cannot define the intrinsic `__linux_syscall1`'
+expect_function_text_rejection \
+    function_syscall_wrong_arity \
+    'native Core intrinsic `__linux_syscall1` expects 2 arguments, got 1'
+expect_function_text_rejection \
+    function_syscall_text_argument \
+    'native Core intrinsic `__linux_syscall3` argument 3 requires Int'
+
+# AArch64 enters the kernel through a different boundary and is a separate
+# checkpoint, so the same source is diagnosed there instead of producing an
+# image whose intrinsics mean nothing.
+syscall_aarch64="$WORK/function-syscall-probe-aarch64.elf"
+set +e
+"$KOFUN" build "$SYSCALL_PROBE_SOURCE" \
+    --target aarch64-linux -o "$syscall_aarch64" \
+    >"$WORK/function-syscall-aarch64.stdout" \
+    2>"$WORK/function-syscall-aarch64.stderr"
+syscall_aarch64_status=$?
+set -e
+assert_num "syscall aarch64 status" "$syscall_aarch64_status" -eq 1
+assert_absent "syscall aarch64 image" "$syscall_aarch64"
+assert_grep "function-syscall-aarch64.stderr" \
+    'lower on x86_64-linux only' "$WORK/function-syscall-aarch64.stderr"
+
 if test -n "$AARCH64_RUNNER"; then
     text_summary="PASS: x86-64/AArch64 Text matched C11 UTF-8 semantics"
 else
@@ -2286,4 +2397,6 @@ printf '%s\n' \
     "PASS: the self-host success corpus reaches a deterministic native image" \
     "PASS: x86-64/AArch64 List/Text Cores use shared ABIs and diagnostics" \
     "PASS: x86-64 List execution matched C11 with OOB/OOM contracts" \
+    "PASS: all seven __linux_syscall arities executed with the kernel ABI registers" \
+    "PASS: raw_exit left with status 97 and raw_write put 32 mapped bytes on stdout" \
     "$text_summary"
