@@ -2514,22 +2514,78 @@ fn constructed_list_type_text(
 }
 
 fn trailing_lambda_refusal(cursor: Int) -> Text {
-    return "error[E2S158]: a trailing lambda is specified by call-arguments v1 " +
-    "but not implemented at byte " + to_text(cursor)
+    return "error[E2S158]: a trailing lambda with a block body is specified " +
+    "by call-arguments v1 but not implemented at byte " + to_text(cursor)
+}
+
+# The `(` of a trailing lambda attached to the call whose `)` ends just before
+# `after_close`, or -1 when no trailing lambda follows.
+#
+# `) fn(` is the trailing form and nothing else in this profile's grammar. A
+# named declaration is `fn` and an identifier, so requiring `(` after `fn`
+# leaves `call()` followed by `fn next(...)` alone.
+#
+# Returning the parameter list's `(` rather than the `fn` is what lets the
+# existing consumers treat the lambda as an ordinary argument written at that
+# offset: `lambda_parameters_end` spans from there, and `argument_lambda_name`
+# already keys lifted definitions on exactly this token.
+fn trailing_lambda_open(source: Text, after_close: Int) -> Int {
+    if after_close < 0 {
+        return -1
+    }
+    let keyword_at = skip_trivia(source, after_close)
+    if keyword_at >= len(source) || token_text(source, keyword_at) != "fn" {
+        return -1
+    }
+    let parameters = skip_trivia(source, token_end(source, keyword_at))
+    if parameters >= len(source) || token_text(source, parameters) != "(" {
+        return -1
+    }
+    return parameters
+}
+
+# The same attachment keyed by the call's `(`, for the sites that hold the
+# opening token rather than the closing one.
+fn call_trailing_lambda_open(source: Text, open: Int) -> Int {
+    return trailing_lambda_open(source, balanced_end(source, open, "(", ")"))
+}
+
+# The declaration slot a trailing lambda binds — the final parameter — or -1
+# when the call has none. The emitter that reserves fixed carriers and the
+# emitter that fills the ABI vector must agree on exactly which slot is the
+# lambda's, or the call passes an unassigned carrier.
+fn trailing_lambda_slot(source: Text, open: Int, parameter_count_value: Int) -> Int {
+    if parameter_count_value <= 0 {
+        return -1
+    }
+    if call_trailing_lambda_open(source, open) < 0 {
+        return -1
+    }
+    return parameter_count_value - 1
 }
 
 fn validate_trailing_lambda_surface(source: Text) -> Text {
-    # `) fn(` is the trailing form and nothing else in this profile's grammar.
-    # A named declaration is `fn` and an identifier, so requiring `(` after
-    # `fn` leaves `call()` followed by `fn next(...)` alone.
+    # The expression body is what this profile lowers. The block body is
+    # accepted design and not current capability: `lambda_parameters_end`
+    # requires `=>`, so a block body would span as -1 and be misread as the
+    # start of the next declaration. Naming it here keeps that a refusal the
+    # author can act on rather than a misparse blaming a later token.
     let mut scan = skip_trivia(source, 0)
     while scan < len(source) {
         if token_text(source, scan) == ")" {
-            let keyword_at = skip_trivia(source, token_end(source, scan))
-            if keyword_at < len(source) && token_text(source, keyword_at) == "fn" {
-                let parameters = skip_trivia(source, token_end(source, keyword_at))
-                if parameters < len(source) && token_text(source, parameters) == "(" {
-                    return trailing_lambda_refusal(keyword_at)
+            let parameters = trailing_lambda_open(source, token_end(source, scan))
+            if parameters >= 0 {
+                let close = balanced_end(source, parameters, "(", ")")
+                if close < 0 {
+                    return trailing_lambda_refusal(
+                        skip_trivia(source, token_end(source, scan))
+                    )
+                }
+                let arrow = skip_trivia(source, close)
+                if arrow >= len(source) || token_text(source, arrow) != "=>" {
+                    return trailing_lambda_refusal(
+                        skip_trivia(source, token_end(source, scan))
+                    )
                 }
             }
         }
@@ -3254,6 +3310,20 @@ fn validate_list_int_annotations(source: Text) -> Text {
     return "ok"
 }
 
+# The end of a call whose `)` is at `close`, including any trailing lambda.
+#
+# The trailing lambda is an argument of that call, so it belongs inside the
+# call's span. Stopping at `)` would leave `fn (` to be re-read as the start of
+# the next expression or declaration.
+fn call_postfix_end(source: Text, close: Int) -> Int {
+    let after_close = token_end(source, close)
+    let lambda_open = trailing_lambda_open(source, after_close)
+    if lambda_open >= 0 {
+        return lambda_parameters_end(source, -1, lambda_open)
+    }
+    return field_postfix_end(source, after_close)
+}
+
 fn primary_end(source: Text, start: Int) -> Int {
     let cursor = skip_trivia(source, start)
     if cursor >= len(source) {
@@ -3327,7 +3397,7 @@ fn primary_end(source: Text, start: Int) -> Int {
         }
         let mut argument = skip_trivia(source, token_end(source, open))
         if argument < len(source) && token_text(source, argument) == ")" {
-            return field_postfix_end(source, token_end(source, argument))
+            return call_postfix_end(source, argument)
         }
         while argument < len(source) {
             let bound = argument_end(source, argument)
@@ -3337,10 +3407,7 @@ fn primary_end(source: Text, start: Int) -> Int {
             let separator = skip_trivia(source, bound)
             if separator < len(source) &&
                token_text(source, separator) == ")" {
-                return field_postfix_end(
-                    source,
-                    token_end(source, separator)
-                )
+                return call_postfix_end(source, separator)
             }
             if separator >= len(source) ||
                token_text(source, separator) != "," {
@@ -4148,13 +4215,23 @@ fn emit_fixed_slot_call(
         }
     }
     emitted = emitted + "kofun_fn_" + callee + "("
+    # The trailing lambda occupies the final slot as a lifted function's
+    # address. It reserves no carrier: there is no evaluation to sequence ahead
+    # of the ABI vector, and its C type is a function pointer rather than the
+    # `int64_t` a carrier declares.
+    let trailing_slot = trailing_lambda_slot(source, open, parameter_count_value)
     let mut slot = 0
     while slot < parameter_count_value {
         if slot > 0 {
             emitted = emitted + ", "
         }
-        emitted = emitted + "kofun_call_arg_" +
-            to_text(call_start) + "_" + to_text(slot)
+        if slot == trailing_slot {
+            emitted = emitted +
+                argument_lambda_name(call_trailing_lambda_open(source, open))
+        } else {
+            emitted = emitted + "kofun_call_arg_" +
+                to_text(call_start) + "_" + to_text(slot)
+        }
         slot = slot + 1
     }
     return emitted + "))"
@@ -4190,18 +4267,25 @@ fn emit_fixed_slot_call_temporaries(
                 ) {
                     let declaration = function_start_named(source, callee)
                     let count = parameter_count(source, declaration)
+                    # The trailing lambda's slot carries a function pointer
+                    # placed directly in the ABI vector, so reserving an
+                    # `int64_t` carrier for it would both mistype the slot and
+                    # leave it unassigned at the call.
+                    let trailing_slot = trailing_lambda_slot(source, open, count)
                     let mut slot = 0
                     while slot < count {
-                        let carrier = function_parameter_type(
-                            source,
-                            callee,
-                            slot
-                        )
-                        emitted = emitted + "    " +
-                            call_slot_declaration_prefix(source, carrier) +
-                            "kofun_call_arg_" + to_text(cursor) + "_" +
-                            to_text(slot) +
-                            " = " + call_slot_zero(source, carrier) + ";\n"
+                        if slot != trailing_slot {
+                            let carrier = function_parameter_type(
+                                source,
+                                callee,
+                                slot
+                            )
+                            emitted = emitted + "    " +
+                                call_slot_declaration_prefix(source, carrier) +
+                                "kofun_call_arg_" + to_text(cursor) + "_" +
+                                to_text(slot) +
+                                " = " + call_slot_zero(source, carrier) + ";\n"
+                        }
                         slot = slot + 1
                     }
                 }
@@ -4824,6 +4908,18 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
                 argument = separator
             }
         }
+        # The trailing lambda is the call's last argument. It is a lifted
+        # function's address, so there is nothing to sequence: placing it after
+        # every parenthesised argument is exactly the source order the contract
+        # asks for.
+        let trailing_open = call_trailing_lambda_open(source, open)
+        if trailing_open >= 0 {
+            if arguments > 0 {
+                emitted = emitted + ", "
+            }
+            emitted = emitted + argument_lambda_name(trailing_open)
+            arguments = arguments + 1
+        }
         if lambda_open >= 0 {
             emitted = emitted +
             append_captures(
@@ -5054,10 +5150,21 @@ fn function_arity(source: Text, wanted: Text) -> Int {
     return found
 }
 
+# A trailing lambda is one argument of the call it follows, so every arity
+# check counts it. Without this the author is blamed for an arity they did not
+# get wrong — `apply(1) fn(x) => x` reports "expects 2 arguments, got 1" while
+# naming the one argument it declined to see.
+fn call_arity_trailing(source: Text, close: Int) -> Int {
+    if trailing_lambda_open(source, token_end(source, close)) >= 0 {
+        return 1
+    }
+    return 0
+}
+
 fn call_arity(source: Text, open: Int) -> Int {
     let mut cursor = skip_trivia(source, token_end(source, open))
     if cursor < len(source) && token_text(source, cursor) == ")" {
-        return 0
+        return call_arity_trailing(source, cursor)
     }
     let mut arity = 0
     while cursor < len(source) {
@@ -5070,7 +5177,7 @@ fn call_arity(source: Text, open: Int) -> Int {
         arity = arity + 1
         let separator = skip_trivia(source, bound)
         if separator < len(source) && token_text(source, separator) == ")" {
-            return arity
+            return arity + call_arity_trailing(source, separator)
         }
         if separator >= len(source) || token_text(source, separator) != "," {
             return -1
@@ -5580,6 +5687,46 @@ fn validate_declared_call_arguments(
                 scanning = false
             }
         }
+    }
+    # Rule 6 of call-arguments v1: a trailing lambda binds only the final
+    # parameter, and it is an error if that parameter was already supplied.
+    #
+    # Binding it here, before the missing-argument sweep, is what stops a
+    # well-formed trailing call from being reported as `missing argument` for
+    # the very parameter the author did supply — just not between the
+    # parentheses.
+    let trailing_open = call_trailing_lambda_open(source, open)
+    if trailing_open >= 0 && count > 0 {
+        let trailing_slot = count - 1
+        let trailing_parameter = function_parameter_start_at(
+            source,
+            declaration,
+            trailing_slot
+        )
+        let trailing_external = parameter_external_start(
+            source,
+            trailing_parameter,
+            parameters_end
+        )
+        let trailing_internal = parameter_internal_start(
+            source,
+            trailing_parameter,
+            parameters_end
+        )
+        let mut trailing_declared = trailing_internal
+        if trailing_external >= 0 {
+            trailing_declared = trailing_external
+        }
+        if contains(bound, "|" + to_text(trailing_slot) + "|") {
+            return call_binding_failure(
+                "E2S167",
+                "trailing lambda binds `" +
+                token_text(source, trailing_declared) +
+                "`, which is already supplied",
+                trailing_open
+            )
+        }
+        bound = bound + to_text(trailing_slot) + "|"
     }
     let mut slot = 0
     while slot < count {
@@ -13192,12 +13339,19 @@ fn argument_position_lambda(
     previous: Int,
     before_previous: Int
 ) -> Bool {
+    # `)` is the trailing position, and it is only argument position when the
+    # `fn` was actually there: `) fn (` is the trailing form, while a bare
+    # `) (` is not a lambda at all.
     let mut effective = previous
-    if effective >= 0 && token_text(source, effective) == "fn" {
+    let keyword = previous >= 0 && token_text(source, previous) == "fn"
+    if keyword {
         effective = before_previous
     }
     if effective < 0 {
         return false
+    }
+    if keyword && token_text(source, effective) == ")" {
+        return true
     }
     return token_text(source, effective) == "(" ||
     token_text(source, effective) == ","

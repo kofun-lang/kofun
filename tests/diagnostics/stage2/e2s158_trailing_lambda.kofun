@@ -1,19 +1,26 @@
 # diagnostic-mode: compile
 # expect-code: E2S158
-# expect-span: byte 664
-# The trailing lambda of `spec/syntax/call-arguments-v1.md` (#880). The span is
-# the `fn` that opens it, not the call it tried to attach to, because that is
-# the token the author would delete to make the program compile today.
+# expect-span: byte 887
+# The block-bodied trailing lambda of `spec/syntax/call-arguments-v1.md`
+# (#880). The expression body is lowered by #1191; the block body is accepted
+# design and not current capability, because Stage 2 parses no block-body
+# lambda in any spelling.
 #
-# Before E2S158 this reported `error[E2S17]: Core function `apply` expects 2
-# arguments, got 1` — the lambda fell outside the call entirely, so the
-# compiler counted one argument and blamed the author for an arity they had
-# not got wrong.
+# The span is the `fn` that opens the lambda, not the call it attaches to,
+# because that is the token the author would rewrite to make the program
+# compile today.
+#
+# Refusing by name matters more here than for a shape nobody can write: a
+# block body makes `lambda_parameters_end` span to -1, so without this the
+# trailing lambda is re-read as the start of the next declaration and the
+# author is blamed for a token they did not get wrong.
 fn apply(value: Int, action: Int -> Int) -> Int {
     return action(value)
 }
 
 fn main() -> Int {
-    print(apply(1) fn(x) => x)
+    print(apply(1) fn(x) {
+        return x
+    })
     return 0
 }

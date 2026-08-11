@@ -3,12 +3,15 @@
 Status: accepted design contract for issue #625, partly executable. The
 compiler accepts and lowers **direct top-level labelled calls whose fixed
 parameter and result slots use `Int`, `Text`, `List[Int]`, `Int?`, a concrete
-enum, or a nominal record carrier**. A bare binding passed to a parameter
-declared `take` is invalidated in source order and a later transfer is refused
-as `E2S123`. Every other shape on this page — pipeline subjects, the
-trailing-lambda form, labelled calls inside lifted lambdas, indirect/lexical
-callees, and the direct-native/Wasm backends — remains at the explicit
-`E2S158` boundary owned by #882.
+enum, or a nominal record carrier**, and **the expression-bodied trailing
+lambda**, which binds the final functional parameter as a lifted function's
+address. A bare binding passed to a parameter declared `take` is invalidated in
+source order and a later transfer is refused as `E2S123`. Supplying that final
+parameter both by label and by the trailing lambda is `E2S167`, a binding
+failure rather than a lowering boundary. Every other shape on this page —
+pipeline subjects, block-bodied trailing lambdas, labelled calls inside lifted
+lambdas, indirect/lexical callees, and the direct-native/Wasm backends —
+remains at the explicit `E2S158` boundary owned by #882.
 
 The layers landed in order:
 
@@ -256,9 +259,10 @@ The decision deliberately separates follow-up work:
 3. #882: pipeline/trailing lowering plus C11/direct-native differential
    evidence — its carrier children landed (#1097 all-`Int`, #1107 widened to
    `Text`/`List[Int]`, and #1189 widened to `Int?`, concrete enum, nominal
-   record, and a bounded `take` transfer), gated by `task call-arguments`;
-   pipeline attachment, trailing/lambda-body lowering, and non-C11 backends
-   stay open.
+   record, and a bounded `take` transfer), and #1191 landed the
+   expression-bodied trailing lambda, gated by `task call-arguments`; pipeline
+   attachment, the block-bodied trailing lambda, lambda-body lowering, and
+   non-C11 backends stay open.
 
 Each child lifts this document's unsupported-current-compiler boundary exactly
 as far as its own executable gate reaches, and no further. #880 lifted none of

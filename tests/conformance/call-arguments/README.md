@@ -33,9 +33,33 @@ transfer to the existing exact E2S123 diagnostic. This is a source-order,
 whole-binding increment, not general ownership inference or control-flow
 analysis.
 
-Pipeline subjects, the trailing-lambda form, labelled calls inside lifted
+`trailing_lambda.kofun` is the accepted trailing form from #1191:
+`combine(...) fn(total: Int) => total + 100`. The lambda binds the final
+functional parameter without being written between the parentheses, which is
+what makes it a separate proof from the cases above — an argument sits outside
+the parentheses while the two orders inside them stay separate. Its golden
+keeps all three facts visible at once: the labelled `2`, `1` still evaluate in
+source order, the ABI vector is still declaration order (`12`), and the
+trailing lambda runs last over that result (`112`).
+
+The trailing lambda reserves no carrier. It is a lifted function's address, so
+there is nothing to sequence ahead of the call, and an `int64_t` carrier would
+both mistype the slot and be passed unassigned; the gate asserts two carriers
+for a three-parameter call for exactly that reason. The lifted name is keyed by
+the `(` of the lambda's parameter list, which is the identity the definition
+walk and the reference walk already share.
+
+Pipeline subjects, block-bodied trailing lambdas, labelled calls inside lifted
 lambdas, indirect/lexical callees, and direct-native/Wasm lowering retain
-E2S158 and remain owned by #882.
+E2S158 and remain owned by #882. The last two are different boundaries under
+one code, so `trailing_lambda_block.kofun` and `lifted_lambda_call.kofun` are
+asserted separately rather than through one pattern: the first is about what a
+trailing lambda's body may be, the second about where a labelled call may
+appear. A slice that admits one must leave the other's wording intact.
+
+Supplying the final parameter twice — once by label and again by the trailing
+lambda — is E2S167, not E2S158. It is a binding failure rather than a lowering
+boundary: the shape is understood, and no later slice makes it legal.
 
 `shadowed_callable.kofun` keeps lexical resolution load-bearing: a callable
 parameter named like a supported top-level function must not be redirected to
