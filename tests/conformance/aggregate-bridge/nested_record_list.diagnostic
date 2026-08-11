@@ -1,0 +1,1 @@
+error[E2S32]: record `NestedReport` has a field type outside the Stage 2 Int/Bool/Text/List[Int] slice at byte 321

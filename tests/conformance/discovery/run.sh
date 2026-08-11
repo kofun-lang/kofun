@@ -16,6 +16,7 @@ ROOT=$(CDPATH= cd -P -- "$(dirname -- "$0")/../../.." && pwd)
 CASES="$ROOT/tests/conformance/discovery"
 CC=${CC:-cc}
 . "$ROOT/bootstrap/stage2/build.sh"
+. "$ROOT/bootstrap/stage2/semantic-objects.sh"
 
 command -v "$CC" >/dev/null 2>&1 || {
     printf '%s\n' "discovery: a C11 compiler is required" >&2
@@ -43,12 +44,13 @@ fail() {
     "$CASES/discovery_provider_test.c" \
     -o "$WORK/discovery-provider-test"
 
+kofun_stage2_semantic_inputs "$ROOT" library
 "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic \
     -DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY \
     -I"$ROOT/bootstrap/stage2" \
-    "$ROOT/bootstrap/stage2/semantic_producer.c" \
-    "$ROOT/bootstrap/stage2/semantic_events.c" \
-    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$KOFUN_STAGE2_SEMANTIC_PRODUCER_INPUT" \
+    "$KOFUN_STAGE2_SEMANTIC_EVENTS_INPUT" \
+    "$KOFUN_STAGE2_SEMANTIC_SHA256_INPUT" \
     "$ROOT/bootstrap/stage2/discovery_v1.c" \
     "$ROOT/bootstrap/stage2/discovery_provider.c" \
     "$ROOT/bootstrap/stage2/discovery_query.c" \
@@ -58,9 +60,9 @@ fail() {
 "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic \
     -DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY \
     -I"$ROOT/bootstrap/stage2" \
-    "$ROOT/bootstrap/stage2/semantic_producer.c" \
-    "$ROOT/bootstrap/stage2/semantic_events.c" \
-    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$KOFUN_STAGE2_SEMANTIC_PRODUCER_INPUT" \
+    "$KOFUN_STAGE2_SEMANTIC_EVENTS_INPUT" \
+    "$KOFUN_STAGE2_SEMANTIC_SHA256_INPUT" \
     "$ROOT/bootstrap/stage2/discovery_v1.c" \
     "$ROOT/bootstrap/stage2/discovery_provider.c" \
     "$ROOT/bootstrap/stage2/discovery_query.c" \
@@ -70,9 +72,9 @@ fail() {
 "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic \
     -DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY \
     -I"$ROOT/bootstrap/stage2" \
-    "$ROOT/bootstrap/stage2/semantic_producer.c" \
-    "$ROOT/bootstrap/stage2/semantic_events.c" \
-    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$KOFUN_STAGE2_SEMANTIC_PRODUCER_INPUT" \
+    "$KOFUN_STAGE2_SEMANTIC_EVENTS_INPUT" \
+    "$KOFUN_STAGE2_SEMANTIC_SHA256_INPUT" \
     "$ROOT/bootstrap/stage2/discovery_v1.c" \
     "$ROOT/bootstrap/stage2/discovery_provider.c" \
     "$ROOT/bootstrap/stage2/discovery_query.c" \
@@ -82,9 +84,9 @@ fail() {
 "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic \
     -DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY \
     -I"$ROOT/bootstrap/stage2" \
-    "$ROOT/bootstrap/stage2/semantic_producer.c" \
-    "$ROOT/bootstrap/stage2/semantic_events.c" \
-    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$KOFUN_STAGE2_SEMANTIC_PRODUCER_INPUT" \
+    "$KOFUN_STAGE2_SEMANTIC_EVENTS_INPUT" \
+    "$KOFUN_STAGE2_SEMANTIC_SHA256_INPUT" \
     "$ROOT/bootstrap/stage2/discovery_v1.c" \
     "$ROOT/bootstrap/stage2/discovery_provider.c" \
     "$ROOT/bootstrap/stage2/discovery_query.c" \

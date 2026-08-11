@@ -1,0 +1,260 @@
+{
+  "$defs": {
+    "bound": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "constant" },
+            "value": {
+              "pattern": "^(?:0|-?[1-9][0-9]*)$",
+              "type": "string"
+            }
+          },
+          "required": ["kind", "value"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "node" },
+            "node_id": {
+              "$ref": "#/$defs/id"
+            }
+          },
+          "required": ["kind", "node_id"],
+          "type": "object"
+        }
+      ]
+    },
+    "capture": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "target": {
+                "properties": {
+                  "kind": { "const": "unknown" }
+                },
+                "required": ["kind"]
+              }
+            },
+            "required": ["target"]
+          },
+          "then": {
+            "properties": {
+              "origin_node_ids": { "maxItems": 1 }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "mode": {
+          "enum": ["read", "edit", "take"]
+        },
+        "origin_node_ids": {
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "maxItems": 256,
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "target": {
+          "oneOf": [
+            { "$ref": "#/$defs/placeTarget" },
+            { "$ref": "#/$defs/unknownTarget" }
+          ]
+        },
+        "task_id": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": ["id", "mode", "origin_node_ids", "target", "task_id"],
+      "type": "object"
+    },
+    "field": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "field" },
+        "ordinal": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "owner_type_id": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": ["kind", "ordinal", "owner_type_id"],
+      "type": "object"
+    },
+    "id": {
+      "allOf": [
+        {
+          "$ref": "kofun.typed-sidecar.v1.schema.json#/$defs/hexId"
+        },
+        {
+          "not": {
+            "const": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        }
+      ]
+    },
+    "place": {
+      "additionalProperties": false,
+      "properties": {
+        "base_binding_id": {
+          "$ref": "#/$defs/id"
+        },
+        "canonical_bytes": {
+          "pattern": "^(?:[0-9a-f]{2})+$",
+          "type": "string"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "projections": {
+          "items": {
+            "oneOf": [
+              { "$ref": "#/$defs/field" },
+              { "$ref": "#/$defs/slice" }
+            ]
+          },
+          "maxItems": 8,
+          "type": "array"
+        }
+      },
+      "required": ["base_binding_id", "canonical_bytes", "id", "projections"],
+      "type": "object"
+    },
+    "placeTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "place" },
+        "place": { "$ref": "#/$defs/place" }
+      },
+      "required": ["kind", "place"],
+      "type": "object"
+    },
+    "slice": {
+      "additionalProperties": false,
+      "description": "When both bounds are constant, lower must be less than or equal to upper; equality is the valid empty half-open slice.",
+      "properties": {
+        "kind": { "const": "slice" },
+        "lower": { "$ref": "#/$defs/bound" },
+        "upper": { "$ref": "#/$defs/bound" }
+      },
+      "required": ["kind", "lower", "upper"],
+      "type": "object"
+    },
+    "unknown": {
+      "additionalProperties": false,
+      "properties": {
+        "canonical_bytes": {
+          "pattern": "^(?:[0-9a-f]{2})+$",
+          "type": "string"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "reason": {
+          "enum": [
+            "unresolved-call",
+            "projection-depth-exceeded",
+            "unnameable-place"
+          ]
+        },
+        "witness_node_id": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": ["canonical_bytes", "id", "reason", "witness_node_id"],
+      "type": "object"
+    },
+    "unknownTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "unknown" },
+        "unknown": { "$ref": "#/$defs/unknown" }
+      },
+      "required": ["kind", "unknown"],
+      "type": "object"
+    }
+  },
+  "$id": "https://kofun.dev/schema/kofun.typed-sidecar.v2.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "authoritative": {
+      "$ref": "kofun.typed-sidecar.v1.schema.json#/properties/authoritative"
+    },
+    "capture_profile": {
+      "const": "kofun.stage2-analysis/scoped-captures/v1"
+    },
+    "captures": {
+      "items": { "$ref": "#/$defs/capture" },
+      "maxItems": 4096,
+      "type": "array"
+    },
+    "compiler": {
+      "$ref": "kofun.typed-sidecar.v1.schema.json#/properties/compiler"
+    },
+    "completeness": {
+      "$ref": "kofun.typed-sidecar.v1.schema.json#/properties/completeness"
+    },
+    "diagnostics": {
+      "$ref": "kofun.typed-sidecar.v1.schema.json#/properties/diagnostics"
+    },
+    "file": {
+      "$ref": "kofun.typed-sidecar.v1.schema.json#/properties/file"
+    },
+    "generation": {
+      "$ref": "kofun.typed-sidecar.v1.schema.json#/properties/generation"
+    },
+    "limits": {
+      "additionalProperties": false,
+      "properties": {
+        "document_bytes": { "const": 16777216 },
+        "max_depth": { "const": 128 },
+        "profile": { "const": "default-v2" }
+      },
+      "required": ["document_bytes", "max_depth", "profile"],
+      "type": "object"
+    },
+    "nodes": {
+      "$ref": "kofun.typed-sidecar.v1.schema.json#/properties/nodes"
+    },
+    "references": {
+      "$ref": "kofun.typed-sidecar.v1.schema.json#/properties/references"
+    },
+    "schema": {
+      "const": "kofun.typed-sidecar/v2"
+    },
+    "source_status": {
+      "$ref": "kofun.typed-sidecar.v1.schema.json#/properties/source_status"
+    }
+  },
+  "required": [
+    "authoritative",
+    "capture_profile",
+    "captures",
+    "compiler",
+    "completeness",
+    "diagnostics",
+    "file",
+    "generation",
+    "limits",
+    "nodes",
+    "references",
+    "schema",
+    "source_status"
+  ],
+  "title": "Kofun typed semantic sidecar v2",
+  "type": "object"
+}

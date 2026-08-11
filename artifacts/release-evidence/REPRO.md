@@ -20,7 +20,7 @@ report a pass it did not observe.
 | `cc` | `affine-resource-handle`, `bindgen-c-stage1`, `bounded-tzdb-producer`, `c-abi-profile`, `c11-function-calls`, `c11-list-int-values`, `compiled-visibility-interfaces`, `compiler-seed`, `decimal-arithmetic-v1`, `deterministic-fuzzing`, `diverse-double-compilation`, `documentation-index`, `enum-matching`, `http-framework`, `nominal-records`, `reproducible-bootstrap`, `self-recompile`, `stage2-core-lowering` |
 | `clang` | `bindgen-c-stage1`, `diverse-double-compilation` |
 | `gcc` | `diverse-double-compilation` |
-| `node` | `bindgen-c-stage1`, `compiled-visibility-interfaces`, `documentation-index`, `stage2-typed-sidecar`, `stdio-language-server`, `wasm32-arithmetic-core`, `wasm32-hostabi1-object-arena` |
+| `node` | `bindgen-c-stage1`, `compiled-visibility-interfaces`, `documentation-index`, `nominal-records`, `stage2-typed-sidecar`, `stdio-language-server`, `wasm32-arithmetic-core`, `wasm32-hostabi1-object-arena` |
 | `qemu-aarch64` | `native-aarch64-function-calls`, `native-list-int-core`, `native-text-returning-calls`, `native-utf8-text-core`, `selfhost-native-corpus` |
 | `readelf` | `bindgen-c-stage1` |
 | `sha256sum` | `bindgen-c-stage1`, `compiler-seed`, `reproducible-bootstrap` |

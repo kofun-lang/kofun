@@ -85,6 +85,14 @@ executable bootstrap implementation.
   proposed `RFC-0003`, whose review closes 2026-08-16; no parser, ownership
   checker, scheduler, or backend implements it, so passing the gate is evidence
   about the contract only.
+- `concurrency/scoped-captures-v1.md`, its three closed JSON schemas, pure
+  normalization model, canonical fixture, KSE2 frame goldens, and mutation
+  checker freeze the analysis-only `kofun-scope-hir/v2` representation for
+  scoped task identities, checked places, explicit unknowns, and strongest-mode
+  captures. `task concurrency-capture-contract` holds identity preimages,
+  links, phase/order, bounds, privacy, typed-sidecar v2 `captures[]`, and the
+  exact v1 contract bytes. It does not change the 46-row selfhost profile,
+  accept `par`, or claim compiler, codec, runtime, or backend implementation.
 - `concurrency/schedule-trace-v1.md` is the accepted deterministic testing
   contract for issue #736: stable scope/task identities, the canonical
   `kofun.schedule-trace/v1` and `kofun.schedule-witness/v1` bytes, FIFO, seeded,
@@ -108,6 +116,15 @@ executable bootstrap implementation.
   `kofun.law-evidence/v1` prototype artifact. It remains available only for
   explicit identification and migration; it is not an active compiler,
   optimizer, cache, or release contract and must never be interpreted as v2.
+
+- `benchmark-report-v1.md`, its closed JSON Schema, bounded pure model, three
+  canonical positive reports, digest-pinned negative byte transformations, and
+  comparison vectors define the executable `kofun.bench-report/v1` profile.
+  `task benchmark-report-spec` preserves the accepted 100-sample ceiling with
+  a 64+36 Stage 2 mapping and fixes canonical bytes, availability, errors,
+  typed non-success output outcomes that never expose partial report bytes as
+  success, and caller-threshold comparison. It is contract evidence,
+  not a production model, codec, runner, counter provider, or capability claim.
 
 - `aggregate-layout-v1.md`, its `aggregate-layout-v1/` reference computer,
   target files, golden vectors, and `aggregate-layout-v1/check.sh` define the

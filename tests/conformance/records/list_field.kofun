@@ -13,9 +13,10 @@
 # Those three numbers are what spec/aggregate-layout-v1 computes for
 # `bounded_list[Int, 64]` followed by an `Int`, independently of the emitter.
 #
-# Reading the list field back is deliberately not exercised: RFC-0011 leaves
-# the List[Int] value form's record-field read to a separate change, and it
-# still refuses with E2S157.
+# Reading the list field back stays in `list_field_read.kofun`, the #1197
+# increment that followed this construction/layout fixture. Keeping the two
+# cases separate preserves the boundary each change originally proved without
+# retaining the obsolete pre-#1197 claim that the read still refuses.
 
 type Bag = {
     samples: List[Int],

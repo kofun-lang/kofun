@@ -13,8 +13,9 @@
 # program — a moved binding that is constructed and then never read again is
 # exactly the shape `-Wunused-but-set-variable` would otherwise reject.
 #
-# Int/Bool fields on purpose: the Stage 2 slice refuses a `Text` field with
-# E2S32 before ownership is ever consulted.
+# Int/Bool keeps this ownership witness small. `Text` and bounded `List[Int]`
+# fields are now admitted; their mixed vertical proof belongs to the aggregate
+# bridge gate rather than being duplicated here.
 type Token = {
     start: Int,
     ready: Bool,

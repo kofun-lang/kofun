@@ -6,6 +6,7 @@ ASSERT_CONTEXT='Stage 2 build reuse'
 . "$ROOT/tests/assertions/assert.sh"
 
 ordinary_consumers='tests/conformance/adt-exhaustiveness/run.sh
+tests/conformance/aggregate-bridge/run.sh
 tests/conformance/call-arguments/run.sh
 tests/conformance/const-generics/run.sh
 tests/conformance/discovery/run.sh
@@ -23,6 +24,7 @@ done
 
 for consumer in \
     tests/conformance/adt-exhaustiveness/run.sh \
+    tests/conformance/aggregate-bridge/run.sh \
     tests/conformance/call-arguments/run.sh \
     tests/conformance/syntax/issues_48_60/run.sh \
     tests/conformance/backends/c11-stage2.sh \
@@ -75,6 +77,6 @@ assert_grep "default profile checks c11-control completion" \
     "$ROOT/bootstrap/selfhost/check-profile.sh"
 
 printf '%s\n' \
-    'PASS: seven ordinary Stage 2 consumers reuse the shared compiler' \
+    'PASS: eight ordinary Stage 2 consumers reuse the shared compiler' \
     'PASS: specialized compiler builds remain explicit and independent' \
     'PASS: aggregate verify scans the self-host profile once'

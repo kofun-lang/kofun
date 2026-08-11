@@ -183,7 +183,7 @@ source to 3,523 lines; its M7 score and measured `b11, d1, c3` remain unchanged.
 | 5 | higher-order callback | n/a | n/a | n/a | n/a | 0 | n/a | n/a |
 | 6 | Monad + laws | n/a | n/a | n/a | n/a | 1 | n/a | n/a |
 | 7 | frozen self-host S | 3 [0] | 3 [0] | 3 [b11, d1, c3] | 3 [0] | 3 | n/a | 3 |
-| 8 | cancellable stream | n/a | n/a | n/a | n/a | 1 | n/a | n/a |
+| 8 | cancellable stream | n/a | n/a | n/a | n/a | 2 | n/a | n/a |
 
 Rows 5, 6, and 8 do not compile, so only M5 is scoreable: a diagnostic is the
 only thing the toolchain produces for them. Scoring the other measures
@@ -218,9 +218,14 @@ against source that no toolchain accepts would be scoring a wish.
   reports an argument count that cannot exist.
 - **6.M5 = 1.** `expected top-level 'fn' or 'type'` names the location and
   does not say that `law` is a known, accepted, unimplemented form.
-- **8.M5 = 1.** `malformed parameter head at byte 2141` — ownership modes are
-  recognized, but the diagnostic does not name the unsupported generic
-  nominal parameter type `Stream[Reading, StreamError]` or a remedy.
+- **8.M5 = 2.** Was 1, when the row scored `malformed parameter head at byte
+  2141`: ownership modes were recognized, but the diagnostic named neither the
+  unsupported generic nominal parameter type `Stream[Reading, StreamError]` nor
+  the pipeline that actually blocks the row. Since #1190 Stage 2 recognizes the
+  pipeline and refuses it first, naming the construct and the boundary — `a
+  pipeline target must be a top-level function, not a member call`. Still not 3:
+  it names what is unsupported, not a remedy, and the generic parameter type
+  behind it remains unnamed by any message this corpus now reaches.
 - **7.M7 = 3.** 3,523 lines that a reader can follow without the spec is the
   strongest readability evidence in the corpus, and it is evidence about a
   deliberately small subset: no records, no ADT payloads, no generics, no

@@ -8,6 +8,7 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../../.." && pwd)
 CC=${CC:-cc}
 WORK=${KOFUN_PURE_IO_WORK:-"$ROOT/build/pure-io-effects"}
 REPORT="$ROOT/tests/conformance/effects/pure-io/report.mjs"
+. "$ROOT/bootstrap/stage2/semantic-objects.sh"
 
 fail() {
     printf '%s\n' "FAIL: $*" >&2
@@ -23,11 +24,12 @@ esac
 rm -rf "$WORK"
 mkdir -p "$WORK/remap-a" "$WORK/remap-b"
 
+kofun_stage2_semantic_inputs "$ROOT" main
 "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic \
     -I"$ROOT/bootstrap/stage2" \
-    "$ROOT/bootstrap/stage2/semantic_producer.c" \
-    "$ROOT/bootstrap/stage2/semantic_events.c" \
-    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$KOFUN_STAGE2_SEMANTIC_PRODUCER_INPUT" \
+    "$KOFUN_STAGE2_SEMANTIC_EVENTS_INPUT" \
+    "$KOFUN_STAGE2_SEMANTIC_SHA256_INPUT" \
     -o "$WORK/kofun-stage2-semantic-events"
 
 project() {

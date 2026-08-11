@@ -1,0 +1,9 @@
+fn twice(base: Int) -> Int {
+    return base * 2
+}
+
+fn main() -> Int {
+    let start = 1
+    print(start |> twice() |> twice())
+    return 0
+}

@@ -225,9 +225,16 @@ tasks:
       - "sh tests/conformance/adt/run.sh"
 
   records:
-    desc: "Verify bounded nominal record typed frontend"
+    desc: "Verify bounded nominal records and the mixed C11 aggregate bridge"
+    deps: [aggregate-bridge]
     cmds:
       - "sh tests/conformance/records/run.sh"
+
+  aggregate-bridge:
+    desc: "Prove the bounded mixed Text/List[Int]/Int record bridge in C11"
+    run: once
+    cmds:
+      - "sh tests/conformance/aggregate-bridge/run.sh"
 
   generics:
     desc: "Verify explicit generic function typing"
@@ -488,6 +495,11 @@ tasks:
     cmds:
       - "sh spec/concurrency/scoped-parallelism-v1/check.sh"
 
+  concurrency-capture-contract:
+    desc: "Verify the versioned scoped-capture HIR, KSE2, and sidecar contract"
+    cmds:
+      - "sh spec/concurrency/scoped-captures-v1/check.sh"
+
   schedule-trace:
     desc: "Verify deterministic scoped-concurrency schedule traces and replay"
     cmds:
@@ -518,6 +530,11 @@ tasks:
     cmds:
       - "sh tests/stdlib/benchmark-summary/check.sh"
 
+  benchmark-report-spec:
+    desc: "Verify the canonical benchmark-report v1 contract and vectors"
+    cmds:
+      - "sh spec/benchmark-report-v1/check.sh"
+
   move-assertion:
     desc: "Verify the unstable compile-time move assertion and its erasure"
     cmds:
@@ -538,6 +555,11 @@ tasks:
     cmds:
       - "sh tests/build_system.sh"
       - "sh tests/tooling/stage2-build-reuse/check.sh"
+
+  verify-object-reuse:
+    desc: "Verify runner-scoped semantic producer object reuse"
+    cmds:
+      - "sh tests/tooling/verify-object-reuse/check.sh"
 
   packages:
     desc: "Verify locked package fetch and offline use"
@@ -755,6 +777,11 @@ tasks:
     cmds:
       - "sh tests/digest/check.sh"
 
+  tests-kofun:
+    desc: "Verify the tests/kofun corpus runs or refuses as recorded"
+    cmds:
+      - "sh tests/kofun/check.sh"
+
   call-arguments-spec:
     desc: "Verify labelled call binding and the single trailing-lambda form"
     cmds:
@@ -937,16 +964,8 @@ tasks:
       # Override with `VERIFY_JOBS=1 task verify` to bisect a failure
       # without interleaved output.
       - cmd: |-
-          verify_stage2=${KOFUN_STAGE2_COMPILER:-}
-          if test -z "$verify_stage2"; then
-            verify_stage2="$PWD/build/verify/kofun-stage2"
-            rm -rf "$PWD/build/verify"
-            mkdir -p "$PWD/build/verify"
-            . "$PWD/bootstrap/stage2/build.sh"
-            kofun_stage2_build "$PWD" "$verify_stage2"
-          fi
-          KOFUN_STAGE2_COMPILER="$verify_stage2" \
-            task --parallel --failfast -C "${VERIFY_JOBS:-3}" \
+          sh "$PWD/bootstrap/stage2/verify-runner.sh" \
+            "$PWD" "${VERIFY_JOBS:-3}" \
             test \
             diagnostics \
             fuzz \
@@ -966,6 +985,7 @@ tasks:
             patterns \
             adt \
             records \
+            aggregate-bridge \
             generics \
             const-generics \
             hm-levels \
@@ -1015,12 +1035,14 @@ tasks:
             kotest \
             clock-adapters \
             scoped-parallelism \
+            concurrency-capture-contract \
             schedule-trace \
             type-reduction-trace \
             affine-resumption \
             affine-resource-handle \
             example-law-evidence \
             benchmark-summary \
+            benchmark-report-spec \
             move-assertion \
             usability-corpus \
             capabilities \
@@ -1053,6 +1075,7 @@ tasks:
             artifact-qualification \
             syntax \
             digest \
+            tests-kofun \
             call-arguments \
             call-arguments-spec \
             call-arguments-surface \
@@ -1063,7 +1086,3 @@ tasks:
             backlog \
             release-claims \
             rfc-registry
-      # `roadmap` owns the LSP gate, whose five performance measurements are
-      # perturbed by a busy machine. Keep that single invocation last and by
-      # itself; running `lsp` here too only measured the same gate twice.
-      - task: roadmap

@@ -1,0 +1,18 @@
+{
+  "schema": "kofun.bench-report-comparison-vectors/v1",
+  "vectors": [
+    { "name": "lower-below-threshold", "direction": "lower-is-better", "baseline": 10000, "candidate": 10499, "threshold_bps": 500, "expected": { "kind": "comparable", "verdict": "equivalent", "change_bps": 499, "threshold_bps": 500 } },
+    { "name": "lower-equal-threshold", "direction": "lower-is-better", "baseline": 10000, "candidate": 10500, "threshold_bps": 500, "expected": { "kind": "comparable", "verdict": "equivalent", "change_bps": 500, "threshold_bps": 500 } },
+    { "name": "lower-above-threshold", "direction": "lower-is-better", "baseline": 10000, "candidate": 10501, "threshold_bps": 500, "expected": { "kind": "comparable", "verdict": "regressed", "change_bps": 501, "threshold_bps": 500 } },
+    { "name": "lower-improvement", "direction": "lower-is-better", "baseline": 10000, "candidate": 9499, "threshold_bps": 500, "expected": { "kind": "comparable", "verdict": "improved", "change_bps": -501, "threshold_bps": 500 } },
+    { "name": "lower-improvement-equal-threshold", "direction": "lower-is-better", "baseline": 10000, "candidate": 9500, "threshold_bps": 500, "expected": { "kind": "comparable", "verdict": "equivalent", "change_bps": -500, "threshold_bps": 500 } },
+    { "name": "higher-regression", "direction": "higher-is-better", "baseline": 10000, "candidate": 9499, "threshold_bps": 500, "expected": { "kind": "comparable", "verdict": "regressed", "change_bps": 501, "threshold_bps": 500 } },
+    { "name": "higher-improvement", "direction": "higher-is-better", "baseline": 10000, "candidate": 10501, "threshold_bps": 500, "expected": { "kind": "comparable", "verdict": "improved", "change_bps": -501, "threshold_bps": 500 } },
+    { "name": "half-away-from-zero", "direction": "lower-is-better", "baseline": 20000, "candidate": 21001, "threshold_bps": 500, "expected": { "kind": "comparable", "verdict": "regressed", "change_bps": 501, "threshold_bps": 500 } },
+    { "name": "negative-half-away-from-zero", "direction": "lower-is-better", "baseline": 20000, "candidate": 18999, "threshold_bps": 500, "expected": { "kind": "comparable", "verdict": "improved", "change_bps": -501, "threshold_bps": 500 } },
+    { "name": "maximum-threshold", "direction": "lower-is-better", "baseline": 10000, "candidate": 10000, "threshold_bps": 1000000, "expected": { "kind": "comparable", "verdict": "equivalent", "change_bps": 0, "threshold_bps": 1000000 } },
+    { "name": "zero-equals-zero", "direction": "lower-is-better", "baseline": 0, "candidate": 0, "threshold_bps": 0, "expected": { "kind": "comparable", "verdict": "equivalent", "change_bps": 0, "threshold_bps": 0 } },
+    { "name": "zero-baseline", "direction": "lower-is-better", "baseline": 0, "candidate": 1, "threshold_bps": 0, "expected": { "kind": "indeterminate", "reason": "zero-baseline", "threshold_bps": 0 } },
+    { "name": "checked-overflow", "direction": "lower-is-better", "baseline": 1, "candidate": 9007199254740991, "threshold_bps": 0, "error": "BR007" }
+  ]
+}

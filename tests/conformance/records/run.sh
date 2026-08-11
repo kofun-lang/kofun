@@ -205,9 +205,9 @@ test -z "$(find "$WORK" -type f \
     fail 'record frontend emitted a backend/runtime artifact'
 
 # ------------------------------------------------------- Stage 2 C11 slice
-# The accepted bounded backend slice uses only nominal Int/Bool fields.  It
-# must execute construction in either written label order, pass and return the
-# nominal value, and read both field types.
+# Start with the nominal Int/Bool core: construction in either written label
+# order, whole-record pass/return, and reads of both field types. The Text and
+# List[Int] increments below extend this same bounded backend slice.
 
 kofun_stage2_build "$ROOT" "$WORK/kofun-stage2"
 "$WORK/kofun-stage2" \

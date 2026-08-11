@@ -38,11 +38,13 @@ export const GROUPS = Object.freeze([
         hint: 'Syntax, typing, diagnostics, data types, numerics, and deterministic fuzzing.',
         tasks: [
             'diagnostics', 'fuzz', 'unicode', 'patterns', 'adt', 'records',
+            'aggregate-bridge',
             'move-assertion', 'usability-corpus', 'call-arguments',
             'call-arguments-spec',
             'call-arguments-surface',
             'affine-resumption', 'affine-resource-handle',
-            'scoped-parallelism', 'schedule-trace', 'type-reduction-trace',
+            'scoped-parallelism', 'concurrency-capture-contract',
+            'schedule-trace', 'type-reduction-trace',
             'generics', 'const-generics', 'hm-levels', 'effect-inference', 'traits',
             'trait-dictionary-c11',
             'fixed-decimal-profile', 'decimal-backend-profiles',
@@ -74,7 +76,7 @@ export const GROUPS = Object.freeze([
         hint: 'Discovery, sidecars, editors, frameworks, packages, and evidence adapters.',
         tasks: [
             'task-help', 'discovery', 'cli-framework', 'tui-framework', 'build-system',
-            'packages', 'typed-sidecar-spec', 'typed-sidecar-codec',
+            'verify-object-reuse', 'packages', 'typed-sidecar-spec', 'typed-sidecar-codec',
             'typed-sidecar-projector', 'upgrade-patch', 'documentation-index', 'ownership-view',
             'artifact-qualification', 'lsp', 'roadmap',
             'graphify-setup', 'graphify-update'
@@ -87,7 +89,7 @@ export const GROUPS = Object.freeze([
             'rust-shim', 'http', 'stdlib', 'alloc-contract', 'kotest', 'tzdb', 'clock-adapters',
             'environment-authority-compiler-contract', 'host-process-authority-contract',
             'directory-authority-contract', 'http-carrier-profile',
-            'benchmark-summary', 'capabilities'
+            'benchmark-summary', 'benchmark-report-spec', 'capabilities'
         ]
     },
     {
@@ -95,6 +97,7 @@ export const GROUPS = Object.freeze([
         hint: 'Repository policy, claim/evidence joins, decisions, generated evidence, and cleanup.',
         tasks: [
             'repository-check', 'assertions', 'audited-claim', 'digest',
+            'tests-kofun',
             'example-law-evidence',
             'backlog', 'backlog-refresh',
             'release-claims', 'release-evidence', 'rfc-registry', 'clean'

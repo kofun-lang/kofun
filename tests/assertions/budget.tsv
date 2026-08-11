@@ -21,6 +21,7 @@
 0	framework/cli/check.sh
 0	framework/tui/check.sh
 0	spec/aggregate-layout-v1/check.sh
+0	spec/benchmark-report-v1/check.sh
 0	spec/roadmap-31-34/verify-current-gates.sh
 0	spec/source-file-mapping/check.sh
 0	spec/typed-sidecar/check.sh
@@ -29,6 +30,7 @@
 0	spec/wasm-host-profile-v1/check.sh
 0	tests/build_system.sh
 0	tests/cli.sh
+0	tests/conformance/aggregate-bridge/run.sh
 0	tests/conformance/adt-exhaustiveness/run.sh
 0	tests/conformance/modules/import-aliases/run.sh
 0	tests/conformance/modules/imports-qualified/run.sh
