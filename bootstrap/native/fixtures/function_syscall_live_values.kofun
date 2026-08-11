@@ -1,0 +1,27 @@
+# `syscall` destroys rcx and r11. rcx is never allocated here, but r11 is one of
+# the two caller-saved registers this backend hands to evaluation depths, and
+# `getpid` is the syscall that touches nothing else — so anything this body gets
+# wrong is the clobber and not the call.
+#
+# The intrinsic sits inside an arithmetic tree rather than at the top of a
+# statement, so `a * 1000000` and `b * 10000` are both still live when the
+# instruction runs. Two `getpid` calls return the same value, so their
+# difference is zero and the printed answer is exact:
+#
+#     5 * 1000000 + (6 * 10000 + (0 + (7 * 100 + 8))) = 5060708
+#
+# A value that did not survive shows up as a different number, not as a crash.
+
+fn live_across_syscall(seed: Int) -> Int {
+    let a = seed + 1
+    let b = seed + 2
+    let c = seed + 3
+    let d = seed + 4
+    return a * 1000000 +
+        (b * 10000 +
+            ((__linux_syscall0(39) - __linux_syscall0(39)) + (c * 100 + d)))
+}
+
+fn main() {
+    print(live_across_syscall(4))
+}

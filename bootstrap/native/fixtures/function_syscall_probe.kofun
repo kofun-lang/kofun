@@ -1,0 +1,173 @@
+# Executes the Linux x86-64 syscall layer that `stdlib/linux_x86_64/abi.kofun`
+# declares. Every wrapper below is that file's own `raw_*` body, rewritten only
+# where the native Core has no `let` at top level, so the syscall numbers appear
+# as literals instead of as the `SYS_*` bindings.
+#
+# The process makes real syscalls and observes their answers. Each check names
+# the register the argument had to travel in: a wrong mapping does not produce a
+# wrong number, it produces a different errno, and the step code says which one.
+#
+# On success this writes 32 zero bytes to standard output — the head of a fresh
+# anonymous mapping, which the kernel guarantees is zeroed — and exits 0.
+
+fn raw_getpid() -> Int {
+    return __linux_syscall0(39)
+}
+
+fn raw_close(descriptor: Int) -> Int {
+    return __linux_syscall1(3, descriptor)
+}
+
+fn raw_exit(status: Int) -> Int {
+    return __linux_syscall1(60, status)
+}
+
+fn raw_munmap(address: Int, length: Int) -> Int {
+    return __linux_syscall2(11, address, length)
+}
+
+fn raw_write(descriptor: Int, address: Int, length: Int) -> Int {
+    return __linux_syscall3(1, descriptor, address, length)
+}
+
+fn raw_open(path_address: Int, flags: Int, mode: Int) -> Int {
+    return __linux_syscall3(2, path_address, flags, mode)
+}
+
+fn raw_newfstatat(
+    directory: Int,
+    path_address: Int,
+    stat_address: Int,
+    flags: Int
+) -> Int {
+    return __linux_syscall4(262, directory, path_address, stat_address, flags)
+}
+
+fn raw_statx(
+    directory: Int,
+    path_address: Int,
+    flags: Int,
+    mask: Int,
+    stat_address: Int
+) -> Int {
+    return __linux_syscall5(332, directory, path_address, flags, mask, stat_address)
+}
+
+fn raw_mmap(
+    address: Int,
+    length: Int,
+    protection: Int,
+    flags: Int,
+    descriptor: Int,
+    offset: Int
+) -> Int {
+    return __linux_syscall6(9, address, length, protection, flags, descriptor, offset)
+}
+
+# One accepted six-argument mapping, then five that change exactly one argument.
+# Each rejection is the kernel reading that argument, so it names the register.
+fn mmap_argument_registers() -> Int {
+    # rdi: MAP_FIXED at an address that is not page aligned.
+    if raw_mmap(1, 4096, 3, 50, -1, 0) != -22 {
+        return 61
+    }
+    # rsi: a zero length.
+    if raw_mmap(0, 0, 3, 34, -1, 0) != -22 {
+        return 62
+    }
+    # r10, not rcx: neither MAP_SHARED nor MAP_PRIVATE, so the -1 descriptor is
+    # read as a file to map. This is the check that fails if the fourth
+    # argument travels the ordinary SysV route.
+    if raw_mmap(0, 4096, 3, 0, -1, 0) != -9 {
+        return 64
+    }
+    # r8: MAP_SHARED with a descriptor that is not open.
+    if raw_mmap(0, 4096, 3, 1, 2147483632, 0) != -9 {
+        return 65
+    }
+    # r9: an offset that is not page aligned.
+    if raw_mmap(0, 4096, 3, 34, -1, 1) != -22 {
+        return 66
+    }
+    return 0
+}
+
+# rdx: the protection an anonymous mapping was given decides whether its bytes
+# can be read, so a PROT_NONE page that refuses a write proves the third
+# argument arrived.
+fn mmap_protection_register() -> Int {
+    let unreadable = raw_mmap(0, 4096, 0, 34, -1, 0)
+    if unreadable < 1 {
+        return 67
+    }
+    if raw_write(1, unreadable, 1) != -14 {
+        return 68
+    }
+    if raw_munmap(unreadable, 4096) != 0 {
+        return 69
+    }
+    return 0
+}
+
+fn probe() -> Int {
+    # Arity 0.
+    if raw_getpid() < 1 {
+        return 11
+    }
+    # Arity 1: a descriptor that is not open, returned as a negative errno the
+    # backend does not interpret.
+    if raw_close(-1) != -9 {
+        return 12
+    }
+    # Arity 6.
+    let page = raw_mmap(0, 4096, 3, 34, -1, 0)
+    if page < 1 {
+        return 13
+    }
+    # Arity 3: the page is zeroed, so the path is empty and does not exist.
+    if raw_open(page, 0, 0) != -2 {
+        return 14
+    }
+    # Arity 4, and its r10 argument: the same call differs only in AT_EMPTY_PATH.
+    if raw_newfstatat(-100, page, page + 512, 0) != -2 {
+        return 15
+    }
+    if raw_newfstatat(-100, page, page + 512, 4096) != 0 {
+        return 16
+    }
+    # Arity 5, its rdx argument, then its r8 argument.
+    if raw_statx(-100, page, 0, 0, page + 1024) != -2 {
+        return 17
+    }
+    if raw_statx(-100, page, 4096, 0, page + 1024) != 0 {
+        return 18
+    }
+    if raw_statx(-100, page, 4096, 0, 1) != -14 {
+        return 19
+    }
+    let mapping = mmap_argument_registers()
+    if mapping != 0 {
+        return mapping
+    }
+    let protection = mmap_protection_register()
+    if protection != 0 {
+        return protection
+    }
+    # Arity 3 again, this time for its effect: 32 bytes of the mapping reach
+    # standard output, and the count comes back through rdx.
+    if raw_write(1, page, 32) != 32 {
+        return 20
+    }
+    # Arity 2, rejected and then accepted.
+    if raw_munmap(1, 4096) != -22 {
+        return 21
+    }
+    if raw_munmap(page, 4096) != 0 {
+        return 22
+    }
+    return 0
+}
+
+fn main() {
+    print(raw_exit(probe()))
+}

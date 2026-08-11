@@ -277,6 +277,7 @@ typedef enum {
     FUNCTION_TEXT_LITERAL,
     FUNCTION_PARAMETER,
     FUNCTION_CALL,
+    FUNCTION_SYSCALL,
     FUNCTION_ADD,
     FUNCTION_TEXT_CONCAT,
     FUNCTION_SUBTRACT,
@@ -291,6 +292,46 @@ typedef enum {
     FUNCTION_GREATER,
     FUNCTION_GREATER_EQUAL,
 } FunctionExpressionKind;
+
+/*
+ * The Linux syscall intrinsics `stdlib/linux_x86_64/abi.kofun` declares.
+ *
+ * They are recognised by name at the call site instead of being declared in the
+ * source under compilation: the native Core has no import path, and that stdlib
+ * declaration — fixed arities, `Int` arguments, `Int` result — is the
+ * specification these names answer to. The digit names the count of syscall
+ * arguments, so `__linux_syscallN` takes `N + 1` values: the syscall number
+ * first, then the arguments. That is one more than a native Core function may
+ * take, which is why the intrinsic carries its own argument placement rather
+ * than reusing the ordinary call boundary.
+ */
+enum {
+    FUNCTION_SYSCALL_MAX_ARITY = 6,
+    FUNCTION_SYSCALL_MAX_ARGUMENTS = FUNCTION_SYSCALL_MAX_ARITY + 1,
+};
+
+static const char *const
+function_syscall_names[FUNCTION_SYSCALL_MAX_ARGUMENTS] = {
+    "__linux_syscall0",
+    "__linux_syscall1",
+    "__linux_syscall2",
+    "__linux_syscall3",
+    "__linux_syscall4",
+    "__linux_syscall5",
+    "__linux_syscall6",
+};
+
+/* True when `name` is one of the seven intrinsics; `arity` receives its digit. */
+static bool function_syscall_arity(const char *name, size_t *arity) {
+    for (size_t index = 0;
+         index < FUNCTION_SYSCALL_MAX_ARGUMENTS;
+         ++index) {
+        if (strcmp(name, function_syscall_names[index]) != 0) continue;
+        if (arity != NULL) *arity = index;
+        return true;
+    }
+    return false;
+}
 
 typedef enum {
     FUNCTION_TRAP_ADD_OVERFLOW,
@@ -1951,6 +1992,20 @@ static bool function_headers(
             );
             break;
         }
+        /*
+         * A call site resolves the intrinsics before it looks for a declared
+         * function, so a definition under one of those names would be
+         * unreachable and its calls would silently mean the syscall instead.
+         * Refuse the definition rather than let the two readings disagree.
+         */
+        if (function_syscall_arity(function->name, NULL)) {
+            function_error(
+                &parser,
+                "native Core cannot define the intrinsic `%s`",
+                function->name
+            );
+            break;
+        }
         if (!function_consume_char(&parser, '(')) {
             function_error(
                 &parser,
@@ -2263,6 +2318,66 @@ static FunctionExpression *function_parse_atom(FunctionParser *parser) {
         return NULL;
     }
     if (function_consume_char(parser, '(')) {
+        size_t syscall_arity = 0;
+        if (function_syscall_arity(name, &syscall_arity)) {
+            FunctionExpression *intrinsic = function_expression(
+                FUNCTION_SYSCALL,
+                FUNCTION_VALUE_INT,
+                source_line(parser->source, atom_at),
+                NULL,
+                NULL
+            );
+            size_t expected = syscall_arity + 1;
+            intrinsic->arguments = allocate(
+                expected * sizeof(*intrinsic->arguments)
+            );
+            function_skip_trivia(parser);
+            if (!function_consume_char(parser, ')')) {
+                for (;;) {
+                    if (intrinsic->argument_count >= expected) {
+                        function_error(
+                            parser,
+                            "native Core intrinsic `%s` expects %zu arguments",
+                            name,
+                            expected
+                        );
+                        return intrinsic;
+                    }
+                    FunctionExpression *argument =
+                        function_parse_expression(parser);
+                    if (argument == NULL) return intrinsic;
+                    /* Stored before it is judged, so the refusal path owns it. */
+                    intrinsic->arguments[intrinsic->argument_count++] = argument;
+                    if (argument->value_kind != FUNCTION_VALUE_INT) {
+                        function_error(
+                            parser,
+                            "native Core intrinsic `%s` argument %zu requires Int",
+                            name,
+                            intrinsic->argument_count
+                        );
+                        return intrinsic;
+                    }
+                    if (function_consume_char(parser, ')')) break;
+                    if (!function_consume_char(parser, ',')) {
+                        function_error(
+                            parser,
+                            "expected `,` between native Core arguments"
+                        );
+                        return intrinsic;
+                    }
+                }
+            }
+            if (intrinsic->argument_count != expected) {
+                function_error(
+                    parser,
+                    "native Core intrinsic `%s` expects %zu arguments, got %zu",
+                    name,
+                    expected,
+                    intrinsic->argument_count
+                );
+            }
+            return intrinsic;
+        }
         size_t target = function_find(parser->program, name);
         if (target == SIZE_MAX) {
             function_error(
@@ -2819,6 +2934,43 @@ static bool function_bodies(
         }
     }
     return true;
+}
+
+static bool function_expression_uses_syscall(
+    const FunctionExpression *expression
+) {
+    if (expression == NULL) return false;
+    if (expression->kind == FUNCTION_SYSCALL) return true;
+    if (function_expression_uses_syscall(expression->left)) return true;
+    if (function_expression_uses_syscall(expression->right)) return true;
+    for (size_t index = 0;
+         expression->arguments != NULL &&
+             index < expression->argument_count;
+         ++index) {
+        if (function_expression_uses_syscall(expression->arguments[index])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/*
+ * Whether any body reaches a Linux syscall intrinsic. Asked once, before a
+ * target is lowered, so a target that has no syscall boundary can refuse the
+ * program with a diagnostic instead of failing inside its emitter.
+ */
+static bool function_program_uses_syscall(const FunctionProgram *program) {
+    for (size_t index = 0; index < program->function_count; ++index) {
+        const FunctionDeclaration *function = &program->functions[index];
+        for (size_t statement = 0;
+             statement < function->statement_count;
+             ++statement) {
+            const FunctionStatement *item = &function->statements[statement];
+            if (function_expression_uses_syscall(item->condition)) return true;
+            if (function_expression_uses_syscall(item->value)) return true;
+        }
+    }
+    return false;
 }
 
 /*
@@ -5212,6 +5364,31 @@ static const unsigned x64_argument_registers[MAX_CORE_PARAMETERS] = {
     X64_RDI, X64_RSI, X64_RDX, X64_RCX, X64_R8, X64_R9,
 };
 
+/*
+ * The Linux x86-64 kernel entry boundary, in the order `__linux_syscallN`
+ * writes its values: the syscall number in `rax`, then the arguments in `rdi`,
+ * `rsi`, `rdx`, `r10`, `r8`, `r9`.
+ *
+ * The fourth argument is `r10` and not the `rcx` the SysV call boundary above
+ * uses. `syscall` overwrites `rcx` with the return address and `r11` with the
+ * saved flags, so the kernel ABI moves that one argument out of the way. This
+ * is the single place the two boundaries disagree.
+ */
+static const unsigned
+x64_syscall_registers[FUNCTION_SYSCALL_MAX_ARGUMENTS] = {
+    X64_RAX, X64_RDI, X64_RSI, X64_RDX, X64_R10, X64_R8, X64_R9,
+};
+
+/*
+ * Which of those is also allocatable, and therefore the one boundary register
+ * that can still hold a value the syscall is about to read. Filling it last
+ * makes every other read happen first, so no argument is overwritten before it
+ * is placed.
+ */
+enum {
+    X64_SYSCALL_ALLOCATABLE_INDEX = 4,
+};
+
 static const TargetRegisterFile x64_register_file = {
     x64_scratch_registers,
     X64_SCRATCH_REGISTERS,
@@ -5232,10 +5409,20 @@ enum {
     FUNCTION_MAX_TRACKED_DEPTH = 16,
 };
 
-/* True when evaluating this expression emits a call instruction. */
+/*
+ * True when evaluating this expression emits a call instruction.
+ *
+ * A syscall counts. `syscall` is not a `call`, but it destroys `rcx` and `r11`
+ * exactly as a callee may, and `r11` is one of the two caller-saved registers
+ * this allocator hands to evaluation depths. Reporting the intrinsic here is
+ * what moves every value live across it into the callee-saved class, which the
+ * kernel preserves; nothing else in the backend has to know the instruction
+ * clobbers anything.
+ */
 static bool function_expression_calls(const FunctionExpression *expression) {
     if (expression == NULL) return false;
     if (expression->kind == FUNCTION_CALL) return true;
+    if (expression->kind == FUNCTION_SYSCALL) return true;
     if (expression->kind == FUNCTION_TEXT_CONCAT) return true;
     if (function_expression_calls(expression->left)) return true;
     if (function_expression_calls(expression->right)) return true;
@@ -5290,6 +5477,7 @@ static void function_expression_pressure(
             function_expression_pressure(expression->left, depth, pressure);
             return;
         case FUNCTION_CALL:
+        case FUNCTION_SYSCALL:
             for (size_t index = 0;
                  index < expression->argument_count;
                  ++index) {
@@ -5692,6 +5880,66 @@ static void x64_function_expression(
             );
         }
         x64_function_call(text, emitter, expression->function_index);
+        x64_mov_operand_register(text, result, X64_RAX);
+        return;
+    }
+    if (expression->kind == FUNCTION_SYSCALL) {
+        size_t count = expression->argument_count;
+        if (count == 0 || count > FUNCTION_SYSCALL_MAX_ARGUMENTS) {
+            fatal("x86-64 Core syscall has the wrong argument count");
+        }
+        for (size_t index = 0; index < count; ++index) {
+            x64_function_expression(
+                text,
+                expression->arguments[index],
+                emitter,
+                layout,
+                depth + index
+            );
+        }
+        /*
+         * Only `r10` among the boundary registers is ever allocated, so filling
+         * it last places every value exactly once. That is a property of the
+         * allocator rather than of this code, so prove it here instead of
+         * trusting it: an argument sitting in any other boundary register would
+         * be destroyed before its own move ran.
+         */
+        for (size_t index = 0; index < count; ++index) {
+            if (index == X64_SYSCALL_ALLOCATABLE_INDEX) continue;
+            for (size_t other = 0; other < count; ++other) {
+                Operand from = target_eval_operand(layout, depth + other);
+                if (from.in_register &&
+                    from.reg == x64_syscall_registers[index]) {
+                    fatal(
+                        "x86-64 Core syscall boundary register holds an argument"
+                    );
+                }
+            }
+        }
+        for (size_t index = 0; index < count; ++index) {
+            if (index == X64_SYSCALL_ALLOCATABLE_INDEX) continue;
+            x64_mov_register_operand(
+                text,
+                x64_syscall_registers[index],
+                target_eval_operand(layout, depth + index)
+            );
+        }
+        if (count > X64_SYSCALL_ALLOCATABLE_INDEX) {
+            x64_mov_register_operand(
+                text,
+                x64_syscall_registers[X64_SYSCALL_ALLOCATABLE_INDEX],
+                target_eval_operand(
+                    layout,
+                    depth + X64_SYSCALL_ALLOCATABLE_INDEX
+                )
+            );
+        }
+        x64_syscall(text);
+        /*
+         * Whatever the kernel returned, unchanged. A negative result is an
+         * errno the way `syscall_result` in `stdlib/linux_x86_64/abi.kofun`
+         * expects to receive it, so the backend classifies nothing.
+         */
         x64_mov_operand_register(text, result, X64_RAX);
         return;
     }
@@ -7276,6 +7524,16 @@ static void a64_function_expression(
         a64_function_call(text, emitter, expression->function_index);
         a64_move(text, result, target_register_operand(0));
         return;
+    }
+    if (expression->kind == FUNCTION_SYSCALL) {
+        /*
+         * The AArch64 syscall ABI is a different boundary — `x8` carries the
+         * number, `x0`..`x5` the arguments — and is a separate checkpoint.
+         * `main` diagnoses this program before lowering starts, so reaching
+         * here means that check was lost; refuse rather than emit an image
+         * whose intrinsics do nothing.
+         */
+        fatal("aarch64 Core does not lower the Linux syscall intrinsics");
     }
     if (expression->kind == FUNCTION_NEGATE) {
         a64_function_expression(
@@ -9869,6 +10127,21 @@ int main(int argc, char **argv) {
                     : "kofun native: unsupported function Core at byte %zu: %s\n",
                 function_error_at,
                 function_error_text
+            );
+            function_program_free(&function_program);
+            free(source);
+            return 1;
+        }
+        /*
+         * The syscall intrinsics name the Linux x86-64 boundary. AArch64 uses
+         * a different one and is a separate checkpoint, so say so here rather
+         * than emit an image in which the calls mean nothing.
+         */
+        if (aarch64 && function_program_uses_syscall(&function_program)) {
+            fputs(
+                "kofun native: the Linux syscall intrinsics lower on "
+                "x86_64-linux only\n",
+                stderr
             );
             function_program_free(&function_program);
             free(source);

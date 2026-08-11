@@ -1,0 +1,9 @@
+# A call site resolves the intrinsic before it looks for a declared function, so
+# a definition under that name would be unreachable while looking authoritative.
+fn __linux_syscall1(number: Int, arg1: Int) -> Int {
+    return number + arg1
+}
+
+fn main() {
+    print(__linux_syscall1(60, 0))
+}

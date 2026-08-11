@@ -706,7 +706,7 @@
   ],
   "evidence_digests": {
     "Taskfile.yml": "5df9e979146975b0fbc5f6ade5e81cbe9ece5e876887a187d37f39dc2100627e",
-    "bootstrap/native/check.sh": "dfa876ae496b87ce1a3f9535d09a5f54d650a1efbe747ddc527a78f2114b4fae",
+    "bootstrap/native/check.sh": "b12493d09eb1919b349f37c78e3c81f4441a1c00be2aa7d2e6c30512eea998eb",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/check-diverse-double-compilation-refusals.sh": "55fc39166070b9bc612fca6898086938b1a8ca122b1c1fb8e928f1a5d4cde572",
     "bootstrap/selfhost/driver/corpus_builtin_rejects.tsv": "b1fa0b26247581aef797a81880554a94233a34109215530641706d76777087d4",
