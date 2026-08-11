@@ -4,11 +4,12 @@
 # is sourced by the gates that need one. It is not a gate itself, it runs
 # nothing on its own, and it is deliberately not executable.
 #
-# Twenty scripts carried a byte-identical copy of the compile line, and only
-# three of them honoured KOFUN_STAGE2_COMPILER. A gate that ignores that
-# variable rebuilds bootstrap/stage2/compiler.c from scratch — roughly 4.6s of
-# cc for 16k lines — even when the caller has already built exactly that
-# binary, and `task verify` pays it once per gate.
+# Gate scripts use this helper instead of carrying their own ordinary compile
+# line. A gate that ignores KOFUN_STAGE2_COMPILER rebuilds
+# bootstrap/stage2/compiler.c from scratch — roughly 4.6s of cc — even when
+# the caller has already built exactly that binary. Sanitizer, analyzer,
+# mutation, macro-variant, and diverse-toolchain builds stay separate because
+# they prove different properties.
 
 # kofun_stage2_build ROOT OUT
 #
@@ -33,7 +34,7 @@ kofun_stage2_build() {
         return 1
     }
 
-    "$kofun_stage2_cc" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$kofun_stage2_cc" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
         "$kofun_stage2_root/bootstrap/stage2/compiler.c" \
         -o "$kofun_stage2_out"
 }
