@@ -5,6 +5,7 @@ here=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 root=$(CDPATH= cd -- "$here/../../../.." && pwd)
 ASSERT_CONTEXT='syntax 48-60'
 . "$root/tests/assertions/assert.sh"
+. "$root/bootstrap/stage2/build.sh"
 
 if command -v cc >/dev/null 2>&1; then
     compiler=cc
@@ -21,8 +22,7 @@ temporary=${TMPDIR:-/tmp}/kofun-syntax-48-60.$$
 trap 'rm -rf "$temporary"' EXIT HUP INT TERM
 mkdir -p "$temporary"
 
-"$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
-    "$root/bootstrap/stage2/compiler.c" -o "$temporary/kofun-stage2"
+CC=$compiler kofun_stage2_build "$root" "$temporary/kofun-stage2"
 
 "$temporary/kofun-stage2" \
     "$here/token-spans.kofun" \

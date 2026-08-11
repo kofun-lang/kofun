@@ -428,7 +428,7 @@ printf '%s\n' \
     "PASS: $executed complete rows ran A1 against $corpus_count reviewed corpora" \
     "PASS: $skipped rows are not complete and claim no fixture evidence"
 
-if test "$phase" = frontend; then
+if test -z "$phase" || test "$phase" = frontend; then
     awk -F '|' '
         NR == 1 { next }
         $4 ~ /^planned:/ {
@@ -469,9 +469,9 @@ c11_phase_gate() {
     printf '%s\n' \
         "PASS: no c11 cells await $owner evidence ($evidence_count carry checked-in paths)"
 }
-if test "$phase" = c11-text; then
+if test -z "$phase" || test "$phase" = c11-text; then
     c11_phase_gate '#620'
 fi
-if test "$phase" = c11-control; then
+if test -z "$phase" || test "$phase" = c11-control; then
     c11_phase_gate '#621'
 fi

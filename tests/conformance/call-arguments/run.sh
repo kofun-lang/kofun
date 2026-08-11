@@ -4,6 +4,7 @@ set -eu
 root=$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)
 cases="$root/tests/conformance/call-arguments"
 diagnostics="$root/tests/diagnostics/stage2"
+. "$root/bootstrap/stage2/build.sh"
 temporary=${TMPDIR:-/tmp}/kofun-call-arguments.$$
 trap 'rm -rf "$temporary"' EXIT HUP INT TERM
 mkdir -p "$temporary"
@@ -80,8 +81,7 @@ printf '%s\n' "$duplicate" |
 # Compile the canonical Stage 2 seed itself, then make source order disagree
 # with declaration order. C11's comma operator must assign the fixed
 # temporaries as written before the ABI-ordered call runs.
-"$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
-    "$root/bootstrap/stage2/compiler.c" -o "$temporary/stage2"
+kofun_stage2_build "$root" "$temporary/stage2"
 
 # Lower one case and run it against its golden. `stem` names the fixture and
 # the artifacts, so a second case cannot silently assert against the first

@@ -15,6 +15,7 @@ set -eu
 ROOT=$(CDPATH= cd -P -- "$(dirname -- "$0")/../../.." && pwd)
 CASES="$ROOT/tests/conformance/discovery"
 CC=${CC:-cc}
+. "$ROOT/bootstrap/stage2/build.sh"
 
 command -v "$CC" >/dev/null 2>&1 || {
     printf '%s\n' "discovery: a C11 compiler is required" >&2
@@ -255,8 +256,8 @@ printf '%s\n' "PASS: closure"
     cd "$ROOT"
     sha256sum -c bootstrap/stage2/SHA256SUMS >/dev/null
 )
-"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
-    "$ROOT/bootstrap/stage2/compiler.c" -o "$WORK/stage2-release"
+kofun_stage2_build "$ROOT" "$WORK/stage2-release"
+# stage2-build-reuse: specialized macro-variant build; keep independent.
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
     -DKOFUN_DISCOVERY_DISABLED=1 \
     "$ROOT/bootstrap/stage2/compiler.c" -o "$WORK/stage2-release-disabled"

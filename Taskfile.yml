@@ -534,9 +534,10 @@ tasks:
       - "sh stdlib/check-capabilities.sh"
 
   build-system:
-    desc: "Verify direct and Frost-integrated build paths"
+    desc: "Verify direct/Frost builds and shared Stage 2 compiler reuse"
     cmds:
       - "sh tests/build_system.sh"
+      - "sh tests/tooling/stage2-build-reuse/check.sh"
 
   packages:
     desc: "Verify locked package fetch and offline use"
@@ -895,9 +896,6 @@ tasks:
             selfhost-profile \
             selfhost-self-compile \
             selfhost-driver-diagnostics \
-            selfhost-frontend \
-            selfhost-c11 \
-            selfhost-c11-control \
             selfhost-generations \
             selfhost-fixed-point \
             selfhost-diverse-double-compilation \

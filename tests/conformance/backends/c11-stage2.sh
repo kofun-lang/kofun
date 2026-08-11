@@ -1,6 +1,7 @@
 # Adapter for the Stage 2 C11 backend and its Decimal runtime.
 
 BACKEND_NAME=c11-stage2
+. "$KOFUN_ROOT/bootstrap/stage2/build.sh"
 
 backend_compile() {
     source=$1
@@ -10,10 +11,7 @@ backend_compile() {
     stage2=$(dirname "$work")/kofun-stage2
 
     if test ! -x "$stage2"; then
-        compiler=${CC:-cc}
-        "$compiler" -std=c11 -O2 -Wall -Wextra -Werror \
-            "$KOFUN_ROOT/bootstrap/stage2/compiler.c" \
-            -o "$stage2"
+        kofun_stage2_build "$KOFUN_ROOT" "$stage2"
     fi
 
     "$stage2" \

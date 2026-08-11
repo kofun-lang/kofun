@@ -7,6 +7,7 @@ STAGE2="$ROOT/bootstrap/stage2"
 CC=${CC:-cc}
 ASSERT_CONTEXT='roadmap 31-34'
 . "$ROOT/tests/assertions/assert.sh"
+. "$ROOT/bootstrap/stage2/build.sh"
 
 case ${1-} in
     "")
@@ -31,8 +32,7 @@ temporary=${TMPDIR:-/tmp}/kofun-roadmap-31-34.$$
 trap 'rm -rf "$temporary"' EXIT HUP INT TERM
 mkdir -p "$temporary"
 
-"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
-    "$STAGE2/compiler.c" -o "$temporary/kofun-stage2"
+CC=$CC kofun_stage2_build "$ROOT" "$temporary/kofun-stage2"
 
 "$temporary/kofun-stage2" \
     "$ROADMAP/current-core-probe.kofun" \

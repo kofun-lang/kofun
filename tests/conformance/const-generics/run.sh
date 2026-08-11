@@ -8,6 +8,7 @@ PRODUCT="$CORPUS/product"
 CC=${CC:-cc}
 ANALYZER_CC=${ANALYZER_CC:-gcc}
 WORK=${KOFUN_CONST_GENERICS_FRONTEND_WORK:-"$ROOT/build/const-generics-frontend"}
+. "$ROOT/bootstrap/stage2/build.sh"
 
 fail() {
     printf '%s\n' "FAIL: $*" >&2
@@ -209,8 +210,7 @@ test -z "$(find "$WORK" -type f \
 # The ordinary compile path. A frontend-only fact does not complete #916: the
 # capability has to be reachable through the compiler the CLI actually runs,
 # which is `bootstrap/stage2/compiler.c` under `--compile-outcome`.
-"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
-    "$ROOT/bootstrap/stage2/compiler.c" -o "$WORK/kofun-stage2"
+kofun_stage2_build "$ROOT" "$WORK/kofun-stage2"
 
 "$WORK/kofun-stage2" --compile-outcome "$CASES/positive.kofun" \
     "$WORK/product.c" "$WORK/product.ir" "$WORK/product.tokens" \

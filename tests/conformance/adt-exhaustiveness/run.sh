@@ -19,12 +19,12 @@ OTHER_FILE=5555555555555555555555555555555555555555555555555555555555555555
 LOGICAL=demo/matching.kofun
 ASSERT_CONTEXT='adt exhaustiveness'
 . "$ROOT/tests/assertions/assert.sh"
+. "$ROOT/bootstrap/stage2/build.sh"
 
 rm -rf "$WORK"
 mkdir -p "$WORK"
 
-"$CC" -std=c11 -Wall -Wextra -Werror -pedantic \
-    "$ROOT/bootstrap/stage2/compiler.c" -o "$STAGE2"
+kofun_stage2_build "$ROOT" "$STAGE2"
 "$CC" -std=c11 -Wall -Wextra -Werror -pedantic \
     "$ROOT/bootstrap/stage2/module_symbols.c" \
     "$ROOT/unicode/kofun_unicode.c" \
