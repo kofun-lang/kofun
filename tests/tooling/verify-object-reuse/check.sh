@@ -8,6 +8,7 @@ ROOT=$(CDPATH= cd -P -- "$(dirname -- "$0")/../../.." && pwd)
 ASSERT_CONTEXT='verify object reuse'
 . "$ROOT/tests/assertions/assert.sh"
 . "$ROOT/bootstrap/stage2/semantic-objects.sh"
+. "$ROOT/bootstrap/stage2/fuzz-sanitizer-object.sh"
 
 if test "${KOFUN_VERIFY_OBJECT_REUSE_WORK+x}" = x; then
     WORK=$KOFUN_VERIFY_OBJECT_REUSE_WORK
@@ -1302,13 +1303,24 @@ mkdir -p "$probe_root/bootstrap/stage2" "$probe_root/build/verify" \
     "$probe_root/bin" "$probe_bin"
 cp "$ROOT/bootstrap/stage2/semantic-objects.sh" \
     "$probe_root/bootstrap/stage2/semantic-objects.sh"
+cp "$ROOT/bootstrap/stage2/fuzz-sanitizer-object.sh" \
+    "$probe_root/bootstrap/stage2/fuzz-sanitizer-object.sh"
+cp "$ROOT/bootstrap/stage2/fuzz-sanitizer-cc-wrapper.sh" \
+    "$probe_root/bootstrap/stage2/fuzz-sanitizer-cc-wrapper.sh"
 cp "$ROOT/bootstrap/stage2/verify-cc-wrapper.sh" \
     "$probe_root/bootstrap/stage2/verify-cc-wrapper.sh"
 cp "$ROOT/bin/kofun-digest" "$probe_root/bin/kofun-digest"
-chmod 0755 "$probe_root/bootstrap/stage2/verify-cc-wrapper.sh"
+chmod 0755 \
+    "$probe_root/bootstrap/stage2/fuzz-sanitizer-cc-wrapper.sh" \
+    "$probe_root/bootstrap/stage2/verify-cc-wrapper.sh"
 probe_digest_tool=$ROOT/build/digest/kofun-digest
 assert_executable 'runner probe digest tool' "$probe_digest_tool"
 kofun_stage2_semantic_source_paths |
+while IFS= read -r probe_source; do
+    mkdir -p "$probe_root/$(dirname -- "$probe_source")"
+    printf '%s\n' "probe source: $probe_source" >"$probe_root/$probe_source"
+done
+kofun_stage2_fuzz_sanitizer_source_paths |
 while IFS= read -r probe_source; do
     mkdir -p "$probe_root/$(dirname -- "$probe_source")"
     printf '%s\n' "probe source: $probe_source" >"$probe_root/$probe_source"

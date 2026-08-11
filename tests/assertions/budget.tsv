@@ -55,6 +55,7 @@
 0	tests/http/check.sh
 0	tests/lsp/check.sh
 0	tests/package_manager.sh
+0	tests/tooling/fuzz-sanitizer-reuse/check.sh
 0	tests/typed-sidecar/authority-boundary.sh
 0	tests/typed-sidecar/cli.sh
 0	tests/typed-sidecar/producer-races.sh
