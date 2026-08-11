@@ -160,9 +160,7 @@
       ],
       "state_line": "needs-detail",
       "blocked_by": [],
-      "evidence_commits": [
-        "041816f714eb82ed72e4a773c0112ed87f71b93b"
-      ],
+      "evidence_commits": [],
       "claims": [
         {
           "agent_id": "codex-refresh-569-environment-authority-20260808",
@@ -178,15 +176,14 @@
       "number": 644,
       "title": "HTTP/1.1 client core: bounded request and response state machine over scripted transport",
       "state_labels": [
-        "blocked"
+        "needs-detail"
       ],
-      "state_line": "blocked",
-      "blocked_by": [
-        784
-      ],
+      "state_line": "needs-detail",
+      "blocked_by": [],
       "evidence_commits": [
         "09e03fb96597aa1f48abce7ad95171d3184730d0",
-        "1639a8deb811d3f04acc5d84a4fd73f7630e8be0",
+        "9154acdb67bc36538f73594e0019fefd03960524",
+        "b19e41f6e9aa3e9d6961b4147a6ffe0f1eac946e",
         "b5ea9ec9241e832b87705c468818b4fd2684146d"
       ],
       "claims": [
@@ -297,36 +294,6 @@
       ]
     },
     {
-      "number": 784,
-      "title": "ownership: an affine handle whose owned state cannot be duplicated (#644)",
-      "state_labels": [
-        "needs-decision"
-      ],
-      "state_line": "needs-decision",
-      "blocked_by": [],
-      "evidence_commits": [
-        "1639a8deb811d3f04acc5d84a4fd73f7630e8be0"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-refresh-784-affine-handle-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-refresh-784-affine-handle-20260808",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-root-784-affine-protocol-audit-20260809",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-root-784-affine-protocol-audit-20260809",
-          "status": "released"
-        }
-      ]
-    },
-    {
       "number": 847,
       "title": "Benchmark report producer: canonical v1 bytes and deterministic summaries in Kofun",
       "state_labels": [
@@ -363,8 +330,8 @@
       "evidence_commits": [
         "08718618aeb3f4b81a64ed470ffcf5c6087bee3f",
         "0a209468da3698a31cf6177b863284fd04c9a374",
-        "1639a8deb811d3f04acc5d84a4fd73f7630e8be0",
         "1be32d5b9b7cdd9dbcb4532b6c1b094ec5b5f779",
+        "43d53d38ef30ec5ef234eb976c3e39a7ae949bb5",
         "b783e7697d3791ce26def31e7b58a51367c83036"
       ],
       "claims": [
@@ -404,7 +371,7 @@
       "blocked_by": [],
       "evidence_commits": [
         "08718618aeb3f4b81a64ed470ffcf5c6087bee3f",
-        "8e831320736f2c0aa53eea228ec77ef8f41e3c33"
+        "43d53d38ef30ec5ef234eb976c3e39a7ae949bb5"
       ],
       "claims": [
         {
@@ -540,36 +507,10 @@
         {
           "agent_id": "codex-902-bindgen-boundary-audit-20260808",
           "status": "released"
-        }
-      ]
-    },
-    {
-      "number": 915,
-      "title": "Stage 2 ensure_move v3: prove loop-local last uses instead of rejecting every loop",
-      "state_labels": [
-        "needs-detail"
-      ],
-      "state_line": "needs-detail",
-      "blocked_by": [],
-      "evidence_commits": [
-        "60d0af56f2e37a5ce4750544b005eb72f1b73154"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-915-loop-readiness-audit-20260808",
-          "status": "active"
         },
         {
-          "agent_id": "codex-915-loop-readiness-audit-20260808",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-915-debt-retire-20260808",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-915-debt-retire-20260808",
-          "status": "merged"
+          "agent_id": "claude-opus-trust-902",
+          "status": "pr-open"
         }
       ]
     },
@@ -577,18 +518,38 @@
       "number": 1113,
       "title": "Stage 2: merge the labelled and direct List[Int] fixed-slot call lowering",
       "state_labels": [
-        "needs-detail"
+        "in-progress"
       ],
-      "state_line": "needs-detail",
+      "state_line": "in-progress",
       "blocked_by": [],
       "evidence_commits": [
-        "4695608b88cf173436ae3ea523358f7db1071297"
+        "b6947cc9ecc54ab7465bc4ea7166c4a960d1d04b"
+      ],
+      "claims": [
+        {
+          "agent_id": "claude-merge-sweep",
+          "status": "active"
+        },
+        {
+          "agent_id": "claude-merge-sweep",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-1113-fixed-slot-merge-20260811",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-1113-fixed-slot-merge-20260811",
+          "status": "pr-open"
+        }
       ]
     },
     {
       "number": 1119,
       "title": "M4 tracker: the ten 1.0 deliverables and six exit criteria",
-      "state_labels": [],
+      "state_labels": [
+        "blocked"
+      ],
       "state_line": "blocked",
       "blocked_by": [
         30,
@@ -600,63 +561,13 @@
       ]
     },
     {
-      "number": 1128,
-      "title": "Executable slice: iterative while over an indexed List[Int] (E2S10) — binary search does not run",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "b8aeca7b4db8a93f0c5e4d4e3665fd17f60a02bb"
-      ],
-      "claims": [
-        {
-          "agent_id": "claude-merge-sweep",
-          "status": "pr-open"
-        }
-      ]
-    },
-    {
-      "number": 1156,
-      "title": "The \"audited\" correction stopped at four surfaces; 27 usages remain outside the gate",
-      "state_labels": [
-        "needs-decision"
-      ],
-      "state_line": "needs-decision",
-      "blocked_by": [],
-      "evidence_commits": []
-    },
-    {
-      "number": 1158,
-      "title": "An index expression compared in a condition types the comparison as the index (E2S157)",
-      "state_labels": [],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": []
-    },
-    {
-      "number": 1160,
-      "title": "Scoped parallelism: parse `par`/`spawn`/`join` into HIR identities",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "37905efa0e4fcf1b821a97e2799722a47ab942f2"
-      ]
-    },
-    {
       "number": 1161,
       "title": "Scoped parallelism: derive task captures from checked bodies and resolved calls",
       "state_labels": [
-        "blocked"
+        "ready"
       ],
-      "state_line": "blocked",
-      "blocked_by": [
-        1160
-      ],
+      "state_line": "ready",
+      "blocked_by": [],
       "evidence_commits": [
         "37905efa0e4fcf1b821a97e2799722a47ab942f2"
       ]
@@ -732,24 +643,126 @@
       ]
     },
     {
-      "number": 1170,
-      "title": "The audited-claim gate cannot see structured metadata, where the claim carries the most authority",
-      "state_labels": [],
-      "state_line": "ready",
-      "blocked_by": [
-        1156
+      "number": 1190,
+      "title": "Call arguments v1 slice 3b: lower pipeline subjects with exactly-once source-order evaluation",
+      "state_labels": [
+        "ready"
       ],
+      "state_line": "ready",
+      "blocked_by": [],
       "evidence_commits": [
-        "5b43e4817a083ea29ef22c3732f5d9b66ced861a"
+        "1c27baa804f825b93c031648c1c627f477236316"
+      ],
+      "claims": [
+        {
+          "agent_id": "claude-code-1190-pipeline-subject-20260811",
+          "status": "active"
+        },
+        {
+          "agent_id": "claude-code-1190-pipeline-subject-20260811",
+          "status": "released"
+        }
       ]
     },
     {
-      "number": 1171,
-      "title": "kotest says \"unit kept at\" a path it then deletes",
-      "state_labels": [],
-      "state_line": "needs-decision",
+      "number": 1191,
+      "title": "Call arguments v1 slice 3c: lower the accepted trailing-lambda form and fix the lifted-lambda-body boundary",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
       "blocked_by": [],
-      "evidence_commits": []
+      "evidence_commits": [
+        "1c27baa804f825b93c031648c1c627f477236316"
+      ]
+    },
+    {
+      "number": 1192,
+      "title": "Call arguments v1 slice 3d: direct-native and Wasm labelled-call lowering with backend differential evidence",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1189,
+        1190,
+        1191
+      ],
+      "evidence_commits": [
+        "1c27baa804f825b93c031648c1c627f477236316"
+      ]
+    },
+    {
+      "number": 1193,
+      "title": "RFC-0002 stage 1: compiler authority model, attenuation facts, and E350-E356",
+      "state_labels": [
+        "needs-detail"
+      ],
+      "state_line": "needs-detail",
+      "blocked_by": [],
+      "evidence_commits": [
+        "1c27baa804f825b93c031648c1c627f477236316"
+      ]
+    },
+    {
+      "number": 1194,
+      "title": "RFC-0002 stage 2: environment runtime and standard library with a deterministic test provider",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1193
+      ],
+      "evidence_commits": [
+        "1c27baa804f825b93c031648c1c627f477236316"
+      ]
+    },
+    {
+      "number": 1195,
+      "title": "RFC-0002 stage 3: package audit metadata schema and generated capability docs",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1193
+      ],
+      "evidence_commits": [
+        "1c27baa804f825b93c031648c1c627f477236316"
+      ]
+    },
+    {
+      "number": 1196,
+      "title": "RFC-0002 stage 4: trusted adapter entitlement ABI and default FFI rejection",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1193
+      ],
+      "evidence_commits": [
+        "1c27baa804f825b93c031648c1c627f477236316"
+      ]
+    },
+    {
+      "number": 1205,
+      "title": "task verify recompiles the same translation units 64 times: half the suite is repeat compilation",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "0af511f237c749db8b86355f23cdfcf2478b9be4"
+      ],
+      "claims": [
+        {
+          "agent_id": "claude-code-1205-compile-reuse-20260811",
+          "status": "active"
+        }
+      ]
     }
   ]
 }
