@@ -284,5 +284,60 @@ unsupported_case "$cases/trailing_lambda_block.kofun" \
     'error[E2S158]: a trailing lambda with a block body is specified by call-arguments v1 but not implemented at byte 116' \
     'trailing lambda with a block body'
 
+# #1190 recognizes `subject |> callee(arguments)` as one production and fails
+# closed before slot binding. What it buys is the diagnostic: before it, every
+# one of these reported an argument list the author did not get wrong —
+# `E2S164 missing argument \`base\`` or `E2S17 expects 2, got 1` — and never
+# mentioned the pipeline that was actually unsupported. Each shape outside the
+# production gets its own wording, so a later slice admitting one leaves the
+# others' evidence standing.
+unsupported_case "$cases/pipeline_subject.kofun" \
+    'error[E2S158]: a pipeline subject is recognized by call-arguments v1; slot binding is owned by #1226 at byte 127' \
+    'direct-call pipeline subject'
+unsupported_case "$cases/pipeline_coalescing_subject.kofun" \
+    'error[E2S158]: a pipeline subject is recognized by call-arguments v1; slot binding is owned by #1226 at byte 139' \
+    'pipeline subject containing a coalescing expression'
+unsupported_case "$cases/pipeline_bare_target.kofun" \
+    'error[E2S158]: a pipeline target must be a direct call written with its parentheses at byte 105' \
+    'pipeline with a bare callee'
+# A member target has its parentheses, so the bare-callee wording would name the
+# wrong defect. These two are separate assertions because they are separate
+# boundaries, and the corpus row that motivated it — tests/usability row 8 —
+# is a member pipeline, not a bare one.
+unsupported_case "$cases/pipeline_member_target.kofun" \
+    'error[E2S158]: a pipeline target must be a top-level function, not a member call at byte 84' \
+    'pipeline with a member target'
+unsupported_case "$cases/pipeline_chain.kofun" \
+    'error[E2S158]: a pipeline chain is specified by call-arguments v1 but not recognized at byte 105' \
+    'pipeline chain'
+unsupported_case "$cases/pipeline_trailing_lambda.kofun" \
+    'error[E2S158]: a pipeline with a trailing lambda is specified by call-arguments v1 but not recognized at byte 131' \
+    'pipeline with a trailing lambda'
+
+# The spans the binder in #1226 inherits. Asserting them here is what makes the
+# production reviewable before anything consumes it: a recognizer that refuses
+# everything looks identical to one that recognizes nothing, unless it publishes
+# what it saw.
+#
+# `subject end` is the subject's own end, not the pipe's offset — they differ by
+# the trivia between them, and a field repeating another one would be worth
+# nothing to its reader.
+pipeline_spans=$(
+    "$temporary/observer" "$cases/pipeline_subject.kofun" |
+        grep '^pipeline|'
+)
+test "$pipeline_spans" = 'pipeline|add|121|126|127|130|133|142|121|143' ||
+    fail 'pipeline spans changed'
+
+# `??` binds inside the subject, so `|>` is the lowest-precedence boundary
+# rather than an operator competing with it. The subject span covering
+# `left ?? 4` is the whole of that claim.
+coalescing_spans=$(
+    "$temporary/observer" "$cases/pipeline_coalescing_subject.kofun" |
+        grep '^pipeline|'
+)
+test "$coalescing_spans" = 'pipeline|add|129|138|139|142|145|154|129|155' ||
+    fail 'coalescing pipeline subject did not bind `??` first'
+
 printf '%s\n' \
-    'PASS: labelled calls bind fixed HIR slots and the Int/Text/List[Int]/Optional/enum/record C11 slice evaluates once in source order; take slots move once and refuse double transfer as E2S123; the expression-bodied trailing lambda binds the final parameter as a lifted address; #882 retains pipeline, block-bodied trailing, and lambda-body forms and other backends'
+    'PASS: labelled calls bind fixed HIR slots and the Int/Text/List[Int]/Optional/enum/record C11 slice evaluates once in source order; take slots move once and refuse double transfer as E2S123; the expression-bodied trailing lambda binds the final parameter as a lifted address; the direct-call pipeline is one production whose spans are published and whose binding fails closed; #882 retains pipeline binding, block-bodied trailing, and lambda-body forms and other backends'

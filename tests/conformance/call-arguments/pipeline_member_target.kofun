@@ -1,0 +1,7 @@
+type Reading = { value: Int }
+
+fn main() -> Int {
+    let start = 1
+    print(start |> Reading.build(value: 2))
+    return 0
+}

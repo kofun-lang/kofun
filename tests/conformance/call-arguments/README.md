@@ -49,7 +49,35 @@ for a three-parameter call for exactly that reason. The lifted name is keyed by
 the `(` of the lambda's parameter list, which is the identity the definition
 walk and the reference walk already share.
 
-Pipeline subjects, block-bodied trailing lambdas, labelled calls inside lifted
+`pipeline_subject.kofun` is the production #1190 recognizes:
+`start |> add(delta: 2)` is **one** expression, not a subject and a call that
+happen to sit either side of an operator. `|>` is the lowest-precedence
+boundary in the grammar, which `pipeline_coalescing_subject.kofun` pins from
+the other direction: `left ?? 4 |> add(delta: 2)` has `left ?? 4` as its
+subject, so `??` binds first.
+
+Recognition is the whole of that slice — binding is #1226, checking #1227, and
+C11 lowering #1228 — so both cases still fail closed. What recognition buys is
+the diagnostic. Before it, each of these reported an argument list the author
+had not got wrong (`missing argument \`base\``, or `expects 2 arguments, got
+1`) and never mentioned the pipeline that was actually unsupported.
+
+Because a recognizer that refuses everything is indistinguishable from one that
+recognizes nothing, the gate asserts the **spans** the production publishes:
+subject, its own end, the pipe, callee, parenthesis pair, and the whole
+expression. Those are what #1226 inherits. The subject's end is its own, not
+the pipe's offset; the two differ by the trivia between them.
+
+The shapes outside the production each carry their own wording —
+`pipeline_bare_target.kofun`, `pipeline_chain.kofun`, and
+`pipeline_trailing_lambda.kofun` — so a later slice admitting one leaves the
+others' evidence standing. The bare-target case is refused before scope
+construction on purpose: a callee without parentheses is a name the scope
+builder cannot resolve, so without an earlier refusal it reports
+`E2S35 unknown lexical binding` about a binding the author never meant to
+reference.
+
+Pipeline binding, block-bodied trailing lambdas, labelled calls inside lifted
 lambdas, indirect/lexical callees, and direct-native/Wasm lowering retain
 E2S158 and remain owned by #882. The last two are different boundaries under
 one code, so `trailing_lambda_block.kofun` and `lifted_lambda_call.kofun` are
