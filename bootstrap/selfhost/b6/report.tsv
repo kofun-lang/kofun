@@ -1,0 +1,40 @@
+schema|kofun.selfhost-b6-report/v1
+result_sha256|8b6391d20519b651ab04e44c9a284aa071845c2c4fd6199f5081ee7b450c3bca
+result|report_schema|kofun.selfhost-b6-report/v1
+result|command|sh bootstrap/selfhost/reproduce.sh OUTPUT REPORT
+result|criterion|byte equality from generation 2 on - C2 == C3 and A2 == A3 (#271); C1/A1 are hash-pinned runnable provenance
+result|normalized_environment|LC_ALL=C TZ=UTC umask=022
+result|declared_inputs_schema|kofun.selfhost-declared-inputs/v1
+result|inputs_sufficient_schema|kofun.selfhost-inputs-sufficient/v1
+result|fixed_point_schema|kofun.selfhost-fixed-point/v1
+result|closure_schema|kofun.selfhost-fixed-point-closure/v1
+result|acquisition_set_sha256|9827ea87390e6a5b10eb32bf64f2f4aba5dbcec731343e482b59ae000bdbaf08
+result|declared_inputs|126
+result|canonical_source_sha256|2595b8dad461bf02ec75d765295da6b03f40dd02f34daa2b0ebd8b3fab8e596d
+result|trusted_seed_sha256|17ef4bfe5cf2f7d7f9b168a7064c22d7e852fedb39a0b4020ff6d55550c33f12
+result|corpus_sha256|74b63ee4951ca95330ed1c503b56bd4edb0b25b71359a7d648a0206b0bf614a6
+result|runtime_headers_sha256|b743d75735548698dabb0ea3699372975f6e4c1c53a54fdaafbd249f12cf7fc2
+result|c1_sha256|48a30a19d85c79bae44b03daf2fc66248fd5464fde67694ec308d8772ecfd491
+result|c2_sha256|82005a8b89a32f1763bfc7ba5f030b5e109b25ed2a1aff307356ee174f1b887a
+result|c3_sha256|82005a8b89a32f1763bfc7ba5f030b5e109b25ed2a1aff307356ee174f1b887a
+result|c3_bytes|657462
+result|fixed_point_closure_sha256|80fed18333bfa401c9448695c1f7f709e3f4c24f0882926fdbb18dbb4f24ed75
+result|corpus_cases|45
+result|corpus_observations|193
+result|corpus_observations_sha256|83e0696525bb4aa866c124c3394401d776d264c360948dcf3601c80645061afa
+provenance|host_compiler_identity|cc (GCC) 16.1.1 20260728
+provenance|host_compiler_flags|-std=c11 -O2 -Wall -Wextra -Werror
+provenance|a1_sha256|bf1243eded47cad3a58d0a8199a6f74fb2b03b562d332802fbe221d066e8f9b4
+provenance|a2_sha256|551604075186beaec175c9a381c267d1c9bd7940377eb16b15d07b017ef184f2
+provenance|a3_sha256|551604075186beaec175c9a381c267d1c9bd7940377eb16b15d07b017ef184f2
+provenance|operating_system|Linux
+provenance|kernel_release|7.1.6-1-cachyos
+provenance|architecture|x86_64
+provenance|libc|ldd (GNU libc) 2.44
+provenance|digest_tool|d6c336aaa6a57f14d45d0f50c8dcd01f38e7f75ee86676d825a5278245bb68a5
+builder|identity|kofun repository self-check
+builder|basis|the repository checkout itself, which is not independent of the project
+builder|independence|claimed by the builder and not established by this report or its validator
+audit|generated_at|2026-08-11T15:54:03Z
+audit|working_directory|/home/builder/kofun
+audit|packet_directory|/home/builder/kofun-b6
