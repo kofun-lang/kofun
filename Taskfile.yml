@@ -175,6 +175,14 @@ tasks:
       - "sh bootstrap/selfhost/check-declared-inputs.sh build/{{.NAMESPACE}}selfhost-inputs"
       - "sh bootstrap/selfhost/check-inputs-sufficient.sh build/{{.NAMESPACE}}selfhost-inputs"
 
+  # The packet an independent builder is handed, and the validator a reviewer
+  # runs on what comes back. Mechanics only: it records a builder's identity
+  # and basis, states that it cannot authenticate them, and does not close B6.
+  selfhost-b6-report:
+    desc: "Run the delegated reproduction command and validate its canonical report"
+    cmds:
+      - "sh bootstrap/selfhost/check-b6-report.sh"
+
   # RFC-0001 stage 1. The canonical contract and its bounded Stage 2
   # projection, pinned against each other. The seed grants no capability;
   # the gate refuses one appearing.
@@ -944,6 +952,7 @@ tasks:
             selfhost-fixed-point \
             selfhost-diverse-double-compilation \
             selfhost-declared-inputs \
+            selfhost-b6-report \
             selfhost-native \
             stage2 \
             stage2-events \
