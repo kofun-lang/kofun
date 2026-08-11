@@ -97,9 +97,18 @@ mkdir -p "$work"
         bootstrap/selfhost/build-a1-a2.sh \
         bootstrap/selfhost/check-a1-a2.sh \
         bootstrap/selfhost/check-fixed-point.sh \
-        bootstrap/stage2/build.sh; do
+        bootstrap/stage2/build.sh \
+        bin/kofun-digest; do
         declare_file command "$script"
     done
+    # `bin/kofun-digest` computes every digest the chain compares (#1213), so a
+    # reproducer needs the sources it builds itself from. Declaring the command
+    # without them reproduces nothing: the B6 gate copies exactly the declared
+    # set into a clean tree, and a chain that cannot build its own digest tool
+    # cannot verify a single generation.
+    declare_file seed-unit bootstrap/stage2/sha256_tool.c
+    declare_file seed-unit bootstrap/stage2/sha256.c
+    declare_file seed-unit bootstrap/stage2/sha256.h
     for header in unicode/*.h; do
         declare_file runtime "$header"
     done
