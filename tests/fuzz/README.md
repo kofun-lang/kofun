@@ -1,5 +1,7 @@
 # Deterministic compiler fuzz smoke tests
 
+[![Scheduled fuzz](https://github.com/kofun-lang/kofun/actions/workflows/scheduled-fuzz.yml/badge.svg)](https://github.com/kofun-lang/kofun/actions/workflows/scheduled-fuzz.yml)
+
 `grammar.sh` generates bounded random token streams and requires the Stage 2
 lexer/parser to terminate with either a valid projection or a normal
 diagnostic. A per-case watchdog turns hangs into failures; signals and other
@@ -125,11 +127,44 @@ KOFUN_GRAMMAR_FUZZ_SEED=20260810 sh tests/fuzz/grammar.sh
 A non-integer value is refused with exit 2 rather than silently falling back,
 so a lane that computes a seed cannot quietly run the default one instead.
 
-This matters for a claim the project has not yet earned.
-[`docs/ROADMAP.md`](../../docs/ROADMAP.md) §M4 requires *sustained* fuzzing,
-and while every seed was a constant, accumulated machine time bought no
-coverage at all: ten thousand runs explored exactly the inputs one run did.
-Varying the seed is necessary for that criterion and nowhere near sufficient —
-a scheduled lane, a persisted corpus, coverage instrumentation, and a findings
-register are all still absent — but it was the part that made the rest
-pointless to build.
+## Scheduled lane and findings
+
+The daily [`Scheduled fuzz`](../../.github/workflows/scheduled-fuzz.yml)
+workflow runs the nine randomized gates above. It derives a separate 31-bit
+seed for each generator from the GitHub run id; repeating one run id produces
+the same seed plan, while the next run id rotates every seed. The normal
+`task fuzz` entry point does not call this runner, so its recorded defaults and
+pull-request behaviour stay unchanged.
+
+`semantic_protocol_test.sh` is deliberately absent from the scheduled list. It
+has no PRNG: it is a fixed set of negative and replay protocol fixtures, and
+`task fuzz` continues to run it. Giving that test a nominal seed would claim
+coverage rotation where no generated input exists.
+
+A generator failure leaves `seeds.tsv`, the generator log and work directory,
+a directly executable `reproduce-<generator>.sh`, `summary.md`, and a
+schema-validated `findings.json` in the workflow artifact. The step summary and
+the badge above retain the failed state without someone watching the live log.
+The workflow has read-only repository permissions; it never commits a result or
+opens an issue.
+
+[`findings.json`](findings.json) is the tracked register and
+[`findings.schema.json`](findings.schema.json) defines each row. At minimum a
+row carries the UTC date, generator, exact seed, run id and attempt, exit
+status, failure kind, severity, resolution, reproduction command, and evidence
+path. Triage copies a failed-run row into the tracked register, replaces
+`untriaged` with a severity, and records either `unresolved`, `resolved`, or
+`false-positive`; a resolved row also requires a resolution note. The register
+gate refuses untriaged rows and unresolved critical findings, so the second
+half of the M4 criterion cannot silently read green.
+
+Run the orchestration, schema mutations, seed rotation, forced failure, and
+generated reproducer checks without GitHub access:
+
+```sh
+sh tests/fuzz/scheduled-check.sh
+```
+
+This makes scheduled seed rotation and critical-finding accounting measurable.
+It does not yet provide a growing corpus or coverage instrumentation, and
+sustained history still has to accumulate before M4 can close.

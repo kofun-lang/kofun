@@ -1,0 +1,61 @@
+name: Scheduled fuzz
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scheduled-fuzz
+  cancel-in-progress: false
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out the exact revision without write credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Select Node.js 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: Verify seed and finding plumbing offline
+        run: sh tests/fuzz/scheduled-check.sh
+      - name: Explain the deterministic protocol exclusion
+        run: >-
+          echo "semantic_protocol_test.sh is excluded because it is a deterministic
+          negative/replay protocol self-test with no PRNG; task fuzz still runs it"
+      - name: Run all randomized fuzz generators
+        id: scheduled_fuzz
+        continue-on-error: true
+        env:
+          KOFUN_SCHEDULED_FUZZ_RUN_ID: ${{ github.run_id }}
+          KOFUN_SCHEDULED_FUZZ_RUN_ATTEMPT: ${{ github.run_attempt }}
+          KOFUN_SCHEDULED_FUZZ_OUTPUT: build/scheduled-fuzz
+        run: sh tests/fuzz/run-scheduled.sh
+      - name: Publish the persistent run summary
+        if: always()
+        run: |
+          if test -f build/scheduled-fuzz/summary.md; then
+            cat build/scheduled-fuzz/summary.md >>"$GITHUB_STEP_SUMMARY"
+          else
+            printf '%s\n' '## Scheduled fuzz infrastructure failure' >>"$GITHUB_STEP_SUMMARY"
+            printf '%s\n' 'The runner stopped before it could write its summary.' >>"$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Preserve failed seeds, logs, findings, and reproducers
+        if: steps.scheduled_fuzz.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: scheduled-fuzz-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/scheduled-fuzz
+          if-no-files-found: error
+          retention-days: 90
+      - name: Keep a failed generator visible as a failed workflow
+        if: steps.scheduled_fuzz.outcome == 'failure'
+        run: exit 1
