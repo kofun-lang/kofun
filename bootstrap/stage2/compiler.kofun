@@ -6039,6 +6039,55 @@ fn validate_record_uses(source: Text) -> Text {
 # `E2S17 expects N, got N-1` — diagnostics that describe an argument list the
 # author did not get wrong, and that say nothing about the pipeline they did
 # write.
+# Effective arity and the slot-0 carrier check for a pipeline whose subject has
+# already bound slot 0.
+#
+# Everything here checks against the *bound slot*, never the source position:
+# the subject is slot 0 wherever it is written. Checking by position is what the
+# pre-#1226 code did, and it is why the four canonical shapes used to report a
+# missing or miscounted argument.
+#
+# The C authority also type-checks the subject's value against slot 0's carrier
+# and reports E2S15 at the subject's span. This frontend checkpoint has no
+# `initializer_type` reaching pipeline subjects, so it carries the arity and
+# carrier-matrix halves and leaves the value typing to the authority.
+fn validate_pipeline_checked(
+    source: Text,
+    callee: Text,
+    call_start: Int,
+    open: Int
+) -> Text {
+    let declaration = function_start_named(source, callee)
+    if declaration < 0 {
+        return "ok"
+    }
+    let expected = parameter_count(source, declaration)
+    # One subject plus everything inside the parentheses. `call_arity` already
+    # counts a trailing lambda, and a pipeline with one is refused before this
+    # point, so the sum needs no further term.
+    let written = call_arity(source, open)
+    if written < 0 {
+        return "ok"
+    }
+    let effective = written + 1
+    if effective != expected {
+        return "error[E2S17]: Core function `" + callee + "` expects " +
+        to_text(expected) + " arguments, got " + to_text(effective) +
+        " at byte " + to_text(call_start)
+    }
+    if expected > 0 {
+        let carrier = function_parameter_type(source, callee, 0)
+        if !call_slot_carried(source, carrier) {
+            return pipeline_refusal(
+                "a pipeline subject whose slot 0 carrier is outside the " +
+                "call-arguments v1 matrix is not checked",
+                call_start
+            )
+        }
+    }
+    return "ok"
+}
+
 fn validate_pipeline_calls(source: Text) -> Text {
     if !contains(source, "|>") {
         return "ok"
@@ -6092,6 +6141,15 @@ fn validate_pipeline_calls(source: Text) -> Text {
                     )
                     if starts_with(binding, "error[") {
                         return binding
+                    }
+                    let checked = validate_pipeline_checked(
+                        source,
+                        token_text(source, callee_at),
+                        callee_at,
+                        open_at
+                    )
+                    if starts_with(checked, "error[") {
+                        return checked
                     }
                     return pipeline_refusal(
                         "a pipeline subject binds slot 0; call-arguments v1 " +
@@ -14721,14 +14779,61 @@ fn move_use_position(source: Text, previous: Int, cursor: Int) -> Bool {
 # refuses a program the ownership gate requires the compiler to accept.
 # Widening to positional calls is a change to that accepted model, not to
 # this lowering slice, and is owned by #882 rather than assumed here.
+# Whether `cursor` is a pipeline subject flowing into a `take` slot 0.
+#
+# The subject is never written with a label — it sits outside the parentheses —
+# so `call_argument_labelled` and `call_argument_expected_mode` cannot see it at
+# all: both look inside the argument list. The declared mode therefore has to
+# come from slot 0 of the callee that follows the pipe.
+#
+# `coalescing_expression_end`, not `expression_end`: since the pipeline became a
+# production, `expression_end` swallows the whole `subject |> callee(...)` and
+# would never equal the subject's single token. Measuring the subject's own
+# extent is what keeps a compound subject out — `a + b |> consume()` transfers
+# nothing, because there is no binding for the move to invalidate.
+fn pipeline_subject_take(source: Text, cursor: Int) -> Bool {
+    if coalescing_expression_end(source, cursor) !=
+       token_end(source, cursor) {
+        return false
+    }
+    let pipe = skip_trivia(source, token_end(source, cursor))
+    if pipe >= len(source) || token_text(source, pipe) != "|>" {
+        return false
+    }
+    if pipeline_call_end(source, pipe) < 0 {
+        return false
+    }
+    let callee_at = skip_trivia(source, token_end(source, pipe))
+    let declaration = function_start_named(source, token_text(source, callee_at))
+    if declaration < 0 || parameter_count(source, declaration) < 1 {
+        return false
+    }
+    # Slot 0 is the first token after `(`, so no parameter walk is needed — and
+    # an ownership mode, when present, is the head of its parameter.
+    let parameters = parameter_open(source, declaration)
+    if parameters < 0 {
+        return false
+    }
+    return token_text(source, skip_trivia(source, token_end(source, parameters))) == "take"
+}
+
 fn move_call_binding(
     source: Text,
     hir: Text,
     cursor: Int
 ) -> Bool {
     if token_kind(source, cursor) != "identifier" ||
-       len(hir_use_binding_id(hir, cursor)) == 0 ||
-       call_argument_expected_mode(source, cursor) != "take" ||
+       len(hir_use_binding_id(hir, cursor)) == 0 {
+        return false
+    }
+    # A pipeline subject reaches its slot without a label, so it is admitted on
+    # the declared mode of slot 0 rather than on how it was written. Every other
+    # shape keeps the existing rule exactly, which is what leaves the ordinary
+    # positional call outside the RFC-0010 move path.
+    if pipeline_subject_take(source, cursor) {
+        return true
+    }
+    if call_argument_expected_mode(source, cursor) != "take" ||
        call_argument_labelled(source, cursor) != "yes" {
         return false
     }

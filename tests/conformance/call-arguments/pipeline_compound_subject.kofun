@@ -1,0 +1,10 @@
+fn consume(take value: Int, delta amount: Int) -> Int {
+    return value + amount
+}
+
+fn main() -> Int {
+    let left = 1
+    let right = 2
+    print(left + right |> consume(delta: 3))
+    return 0
+}

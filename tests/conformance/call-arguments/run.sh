@@ -348,6 +348,39 @@ unsupported_case "$cases/pipeline_duplicate_slot_zero.kofun" \
     'error[E2S163]: duplicate call label `into` at byte 139' \
     'pipeline subject and an explicit argument for slot 0'
 
+# #1227 checks the bound call. Effective arity is one subject plus the written
+# arguments, so this reports 3 for a two-parameter callee — the count is now
+# right, rather than merely kept away by an earlier refusal. Asserting the
+# overflow is what distinguishes those two: the four canonical shapes stopped
+# reaching E2S17 the moment #1190 refused them, whether or not anything counted.
+unsupported_case "$cases/pipeline_effective_arity.kofun" \
+    'error[E2S17]: Core function `add` expects 2 arguments, got 3 at byte 124' \
+    'pipeline effective arity counts the subject'
+
+# The subject is checked against slot 0 and reported at its own span. Pointing
+# at the callee would name the one token that is not wrong.
+unsupported_case "$cases/pipeline_subject_type_mismatch.kofun" \
+    'error[E2S15]: Core function `add` expects Int for argument 1, got Text at byte 126' \
+    'pipeline subject type is checked against slot 0'
+
+# RFC-0010, reached without a label: the subject flows into a `take` slot 0, so
+# it moves exactly once and the later use is the existing E2S123 with both
+# spans. `move_call_binding` admits it on the declared mode of slot 0 rather
+# than on how it was written, because a subject is never written with a label.
+unsupported_case "$cases/pipeline_take_subject.kofun" \
+    'error[E2S123]: `ticket` was moved by `take` and cannot be used again at bytes 280..286; moved by `take` at bytes 241..247' \
+    'pipeline subject moves once into a take slot'
+
+# A compound subject transfers nothing: there is no binding for a move to
+# invalidate, so no synthetic move is recorded and the call reaches the
+# boundary. This is the half that a looser bare-binding test would break —
+# and it nearly did, because the pipeline production made `expression_end`
+# swallow the whole call, so the subject's extent must be measured with
+# `coalescing_expression_end`.
+unsupported_case "$cases/pipeline_compound_subject.kofun" \
+    'error[E2S158]: a pipeline subject binds slot 0; call-arguments v1 pipeline lowering is owned by #1228 at byte 162' \
+    'compound pipeline subject records no move'
+
 # The spans the binder in #1226 inherits. Asserting them here is what makes the
 # production reviewable before anything consumes it: a recognizer that refuses
 # everything looks identical to one that recognizes nothing, unless it publishes
@@ -374,4 +407,4 @@ test "$coalescing_spans" = 'pipeline|add|129|138|139|142|145|154|129|155' ||
     fail 'coalescing pipeline subject did not bind `??` first'
 
 printf '%s\n' \
-    'PASS: labelled calls bind fixed HIR slots and the Int/Text/List[Int]/Optional/enum/record C11 slice evaluates once in source order; take slots move once and refuse double transfer as E2S123; the expression-bodied trailing lambda binds the final parameter as a lifted address; the direct-call pipeline is one production whose spans are published and whose subject binds slot 0 ahead of the explicit arguments; #882 retains pipeline lowering, block-bodied trailing, and lambda-body forms and other backends'
+    'PASS: labelled calls bind fixed HIR slots and the Int/Text/List[Int]/Optional/enum/record C11 slice evaluates once in source order; take slots move once and refuse double transfer as E2S123; the expression-bodied trailing lambda binds the final parameter as a lifted address; the direct-call pipeline is one production whose spans are published and whose subject binds slot 0 ahead of the explicit arguments and is then counted, type-checked, and moved once into a take slot; #882 retains pipeline lowering, block-bodied trailing, and lambda-body forms and other backends'
