@@ -128,6 +128,26 @@ ensure_wasm_compiler() {
 
 ensure_stage2_compiler() {
     mkdir -p "$STAGE2_BUILD_DIR"
+    # #1202 taught the gate scripts and the conformance adapter to reuse the
+    # compiler `task verify` already built and exported as
+    # KOFUN_STAGE2_COMPILER. This driver was the remaining path that did not:
+    # it rebuilt the same 27k lines with the same flags into its own build
+    # directory, so every gate that runs `bin/kofun` with a fresh or wiped
+    # `build/` still paid for it. Copying costs milliseconds.
+    #
+    # Staleness belongs to whoever set the variable, exactly as it does in
+    # `bootstrap/stage2/build.sh`: naming a compiler asserts it is the one to
+    # use. Unset, every branch below behaves as before.
+    if [ -n "${KOFUN_STAGE2_COMPILER:-}" ] &&
+       [ -x "$KOFUN_STAGE2_COMPILER" ]
+    then
+        if [ ! -x "$STAGE2_COMPILER" ] ||
+           [ "$KOFUN_STAGE2_COMPILER" -nt "$STAGE2_COMPILER" ]
+        then
+            cp "$KOFUN_STAGE2_COMPILER" "$STAGE2_COMPILER"
+        fi
+        return 0
+    fi
     if [ ! -x "$STAGE2_COMPILER" ] ||
        [ "$STAGE2_SEED_C" -nt "$STAGE2_COMPILER" ] ||
        [ "$STAGE2_DECIMAL_C" -nt "$STAGE2_COMPILER" ] ||
