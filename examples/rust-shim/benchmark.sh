@@ -9,7 +9,7 @@ SAMPLES=${KOFUN_RUST_SHIM_BENCH_SAMPLES:-5}
 
 test "$SAMPLES" -ge 3
 test $((SAMPLES % 2)) -eq 1
-for required in cargo rustc "$CC" date sed sort sha256sum uname getconf; do
+for required in cargo rustc "$CC" date sed sort "$ROOT/bin/kofun-digest" uname getconf; do
     command -v "$required" >/dev/null 2>&1 || {
         printf '%s\n' "missing benchmark tool: $required" >&2
         exit 1
@@ -94,7 +94,7 @@ cpu_value=$(json_string "$(sed -n 's/^model name[[:space:]]*: //p' /proc/cpuinfo
 rustc_value=$(json_string "$(rustc -Vv)")
 cargo_value=$(json_string "$(cargo --version)")
 cc_value=$(json_string "$("$CC" --version | sed -n '1p')")
-library_sha=$(sha256sum "$LIBRARY" | sed 's/[[:space:]].*//')
+library_sha=$("$ROOT/bin/kofun-digest" "$LIBRARY" | sed 's/[[:space:]].*//')
 library_bytes=$(wc -c <"$LIBRARY" | tr -d ' ')
 kofun_bytes=$(wc -c <"$WORK/relink" | tr -d ' ')
 

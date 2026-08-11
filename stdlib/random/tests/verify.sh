@@ -104,7 +104,7 @@ cmp "$random_dir/tests/checkpoint.stdout" "$work/reference.stdout" ||
     fail 'high-rejection transition measurement differs'
 
 evidence="$random_dir/tests/cost-evidence.json"
-source_hash=$(sha256sum "$source_file" | awk '{ print $1 }')
+source_hash=$("$repo_dir/bin/kofun-digest" "$source_file" | awk '{ print $1 }')
 grep -Fq "\"sha256\": \"$source_hash\"" "$evidence" ||
     fail 'cost evidence is not bound to the canonical source'
 grep -Fq '"unit": "generator transitions"' "$evidence" ||

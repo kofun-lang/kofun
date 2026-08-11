@@ -33,7 +33,7 @@ kofun_stage2_build "$repo_root" "$temporary/kofun-stage2" ||
 # digest is the exact profile digest, so profile drift fails here too.
 profile_digest=$(awk -F '|' '$1 == "source_sha256" { print $2 }' \
     bootstrap/selfhost/profile.meta)
-actual_digest=$(sha256sum bootstrap/stage1/compiler.kofun | awk '{ print $1 }')
+actual_digest=$("$repo_root/bin/kofun-digest" bootstrap/stage1/compiler.kofun | awk '{ print $1 }')
 test "$profile_digest" = "$actual_digest" ||
     fail "S digest differs from the frozen profile"
 
@@ -66,7 +66,7 @@ for fixture in \
     bootstrap/selfhost/frontend/accept_*.kofun \
     bootstrap/selfhost/frontend/differential_core.kofun; do
     stem=$(basename "$fixture" .kofun)
-    digest=$(sha256sum "$fixture" | awk '{ print $1 }')
+    digest=$("$repo_root/bin/kofun-digest" "$fixture" | awk '{ print $1 }')
     "$temporary/kofun-stage2" --emit-selfhost-hir \
         "$fixture" \
         "$temporary/$stem.hir" \
@@ -225,7 +225,7 @@ test "$executed" = "$expected" ||
 rejected=0
 for fixture in bootstrap/selfhost/frontend/reject_*.kofun; do
     stem=$(basename "$fixture" .kofun)
-    digest=$(sha256sum "$fixture" | awk '{ print $1 }')
+    digest=$("$repo_root/bin/kofun-digest" "$fixture" | awk '{ print $1 }')
     set +e
     "$temporary/kofun-stage2" --emit-selfhost-hir \
         "$fixture" \

@@ -46,9 +46,9 @@ kofun_generations_toolchain
 # Every declared source, seed, profile, and evidence digest, before any
 # build. The sums files are authoritative; the profile pin must agree with
 # them rather than being hashed a second time.
-(cd bootstrap/stage1 && sha256sum -c SHA256SUMS >/dev/null) ||
+(cd bootstrap/stage1 && "$repo_root/bin/kofun-digest" -c SHA256SUMS >/dev/null) ||
     fail "bootstrap/stage1/SHA256SUMS does not match the checkout"
-sha256sum -c bootstrap/stage2/SHA256SUMS >/dev/null ||
+"$repo_root/bin/kofun-digest" -c bootstrap/stage2/SHA256SUMS >/dev/null ||
     fail "bootstrap/stage2/SHA256SUMS does not match the checkout"
 
 profile_digest=$(recorded_value bootstrap/selfhost/profile.meta source_sha256)

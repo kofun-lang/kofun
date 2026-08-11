@@ -695,6 +695,11 @@ tasks:
       - "sh tests/conformance/syntax/issues_35_47/run.sh"
       - "sh tests/conformance/syntax/issues_48_60/run.sh"
 
+  digest:
+    desc: "Verify the repository's own SHA-256 against published vectors"
+    cmds:
+      - "sh tests/digest/check.sh"
+
   call-arguments-spec:
     desc: "Verify labelled call binding and the single trailing-lambda form"
     cmds:
@@ -991,6 +996,7 @@ tasks:
             ownership-view \
             artifact-qualification \
             syntax \
+            digest \
             call-arguments \
             call-arguments-spec \
             call-arguments-surface \

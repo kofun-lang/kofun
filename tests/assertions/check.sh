@@ -47,7 +47,7 @@ trap 'rm -rf "$WORK"' 0 1 2 15
 # Counts one script. Continuation lines, `||`/`&&` at end of line, unclosed
 # quotes and `$(`, heredoc bodies, and function bodies are all handled, because
 # each of them otherwise turns into a wrong number. The `$(` case is not
-# hypothetical: `test "$(sha256sum f |` puts the pipeline on one line and the
+# hypothetical: `test "$("$ROOT/bin/kofun-digest" f |` puts the pipeline on one line and the
 # `|| fail` two lines later, and a counter that stops at the newline reports a
 # handled assertion as a silent one.
 count_file() {

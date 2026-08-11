@@ -7,7 +7,7 @@ MEASUREMENT="$ROOT/artifacts/rust-shim-build-cost.json"
 WORK=${KOFUN_RUST_SHIM_WORK:-"$ROOT/build/rust-shim"}
 CC=${CC:-cc}
 
-for required in cargo rustc "$CC" readelf sha256sum; do
+for required in cargo rustc "$CC" readelf; do
     command -v "$required" >/dev/null 2>&1 || {
         printf '%s\n' "FAIL: required Rust shim tool unavailable: $required" >&2
         exit 1

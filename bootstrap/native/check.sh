@@ -253,7 +253,7 @@ cmp \
 
 (
     cd "$WORK"
-    sha256sum -c "$NATIVE/SHA256SUMS"
+    "$ROOT/bin/kofun-digest" -c "$NATIVE/SHA256SUMS"
 )
 
 command -v readelf >/dev/null 2>&1 || {
@@ -1210,13 +1210,13 @@ provenance="$NATIVE/fixtures/function_text_provenance.txt"
 while IFS='|' read -r kind path expected_digest; do
     case $kind in
         producer|source|reference|expected)
-            actual_digest=$(sha256sum "$ROOT/$path" | awk '{ print $1 }')
+            actual_digest=$("$ROOT/bin/kofun-digest" "$ROOT/$path" | awk '{ print $1 }')
             assert_eq "$kind digest for $path" \
                 "$actual_digest" "$expected_digest"
             ;;
         output)
             actual_digest=$(
-                sha256sum "$WORK/function-text-direct.elf" |
+                "$ROOT/bin/kofun-digest" "$WORK/function-text-direct.elf" |
                     awk '{ print $1 }'
             )
             assert_eq "provenance output digest for function-text-direct.elf" \

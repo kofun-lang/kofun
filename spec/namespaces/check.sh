@@ -97,7 +97,7 @@ dotted_head_resolution() {
 }
 
 fingerprint() {
-    sha256sum | sed 's/[[:space:]].*//'
+    "$ROOT/bin/kofun-digest" | sed 's/[[:space:]].*//'
 }
 
 require_text "$SPEC" 'Kofun uses exactly four module-level namespace kinds'

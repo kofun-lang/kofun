@@ -41,7 +41,6 @@ hex_to_bytes() (
 )
 
 command -v "$CC" >/dev/null 2>&1 || fail 'a C11 compiler is required'
-command -v sha256sum >/dev/null 2>&1 || fail 'sha256sum is required'
 case $WORK in
     */module-symbols|*/module-symbols.*) ;;
     *) fail "work directory must end in module-symbols[.suffix]: $WORK" ;;
@@ -64,7 +63,7 @@ cmp "$CASES/codes.txt" "$WORK/observed.codes" ||
     fail 'focused diagnostic code inventory differs from the collector'
 
 id_for() {
-    printf '%s' "$1" | sha256sum | awk '{ print $1 }'
+    printf '%s' "$1" | "$ROOT/bin/kofun-digest" | awk '{ print $1 }'
 }
 
 write_one_inventory() {
@@ -146,7 +145,7 @@ framed_hash() {
         u32be "$(wc -c <"$payload" | tr -d '[:space:]')"
         dd if="$payload" bs=4096 2>/dev/null
     } >"$output.preimage"
-    sha256sum "$output.preimage" | awk '{ print $1 }'
+    "$ROOT/bin/kofun-digest" "$output.preimage" | awk '{ print $1 }'
 }
 
 printf '%s\n' \

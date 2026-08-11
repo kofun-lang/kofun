@@ -39,7 +39,7 @@ kofun_stage2_build "$repo_root" "$temporary/kofun-stage2" ||
 # the checked-in evidence.
 profile_digest=$(awk -F '|' '$1 == "source_sha256" { print $2 }' \
     bootstrap/selfhost/profile.meta)
-actual_digest=$(sha256sum bootstrap/stage1/compiler.kofun | awk '{ print $1 }')
+actual_digest=$("$repo_root/bin/kofun-digest" bootstrap/stage1/compiler.kofun | awk '{ print $1 }')
 test "$profile_digest" = "$actual_digest" ||
     fail "S digest differs from the frozen profile"
 
@@ -239,7 +239,7 @@ cmp bootstrap/selfhost/driver/$stem.stdout "$temporary/$stem.stdout" ||
     fail "builtin corpus stdout differs from the pinned golden"
 cmp bootstrap/selfhost/driver/$stem.output "$temporary/$stem.output" ||
     fail "builtin corpus file output differs from the pinned golden"
-test "$(sha256sum bootstrap/selfhost/driver/corpus_answer.c |
+test "$("$repo_root/bin/kofun-digest" bootstrap/selfhost/driver/corpus_answer.c |
     awk '{ print $1 }')" = \
     673d6e62ad7947fc878420eea1dffb9e3f13e942adda71f1f972b31575616499 ||
     fail "the frozen arithmetic corpus changed in the builtin slice"
@@ -542,7 +542,7 @@ set +e
 "$temporary/kofun-stage2" --selfhost-compile \
     bootstrap/selfhost/frontend/reject_unsupported_match.kofun \
     "$temporary/no-fallback.c" \
-    "$(sha256sum bootstrap/selfhost/frontend/reject_unsupported_match.kofun |
+    "$("$repo_root/bin/kofun-digest" bootstrap/selfhost/frontend/reject_unsupported_match.kofun |
         awk '{ print $1 }')" >"$temporary/no-fallback.stdout"
 no_fallback_status=$?
 set -e

@@ -28,16 +28,15 @@ cache_root() {
     fi
 }
 
+# The digest comes from the toolchain, not from whatever the host happens to
+# provide (#1213). This used to try `sha256sum`, then `shasum`, then `openssl`,
+# which meant a lockfile's integrity depended on which of three unrelated tools
+# a machine had installed. `PROJECT_ROOT` is the *user's* project, so the
+# toolchain root is derived from this script's own location instead.
+KOFUN_TOOLCHAIN_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+
 sha256_file() {
-    if command -v sha256sum >/dev/null 2>&1; then
-        sha256sum "$1" | awk '{ print $1 }'
-    elif command -v shasum >/dev/null 2>&1; then
-        shasum -a 256 "$1" | awk '{ print $1 }'
-    elif command -v openssl >/dev/null 2>&1; then
-        openssl dgst -sha256 "$1" | sed 's/^.*= //'
-    else
-        die "SHA-256 tool not found (tried sha256sum, shasum, openssl)"
-    fi
+    "$KOFUN_TOOLCHAIN_ROOT/bin/kofun-digest" "$1" | awk '{ print $1 }'
 }
 
 parse_manifest() {
