@@ -212,24 +212,93 @@ kofun_stage2_semantic_compiler_identity() {
     ) || return 1
 }
 
-kofun_stage2_semantic_source_paths() {
+# The canonical role order is shared by manifest profiles, input closures,
+# members, validation, and content identity.  Keep it executable rather than
+# repeating a prose inventory that can drift from the published bundle.
+kofun_stage2_semantic_roles() {
     printf '%s\n' \
-        bootstrap/stage2/semantic_producer.c \
-        bootstrap/stage2/semantic_producer.h \
-        bootstrap/stage2/semantic_events.c \
-        bootstrap/stage2/semantic_events.h \
-        bootstrap/stage2/sha256.c \
-        bootstrap/stage2/sha256.h \
-        bootstrap/stage2/effect_inference.h \
-        bootstrap/stage2/compiler.c \
-        bootstrap/stage2/decimal_v1.c \
-        bootstrap/stage2/decimal_v1.h \
-        unicode/kofun_unicode.c \
-        unicode/kofun_unicode.h \
-        unicode/kofun_unicode_tables.inc \
-        vendor/utf8proc/utf8proc.c \
-        vendor/utf8proc/utf8proc.h \
-        vendor/utf8proc/utf8proc_data.c
+        producer-main \
+        producer-library \
+        semantic-events \
+        sha256 \
+        common-kif-v1-o2 \
+        common-unicode-o2 \
+        common-sha256-o2 \
+        common-visibility-o2
+}
+
+# kofun_stage2_semantic_role_input_paths ROLE
+#
+# Each list is the physical repository-relative, bytewise-sorted closure from
+# the role's exact `cc -MM` profile.  The lasting gate derives the same set
+# independently, including from a checkout path containing spaces.
+kofun_stage2_semantic_role_input_paths() {
+    case $1 in
+        producer-main|producer-library)
+            printf '%s\n' \
+                bootstrap/stage2/compiler.c \
+                bootstrap/stage2/decimal_v1.c \
+                bootstrap/stage2/decimal_v1.h \
+                bootstrap/stage2/effect_inference.h \
+                bootstrap/stage2/semantic_events.h \
+                bootstrap/stage2/semantic_producer.c \
+                bootstrap/stage2/semantic_producer.h \
+                bootstrap/stage2/sha256.h \
+                unicode/kofun_unicode.c \
+                unicode/kofun_unicode.h \
+                unicode/kofun_unicode_tables.inc \
+                vendor/utf8proc/utf8proc.c \
+                vendor/utf8proc/utf8proc.h \
+                vendor/utf8proc/utf8proc_data.c
+            ;;
+        semantic-events)
+            printf '%s\n' \
+                bootstrap/stage2/semantic_events.c \
+                bootstrap/stage2/semantic_events.h \
+                bootstrap/stage2/sha256.h \
+                vendor/utf8proc/utf8proc.h
+            ;;
+        sha256|common-sha256-o2)
+            printf '%s\n' \
+                bootstrap/stage2/sha256.c \
+                bootstrap/stage2/sha256.h
+            ;;
+        common-kif-v1-o2)
+            printf '%s\n' \
+                bootstrap/stage2/kif_v1.c \
+                bootstrap/stage2/kif_v1.h \
+                bootstrap/stage2/sha256.h \
+                unicode/kofun_unicode.h
+            ;;
+        common-unicode-o2)
+            printf '%s\n' \
+                unicode/kofun_unicode.c \
+                unicode/kofun_unicode.h \
+                unicode/kofun_unicode_tables.inc \
+                vendor/utf8proc/utf8proc.c \
+                vendor/utf8proc/utf8proc.h \
+                vendor/utf8proc/utf8proc_data.c
+            ;;
+        common-visibility-o2)
+            printf '%s\n' \
+                bootstrap/stage2/visibility_access.c \
+                bootstrap/stage2/visibility_access.h
+            ;;
+        *)
+            kofun_stage2_semantic_object_fail \
+                "unknown semantic object role: $1"
+            return 1
+            ;;
+    esac
+}
+
+# The unique union remains useful to runner probes that must materialize every
+# path before exercising the real builder with a fake compiler.
+kofun_stage2_semantic_source_paths() {
+    for kofun_semantic_source_role in $(kofun_stage2_semantic_roles); do
+        kofun_stage2_semantic_role_input_paths \
+            "$kofun_semantic_source_role" || return 1
+    done | LC_ALL=C sort -u
 }
 
 kofun_stage2_semantic_kif_source_paths() {
@@ -255,38 +324,53 @@ kofun_stage2_semantic_manifest_write() {
     kofun_stage2_semantic_compiler_identity \
         "$kofun_semantic_manifest_root" || return 1
 
-    printf '%s\t%s\n' schema kofun.stage2-semantic-object-manifest/v1
+    printf '%s\t%s\n' schema kofun.stage2-semantic-object-manifest/v2
     printf '%s\t%s\n' trust helper-produced-drift-detection-not-authentication
     printf '%s\t%s\n' compiler-path \
         "$KOFUN_STAGE2_SEMANTIC_COMPILER_PATH"
     printf '%s\t%s\n' compiler-sha256 \
         "$KOFUN_STAGE2_SEMANTIC_COMPILER_SHA256"
-    printf '%s\t%s\t%s\n' profile main \
+    printf '%s\t%s\t%s\n' profile producer-main \
         '-std=c11|-O2|-g|-Wall|-Wextra|-Werror|-pedantic|-Ibootstrap/stage2|-c|bootstrap/stage2/semantic_producer.c|-o|semantic-producer-main.o'
-    printf '%s\t%s\t%s\n' profile library \
+    printf '%s\t%s\t%s\n' profile producer-library \
         '-std=c11|-O2|-g|-Wall|-Wextra|-Werror|-pedantic|-DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY|-Ibootstrap/stage2|-c|bootstrap/stage2/semantic_producer.c|-o|semantic-producer-library.o'
-    printf '%s\t%s\t%s\n' profile events \
+    printf '%s\t%s\t%s\n' profile semantic-events \
         '-std=c11|-O2|-g|-Wall|-Wextra|-Werror|-pedantic|-Ibootstrap/stage2|-c|bootstrap/stage2/semantic_events.c|-o|semantic-events.o'
     printf '%s\t%s\t%s\n' profile sha256 \
         '-std=c11|-O2|-g|-Wall|-Wextra|-Werror|-pedantic|-Ibootstrap/stage2|-c|bootstrap/stage2/sha256.c|-o|sha256.o'
+    printf '%s\t%s\t%s\n' profile common-kif-v1-o2 \
+        '-std=c11|-O2|-Wall|-Wextra|-Werror|-pedantic|-Ibootstrap/stage2|-c|bootstrap/stage2/kif_v1.c|-o|kif-v1-common-o2.o'
+    printf '%s\t%s\t%s\n' profile common-unicode-o2 \
+        '-std=c11|-O2|-Wall|-Wextra|-Werror|-pedantic|-Ibootstrap/stage2|-c|unicode/kofun_unicode.c|-o|kofun-unicode-common-o2.o'
+    printf '%s\t%s\t%s\n' profile common-sha256-o2 \
+        '-std=c11|-O2|-Wall|-Wextra|-Werror|-pedantic|-Ibootstrap/stage2|-c|bootstrap/stage2/sha256.c|-o|sha256-common-o2.o'
+    printf '%s\t%s\t%s\n' profile common-visibility-o2 \
+        '-std=c11|-O2|-Wall|-Wextra|-Werror|-pedantic|-Ibootstrap/stage2|-c|bootstrap/stage2/visibility_access.c|-o|visibility-access-common-o2.o'
 
-    kofun_stage2_semantic_source_paths |
-    while IFS= read -r kofun_semantic_source_path; do
-        kofun_semantic_source_digest=$(
-            kofun_stage2_semantic_digest_file \
-                "$kofun_semantic_manifest_root" \
-                "$kofun_semantic_manifest_root/$kofun_semantic_source_path" \
-                "source $kofun_semantic_source_path"
-        ) || exit 1
-        printf '%s\t%s\t%s\n' source "$kofun_semantic_source_path" \
-            "$kofun_semantic_source_digest"
-    done || return 1
+    for kofun_semantic_input_role in $(kofun_stage2_semantic_roles); do
+        kofun_stage2_semantic_role_input_paths "$kofun_semantic_input_role" |
+        while IFS= read -r kofun_semantic_input_path; do
+            kofun_semantic_input_digest=$(
+                kofun_stage2_semantic_digest_file \
+                    "$kofun_semantic_manifest_root" \
+                    "$kofun_semantic_manifest_root/$kofun_semantic_input_path" \
+                    "input $kofun_semantic_input_role $kofun_semantic_input_path"
+            ) || exit 1
+            printf '%s\t%s\t%s\t%s\n' input \
+                "$kofun_semantic_input_role" "$kofun_semantic_input_path" \
+                "$kofun_semantic_input_digest"
+        done || return 1
+    done
 
     for kofun_semantic_member_spec in \
-        'producer-main|semantic-producer-main.o|bootstrap/stage2/semantic_producer.c|main' \
-        'producer-library|semantic-producer-library.o|bootstrap/stage2/semantic_producer.c|library' \
-        'semantic-events|semantic-events.o|bootstrap/stage2/semantic_events.c|events' \
-        'sha256|sha256.o|bootstrap/stage2/sha256.c|sha256'
+        'producer-main|semantic-producer-main.o|bootstrap/stage2/semantic_producer.c' \
+        'producer-library|semantic-producer-library.o|bootstrap/stage2/semantic_producer.c' \
+        'semantic-events|semantic-events.o|bootstrap/stage2/semantic_events.c' \
+        'sha256|sha256.o|bootstrap/stage2/sha256.c' \
+        'common-kif-v1-o2|kif-v1-common-o2.o|bootstrap/stage2/kif_v1.c' \
+        'common-unicode-o2|kofun-unicode-common-o2.o|unicode/kofun_unicode.c' \
+        'common-sha256-o2|sha256-common-o2.o|bootstrap/stage2/sha256.c' \
+        'common-visibility-o2|visibility-access-common-o2.o|bootstrap/stage2/visibility_access.c'
     do
         kofun_semantic_old_ifs=$IFS
         IFS='|'
@@ -295,7 +379,6 @@ kofun_stage2_semantic_manifest_write() {
         kofun_semantic_member_role=$1
         kofun_semantic_member_path=$2
         kofun_semantic_member_source=$3
-        kofun_semantic_member_profile=$4
         kofun_semantic_member_source_digest=$(
             kofun_stage2_semantic_digest_file \
                 "$kofun_semantic_manifest_root" \
@@ -314,16 +397,16 @@ kofun_stage2_semantic_manifest_write() {
             "$kofun_semantic_member_source" \
             "$kofun_semantic_member_source_digest" \
             "$kofun_semantic_member_digest" \
-            "$kofun_semantic_member_profile"
+            "$kofun_semantic_member_role"
     done
 
     kofun_semantic_marker_digest=$(
         kofun_stage2_semantic_digest_file \
             "$kofun_semantic_manifest_root" \
-            "$kofun_semantic_manifest_dir/complete-v1" \
-            'bundle marker complete-v1'
+            "$kofun_semantic_manifest_dir/complete-v2" \
+            'bundle marker complete-v2'
     ) || return 1
-    printf '%s\t%s\t%s\n' marker complete-v1 \
+    printf '%s\t%s\t%s\n' marker complete-v2 \
         "$kofun_semantic_marker_digest"
 }
 
@@ -431,7 +514,7 @@ kofun_stage2_semantic_executable_identity() {
 # kofun_stage2_semantic_objects_validate ROOT OBJECT_DIR
 #
 # On success KOFUN_STAGE2_SEMANTIC_OBJECT_ID covers the exact canonical
-# provenance manifest, profile marker, and four object bytes.  Validation
+# provenance manifest, profile marker, and eight object bytes.  Validation
 # recomputes the manifest from the current source closure/compiler/profile;
 # mtimes are deliberately absent from both validation and identity.
 kofun_stage2_semantic_objects_validate() {
@@ -470,13 +553,26 @@ kofun_stage2_semantic_objects_validate() {
             ;;
     esac
 
+    if test -e "$kofun_semantic_object_dir/complete-v1" ||
+       test -L "$kofun_semantic_object_dir/complete-v1" ||
+       test -e "$kofun_semantic_object_dir/manifest-v1.tsv" ||
+       test -L "$kofun_semantic_object_dir/manifest-v1.tsv"
+    then
+        kofun_stage2_semantic_object_fail \
+            'semantic object bundle version v1 is unsupported; expected v2'
+        return 1
+    fi
     for kofun_semantic_object_name in \
         semantic-producer-main.o \
         semantic-producer-library.o \
         semantic-events.o \
         sha256.o \
-        complete-v1 \
-        manifest-v1.tsv
+        kif-v1-common-o2.o \
+        kofun-unicode-common-o2.o \
+        sha256-common-o2.o \
+        visibility-access-common-o2.o \
+        complete-v2 \
+        manifest-v2.tsv
     do
         kofun_semantic_object_path="$kofun_semantic_object_dir/$kofun_semantic_object_name"
         if test -L "$kofun_semantic_object_path"; then
@@ -514,21 +610,28 @@ kofun_stage2_semantic_objects_validate() {
                 ;;
         esac
     done
+    kofun_semantic_object_count=$(find "$kofun_semantic_object_dir" \
+        -mindepth 1 -maxdepth 1 -print | wc -l | tr -d ' ') || return 1
+    test "$kofun_semantic_object_count" -eq 10 || {
+        kofun_stage2_semantic_object_fail \
+            "object bundle must contain exactly ten members, found $kofun_semantic_object_count"
+        return 1
+    }
     kofun_semantic_expected_marker_output=$(
-        printf '%s\n' 'kofun.stage2-semantic-objects/v1' |
+        printf '%s\n' 'kofun.stage2-semantic-objects/v2' |
             "$kofun_semantic_object_root/bin/kofun-digest"
     ) || return 1
     kofun_semantic_expected_marker=${kofun_semantic_expected_marker_output%% *}
     kofun_semantic_actual_marker=$(
         kofun_stage2_semantic_digest_file \
             "$kofun_semantic_object_root" \
-            "$kofun_semantic_object_dir/complete-v1" \
-            'bundle marker complete-v1'
+            "$kofun_semantic_object_dir/complete-v2" \
+            'bundle marker complete-v2'
     ) || return 1
     test "$kofun_semantic_actual_marker" = \
         "$kofun_semantic_expected_marker" || {
         kofun_stage2_semantic_object_fail \
-            'bundle member has the wrong profile marker: complete-v1'
+            'bundle member has the wrong profile marker: complete-v2'
         return 1
     }
 
@@ -544,8 +647,8 @@ kofun_stage2_semantic_objects_validate() {
     kofun_semantic_actual_manifest_digest=$(
         kofun_stage2_semantic_digest_file \
             "$kofun_semantic_object_root" \
-            "$kofun_semantic_object_dir/manifest-v1.tsv" \
-            'bundle provenance manifest-v1.tsv'
+            "$kofun_semantic_object_dir/manifest-v2.tsv" \
+            'bundle provenance manifest-v2.tsv'
     ) || return 1
     test "$kofun_semantic_actual_manifest_digest" = \
         "$kofun_semantic_expected_manifest_digest" || {
@@ -556,14 +659,18 @@ kofun_stage2_semantic_objects_validate() {
 
     # The executable key covers the canonical manifest bytes as well as every
     # published member.  This is content provenance, never mtime equivalence.
-    kofun_semantic_identity_material="${kofun_semantic_actual_manifest_digest}  manifest-v1.tsv
+    kofun_semantic_identity_material="${kofun_semantic_actual_manifest_digest}  manifest-v2.tsv
 "
     for kofun_semantic_object_name in \
         semantic-producer-main.o \
         semantic-producer-library.o \
         semantic-events.o \
         sha256.o \
-        complete-v1
+        kif-v1-common-o2.o \
+        kofun-unicode-common-o2.o \
+        sha256-common-o2.o \
+        visibility-access-common-o2.o \
+        complete-v2
     do
         kofun_semantic_digest=$(
             kofun_stage2_semantic_digest_file \
@@ -630,6 +737,31 @@ kofun_stage2_semantic_inputs() {
     KOFUN_STAGE2_SEMANTIC_SHA256_INPUT="$kofun_semantic_root/bootstrap/stage2/sha256.c"
 }
 
+# kofun_stage2_semantic_common_inputs ROOT
+#
+# Sets four separately quoted strict-O2 common inputs.  Set mode validates the
+# complete v2 bundle before exposing any member; unset mode keeps every owning
+# gate standalone and source-built.
+kofun_stage2_semantic_common_inputs() {
+    kofun_semantic_common_root=$1
+
+    if test "${KOFUN_STAGE2_SEMANTIC_OBJECT_DIR+x}" = x; then
+        kofun_stage2_semantic_objects_validate \
+            "$kofun_semantic_common_root" \
+            "$KOFUN_STAGE2_SEMANTIC_OBJECT_DIR" || return 1
+        KOFUN_STAGE2_COMMON_KIF_V1_INPUT="$KOFUN_STAGE2_SEMANTIC_OBJECT_DIR/kif-v1-common-o2.o"
+        KOFUN_STAGE2_COMMON_UNICODE_INPUT="$KOFUN_STAGE2_SEMANTIC_OBJECT_DIR/kofun-unicode-common-o2.o"
+        KOFUN_STAGE2_COMMON_SHA256_INPUT="$KOFUN_STAGE2_SEMANTIC_OBJECT_DIR/sha256-common-o2.o"
+        KOFUN_STAGE2_COMMON_VISIBILITY_INPUT="$KOFUN_STAGE2_SEMANTIC_OBJECT_DIR/visibility-access-common-o2.o"
+        return 0
+    fi
+
+    KOFUN_STAGE2_COMMON_KIF_V1_INPUT="$kofun_semantic_common_root/bootstrap/stage2/kif_v1.c"
+    KOFUN_STAGE2_COMMON_UNICODE_INPUT="$kofun_semantic_common_root/unicode/kofun_unicode.c"
+    KOFUN_STAGE2_COMMON_SHA256_INPUT="$kofun_semantic_common_root/bootstrap/stage2/sha256.c"
+    KOFUN_STAGE2_COMMON_VISIBILITY_INPUT="$kofun_semantic_common_root/bootstrap/stage2/visibility_access.c"
+}
+
 # kofun_stage2_semantic_objects_build ROOT OBJECT_DIR
 #
 # Builds in a sibling temporary directory.  chmod completes the immutable
@@ -690,11 +822,31 @@ kofun_stage2_semantic_objects_build() {
             -I"$kofun_semantic_build_root/bootstrap/stage2" \
             -c "$kofun_semantic_build_root/bootstrap/stage2/sha256.c" \
             -o "$kofun_semantic_build_tmp/sha256.o"
-        printf '%s\n' 'kofun.stage2-semantic-objects/v1' \
-            >"$kofun_semantic_build_tmp/complete-v1"
+        "$kofun_semantic_build_cc" \
+            -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+            -I"$kofun_semantic_build_root/bootstrap/stage2" \
+            -c "$kofun_semantic_build_root/bootstrap/stage2/kif_v1.c" \
+            -o "$kofun_semantic_build_tmp/kif-v1-common-o2.o"
+        "$kofun_semantic_build_cc" \
+            -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+            -I"$kofun_semantic_build_root/bootstrap/stage2" \
+            -c "$kofun_semantic_build_root/unicode/kofun_unicode.c" \
+            -o "$kofun_semantic_build_tmp/kofun-unicode-common-o2.o"
+        "$kofun_semantic_build_cc" \
+            -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+            -I"$kofun_semantic_build_root/bootstrap/stage2" \
+            -c "$kofun_semantic_build_root/bootstrap/stage2/sha256.c" \
+            -o "$kofun_semantic_build_tmp/sha256-common-o2.o"
+        "$kofun_semantic_build_cc" \
+            -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+            -I"$kofun_semantic_build_root/bootstrap/stage2" \
+            -c "$kofun_semantic_build_root/bootstrap/stage2/visibility_access.c" \
+            -o "$kofun_semantic_build_tmp/visibility-access-common-o2.o"
+        printf '%s\n' 'kofun.stage2-semantic-objects/v2' \
+            >"$kofun_semantic_build_tmp/complete-v2"
         kofun_stage2_semantic_manifest_write \
             "$kofun_semantic_build_root" "$kofun_semantic_build_tmp" \
-            >"$kofun_semantic_build_tmp/manifest-v1.tsv"
+            >"$kofun_semantic_build_tmp/manifest-v2.tsv"
 
         chmod 0444 "$kofun_semantic_build_tmp"/*
         chmod 0555 "$kofun_semantic_build_tmp"

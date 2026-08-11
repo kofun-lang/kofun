@@ -30,22 +30,25 @@ rm -rf "$WORK"
 mkdir -p "$WORK"
 
 kofun_stage2_semantic_inputs "$ROOT" library
+kofun_stage2_semantic_common_inputs "$ROOT"
+KOFUN_STAGE2_COMMON_LINK_ID=visibility-filtering/producer \
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
     -DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY \
     -I"$ROOT/bootstrap/stage2" \
     "$ROOT/bootstrap/stage2/stage2_kif_producer.c" \
     "$KOFUN_STAGE2_SEMANTIC_PRODUCER_INPUT" \
     "$KOFUN_STAGE2_SEMANTIC_EVENTS_INPUT" \
-    "$ROOT/bootstrap/stage2/kif_v1.c" \
-    "$KOFUN_STAGE2_SEMANTIC_SHA256_INPUT" \
+    "$KOFUN_STAGE2_COMMON_KIF_V1_INPUT" \
+    "$KOFUN_STAGE2_COMMON_SHA256_INPUT" \
     -o "$PRODUCER"
 
+KOFUN_STAGE2_COMMON_LINK_ID=visibility-filtering/reader \
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
     -I"$ROOT/bootstrap/stage2" \
     "$ROOT/bootstrap/stage2/kif_v1_tool.c" \
-    "$ROOT/bootstrap/stage2/kif_v1.c" \
-    "$ROOT/bootstrap/stage2/sha256.c" \
-    "$ROOT/unicode/kofun_unicode.c" \
+    "$KOFUN_STAGE2_COMMON_KIF_V1_INPUT" \
+    "$KOFUN_STAGE2_COMMON_SHA256_INPUT" \
+    "$KOFUN_STAGE2_COMMON_UNICODE_INPUT" \
     -o "$KIF_TOOL"
 
 for fixture in visibility_ok visibility_ok_private_edit \

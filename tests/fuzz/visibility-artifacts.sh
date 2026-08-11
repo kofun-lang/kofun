@@ -45,6 +45,7 @@ SIDECAR_MUTANTS=${KOFUN_VISIBILITY_FUZZ_MUTANTS:-24}
 
 ASSERT_CONTEXT='visibility fuzz'
 . "$ROOT/tests/assertions/assert.sh"
+. "$ROOT/bootstrap/stage2/semantic-objects.sh"
 
 fail() {
     printf '%s\n' "FAIL: visibility fuzz: $*" >&2
@@ -60,25 +61,28 @@ command -v timeout >/dev/null 2>&1 || fail 'timeout is required to bound each ca
 
 rm -rf "$WORK"
 mkdir -p "$WORK/cases"
+kofun_stage2_semantic_common_inputs "$ROOT"
 
 RESOLVER="$WORK/re-exports"
 KIF_TOOL="$WORK/kofun-kif-v1"
 
+KOFUN_STAGE2_COMMON_LINK_ID=fuzz-visibility-artifacts/resolver \
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
     -I"$ROOT/bootstrap/stage2" \
     "$ROOT/bootstrap/stage2/re_exports.c" \
-    "$ROOT/bootstrap/stage2/kif_v1.c" \
-    "$ROOT/bootstrap/stage2/visibility_access.c" \
-    "$ROOT/unicode/kofun_unicode.c" \
-    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$KOFUN_STAGE2_COMMON_KIF_V1_INPUT" \
+    "$KOFUN_STAGE2_COMMON_VISIBILITY_INPUT" \
+    "$KOFUN_STAGE2_COMMON_UNICODE_INPUT" \
+    "$KOFUN_STAGE2_COMMON_SHA256_INPUT" \
     -o "$RESOLVER"
 
+KOFUN_STAGE2_COMMON_LINK_ID=fuzz-visibility-artifacts/reader \
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
     -I"$ROOT/bootstrap/stage2" \
     "$ROOT/bootstrap/stage2/kif_v1_tool.c" \
-    "$ROOT/bootstrap/stage2/kif_v1.c" \
-    "$ROOT/unicode/kofun_unicode.c" \
-    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$KOFUN_STAGE2_COMMON_KIF_V1_INPUT" \
+    "$KOFUN_STAGE2_COMMON_UNICODE_INPUT" \
+    "$KOFUN_STAGE2_COMMON_SHA256_INPUT" \
     -o "$KIF_TOOL"
 
 # ------------------------------------------------------------ the budgets

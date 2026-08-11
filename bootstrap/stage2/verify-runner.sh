@@ -46,9 +46,14 @@ if test "$verify_real_cc" -ef "$verify_cc_wrapper"; then
     exit 2
 fi
 KOFUN_VERIFY_REAL_CC=$verify_real_cc
+export KOFUN_VERIFY_REAL_CC
+kofun_stage2_semantic_compiler_identity "$verify_root" || exit 2
+KOFUN_VERIFY_REAL_CC_PATH=$KOFUN_STAGE2_SEMANTIC_COMPILER_PATH
+KOFUN_VERIFY_REAL_CC_SHA256=$KOFUN_STAGE2_SEMANTIC_COMPILER_SHA256
 KOFUN_VERIFY_CC_LOG=$verify_run/semantic-compile-census.tsv
 CC=$verify_cc_wrapper
-export KOFUN_VERIFY_REAL_CC KOFUN_VERIFY_CC_LOG CC
+export KOFUN_VERIFY_REAL_CC KOFUN_VERIFY_REAL_CC_PATH \
+    KOFUN_VERIFY_REAL_CC_SHA256 KOFUN_VERIFY_CC_LOG CC
 : >"$KOFUN_VERIFY_CC_LOG"
 
 verify_stage2=${KOFUN_STAGE2_COMPILER:-}
