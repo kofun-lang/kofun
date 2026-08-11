@@ -15,10 +15,12 @@ tests/conformance/numeric` dispatches the common runner across every adapter in
 
 A file may instead declare `# expect-reject:`, for a construct the
 specification refuses outright and that therefore has nothing to run.
-`reject_slash_operator.kofun` is the one such case: `/` is not defined on `Int`
-(#687), so what every backend must agree on is the refusal, not a value. Its
-observation is that the backend compiles nothing, leaves no artifact, and
-writes a diagnostic. The diagnostic's bytes stay pinned in each backend's own
+Three of the twelve cases are of that kind: `reject_slash_operator.kofun`,
+because `/` is not defined on `Int` (#687), and
+`reject_inexact_numeric_conversion.kofun` and
+`reject_numeric_annotation_mismatch.kofun`. What every backend must agree on
+there is the refusal, not a value. The observation is that the backend compiles
+nothing, leaves no artifact, and writes a diagnostic. The diagnostic's bytes stay pinned in each backend's own
 gate, because the specification lets a backend word its own refusal; what this
 corpus pins is that none of them produce a runnable artifact. The recorded
 reason is covered by the observation digest. See
