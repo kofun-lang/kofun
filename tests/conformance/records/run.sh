@@ -301,6 +301,21 @@ test ! -s "$WORK/list_field.stderr" ||
     fail 'list_field wrote stderr'
 cmp "$CASES/list_field.stdout" "$WORK/list_field.stdout" ||
     fail 'list_field output differs from the golden'
+
+# #1197: the same field read back out as a `List[Int]` value — passed to a
+# function, measured by `len`, and indexed.
+#
+# The golden's last two lines are the ones that matter. The fixture mutates
+# what it read and then prints the record's own element, so a read that ever
+# became a view into the record rather than a copy of its carrier prints 99
+# where the golden says 10. The two cannot both pass.
+"$ROOT/bin/kofun" run "$CASES/list_field_read.kofun" \
+    >"$WORK/list_field_read.stdout" 2>"$WORK/list_field_read.stderr" ||
+    fail 'list_field_read did not run'
+test ! -s "$WORK/list_field_read.stderr" ||
+    fail 'list_field_read wrote stderr'
+cmp "$CASES/list_field_read.stdout" "$WORK/list_field_read.stdout" ||
+    fail 'list_field_read output differs from the golden'
 expect_stage2_failure stage2_direct_construction
 expect_stage2_failure stage2_labelled_call
 

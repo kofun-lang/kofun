@@ -1,0 +1,36 @@
+# #1197: reading a bounded `List[Int]` record field back as a `List[Int]`
+# value. #1183 admitted the field's declaration, construction, and layout and
+# deliberately stopped short of the read, which is a different rule in a
+# different place.
+#
+# The last two lines are the load-bearing ones. `read` is mutated after being
+# read out of `b`, and `b.samples[0]` is printed afterwards: the read produces
+# a copy of the field's 520-byte carrier, not a view into the record, so the
+# record still holds 10. If the read ever became a view — an emitted pointer
+# rather than a struct copy — this fixture prints 99 instead.
+
+type Bag = {
+    samples: List[Int],
+    count: Int,
+}
+
+fn total(xs: List[Int]) -> Int {
+    return len(xs)
+}
+
+fn main() {
+    let xs: List[Int] = [10, 20, 30]
+    let b: Bag = Bag(samples: xs, count: 3)
+
+    # Passed to a function taking List[Int], and measured in place.
+    print(total(b.samples))
+    print(len(b.samples))
+
+    # Checked indexing reads the length stored in the field's own carrier.
+    print(b.samples[1])
+
+    let mut read: List[Int] = b.samples
+    read[0] = 99
+    print(read[0])
+    print(b.samples[0])
+}
