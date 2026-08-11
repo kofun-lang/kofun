@@ -90,3 +90,7 @@
 #                     is worse than none: its author believes the signal is
 #                     published.
 capability-blocker	885	-	Typed upgrade patches slice 1: validate schema and compute
+unnamed-blocker	30	-	[Umbrella] Deliver recursive ownership-aware ADT matching ac
+unnamed-blocker	31	-	[Umbrella] Deliver production generics, traits, KIF, strateg
+unnamed-blocker	274	-	[Umbrella] Close B6 with policy-defined independent clean-bu
+unnamed-blocker	644	-	[Umbrella] Deliver the bounded HTTP/1.1 scripted-transport c
