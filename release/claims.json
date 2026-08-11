@@ -96,7 +96,9 @@
         "observation": "`/` on `Int` is refused with one diagnostic instead of being lowered."
       },
       "safety": {
-        "classification": "none"
+        "classification": "memory-safety",
+        "threat_model": "docs/MEMORY_MODEL.md",
+        "negative_test": "tests/conformance/records/partial_move.kofun"
       },
       "performance": {
         "classification": "none"
@@ -300,7 +302,7 @@
       "public_status": "bounded by-value 64-element locals and direct function carriers; standalone mutable-local element assignment with checked positive, negative, constant, and dynamic indices",
       "state": "checkpoint",
       "area": "c-backend",
-      "bounded_capability": "Stage 2 C11 lowers bounded `List[Int]` literals, immutable or mutable locals, direct parameters and results, `len`, checked reads, and standalone mutable-local element writes through one fixed-capacity by-value carrier. Reads and writes share positive, negative, constant, and dynamic bounds behavior. General `List[T]`, growth, mutation through parameters or immutable bindings, assignment expressions, list fields, indirect calls, and non-C11 backends remain outside the slice. An iterative `while` may drive those reads: the loop condition is re-evaluated each iteration, so a scan over an indexed `List[Int]` executes and terminates (#1128).",
+      "bounded_capability": "Stage 2 C11 lowers bounded `List[Int]` literals, immutable or mutable locals, direct parameters and results, `len`, checked reads, and standalone mutable-local element writes through one capacity-64 by-value carrier. Reads and writes share positive, negative, constant, and dynamic bounds behavior. The separate `nominal-records` claim owns record fields and field reads; that bounded bridge does not promote this general list family. General `List[T]`, growth, mutation through parameters or immutable bindings, assignment expressions, `List[Text]`, named nested aggregates, indirect calls, and non-C11 backends remain outside the slice. An iterative `while` may drive those reads: the loop condition is re-evaluated each iteration, so a scan over an indexed `List[Int]` executes and terminates (#1128).",
       "targets": [
         "c11",
         "stage2"
@@ -1231,20 +1233,22 @@
     {
       "id": "nominal-records",
       "public_wording": "nominal heterogeneous records",
-      "public_status": "bounded typed frontend plus Stage 2 C11 lowering for nominal `Int`/`Bool` records: written-order labelled construction, declaration-order AggregateLayout, typed reads, and whole-record value arguments/results; no module, generic, native, stable-ABI, or wider-field lowering",
+      "public_status": "bounded Stage 2 C11 mixed `Text`/capacity-64 `List[Int]`/`Int` records: labelled construction, declaration-order AggregateLayout, typed field reads, whole-record pass/return, and list-field copy semantics; no general lists, `List[Text]`, nested aggregates, modules, generics, native lowering, or stable ABI",
       "state": "checkpoint",
       "area": "frontend",
-      "bounded_capability": "The dedicated record frontend accepts the full bounded typed contract. The production Stage 2 C11 slice additionally lowers nominal records containing only Int/Bool fields, preserves written construction evaluation order, uses declaration-order AggregateLayout, supports typed field reads, and passes/returns whole records by value. Module visibility, generic records, wider field types, native lowering, and a stable ABI remain outside the checkpoint.",
+      "bounded_capability": "The dedicated record frontend still accepts the full bounded typed contract. The production Stage 2 C11 slice additionally lowers nominal `Int`/`Bool`/`Text`/capacity-64 `List[Int]` fields, preserves written construction evaluation order, uses declaration-order AggregateLayout, supports typed field reads, passes/returns whole records by value, and copies a list field out of its record carrier. One mixed `BridgeReport` runs twice against exact UTF-8 bytes and independently agrees with AggregateLayout v1. Its typed sidecar separately proves nominal, function, resolved base-reference, and concrete-type facts; it does not publish a selector or field-use fact. Production emitted C member reads and the runtime golden prove field access across that explicit artifact boundary. General lists, `List[Text]`, named nested aggregate fields, module visibility, generic records, native lowering, and a stable ABI remain outside the checkpoint.",
       "targets": [
+        "c11",
         "stage2"
       ],
       "specification": [
-        "spec/records-v1.md"
+        "spec/records-v1.md",
+        "tests/conformance/aggregate-bridge/README.md"
       ],
-      "compatibility": "The C11 slice is additive and has no public or FFI ABI promise. Expanding it into module resolution, generics, other field types, mutation, partial moves, or another backend is a separately evidenced capability change.",
+      "compatibility": "The C11 slice is additive and has no public or FFI ABI promise. Expanding it into general lists, `List[Text]`, nested aggregate fields, module resolution, generics, record mutation, partial moves, or another backend is a separately evidenced capability change.",
       "positive_gate": {
         "command": "task records",
-        "observation": "The scanner fixture gates the full typed contract; the Stage 2 fixture executes Int/Bool record construction in both label orders, field reads, value arguments/results, and AggregateLayout assertions. Three argument fixtures hold the value-argument boundary from the other side: a field read, a binding of another record type, and an arithmetic expression each fail the compile with a named diagnostic and emit no C."
+        "observation": "The retained scanner fixture gates the full typed contract; the Stage 2 record fixture executes construction in both label orders, field reads, value arguments/results, AggregateLayout assertions, and the existing argument/refusal boundary. The additive aggregate-bridge dependency executes a mixed Text/List[Int]/Int report twice under strict C11, checks production emitted-C member reads and exact UTF-8 runtime bytes, independently matches every AggregateLayout offset and the record size, and requires exact no-C refusals for capacity 65, List[Text], and a named nested record/list path plus four capability mutations. Its separate complete sidecar check proves nominal, function, resolved base-reference, and concrete-type facts without claiming selector or field-use facts."
       },
       "negative_boundary": {
         "kind": "rejection",
@@ -1262,7 +1266,8 @@
       "reproduction": {
         "command": "task records",
         "prerequisites": [
-          "cc"
+          "cc",
+          "node"
         ]
       }
     },

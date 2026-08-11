@@ -1,0 +1,18 @@
+# A named record containing the admitted bounded list is valid on its own.
+# Nesting that named aggregate inside another record is not: Stage 2 does not
+# recursively lower record fields, even when the inner record's fields are in
+# the bounded Text/List[Int]/Int slice.
+
+type NamedSamples = {
+    samples: List[Int],
+}
+
+type NestedReport = {
+    identity: Text,
+    payload: NamedSamples,
+    count: Int,
+}
+
+fn main() -> Int {
+    return 0
+}

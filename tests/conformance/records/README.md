@@ -86,9 +86,10 @@ declared and answered `E2S35`.
 
 The canonical `compiler.kofun`/`compiler.c` pair now carries the whole-binding
 slice of that rule, with the wording above rather than a paraphrase of it. The
-`production_*.kofun` fixtures gate it, and are Int-only because the Stage 2
-slice refuses a `Text` field with `E2S32` before ownership is consulted — which
-is why the fixtures beside them cannot be reused.
+`production_*.kofun` fixtures gate that production path, while their siblings
+gate the standalone record frontend. They remain separate because they hold
+two producers to one language; Int-only is no longer a field-type prerequisite
+now that the production slice admits `Text` and bounded `List[Int]` fields.
 
 | Fixture | Result |
 |---|---|

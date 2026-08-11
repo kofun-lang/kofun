@@ -9,10 +9,10 @@ c11-stage1	text	unsupported	-	The Stage 1 C11 Core does not lower Text values
 c11-stage2	const-generics	supported	tests/conformance/run.sh	-
 c11-stage2	decimal-arithmetic	supported	tests/conformance/run.sh	-
 c11-stage2	functions	supported	tests/conformance/run.sh	-
-c11-stage2	list	unsupported	-	The Stage 2 C11 Core lowers only bounded List[Int] locals and direct signatures; general lists and record fields remain unsupported
+c11-stage2	list	unsupported	-	The Stage 2 C11 Core supports capacity-64 List[Int] locals, direct signatures, and nominal record fields and field reads; general List[T], List[Text], growth, heap-backed lists, and nested aggregate lowering remain unsupported
 c11-stage2	numeric	supported	tests/conformance/run.sh	-
 c11-stage2	optional-coalescing	supported	tests/conformance/optional-coalescing/run.sh	-
-c11-stage2	text	unsupported	-	The Stage 2 C11 Core does not lower Text values in this backend profile
+c11-stage2	text	unsupported	-	The Stage 2 C11 Core supports Text literals, direct parameters and results, UTF-8 output, and Text fields and field reads in the bounded nominal-record bridge; the general Text corpus remains unsupported
 native-aarch64	const-generics	unsupported	-	The direct AArch64 backend does not specialize per distinct const literal
 native-aarch64	decimal-arithmetic	unsupported	-	The direct AArch64 backend has no arbitrary-precision Decimal runtime
 native-aarch64	functions	supported	bootstrap/native/check.sh	-

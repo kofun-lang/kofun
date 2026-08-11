@@ -1,0 +1,49 @@
+# One report-shaped witness for the bounded Stage 2 aggregate bridge. The
+# functions keep construction, whole-record pass/return, and each field read
+# visible as separate typed operations; main then observes List[Int] copy
+# semantics and the non-ASCII Text bytes on the emitted C11 path.
+
+type BridgeReport = {
+    identity: Text,
+    samples: List[Int],
+    count: Int,
+}
+
+fn relay(report: BridgeReport) -> BridgeReport {
+    return report
+}
+
+fn report_identity(report: BridgeReport) -> Text {
+    return report.identity
+}
+
+fn report_samples(report: BridgeReport) -> List[Int] {
+    return report.samples
+}
+
+fn report_count(report: BridgeReport) -> Int {
+    return report.count
+}
+
+fn main() -> Int {
+    let samples: List[Int] = [10, 20, 30]
+    let constructed: BridgeReport = BridgeReport(
+        identity: "古墳-日本語",
+        samples: samples,
+        count: 3
+    )
+    let returned: BridgeReport = relay(constructed)
+
+    print(report_identity(returned))
+    print(report_count(returned))
+
+    let observed: List[Int] = report_samples(returned)
+    print(len(observed))
+    print(observed[1])
+
+    let mut copied: List[Int] = returned.samples
+    copied[0] = 99
+    print(copied[0])
+    print(returned.samples[0])
+    return 0
+}

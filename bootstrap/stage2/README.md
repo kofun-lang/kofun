@@ -15,7 +15,7 @@ The frontend performs five concrete operations:
    tokens, producing a deterministic token-span tape;
 2. structural parsing of a compilation unit into textual function,
    immutable integer module-constant, zero/one-`Int`-payload enum, and
-   bounded nominal `Int`/`Bool` record IR,
+   bounded nominal `Int`/`Bool`/`Text`/`List[Int]` record IR,
    including names, constructor tags or declaration-order fields, arities,
    byte spans, and top-level function/type visibility metadata;
 3. an identity source projection gated by successful lexing and parsing.
@@ -55,10 +55,11 @@ one zero-argument `fn main()` plus zero or more `Int` Core functions and lowers:
   payload, explicitly typed immutable bindings, same-typed function
   arguments/results, and exhaustive statement-position enum `match` with
   ordered guards, payload bindings, `_`, and binding catch-alls;
-- top-level nominal records with one or more `Int`/`Bool` fields, labelled
-  construction evaluated left to right in written order, declaration-order
-  AggregateLayout C structs, typed field reads, and same-typed whole-record
-  function arguments/results;
+- top-level nominal records with one or more `Int`, `Bool`, `Text`, or bounded
+  `List[Int]` fields, labelled construction evaluated left to right in written
+  order, declaration-order AggregateLayout C structs, typed field reads,
+  same-typed whole-record function arguments/results, and by-value list-field
+  reads;
 - `print(Int)` and `return Int`.
 
 The emitted C11 uses checked arithmetic helpers and preserves Kofun floor
@@ -707,7 +708,7 @@ the `optional-narrowing` adapter. `E2S134`-`E2S141` are still unregistered:
 see the note in `tests/conformance/optional/README.md` for why the registry's
 completeness check cannot see codes emitted from a separate frontend.
 
-### Executable bounded `List[Int]` in the C11 slice (#919, #1103, #1127)
+### Executable bounded `List[Int]` in the C11 slice (#919, #1103, #1127, #1183, #1197)
 
 The ordinary Stage 2 path admits `List[Int]` literals and immutable or mutable
 locals up to 64 elements. The AggregateLayout view remains a checked `u64`
@@ -726,15 +727,26 @@ in the ABI. Copying into a mutable local therefore cannot mutate its source.
 Calls containing a list parameter evaluate every list and companion `Int`
 argument exactly once in written order through typed C11 temporary slots.
 
+Nominal records may store that same capacity-64 carrier inline beside
+`Int`/`Bool`/`Text` fields. Reading the field yields a by-value carrier copy,
+so mutating a local copy cannot mutate the record. `task aggregate-bridge`
+pins that mixed path through construction, whole-record pass/return, all field
+reads in production emitted C and runtime, `len`, checked indexing, non-ASCII
+UTF-8 output, an independent AggregateLayout calculation, and the distinct
+typed-sidecar facts the current event format actually carries: nominal,
+function, resolved base-reference, and concrete-type facts, but no selector or
+field-use fact.
+
 This is not general list lowering. Direct literal arguments/returns, mutation
 through parameters or immutable bindings, assignment expressions,
-`List[Text]`, nested/general lists, indirect list calls, list fields in nominal
-records, non-C11 backends, variable capacities, and collection ownership
+`List[Text]`, nested/general lists, indirect list calls, named nested aggregate
+fields, non-C11 backends, variable capacities, and collection ownership
 inference remain refused. Labelled `List[Int]` calls do execute since #1107,
 through the same fixed-slot temporaries. The focused gates are
 `tests/stage2/list-int-values/run.sh` and
-`tests/stage2/list-int-signatures/run.sh`; the general list capability remains
-unsupported until the later #868 record-field increments land.
+`tests/stage2/list-int-signatures/run.sh`, with the mixed record path in
+`tests/conformance/aggregate-bridge/run.sh`. The general list capability
+remains unsupported.
 
 ### Executable `Optional(Int)` in the C11 slice (#924)
 

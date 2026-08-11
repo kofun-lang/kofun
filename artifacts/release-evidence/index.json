@@ -4,7 +4,7 @@
   "version": "0.5.1-seed",
   "inputs": {
     "VERSION": "20698107c84adaa2dad946f3dd4b27e97854fd7c641fc65cd623c741f5dfea6c",
-    "release/claims.json": "fbd87e17c26ca317a2b9711bc5e9bda09220d48aa01832e29c2f31ae1c23ec02",
+    "release/claims.json": "470136c1fc08981b6d31ec82b9e63c718bc1d69d5e355a7966e18145ef1b7ed9",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
     "bootstrap/manifest.json": "2fb0cbf5532b65cf008beb0d150930af1a035100c20539bb1c77bf1b879dc6d3"
   },
@@ -487,13 +487,15 @@
       "state": "checkpoint",
       "area": "frontend",
       "targets": [
+        "c11",
         "stage2"
       ],
       "positive_gate": "task records",
       "negative_boundary": "tests/conformance/records/stage2_unsupported_field.kofun",
       "reproduction": "task records",
       "prerequisites": [
-        "cc"
+        "cc",
+        "node"
       ]
     },
     {
@@ -703,7 +705,7 @@
     }
   ],
   "evidence_digests": {
-    "Taskfile.yml": "210521bfe84a708df07a277dc58c4621a5fb8e69678de2ec8aa4ea78ef451f83",
+    "Taskfile.yml": "ca430ff9deb20ccef967aaa7ee6ac613dc0d46c4612e73ac52e2886e5c515b93",
     "bootstrap/native/check.sh": "dfa876ae496b87ce1a3f9535d09a5f54d650a1efbe747ddc527a78f2114b4fae",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/check-diverse-double-compilation-refusals.sh": "55fc39166070b9bc612fca6898086938b1a8ca122b1c1fb8e928f1a5d4cde572",
@@ -712,7 +714,7 @@
     "bootstrap/selfhost/driver/corpus_reject.stdout": "b11ae682acae186b10022c3469af65b54cd03c2e88a4756eba1cbe5b0e9356f9",
     "bootstrap/stage1/README.md": "449e52413da5d35eafee5b56a7c243ee0363774b8d4110d2a3a998a49f95d52f",
     "bootstrap/stage1/SHA256SUMS": "0dc3d2677f03dfe3bd6f9da9f923315dd5f30dcaeca4768f3c63ec1f66744b94",
-    "bootstrap/stage2/README.md": "10e807af63670542ba1a425d1cc49ca7a18b9323f79f8df6c83b76922a650875",
+    "bootstrap/stage2/README.md": "298e9f848b49f340ff32c0fbe2c870f09ce3e1d03b1779896b3d46287f809855",
     "bootstrap/stage2/fixtures/borrowed_move_text.kofun": "34502461891e7c8f42c9017e9fbfc857e54b10ca4fe59551be9ab9ab22d2c1b6",
     "bootstrap/wasm/fixtures/unsupported_text.kofun": "e0a45136410ddb85e9f5b3e5c39e7903d96da39aa53aaf3078d2555b4f383864",
     "bootstrap/wasm/object_arena_check.sh": "c415a46c7b83493ce72f07cd846d895ddf0980dc0f83e36023cb57fadb5f732f",
@@ -724,7 +726,7 @@
     "docs/LAW_SYSTEM.md": "b974f0ad762bec778ee76afa5d0a2176423ac96a3a583739eee55dcb8dca5043",
     "docs/LINGUIST_RECOGNITION.md": "279f9afa7157c90e41d656974c2f5020f8b6d25acbbd389ee760efbb2d6d6166",
     "docs/MEMORY_MODEL.md": "2ad150ffa325a6ac8778ce307b6d9d15584916ec116ae697a22028dc2e6c102e",
-    "docs/MVP_IMPLEMENTED.md": "674498a019067e1754f9baa19e4f537f1ea814bb09a70ae98765e3c2c04d50a2",
+    "docs/MVP_IMPLEMENTED.md": "704cd29efad6e2d0008d7aca204671ae857bad0eda2ea363eebffb5cc0ec3071",
     "docs/NATIVE_BACKEND.md": "ab16b7bc6ae59071f9ae73c6fafde44732c887d122bb711104eb231297680bfe",
     "docs/ROADMAP.md": "d3ee21fded0b17cb451d30663d2206851321c60f9fb4aa6a62ffd6b3288b9a2c",
     "docs/RUST_CRATE_SHIMS.md": "4365b064cbc9a05733710d3a609c1db2623b28cb9ed4ba0e48536e35f9d58c47",
@@ -749,7 +751,8 @@
     "stdlib/tests/verify.sh": "81128c0f6b2b3126c54164270120dfb73c12e2d8283e56011ac8bdf047a4ecb3",
     "tests/cli.sh": "6ca726adc3cb5fa4437d34665603b6556a63d01d26db1141a93af3388c5240f9",
     "tests/cli_stage2_outcomes.sh": "9f84a95495afab023a1572b37a2508a4ee02a3a89881df14b887c209a628a9a7",
-    "tests/conformance/capabilities.tsv": "b752c9e2330bcd994f135ee3f51f11a226ac68d33374049e48fc700d1dfb5ad4",
+    "tests/conformance/aggregate-bridge/README.md": "aec3624a10648a59d18723bf7429422ff017cec17995402653e403f065ec0f0a",
+    "tests/conformance/capabilities.tsv": "43512e72780a706211dfd1eb9d0df033af129bab3a9b4b94391e26c10abd798e",
     "tests/conformance/functions/division_floor_signs.kofun": "6bfd48679ebcf604305c78271b80e803866a64d8e9c8f732f5b1884d4d0d67b0",
     "tests/conformance/modules/re-exports/run.sh": "39d91f56a27e5c7469d26309a3f709431a8307359715452f6cfbcaf9843f6b12",
     "tests/conformance/numeric/reject_slash_operator.kofun": "49a14dbd0392e6920a681168af44018182f78175a921592283631c9942045c24",
