@@ -120,6 +120,14 @@ typedef struct {
     char name[NAME_CAPACITY];
     size_t name_length;
     int parameter_count;
+    /*
+     * The declaration-site external label of each parameter, empty when there
+     * is none. Only call sites read these: the body binds the *internal* name,
+     * because a label is call-site vocabulary and must not become a lexical
+     * binding (call-arguments v1, rule 4).
+     */
+    char parameter_labels[MAX_PARAMETERS][NAME_CAPACITY];
+    size_t parameter_label_lengths[MAX_PARAMETERS];
     bool returns_int;
     size_t line;
     /* Parameters and `let` bindings share one ascending run of i64 locals;
@@ -148,6 +156,15 @@ typedef struct {
     Function functions[MAX_FUNCTIONS];
     size_t function_count;
     int arguments[MAX_ARGUMENTS];
+    /*
+     * `arguments` is indexed by *declaration slot*, so the push loop fills the
+     * wasm operand stack in declaration order simply by walking it.
+     * `argument_order` records which slot each *written* position filled, so
+     * the evaluation loop walks source order instead. A labelled call written
+     * out of order therefore evaluates as written and is passed as declared,
+     * and neither loop has to know about labels.
+     */
+    int argument_order[MAX_ARGUMENTS];
     size_t argument_count;
     Condition conditions[MAX_CONDITIONS];
     size_t condition_count;
@@ -607,6 +624,31 @@ static void leave_expression_nesting(Parser *parser) {
 /* The callee is resolved against the whole declaration table, which the
  * signature scan filled before any body was parsed, so a forward call reads
  * exactly like a backward one. The current token is the `(`. */
+/* Whether the token after the current one is `:`, without consuming either. A
+ * labelled argument is only distinguishable from an ordinary expression by what
+ * follows its first name, so the decision precedes any consumption. */
+static bool peek_is_colon(const Parser *parser) {
+    Parser probe = *parser;
+    next_token(&probe);
+    return probe.token.kind == TOKEN_COLON;
+}
+
+/* The declaration slot carrying `label`, or -1. Internal names are deliberately
+ * not accepted: a call may not spell a binding the callee owns. */
+static int wasm_label_slot(
+    const Function *function,
+    const char *label,
+    size_t label_length
+) {
+    for (int slot = 0; slot < function->parameter_count; ++slot) {
+        if (function->parameter_label_lengths[slot] == label_length &&
+            memcmp(function->parameter_labels[slot], label, label_length) == 0) {
+            return slot;
+        }
+    }
+    return -1;
+}
+
 static int parse_call(
     Parser *parser,
     const char *name,
@@ -640,15 +682,67 @@ static int parse_call(
      * this one is still being read, so this call cannot reserve a slice until
      * every nested call has finished taking theirs. */
     int scratch[MAX_PARAMETERS];
+    int order[MAX_PARAMETERS];
+    for (int slot = 0; slot < MAX_PARAMETERS; ++slot) scratch[slot] = -1;
     int count = 0;
     if (parser->token.kind != TOKEN_RIGHT_PAREN) {
         for (;;) {
+            /*
+             * `label: value` binds the slot the declaration gave that label.
+             * The label is looked up in the already-resolved callee — labels
+             * never choose the callee, they only validate the call.
+             */
+            int slot = count;
+            if (parser->token.kind == TOKEN_IDENTIFIER &&
+                peek_is_colon(parser)) {
+                const char *label = parser->token.start;
+                size_t label_length = parser->token.length;
+                int labelled_slot = wasm_label_slot(
+                    &parser->functions[callee],
+                    label,
+                    label_length
+                );
+                next_token(parser);
+                next_token(parser);
+                if (labelled_slot < 0) {
+                    parse_error_at(
+                        parser,
+                        "call uses a label the wasm32 Core declaration does not declare",
+                        line
+                    );
+                    leave_expression_nesting(parser);
+                    return -1;
+                }
+                if (scratch[labelled_slot] >= 0) {
+                    parse_error_at(
+                        parser,
+                        "call repeats a wasm32 Core argument label",
+                        line
+                    );
+                    leave_expression_nesting(parser);
+                    return -1;
+                }
+                slot = labelled_slot;
+            } else {
+                while (slot < MAX_PARAMETERS && scratch[slot] >= 0) ++slot;
+                if (slot < parser->functions[callee].parameter_count &&
+                    parser->functions[callee]
+                        .parameter_label_lengths[slot] != 0) {
+                    parse_error_at(
+                        parser,
+                        "call omits the label the wasm32 Core declaration requires",
+                        line
+                    );
+                    leave_expression_nesting(parser);
+                    return -1;
+                }
+            }
             int argument = parse_expression(parser);
             if (argument < 0) {
                 leave_expression_nesting(parser);
                 return -1;
             }
-            if (count == MAX_PARAMETERS) {
+            if (slot >= MAX_PARAMETERS || count == MAX_PARAMETERS) {
                 /* No declaration can accept more than six, so an argument past
                  * the sixth is already an arity mismatch. */
                 parse_error_at(
@@ -659,7 +753,8 @@ static int parse_call(
                 leave_expression_nesting(parser);
                 return -1;
             }
-            scratch[count++] = argument;
+            scratch[slot] = argument;
+            order[count++] = slot;
             if (!consume(parser, TOKEN_COMMA)) break;
         }
     }
@@ -682,6 +777,7 @@ static int parse_call(
     }
     int start = (int)parser->argument_count;
     for (int argument = 0; argument < count; ++argument) {
+        parser->argument_order[parser->argument_count] = order[argument];
         parser->arguments[parser->argument_count++] = scratch[argument];
     }
     return allocate_node(parser, (Node){
@@ -1092,7 +1188,24 @@ static bool parse_signature(Parser *parser, Function *function, bool declare) {
              * The label itself is recorded by the caller's declaration pass;
              * this loop only has to stop treating the pair as a syntax error.
              */
+            function->parameter_label_lengths[function->parameter_count] = 0;
+            function->parameter_labels[function->parameter_count][0] = '\0';
             if (parser->token.kind == TOKEN_IDENTIFIER) {
+                if (parameter_length >= NAME_CAPACITY) {
+                    parse_error(parser, "wasm32 Core parameter label is too long");
+                    return false;
+                }
+                memcpy(
+                    function->parameter_labels[function->parameter_count],
+                    parameter,
+                    parameter_length
+                );
+                function->parameter_labels[
+                    function->parameter_count
+                ][parameter_length] = '\0';
+                function->parameter_label_lengths[
+                    function->parameter_count
+                ] = parameter_length;
                 parameter = parser->token.start;
                 parameter_length = parser->token.length;
                 next_token(parser);
@@ -1427,10 +1540,13 @@ static void emit_expression(const Emitter *emitter, int index, Buffer *body) {
     if (node->kind == NODE_CALL) {
         /* Arguments are evaluated left to right and exactly once: each one
          * lands in its own local before any of them is pushed. */
-        for (int argument = 0; argument < node->argument_count; ++argument) {
+        for (int written = 0; written < node->argument_count; ++written) {
             emit_expression(
                 emitter,
-                parser->arguments[node->argument_start + argument],
+                parser->arguments[
+                    node->argument_start +
+                    parser->argument_order[node->argument_start + written]
+                ],
                 body
             );
         }
