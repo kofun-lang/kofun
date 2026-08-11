@@ -1,0 +1,9 @@
+fn add(base: Int, amount: Int) -> Int {
+    return base + amount
+}
+
+fn main() -> Int {
+    let start = 1
+    print(start |> add(2))
+    return 0
+}

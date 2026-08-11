@@ -9434,6 +9434,43 @@ static char *call_binding_failure(
 
 /* Bind one already-selected named call to fixed declaration-order slots.
  * Argument expressions stay in source order; only the slot vector changes. */
+static int64_t pipeline_subject_start(
+    const char *source,
+    int64_t body_open,
+    int64_t pipe
+);
+
+/*
+ * The subject of the pipeline whose callee token is at `call_start`, or -1 when
+ * that call is not a pipeline target.
+ *
+ * Binding needs the reverse of what recognition needed. `validate_pipeline_calls`
+ * walks forward from a `|>` to its call; here the call is what we hold and the
+ * `|>` is what we must find. Scanning left token by token is not available —
+ * the walk in this file only moves forward — so this re-walks the enclosing
+ * body and matches on the callee offset, which is exactly the identity the
+ * recognizer used.
+ */
+static int64_t pipeline_subject_for_call(
+    const char *source,
+    int64_t call_start
+) {
+    if (strstr(source, "|>") == NULL) return -1;
+    int64_t body_open = enclosing_function_open(source, call_start);
+    if (body_open < 0) return -1;
+    int64_t cursor = skip_trivia(source, token_end(source, body_open));
+    while (cursor < call_start) {
+        if (token_equal(source, cursor, "|>")) {
+            int64_t callee = skip_trivia(source, token_end(source, cursor));
+            if (callee == call_start) {
+                return pipeline_subject_start(source, body_open, cursor);
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return -1;
+}
+
 static char *validate_declared_call_arguments(
     const char *source,
     const char *callee,
@@ -9490,14 +9527,70 @@ static char *validate_declared_call_arguments(
             token_equal(source, separator, ",")
             ? skip_trivia(source, token_end(source, separator)) : separator;
     }
+    /*
+     * A pipeline supplies slot 0 from outside the parentheses, so it needs
+     * this binder even when nothing in the call is labelled. Without the extra
+     * term `start |> add(2)` would take the ordinary positional path, which
+     * binds the written `2` to slot 0 and never learns the subject exists.
+     */
+    int64_t pipeline_subject = pipeline_subject_for_call(source, call_start);
     if (!has_external_parameter &&
-        !call_has_labelled_argument(source, open)) {
+        !call_has_labelled_argument(source, open) &&
+        pipeline_subject < 0) {
         return owned_text("");
     }
 
     bool saw_label = false;
     int64_t next_positional = 0;
     int64_t source_index = 0;
+    /*
+     * The subject binds slot 0 before any explicit argument is read, which is
+     * what makes the rest of this loop correct without further special cases:
+     * positional binding starts at slot 1 because slot 0 is already taken, and
+     * a label naming slot 0 lands on the existing duplicate path and reports
+     * E2S163 against the declaration it collides with.
+     *
+     * Its source index is 0 — the subject is written first — so the explicit
+     * arguments begin at 1 and the observation stream still reads in source
+     * order.
+     */
+    if (pipeline_subject >= 0 && parameter_count_value > 0) {
+        bound_argument[0] = pipeline_subject;
+        next_positional = 1;
+        source_index = 1;
+        char *external = parameter_external[0] >= 0
+            ? token_copy(source, parameter_external[0])
+            : owned_text("unlabelled");
+        char *internal = token_copy(source, parameter_internal[0]);
+        char *type = parameter_list_type_end(
+                source,
+                parameter_types[0],
+                parameters_end
+            ) >= 0
+            ? parameter_list_type_text(
+                source,
+                parameter_types[0],
+                parameters_end
+            )
+            : annotation_type_text(source, parameter_types[0]);
+        char *mode = ownership_mode_token(source, parameter_starts[0])
+            ? token_copy(source, parameter_starts[0])
+            : owned_text("copy");
+        stage2_semantic_observe(
+            "call-argument|%s|0|0|%" PRId64 "|%" PRId64 "|%s|%s|%s|%s\n",
+            callee,
+            pipeline_subject,
+            pipeline_subject,
+            external,
+            internal,
+            type,
+            mode
+        );
+        free(mode);
+        free(type);
+        free(internal);
+        free(external);
+    }
     int64_t argument = skip_trivia(source, token_end(source, open));
     while (argument < close && !token_equal(source, argument, ")")) {
         int64_t label = -1;
@@ -9920,11 +10013,32 @@ static char *validate_pipeline_calls(const char *source) {
                         subject,
                         call_end
                     );
+                    /*
+                     * #1226 binds before the boundary holds. The binder has to
+                     * run from here rather than from `validate_core_calls`,
+                     * because this pass returns first and that one would never
+                     * see the call — and it cannot simply be moved after,
+                     * since the arity check would then count the parenthesised
+                     * arguments alone and report the subject as a missing one.
+                     * Counting the subject is #1227's effective arity.
+                     *
+                     * A binding failure is the author's error and outranks the
+                     * boundary: E2S162-E2S166 keep their precedence and their
+                     * related spans by being returned as-is.
+                     */
+                    char *binding = validate_declared_call_arguments(
+                        source,
+                        name,
+                        callee,
+                        open
+                    );
                     free(name);
+                    if (strncmp(binding, "error[", 6) == 0) return binding;
+                    free(binding);
                     return pipeline_refusal(
                         source,
-                        "a pipeline subject is recognized by call-arguments "
-                        "v1; slot binding is owned by #1226",
+                        "a pipeline subject binds slot 0; call-arguments v1 "
+                        "pipeline lowering is owned by #1228",
                         cursor
                     );
                 }
