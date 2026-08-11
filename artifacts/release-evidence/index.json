@@ -760,7 +760,7 @@
     "tests/conformance/records/stage2_unsupported_field.kofun": "3a2a267549694c0ccf71e682b37992d94ff5b0a59b1b6438726b5384d3c46e82",
     "tests/conformance/syntax/issues_35_47/enum_payload_unsupported_field.kofun": "e1b4ce6cda998dac0a955ed016c8eb2f81a9effaed91b823011572cf68f6c59e",
     "tests/diagnostics/README.md": "32bc26bdeca5e1de63698ac97a53b6438d7c38af995677efd0288c52f195fc65",
-    "tests/diagnostics/registry.tsv": "eeba4776ab5e1c1b3d6da7694ca7fb4795b5433b4231f06bbdf933b12b3ccc11",
+    "tests/diagnostics/registry.tsv": "dfc9a1c640521a2a92b037d4600f54e414174bd91ed48b9d54e89068976a0b9e",
     "tests/diagnostics/stage2/e2s10_unsupported_statement.kofun": "664c4d3b0d4bcd9265fee34b3ae60d8bf0eb58c9ce5c2b504579c1249aa16f2d",
     "tests/diagnostics/visibility-api-leaks.sh": "5c65b941bec961bc7b814e3979170af630df34fa8812d0fa650639e159ea755a",
     "tests/docs/documentation_index_test.mjs": "2cc6cea953f21ef1cbf5e8c6be3ab58edacc8e6599f17d76b44130647714550b",

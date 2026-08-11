@@ -1,0 +1,1 @@
+error[E2S57]: duplicate `trust` line in `trust_duplicate.kofun` at bytes 45..50

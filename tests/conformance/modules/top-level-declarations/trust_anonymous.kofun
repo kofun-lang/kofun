@@ -1,0 +1,2 @@
+trust raw-foreign
+fn outer() -> Int { return 1 }

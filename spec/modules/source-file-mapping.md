@@ -179,6 +179,47 @@ Multiple module headers in one file, a missing/late header, and a header in an
 anonymous source are syntax errors. None may be repaired from the filesystem
 path.
 
+### Module trust
+
+The header may carry one optional second line, on the line immediately
+following it:
+
+```kofun
+module ffi.kbfix
+trust raw-foreign
+```
+
+`trust` is a contextual keyword: a keyword on that one line, and an ordinary
+identifier everywhere else, including as a declaration name. Its value is drawn
+from a closed set, and v1 defines exactly one, `raw-foreign`. Absence means the
+module is ordinary.
+
+Trust joins this document's authority rather than sitting beside it, and under
+the same refusals. A duplicate `trust` line, a `trust` line separated from its
+header by a blank line, a `trust` line elsewhere in the file, a value outside
+the closed set, text after the value, and a `trust` line in an anonymous source
+are all syntax errors. **None may be repaired from the filesystem path** — a
+class a path could supply is a class a rename could change, which is the
+failure RFC-0012 exists to close.
+
+Two refusals are worth stating as rules rather than leaving to be inferred.
+
+An unknown value is a syntax error and **not** a forward-compatible unknown. A
+trust class a reader does not understand may not be treated as absent, because
+absent is the permissive reading.
+
+`raw - foreign` is not a second spelling of `raw-foreign`. One class with two
+spellings is a class two readers can disagree about, so the value is admitted
+only as adjacent bytes.
+
+The validated inventory records the class for **every** module, ordinary
+included. A field that appeared only when set could not distinguish an ordinary
+module from one written by a producer that did not know about trust, and those
+must not read alike.
+
+RFC-0012 defines the rest of the design — the `trusted import` crossing and KIF
+tag `0x800A` — and neither is implemented by this rule.
+
 ## Stable inventory and serialization
 
 After every source has a validated `FileId` and `ModuleId`, consumers process
