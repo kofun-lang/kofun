@@ -6998,22 +6998,20 @@ static char *call_slot_zero(
     return owned_text("INT64_C(0)");
 }
 
-/* #1097 lowered the first executable labelled-call profile — a direct
- * top-level function whose parameters and result are all Int — and #1107
- * widened its carriers to Text and List[Int], the two the positional path
- * already executes. #1189 adds Int?, concrete enums, nominal records, and
- * source-order invalidation for a bare binding placed in a take slot. The
- * fixed-slot binding pass has already rejected unknown/duplicate/missing
- * labels; this predicate keeps the remaining call and backend shapes at the
- * explicit E2S158 boundary owned by #882. */
-static bool labelled_call_supported(
+/* One shape predicate owns both fixed-slot call paths. The `labelled` mode is
+ * load-bearing: #1113 consolidates their mechanism without changing either
+ * accepted boundary. Labelled calls use the full call-slot carrier vocabulary
+ * and require a carried result; direct calls remain Int/List[Int]-only,
+ * require a List, and deliberately keep their unrestricted result. */
+static bool fixed_slot_call_shape(
     const char *source,
     const char *hir,
     int64_t call_start,
     const char *callee,
-    int64_t open
+    int64_t open,
+    bool labelled
 ) {
-    if (!call_has_labelled_argument(source, open)) return false;
+    if (call_has_labelled_argument(source, open) != labelled) return false;
     /* A lexical callable may shadow a top-level declaration with the same
      * spelling. Only an unresolved callee name denotes the direct top-level
      * function this bounded ABI slice can lower. */
@@ -7021,31 +7019,105 @@ static bool labelled_call_supported(
     bool direct = callee_binding[0] == '\0';
     free(callee_binding);
     if (!direct) return false;
-    /* Lifted lambdas are emitted as separate C functions. Their call-site
-     * temporaries therefore cannot live in the enclosing source function;
-     * keep that independently reviewable lowering at #882's E2S158
-     * boundary. */
-    int64_t function_open = enclosing_function_open(source, call_start);
-    if (
-        function_open >= 0 &&
-        lambda_scope_open(source, function_open, call_start) >= 0
-    ) {
-        return false;
-    }
     int64_t declaration = function_start_named(source, callee);
-    char *result = function_return_type(source, callee);
-    bool carries_result = call_slot_carried(source, result);
-    free(result);
-    if (declaration < 0 || !carries_result) return false;
+    if (declaration < 0) return false;
     int64_t count = parameter_count(source, declaration);
     if (count < 1 || count > 8) return false;
+    if (labelled) {
+        char *result = function_return_type(source, callee);
+        bool carries_result = call_slot_carried(source, result);
+        free(result);
+        if (!carries_result) return false;
+    }
+    bool has_list = false;
     for (int64_t index = 0; index < count; ++index) {
         char *type = function_parameter_type(source, callee, index);
-        bool carried = call_slot_carried(source, type);
+        bool carried = labelled
+            ? call_slot_carried(source, type)
+            : strcmp(type, "Int") == 0 || strcmp(type, "List[Int]") == 0;
+        if (strcmp(type, "List[Int]") == 0) has_list = true;
         free(type);
         if (!carried) return false;
     }
-    return true;
+    return labelled || has_list;
+}
+
+static bool fixed_slot_call_supported(
+    const char *source,
+    const char *hir,
+    int64_t call_start,
+    const char *callee,
+    int64_t open,
+    bool labelled
+) {
+    if (!fixed_slot_call_shape(
+        source,
+        hir,
+        call_start,
+        callee,
+        open,
+        labelled
+    )) {
+        return false;
+    }
+    /* Lifted lambdas are emitted as separate C functions. Their call-site
+     * temporaries therefore cannot live in the enclosing source function. */
+    int64_t function_open = enclosing_function_open(source, call_start);
+    return function_open < 0 ||
+        lambda_scope_open(source, function_open, call_start) < 0;
+}
+
+/* Thin wrappers keep the existing diagnostic routing and make each mode's
+ * dispatch load-bearing in the pair harness. All policy stays above. */
+static bool labelled_call_supported(
+    const char *source,
+    const char *hir,
+    int64_t call_start,
+    const char *callee,
+    int64_t open
+) {
+    return fixed_slot_call_supported(
+        source,
+        hir,
+        call_start,
+        callee,
+        open,
+        true
+    );
+}
+
+static bool direct_list_int_call_shape(
+    const char *source,
+    const char *hir,
+    int64_t call_start,
+    const char *callee,
+    int64_t open
+) {
+    return fixed_slot_call_shape(
+        source,
+        hir,
+        call_start,
+        callee,
+        open,
+        false
+    );
+}
+
+static bool direct_list_int_call_supported(
+    const char *source,
+    const char *hir,
+    int64_t call_start,
+    const char *callee,
+    int64_t open
+) {
+    return fixed_slot_call_supported(
+        source,
+        hir,
+        call_start,
+        callee,
+        open,
+        false
+    );
 }
 
 /* Map a source-order argument back to the declaration/ABI slot that #881
@@ -7126,15 +7198,17 @@ static int64_t labelled_argument_value(
 
 /* C11 leaves ordinary function-argument evaluation order unspecified. A
  * comma expression is sequenced, so assign source-order values first and only
- * then invoke the declaration-order ABI vector. Temporary names contain no
- * source labels and are declared once at the containing function scope. */
-static char *emit_labelled_call(
+ * then invoke the declaration-order ABI vector. The direct loop bound is
+ * retained deliberately: arity diagnostics precede this emitter, and #1113
+ * does not change which malformed input reaches a lowering diagnostic. */
+static char *emit_fixed_slot_call(
     const char *source,
     const char *hir,
     int64_t call_start,
     int64_t open,
     int64_t end,
-    const char *callee
+    const char *callee,
+    bool labelled
 ) {
     int64_t declaration = function_start_named(source, callee);
     int64_t parameter_count_value = parameter_count(source, declaration);
@@ -7143,15 +7217,23 @@ static char *emit_labelled_call(
     buffer_append(&output, "(");
     int64_t argument = skip_trivia(source, token_end(source, open));
     int64_t source_index = 0;
-    while (argument < end && !token_equal(source, argument, ")")) {
+    while (
+        (labelled || source_index < parameter_count_value) &&
+        argument < end && !token_equal(source, argument, ")")
+    ) {
         int64_t bound = argument_end(source, argument);
-        int64_t slot = labelled_argument_slot(
-            source,
-            callee,
-            argument,
-            source_index
-        );
-        if (slot < 0 || slot >= parameter_count_value) {
+        int64_t slot = source_index;
+        int64_t value_start = argument;
+        if (labelled) {
+            slot = labelled_argument_slot(
+                source,
+                callee,
+                argument,
+                source_index
+            );
+            value_start = labelled_argument_value(source, argument);
+        }
+        if (labelled && (slot < 0 || slot >= parameter_count_value)) {
             free(output.data);
             return lower_error(
                 "E2S158",
@@ -7159,7 +7241,6 @@ static char *emit_labelled_call(
                 argument
             );
         }
-        int64_t value_start = labelled_argument_value(source, argument);
         char *value = emit_argument(
             source,
             hir,
@@ -7205,7 +7286,7 @@ static char *emit_labelled_call(
 /* Reserve the fixed carrier slots before any statement in the containing
  * function. The call-start byte makes nested and repeated call sites distinct
  * without carrying an external label into generated artifacts. */
-static char *emit_labelled_call_temporaries(
+static char *emit_fixed_slot_call_temporaries(
     const char *source,
     const char *hir,
     int64_t function_open
@@ -7223,12 +7304,14 @@ static char *emit_labelled_call_temporaries(
             int64_t open = skip_trivia(source, token_end(source, cursor));
             if (open < close && token_equal(source, open, "(")) {
                 char *callee = token_copy(source, cursor);
-                if (labelled_call_supported(
+                bool labelled = call_has_labelled_argument(source, open);
+                if (fixed_slot_call_supported(
                     source,
                     hir,
                     cursor,
                     callee,
-                    open
+                    open,
+                    labelled
                 )) {
                     int64_t declaration = function_start_named(
                         source,
@@ -7249,182 +7332,6 @@ static char *emit_labelled_call_temporaries(
                         buffer_format(
                             &output,
                             "    %skofun_call_arg_%" PRId64
-                            "_%" PRId64 " = %s;\n",
-                            prefix,
-                            cursor,
-                            slot,
-                            zero
-                        );
-                        free(zero);
-                        free(prefix);
-                        free(carrier);
-                    }
-                }
-                free(callee);
-            }
-        }
-        int64_t next = token_end(source, cursor);
-        if (next <= cursor) break;
-        cursor = skip_trivia(source, next);
-    }
-    return output.data;
-}
-
-/* Ordinary C argument evaluation is unsequenced. A direct call that crosses
- * a List[Int] carrier therefore uses fixed source-byte slots for every
- * argument, including its Int companions, before the declaration-order call.
- */
-static bool direct_list_int_call_shape(
-    const char *source,
-    const char *hir,
-    int64_t call_start,
-    const char *callee,
-    int64_t open
-) {
-    if (call_has_labelled_argument(source, open)) return false;
-    char *binding = hir_use_binding_id(hir, call_start);
-    bool direct = binding[0] == '\0';
-    free(binding);
-    if (!direct) return false;
-    int64_t declaration = function_start_named(source, callee);
-    if (declaration < 0) return false;
-    int64_t count = parameter_count(source, declaration);
-    if (count < 1 || count > 8) return false;
-    bool has_list = false;
-    for (int64_t index = 0; index < count; ++index) {
-        char *type = function_parameter_type(source, callee, index);
-        if (strcmp(type, "List[Int]") == 0) {
-            has_list = true;
-        } else if (strcmp(type, "Int") != 0) {
-            free(type);
-            return false;
-        }
-        free(type);
-    }
-    return has_list;
-}
-
-static bool direct_list_int_call_supported(
-    const char *source,
-    const char *hir,
-    int64_t call_start,
-    const char *callee,
-    int64_t open
-) {
-    if (!direct_list_int_call_shape(
-        source,
-        hir,
-        call_start,
-        callee,
-        open
-    )) {
-        return false;
-    }
-    int64_t function_open = enclosing_function_open(source, call_start);
-    return function_open < 0 ||
-        lambda_scope_open(source, function_open, call_start) < 0;
-}
-
-static char *emit_direct_list_int_call(
-    const char *source,
-    const char *hir,
-    int64_t call_start,
-    int64_t open,
-    int64_t end,
-    const char *callee
-) {
-    int64_t declaration = function_start_named(source, callee);
-    int64_t count = parameter_count(source, declaration);
-    Buffer output;
-    buffer_init(&output);
-    buffer_append(&output, "(");
-    int64_t argument = skip_trivia(source, token_end(source, open));
-    int64_t index = 0;
-    while (
-        index < count && argument < end &&
-        !token_equal(source, argument, ")")
-    ) {
-        int64_t bound = argument_end(source, argument);
-        char *value = emit_argument(
-            source,
-            hir,
-            argument,
-            bound,
-            callee,
-            index
-        );
-        if (strncmp(value, "error[", 6) == 0) {
-            free(output.data);
-            return value;
-        }
-        buffer_format(
-            &output,
-            "(kofun_list_call_arg_%" PRId64 "_%" PRId64 " = %s), ",
-            call_start,
-            index,
-            value
-        );
-        free(value);
-        int64_t separator = skip_trivia(source, bound);
-        argument = separator < end && token_equal(source, separator, ",")
-            ? skip_trivia(source, token_end(source, separator))
-            : separator;
-        ++index;
-    }
-    char *c_name = c_identifier_name(callee);
-    buffer_format(&output, "kofun_fn_%s(", c_name);
-    free(c_name);
-    for (int64_t slot = 0; slot < count; ++slot) {
-        if (slot > 0) buffer_append(&output, ", ");
-        buffer_format(
-            &output,
-            "kofun_list_call_arg_%" PRId64 "_%" PRId64,
-            call_start,
-            slot
-        );
-    }
-    buffer_append(&output, "))");
-    return output.data;
-}
-
-static char *emit_direct_list_int_call_temporaries(
-    const char *source,
-    const char *hir,
-    int64_t function_open
-) {
-    int64_t close = balanced_end(source, function_open, "{", "}");
-    Buffer output;
-    buffer_init(&output);
-    if (close < 0) return output.data;
-    int64_t cursor = skip_trivia(source, token_end(source, function_open));
-    while (cursor < close) {
-        if (strcmp(token_kind(source, cursor), "identifier") == 0) {
-            int64_t open = skip_trivia(source, token_end(source, cursor));
-            if (open < close && token_equal(source, open, "(")) {
-                char *callee = token_copy(source, cursor);
-                if (direct_list_int_call_supported(
-                    source,
-                    hir,
-                    cursor,
-                    callee,
-                    open
-                )) {
-                    int64_t declaration = function_start_named(source, callee);
-                    int64_t count = parameter_count(source, declaration);
-                    for (int64_t slot = 0; slot < count; ++slot) {
-                        char *carrier = function_parameter_type(
-                            source,
-                            callee,
-                            slot
-                        );
-                        char *prefix = call_slot_declaration_prefix(
-                            source,
-                            carrier
-                        );
-                        char *zero = call_slot_zero(source, carrier);
-                        buffer_format(
-                            &output,
-                            "    %skofun_list_call_arg_%" PRId64
                             "_%" PRId64 " = %s;\n",
                             prefix,
                             cursor,
@@ -8376,13 +8283,14 @@ static char *emit_primary(
             name,
             open
         )) {
-            char *sequenced = emit_direct_list_int_call(
+            char *sequenced = emit_fixed_slot_call(
                 source,
                 hir,
                 cursor,
                 open,
                 end,
-                name
+                name,
+                false
             );
             free(name);
             free(output.data);
@@ -8395,13 +8303,14 @@ static char *emit_primary(
             name,
             open
         )) {
-            char *labelled = emit_labelled_call(
+            char *labelled = emit_fixed_slot_call(
                 source,
                 hir,
                 cursor,
                 open,
                 end,
-                name
+                name,
+                true
             );
             free(name);
             free(output.data);
@@ -17744,25 +17653,17 @@ static char *lower_body(
     buffer_init(&emitted);
     if (open == function_open) {
         /* Prologue order is part of the emitted bytes and must match the
-         * Kofun authority exactly: optional coalescing, then labelled
-         * slots, then direct List[Int] slots. A function containing both
-         * call shapes would otherwise compile to different C under the two
-         * surfaces — a byte-parity failure the fixed-point gate exists to
-         * refuse. */
+         * Kofun authority exactly: optional coalescing, then the one shared
+         * fixed-slot walker. A function containing both call shapes would
+         * otherwise compile to different C under the two surfaces — a
+         * byte-parity failure the fixed-point gate exists to refuse. */
         char *temporaries = emit_optional_int_coalescing_temporaries(
             source,
             function_open
         );
         buffer_append(&emitted, temporaries);
         free(temporaries);
-        temporaries = emit_labelled_call_temporaries(
-            source,
-            hir,
-            function_open
-        );
-        buffer_append(&emitted, temporaries);
-        free(temporaries);
-        temporaries = emit_direct_list_int_call_temporaries(
+        temporaries = emit_fixed_slot_call_temporaries(
             source,
             hir,
             function_open

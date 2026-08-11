@@ -9,6 +9,25 @@ if (!cPath || !kofunPath) {
 const cSource = fs.readFileSync(cPath, "utf8");
 const kofunSource = fs.readFileSync(kofunPath, "utf8");
 
+// The shared fixed-slot family is deliberately explicit. Before #1113 this
+// harness selected only names containing `list_int`, so a correct generic
+// rename could silently remove the merged mechanism from pair checking while
+// the harness stayed green.
+const fixedSlotFunctions = new Set([
+  "call_slot_carried",
+  "call_slot_declaration_prefix",
+  "call_slot_zero",
+  "fixed_slot_call_shape",
+  "fixed_slot_call_supported",
+  "labelled_call_supported",
+  "direct_list_int_call_shape",
+  "direct_list_int_call_supported",
+  "labelled_argument_slot",
+  "labelled_argument_value",
+  "emit_fixed_slot_call",
+  "emit_fixed_slot_call_temporaries",
+]);
+
 function functionNames(source, language) {
   const expression = language === "c"
     ? /^static\s+[^\n(]*?\b([A-Za-z_][A-Za-z0-9_]*)\s*\(/gm
@@ -16,7 +35,7 @@ function functionNames(source, language) {
   return new Set(
     [...source.matchAll(expression)]
       .map((match) => match[1])
-      .filter((name) => name.includes("list_int")),
+      .filter((name) => name.includes("list_int") || fixedSlotFunctions.has(name)),
   );
 }
 
@@ -28,10 +47,15 @@ function callCount(source, name) {
 const minimumCalls = new Map([
   ["list_int_type_end", { c: 13, kofun: 13 }],
   ["validate_list_int_annotations", { c: 4, kofun: 3 }],
-  ["direct_list_int_call_shape", { c: 3, kofun: 3 }],
-  ["direct_list_int_call_supported", { c: 4, kofun: 4 }],
-  ["emit_direct_list_int_call", { c: 2, kofun: 2 }],
-  ["emit_direct_list_int_call_temporaries", { c: 2, kofun: 2 }],
+  ["fixed_slot_call_shape", { c: 3, kofun: 3 }],
+  ["fixed_slot_call_supported", { c: 4, kofun: 4 }],
+  ["labelled_call_supported", { c: 2, kofun: 2 }],
+  ["direct_list_int_call_shape", { c: 2, kofun: 2 }],
+  ["direct_list_int_call_supported", { c: 3, kofun: 3 }],
+  ["labelled_argument_slot", { c: 2, kofun: 2 }],
+  ["labelled_argument_value", { c: 2, kofun: 2 }],
+  ["emit_fixed_slot_call", { c: 3, kofun: 3 }],
+  ["emit_fixed_slot_call_temporaries", { c: 2, kofun: 2 }],
   ["emit_list_int_value", { c: 6, kofun: 5 }],
   ["function_result_is_list_int", { c: 2, kofun: 2 }],
   ["validate_list_int_lambda_uses", { c: 2, kofun: 2 }],
@@ -75,8 +99,23 @@ const semanticAnchors = [
   },
   {
     id: "function-local-source-order-temporaries",
-    c: "temporaries = emit_direct_list_int_call_temporaries( source, hir, function_open );",
-    kofun: "emitted = emitted + emit_direct_list_int_call_temporaries( source, hir, function_open )",
+    c: "temporaries = emit_fixed_slot_call_temporaries( source, hir, function_open );",
+    kofun: "emitted = emitted + emit_fixed_slot_call_temporaries( source, hir, function_open )",
+  },
+  {
+    id: "labelled-only-return-carrier-guard",
+    c: "if (labelled) { char *result = function_return_type(source, callee); bool carries_result = call_slot_carried(source, result);",
+    kofun: "if labelled && !call_slot_carried(source, function_return_type(source, callee))",
+  },
+  {
+    id: "source-aware-labelled-carrier-vocabulary",
+    c: "? call_slot_carried(source, type)",
+    kofun: "carried = call_slot_carried(source, parameter_type)",
+  },
+  {
+    id: "direct-mode-list-requirement",
+    c: "return labelled || has_list;",
+    kofun: "return labelled || has_list",
   },
   {
     id: "by-value-parameter-carrier",
@@ -141,7 +180,7 @@ function verifyPair(cText, kofunText) {
     ["copy constructor", "kofun_list_int_value("],
     ["carrier length", "kofun_list_int_value_length("],
     ["view projection", "kofun_list_int_view("],
-    ["source-order slots", "kofun_list_call_arg_"],
+    ["source-order slots", "kofun_call_arg_"],
     ["stable refusal", "E2S157"],
     ["lambda annotation refusal", "List annotations inside lambdas"],
     ["lambda literal refusal", "List[Int] literals inside lambdas"],
@@ -152,6 +191,12 @@ function verifyPair(cText, kofunText) {
   ]) {
     if (!cText.includes(token)) failures.push(`C missing ${label}: ${token}`);
     if (!kofunText.includes(token)) failures.push(`Kofun missing ${label}: ${token}`);
+  }
+  if (cText.includes("kofun_list_call_arg_")) {
+    failures.push("C retained retired split slot prefix: kofun_list_call_arg_");
+  }
+  if (kofunText.includes("kofun_list_call_arg_")) {
+    failures.push("Kofun retained retired split slot prefix: kofun_list_call_arg_");
   }
   return failures;
 }
@@ -213,14 +258,84 @@ if (mode === "self-test") {
     "Kofun semantic dispatch missing: lambda-validation-before-output",
   );
 
+  const unpairedSharedWalker = kofunSource.replace(
+    "fn emit_fixed_slot_call_temporaries(",
+    "fn removed_fixed_slot_call_temporaries(",
+  );
+  assert.notEqual(unpairedSharedWalker, kofunSource, "shared walker mutation did not apply");
+  requireFailure(
+    verifyPair(cSource, unpairedSharedWalker),
+    "missing Kofun function: emit_fixed_slot_call_temporaries",
+  );
+
+  const unpairedSharedEmitter = kofunSource.replace(
+    "fn emit_fixed_slot_call(",
+    "fn removed_fixed_slot_call(",
+  );
+  assert.notEqual(unpairedSharedEmitter, kofunSource, "shared emitter mutation did not apply");
+  requireFailure(
+    verifyPair(cSource, unpairedSharedEmitter),
+    "missing Kofun function: emit_fixed_slot_call",
+  );
+
   const underCalledC = replaceLast(
     cSource,
+    "fixed_slot_call_supported(",
+    "removed_fixed_slot_call_supported(",
+  );
+  requireFailure(
+    verifyPair(underCalledC, kofunSource),
+    "C dispatch fixed_slot_call_supported: expected at least 4, saw 3",
+  );
+
+  const underCalledKofun = replaceLast(
+    kofunSource,
+    "fixed_slot_call_supported(",
+    "removed_fixed_slot_call_supported(",
+  );
+  requireFailure(
+    verifyPair(cSource, underCalledKofun),
+    "Kofun dispatch fixed_slot_call_supported: expected at least 4, saw 3",
+  );
+
+  const underCalledLabelledC = replaceLast(
+    cSource,
+    "labelled_call_supported(",
+    "removed_labelled_call_supported(",
+  );
+  requireFailure(
+    verifyPair(underCalledLabelledC, kofunSource),
+    "C dispatch labelled_call_supported: expected at least 2, saw 1",
+  );
+
+  const underCalledDirectKofun = replaceLast(
+    kofunSource,
     "direct_list_int_call_supported(",
     "removed_direct_list_int_call_supported(",
   );
   requireFailure(
-    verifyPair(underCalledC, kofunSource),
-    "C dispatch direct_list_int_call_supported: expected at least 4, saw 3",
+    verifyPair(cSource, underCalledDirectKofun),
+    "Kofun dispatch direct_list_int_call_supported: expected at least 3, saw 2",
+  );
+
+  const sourceBlindKofun = kofunSource.replace(
+    "carried = call_slot_carried(source, parameter_type)",
+    "carried = call_slot_carried(\"\", parameter_type)",
+  );
+  assert.notEqual(sourceBlindKofun, kofunSource, "source-aware carrier mutation did not apply");
+  requireFailure(
+    verifyPair(cSource, sourceBlindKofun),
+    "Kofun semantic dispatch missing: source-aware-labelled-carrier-vocabulary",
+  );
+
+  const splitPrefixC = cSource.replace(
+    "kofun_call_arg_",
+    "kofun_list_call_arg_",
+  );
+  assert.notEqual(splitPrefixC, cSource, "split-prefix mutation did not apply");
+  requireFailure(
+    verifyPair(splitPrefixC, kofunSource),
+    "C retained retired split slot prefix: kofun_list_call_arg_",
   );
 
   const tokenlessC = cSource.replaceAll("R023", "REMOVED_RUNTIME_BOUNDS");
@@ -230,7 +345,7 @@ if (mode === "self-test") {
     "C missing runtime bounds: R023",
   );
 
-  console.log("PASS: List[Int] pair mutations fail by bidirectional member, dispatch, call-count, and token checks");
+  console.log("PASS: List[Int] pair mutations fail by explicit shared-family member, mode/surface dispatch, source-aware carrier, call-count, prefix, and token checks");
 }
 
 console.log("PASS: List[Int] semantic family and load-bearing dispatches exist on both canonical surfaces");

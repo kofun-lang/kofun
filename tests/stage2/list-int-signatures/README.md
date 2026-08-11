@@ -15,7 +15,10 @@ Calls with a `List[Int]` parameter reserve typed argument slots at function
 scope. A comma expression assigns every list and companion `Int` argument once
 in written source order before invoking the declaration-order C ABI. The
 positive fixture makes that ordering observable and then passes the returned
-carrier through a second function.
+carrier through a second function. #1113 gives direct and labelled calls one
+`kofun_call_arg_<call-byte>_<slot>` namespace, one emitter, and one function-
+body temporary walker; `mixed_call_shapes.kofun` exercises both modes in the
+same function.
 
 The gate covers empty, one-element, and exactly-64-element pass/return values,
 `len`, checked positive/negative/dynamic indexing, strict C11 under GCC and
@@ -35,6 +38,17 @@ remain explicit boundaries. Labelled list calls are no longer among them:
 `labelled_argument.kofun` is an accept case here. The general
 `c11-stage2/list` capability therefore remains unsupported until #868's later
 record-field increments land.
+
+The shared predicate keeps the two mode boundaries explicit. Labelled calls
+use the current call-slot carrier vocabulary (`Int`, `Text`, `List[Int]`,
+`Int?`, concrete enums, and nominal records); direct calls remain restricted
+to `Int`/`List[Int]` parameters with at least one list. Accordingly,
+`positional_text_list.kofun` remains on the ordinary positional call path and
+this refactor does not widen it into fixed-slot sequencing. The predicate also
+keeps no direct return-carrier guard, while the complete compiler still rejects
+the `List[Int] -> Bool` shape earlier as `E2S15`, pinned by
+`direct_bool_result.kofun`. That structural distinction is not a shipped
+Bool-result capability.
 
 Lambda-contained `List[Int]` annotations, literals, binding reads, carrier
 calls, and direct results (including transparent parentheses) fail closed with
