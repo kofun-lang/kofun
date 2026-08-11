@@ -85,7 +85,8 @@ export const GROUPS = Object.freeze([
         title: 'Runtime and standard library',
         hint: 'Host integration, measured costs, and the executable standard-library capability surface.',
         tasks: [
-            'rust-shim', 'http', 'stdlib', 'alloc-contract', 'kotest', 'tzdb', 'clock-adapters',
+            'rust-shim', 'http', 'http-client-model', 'stdlib',
+            'alloc-contract', 'kotest', 'tzdb', 'clock-adapters',
             'benchmark-summary', 'benchmark-report-spec', 'capabilities'
         ]
     },
