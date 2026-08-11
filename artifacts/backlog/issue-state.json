@@ -9,19 +9,30 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 32,
+  "open_issues": 114,
   "issues": [
     {
       "number": 26,
-      "title": "wasm32 target: extend the bounded arithmetic and browser checkpoint",
+      "title": "[Umbrella] Deliver a bounded WebAssembly browser, host-ABI, and WASI command matrix",
       "state_labels": [
-        "needs-detail"
+        "blocked"
       ],
-      "state_line": "needs-detail",
-      "blocked_by": [],
+      "state_line": "blocked",
+      "blocked_by": [
+        1293,
+        1294,
+        1296,
+        1297,
+        1298,
+        1299,
+        1300,
+        1301,
+        1302,
+        1303,
+        1304
+      ],
       "evidence_commits": [
-        "8e831320736f2c0aa53eea228ec77ef8f41e3c33",
-        "f9adbcf72de09939782b11499a845650a6f171d1"
+        "dc7b49bf2404b44fa7a8f3916c0b0f1e3bd0ab03"
       ],
       "claims": [
         {
@@ -46,21 +57,37 @@
         },
         {
           "agent_id": "codex-26-post-1098-topology-20260809",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-design-26-wasm-20260811",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-design-26-wasm-20260811",
           "status": "released"
         }
       ]
     },
     {
       "number": 30,
-      "title": "General ADT match exhaustiveness beyond the bounded Bool slice",
+      "title": "[Umbrella] Deliver recursive ownership-aware ADT matching across declared backends",
       "state_labels": [
-        "needs-detail"
+        "blocked"
       ],
-      "state_line": "needs-detail",
-      "blocked_by": [],
+      "state_line": "blocked",
+      "blocked_by": [
+        1281,
+        1282,
+        1283,
+        1284,
+        1285,
+        1286,
+        1287,
+        1288
+      ],
       "evidence_commits": [
-        "8e831320736f2c0aa53eea228ec77ef8f41e3c33",
-        "f81fab678c7a3da0d4df0ad297df88838195ba12"
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
       ],
       "claims": [
         {
@@ -85,20 +112,45 @@
         },
         {
           "agent_id": "codex-30-post-1099-topology-20260809",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-design-30-adt-match-20260811",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-design-30-adt-match-20260811",
           "status": "released"
         }
       ]
     },
     {
       "number": 31,
-      "title": "Generics and traits",
+      "title": "[Umbrella] Deliver production generics, traits, KIF, strategy evidence, and generic proof",
       "state_labels": [
-        "needs-detail"
+        "blocked"
       ],
-      "state_line": "needs-detail",
-      "blocked_by": [],
+      "state_line": "blocked",
+      "blocked_by": [
+        1265,
+        1266,
+        1267,
+        1268,
+        1269,
+        1270,
+        1271,
+        1272,
+        1273,
+        1274,
+        1275,
+        1276,
+        1277,
+        1278,
+        1279,
+        1280
+      ],
       "evidence_commits": [
-        "1639a8deb811d3f04acc5d84a4fd73f7630e8be0"
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
       ],
       "claims": [
         {
@@ -123,23 +175,33 @@
         },
         {
           "agent_id": "codex-31-dictionary-c11-split-20260809",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-design-31-generics-20260811",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-design-31-generics-20260811",
           "status": "released"
         }
       ]
     },
     {
       "number": 274,
-      "title": "Reproducible bootstrap B6: independent clean builder reproduces the fixed point",
+      "title": "[Umbrella] Close B6 with policy-defined independent clean-builder evidence",
       "state_labels": [
-        "needs-detail"
+        "blocked"
       ],
-      "state_line": "needs-detail",
+      "state_line": "blocked",
       "blocked_by": [
-        272
+        1289,
+        1290,
+        1291,
+        1292
       ],
       "evidence_commits": [
-        "4695608b88cf173436ae3ea523358f7db1071297",
-        "b8bcaa9b24281ad8ec4e1300c8a444cffe352331"
+        "dc7b49bf2404b44fa7a8f3916c0b0f1e3bd0ab03"
       ],
       "claims": [
         {
@@ -149,42 +211,39 @@
         {
           "agent_id": "codex-274-b6-audit-20260808",
           "status": "released"
-        }
-      ]
-    },
-    {
-      "number": 569,
-      "title": "RFC: define affine authority capabilities for environment access",
-      "state_labels": [
-        "needs-detail"
-      ],
-      "state_line": "needs-detail",
-      "blocked_by": [],
-      "evidence_commits": [],
-      "claims": [
+        },
         {
-          "agent_id": "codex-refresh-569-environment-authority-20260808",
+          "agent_id": "codex-design-274-b6-20260811",
           "status": "active"
         },
         {
-          "agent_id": "codex-refresh-569-environment-authority-20260808",
+          "agent_id": "codex-design-274-b6-20260811",
           "status": "released"
         }
       ]
     },
     {
       "number": 644,
-      "title": "HTTP/1.1 client core: bounded request and response state machine over scripted transport",
+      "title": "[Umbrella] Deliver the bounded HTTP/1.1 scripted-transport client core",
       "state_labels": [
-        "needs-detail"
+        "blocked"
       ],
-      "state_line": "needs-detail",
-      "blocked_by": [],
+      "state_line": "blocked",
+      "blocked_by": [
+        1256,
+        1257,
+        1258,
+        1260,
+        1261,
+        1262,
+        1263,
+        1264,
+        1269,
+        1270,
+        1271
+      ],
       "evidence_commits": [
-        "09e03fb96597aa1f48abce7ad95171d3184730d0",
-        "9154acdb67bc36538f73594e0019fefd03960524",
-        "b19e41f6e9aa3e9d6961b4147a6ffe0f1eac946e",
-        "b5ea9ec9241e832b87705c468818b4fd2684146d"
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
       ],
       "claims": [
         {
@@ -201,6 +260,14 @@
         },
         {
           "agent_id": "codex-root-644-http-client-topology-20260809",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-design-644-http-client-20260811",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-design-644-http-client-20260811",
           "status": "released"
         }
       ]
@@ -232,14 +299,18 @@
     },
     {
       "number": 710,
-      "title": "Compiler-native Decimal: implement the accepted language design across all backends",
+      "title": "[Umbrella] Deliver compiler-native Decimal, Float, and Fixed across declared backends",
       "state_labels": [
-        "needs-detail"
+        "blocked"
       ],
-      "state_line": "needs-detail",
-      "blocked_by": [],
+      "state_line": "blocked",
+      "blocked_by": [
+        725,
+        1254,
+        1255
+      ],
       "evidence_commits": [
-        "1639a8deb811d3f04acc5d84a4fd73f7630e8be0"
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
       ],
       "claims": [
         {
@@ -253,22 +324,33 @@
         {
           "agent_id": "codex-710-docs-truth-topology-20260809",
           "status": "released"
+        },
+        {
+          "agent_id": "codex-design-710-725-decimal-20260811",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-design-710-725-decimal-20260811",
+          "status": "released"
         }
       ]
     },
     {
       "number": 725,
-      "title": "Decimal slice 6: state scale guarantees truthfully now, and add Fixed[scale] when const generics exist",
+      "title": "[Umbrella] Deliver Decimal-backed Fixed[S] on the bounded C11 Stage 2 profile",
       "state_labels": [
-        "needs-detail"
+        "blocked"
       ],
-      "state_line": "needs-detail",
-      "blocked_by": [],
+      "state_line": "blocked",
+      "blocked_by": [
+        1249,
+        1250,
+        1251,
+        1252,
+        1253
+      ],
       "evidence_commits": [
-        "09a3229c33fd309f61a0a0ba407fd543f8c670e6",
-        "1639a8deb811d3f04acc5d84a4fd73f7630e8be0",
-        "bbb6b0ffee24952016394dc6352499a89ec3e938",
-        "bbf7af74862a23019cbbb73ade3b39b8aac605fa"
+        "28e1e6213533446fc646fe6a035dd24ff3ab420b"
       ],
       "claims": [
         {
@@ -289,6 +371,14 @@
         },
         {
           "agent_id": "codex-725-docs-truth-split-20260809",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-design-710-725-decimal-20260811",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-design-710-725-decimal-20260811",
           "status": "released"
         }
       ]
@@ -321,18 +411,16 @@
     },
     {
       "number": 868,
-      "title": "Stage 2 C11 aggregate bridge: execute records with List[Int] and Text",
+      "title": "[Umbrella] Complete and certify the Stage 2 mixed aggregate bridge",
       "state_labels": [
-        "needs-detail"
+        "blocked"
       ],
-      "state_line": "needs-detail",
-      "blocked_by": [],
+      "state_line": "blocked",
+      "blocked_by": [
+        1248
+      ],
       "evidence_commits": [
-        "08718618aeb3f4b81a64ed470ffcf5c6087bee3f",
-        "0a209468da3698a31cf6177b863284fd04c9a374",
-        "1be32d5b9b7cdd9dbcb4532b6c1b094ec5b5f779",
-        "43d53d38ef30ec5ef234eb976c3e39a7ae949bb5",
-        "b783e7697d3791ce26def31e7b58a51367c83036"
+        "28e1e6213533446fc646fe6a035dd24ff3ab420b"
       ],
       "claims": [
         {
@@ -357,21 +445,34 @@
         },
         {
           "agent_id": "codex-868-list-int-signatures-20260809",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-design-868-aggregate-bridge-20260811",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-design-868-aggregate-bridge-20260811",
           "status": "released"
         }
       ]
     },
     {
       "number": 882,
-      "title": "Call arguments v1 slice 3: lower labelled and trailing calls without reorder or allocation",
+      "title": "[Umbrella] Complete call-arguments v1 fixed-slot lowering across pipelines and backends",
       "state_labels": [
-        "needs-detail"
+        "blocked"
       ],
-      "state_line": "needs-detail",
-      "blocked_by": [],
+      "state_line": "blocked",
+      "blocked_by": [
+        1190,
+        1192,
+        1226,
+        1227,
+        1228
+      ],
       "evidence_commits": [
-        "08718618aeb3f4b81a64ed470ffcf5c6087bee3f",
-        "43d53d38ef30ec5ef234eb976c3e39a7ae949bb5"
+        "018ee4cd92c2c8c368176c829fdd723b90609022"
       ],
       "claims": [
         {
@@ -388,6 +489,14 @@
         },
         {
           "agent_id": "codex-root-882-c11-lowering-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-sync-882-call-arguments-20260811",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-sync-882-call-arguments-20260811",
           "status": "released"
         }
       ]
@@ -491,13 +600,20 @@
       "number": 902,
       "title": "bindgen-c: enforce a mechanical raw-binding import boundary",
       "state_labels": [
-        "needs-detail"
+        "blocked"
       ],
-      "state_line": "needs-detail",
-      "blocked_by": [],
+      "state_line": "blocked",
+      "blocked_by": [
+        1211,
+        1212,
+        1214,
+        1215,
+        1216,
+        1217
+      ],
       "evidence_commits": [
-        "041816f714eb82ed72e4a773c0112ed87f71b93b",
-        "356931b8c8f8d399d7b8d3aa84421bcec99578f6"
+        "112b4d24fd4063c37e5530e90c50c4d5dfa3cf09",
+        "8fd0b25497c1fd4c61085260a416af619beb3c3f"
       ],
       "claims": [
         {
@@ -511,36 +627,10 @@
         {
           "agent_id": "claude-opus-trust-902",
           "status": "pr-open"
-        }
-      ]
-    },
-    {
-      "number": 1113,
-      "title": "Stage 2: merge the labelled and direct List[Int] fixed-slot call lowering",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "b6947cc9ecc54ab7465bc4ea7166c4a960d1d04b"
-      ],
-      "claims": [
-        {
-          "agent_id": "claude-merge-sweep",
-          "status": "active"
         },
         {
-          "agent_id": "claude-merge-sweep",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-1113-fixed-slot-merge-20260811",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-1113-fixed-slot-merge-20260811",
-          "status": "pr-open"
+          "agent_id": "claude-opus-trust-902",
+          "status": "merged"
         }
       ]
     },
@@ -564,12 +654,30 @@
       "number": 1161,
       "title": "Scoped parallelism: derive task captures from checked bodies and resolved calls",
       "state_labels": [
-        "ready"
+        "blocked"
       ],
-      "state_line": "ready",
-      "blocked_by": [],
+      "state_line": "blocked",
+      "blocked_by": [
+        1219,
+        1220,
+        1221,
+        1222,
+        1223,
+        1224,
+        1225
+      ],
       "evidence_commits": [
-        "37905efa0e4fcf1b821a97e2799722a47ab942f2"
+        "037b78cc5456b294e4daf1a15f2555fccb3296ae"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-design-1161-captures-20260811",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-design-1161-captures-20260811",
+          "status": "released"
+        }
       ]
     },
     {
@@ -580,10 +688,10 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1161
+        1223
       ],
       "evidence_commits": [
-        "37905efa0e4fcf1b821a97e2799722a47ab942f2"
+        "037b78cc5456b294e4daf1a15f2555fccb3296ae"
       ]
     },
     {
@@ -644,14 +752,14 @@
     },
     {
       "number": 1190,
-      "title": "Call arguments v1 slice 3b: lower pipeline subjects with exactly-once source-order evaluation",
+      "title": "Call arguments v1 slice 3b.1: recognize one direct-call pipeline production and fail closed",
       "state_labels": [
         "ready"
       ],
       "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
-        "1c27baa804f825b93c031648c1c627f477236316"
+        "037b78cc5456b294e4daf1a15f2555fccb3296ae"
       ],
       "claims": [
         {
@@ -661,19 +769,19 @@
         {
           "agent_id": "claude-code-1190-pipeline-subject-20260811",
           "status": "released"
+        },
+        {
+          "agent_id": "codex-design-1190-pipeline-20260811",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-design-1190-pipeline-20260811",
+          "status": "released"
+        },
+        {
+          "agent_id": "claude-code-1190-pipeline-production-20260811",
+          "status": "active"
         }
-      ]
-    },
-    {
-      "number": 1191,
-      "title": "Call arguments v1 slice 3c: lower the accepted trailing-lambda form and fix the lifted-lambda-body boundary",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "1c27baa804f825b93c031648c1c627f477236316"
       ]
     },
     {
@@ -684,24 +792,49 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1189,
-        1190,
-        1191
+        1228
       ],
       "evidence_commits": [
-        "1c27baa804f825b93c031648c1c627f477236316"
+        "018ee4cd92c2c8c368176c829fdd723b90609022"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-sync-1192-backend-blocker-20260811",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-sync-1192-backend-blocker-20260811",
+          "status": "released"
+        }
       ]
     },
     {
       "number": 1193,
-      "title": "RFC-0002 stage 1: compiler authority model, attenuation facts, and E350-E356",
+      "title": "[Umbrella] RFC-0002 compiler authority prerequisites and E350-E356",
       "state_labels": [
-        "needs-detail"
+        "blocked"
       ],
-      "state_line": "needs-detail",
-      "blocked_by": [],
+      "state_line": "blocked",
+      "blocked_by": [
+        1241,
+        1242,
+        1243,
+        1244,
+        1245,
+        1246
+      ],
       "evidence_commits": [
-        "1c27baa804f825b93c031648c1c627f477236316"
+        "855ca05a6cf6a01c404585cddc48443e9177086c"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-design-1193-authority-compiler-20260811",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-design-1193-authority-compiler-20260811",
+          "status": "released"
+        }
       ]
     },
     {
@@ -715,7 +848,7 @@
         1193
       ],
       "evidence_commits": [
-        "1c27baa804f825b93c031648c1c627f477236316"
+        "0e9cbcbc06bafe9d4cea9d0fafebf5f2c9d03560"
       ]
     },
     {
@@ -748,20 +881,1269 @@
     },
     {
       "number": 1205,
-      "title": "task verify recompiles the same translation units 64 times: half the suite is repeat compilation",
+      "title": "[Umbrella] Remove repeated C compilation from task verify",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1238,
+        1239
+      ],
+      "evidence_commits": [
+        "855ca05a6cf6a01c404585cddc48443e9177086c"
+      ],
+      "claims": [
+        {
+          "agent_id": "claude-code-1205-compile-reuse-20260811",
+          "status": "active"
+        },
+        {
+          "agent_id": "claude-code-1205-compile-reuse-20260811",
+          "status": "merged"
+        },
+        {
+          "agent_id": "claude-code-1205-compile-reuse-20260811",
+          "status": "pr-open"
+        },
+        {
+          "agent_id": "claude-code-1205-compile-reuse-20260811",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-design-1205-object-reuse-20260811",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-design-1205-object-reuse-20260811",
+          "status": "released"
+        }
+      ]
+    },
+    {
+      "number": 1211,
+      "title": "RFC-0012 step 1: parse and validate raw-foreign module trust",
       "state_labels": [
         "ready"
       ],
       "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
-        "0af511f237c749db8b86355f23cdfcf2478b9be4"
+        "8fd0b25497c1fd4c61085260a416af619beb3c3f"
+      ]
+    },
+    {
+      "number": 1212,
+      "title": "RFC-0012 erratum: define KIF 0x800A for ordinary modules",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": [
+        "8fd0b25497c1fd4c61085260a416af619beb3c3f"
+      ]
+    },
+    {
+      "number": 1214,
+      "title": "RFC-0012 step 2: serialize module trust in KIF 0x800A",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1211,
+        1212
+      ],
+      "evidence_commits": [
+        "8fd0b25497c1fd4c61085260a416af619beb3c3f"
+      ]
+    },
+    {
+      "number": 1215,
+      "title": "RFC-0012 step 3: enforce trusted and ordinary raw-module imports",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1214
+      ],
+      "evidence_commits": [
+        "8fd0b25497c1fd4c61085260a416af619beb3c3f"
+      ]
+    },
+    {
+      "number": 1216,
+      "title": "RFC-0012 step 4: refuse every raw-origin re-export",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1215
+      ],
+      "evidence_commits": [
+        "8fd0b25497c1fd4c61085260a416af619beb3c3f"
+      ]
+    },
+    {
+      "number": 1217,
+      "title": "RFC-0012 steps 5-6: integrate bindgen raw modules and reviewed facade",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1216
+      ],
+      "evidence_commits": [
+        "8fd0b25497c1fd4c61085260a416af619beb3c3f"
+      ]
+    },
+    {
+      "number": 1218,
+      "title": "Lower the __linux_syscall intrinsics in the native backend, so the declared syscall layer executes",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "dc7b49bf2404b44fa7a8f3916c0b0f1e3bd0ab03"
       ],
       "claims": [
         {
-          "agent_id": "claude-code-1205-compile-reuse-20260811",
+          "agent_id": "codex-design-1218-host-ops-20260811",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-design-1218-host-ops-20260811",
+          "status": "released"
+        }
+      ]
+    },
+    {
+      "number": 1219,
+      "title": "Scoped captures: freeze scope-HIR v2 and sidecar wire contract",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "037b78cc5456b294e4daf1a15f2555fccb3296ae"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-1219-capture-contract-20260811",
           "status": "active"
         }
+      ]
+    },
+    {
+      "number": 1220,
+      "title": "Scoped parallelism HIR: emit par, spawn, and join identities",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1219
+      ],
+      "evidence_commits": [
+        "037b78cc5456b294e4daf1a15f2555fccb3296ae"
+      ]
+    },
+    {
+      "number": 1221,
+      "title": "Scoped captures: build checked base, field, and slice places",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1220
+      ],
+      "evidence_commits": [
+        "037b78cc5456b294e4daf1a15f2555fccb3296ae"
+      ]
+    },
+    {
+      "number": 1222,
+      "title": "Scoped captures: derive direct task-body read, edit, and take sets",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1221
+      ],
+      "evidence_commits": [
+        "037b78cc5456b294e4daf1a15f2555fccb3296ae"
+      ]
+    },
+    {
+      "number": 1223,
+      "title": "Scoped captures: propagate same-unit call summaries to a fixed point",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1222
+      ],
+      "evidence_commits": [
+        "037b78cc5456b294e4daf1a15f2555fccb3296ae"
+      ]
+    },
+    {
+      "number": 1224,
+      "title": "Typed sidecar v2: implement scoped-capture codec and projector",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1219
+      ],
+      "evidence_commits": [
+        "037b78cc5456b294e4daf1a15f2555fccb3296ae"
+      ]
+    },
+    {
+      "number": 1225,
+      "title": "Scoped captures: wire compiler facts into KSE2 and typed sidecar",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1223,
+        1224
+      ],
+      "evidence_commits": [
+        "037b78cc5456b294e4daf1a15f2555fccb3296ae"
+      ]
+    },
+    {
+      "number": 1226,
+      "title": "Call arguments v1 slice 3b.2: bind the pipeline subject to slot zero",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1190
+      ],
+      "evidence_commits": [
+        "037b78cc5456b294e4daf1a15f2555fccb3296ae"
+      ]
+    },
+    {
+      "number": 1227,
+      "title": "Call arguments v1 slice 3b.3: check pipeline arity, type, and take transfer",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1226
+      ],
+      "evidence_commits": [
+        "037b78cc5456b294e4daf1a15f2555fccb3296ae"
+      ]
+    },
+    {
+      "number": 1228,
+      "title": "Call arguments v1 slice 3b.4: lower direct-call pipelines through C11 fixed slots",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1227
+      ],
+      "evidence_commits": [
+        "037b78cc5456b294e4daf1a15f2555fccb3296ae"
+      ]
+    },
+    {
+      "number": 1231,
+      "title": "Host process authority: decide bounded spawn, wait, and capture semantics",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": [
+        "0e9cbcbc06bafe9d4cea9d0fafebf5f2c9d03560"
+      ]
+    },
+    {
+      "number": 1232,
+      "title": "linux_x86_64 process: implement authorized spawn and wait outcomes",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1193,
+        1231
+      ],
+      "evidence_commits": [
+        "0e9cbcbc06bafe9d4cea9d0fafebf5f2c9d03560"
+      ]
+    },
+    {
+      "number": 1233,
+      "title": "linux_x86_64 process: capture bounded stdout and stderr without deadlock",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1232
+      ],
+      "evidence_commits": [
+        "0e9cbcbc06bafe9d4cea9d0fafebf5f2c9d03560"
+      ]
+    },
+    {
+      "number": 1234,
+      "title": "Directory authority: decide bounded enumeration and path semantics",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": [
+        "0e9cbcbc06bafe9d4cea9d0fafebf5f2c9d03560"
+      ]
+    },
+    {
+      "number": 1235,
+      "title": "linux_x86_64 filesystem: implement authorized deterministic directory listing",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1193,
+        1234
+      ],
+      "evidence_commits": [
+        "0e9cbcbc06bafe9d4cea9d0fafebf5f2c9d03560"
+      ]
+    },
+    {
+      "number": 1238,
+      "title": "verify: compile semantic producer object profiles once per run",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "855ca05a6cf6a01c404585cddc48443e9177086c"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-1238-semantic-object-reuse-20260811",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "number": 1239,
+      "title": "verify: reuse common KIF, Unicode, SHA-256, and visibility objects",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1238
+      ],
+      "evidence_commits": [
+        "855ca05a6cf6a01c404585cddc48443e9177086c"
+      ]
+    },
+    {
+      "number": 1241,
+      "title": "Environment authority compiler profile: decide type, entrypoint, key facts, and pure boundary",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": [
+        "855ca05a6cf6a01c404585cddc48443e9177086c"
+      ]
+    },
+    {
+      "number": 1242,
+      "title": "Stage 2 authority carrier: opaque nominal types and direct affine bindings",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1241
+      ],
+      "evidence_commits": [
+        "855ca05a6cf6a01c404585cddc48443e9177086c"
+      ]
+    },
+    {
+      "number": 1243,
+      "title": "Stage 2 authority kind: propagate Owned through shipped composites",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1242
+      ],
+      "evidence_commits": [
+        "855ca05a6cf6a01c404585cddc48443e9177086c"
+      ]
+    },
+    {
+      "number": 1244,
+      "title": "Stage 2 affine authority state: control-flow cleanup and escape refusal",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1243
+      ],
+      "evidence_commits": [
+        "855ca05a6cf6a01c404585cddc48443e9177086c"
+      ]
+    },
+    {
+      "number": 1245,
+      "title": "Stage 2 explicit pure boundary over inferred pure/io summaries",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1241
+      ],
+      "evidence_commits": [
+        "855ca05a6cf6a01c404585cddc48443e9177086c"
+      ]
+    },
+    {
+      "number": 1246,
+      "title": "Stage 2 environment authority: root transfer, attenuation facts, and E350-E356 integration",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1244,
+        1245
+      ],
+      "evidence_commits": [
+        "855ca05a6cf6a01c404585cddc48443e9177086c"
+      ]
+    },
+    {
+      "number": 1248,
+      "title": "Stage 2 aggregate bridge: pin the mixed Text/List[Int] record path and capability truth",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "dc7b49bf2404b44fa7a8f3916c0b0f1e3bd0ab03"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-1248-aggregate-truth-20260811",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "number": 1249,
+      "title": "Decide the executable Decimal-backed Fixed[S] profile",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": [
+        "28e1e6213533446fc646fe6a035dd24ff3ab420b"
+      ]
+    },
+    {
+      "number": 1250,
+      "title": "Stage 2 Decimal Fixed[S]: nominal carrier, construction, and scale identity",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1249
+      ],
+      "evidence_commits": [
+        "28e1e6213533446fc646fe6a035dd24ff3ab420b"
+      ]
+    },
+    {
+      "number": 1251,
+      "title": "Stage 2 Decimal Fixed[S]: explicit checked conversion in both directions",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1249,
+        1250
+      ],
+      "evidence_commits": [
+        "28e1e6213533446fc646fe6a035dd24ff3ab420b"
+      ]
+    },
+    {
+      "number": 1252,
+      "title": "Stage 2 Decimal Fixed[S]: exact same-scale arithmetic and product-scale lowering",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1249,
+        1250
+      ],
+      "evidence_commits": [
+        "28e1e6213533446fc646fe6a035dd24ff3ab420b"
+      ]
+    },
+    {
+      "number": 1253,
+      "title": "Decimal Fixed[S]: final C11 Stage 2 conformance, capability truth, and profile transition",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1250,
+        1251,
+        1252
+      ],
+      "evidence_commits": [
+        "28e1e6213533446fc646fe6a035dd24ff3ab420b"
+      ]
+    },
+    {
+      "number": 1254,
+      "title": "Conformance: make c11-stage1 invoke only the Stage 1 compiler",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1255,
+      "title": "Decide Decimal/Float backend profiles for Stage 1, standalone native ELF, and wasm",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1256,
+      "title": "Decide the bounded executable carrier profile for the HTTP/1.1 core",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1257,
+      "title": "HTTP/1.1 core: executable bounded reference model and fragmentation corpus",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1258,
+      "title": "HTTP core prerequisites: executable Bytes, headers, URL input, and typed errors on C11 Stage 2",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1256
+      ],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1260,
+      "title": "Implement synchronous finite Stream[T,E] and affine Subscription on C11 Stage 2",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1256,
+        1269,
+        1270,
+        1271
+      ],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1261,
+      "title": "HTTP/1.1 core: deterministic request serializer and scripted write cursor",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1257,
+        1258
+      ],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1262,
+      "title": "HTTP/1.1 core: incremental response head and framing-plan decoder",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1257,
+        1258
+      ],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1263,
+      "title": "HTTP/1.1 core: affine response body stream, cancellation, drain, and reuse",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1260,
+        1262
+      ],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1264,
+      "title": "HTTP/1.1 core: executable scripted-transport vertical slice and capability truth",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1261,
+        1263
+      ],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1265,
+      "title": "Decide generics execution profile v1: constructed identities, specialization, and static dictionaries",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1266,
+      "title": "Decide versioned KIF facts for generic declarations, traits, dictionaries, and separate compilation",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1267,
+      "title": "Decide generic proposition and trusted proof-certificate kernel v1",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1268,
+      "title": "Generics v1: production nominal binders, constructed TypeRefs, and typed HIR",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1265
+      ],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1269,
+      "title": "Generics v1: specialize nominal generic records through AggregateLayout and C11",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1268
+      ],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1270,
+      "title": "Generics v1: specialize generic ADTs and payloads through C11 Stage 2",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1268,
+        1269
+      ],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1271,
+      "title": "Generics v1: lower explicit generic function instantiations on C11 Stage 2",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1265
+      ],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1272,
+      "title": "Traits v1: integrate bounds, implementations, and dictionary identities into production typed HIR",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1265,
+        1271
+      ],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1273,
+      "title": "Traits v1: execute production static dictionaries and bounded calls on C11 Stage 2",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1272
+      ],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1274,
+      "title": "KIF generics v1: implement canonical generic/trait interface codec and adversarial model",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1266
+      ],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1275,
+      "title": "KIF generics v1: emit and resolve production generic/trait interfaces source-free",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1268,
+        1272,
+        1274
+      ],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1276,
+      "title": "Generics v1: implement dictionary, monomorphic, and hybrid lowering modes with differential traces",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1271,
+        1273,
+        1275
+      ],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1277,
+      "title": "Generics v1: commit reproducible three-mode strategy measurements and select the justified baseline",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1276
+      ],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1278,
+      "title": "Generic laws v1: type generic propositions and emit versioned proof obligations",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1267,
+        1272,
+        1275
+      ],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1279,
+      "title": "Generic laws v1: implement the trusted proof-certificate checker and counterfeit corpus",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1278
+      ],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1280,
+      "title": "Generics and traits v1: production vertical matrix, cleanup, and capability truth",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1269,
+        1270,
+        1273,
+        1275,
+        1277,
+        1279
+      ],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1281,
+      "title": "Decide ADT match v2: payload products, ownership, result joins, and bounded pattern matrix",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1282,
+      "title": "ADT usefulness v2: recursive resolved pattern-matrix oracle and mutation corpus",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1283,
+      "title": "ADT match v2: resolve nested/or patterns and binding paths into production HIR",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1268,
+        1281
+      ],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1284,
+      "title": "ADT match v2: run recursive usefulness on production HIR with stable diagnostics",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1282,
+        1283
+      ],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1285,
+      "title": "ADT match v2: enforce borrow/take payload binding, partial-move, and cleanup state",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1281,
+        1284
+      ],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1286,
+      "title": "ADT match v2: type value-result joins beyond Int with explicit Never boundary",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1281,
+        1285
+      ],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1287,
+      "title": "ADT match v2: lower nested/or patterns and general value results through C11",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1269,
+        1270,
+        1286
+      ],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1288,
+      "title": "ADT match v2: backend support/refusal matrix, fuzz, cleanup, and capability truth",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1287
+      ],
+      "evidence_commits": [
+        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ]
+    },
+    {
+      "number": 1289,
+      "title": "B6 reproduction packet: delegated offline runner and canonical report validator",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "dc7b49bf2404b44fa7a8f3916c0b0f1e3bd0ab03"
+      ]
+    },
+    {
+      "number": 1290,
+      "title": "Decide B6 operational independence, attestation authority, and freshness policy",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": [
+        "dc7b49bf2404b44fa7a8f3916c0b0f1e3bd0ab03"
+      ]
+    },
+    {
+      "number": 1291,
+      "title": "B6: obtain and validate one policy-compliant independent clean-builder attestation",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1289,
+        1290
+      ],
+      "evidence_commits": [
+        "dc7b49bf2404b44fa7a8f3916c0b0f1e3bd0ab03"
+      ]
+    },
+    {
+      "number": 1292,
+      "title": "B6: bind the independent attestation into manifest, roadmap, and release truth",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1291
+      ],
+      "evidence_commits": [
+        "dc7b49bf2404b44fa7a8f3916c0b0f1e3bd0ab03"
+      ]
+    },
+    {
+      "number": 1293,
+      "title": "[Decision] Freeze the Kofun source/runtime projection for wasm32-wasi-command1",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": [
+        "dc7b49bf2404b44fa7a8f3916c0b0f1e3bd0ab03"
+      ]
+    },
+    {
+      "number": 1294,
+      "title": "[Decision] Pin the maintained host matrix for wasm32-wasi-command1",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": [
+        "dc7b49bf2404b44fa7a8f3916c0b0f1e3bd0ab03"
+      ]
+    },
+    {
+      "number": 1296,
+      "title": "[WASI command] Activate the target selector and fail-closed module shell",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1293
+      ],
+      "evidence_commits": [
+        "dc7b49bf2404b44fa7a8f3916c0b0f1e3bd0ab03"
+      ]
+    },
+    {
+      "number": 1297,
+      "title": "[WASI command] Implement bounded command-memory carriers",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1293,
+        1296
+      ],
+      "evidence_commits": [
+        "dc7b49bf2404b44fa7a8f3916c0b0f1e3bd0ab03"
+      ]
+    },
+    {
+      "number": 1298,
+      "title": "[WASI command] Lower argv and environment through explicit authority",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1194,
+        1246,
+        1293,
+        1297
+      ],
+      "evidence_commits": [
+        "dc7b49bf2404b44fa7a8f3916c0b0f1e3bd0ab03"
+      ]
+    },
+    {
+      "number": 1299,
+      "title": "[WASI command] Implement bounded stdio adapters",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1242,
+        1245,
+        1293,
+        1297
+      ],
+      "evidence_commits": [
+        "dc7b49bf2404b44fa7a8f3916c0b0f1e3bd0ab03"
+      ]
+    },
+    {
+      "number": 1300,
+      "title": "[WASI command] Implement clock, random, and exit adapters",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1242,
+        1245,
+        1293,
+        1297
+      ],
+      "evidence_commits": [
+        "dc7b49bf2404b44fa7a8f3916c0b0f1e3bd0ab03"
+      ]
+    },
+    {
+      "number": 1301,
+      "title": "[WASI command] Implement read-only preopen file access",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1234,
+        1242,
+        1245,
+        1293,
+        1297
+      ],
+      "evidence_commits": [
+        "dc7b49bf2404b44fa7a8f3916c0b0f1e3bd0ab03"
+      ]
+    },
+    {
+      "number": 1302,
+      "title": "[WASI command] Prove the full profile through the executable reference host",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1298,
+        1299,
+        1300,
+        1301
+      ],
+      "evidence_commits": [
+        "dc7b49bf2404b44fa7a8f3916c0b0f1e3bd0ab03"
+      ]
+    },
+    {
+      "number": 1303,
+      "title": "[WASI command] Run the same module on two maintained hosts",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1294,
+        1302
+      ],
+      "evidence_commits": [
+        "dc7b49bf2404b44fa7a8f3916c0b0f1e3bd0ab03"
+      ]
+    },
+    {
+      "number": 1304,
+      "title": "[Wasm matrix] Publish support truth and remove superseded command scaffolding",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1303
+      ],
+      "evidence_commits": [
+        "dc7b49bf2404b44fa7a8f3916c0b0f1e3bd0ab03"
       ]
     }
   ]
