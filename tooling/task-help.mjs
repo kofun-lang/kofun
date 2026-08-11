@@ -72,7 +72,7 @@ export const GROUPS = Object.freeze([
         hint: 'Discovery, sidecars, editors, frameworks, packages, and evidence adapters.',
         tasks: [
             'task-help', 'discovery', 'cli-framework', 'tui-framework', 'build-system',
-            'packages', 'typed-sidecar-spec', 'typed-sidecar-codec',
+            'verify-object-reuse', 'packages', 'typed-sidecar-spec', 'typed-sidecar-codec',
             'typed-sidecar-projector', 'upgrade-patch', 'documentation-index', 'ownership-view',
             'artifact-qualification', 'lsp', 'roadmap',
             'graphify-setup', 'graphify-update'

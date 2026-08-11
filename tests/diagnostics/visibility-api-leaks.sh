@@ -12,6 +12,7 @@ WORK=${KOFUN_VISIBILITY_DIAGNOSTIC_WORK:-"$ROOT/build/${KOFUN_GATE_WORK_NAMESPAC
 CC=${CC:-cc}
 PRODUCER="$WORK/kofun-stage2-kif"
 LOGICAL_PATH=demo/api.kofun
+. "$ROOT/bootstrap/stage2/semantic-objects.sh"
 
 fail() {
     printf '%s\n' "FAIL: $*" >&2
@@ -26,14 +27,15 @@ command -v "$CC" >/dev/null 2>&1 || fail 'a C11 compiler is required'
 rm -rf "$WORK"
 mkdir -p "$WORK"
 
+kofun_stage2_semantic_inputs "$ROOT" library
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
     -DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY \
     -I"$ROOT/bootstrap/stage2" \
     "$ROOT/bootstrap/stage2/stage2_kif_producer.c" \
-    "$ROOT/bootstrap/stage2/semantic_producer.c" \
-    "$ROOT/bootstrap/stage2/semantic_events.c" \
+    "$KOFUN_STAGE2_SEMANTIC_PRODUCER_INPUT" \
+    "$KOFUN_STAGE2_SEMANTIC_EVENTS_INPUT" \
     "$ROOT/bootstrap/stage2/kif_v1.c" \
-    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$KOFUN_STAGE2_SEMANTIC_SHA256_INPUT" \
     -o "$PRODUCER"
 
 "$PRODUCER" "$POSITIVE" "$LOGICAL_PATH" "$WORK/interface.kif" 2026 \

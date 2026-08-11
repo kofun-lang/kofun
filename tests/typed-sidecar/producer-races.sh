@@ -11,6 +11,7 @@ SOURCE="$ROOT/tests/typed-sidecar/fixtures/stage2_events.kofun"
 FAILED_SOURCE="$ROOT/bootstrap/stage2/function_unknown_error.kofun"
 ASSERT_CONTEXT='typed-sidecar races'
 . "$ROOT/tests/assertions/assert.sh"
+. "$ROOT/bootstrap/stage2/semantic-objects.sh"
 
 fail() {
     printf '%s\n' "FAIL: $*" >&2
@@ -26,11 +27,12 @@ esac
 rm -rf "$WORK"
 mkdir -p "$WORK"
 
+kofun_stage2_semantic_inputs "$ROOT" main
 "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic \
     -I"$ROOT/bootstrap/stage2" \
-    "$ROOT/bootstrap/stage2/semantic_producer.c" \
-    "$ROOT/bootstrap/stage2/semantic_events.c" \
-    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$KOFUN_STAGE2_SEMANTIC_PRODUCER_INPUT" \
+    "$KOFUN_STAGE2_SEMANTIC_EVENTS_INPUT" \
+    "$KOFUN_STAGE2_SEMANTIC_SHA256_INPUT" \
     -o "$WORK/kofun-stage2-semantic-events"
 
 for generation in 1 2 3

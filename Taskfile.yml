@@ -551,6 +551,11 @@ tasks:
       - "sh tests/build_system.sh"
       - "sh tests/tooling/stage2-build-reuse/check.sh"
 
+  verify-object-reuse:
+    desc: "Verify runner-scoped semantic producer object reuse"
+    cmds:
+      - "sh tests/tooling/verify-object-reuse/check.sh"
+
   packages:
     desc: "Verify locked package fetch and offline use"
     cmds:
@@ -899,16 +904,8 @@ tasks:
       # Override with `VERIFY_JOBS=1 task verify` to bisect a failure
       # without interleaved output.
       - cmd: |-
-          verify_stage2=${KOFUN_STAGE2_COMPILER:-}
-          if test -z "$verify_stage2"; then
-            verify_stage2="$PWD/build/verify/kofun-stage2"
-            rm -rf "$PWD/build/verify"
-            mkdir -p "$PWD/build/verify"
-            . "$PWD/bootstrap/stage2/build.sh"
-            kofun_stage2_build "$PWD" "$verify_stage2"
-          fi
-          KOFUN_STAGE2_COMPILER="$verify_stage2" \
-            task --parallel --failfast -C "${VERIFY_JOBS:-3}" \
+          sh "$PWD/bootstrap/stage2/verify-runner.sh" \
+            "$PWD" "${VERIFY_JOBS:-3}" \
             test \
             diagnostics \
             fuzz \
@@ -1027,7 +1024,3 @@ tasks:
             backlog \
             release-claims \
             rfc-registry
-      # `roadmap` owns the LSP gate, whose five performance measurements are
-      # perturbed by a busy machine. Keep that single invocation last and by
-      # itself; running `lsp` here too only measured the same gate twice.
-      - task: roadmap
