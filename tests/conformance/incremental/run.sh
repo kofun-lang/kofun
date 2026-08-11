@@ -36,6 +36,7 @@ UTIL_FILE=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 # These are upstream-owned target ABI/profile fact digests, not host paths.
 TARGET_PROFILE=5555555555555555555555555555555555555555555555555555555555555555
 TARGET_PROFILE_CHANGED=6666666666666666666666666666666666666666666666666666666666666666
+. "$ROOT/bootstrap/stage2/semantic-objects.sh"
 
 fail() {
     printf '%s\n' "FAIL: $*" >&2
@@ -49,28 +50,47 @@ esac
 command -v "$CC" >/dev/null 2>&1 || fail 'a C11 compiler is required'
 rm -rf "$WORK"
 mkdir -p "$WORK"
+kofun_stage2_semantic_common_inputs "$ROOT"
 
 build_tool() {
     compiler=$1
     output=$2
-    shift 2
-    "$compiler" -std=c11 -Wall -Wextra -Werror -pedantic \
-        -I"$ROOT/bootstrap/stage2" "$@" \
-        "$ROOT/bootstrap/stage2/incremental_graph.c" \
-        "$ROOT/bootstrap/stage2/kif_v1.c" \
-        "$ROOT/bootstrap/stage2/visibility_access.c" \
-        "$ROOT/unicode/kofun_unicode.c" \
-        "$ROOT/bootstrap/stage2/sha256.c" \
-        -o "$output"
+    input_mode=$3
+    shift 3
+    case $input_mode in
+        common)
+            KOFUN_STAGE2_COMMON_LINK_ID=incremental/graph \
+                "$compiler" -std=c11 -Wall -Wextra -Werror -pedantic \
+                -I"$ROOT/bootstrap/stage2" "$@" \
+                "$ROOT/bootstrap/stage2/incremental_graph.c" \
+                "$KOFUN_STAGE2_COMMON_KIF_V1_INPUT" \
+                "$KOFUN_STAGE2_COMMON_VISIBILITY_INPUT" \
+                "$KOFUN_STAGE2_COMMON_UNICODE_INPUT" \
+                "$KOFUN_STAGE2_COMMON_SHA256_INPUT" \
+                -o "$output"
+            ;;
+        source)
+            "$compiler" -std=c11 -Wall -Wextra -Werror -pedantic \
+                -I"$ROOT/bootstrap/stage2" "$@" \
+                "$ROOT/bootstrap/stage2/incremental_graph.c" \
+                "$ROOT/bootstrap/stage2/kif_v1.c" \
+                "$ROOT/bootstrap/stage2/visibility_access.c" \
+                "$ROOT/unicode/kofun_unicode.c" \
+                "$ROOT/bootstrap/stage2/sha256.c" \
+                -o "$output"
+            ;;
+        *) fail "unknown incremental tool input mode: $input_mode" ;;
+    esac
 }
 
-build_tool "$CC" "$TOOL" -O2
+build_tool "$CC" "$TOOL" common -O2
+KOFUN_STAGE2_COMMON_LINK_ID=incremental/reader \
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
     -I"$ROOT/bootstrap/stage2" \
     "$ROOT/bootstrap/stage2/kif_v1_tool.c" \
-    "$ROOT/bootstrap/stage2/kif_v1.c" \
-    "$ROOT/unicode/kofun_unicode.c" \
-    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$KOFUN_STAGE2_COMMON_KIF_V1_INPUT" \
+    "$KOFUN_STAGE2_COMMON_UNICODE_INPUT" \
+    "$KOFUN_STAGE2_COMMON_SHA256_INPUT" \
     -o "$KIF_TOOL"
 
 # ------------------------------------------------------------------ helpers
@@ -679,7 +699,7 @@ printf '%s\n' \
 # ------------------------------------------- toolchain, sanitizers, analyzer
 
 if command -v clang >/dev/null 2>&1; then
-    build_tool clang "$WORK/incremental-clang" -O2
+    build_tool clang "$WORK/incremental-clang" source -O2
     rm -rf "$WORK/cache-clang"
     run_graph "$WORK/incremental-clang" "$WORK/base.inventory" "$WORK/cache-clang" \
         "$WORK/clang.report" >/dev/null
@@ -687,7 +707,7 @@ if command -v clang >/dev/null 2>&1; then
         fail 'clang produced a different persisted graph'
 fi
 
-build_tool "$CC" "$WORK/incremental-sanitized" -O1 -g \
+build_tool "$CC" "$WORK/incremental-sanitized" source -O1 -g \
     -fsanitize=address,undefined -fno-omit-frame-pointer
 rm -rf "$WORK/cache-sanitized"
 ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \

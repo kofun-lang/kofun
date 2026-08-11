@@ -18,6 +18,7 @@ FACADE_MODULE=4444444444444444444444444444444444444444444444444444444444444444
 SECOND_EXPORT_EDGE=6666666666666666666666666666666666666666666666666666666666666666
 ASSERT_CONTEXT='kif v1'
 . "$ROOT/tests/assertions/assert.sh"
+. "$ROOT/bootstrap/stage2/semantic-objects.sh"
 
 fail() {
     printf '%s\n' "FAIL: $*" >&2
@@ -31,28 +32,47 @@ esac
 command -v "$CC" >/dev/null 2>&1 || fail 'a C11 compiler is required'
 rm -rf "$WORK"
 mkdir -p "$WORK"
+kofun_stage2_semantic_common_inputs "$ROOT"
 
 compile_tool() {
     compiler=$1
     output=$2
-    shift 2
-    "$compiler" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
-        -DKOFUN_TEST_DIAGNOSTIC_FAULTS \
-        -I"$ROOT/bootstrap/stage2" "$@" \
-        "$ROOT/bootstrap/stage2/kif_v1_tool.c" \
-        "$ROOT/bootstrap/stage2/kif_v1.c" \
-        "$ROOT/unicode/kofun_unicode.c" \
-        "$ROOT/bootstrap/stage2/sha256.c" \
-        -o "$output"
+    input_mode=$3
+    shift 3
+    case $input_mode in
+        common)
+            KOFUN_STAGE2_COMMON_LINK_ID=kif-v1/tool \
+                "$compiler" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+                -DKOFUN_TEST_DIAGNOSTIC_FAULTS \
+                -I"$ROOT/bootstrap/stage2" "$@" \
+                "$ROOT/bootstrap/stage2/kif_v1_tool.c" \
+                "$KOFUN_STAGE2_COMMON_KIF_V1_INPUT" \
+                "$KOFUN_STAGE2_COMMON_UNICODE_INPUT" \
+                "$KOFUN_STAGE2_COMMON_SHA256_INPUT" \
+                -o "$output"
+            ;;
+        source)
+            "$compiler" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+                -DKOFUN_TEST_DIAGNOSTIC_FAULTS \
+                -I"$ROOT/bootstrap/stage2" "$@" \
+                "$ROOT/bootstrap/stage2/kif_v1_tool.c" \
+                "$ROOT/bootstrap/stage2/kif_v1.c" \
+                "$ROOT/unicode/kofun_unicode.c" \
+                "$ROOT/bootstrap/stage2/sha256.c" \
+                -o "$output"
+            ;;
+        *) fail "unknown KIF tool input mode: $input_mode" ;;
+    esac
 }
 
-compile_tool "$CC" "$TOOL"
+compile_tool "$CC" "$TOOL" common
+KOFUN_STAGE2_COMMON_LINK_ID=kif-v1/codec-test \
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
     -I"$ROOT/bootstrap/stage2" \
     "$CASES/codec_test.c" \
-    "$ROOT/bootstrap/stage2/kif_v1.c" \
-    "$ROOT/unicode/kofun_unicode.c" \
-    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$KOFUN_STAGE2_COMMON_KIF_V1_INPUT" \
+    "$KOFUN_STAGE2_COMMON_UNICODE_INPUT" \
+    "$KOFUN_STAGE2_COMMON_SHA256_INPUT" \
     -o "$WORK/codec-test"
 
 write_inventory() {
@@ -350,7 +370,7 @@ assert_grep "unsupported.log" -F 'error[E2S50]:' "$WORK/unsupported.log"
 cmp "$WORK/interface.kif" "$WORK/preserved.kif" || fail 'failed write replaced prior KIF'
 
 if command -v clang >/dev/null 2>&1; then
-    compile_tool clang "$WORK/kofun-kif-v1-clang"
+    compile_tool clang "$WORK/kofun-kif-v1-clang" source
     "$WORK/kofun-kif-v1-clang" read "$WORK/interface.kif" "$WORK/clang.json"
     cmp "$WORK/interface.json" "$WORK/clang.json" || fail 'Clang reader changed facts'
 fi

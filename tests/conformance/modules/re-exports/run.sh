@@ -21,6 +21,7 @@ ALTERNATE_MODULE=555555555555555555555555555555555555555555555555555555555555555
 ALTERNATE_FILE=5656565656565656565656565656565656565656565656565656565656565656
 ASSERT_CONTEXT='re-exports'
 . "$ROOT/tests/assertions/assert.sh"
+. "$ROOT/bootstrap/stage2/semantic-objects.sh"
 
 fail() {
     printf '%s\n' "FAIL: $*" >&2
@@ -34,28 +35,32 @@ esac
 
 rm -rf "$WORK"
 mkdir -p "$WORK"
+kofun_stage2_semantic_common_inputs "$ROOT"
 
+KOFUN_STAGE2_COMMON_LINK_ID=re-exports/resolver \
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
     -DKOFUN_TEST_DIAGNOSTIC_FAULTS \
     -I"$ROOT/bootstrap/stage2" \
     "$ROOT/bootstrap/stage2/re_exports.c" \
-    "$ROOT/bootstrap/stage2/kif_v1.c" \
-    "$ROOT/bootstrap/stage2/visibility_access.c" \
-    "$ROOT/unicode/kofun_unicode.c" \
-    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$KOFUN_STAGE2_COMMON_KIF_V1_INPUT" \
+    "$KOFUN_STAGE2_COMMON_VISIBILITY_INPUT" \
+    "$KOFUN_STAGE2_COMMON_UNICODE_INPUT" \
+    "$KOFUN_STAGE2_COMMON_SHA256_INPUT" \
     -o "$TOOL"
 
+KOFUN_STAGE2_COMMON_LINK_ID=re-exports/reader \
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
     -I"$ROOT/bootstrap/stage2" \
     "$ROOT/bootstrap/stage2/kif_v1_tool.c" \
-    "$ROOT/bootstrap/stage2/kif_v1.c" \
-    "$ROOT/unicode/kofun_unicode.c" \
-    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$KOFUN_STAGE2_COMMON_KIF_V1_INPUT" \
+    "$KOFUN_STAGE2_COMMON_UNICODE_INPUT" \
+    "$KOFUN_STAGE2_COMMON_SHA256_INPUT" \
     -o "$KIF_TOOL"
+KOFUN_STAGE2_COMMON_LINK_ID=re-exports/export-binding-reference \
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
     -I"$ROOT/bootstrap/stage2" \
     "$CASES/export_binding_reference.c" \
-    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$KOFUN_STAGE2_COMMON_SHA256_INPUT" \
     -o "$WORK/export-binding-reference"
 
 write_inventory() {

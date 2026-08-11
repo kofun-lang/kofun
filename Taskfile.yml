@@ -572,7 +572,7 @@ tasks:
       - "sh tests/tooling/stage2-build-reuse/check.sh"
 
   verify-object-reuse:
-    desc: "Verify runner-scoped semantic producer object reuse"
+    desc: "Verify runner-scoped semantic and strict-O2 common object reuse"
     cmds:
       - "sh tests/tooling/verify-object-reuse/check.sh"
 
