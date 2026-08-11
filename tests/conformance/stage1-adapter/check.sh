@@ -172,8 +172,10 @@ assert_grep "decimal-stage2.c" -Fqx "$STAGE2_BANNER" "$WORK/decimal-stage2.c"
 # scratch copy, and each must fail.
 # ---------------------------------------------------------------------------
 
-# 4a. The public driver restored. Its fallback compiles the Decimal sentinel
-# through Stage 2, so the adapter returns success where it must return 125.
+# 4a. The public driver restored. Its fallback compiles and runs the Decimal
+# sentinel through Stage 2, so the adapter returns success where it must return
+# 125. The include path is the same support boundary the real c11-stage2
+# adapter supplies for emitted C's `#include "decimal_v1.c"`.
 mkdir -p "$WORK/mutant-driver"
 cat >"$WORK/mutant-driver/c11-stage1.sh" <<'MUTANT'
 BACKEND_NAME=c11-stage1
@@ -192,16 +194,72 @@ backend_compile() {
     emit_status=$?
     set -e
     test "$emit_status" -eq 0 || return 1
-    "${CC:-cc}" -std=c11 -O2 -Wall -Wextra -Werror "$emitted" -o "$output"
+    "${CC:-cc}" -std=c11 -O2 -Wall -Wextra -Werror \
+        -I"$KOFUN_ROOT/bootstrap/stage2" \
+        "$emitted" -o "$output"
 }
 MUTANT
+
+assert_restored_driver_success() {
+    label=$1
+    case_work=$2
+
+    assert_num "$label compile status" \
+        "$(cat "$case_work/status")" -eq 0
+    assert_grep "$label emitted C" -Fqx \
+        "$STAGE2_BANNER" "$case_work/program.c"
+    assert_executable "$label executable" "$case_work/program"
+
+    run_status=0
+    "$case_work/program" \
+        >"$case_work/actual.stdout" 2>"$case_work/actual.stderr" ||
+        run_status=$?
+    assert_num "$label runtime status" "$run_status" -eq 0
+    printf '1\n1\n1\n1\n' >"$case_work/expected.stdout"
+    if ! cmp -s "$case_work/expected.stdout" "$case_work/actual.stdout"; then
+        assert_fail "$label runtime stdout: expected four exact Decimal observations"
+    fi
+    assert_file_empty "$label runtime stderr" "$case_work/actual.stderr"
+}
+
 run_adapter_case "$WORK/mutant-driver/c11-stage1.sh" \
     "$ROOT/tests/conformance/decimal-arithmetic/decimal_exactness.kofun" \
     "$WORK/mutant-driver-case"
-assert_ne "restored driver refuses the Decimal sentinel" \
-    "$(cat "$WORK/mutant-driver-case/status")" 125
-assert_grep "mutant emitted C" -Fqx "$STAGE2_BANNER" \
-    "$WORK/mutant-driver-case/program.c"
+assert_restored_driver_success \
+    "restored driver Decimal sentinel" "$WORK/mutant-driver-case"
+
+# Removing that support boundary must trip the exact-success assertion by
+# name. This is the lasting mutation for the original false positive: status 1
+# can no longer satisfy the proof merely because it differs from 125.
+mkdir -p "$WORK/mutant-driver-missing-support"
+sed '/-I"\$KOFUN_ROOT\/bootstrap\/stage2"/d' \
+    "$WORK/mutant-driver/c11-stage1.sh" \
+    >"$WORK/mutant-driver-missing-support/c11-stage1.sh"
+assert_not_grep "missing-support driver" -Fq -- \
+    '-I"$KOFUN_ROOT/bootstrap/stage2"' \
+    "$WORK/mutant-driver-missing-support/c11-stage1.sh"
+run_adapter_case "$WORK/mutant-driver-missing-support/c11-stage1.sh" \
+    "$ROOT/tests/conformance/decimal-arithmetic/decimal_exactness.kofun" \
+    "$WORK/mutant-driver-missing-support-case"
+assert_grep "missing-support compiler diagnostic" -Fq \
+    'decimal_v1.c' \
+    "$WORK/mutant-driver-missing-support-case/compile.stderr"
+assert_absent "missing-support executable" \
+    "$WORK/mutant-driver-missing-support-case/program"
+
+missing_support_proof_status=0
+(
+    assert_restored_driver_success \
+        "restored driver Decimal sentinel" \
+        "$WORK/mutant-driver-missing-support-case"
+) >"$WORK/missing-support-proof.stdout" \
+    2>"$WORK/missing-support-proof.stderr" ||
+    missing_support_proof_status=$?
+assert_num "missing Stage 2 support fails restored-driver proof" \
+    "$missing_support_proof_status" -eq 1
+assert_grep "missing Stage 2 support names exact compile-status failure" -Fqx \
+    'FAIL: stage1-adapter: restored driver Decimal sentinel compile status: expected -eq 0, got 1' \
+    "$WORK/missing-support-proof.stderr"
 
 # 4b. The same restored driver against a source both stages accept. The real
 # adapter reads the provenance banner, so this one fails on an ordinary numeric
@@ -356,5 +414,6 @@ printf '%s\n' \
     "PASS: the c11-stage1 adapter runs the Stage 1 seed and no public-driver fallback" \
     "PASS: the seed is built once per runner, reused when supplied, and fails closed otherwise" \
     "PASS: Stage 2-only Decimal and const-generic sources are unsupported, with no artifact" \
-    "PASS: a restored driver, a substituted binary, and a missing reuse path are each refused" \
+    "PASS: a restored driver succeeds exactly, and missing Stage 2 support fails its proof by name" \
+    "PASS: a substituted binary and a missing reuse path are each refused" \
     "PASS: the c11-stage1 functions row matches what the seed accepts, construct by construct"
