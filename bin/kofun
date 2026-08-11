@@ -2,6 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$ROOT/bootstrap/stage2/semantic-objects.sh"
 BUILD_DIR=${KOFUN_BUILD_DIR:-"$ROOT/build/bootstrap-stage1"}
 SEED_C="$ROOT/bootstrap/stage1/compiler.c"
 COMPILER="$BUILD_DIR/kofun-stage1"
@@ -19,11 +20,40 @@ STAGE2_SEED_C="$ROOT/bootstrap/stage2/compiler.c"
 STAGE2_DECIMAL_C="$ROOT/bootstrap/stage2/decimal_v1.c"
 STAGE2_DECIMAL_H="$ROOT/bootstrap/stage2/decimal_v1.h"
 STAGE2_COMPILER="$STAGE2_BUILD_DIR/kofun-stage2"
+
+# A supplied semantic-object bundle is runner/session state, not a persistent
+# compiler cache.  `task verify` supplies both build directories inside its
+# unique run directory.  A direct `bin/kofun check --emit-*` invocation that
+# supplies only the bundle gets one private link session, removed when this
+# launcher exits.  Explicit build-directory overrides remain caller-owned.
+STAGE2_SEMANTIC_LINK_SESSION=
+if test "${KOFUN_STAGE2_SEMANTIC_OBJECT_DIR+x}" = x &&
+   test "${1-}" = check && test "$#" -gt 2 &&
+   { test -z "${KOFUN_STAGE2_EVENTS_BUILD_DIR:-}" ||
+     test -z "${KOFUN_STAGE2_KIF_BUILD_DIR:-}"; }
+then
+    mkdir -p "$ROOT/build"
+    STAGE2_SEMANTIC_LINK_SESSION=$(mktemp -d \
+        "$ROOT/build/stage2-semantic-links.XXXXXX")
+    cleanup_stage2_semantic_link_session() {
+        if test -n "${STAGE2_SEMANTIC_LINK_SESSION:-}" &&
+           { test -e "$STAGE2_SEMANTIC_LINK_SESSION" ||
+             test -L "$STAGE2_SEMANTIC_LINK_SESSION"; }
+        then
+            kofun_stage2_owned_tree_remove \
+                "$STAGE2_SEMANTIC_LINK_SESSION" 2>/dev/null || true
+        fi
+    }
+    trap cleanup_stage2_semantic_link_session 0
+    trap 'exit 129' 1
+    trap 'exit 130' 2
+    trap 'exit 143' 15
+    KOFUN_STAGE2_EVENTS_BUILD_DIR=${KOFUN_STAGE2_EVENTS_BUILD_DIR:-"$STAGE2_SEMANTIC_LINK_SESSION/events"}
+    KOFUN_STAGE2_KIF_BUILD_DIR=${KOFUN_STAGE2_KIF_BUILD_DIR:-"$STAGE2_SEMANTIC_LINK_SESSION/kif"}
+    export KOFUN_STAGE2_EVENTS_BUILD_DIR KOFUN_STAGE2_KIF_BUILD_DIR
+fi
 STAGE2_EVENTS_BUILD_DIR=${KOFUN_STAGE2_EVENTS_BUILD_DIR:-"$ROOT/build/stage2-events-cli"}
 STAGE2_EVENTS_COMPILER="$STAGE2_EVENTS_BUILD_DIR/kofun-stage2-semantic-events"
-STAGE2_EVENTS_SOURCE="$ROOT/bootstrap/stage2/semantic_producer.c"
-STAGE2_EVENTS_CODEC="$ROOT/bootstrap/stage2/semantic_events.c"
-STAGE2_EVENTS_SHA256="$ROOT/bootstrap/stage2/sha256.c"
 STAGE2_KIF_BUILD_DIR=${KOFUN_STAGE2_KIF_BUILD_DIR:-"$ROOT/build/stage2-kif-cli"}
 STAGE2_KIF_COMPILER="$STAGE2_KIF_BUILD_DIR/kofun-stage2-kif"
 STAGE2_KIF_SOURCE="$ROOT/bootstrap/stage2/stage2_kif_producer.c"
@@ -165,41 +195,74 @@ ensure_stage2_compiler() {
 }
 
 ensure_stage2_events_compiler() {
+    # Validate a supplied bundle on every call, including the path that can
+    # reuse an executable built earlier in this process.  An incomplete bundle
+    # must never be hidden by that executable cache.
+    kofun_stage2_semantic_inputs "$ROOT" main
     mkdir -p "$STAGE2_EVENTS_BUILD_DIR"
-    if [ ! -x "$STAGE2_EVENTS_COMPILER" ] ||
-       [ "$STAGE2_EVENTS_SOURCE" -nt "$STAGE2_EVENTS_COMPILER" ] ||
-       [ "$STAGE2_EVENTS_CODEC" -nt "$STAGE2_EVENTS_COMPILER" ] ||
-       [ "$STAGE2_EVENTS_SHA256" -nt "$STAGE2_EVENTS_COMPILER" ] ||
-       [ "$STAGE2_SEED_C" -nt "$STAGE2_EVENTS_COMPILER" ]
+    stage2_events_link=false
+    if [ -n "$KOFUN_STAGE2_SEMANTIC_OBJECT_ID" ]; then
+        kofun_stage2_semantic_executable_identity "$ROOT" events \
+            "$KOFUN_STAGE2_SEMANTIC_PRODUCER_INPUT" \
+            "$KOFUN_STAGE2_SEMANTIC_EVENTS_INPUT" \
+            "$KOFUN_STAGE2_SEMANTIC_SHA256_INPUT"
+        # Output kind, exact link profile, resolved compiler, and only the
+        # relevant object bytes own this key.  Path and mtime are absent.
+        STAGE2_EVENTS_COMPILER="$STAGE2_EVENTS_BUILD_DIR/kofun-stage2-semantic-events.$KOFUN_STAGE2_SEMANTIC_EXECUTABLE_ID"
+        kofun_stage2_semantic_executable_validate "$STAGE2_EVENTS_COMPILER"
+        [ -x "$STAGE2_EVENTS_COMPILER" ] || stage2_events_link=true
+    elif [ ! -x "$STAGE2_EVENTS_COMPILER" ] ||
+         [ "$KOFUN_STAGE2_SEMANTIC_PRODUCER_INPUT" -nt "$STAGE2_EVENTS_COMPILER" ] ||
+         [ "$KOFUN_STAGE2_SEMANTIC_EVENTS_INPUT" -nt "$STAGE2_EVENTS_COMPILER" ] ||
+         [ "$KOFUN_STAGE2_SEMANTIC_SHA256_INPUT" -nt "$STAGE2_EVENTS_COMPILER" ] ||
+         [ "$STAGE2_SEED_C" -nt "$STAGE2_EVENTS_COMPILER" ]
     then
-        "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+        stage2_events_link=true
+    fi
+    if [ "$stage2_events_link" = true ]; then
+        kofun_stage2_semantic_executable_link "$STAGE2_EVENTS_COMPILER" \
+            "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
             -I"$ROOT/bootstrap/stage2" \
-            "$STAGE2_EVENTS_SOURCE" \
-            "$STAGE2_EVENTS_CODEC" \
-            "$STAGE2_EVENTS_SHA256" \
-            -o "$STAGE2_EVENTS_COMPILER"
+            "$KOFUN_STAGE2_SEMANTIC_PRODUCER_INPUT" \
+            "$KOFUN_STAGE2_SEMANTIC_EVENTS_INPUT" \
+            "$KOFUN_STAGE2_SEMANTIC_SHA256_INPUT"
     fi
 }
 
 ensure_stage2_kif_compiler() {
+    kofun_stage2_semantic_inputs "$ROOT" library
     mkdir -p "$STAGE2_KIF_BUILD_DIR"
-    if [ ! -x "$STAGE2_KIF_COMPILER" ] ||
-       [ "$STAGE2_KIF_SOURCE" -nt "$STAGE2_KIF_COMPILER" ] ||
-       [ "$STAGE2_EVENTS_SOURCE" -nt "$STAGE2_KIF_COMPILER" ] ||
-       [ "$STAGE2_EVENTS_CODEC" -nt "$STAGE2_KIF_COMPILER" ] ||
-       [ "$STAGE2_KIF_CODEC" -nt "$STAGE2_KIF_COMPILER" ] ||
-       [ "$STAGE2_EVENTS_SHA256" -nt "$STAGE2_KIF_COMPILER" ] ||
-       [ "$STAGE2_SEED_C" -nt "$STAGE2_KIF_COMPILER" ]
+    stage2_kif_link=false
+    if [ -n "$KOFUN_STAGE2_SEMANTIC_OBJECT_ID" ]; then
+        kofun_stage2_semantic_executable_identity "$ROOT" kif \
+            "$KOFUN_STAGE2_SEMANTIC_PRODUCER_INPUT" \
+            "$KOFUN_STAGE2_SEMANTIC_EVENTS_INPUT" \
+            "$KOFUN_STAGE2_SEMANTIC_SHA256_INPUT"
+        STAGE2_KIF_COMPILER="$STAGE2_KIF_BUILD_DIR/kofun-stage2-kif.$KOFUN_STAGE2_SEMANTIC_EXECUTABLE_ID"
+        kofun_stage2_semantic_executable_validate "$STAGE2_KIF_COMPILER"
+        if [ ! -x "$STAGE2_KIF_COMPILER" ]; then
+            stage2_kif_link=true
+        fi
+    elif [ ! -x "$STAGE2_KIF_COMPILER" ] ||
+         [ "$STAGE2_KIF_SOURCE" -nt "$STAGE2_KIF_COMPILER" ] ||
+         [ "$KOFUN_STAGE2_SEMANTIC_PRODUCER_INPUT" -nt "$STAGE2_KIF_COMPILER" ] ||
+         [ "$KOFUN_STAGE2_SEMANTIC_EVENTS_INPUT" -nt "$STAGE2_KIF_COMPILER" ] ||
+         [ "$STAGE2_KIF_CODEC" -nt "$STAGE2_KIF_COMPILER" ] ||
+         [ "$KOFUN_STAGE2_SEMANTIC_SHA256_INPUT" -nt "$STAGE2_KIF_COMPILER" ] ||
+         [ "$STAGE2_SEED_C" -nt "$STAGE2_KIF_COMPILER" ]
     then
-        "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+        stage2_kif_link=true
+    fi
+    if [ "$stage2_kif_link" = true ]; then
+        kofun_stage2_semantic_executable_link "$STAGE2_KIF_COMPILER" \
+            "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
             -DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY \
             -I"$ROOT/bootstrap/stage2" \
             "$STAGE2_KIF_SOURCE" \
-            "$STAGE2_EVENTS_SOURCE" \
-            "$STAGE2_EVENTS_CODEC" \
+            "$KOFUN_STAGE2_SEMANTIC_PRODUCER_INPUT" \
+            "$KOFUN_STAGE2_SEMANTIC_EVENTS_INPUT" \
             "$STAGE2_KIF_CODEC" \
-            "$STAGE2_EVENTS_SHA256" \
-            -o "$STAGE2_KIF_COMPILER"
+            "$KOFUN_STAGE2_SEMANTIC_SHA256_INPUT"
     fi
 }
 

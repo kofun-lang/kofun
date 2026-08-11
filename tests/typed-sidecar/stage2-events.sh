@@ -9,6 +9,7 @@ CC=${CC:-cc}
 WORK=${KOFUN_STAGE2_EVENTS_WORK:-"$ROOT/build/stage2-semantic-events"}
 FIXTURE="$ROOT/tests/typed-sidecar/fixtures/stage2_events.kofun"
 . "$ROOT/bootstrap/stage2/build.sh"
+. "$ROOT/bootstrap/stage2/semantic-objects.sh"
 ASSERT_CONTEXT='stage2 events'
 . "$ROOT/tests/assertions/assert.sh"
 
@@ -43,18 +44,20 @@ $ROOT/tests/typed-sidecar/stage2_events_test.c
 # The production adapter directly invokes the audited Stage 2 lexer, parser,
 # scope-HIR builder, and ownership checker in compiler.c, then emits through
 # the public sink API.
+kofun_stage2_semantic_inputs "$ROOT" main
 "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic \
     -I"$ROOT/bootstrap/stage2" \
-    "$ROOT/bootstrap/stage2/semantic_producer.c" \
-    "$ROOT/bootstrap/stage2/semantic_events.c" \
-    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$KOFUN_STAGE2_SEMANTIC_PRODUCER_INPUT" \
+    "$KOFUN_STAGE2_SEMANTIC_EVENTS_INPUT" \
+    "$KOFUN_STAGE2_SEMANTIC_SHA256_INPUT" \
     -o "$WORK/plain/kofun-stage2-semantic-events"
+kofun_stage2_semantic_inputs "$ROOT" library
 "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic \
     -DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY \
     -I"$ROOT/bootstrap/stage2" \
-    "$ROOT/bootstrap/stage2/semantic_producer.c" \
-    "$ROOT/bootstrap/stage2/semantic_events.c" \
-    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$KOFUN_STAGE2_SEMANTIC_PRODUCER_INPUT" \
+    "$KOFUN_STAGE2_SEMANTIC_EVENTS_INPUT" \
+    "$KOFUN_STAGE2_SEMANTIC_SHA256_INPUT" \
     "$ROOT/tests/typed-sidecar/stage2_producer_test.c" \
     -o "$WORK/plain/stage2-producer-test"
 "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic \

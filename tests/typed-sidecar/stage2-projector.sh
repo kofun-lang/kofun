@@ -10,6 +10,7 @@ WORK=${KOFUN_STAGE2_PROJECTOR_WORK:-"$ROOT/build/stage2-projector"}
 FIXTURE="$ROOT/tests/typed-sidecar/fixtures/stage2_events.kofun"
 ASSERT_CONTEXT='stage2 projector'
 . "$ROOT/tests/assertions/assert.sh"
+. "$ROOT/bootstrap/stage2/semantic-objects.sh"
 
 fail() {
     printf '%s\n' "FAIL: $*" >&2
@@ -25,11 +26,12 @@ esac
 rm -rf "$WORK"
 mkdir -p "$WORK/remap-a" "$WORK/remap-b"
 
+kofun_stage2_semantic_inputs "$ROOT" main
 "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic \
     -I"$ROOT/bootstrap/stage2" \
-    "$ROOT/bootstrap/stage2/semantic_producer.c" \
-    "$ROOT/bootstrap/stage2/semantic_events.c" \
-    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$KOFUN_STAGE2_SEMANTIC_PRODUCER_INPUT" \
+    "$KOFUN_STAGE2_SEMANTIC_EVENTS_INPUT" \
+    "$KOFUN_STAGE2_SEMANTIC_SHA256_INPUT" \
     -o "$WORK/kofun-stage2-semantic-events"
 
 "$WORK/kofun-stage2-semantic-events" \
