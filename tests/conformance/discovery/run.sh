@@ -17,6 +17,7 @@ CASES="$ROOT/tests/conformance/discovery"
 CC=${CC:-cc}
 . "$ROOT/bootstrap/stage2/build.sh"
 . "$ROOT/bootstrap/stage2/semantic-objects.sh"
+. "$CASES/sanitizer-objects.sh"
 
 command -v "$CC" >/dev/null 2>&1 || {
     printf '%s\n' "discovery: a C11 compiler is required" >&2
@@ -24,7 +25,12 @@ command -v "$CC" >/dev/null 2>&1 || {
 }
 
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/kofun-discovery.XXXXXX")
-trap 'rm -rf "$WORK"' 0 1 2 15
+cleanup() {
+    if test -e "$WORK" || test -L "$WORK"; then
+        kofun_stage2_owned_tree_remove "$WORK" 2>/dev/null || true
+    fi
+}
+trap cleanup 0 1 2 15
 
 fail() {
     printf '%s\n' "FAIL: $*" >&2
@@ -298,54 +304,39 @@ then
         UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
             "$WORK/discovery-provider-sanitized" "$mode" >/dev/null
     done
-    "$CC" -std=c11 -O1 -g -Wall -Wextra -Werror -pedantic \
-        -fno-omit-frame-pointer -fsanitize=address,undefined \
-        -DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY \
-        -I"$ROOT/bootstrap/stage2" \
-        "$ROOT/bootstrap/stage2/semantic_producer.c" \
-        "$ROOT/bootstrap/stage2/semantic_events.c" \
-        "$ROOT/bootstrap/stage2/sha256.c" \
-        "$ROOT/bootstrap/stage2/discovery_v1.c" \
-        "$ROOT/bootstrap/stage2/discovery_provider.c" \
-        "$ROOT/bootstrap/stage2/discovery_query.c" \
-        "$CASES/live_query_test.c" \
-        -o "$WORK/live-query-sanitized"
-    "$CC" -std=c11 -O1 -g -Wall -Wextra -Werror -pedantic \
-        -fno-omit-frame-pointer -fsanitize=address,undefined \
-        -DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY \
-        -I"$ROOT/bootstrap/stage2" \
-        "$ROOT/bootstrap/stage2/semantic_producer.c" \
-        "$ROOT/bootstrap/stage2/semantic_events.c" \
-        "$ROOT/bootstrap/stage2/sha256.c" \
-        "$ROOT/bootstrap/stage2/discovery_v1.c" \
-        "$ROOT/bootstrap/stage2/discovery_provider.c" \
-        "$ROOT/bootstrap/stage2/discovery_query.c" \
-        "$CASES/nominal_typeid_test.c" \
-        -o "$WORK/nominal-typeid-sanitized"
-    "$CC" -std=c11 -O1 -g -Wall -Wextra -Werror -pedantic \
-        -fno-omit-frame-pointer -fsanitize=address,undefined \
-        -DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY \
-        -I"$ROOT/bootstrap/stage2" \
-        "$ROOT/bootstrap/stage2/semantic_producer.c" \
-        "$ROOT/bootstrap/stage2/semantic_events.c" \
-        "$ROOT/bootstrap/stage2/sha256.c" \
-        "$ROOT/bootstrap/stage2/discovery_v1.c" \
-        "$ROOT/bootstrap/stage2/discovery_provider.c" \
-        "$ROOT/bootstrap/stage2/discovery_query.c" \
-        "$CASES/bounded_typeid_test.c" \
-        -o "$WORK/bounded-typeid-sanitized"
-    "$CC" -std=c11 -O1 -g -Wall -Wextra -Werror -pedantic \
-        -fno-omit-frame-pointer -fsanitize=address,undefined \
-        -DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY \
-        -I"$ROOT/bootstrap/stage2" \
-        "$ROOT/bootstrap/stage2/semantic_producer.c" \
-        "$ROOT/bootstrap/stage2/semantic_events.c" \
-        "$ROOT/bootstrap/stage2/sha256.c" \
-        "$ROOT/bootstrap/stage2/discovery_v1.c" \
-        "$ROOT/bootstrap/stage2/discovery_provider.c" \
-        "$ROOT/bootstrap/stage2/discovery_query.c" \
-        "$CASES/closure_test.c" \
-        -o "$WORK/closure-sanitized"
+    sanitizer_objects=$WORK/discovery-sanitizer-objects
+    sanitizer_census=$WORK/discovery-sanitizer-census.tsv
+    sanitizer_real_cc=$(command -v "$CC") ||
+        fail "cannot resolve sanitizer C compiler: $CC"
+    kofun_discovery_sanitizer_objects_build \
+        "$ROOT" "$sanitizer_objects" "$sanitizer_census" \
+        "$sanitizer_real_cc"
+    kofun_discovery_sanitizer_link \
+        "$ROOT" "$sanitizer_objects" "$sanitizer_census" \
+        "$sanitizer_real_cc" "$CASES/live_query_test.c" \
+        "$WORK/live-query-sanitized"
+    kofun_discovery_sanitizer_link \
+        "$ROOT" "$sanitizer_objects" "$sanitizer_census" \
+        "$sanitizer_real_cc" "$CASES/nominal_typeid_test.c" \
+        "$WORK/nominal-typeid-sanitized"
+    kofun_discovery_sanitizer_link \
+        "$ROOT" "$sanitizer_objects" "$sanitizer_census" \
+        "$sanitizer_real_cc" "$CASES/bounded_typeid_test.c" \
+        "$WORK/bounded-typeid-sanitized"
+    kofun_discovery_sanitizer_link \
+        "$ROOT" "$sanitizer_objects" "$sanitizer_census" \
+        "$sanitizer_real_cc" "$CASES/closure_test.c" \
+        "$WORK/closure-sanitized"
+    kofun_discovery_sanitizer_census_validate "$sanitizer_census"
+    KOFUN_DISCOVERY_SANITIZER_REUSE_WORK=$WORK/discovery-sanitizer-reuse \
+    KOFUN_DISCOVERY_SANITIZER_REUSE_BUNDLE=$sanitizer_objects \
+    KOFUN_DISCOVERY_SANITIZER_REUSE_CENSUS=$sanitizer_census \
+    KOFUN_DISCOVERY_SANITIZER_REUSE_SOURCE_LIVE=$WORK/live-query-test \
+    KOFUN_DISCOVERY_SANITIZER_REUSE_OBJECT_LIVE=$WORK/live-query-sanitized \
+    KOFUN_DISCOVERY_SANITIZER_REUSE_OBJECT_NOMINAL=$WORK/nominal-typeid-sanitized \
+    KOFUN_DISCOVERY_SANITIZER_REUSE_OBJECT_BOUNDED=$WORK/bounded-typeid-sanitized \
+    KOFUN_DISCOVERY_SANITIZER_REUSE_OBJECT_CLOSURE=$WORK/closure-sanitized \
+        sh "$ROOT/tests/tooling/discovery-sanitizer-reuse/check.sh"
     ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
     UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
         "$WORK/live-query-sanitized" "$CASES/live_list_text.kofun" \

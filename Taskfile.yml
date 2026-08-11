@@ -424,6 +424,11 @@ tasks:
     cmds:
       - "sh tests/conformance/discovery/run.sh"
 
+  discovery-sanitizer-reuse:
+    desc: "Verify discovery-private ASan/UBSan object reuse and argv census"
+    cmds:
+      - "sh tests/tooling/discovery-sanitizer-reuse/check.sh"
+
   native:
     desc: "Build and execute the Kofun-emitted ELF64 fixture"
     cmds:
