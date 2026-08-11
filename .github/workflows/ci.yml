@@ -17,11 +17,45 @@ jobs:
         with:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Install AArch64 user-mode emulator
+      - name: Install AArch64 user-mode emulator and the compiler cache
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends qemu-user
+          sudo apt-get install --yes --no-install-recommends qemu-user ccache
+      # Two thirds of `task verify` is `cc`, and most of that recompiles source
+      # sets an earlier gate already built. The cache is restored across runs,
+      # so a change to one translation unit no longer rebuilds the rest.
+      - name: Restore the compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-verify-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ccache-verify-${{ runner.os }}-
+      - name: Front the compilers with the cache
+        run: |
+          sh tooling/ccache-masquerade.sh >>"$GITHUB_PATH"
+          ccache --zero-stats
+      # The masquerade must stay invisible to the recorded toolchain identity:
+      # `generations-lib.sh` derives `compiler_identity` from `--version`, and
+      # `bootstrap/manifest.json` pins it for the closure measurement. ccache
+      # forwards `--version` to the compiler it fronts; this proves it did
+      # rather than assuming it, and fails the run before any gate if not.
+      - name: Prove the cache is transparent to the toolchain identity
+        run: |
+          identity=$(cc --version | head -n 1)
+          printf 'cc --version through the cache: %s\n' "$identity"
+          case "$identity" in
+            *ccache*)
+              printf '%s\n' "the masquerade leaked into --version" >&2
+              exit 1
+              ;;
+          esac
+          test "$(command -v cc)" != "$(command -v ccache)" ||
+            printf '%s\n' "note: cc resolves to the ccache binary, as intended"
       - run: task verify
+      - name: Compiler cache statistics
+        if: always()
+        run: ccache --show-stats
       - name: Build and run Kofun Core
         run: |
           ./bin/kofun build bootstrap/fixtures/answer.kofun -o build/answer
