@@ -1333,7 +1333,9 @@ static bool diagnose_re_export_cycle(ReExportResolver *resolver) {
         }
     }
     re_export_comparison_resolver = resolver;
-    qsort(edges, edge_count, sizeof(edges[0]), compare_request_edges);
+    if (edge_count > 1u) {
+        qsort(edges, edge_count, sizeof(edges[0]), compare_request_edges);
+    }
     for (start_edge = 0u; start_edge < edge_count; start_edge += 1u) {
         ReExportRequest *start_request =
             &resolver->requests[edges[start_edge]];
@@ -1546,11 +1548,27 @@ static bool resolve_re_exports(ReExportResolver *resolver) {
 static bool check_re_export_visible_confusables(ReExportResolver *resolver) {
     SelectiveResolver *selective = &resolver->imports;
     Program *program = &selective->qualified.program;
-    size_t capacity = program->declaration_count +
-        selective->qualified.import_count + selective->binding_count +
-        resolver->export_count;
+    size_t capacity = program->declaration_count;
     KofunVisibleBinding *visible = NULL;
     size_t module_index;
+    if (selective->qualified.import_count > SIZE_MAX - capacity) {
+        set_error(program, "E2S90",
+            "re-export visible-binding vector bound overflowed");
+        return false;
+    }
+    capacity += selective->qualified.import_count;
+    if (selective->binding_count > SIZE_MAX - capacity) {
+        set_error(program, "E2S90",
+            "re-export visible-binding vector bound overflowed");
+        return false;
+    }
+    capacity += selective->binding_count;
+    if (resolver->export_count > SIZE_MAX - capacity) {
+        set_error(program, "E2S90",
+            "re-export visible-binding vector bound overflowed");
+        return false;
+    }
+    capacity += resolver->export_count;
     if (capacity != 0u) {
         visible = calloc(capacity, sizeof(*visible));
         if (visible == NULL) {
@@ -1576,7 +1594,7 @@ static bool check_re_export_visible_confusables(ReExportResolver *resolver) {
             ReExportDeclaration *source =
                 &resolver->declarations[export->declaration_index];
             if (source->exporter_index != module_index) continue;
-            if (count >= capacity) {
+            if (visible == NULL || count >= capacity) {
                 free(visible);
                 set_error(program, "E2S90",
                     "re-export visible-binding vector exceeds its exact bound");
@@ -1649,8 +1667,10 @@ static bool emit_re_export_hir(
         indices[index] = index;
     }
     re_export_comparison_resolver = resolver;
-    qsort(indices, resolver->export_count, sizeof(indices[0]),
-        compare_resolved_exports);
+    if (resolver->export_count > 1u) {
+        qsort(indices, resolver->export_count, sizeof(indices[0]),
+            compare_resolved_exports);
+    }
     fprintf(output, "kofun-re-exports/v1\n");
     for (index = 0u; index < resolver->export_count; index += 1u) {
         ResolvedExport *export = &resolver->exports[indices[index]];
@@ -1723,8 +1743,10 @@ static bool emit_tooling_projection(
         indices[index] = index;
     }
     re_export_comparison_resolver = resolver;
-    qsort(indices, resolver->export_count, sizeof(indices[0]),
-        compare_resolved_exports);
+    if (resolver->export_count > 1u) {
+        qsort(indices, resolver->export_count, sizeof(indices[0]),
+            compare_resolved_exports);
+    }
     fprintf(output, "kofun-re-export-tooling/v1\n");
     for (index = 0u; index < resolver->export_count; index += 1u) {
         ResolvedExport *export = &resolver->exports[indices[index]];
@@ -1804,6 +1826,10 @@ static bool project_local_interface_fact(
     Program *program = &resolver->imports.qualified.program;
     const Module *module = &program->modules[declaration->module_index];
     size_t token_index;
+    if (fact == NULL) {
+        set_error(program, "E2S94", "facade KIF fact invariant failed");
+        return false;
+    }
     memset(fact, 0, sizeof(*fact));
     memcpy(fact->namespace_id, declaration->namespace_id, 32u);
     memcpy(fact->symbol_id, declaration->symbol_id, 32u);
@@ -1895,11 +1921,29 @@ static bool build_facade_interface(
         Declaration *declaration = &program->declarations[index];
         if (declaration->module_index != module_index) continue;
         if (declaration->visibility == VISIBILITY_PUBLIC) {
-            if (!project_local_interface_fact(resolver, declaration,
-                    &interface->public_facts[public_output++])) return false;
+            KofunKifFact *fact;
+            if (public_output >= public_count ||
+                interface->public_facts == NULL) {
+                set_error(program, "E2S94",
+                    "facade public KIF fact count invariant failed");
+                return false;
+            }
+            fact = &interface->public_facts[public_output++];
+            if (!project_local_interface_fact(resolver, declaration, fact)) {
+                return false;
+            }
         } else if (declaration->visibility == VISIBILITY_INTERNAL) {
-            if (!project_local_interface_fact(resolver, declaration,
-                    &interface->internal_facts[internal_output++])) return false;
+            KofunKifFact *fact;
+            if (internal_output >= internal_count ||
+                interface->internal_facts == NULL) {
+                set_error(program, "E2S94",
+                    "facade internal KIF fact count invariant failed");
+                return false;
+            }
+            fact = &interface->internal_facts[internal_output++];
+            if (!project_local_interface_fact(resolver, declaration, fact)) {
+                return false;
+            }
         }
     }
     for (index = 0u; index < resolver->export_count; index += 1u) {
@@ -1908,6 +1952,12 @@ static bool build_facade_interface(
             &resolver->declarations[export->declaration_index];
         KofunKifFact *fact;
         if (source->exporter_index != module_index) continue;
+        if (public_output >= public_count ||
+            interface->public_facts == NULL) {
+            set_error(program, "E2S94",
+                "facade export KIF fact count invariant failed");
+            return false;
+        }
         fact = &interface->public_facts[public_output++];
         memcpy(fact->namespace_id,
             program->namespace_ids[export->namespace_tag], 32u);
@@ -1942,6 +1992,10 @@ static bool build_facade_interface(
             export->target_constructor_ordinal;
         fact->export_chain_ids = &export->chain_ids[0][0];
         fact->export_chain_count = export->chain_count;
+    }
+    if (public_output != public_count || internal_output != internal_count) {
+        set_error(program, "E2S94", "facade KIF fact count invariant failed");
+        return false;
     }
     interface->public_fact_count = public_output;
     interface->internal_fact_count = internal_output;
