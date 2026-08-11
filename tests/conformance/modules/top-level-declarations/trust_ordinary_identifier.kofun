@@ -1,0 +1,3 @@
+module demo.trust_identifier
+fn trust() -> Int { return 1 }
+fn outer() -> Int { return trust() }

@@ -67,6 +67,13 @@ typedef struct {
     size_t token_capacity;
     size_t top_level_count;
     size_t constructor_count;
+    /* RFC-0012 step 1. Two states and no more: a module is ordinary unless its
+     * header carries `trust raw-foreign`. `raw-foreign` is the only value the
+     * source can spell, and an unknown one is a syntax error rather than a
+     * forward-compatible unknown — a trust class this compiler does not
+     * understand must not be read as absent, because absent is the permissive
+     * reading and the whole point is that it cannot be reached by accident. */
+    bool trust_raw_foreign;
 } Module;
 
 typedef struct {
@@ -630,10 +637,107 @@ static bool find_closing(
     return false;
 }
 
+/*
+ * `trust` is a contextual keyword. It is a keyword on exactly one line — the
+ * one immediately after a module header — and an ordinary identifier
+ * everywhere else, including as a function or field name.
+ *
+ * Every refusal below is a syntax error at its own span, and none of them is
+ * repaired from the filesystem path. That is DD-025's rule for the `module`
+ * header itself, and trust joins the same authority under the same refusals:
+ * a class that could be inferred from a path is a class a rename can change.
+ */
+static bool parse_trust_line(Program *program, Module *module, size_t *cursor) {
+    size_t current = *cursor;
+    size_t newlines = 0;
+    size_t index;
+    size_t value;
+
+    if (current >= module->token_count ||
+        !token_equals(module, &module->tokens[current], "trust")) {
+        return true;
+    }
+
+    /* Exactly one newline since the header's last token. Two means a blank line
+     * came between, and a `trust` line that floats free is refused rather than
+     * reattached to the header above it. */
+    for (index = module->tokens[current - 1u].end;
+         index < module->tokens[current].start;
+         index += 1) {
+        if (module->source[index] == '\n') newlines += 1;
+    }
+    if (newlines != 1u) {
+        set_error(program, "E2S57",
+            "`trust` is not on the line after the module header in `%s` at bytes %zu..%zu",
+            module->logical_path, module->tokens[current].start,
+            module->tokens[current].end);
+        return false;
+    }
+
+    /* `raw-foreign`, spelled as three adjacent tokens with nothing between
+     * them. Allowing space around the hyphen would make `raw - foreign` a
+     * second spelling of one class, and a class with two spellings is a class
+     * two readers can disagree about. */
+    value = current + 1u;
+    if (value + 2u >= module->token_count ||
+        module->tokens[value].line_break_before ||
+        module->tokens[value].kind != TOKEN_IDENTIFIER ||
+        module->tokens[value + 1u].start != module->tokens[value].end ||
+        module->tokens[value + 2u].start != module->tokens[value + 1u].end ||
+        !token_equals(module, &module->tokens[value], "raw") ||
+        !punctuation_equals(module, &module->tokens[value + 1u], '-') ||
+        !token_equals(module, &module->tokens[value + 2u], "foreign")) {
+        size_t end = value < module->token_count
+            ? module->tokens[value].end
+            : module->tokens[current].end;
+        set_error(program, "E2S57",
+            "unknown trust class in `%s` at bytes %zu..%zu; v1 defines only `raw-foreign`",
+            module->logical_path, module->tokens[current].start, end);
+        return false;
+    }
+
+    /* Nothing else on the line. A trailing token is a second thing being said
+     * on a line that says one thing. */
+    if (value + 3u < module->token_count &&
+        !module->tokens[value + 3u].line_break_before) {
+        set_error(program, "E2S57",
+            "trailing text after the trust class in `%s` at bytes %zu..%zu",
+            module->logical_path, module->tokens[value + 3u].start,
+            module->tokens[value + 3u].end);
+        return false;
+    }
+
+    module->trust_raw_foreign = true;
+    *cursor = value + 3u;
+
+    if (*cursor < module->token_count &&
+        token_equals(module, &module->tokens[*cursor], "trust")) {
+        set_error(program, "E2S57",
+            "duplicate `trust` line in `%s` at bytes %zu..%zu",
+            module->logical_path, module->tokens[*cursor].start,
+            module->tokens[*cursor].end);
+        return false;
+    }
+    return true;
+}
+
 static bool skip_module_header(Program *program, Module *module, size_t *cursor) {
     size_t current = 0;
     bool expect_identifier = true;
     if (module->token_count == 0 || !token_equals(module, &module->tokens[0], "module")) {
+        /* An anonymous source has no module header, so it has nowhere to carry
+         * a trust class, and this refuses to infer one from the path. There is
+         * therefore no way to compile a raw binding except as a declared
+         * manifest source — which is also the only mode anything could import
+         * it in. */
+        if (module->token_count != 0 &&
+            token_equals(module, &module->tokens[0], "trust")) {
+            set_error(program, "E2S57",
+                "`trust` in a source with no module header in `%s` at bytes %zu..%zu",
+                module->logical_path, module->tokens[0].start,
+                module->tokens[0].end);
+            return false;
+        }
         *cursor = 0;
         return true;
     }
@@ -660,7 +764,7 @@ static bool skip_module_header(Program *program, Module *module, size_t *cursor)
         return false;
     }
     *cursor = current;
-    return true;
+    return parse_trust_line(program, module, cursor);
 }
 
 static bool parse_function(
@@ -884,6 +988,16 @@ static bool collect_module(Program *program, size_t module_index) {
             token_equals(module, &module->tokens[cursor], "use")) {
             set_error(program, "E2S54", "imports are deferred to #113 in `%s` at bytes %zu..%zu",
                 module->logical_path, module->tokens[cursor].start, module->tokens[cursor].end);
+            return false;
+        } else if (token_equals(module, &module->tokens[cursor], "trust")) {
+            /* Named before the general refusal below, so a `trust` line that
+             * drifted away from its header says so instead of arriving as an
+             * unsupported declaration. The two are the same token and very
+             * different mistakes. */
+            set_error(program, "E2S57",
+                "`trust` is not attached to a module header in `%s` at bytes %zu..%zu",
+                module->logical_path, module->tokens[cursor].start,
+                module->tokens[cursor].end);
             return false;
         } else {
             set_error(program, "E2S50", "unsupported top-level declaration in `%s` at bytes %zu..%zu",
@@ -1250,8 +1364,13 @@ static bool emit_output(Program *program, const char *path) {
         char file_hex[65];
         bytes_to_hex(program->modules[index].module_id, 32u, module_hex);
         bytes_to_hex(program->modules[index].file_id, 32u, file_hex);
-        fprintf(output, "module|id=%s|file=%s|path=%s\n",
-            module_hex, file_hex, program->modules[index].logical_path);
+        /* The fact, stated on every module rather than only on the ones that
+         * carry it. A field that appears only when set cannot distinguish
+         * "ordinary" from "written by a producer that did not know about
+         * trust", and that is the downgrade this exists to prevent. */
+        fprintf(output, "module|id=%s|file=%s|path=%s|trust=%s\n",
+            module_hex, file_hex, program->modules[index].logical_path,
+            program->modules[index].trust_raw_foreign ? "raw-foreign" : "ordinary");
     }
     for (index = 0; index < program->declaration_count; index += 1) {
         Declaration *declaration = &program->declarations[indices[index]];

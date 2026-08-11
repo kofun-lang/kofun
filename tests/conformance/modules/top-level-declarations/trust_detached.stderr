@@ -1,0 +1,1 @@
+error[E2S57]: `trust` is not on the line after the module header in `trust_detached.kofun` at bytes 27..32

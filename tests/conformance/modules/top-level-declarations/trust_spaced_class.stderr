@@ -1,0 +1,1 @@
+error[E2S57]: unknown trust class in `trust_spaced_class.kofun` at bytes 30..39; v1 defines only `raw-foreign`

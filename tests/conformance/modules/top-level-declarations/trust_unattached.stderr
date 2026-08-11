@@ -1,0 +1,1 @@
+error[E2S57]: `trust` is not attached to a module header in `trust_unattached.kofun` at bytes 59..64

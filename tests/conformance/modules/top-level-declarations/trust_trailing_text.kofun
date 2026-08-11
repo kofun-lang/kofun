@@ -1,0 +1,3 @@
+module bad.trust_trailing_text
+trust raw-foreign extra
+fn outer() -> Int { return 1 }
