@@ -1,0 +1,16 @@
+# diagnostic-mode: compile
+# expect-code: E2S154
+# expect-span: byte 688
+# RFC-0003 v1 spawns on the token `par |...|` named, and nothing else. Binding
+# that token to another name and spawning through the copy is how a scope stops
+# being lexically identifiable — the spawn site is still one line, but which
+# scope it belongs to is now a value rather than a token. The specification
+# leaves that unsupported rather than inferred, so it is refused where the wrong
+# receiver is written, not folded into the generic "specified but not
+# implemented" answer that would tell a reader the shape itself is fine.
+fn main() {
+    par |scope| {
+        let other = scope
+        let handle = other.spawn(fn() => 1)
+    }
+}

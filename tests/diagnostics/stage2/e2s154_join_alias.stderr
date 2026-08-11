@@ -1,0 +1,1 @@
+error[E2S154]: scoped parallelism v1 joins only the binding a `spawn` produced; `alias` is not one at byte 627

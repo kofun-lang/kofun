@@ -1,0 +1,16 @@
+# diagnostic-mode: compile
+# expect-code: E2S154
+# expect-span: byte 627
+# RFC-0003 v1 joins the binding a `spawn` produced. Following an alias back to
+# that binding is an inference about identity the specification declines to
+# make: once a handle can be reached through a second name, "was this joined
+# exactly once" stops being answerable by reading the block. It is refused at
+# the alias that is joined, not at the enclosing `par`, so the reader is not
+# told the shape itself is fine and merely unimplemented.
+fn main() {
+    par |scope| {
+        let handle = scope.spawn(fn() => 1)
+        let alias = handle
+        alias.join()
+    }
+}

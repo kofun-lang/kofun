@@ -17319,6 +17319,9 @@ static char *lower_record_binding(
  * rather than that it was mistyped. The construct is still unimplemented --
  * that refusal is at the call site, reached only when the shape is right.
  */
+/* Defined below, beside the lowering that also uses it. */
+static int64_t scoped_parallel_member(const char *source, int64_t start);
+
 /*
  * The first `.spawn(` between `open` and `close`, or -1. Scanned rather than
  * resolved: this runs before any binding exists, and the rule it serves is
@@ -17361,16 +17364,77 @@ static int64_t par_loop_block_open(
 }
 
 /*
- * The v1 finite lexical spawn-site rule (RFC-0003, #1160). Two shapes the
+ * Whether `name` is the binding a `spawn` produced, by finding its `let` in
+ * the scope block and asking what its right-hand side is. An alias binds an
+ * identifier rather than a call -- `let alias = handle` -- so it answers false
+ * and its `join` is refused by name instead of followed to the handle. A name
+ * with no `let` in the block is not a handle either, so it answers false too.
+ */
+static bool par_spawn_bound_handle(
+    const char *source,
+    const char *name,
+    int64_t block_open,
+    int64_t block_close
+) {
+    int64_t cursor = skip_trivia(source, token_end(source, block_open));
+    while (cursor < block_close) {
+        if (token_equal(source, cursor, "let")) {
+            int64_t bound = skip_trivia(source, token_end(source, cursor));
+            if (bound < block_close && token_equal(source, bound, "mut")) {
+                bound = skip_trivia(source, token_end(source, bound));
+            }
+            if (bound < block_close && token_equal(source, bound, name)) {
+                /* Step over an optional annotation to the `=`. The `let` guard
+                 * stops a malformed binding from running into the next
+                 * statement and reading its value as this one's. */
+                int64_t assign = skip_trivia(source, token_end(source, bound));
+                while (
+                    assign < block_close &&
+                    !token_equal(source, assign, "=") &&
+                    !token_equal(source, assign, "let")
+                ) {
+                    assign = skip_trivia(source, token_end(source, assign));
+                }
+                if (assign < block_close && token_equal(source, assign, "=")) {
+                    int64_t value = skip_trivia(
+                        source,
+                        token_end(source, assign)
+                    );
+                    int64_t member = scoped_parallel_member(source, value);
+                    if (member >= 0 && token_equal(source, member, "spawn")) {
+                        return true;
+                    }
+                }
+                /* The first binding of this name decides it; a later one
+                 * cannot make an alias into a handle. */
+                return false;
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return false;
+}
+
+/*
+ * The v1 finite lexical spawn-site rule (RFC-0003, #1160). The four shapes the
  * specification leaves unsupported rather than inferred, refused by name so a
  * reader is not told they are merely unimplemented like the scope itself:
  *
  *   - a `par` inside a `par` block -- v1 has one scope, not a tree of them;
  *   - a `spawn` inside a loop -- a scope's spawn sites must be finite and
- *     lexically enumerable, and a loop makes the count depend on execution.
+ *     lexically enumerable, and a loop makes the count depend on execution;
+ *   - a `spawn` on anything but the token `par |...|` named -- selecting the
+ *     scope dynamically is what makes a spawn site unenumerable, and an alias
+ *     of the token is already that selection;
+ *   - a `join` on anything but the binding a `spawn` produced -- following an
+ *     alias to its handle is the inference v1 declines to make.
+ *
+ * The walk reports the first offending construct in source order and names the
+ * construct's own token, not the enclosing `par`.
  */
 static char *par_scope_rule_error(
     const char *source,
+    int64_t scope_token,
     int64_t block_open,
     int64_t block_close
 ) {
@@ -17382,6 +17446,54 @@ static char *par_scope_rule_error(
                 "scoped parallelism v1 has one scope; a `par` scope may not contain another",
                 cursor
             );
+        }
+        int64_t member = scoped_parallel_member(source, cursor);
+        if (member >= 0) {
+            if (
+                token_equal(source, member, "spawn") &&
+                !source_tokens_equal(source, cursor, scope_token)
+            ) {
+                char *scope_name = token_copy(source, scope_token);
+                char *written = token_copy(source, cursor);
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(
+                    &message,
+                    "scoped parallelism v1 spawns only on the scope token "
+                    "`%s` that `par` named; `%s` is not it",
+                    scope_name,
+                    written
+                );
+                char *error = lower_error("E2S154", message.data, cursor);
+                free(message.data);
+                free(written);
+                free(scope_name);
+                return error;
+            }
+            if (token_equal(source, member, "join")) {
+                char *written = token_copy(source, cursor);
+                bool handle = par_spawn_bound_handle(
+                    source,
+                    written,
+                    block_open,
+                    block_close
+                );
+                if (!handle) {
+                    Buffer message;
+                    buffer_init(&message);
+                    buffer_format(
+                        &message,
+                        "scoped parallelism v1 joins only the binding a "
+                        "`spawn` produced; `%s` is not one",
+                        written
+                    );
+                    char *error = lower_error("E2S154", message.data, cursor);
+                    free(message.data);
+                    free(written);
+                    return error;
+                }
+                free(written);
+            }
         }
         if (
             token_equal(source, cursor, "while") ||
@@ -17451,7 +17563,12 @@ static char *par_production_error(const char *source, int64_t at)
     }
     int64_t block_close = balanced_end(source, block, "{", "}");
     if (block_close >= 0) {
-        char *rule_fault = par_scope_rule_error(source, block, block_close);
+        char *rule_fault = par_scope_rule_error(
+            source,
+            name,
+            block,
+            block_close
+        );
         if (rule_fault != NULL) return rule_fault;
     }
     /*
