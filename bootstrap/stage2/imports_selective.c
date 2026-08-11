@@ -1210,10 +1210,11 @@ static bool collect_selective_visible_bindings(
     const Module *module = &program->modules[module_index];
     size_t index;
     *count = 0u;
+    if (visible == NULL && capacity != 0u) return false;
     for (index = 0u; index < program->declaration_count; index += 1u) {
         Declaration *declaration = &program->declarations[index];
         if (declaration->module_index != module_index) continue;
-        if (*count >= capacity) return false;
+        if (visible == NULL || *count >= capacity) return false;
         initialize_visible_binding(&visible[(*count)++], module,
             declaration->namespace_id, declaration->symbol_id,
             declaration->symbol_id, declaration->name,
@@ -1228,7 +1229,7 @@ static bool collect_selective_visible_bindings(
         size_t end;
         if (binding->importer_index != module_index ||
             binding->form_tag != IMPORT_FORM_QUALIFIED) continue;
-        if (*count >= capacity) return false;
+        if (visible == NULL || *count >= capacity) return false;
         compute_symbol_hash(
             program->modules[binding->target_index].module_id,
             program->namespace_ids[2], "module",
@@ -1252,7 +1253,7 @@ static bool collect_selective_visible_bindings(
         Declaration *target = &program->declarations[binding->target_index];
         if (selective->is_re_export ||
             selective->importer_index != module_index) continue;
-        if (*count >= capacity) return false;
+        if (visible == NULL || *count >= capacity) return false;
         initialize_visible_binding(&visible[(*count)++], module,
             target->namespace_id, binding->binding_id, target->symbol_id,
             name->spelling, KOFUN_VISIBLE_SITE_IMPORT,
@@ -1288,6 +1289,14 @@ static bool check_visible_binding_vector(
     if (result.status == KOFUN_VISIBLE_CONFUSABLE_OK) {
         free(diagnostics);
         return true;
+    }
+    if (visible_count == 0u) {
+        free(diagnostics);
+        set_error(program, "E2S75",
+            "empty visible-set confusable check failed in `%s`: %s",
+            program->modules[module_index].logical_path,
+            kofun_visible_confusable_status_name(result.status));
+        return false;
     }
     if (result.status != KOFUN_VISIBLE_CONFUSABLE_COLLISION) {
         free(diagnostics);

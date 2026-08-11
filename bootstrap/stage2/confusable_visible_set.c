@@ -225,7 +225,9 @@ KofunVisibleConfusableResult kofun_check_visible_confusables(
     }
     visible_comparison_bindings = bindings;
     visible_comparison_work = work;
-    qsort(work, binding_count, sizeof(*work), compare_work_bindings);
+    if (binding_count > 1u) {
+        qsort(work, binding_count, sizeof(*work), compare_work_bindings);
+    }
     compute_cache_key(work, binding_count, result.cache_key);
     index = 0u;
     while (index < binding_count) {
