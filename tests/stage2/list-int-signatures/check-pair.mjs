@@ -48,7 +48,11 @@ const minimumCalls = new Map([
   ["list_int_type_end", { c: 13, kofun: 13 }],
   ["validate_list_int_annotations", { c: 4, kofun: 3 }],
   ["fixed_slot_call_shape", { c: 3, kofun: 3 }],
-  ["fixed_slot_call_supported", { c: 4, kofun: 4 }],
+  // #1228 added one dispatch per half, in `emit_expression`, where `|>` is
+  // claimed before the coalescing operator. Raising the minimum is what keeps
+  // the removal mutation detected: at the old 4 a removed call still left 4,
+  // so the mutation stopped producing its named failure and proved nothing.
+  ["fixed_slot_call_supported", { c: 5, kofun: 5 }],
   ["labelled_call_supported", { c: 2, kofun: 2 }],
   ["direct_list_int_call_shape", { c: 2, kofun: 2 }],
   ["direct_list_int_call_supported", { c: 3, kofun: 3 }],
@@ -103,9 +107,12 @@ const semanticAnchors = [
     kofun: "emitted = emitted + emit_fixed_slot_call_temporaries( source, hir, function_open )",
   },
   {
-    id: "labelled-only-return-carrier-guard",
-    c: "if (labelled) { char *result = function_return_type(source, callee); bool carries_result = call_slot_carried(source, result);",
-    kofun: "if labelled && !call_slot_carried(source, function_return_type(source, callee))",
+    // #1228 added the pipeline to this guard, so the id no longer says
+    // "labelled-only": a pipeline needs a carried result for the same reason a
+    // labelled call does, and the guard is now what both modes share.
+    id: "fixed-slot-return-carrier-guard",
+    c: "if (labelled || piped) { char *result = function_return_type(source, callee); bool carries_result = call_slot_carried(source, result);",
+    kofun: "if (labelled || piped) && !call_slot_carried(source, function_return_type(source, callee))",
   },
   {
     id: "source-aware-labelled-carrier-vocabulary",
@@ -113,9 +120,14 @@ const semanticAnchors = [
     kofun: "carried = call_slot_carried(source, parameter_type)",
   },
   {
+    // The `List[Int]` requirement is what justifies fixed slots for an
+    // otherwise-ordinary unlabelled call. #1228 adds the pipeline as a third
+    // justification: its subject is written outside the parentheses and must be
+    // assigned first, which the unsequenced call cannot express, so it needs
+    // the slots whatever it carries.
     id: "direct-mode-list-requirement",
-    c: "return labelled || has_list;",
-    kofun: "return labelled || has_list",
+    c: "return labelled || piped || has_list;",
+    kofun: "return labelled || piped || has_list",
   },
   {
     id: "by-value-parameter-carrier",
@@ -285,7 +297,7 @@ if (mode === "self-test") {
   );
   requireFailure(
     verifyPair(underCalledC, kofunSource),
-    "C dispatch fixed_slot_call_supported: expected at least 4, saw 3",
+    "C dispatch fixed_slot_call_supported: expected at least 5, saw 4",
   );
 
   const underCalledKofun = replaceLast(
@@ -295,7 +307,7 @@ if (mode === "self-test") {
   );
   requireFailure(
     verifyPair(cSource, underCalledKofun),
-    "Kofun dispatch fixed_slot_call_supported: expected at least 4, saw 3",
+    "Kofun dispatch fixed_slot_call_supported: expected at least 5, saw 4",
   );
 
   const underCalledLabelledC = replaceLast(

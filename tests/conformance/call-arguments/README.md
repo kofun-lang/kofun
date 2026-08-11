@@ -96,11 +96,32 @@ which since #1190 swallows the whole `subject |> callee(...)`, so every subject
 looked compound and no move was ever recorded. The subject's own extent has to
 be measured with `coalescing_expression_end`.
 
-C11 lowering is #1228, so a checked pipeline still fails closed and writes no C. The binder runs from inside the pipeline pass rather
-than from `validate_core_calls`, because that pass returns first and the call
-validators would never see the call — and it cannot simply run after them,
-since the arity check counts only the parenthesised arguments and would report
-the subject as a missing one. Counting the subject is #1227's effective arity.
+#1228 lowers it. A checked pipeline now builds and runs through the **shared**
+`emit_fixed_slot_call` and its existing temporary family — there is no
+pipeline-only emitter, walker, or namespace. The subject is assigned to slot 0
+before anything inside the parentheses, because that is where it is written, so
+the loop over explicit arguments is unchanged and a positional rest simply
+continues at slot 1.
+
+`pipeline_source_order.kofun` is where the whole sequence is visible at once:
+`1` is the subject and prints first, `2` is the explicit argument, and `12` is
+the callee reading its slots in declaration order — subject first, each value
+exactly once, ABI vector only after every assignment. The gate also asserts the
+emitted C contains no labels, no runtime map or dispatch, no allocation, and no
+`|>`; a second temporary family would surface there first.
+
+A pipeline always takes fixed slots whatever it carries, unlike an ordinary
+unlabelled call which needs a `List[Int]` to justify them. Its subject sits
+outside the parentheses and must be assigned first, which the unsequenced call
+cannot express.
+
+The binder runs from inside the pipeline pass rather than from
+`validate_core_calls`, because that pass returns first and the call validators
+would never see the call — and it cannot simply run after them, since the arity
+check counts only the parenthesised arguments and would report the subject as a
+missing one. `validate_core_calls` therefore adds the subject to its own count
+for a pipeline target, which is #1227's effective arity reaching the ordinary
+path.
 
 Because a recognizer that refuses everything is indistinguishable from one that
 recognizes nothing, the gate asserts the **spans** the production publishes:

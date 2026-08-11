@@ -7217,6 +7217,13 @@ static char *call_slot_zero(
  * accepted boundary. Labelled calls use the full call-slot carrier vocabulary
  * and require a carried result; direct calls remain Int/List[Int]-only,
  * require a List, and deliberately keep their unrestricted result. */
+/* The fixed-slot family needs to know whether a call is a pipeline target, and
+ * the resolver lives with the binder further down. */
+static int64_t pipeline_subject_for_call(
+    const char *source,
+    int64_t call_start
+);
+
 static bool fixed_slot_call_shape(
     const char *source,
     const char *hir,
@@ -7237,7 +7244,15 @@ static bool fixed_slot_call_shape(
     if (declaration < 0) return false;
     int64_t count = parameter_count(source, declaration);
     if (count < 1 || count > 8) return false;
-    if (labelled) {
+    /*
+     * A pipeline always needs fixed slots, whatever it carries. Its subject is
+     * written outside the parentheses and must be assigned before any explicit
+     * argument, which the ordinary unsequenced call cannot express — so it
+     * joins the labelled mode in using the full carrier matrix and in not
+     * needing a `List[Int]` to justify the slots.
+     */
+    bool piped = pipeline_subject_for_call(source, call_start) >= 0;
+    if (labelled || piped) {
         char *result = function_return_type(source, callee);
         bool carries_result = call_slot_carried(source, result);
         free(result);
@@ -7246,14 +7261,14 @@ static bool fixed_slot_call_shape(
     bool has_list = false;
     for (int64_t index = 0; index < count; ++index) {
         char *type = function_parameter_type(source, callee, index);
-        bool carried = labelled
+        bool carried = (labelled || piped)
             ? call_slot_carried(source, type)
             : strcmp(type, "Int") == 0 || strcmp(type, "List[Int]") == 0;
         if (strcmp(type, "List[Int]") == 0) has_list = true;
         free(type);
         if (!carried) return false;
     }
-    return labelled || has_list;
+    return labelled || piped || has_list;
 }
 
 static bool fixed_slot_call_supported(
@@ -7431,6 +7446,37 @@ static char *emit_fixed_slot_call(
     buffer_append(&output, "(");
     int64_t argument = skip_trivia(source, token_end(source, open));
     int64_t source_index = 0;
+    /*
+     * The subject is assigned before anything inside the parentheses, because
+     * that is where it is written. Doing it here rather than in a pipeline-only
+     * emitter is what keeps one temporary family and one ABI vector: after this
+     * assignment the loop below is unchanged, and slot 0 is simply already
+     * taken, so a positional rest continues at slot 1 exactly as #1226 bound
+     * it.
+     */
+    int64_t pipeline_subject = pipeline_subject_for_call(source, call_start);
+    if (pipeline_subject >= 0 && parameter_count_value > 0) {
+        char *value = emit_argument(
+            source,
+            hir,
+            pipeline_subject,
+            coalescing_expression_end(source, pipeline_subject),
+            callee,
+            0
+        );
+        if (strncmp(value, "error[", 6) == 0) {
+            free(output.data);
+            return value;
+        }
+        buffer_format(
+            &output,
+            "(kofun_call_arg_%" PRId64 "_0 = %s), ",
+            call_start,
+            value
+        );
+        free(value);
+        source_index = 1;
+    }
     while (
         (labelled || source_index < parameter_count_value) &&
         argument < end && !token_equal(source, argument, ")")
@@ -8022,6 +8068,10 @@ static char *emit_primary(
 ) {
     int64_t cursor = skip_trivia(source, start);
     const char *kind = token_kind(source, cursor);
+    /* A pipeline never reaches here: `|>` is the lowest-precedence boundary, so
+     * `emit_expression` claims the whole production before any deeper layer
+     * sees the subject. Dispatching again here would be a second path to the
+     * same emitter, which is exactly what this slice must not add. */
     if (token_equal(source, cursor, "[")) {
         return emit_list_int_literal(source, hir, cursor);
     }
@@ -8881,6 +8931,46 @@ static char *emit_expression(
     int64_t start,
     int64_t end
 ) {
+    /*
+     * `|>` is the lowest-precedence boundary, so it is dispatched before the
+     * coalescing operator here, mirroring `expression_end` exactly. Putting it
+     * any deeper would let `??` or arithmetic claim the subject and leave the
+     * call behind as a separate expression — which is what happened before the
+     * pipeline was a production.
+     */
+    {
+        int64_t subject_end = coalescing_expression_end(source, start);
+        int64_t pipe = subject_end < 0
+            ? -1
+            : skip_trivia(source, subject_end);
+        if (pipe >= 0 && pipe < end && token_equal(source, pipe, "|>")) {
+            int64_t callee = skip_trivia(source, token_end(source, pipe));
+            int64_t call_open = skip_trivia(source, token_end(source, callee));
+            char *name = token_copy(source, callee);
+            bool labelled = call_has_labelled_argument(source, call_open);
+            if (fixed_slot_call_supported(
+                    source,
+                    hir,
+                    callee,
+                    name,
+                    call_open,
+                    labelled
+                )) {
+                char *lowered = emit_fixed_slot_call(
+                    source,
+                    hir,
+                    callee,
+                    call_open,
+                    end,
+                    name,
+                    labelled
+                );
+                free(name);
+                return lowered;
+            }
+            free(name);
+        }
+    }
     int64_t operator_start = optional_int_coalescing_operator(
         source,
         start,
@@ -10148,12 +10238,12 @@ static char *validate_pipeline_calls(const char *source, const char *hir) {
                     free(name);
                     if (strncmp(checked, "error[", 6) == 0) return checked;
                     free(checked);
-                    return pipeline_refusal(
-                        source,
-                        "a pipeline subject binds slot 0; call-arguments v1 "
-                        "pipeline lowering is owned by #1228",
-                        cursor
-                    );
+                    /* #1228 admits the checked shape. There is no refusal left
+                     * here: the call reaches the shared fixed-slot emitter,
+                     * which assigns slot 0 from the subject before anything in
+                     * the parentheses. A carrier this slice cannot lower was
+                     * already refused by the carrier-matrix check above. */
+                    return owned_text("ok");
                 }
                 cursor = skip_trivia(source, token_end(source, cursor));
             }
@@ -10343,6 +10433,11 @@ static char *validate_core_calls(const char *source, const char *hir) {
                     }
                 }
                 int64_t actual = call_arity(source, open);
+                /* A pipeline supplies slot 0 from outside the parentheses, so
+                 * its subject is one of the call's arguments. Counting only
+                 * what is written between them is what made every pipeline
+                 * report `expects N, got N-1` before #1190. */
+                if (pipeline_subject_for_call(source, cursor) >= 0) ++actual;
                 if (actual != expected) {
                     Buffer error;
                     buffer_init(&error);

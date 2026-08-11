@@ -6,5 +6,6 @@ fn main() -> Int {
     let left = 1
     let right = 2
     print(left + right |> consume(delta: 3))
+    print(left)
     return 0
 }
