@@ -96,9 +96,7 @@
         "observation": "`/` on `Int` is refused with one diagnostic instead of being lowered."
       },
       "safety": {
-        "classification": "memory-safety",
-        "threat_model": "docs/MEMORY_MODEL.md",
-        "negative_test": "tests/conformance/records/partial_move.kofun"
+        "classification": "none"
       },
       "performance": {
         "classification": "none"
