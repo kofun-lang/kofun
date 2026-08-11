@@ -268,6 +268,16 @@ if (mode === "self-test") {
     "missing Kofun function: emit_fixed_slot_call_temporaries",
   );
 
+  const unpairedSharedEmitter = kofunSource.replace(
+    "fn emit_fixed_slot_call(",
+    "fn removed_fixed_slot_call(",
+  );
+  assert.notEqual(unpairedSharedEmitter, kofunSource, "shared emitter mutation did not apply");
+  requireFailure(
+    verifyPair(cSource, unpairedSharedEmitter),
+    "missing Kofun function: emit_fixed_slot_call",
+  );
+
   const underCalledC = replaceLast(
     cSource,
     "fixed_slot_call_supported(",
@@ -276,6 +286,46 @@ if (mode === "self-test") {
   requireFailure(
     verifyPair(underCalledC, kofunSource),
     "C dispatch fixed_slot_call_supported: expected at least 4, saw 3",
+  );
+
+  const underCalledKofun = replaceLast(
+    kofunSource,
+    "fixed_slot_call_supported(",
+    "removed_fixed_slot_call_supported(",
+  );
+  requireFailure(
+    verifyPair(cSource, underCalledKofun),
+    "Kofun dispatch fixed_slot_call_supported: expected at least 4, saw 3",
+  );
+
+  const underCalledLabelledC = replaceLast(
+    cSource,
+    "labelled_call_supported(",
+    "removed_labelled_call_supported(",
+  );
+  requireFailure(
+    verifyPair(underCalledLabelledC, kofunSource),
+    "C dispatch labelled_call_supported: expected at least 2, saw 1",
+  );
+
+  const underCalledDirectKofun = replaceLast(
+    kofunSource,
+    "direct_list_int_call_supported(",
+    "removed_direct_list_int_call_supported(",
+  );
+  requireFailure(
+    verifyPair(cSource, underCalledDirectKofun),
+    "Kofun dispatch direct_list_int_call_supported: expected at least 3, saw 2",
+  );
+
+  const sourceBlindKofun = kofunSource.replace(
+    "carried = call_slot_carried(source, parameter_type)",
+    "carried = call_slot_carried(\"\", parameter_type)",
+  );
+  assert.notEqual(sourceBlindKofun, kofunSource, "source-aware carrier mutation did not apply");
+  requireFailure(
+    verifyPair(cSource, sourceBlindKofun),
+    "Kofun semantic dispatch missing: source-aware-labelled-carrier-vocabulary",
   );
 
   const splitPrefixC = cSource.replace(
@@ -295,7 +345,7 @@ if (mode === "self-test") {
     "C missing runtime bounds: R023",
   );
 
-  console.log("PASS: List[Int] pair mutations fail by explicit shared-family member, dispatch, call-count, prefix, and token checks");
+  console.log("PASS: List[Int] pair mutations fail by explicit shared-family member, mode/surface dispatch, source-aware carrier, call-count, prefix, and token checks");
 }
 
 console.log("PASS: List[Int] semantic family and load-bearing dispatches exist on both canonical surfaces");
