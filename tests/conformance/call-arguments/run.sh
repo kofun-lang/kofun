@@ -206,6 +206,37 @@ test "$(grep -c "kofun_call_arg_${owned_key}_0 = k_b" \
     "$temporary/owned_carrier.c")" -eq 1 ||
     fail 'ownership-bearing value did not move into its slot exactly once'
 
+# #1191 admits the accepted trailing-lambda form: `callee(...) fn(p) => e`.
+# The lambda binds the final functional parameter without being written
+# between the parentheses, so this case proves the two orders stay separate
+# while an argument sits outside them — the labelled `2`, `1` still evaluate
+# in source order, the ABI vector is still declaration order (`12`), and the
+# trailing lambda runs last over the result (`112`).
+executes_case trailing_lambda 'trailing lambda after labelled arguments'
+trailing_key=$(call_site_key "$temporary/trailing_lambda.c")
+test -n "$trailing_key" ||
+    fail 'trailing-lambda call reserved no keyed temporary'
+# Two carriers, not three. The trailing lambda is a lifted function's address:
+# there is nothing to sequence ahead of the call, and an `int64_t` carrier
+# would both mistype the slot and be passed unassigned.
+trailing_count=$(grep -c "int64_t kofun_call_arg_${trailing_key}_[0-9][0-9]* = INT64_C(0);" \
+    "$temporary/trailing_lambda.c")
+test "$trailing_count" -eq 2 ||
+    fail 'the trailing lambda slot reserved a carrier instead of an address'
+# The lifted name is keyed by the `(` of the lambda's parameter list, so the
+# walk that emits the definition and the walk that emits the reference agree.
+trailing_lifted=$(sed -n \
+    's/.*\(kofun_lambda_at[0-9][0-9]*\)(int64_t .*/\1/p' \
+    "$temporary/trailing_lambda.c" | sed -n 1p)
+test -n "$trailing_lifted" ||
+    fail 'the trailing lambda was not lifted to a top-level function'
+tr -d '\n' <"$temporary/trailing_lambda.c" |
+    grep -E "kofun_call_arg_${trailing_key}_1 = .*kofun_call_arg_${trailing_key}_0 = .*kofun_fn_combine\(kofun_call_arg_${trailing_key}_0, kofun_call_arg_${trailing_key}_1, ${trailing_lifted}\)" \
+    >/dev/null ||
+    fail 'trailing-lambda C did not place the lifted address in the final slot'
+no_runtime_dispatch "$temporary/trailing_lambda.c" 'as_first|as_second|then' \
+    'trailing-lambda C'
+
 # Wider carriers and lexical callable bindings remain explicit unsupported
 # lowering. They may retain parsed IR/tokens, but must not commit C. The
 # shadow case is particularly important: spelling alone must never redirect a
@@ -243,6 +274,15 @@ unsupported_case "$cases/shadowed_callable.kofun" \
 unsupported_case "$cases/lifted_lambda_call.kofun" \
     'error[E2S158]: labelled-call ABI lowering is owned by #882; fixed-slot checked HIR is available at byte 140' \
     'labelled call inside a lifted lambda'
+# The two remaining E2S158 shapes are different boundaries, so they are
+# asserted separately rather than through one pattern. The case above is about
+# where a labelled call may appear; this one is about what a trailing lambda's
+# body may be. #1191 admitted the expression body and held this one, so a
+# slice that later admits the block body must move this assertion and leave
+# the lifted-lambda wording untouched.
+unsupported_case "$cases/trailing_lambda_block.kofun" \
+    'error[E2S158]: a trailing lambda with a block body is specified by call-arguments v1 but not implemented at byte 116' \
+    'trailing lambda with a block body'
 
 printf '%s\n' \
-    'PASS: labelled calls bind fixed HIR slots and the Int/Text/List[Int]/Optional/enum/record C11 slice evaluates once in source order; take slots move once and refuse double transfer as E2S123; #882 retains pipeline/trailing/lambda-body forms and other backends'
+    'PASS: labelled calls bind fixed HIR slots and the Int/Text/List[Int]/Optional/enum/record C11 slice evaluates once in source order; take slots move once and refuse double transfer as E2S123; the expression-bodied trailing lambda binds the final parameter as a lifted address; #882 retains pipeline, block-bodied trailing, and lambda-body forms and other backends'

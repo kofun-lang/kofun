@@ -3519,13 +3519,66 @@ static char *constructed_list_type_text(
     return text.data;
 }
 
+/*
+ * The `(` of a trailing lambda attached to the call whose `)` is at `close`,
+ * or -1 when no trailing lambda follows.
+ *
+ * `) fn (` is the trailing form and nothing else in this profile's grammar. A
+ * named declaration is `fn` and an identifier, so requiring `(` after `fn`
+ * leaves `call()` followed by `fn next(...)` alone — the same boundary the
+ * contract draws in the same words.
+ *
+ * Returning the parameter list's `(` rather than the `fn` is what lets the
+ * existing consumers treat the lambda as an ordinary argument written at that
+ * offset: `lambda_parameters_end` spans from there, and
+ * `argument_lambda_name` already keys lifted definitions on exactly this
+ * token, so the walk that emits the definition and the walk that emits the
+ * reference agree without either learning about the trailing position.
+ */
+static int64_t trailing_lambda_open(const char *source, int64_t after_close) {
+    int64_t length = source_length(source);
+    if (after_close < 0) return -1;
+    int64_t keyword = skip_trivia(source, after_close);
+    if (keyword >= length || !token_equal(source, keyword, "fn")) return -1;
+    int64_t parameters = skip_trivia(source, token_end(source, keyword));
+    if (parameters >= length || !token_equal(source, parameters, "(")) {
+        return -1;
+    }
+    return parameters;
+}
+
+/* The same attachment keyed by the call's `(`, for the sites that hold the
+ * opening token rather than the closing one. `balanced_end` already reports
+ * the offset just past `)`, which is exactly what the attachment reads. */
+static int64_t call_trailing_lambda_open(const char *source, int64_t open) {
+    return trailing_lambda_open(source, balanced_end(source, open, "(", ")"));
+}
+
+/*
+ * The declaration slot a trailing lambda binds — the final parameter — or -1
+ * when the call has none.
+ *
+ * The emitter that reserves fixed carriers and the emitter that fills the ABI
+ * vector must agree on exactly which slot is the lambda's, or the call passes
+ * an unassigned carrier. One helper is what makes them agree by construction.
+ */
+static int64_t trailing_lambda_slot(
+    const char *source,
+    int64_t open,
+    int64_t parameter_count_value
+) {
+    if (parameter_count_value <= 0) return -1;
+    if (call_trailing_lambda_open(source, open) < 0) return -1;
+    return parameter_count_value - 1;
+}
+
 static char *trailing_lambda_refusal(const char *source, int64_t cursor) {
     Buffer error;
     buffer_init(&error);
     buffer_format(
         &error,
-        "error[E2S158]: a trailing lambda is specified by call-arguments v1 but not "
-        "implemented at byte %" PRId64,
+        "error[E2S158]: a trailing lambda with a block body is specified by "
+        "call-arguments v1 but not implemented at byte %" PRId64,
         cursor
     );
     stage2_diagnostic_set(
@@ -3545,25 +3598,35 @@ static char *validate_trailing_lambda_surface(const char *source) {
      * `) fn(` is the trailing form and nothing else in this profile's grammar.
      * A named declaration is `fn` and an identifier, so requiring `(` after
      * `fn` leaves `call()` followed by `fn next(...)` alone — which is the
-     * boundary the contract draws in the same words. Measured on `dddffe0c`,
-     * `grep -c ') fn(' bootstrap/stage1/compiler.kofun
-     * bootstrap/stage2/compiler.kofun` is 0 in both, so no source this
-     * compiler already accepts contains the shape.
+     * boundary the contract draws in the same words.
+     *
+     * The expression body is what this profile lowers. The block body is
+     * accepted design and not current capability: `lambda_parameters_end`
+     * requires `=>`, so a block body would span as -1 and be misread as the
+     * start of the next declaration. Naming it here keeps that a refusal the
+     * author can act on rather than a misparse blaming a later token — the
+     * same reason `unsupported_block_lambda` records for the non-trailing
+     * spelling in tests/conformance/syntax/issues_35_47.
      */
     int64_t cursor = skip_trivia(source, 0);
     while (cursor < length) {
         if (token_equal(source, cursor, ")")) {
-            int64_t keyword = skip_trivia(source, token_end(source, cursor));
-            if (keyword < length && token_equal(source, keyword, "fn")) {
-                int64_t parameters = skip_trivia(
-                    source,
-                    token_end(source, keyword)
-                );
+            int64_t parameters = trailing_lambda_open(
+                source,
+                token_end(source, cursor)
+            );
+            if (parameters >= 0) {
+                int64_t close = balanced_end(source, parameters, "(", ")");
+                int64_t arrow = close < 0 ? -1 : skip_trivia(source, close);
                 if (
-                    parameters < length &&
-                    token_equal(source, parameters, "(")
+                    arrow < 0 ||
+                    arrow >= length ||
+                    !token_equal(source, arrow, "=>")
                 ) {
-                    return trailing_lambda_refusal(source, keyword);
+                    return trailing_lambda_refusal(
+                        source,
+                        skip_trivia(source, token_end(source, cursor))
+                    );
                 }
             }
         }
@@ -6074,6 +6137,21 @@ static char *validate_list_int_annotations(const char *source) {
     return owned_text("ok");
 }
 
+/*
+ * The end of a call whose `)` is at `close`, including any trailing lambda.
+ *
+ * The trailing lambda is an argument of that call, so it belongs inside the
+ * call's span. Stopping at `)` would leave `fn (` to be re-read as the start
+ * of the next expression or declaration, which is the misreading the surface
+ * refusal used to prevent by rejecting the shape outright.
+ */
+static int64_t call_postfix_end(const char *source, int64_t close) {
+    int64_t after_close = token_end(source, close);
+    int64_t lambda_open = trailing_lambda_open(source, after_close);
+    if (lambda_open >= 0) return lambda_parameters_end(source, -1, lambda_open);
+    return field_postfix_end(source, after_close);
+}
+
 static int64_t primary_end(const char *source, int64_t start) {
     int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, start);
@@ -6165,20 +6243,14 @@ static int64_t primary_end(const char *source, int64_t start) {
         }
         int64_t argument = skip_trivia(source, token_end(source, open));
         if (argument < length && token_equal(source, argument, ")")) {
-            return field_postfix_end(
-                source,
-                token_end(source, argument)
-            );
+            return call_postfix_end(source, argument);
         }
         while (argument < length) {
             int64_t bound = argument_end(source, argument);
             if (bound < 0) return -1;
             int64_t separator = skip_trivia(source, bound);
             if (separator < length && token_equal(source, separator, ")")) {
-                return field_postfix_end(
-                    source,
-                    token_end(source, separator)
-                );
+                return call_postfix_end(source, separator);
             }
             if (separator >= length || !token_equal(source, separator, ",")) {
                 return -1;
@@ -7270,8 +7342,25 @@ static char *emit_fixed_slot_call(
     char *c_name = c_identifier_name(callee);
     buffer_format(&output, "kofun_fn_%s(", c_name);
     free(c_name);
+    /* The trailing lambda occupies the final slot as a lifted function's
+     * address. It reserves no carrier: there is no evaluation to sequence
+     * ahead of the ABI vector, and its C type is a function pointer rather
+     * than the `int64_t` a carrier declares. */
+    int64_t trailing_slot = trailing_lambda_slot(
+        source,
+        open,
+        parameter_count_value
+    );
     for (int64_t slot = 0; slot < parameter_count_value; ++slot) {
         if (slot > 0) buffer_append(&output, ", ");
+        if (slot == trailing_slot) {
+            char *trailing = argument_lambda_name(
+                call_trailing_lambda_open(source, open)
+            );
+            buffer_append(&output, trailing);
+            free(trailing);
+            continue;
+        }
         buffer_format(
             &output,
             "kofun_call_arg_%" PRId64 "_%" PRId64,
@@ -7318,7 +7407,17 @@ static char *emit_fixed_slot_call_temporaries(
                         callee
                     );
                     int64_t count = parameter_count(source, declaration);
+                    /* The trailing lambda's slot carries a function pointer
+                     * placed directly in the ABI vector, so reserving an
+                     * `int64_t` carrier for it would both mistype the slot and
+                     * leave it unassigned at the call. */
+                    int64_t trailing_slot = trailing_lambda_slot(
+                        source,
+                        open,
+                        count
+                    );
                     for (int64_t slot = 0; slot < count; ++slot) {
+                        if (slot == trailing_slot) continue;
                         char *carrier = function_parameter_type(
                             source,
                             callee,
@@ -8375,6 +8474,18 @@ static char *emit_primary(
                 argument = separator;
             }
         }
+        /* The trailing lambda is the call's last argument. It is a lifted
+         * function's address, so there is nothing to sequence: placing it
+         * after every parenthesised argument is exactly the source order the
+         * contract asks for. */
+        int64_t trailing_open = call_trailing_lambda_open(source, open);
+        if (trailing_open >= 0) {
+            char *trailing = argument_lambda_name(trailing_open);
+            if (arguments > 0) buffer_append(&output, ", ");
+            buffer_append(&output, trailing);
+            free(trailing);
+            ++arguments;
+        }
         if (lambda_open >= 0) {
             char *captures = lambda_captures(source, hir, lambda_open);
             append_captures(&output, captures, arguments, "");
@@ -8697,10 +8808,20 @@ static int64_t function_arity(const char *source, const char *wanted) {
     return found;
 }
 
+/* A trailing lambda is one argument of the call it follows, so every arity
+ * check counts it. Without this the author is blamed for an arity they did not
+ * get wrong — the shape `apply(1) fn(x) => x` reports "expects 2 arguments,
+ * got 1" while naming the one argument it declined to see. */
+static int64_t call_arity_trailing(const char *source, int64_t close) {
+    return trailing_lambda_open(source, token_end(source, close)) >= 0 ? 1 : 0;
+}
+
 static int64_t call_arity(const char *source, int64_t open) {
     int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, token_end(source, open));
-    if (cursor < length && token_equal(source, cursor, ")")) return 0;
+    if (cursor < length && token_equal(source, cursor, ")")) {
+        return call_arity_trailing(source, cursor);
+    }
     int64_t arity = 0;
     while (cursor < length) {
         int64_t bound = argument_end(source, cursor);
@@ -8710,7 +8831,7 @@ static int64_t call_arity(const char *source, int64_t open) {
         ++arity;
         int64_t separator = skip_trivia(source, bound);
         if (separator < length && token_equal(source, separator, ")")) {
-            return arity;
+            return arity + call_arity_trailing(source, separator);
         }
         if (separator >= length || !token_equal(source, separator, ",")) {
             return -1;
@@ -9369,6 +9490,84 @@ static char *validate_declared_call_arguments(
         int64_t separator = skip_trivia(source, end);
         argument = separator < close && token_equal(source, separator, ",")
             ? skip_trivia(source, token_end(source, separator)) : separator;
+    }
+
+    /*
+     * Rule 6 of call-arguments v1: a trailing lambda binds only the final
+     * parameter, and it is an error if that parameter was already supplied.
+     *
+     * Binding it here, before the missing-argument sweep, is what stops a
+     * well-formed trailing call from being reported as `missing argument` for
+     * the very parameter the author did supply — just not between the
+     * parentheses.
+     */
+    int64_t trailing_open = call_trailing_lambda_open(source, open);
+    if (trailing_open >= 0 && parameter_count_value > 0) {
+        int64_t slot = parameter_count_value - 1;
+        if (bound_argument[slot] >= 0) {
+            char *name = token_copy(
+                source,
+                parameter_external[slot] >= 0
+                    ? parameter_external[slot]
+                    : parameter_internal[slot]
+            );
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(
+                &message,
+                "trailing lambda binds `%s`, which is already supplied",
+                name
+            );
+            free(name);
+            char *error = call_binding_failure(
+                source,
+                "E2S167",
+                message.data,
+                trailing_open,
+                parameter_external[slot] >= 0
+                    ? parameter_external[slot]
+                    : parameter_internal[slot]
+            );
+            free(message.data);
+            return error;
+        }
+        bound_argument[slot] = trailing_open;
+        char *external = parameter_external[slot] >= 0
+            ? token_copy(source, parameter_external[slot])
+            : owned_text("unlabelled");
+        char *internal = token_copy(source, parameter_internal[slot]);
+        char *type = parameter_list_type_end(
+                source,
+                parameter_types[slot],
+                parameters_end
+            ) >= 0
+            ? parameter_list_type_text(
+                source,
+                parameter_types[slot],
+                parameters_end
+            )
+            : annotation_type_text(source, parameter_types[slot]);
+        char *mode = ownership_mode_token(source, parameter_starts[slot])
+            ? token_copy(source, parameter_starts[slot])
+            : owned_text("copy");
+        stage2_semantic_observe(
+            "call-argument|%s|%" PRId64 "|%" PRId64
+            "|%" PRId64 "|%" PRId64 "|%s|%s|%s|%s\n",
+            callee,
+            slot,
+            source_index,
+            trailing_open,
+            trailing_open,
+            external,
+            internal,
+            type,
+            mode
+        );
+        free(mode);
+        free(type);
+        free(internal);
+        free(external);
+        ++source_index;
     }
 
     for (int64_t slot = 0; slot < parameter_count_value; ++slot) {
@@ -20210,6 +20409,11 @@ static char *emit_lifted_lambdas(
  * parameter list: `fn`, `=`, `,` and `(`. `=` is the initializer position and
  * the other two are argument position, so the preceding token decides — after
  * stepping over `fn`, which may sit in front of either.
+ *
+ * `)` is the trailing position, and it is only argument position when the `fn`
+ * was actually there: `) fn (` is the trailing form, while a bare `) (` is not
+ * a lambda at all. Requiring the keyword keeps that distinction rather than
+ * widening the set of tokens a parameter list may follow.
  */
 static bool argument_position_lambda(
     const char *source,
@@ -20217,10 +20421,10 @@ static bool argument_position_lambda(
     int64_t before_previous
 ) {
     int64_t effective = previous;
-    if (effective >= 0 && token_equal(source, effective, "fn")) {
-        effective = before_previous;
-    }
+    bool keyword = previous >= 0 && token_equal(source, previous, "fn");
+    if (keyword) effective = before_previous;
     if (effective < 0) return false;
+    if (keyword && token_equal(source, effective, ")")) return true;
     return token_equal(source, effective, "(") ||
            token_equal(source, effective, ",");
 }

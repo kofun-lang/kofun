@@ -1,0 +1,30 @@
+# diagnostic-mode: compile
+# expect-code: E2S167
+# expect-span: byte 1242
+# Rule 6 of `spec/syntax/call-arguments-v1.md`: a trailing lambda binds only
+# the final parameter, and it is an error if that parameter was already
+# supplied.
+#
+# This is a binding failure, not a lowering boundary, which is why it sits
+# with E2S162-E2S166 rather than under E2S158. E2S158 says a shape is not
+# implemented yet; this says a well-understood shape binds one parameter
+# twice, and no later slice makes it legal.
+#
+# The arity check cannot cover this. `using:` supplies the final parameter and
+# the trailing lambda supplies it again, but the call still writes exactly two
+# arguments for two parameters, so `E2S17` counts them as correct. Only the
+# binding sees the collision. Reporting it before the missing-argument sweep
+# is deliberate: `on` is indeed unbound, but naming the double binding points
+# at the token the author would delete rather than at a consequence of it.
+#
+# The primary span is the trailing lambda; the related span is the declaration
+# it collides with.
+fn apply(on value: Int, using action: Int -> Int) -> Int {
+    return action(value)
+}
+
+fn main() -> Int {
+    let chosen = fn(x: Int) => x
+    print(apply(using: chosen) fn(x: Int) => x * 2)
+    return 0
+}

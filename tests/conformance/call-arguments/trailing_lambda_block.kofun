@@ -1,0 +1,10 @@
+fn apply(value: Int, action: Int -> Int) -> Int {
+    return action(value)
+}
+
+fn main() -> Int {
+    print(apply(1) fn(x) {
+        return x
+    })
+    return 0
+}
