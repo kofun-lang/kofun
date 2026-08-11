@@ -429,6 +429,11 @@ tasks:
     cmds:
       - "sh tests/tooling/discovery-sanitizer-reuse/check.sh"
 
+  stage1-adapter:
+    desc: "Verify the c11-stage1 conformance backend runs only the Stage 1 seed"
+    cmds:
+      - "sh tests/conformance/stage1-adapter/check.sh"
+
   native:
     desc: "Build and execute the Kofun-emitted ELF64 fixture"
     cmds:
@@ -970,6 +975,7 @@ tasks:
             date-time \
             tzdb \
             discovery \
+            stage1-adapter \
             native \
             wasm \
             examples \

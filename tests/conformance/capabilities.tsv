@@ -1,7 +1,7 @@
 backend	corpus	state	evidence	reason
 c11-stage1	const-generics	unsupported	-	The Stage 1 C11 Core has no const type parameter surface and no per-literal specialization
 c11-stage1	decimal-arithmetic	unsupported	-	The Stage 1 C11 Core does not lower Decimal or Float values
-c11-stage1	functions	supported	tests/conformance/run.sh	-
+c11-stage1	functions	unsupported	-	The Stage 1 C11 Core takes at most five parameters, requires main to return Void, and does not accept unary - as a binary operand
 c11-stage1	list	unsupported	-	The Stage 1 C11 Core does not lower List values
 c11-stage1	numeric	supported	tests/conformance/run.sh	-
 c11-stage1	optional-coalescing	unsupported	-	The Stage 1 C11 Core has no executable Optional(Int) carrier or coalescing lowering

@@ -705,7 +705,7 @@
     }
   ],
   "evidence_digests": {
-    "Taskfile.yml": "5df9e979146975b0fbc5f6ade5e81cbe9ece5e876887a187d37f39dc2100627e",
+    "Taskfile.yml": "65821069b3974a334d152644430036dc1fd6817e496beda0f8aeca9301fdcf24",
     "bootstrap/native/check.sh": "b12493d09eb1919b349f37c78e3c81f4441a1c00be2aa7d2e6c30512eea998eb",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/check-diverse-double-compilation-refusals.sh": "55fc39166070b9bc612fca6898086938b1a8ca122b1c1fb8e928f1a5d4cde572",
@@ -732,7 +732,7 @@
     "docs/RUST_CRATE_SHIMS.md": "4365b064cbc9a05733710d3a609c1db2623b28cb9ed4ba0e48536e35f9d58c47",
     "docs/SECURITY.md": "630dd512b406ba9db360d75e051c2421eb6f611550bad839d197eec25ea750aa",
     "docs/SELF_HOSTING.md": "46195e8254f2ad63c478bd64d3e0095c7485d94ee9968178006d5cb5f56d083d",
-    "docs/SEMANTICS.md": "6e1d210890f5f53f281ea32fe28a0b4118b2804f5cb1caa4260a36c961b9cb92",
+    "docs/SEMANTICS.md": "4d49f393fae6f7fc07ea7c579ae568c28d0e9a948a80222780bb475be13c26eb",
     "docs/TYPE_SYSTEM.md": "75d25999ad21708385b58f5fa6b3a5dec94df4928a95025fcbdb846c2ad36efb",
     "examples/rust-shim/check.sh": "487dfa45e0a090f56550678fc6224c84780fbb750563b8fafcd3dd2fc34b4c01",
     "examples/wasm_arithmetic.kofun": "ea73b3ee6b5172a4c8080ed5b4540fb23288d31000dd6ccd59a473e97836c246",
@@ -752,7 +752,7 @@
     "tests/cli.sh": "6ca726adc3cb5fa4437d34665603b6556a63d01d26db1141a93af3388c5240f9",
     "tests/cli_stage2_outcomes.sh": "9f84a95495afab023a1572b37a2508a4ee02a3a89881df14b887c209a628a9a7",
     "tests/conformance/aggregate-bridge/README.md": "aec3624a10648a59d18723bf7429422ff017cec17995402653e403f065ec0f0a",
-    "tests/conformance/capabilities.tsv": "43512e72780a706211dfd1eb9d0df033af129bab3a9b4b94391e26c10abd798e",
+    "tests/conformance/capabilities.tsv": "3fc973e48617a2699f1cfe4cd41d4e874f9406f31ed6fc402cc595d4ac54de86",
     "tests/conformance/functions/division_floor_signs.kofun": "6bfd48679ebcf604305c78271b80e803866a64d8e9c8f732f5b1884d4d0d67b0",
     "tests/conformance/modules/re-exports/run.sh": "39d91f56a27e5c7469d26309a3f709431a8307359715452f6cfbcaf9843f6b12",
     "tests/conformance/numeric/reject_slash_operator.kofun": "49a14dbd0392e6920a681168af44018182f78175a921592283631c9942045c24",

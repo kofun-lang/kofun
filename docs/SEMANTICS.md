@@ -40,13 +40,19 @@ only integer quotient. See `spec/semantics.md`.
 ## Conformance
 
 Every registered backend executes the same `.kofun` corpus. The active
-`c11-stage1` backend passes all ten numeric cases. The runner compares stdout,
-stderr, and exit status exactly. Unsupported compilation is an explicit,
-reported skip and reduces coverage; it never counts as a silent pass.
+`c11-stage1` backend passes all twelve numeric cases, and
+`tests/conformance/stage1-adapter/check.sh` is what runs them. The runner
+compares stdout, stderr, and exit status exactly. Unsupported compilation is an
+explicit, reported skip and reduces coverage; it never counts as a silent pass.
 
-One of the ten is a rejection case rather than a run: `/` has no meaning on
-`Int`, so what every backend must agree on is that it compiles nothing and
-leaves no artifact.
+Three of the twelve are rejection cases rather than runs — `/` has no meaning
+on `Int`, and two numeric conversions are inexact — so what every backend must
+agree on there is that it compiles nothing and leaves no artifact.
+
+A backend name has to mean the compiler it names. `c11-stage1` reaches the
+Stage 1 seed directly, not through `bin/kofun`, whose fallback order would
+answer with Stage 2 for every source Stage 2 accepts; and the C it emits is
+checked for the Stage 1 provenance banner before it is compiled.
 
 See `spec/backend-differential-contract.md` and
 `tests/conformance/numeric/README.md` for the runner contract and corpus.
