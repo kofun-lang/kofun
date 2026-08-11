@@ -3882,22 +3882,20 @@ fn call_slot_zero(source: Text, carrier: Text) -> Text {
     return "INT64_C(0)"
 }
 
-# #1097 lowered the first executable labelled-call profile — a direct
-# top-level function whose parameters and result are all Int — and #1107
-# widened its carriers to Text and List[Int], the two the positional path
-# already executes. #1189 adds Int?, concrete enums, nominal records, and
-# source-order invalidation for a bare binding placed in a take slot. The
-# fixed-slot binding pass has already rejected unknown/duplicate/missing
-# labels; this predicate keeps the remaining call and backend shapes at the
-# explicit E2S158 boundary owned by #882.
-fn labelled_call_supported(
+# One shape predicate owns both fixed-slot call paths. The `labelled` mode is
+# load-bearing: #1113 consolidates their mechanism without changing either
+# accepted boundary. Labelled calls use the full call-slot carrier vocabulary
+# and require a carried result; direct calls remain Int/List[Int]-only,
+# require a List, and deliberately keep their unrestricted result.
+fn fixed_slot_call_shape(
     source: Text,
     hir: Text,
     call_start: Int,
     callee: Text,
-    open: Int
+    open: Int,
+    labelled: Bool
 ) -> Bool {
-    if !call_has_labelled_argument(source, open) {
+    if call_has_labelled_argument(source, open) != labelled {
         return false
     }
     # A lexical callable may shadow a top-level declaration with the same
@@ -3906,34 +3904,114 @@ fn labelled_call_supported(
     if len(hir_use_binding_id(hir, call_start)) > 0 {
         return false
     }
-    # Lifted lambdas are emitted as separate C functions. Their call-site
-    # temporaries therefore cannot live in the enclosing source function;
-    # keep that independently reviewable lowering at #882's E2S158 boundary.
-    let function_open = enclosing_function_open(source, call_start)
-    if function_open >= 0 &&
-       lambda_scope_open(source, function_open, call_start) >= 0 {
-        return false
-    }
     let declaration = function_start_named(source, callee)
-    if declaration < 0 ||
-       !call_slot_carried(source, function_return_type(source, callee)) {
+    if declaration < 0 {
         return false
     }
     let count = parameter_count(source, declaration)
     if count < 1 || count > 8 {
         return false
     }
+    if labelled &&
+       !call_slot_carried(source, function_return_type(source, callee)) {
+        return false
+    }
+    let mut has_list = false
     let mut index = 0
     while index < count {
-        if !call_slot_carried(
-            source,
-            function_parameter_type(source, callee, index)
-        ) {
+        let parameter_type = function_parameter_type(source, callee, index)
+        let mut carried = parameter_type == "Int" ||
+            parameter_type == "List[Int]"
+        if labelled {
+            carried = call_slot_carried(source, parameter_type)
+        }
+        if parameter_type == "List[Int]" {
+            has_list = true
+        }
+        if !carried {
             return false
         }
         index = index + 1
     }
-    return true
+    return labelled || has_list
+}
+
+fn fixed_slot_call_supported(
+    source: Text,
+    hir: Text,
+    call_start: Int,
+    callee: Text,
+    open: Int,
+    labelled: Bool
+) -> Bool {
+    if !fixed_slot_call_shape(
+        source,
+        hir,
+        call_start,
+        callee,
+        open,
+        labelled
+    ) {
+        return false
+    }
+    # Lifted lambdas are emitted as separate C functions. Their call-site
+    # temporaries therefore cannot live in the enclosing source function.
+    let function_open = enclosing_function_open(source, call_start)
+    return function_open < 0 ||
+        lambda_scope_open(source, function_open, call_start) < 0
+}
+
+# Thin wrappers keep the existing diagnostic routing and make each mode's
+# dispatch load-bearing in the pair harness. All policy stays above.
+fn labelled_call_supported(
+    source: Text,
+    hir: Text,
+    call_start: Int,
+    callee: Text,
+    open: Int
+) -> Bool {
+    return fixed_slot_call_supported(
+        source,
+        hir,
+        call_start,
+        callee,
+        open,
+        true
+    )
+}
+
+fn direct_list_int_call_shape(
+    source: Text,
+    hir: Text,
+    call_start: Int,
+    callee: Text,
+    open: Int
+) -> Bool {
+    return fixed_slot_call_shape(
+        source,
+        hir,
+        call_start,
+        callee,
+        open,
+        false
+    )
+}
+
+fn direct_list_int_call_supported(
+    source: Text,
+    hir: Text,
+    call_start: Int,
+    callee: Text,
+    open: Int
+) -> Bool {
+    return fixed_slot_call_supported(
+        source,
+        hir,
+        call_start,
+        callee,
+        open,
+        false
+    )
 }
 
 # Map a source-order argument back to the declaration/ABI slot that #881
@@ -4007,39 +4085,46 @@ fn labelled_argument_value(source: Text, argument: Int) -> Int {
     return argument
 }
 
-# C11 leaves ordinary function-argument evaluation order unspecified.  A
+# C11 leaves ordinary function-argument evaluation order unspecified. A
 # comma expression is sequenced, so assign source-order values first and only
-# then invoke the declaration-order ABI vector.  Temporary names contain no
-# source labels and are declared once at the containing function scope.
-fn emit_labelled_call(
+# then invoke the declaration-order ABI vector. The direct loop bound is
+# retained deliberately: arity diagnostics precede this emitter, and #1113
+# does not change which malformed input reaches a lowering diagnostic.
+fn emit_fixed_slot_call(
     source: Text,
     hir: Text,
     call_start: Int,
     open: Int,
     end: Int,
-    callee: Text
+    callee: Text,
+    labelled: Bool
 ) -> Text {
     let declaration = function_start_named(source, callee)
     let parameter_count_value = parameter_count(source, declaration)
     let mut emitted = "("
     let mut argument = skip_trivia(source, token_end(source, open))
     let mut source_index = 0
-    while argument < end && token_text(source, argument) != ")" {
+    while (labelled || source_index < parameter_count_value) &&
+          argument < end && token_text(source, argument) != ")" {
         let bound = argument_end(source, argument)
-        let slot = labelled_argument_slot(
-            source,
-            callee,
-            argument,
-            source_index
-        )
-        if slot < 0 || slot >= parameter_count_value {
+        let mut slot = source_index
+        let mut value_start = argument
+        if labelled {
+            slot = labelled_argument_slot(
+                source,
+                callee,
+                argument,
+                source_index
+            )
+            value_start = labelled_argument_value(source, argument)
+        }
+        if labelled && (slot < 0 || slot >= parameter_count_value) {
             return lower_error(
                 "E2S158",
                 "labelled-call fixed-slot projection failed",
                 argument
             )
         }
-        let value_start = labelled_argument_value(source, argument)
         let value = emit_argument(
             source,
             hir,
@@ -4078,7 +4163,7 @@ fn emit_labelled_call(
 # Reserve the fixed carrier slots before any statement in the containing
 # function. The call-start byte makes nested and repeated call sites distinct
 # without carrying an external label into generated artifacts.
-fn emit_labelled_call_temporaries(
+fn emit_fixed_slot_call_temporaries(
     source: Text,
     hir: Text,
     function_open: Int
@@ -4094,12 +4179,14 @@ fn emit_labelled_call_temporaries(
             let open = skip_trivia(source, token_end(source, cursor))
             if open < close && token_text(source, open) == "(" {
                 let callee = token_text(source, cursor)
-                if labelled_call_supported(
+                let labelled = call_has_labelled_argument(source, open)
+                if fixed_slot_call_supported(
                     source,
                     hir,
                     cursor,
                     callee,
-                    open
+                    open,
+                    labelled
                 ) {
                     let declaration = function_start_named(source, callee)
                     let count = parameter_count(source, declaration)
@@ -4113,166 +4200,6 @@ fn emit_labelled_call_temporaries(
                         emitted = emitted + "    " +
                             call_slot_declaration_prefix(source, carrier) +
                             "kofun_call_arg_" + to_text(cursor) + "_" +
-                            to_text(slot) +
-                            " = " + call_slot_zero(source, carrier) + ";\n"
-                        slot = slot + 1
-                    }
-                }
-            }
-        }
-        let next = token_end(source, cursor)
-        if next <= cursor {
-            break
-        }
-        cursor = skip_trivia(source, next)
-    }
-    return emitted
-}
-
-# Ordinary C argument evaluation is unsequenced. A direct call that crosses a
-# List[Int] carrier therefore uses fixed source-byte slots for every argument,
-# including its Int companions, and assigns those slots through a comma
-# expression before the declaration-order call.
-fn direct_list_int_call_shape(
-    source: Text,
-    hir: Text,
-    call_start: Int,
-    callee: Text,
-    open: Int
-) -> Bool {
-    if call_has_labelled_argument(source, open) ||
-       len(hir_use_binding_id(hir, call_start)) > 0 {
-        return false
-    }
-    let declaration = function_start_named(source, callee)
-    if declaration < 0 {
-        return false
-    }
-    let count = parameter_count(source, declaration)
-    if count < 1 || count > 8 {
-        return false
-    }
-    let mut has_list = false
-    let mut index = 0
-    while index < count {
-        let parameter_type = function_parameter_type(source, callee, index)
-        if parameter_type == "List[Int]" {
-            has_list = true
-        } else if parameter_type != "Int" {
-            return false
-        }
-        index = index + 1
-    }
-    return has_list
-}
-
-fn direct_list_int_call_supported(
-    source: Text,
-    hir: Text,
-    call_start: Int,
-    callee: Text,
-    open: Int
-) -> Bool {
-    if !direct_list_int_call_shape(
-        source,
-        hir,
-        call_start,
-        callee,
-        open
-    ) {
-        return false
-    }
-    let function_open = enclosing_function_open(source, call_start)
-    return function_open < 0 ||
-    lambda_scope_open(source, function_open, call_start) < 0
-}
-
-fn emit_direct_list_int_call(
-    source: Text,
-    hir: Text,
-    call_start: Int,
-    open: Int,
-    end: Int,
-    callee: Text
-) -> Text {
-    let declaration = function_start_named(source, callee)
-    let count = parameter_count(source, declaration)
-    let mut emitted = "("
-    let mut argument = skip_trivia(source, token_end(source, open))
-    let mut index = 0
-    while index < count && argument < end &&
-          token_text(source, argument) != ")" {
-        let bound = argument_end(source, argument)
-        let value = emit_argument(
-            source,
-            hir,
-            argument,
-            bound,
-            callee,
-            index
-        )
-        if starts_with(value, "error[") {
-            return value
-        }
-        emitted = emitted + "(kofun_list_call_arg_" +
-        to_text(call_start) + "_" + to_text(index) + " = " + value +
-        "), "
-        let separator = skip_trivia(source, bound)
-        if separator < end && token_text(source, separator) == "," {
-            argument = skip_trivia(source, token_end(source, separator))
-        } else {
-            argument = separator
-        }
-        index = index + 1
-    }
-    emitted = emitted + "kofun_fn_" + callee + "("
-    let mut slot = 0
-    while slot < count {
-        if slot > 0 {
-            emitted = emitted + ", "
-        }
-        emitted = emitted + "kofun_list_call_arg_" +
-        to_text(call_start) + "_" + to_text(slot)
-        slot = slot + 1
-    }
-    return emitted + "))"
-}
-
-fn emit_direct_list_int_call_temporaries(
-    source: Text,
-    hir: Text,
-    function_open: Int
-) -> Text {
-    let close = balanced_end(source, function_open, "{", "}")
-    if close < 0 {
-        return ""
-    }
-    let mut emitted = ""
-    let mut cursor = skip_trivia(source, token_end(source, function_open))
-    while cursor < close {
-        if token_kind(source, cursor) == "identifier" {
-            let open = skip_trivia(source, token_end(source, cursor))
-            if open < close && token_text(source, open) == "(" {
-                let callee = token_text(source, cursor)
-                if direct_list_int_call_supported(
-                    source,
-                    hir,
-                    cursor,
-                    callee,
-                    open
-                ) {
-                    let declaration = function_start_named(source, callee)
-                    let count = parameter_count(source, declaration)
-                    let mut slot = 0
-                    while slot < count {
-                        let carrier = function_parameter_type(
-                            source,
-                            callee,
-                            slot
-                        )
-                        emitted = emitted + "    " +
-                            call_slot_declaration_prefix(source, carrier) +
-                            "kofun_list_call_arg_" + to_text(cursor) + "_" +
                             to_text(slot) +
                             " = " + call_slot_zero(source, carrier) + ";\n"
                         slot = slot + 1
@@ -4817,13 +4744,14 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
             name,
             open
         ) {
-            return emit_direct_list_int_call(
+            return emit_fixed_slot_call(
                 source,
                 hir,
                 cursor,
                 open,
                 end,
-                name
+                name,
+                false
             )
         }
         if labelled_call_supported(
@@ -4833,13 +4761,14 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
             name,
             open
         ) {
-            return emit_labelled_call(
+            return emit_fixed_slot_call(
                 source,
                 hir,
                 cursor,
                 open,
                 end,
-                name
+                name,
+                true
             )
         }
         if call_has_labelled_argument(source, open) {
@@ -11786,16 +11715,13 @@ fn lower_body(
 ) -> Text {
     let mut emitted = ""
     if open == function_open {
+        # Prologue order is part of the emitted bytes: optional coalescing,
+        # then the one shared fixed-slot walker.
         emitted = emit_optional_int_coalescing_temporaries(
             source,
             function_open
         )
-        emitted = emitted + emit_labelled_call_temporaries(
-            source,
-            hir,
-            function_open
-        )
-        emitted = emitted + emit_direct_list_int_call_temporaries(
+        emitted = emitted + emit_fixed_slot_call_temporaries(
             source,
             hir,
             function_open

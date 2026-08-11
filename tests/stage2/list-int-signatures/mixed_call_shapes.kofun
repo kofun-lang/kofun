@@ -1,0 +1,14 @@
+fn direct(values: List[Int]) -> Int {
+    return len(values)
+}
+
+fn labelled(values items: List[Int]) -> Int {
+    return len(items) + 1
+}
+
+fn main() -> Int {
+    let values: List[Int] = [1, 2]
+    print(direct(values))
+    print(labelled(values: values))
+    return 0
+}

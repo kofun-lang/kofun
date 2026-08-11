@@ -1,0 +1,1 @@
+error[E2S15]: Core function `nonempty` requires Int or concrete enum parameters and return

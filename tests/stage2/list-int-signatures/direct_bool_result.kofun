@@ -1,0 +1,13 @@
+fn nonempty(values: List[Int]) -> Bool {
+    return len(values) > 0
+}
+
+fn main() -> Int {
+    let values: List[Int] = [1]
+    if nonempty(values) {
+        print(1)
+    } else {
+        print(0)
+    }
+    return 0
+}

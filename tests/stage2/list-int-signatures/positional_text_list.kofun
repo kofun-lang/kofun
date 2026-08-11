@@ -1,0 +1,11 @@
+fn summarize(label: Text, values: List[Int]) -> Int {
+    print(len(label))
+    return len(values)
+}
+
+fn main() -> Int {
+    let label: Text = "ok"
+    let values: List[Int] = [1, 2]
+    print(summarize(label, values))
+    return 0
+}

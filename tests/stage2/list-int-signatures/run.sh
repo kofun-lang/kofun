@@ -63,7 +63,11 @@ assert_grep \
     -Fq 'KofunIntListValue k_b2' \
     "$work/pass-return.c"
 assert_grep \
-    "source-order list call slots" \
+    "shared source-order call slots" \
+    -Fq 'kofun_call_arg_' \
+    "$work/pass-return.c"
+assert_not_grep \
+    "retired direct-only call slot prefix" \
     -Fq 'kofun_list_call_arg_' \
     "$work/pass-return.c"
 assert_not_grep \
@@ -98,13 +102,26 @@ assert_grep \
 # widened the labelled fixed-slot lowering to the Text and List[Int] carriers
 # this path already executed positionally, so it is an accept case here; the
 # call-arguments gate owns the source-order and no-label-in-artifact evidence.
-for stem in direct_call_return nested_calls labelled_argument
+for stem in \
+    direct_call_return \
+    nested_calls \
+    labelled_argument \
+    mixed_call_shapes \
+    positional_text_list
 do
     compile_success "$stem" "$fixtures/$stem.kofun"
     "$work/$stem" >"$work/$stem.stdout" 2>"$work/$stem.stderr"
     cmp "$fixtures/$stem.stdout" "$work/$stem.stdout"
     assert_file_empty "$stem runtime stderr" "$work/$stem.stderr"
 done
+
+# The shared predicate's mode branch is semantic, not cosmetic. A positional
+# Text companion keeps the ordinary call path rather than gaining labelled-call
+# fixed slots under this refactor.
+assert_not_grep \
+    "positional Text/List call does not widen into fixed slots" \
+    -Fq 'kofun_call_arg_' \
+    "$work/positional_text_list.c"
 
 compile_success runtime-out-of-range "$fixtures/runtime_out_of_range.kofun"
 set +e
@@ -201,6 +218,7 @@ fi
 
 # Typed refusals retain deterministic parsed IR/tokens but never publish C.
 for stem in \
+    direct_bool_result \
     direct_argument \
     direct_return \
     edit_parameter \
@@ -343,6 +361,22 @@ assert_grep \
 assert_grep \
     "audited C List[Int] signature family" \
     -Fq 'static bool direct_list_int_call_supported(' \
+    "$root/bootstrap/stage2/compiler.c"
+assert_grep \
+    "canonical Kofun shared fixed-slot emitter" \
+    -Fq 'fn emit_fixed_slot_call(' \
+    "$root/bootstrap/stage2/compiler.kofun"
+assert_grep \
+    "audited C shared fixed-slot emitter" \
+    -Fq 'static char *emit_fixed_slot_call(' \
+    "$root/bootstrap/stage2/compiler.c"
+assert_grep \
+    "canonical Kofun shared fixed-slot walker" \
+    -Fq 'fn emit_fixed_slot_call_temporaries(' \
+    "$root/bootstrap/stage2/compiler.kofun"
+assert_grep \
+    "audited C shared fixed-slot walker" \
+    -Fq 'static char *emit_fixed_slot_call_temporaries(' \
     "$root/bootstrap/stage2/compiler.c"
 assert_grep \
     "canonical Kofun literal-boundary diagnostic" \
