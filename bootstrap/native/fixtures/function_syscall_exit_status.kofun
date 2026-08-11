@@ -1,0 +1,11 @@
+# `raw_exit` is the body `stdlib/linux_x86_64/abi.kofun` already declares. The
+# status this process leaves with is that syscall's argument and nothing else:
+# `print` is never reached, so standard output stays empty, and the epilogue
+# that would have exited 0 is never reached either.
+fn raw_exit(status: Int) -> Int {
+    return __linux_syscall1(60, status)
+}
+
+fn main() {
+    print(raw_exit(97))
+}

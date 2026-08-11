@@ -23,6 +23,14 @@ Every argument and the return value is one signed 64-bit Kofun `Int`.
 User-space addresses must be canonical and non-negative. The emitter must not
 insert a libc call, inspect thread-local `errno`, or translate the return.
 
+The x86-64 function profile of `bootstrap/native/core_compiler.c` implements
+this table, and `bootstrap/native/check.sh` executes it: all seven arities run,
+and each argument register is observed by a kernel rejection that could only
+have come from that register. Every other backend still declares these names
+without lowering them, so this contract is executable on x86-64 only. AArch64
+enters the kernel through a different boundary and refuses the program rather
+than emitting one whose intrinsics do nothing.
+
 Linux reports syscall failure directly as a value in `-4095 .. -1`.
 `syscall_result` is the single normalization point:
 
@@ -49,6 +57,11 @@ backend must pin the source managed value for that duration. `Text` is presented
 as UTF-8 followed by one NUL byte. Mutable byte-buffer views require `edit`.
 
 All other files are ordinary Kofun and must not contain `trusted` declarations.
+
+This rule governs the standard library, which is what `tests/verify.sh`
+enforces over `stdlib/`. The backend's own execution fixtures under
+`bootstrap/native/fixtures/` name the intrinsics directly, because proving that
+the lowering runs is the one job that cannot be done through the wrapper.
 
 ## Ownership and errors
 

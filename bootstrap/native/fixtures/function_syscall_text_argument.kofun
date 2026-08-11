@@ -1,0 +1,9 @@
+# The intrinsics are Int-only. A Text argument is refused before lowering, not
+# passed as whatever its runtime representation happens to be.
+fn raw_write_label() -> Int {
+    return __linux_syscall3(1, 1, "label", 5)
+}
+
+fn main() {
+    print(raw_write_label())
+}
