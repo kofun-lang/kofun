@@ -1,0 +1,111 @@
+name: Fuzz
+
+# `task fuzz` runs inside `verify` on every push and pull request, and it must
+# stay deterministic there: each generator defaults to the seed its corpus was
+# recorded with, so a red pull request always means the change broke something.
+#
+# That determinism is also the limit. `tests/fuzz/enum_match.sh` says it in its
+# own comment -- "the same seed means accumulated machine time buys no
+# coverage" -- so ten thousand CI runs explore exactly the inputs one run does.
+#
+# This lane is the other half: the same generators, on a schedule, with a seed
+# that changes per run. It does not widen any grammar. It only stops the
+# machine time from being spent re-checking one point.
+#
+# Nothing here changes the committed defaults, so `verify` is untouched.
+
+on:
+  schedule:
+    # Daily. The odd minute avoids the top-of-hour crowd on shared runners.
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: >-
+          Base seed. Leave empty to use the run number. Set it to the base a
+          failing run printed to reproduce that run exactly.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: Rotating-seed fuzz
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install go-task
+        uses: arduino/setup-task@c0bc642852239c2689f73f4ea6459c29405f3c52 # v3.0.0
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # One base seed decides the whole run, and it is printed before anything
+      # else. Every generator's own seed is derived from it by a fixed rule, so
+      # the base alone reproduces the entire run -- which is what makes a
+      # failure actionable rather than a curiosity. Each generator also prints
+      # its own seed, so a single failing generator can be re-run directly.
+      - name: Run the generators with a rotating seed
+        env:
+          BASE_SEED: ${{ inputs.seed || github.run_number }}
+        run: |
+          set -eu
+          base=$BASE_SEED
+          case $base in
+            ''|*[!0-9]*)
+              printf '%s\n' "fuzz lane: base seed must be a positive integer, got: $base" >&2
+              exit 1
+              ;;
+          esac
+          printf 'fuzz lane: base seed %s\n' "$base"
+          printf 'fuzz lane: reproduce with workflow_dispatch seed=%s\n' "$base"
+
+          # A distinct seed per generator, from one base. Multiplying by a
+          # different odd constant per generator keeps them from marching in
+          # step, which one shared seed would cause.
+          derive() {
+            printf '%s\n' "$(( (base * $1 + $2) % 2147483647 ))"
+          }
+
+          KOFUN_GRAMMAR_FUZZ_SEED=$(derive 1103515245 12345)
+          KOFUN_SEMANTIC_FUZZ_SEED=$(derive 1103515245 54321)
+          KOFUN_VALUE_IF_FUZZ_SEED=$(derive 69069 1)
+          KOFUN_MATCH_GUARD_FUZZ_SEED=$(derive 69069 7)
+          KOFUN_MATCH_VALUE_FUZZ_SEED=$(derive 22695477 1)
+          KOFUN_MATCH_VALUE_INVALID_FUZZ_SEED=$(derive 22695477 13)
+          KOFUN_ENUM_MATCH_FUZZ_SEED=$(derive 134775813 1)
+          KOFUN_OPTIONAL_NARROWING_FUZZ_SEED=$(derive 134775813 17)
+          KOFUN_VISIBILITY_ARTIFACTS_FUZZ_SEED=$(derive 214013 2531011)
+          export KOFUN_GRAMMAR_FUZZ_SEED KOFUN_SEMANTIC_FUZZ_SEED \
+            KOFUN_VALUE_IF_FUZZ_SEED KOFUN_MATCH_GUARD_FUZZ_SEED \
+            KOFUN_MATCH_VALUE_FUZZ_SEED KOFUN_MATCH_VALUE_INVALID_FUZZ_SEED \
+            KOFUN_ENUM_MATCH_FUZZ_SEED KOFUN_OPTIONAL_NARROWING_FUZZ_SEED \
+            KOFUN_VISIBILITY_ARTIFACTS_FUZZ_SEED
+
+          # `semantic_protocol_test.sh` is deliberately not in this list and is
+          # not given a seed. It is not a generator: it drives
+          # `semantic_runner.sh` over a fixed set of adapter identities
+          # (oracle-good, backend-stdout, backend-status, ...) to prove the
+          # protocol refuses each way an adapter can misbehave. There is
+          # nothing random in it to rotate, and `task fuzz` still runs it.
+          task fuzz
+
+      # A lane whose failures nobody sees is not sustained fuzzing. This says
+      # what to do with one, in the log of the run that found it.
+      - name: Explain a failure
+        if: failure()
+        env:
+          BASE_SEED: ${{ inputs.seed || github.run_number }}
+        run: |
+          printf '%s\n' \
+            "This run found a fuzz failure." \
+            "" \
+            "Reproduce: re-run this workflow with seed=$BASE_SEED, or run the" \
+            "failing generator directly with the KOFUN_*_FUZZ_SEED value it" \
+            "printed above." \
+            "" \
+            "Record it in tests/fuzz/FINDINGS.md, which states what a row owes." \
+            "An unrecorded finding is why the 1.0 exit criterion currently reads" \
+            "'unmeasurable' rather than 'unmet'."
