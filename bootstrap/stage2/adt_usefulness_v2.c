@@ -668,11 +668,16 @@ static bool parse_pattern(
         return true;
     }
     if (text[0] == '$') {
-        char name[NAME_LIMIT + 2u];
+        char name[NAME_LIMIT + 1u];
         size_t length = 0u;
         size_t role = 0u;
         text += 1;
-        while (length <= NAME_LIMIT &&
+        /* Stops at the bound rather than past it, so the name is never longer
+         * than the buffer it is copied into. A name that continues where this
+         * stopped is too long, and is refused rather than silently shortened —
+         * two roles that differ only past the bound would otherwise intern as
+         * one, which is a wrong answer and not a rejected input. */
+        while (length < NAME_LIMIT &&
                ((text[length] >= 'A' && text[length] <= 'Z') ||
                 (text[length] >= 'a' && text[length] <= 'z') ||
                 (text[length] >= '0' && text[length] <= '9') ||
@@ -681,7 +686,11 @@ static bool parse_pattern(
             length += 1u;
         }
         name[length] = '\0';
-        if (!valid_name(name)) {
+        if (!valid_name(name) ||
+            (text[length] >= 'A' && text[length] <= 'Z') ||
+            (text[length] >= 'a' && text[length] <= 'z') ||
+            (text[length] >= '0' && text[length] <= '9') ||
+            text[length] == '_') {
             return fail_line(program, CODE_MODEL, "malformed binding", line);
         }
         if (!intern_role(program, name, &role)) return false;
