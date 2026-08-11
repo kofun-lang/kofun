@@ -72,8 +72,31 @@ looks well formed. `pipeline_duplicate_slot_zero.kofun` writes `into:`, slot
 The externally labelled case proves the rule rather than a coincidence: the
 subject satisfies `into` without that label appearing anywhere in the call.
 
-Checking is #1227 and C11 lowering #1228, so a bound pipeline still fails
-closed and writes no C. The binder runs from inside the pipeline pass rather
+#1227 then checks the bound call. Effective arity is one subject plus the
+written arguments, so `pipeline_effective_arity.kofun` reports 3 for a
+two-parameter callee. That case is worth its own assertion for a subtle reason:
+the four canonical shapes stopped reaching `E2S17` the moment #1190 refused
+them, whether or not anything counted — so only an *overflow* distinguishes a
+correct count from an earlier refusal.
+
+`pipeline_subject_type_mismatch.kofun` checks the subject against slot 0 and
+reports at the subject's own span, because pointing at the callee would name
+the one token that is not wrong.
+
+The RFC-0010 transfer arrives without a label:
+`pipeline_take_subject.kofun` pipes a bare binding into a `take` slot 0, so it
+moves exactly once and the later use is the existing E2S123 with both spans.
+`move_call_binding` admits it on the declared mode of slot 0 rather than on how
+it was written — a subject is never written with a label — which is what leaves
+the ordinary positional call outside that path.
+`pipeline_compound_subject.kofun` is the other half: `left + right` transfers
+nothing, because there is no binding for a move to invalidate. That case caught
+a real defect. The bare-binding test measured the subject with `expression_end`,
+which since #1190 swallows the whole `subject |> callee(...)`, so every subject
+looked compound and no move was ever recorded. The subject's own extent has to
+be measured with `coalescing_expression_end`.
+
+C11 lowering is #1228, so a checked pipeline still fails closed and writes no C. The binder runs from inside the pipeline pass rather
 than from `validate_core_calls`, because that pass returns first and the call
 validators would never see the call — and it cannot simply run after them,
 since the arity check counts only the parenthesised arguments and would report

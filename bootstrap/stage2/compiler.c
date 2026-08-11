@@ -9951,7 +9951,107 @@ static int64_t pipeline_subject_start(
  * write. Each shape outside the recognized production gets its own wording, so
  * a later slice admitting one leaves the others' evidence intact.
  */
-static char *validate_pipeline_calls(const char *source) {
+/*
+ * Effective arity, slot-checked types, and the bounded take transfer, for a
+ * pipeline whose subject has already bound slot 0.
+ *
+ * Everything here checks against the *bound slot*, never the source position:
+ * the subject is slot 0 wherever it is written, and an explicit argument is
+ * whatever slot its label or position gave it. Checking by position is what
+ * the pre-#1226 code did, and it is why the four canonical shapes used to
+ * report a missing or miscounted argument.
+ */
+static char *validate_pipeline_checked(
+    const char *source,
+    const char *hir,
+    const char *callee,
+    int64_t subject,
+    int64_t call_start,
+    int64_t open
+) {
+    int64_t declaration = function_start_named(source, callee);
+    if (declaration < 0) return owned_text("ok");
+    int64_t expected = parameter_count(source, declaration);
+    /* One subject plus everything inside the parentheses. `call_arity` already
+     * counts a trailing lambda, and a pipeline with one is refused before this
+     * point, so the sum needs no further term. */
+    int64_t written = call_arity(source, open);
+    if (written < 0) return owned_text("ok");
+    int64_t effective = written + 1;
+    if (effective != expected) {
+        Buffer error;
+        buffer_init(&error);
+        buffer_format(
+            &error,
+            "error[E2S17]: Core function `%s` expects %" PRId64
+            " arguments, got %" PRId64 " at byte %" PRId64,
+            callee,
+            expected,
+            effective,
+            call_start
+        );
+        stage2_diagnostic_set(
+            "E2S17",
+            call_start,
+            token_end(source, call_start),
+            true,
+            error.data
+        );
+        return error.data;
+    }
+    /*
+     * The subject against slot 0. Its span is the primary one: a mismatch is
+     * about the value the author piped, and pointing at the callee would name
+     * the one token that is not wrong.
+     */
+    if (expected > 0 && subject >= 0) {
+        char *carrier = function_parameter_type(source, callee, 0);
+        if (!call_slot_carried(source, carrier)) {
+            free(carrier);
+            /* The callee's own offset, not the subject's. This refusal is
+             * about the declaration's carrier rather than the value piped
+             * into it, and it is the one span the frontend checkpoint can
+             * also produce — it resolves no subject, so keying on the subject
+             * here would make the two halves disagree by construction. */
+            return pipeline_refusal(
+                source,
+                "a pipeline subject whose slot 0 carrier is outside the "
+                "call-arguments v1 matrix is not checked",
+                call_start
+            );
+        }
+        char *actual = initializer_type(
+            source,
+            hir,
+            enclosing_function_open(source, subject),
+            subject
+        );
+        if (
+            actual[0] != '\0' &&
+            strcmp(actual, carrier) != 0
+        ) {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(
+                &message,
+                "Core function `%s` expects %s for argument 1, got %s",
+                callee,
+                carrier,
+                actual
+            );
+            free(actual);
+            free(carrier);
+            char *error = lower_error("E2S15", message.data, subject);
+            free(message.data);
+            return error;
+        }
+        free(actual);
+        free(carrier);
+    }
+    return owned_text("ok");
+}
+
+static char *validate_pipeline_calls(const char *source, const char *hir) {
     /* Same reasoning as `validate_pipeline_shapes`: skip the walk entirely for
      * the sources that cannot contain a pipeline. */
     if (strstr(source, "|>") == NULL) return owned_text("ok");
@@ -10032,9 +10132,22 @@ static char *validate_pipeline_calls(const char *source) {
                         callee,
                         open
                     );
-                    free(name);
-                    if (strncmp(binding, "error[", 6) == 0) return binding;
+                    if (strncmp(binding, "error[", 6) == 0) {
+                        free(name);
+                        return binding;
+                    }
                     free(binding);
+                    char *checked = validate_pipeline_checked(
+                        source,
+                        hir,
+                        name,
+                        subject,
+                        callee,
+                        open
+                    );
+                    free(name);
+                    if (strncmp(checked, "error[", 6) == 0) return checked;
+                    free(checked);
                     return pipeline_refusal(
                         source,
                         "a pipeline subject binds slot 0; call-arguments v1 "
@@ -22643,6 +22756,51 @@ static bool move_use_position(
  * refuses a program the ownership gate requires the compiler to accept.
  * Widening to positional calls is a change to that accepted model, not to
  * this lowering slice, and is owned by #882 rather than assumed here. */
+/*
+ * Whether `cursor` is a pipeline subject flowing into a `take` slot 0.
+ *
+ * The subject is never written with a label — it sits outside the parentheses
+ * — so `call_argument_labelled` and `call_argument_expected_mode` cannot see
+ * it at all: both look inside the argument list. The declared mode therefore
+ * has to come from slot 0 of the callee that follows the pipe.
+ *
+ * `|>` immediately after the subject's own end is what identifies it, and
+ * requiring that end to be a single token is what keeps a compound subject
+ * out: `a + b |> consume()` transfers nothing, because there is no binding
+ * for the move to invalidate.
+ */
+static bool pipeline_subject_take(
+    const char *source,
+    int64_t cursor
+) {
+    /* `coalescing_expression_end`, not `expression_end`: since the pipeline
+     * became a production, `expression_end` swallows the whole
+     * `subject |> callee(...)` and would never equal the subject's single
+     * token. The subject's own extent is what decides bare versus compound. */
+    if (coalescing_expression_end(source, cursor) !=
+        token_end(source, cursor)) {
+        return false;
+    }
+    int64_t pipe = skip_trivia(source, token_end(source, cursor));
+    if (pipe >= source_length(source)) return false;
+    if (!token_equal(source, pipe, "|>")) return false;
+    int64_t call_end = pipeline_call_end(source, pipe);
+    if (call_end < 0) return false;
+    int64_t callee = skip_trivia(source, token_end(source, pipe));
+    char *name = token_copy(source, callee);
+    int64_t declaration = function_start_named(source, name);
+    free(name);
+    if (declaration < 0 || parameter_count(source, declaration) < 1) {
+        return false;
+    }
+    /* Slot 0 is the first token after `(`, so no parameter walk is needed —
+     * and an ownership mode, when present, is the head of its parameter. */
+    int64_t parameters = parameter_open(source, declaration);
+    if (parameters < 0) return false;
+    int64_t parameter = skip_trivia(source, token_end(source, parameters));
+    return token_equal(source, parameter, "take");
+}
+
 static bool move_call_binding(
     const char *source,
     const char *hir,
@@ -22653,6 +22811,11 @@ static bool move_call_binding(
     bool resolved = binding[0] != '\0';
     free(binding);
     if (!resolved) return false;
+    /* A pipeline subject reaches its slot without a label, so it is admitted
+     * on the declared mode of slot 0 rather than on how it was written. Every
+     * other shape keeps the existing rule exactly, which is what leaves the
+     * ordinary positional call outside the RFC-0010 move path. */
+    if (pipeline_subject_take(source, cursor)) return true;
     char *mode = call_argument_expected_mode(source, cursor);
     bool taken = strcmp(mode, "take") == 0;
     free(mode);
@@ -23461,7 +23624,7 @@ static char *lower_c_body(const char *source, const char *hir) {
      * also trips an earlier rule should still hear that rule first; what this
      * must beat is only the argument binding and arity checks, which would
      * otherwise describe the pipeline as a missing or miscounted argument. */
-    char *pipeline_check = validate_pipeline_calls(source);
+    char *pipeline_check = validate_pipeline_calls(source, hir);
     if (strncmp(pipeline_check, "error[", 6) == 0) return pipeline_check;
     free(pipeline_check);
     char *call_check = validate_core_calls(source, hir);
