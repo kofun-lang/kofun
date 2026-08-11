@@ -4,7 +4,7 @@
   "version": "0.5.1-seed",
   "inputs": {
     "VERSION": "20698107c84adaa2dad946f3dd4b27e97854fd7c641fc65cd623c741f5dfea6c",
-    "release/claims.json": "470136c1fc08981b6d31ec82b9e63c718bc1d69d5e355a7966e18145ef1b7ed9",
+    "release/claims.json": "9ac67471e6dc483a263f9668548864172fab8a4f880f522450d974998e9b55ee",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
     "bootstrap/manifest.json": "d3eceee2af3972dcda711b2cee8ee9f1d3bf3c59c18e723306b35519e6afe1ad"
   },
