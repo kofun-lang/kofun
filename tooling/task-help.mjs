@@ -50,7 +50,8 @@ export const GROUPS = Object.freeze([
             'optional', 'optional-narrowing',
             'optional-construction', 'optional-coalescing', 'optional-pair',
             'text-results', 'list-int-values', 'while-list-int', 'else-if-chain', 'list-int-signatures',
-            'adt-exhaustiveness', 'enum-match-value', 'module-constants',
+            'adt-exhaustiveness', 'adt-usefulness-v2',
+            'enum-match-value', 'module-constants',
             'decimal', 'decimal-arithmetic',
             'date-time', 'syntax'
         ]

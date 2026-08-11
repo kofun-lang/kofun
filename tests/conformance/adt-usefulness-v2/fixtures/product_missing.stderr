@@ -1,0 +1,1 @@
+error[E2S25]: non-exhaustive match on `Pair`: no arm matches `P(Green, Green)`; hint: add the missing case or a wildcard arm
