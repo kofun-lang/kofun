@@ -4,21 +4,27 @@
 # Two things had to change for it to read the way it is written elsewhere.
 # `while` became a Core statement (#1128), so the loop executes; and chained
 # `else if` lowers (#1174), so the miss branch is a comparison ladder rather
-# than a nest.
+# than a nest. `SearchIndex` also keeps the values in a nominal record: bounded
+# `List[Int]` record fields can now be constructed and read back as values
+# (#1183, #1197).
 #
 # One spelling here is still narrower than the language reads: `main` binds
 # `data` before passing it, because a `List[Int]` literal is refused as a call
 # argument. That has nothing to do with looping or branching.
 
-fn binary_search(values: List[Int], target: Int) -> Int {
+type SearchIndex = {
+    values: List[Int],
+}
+
+fn binary_search(index: SearchIndex, target: Int) -> Int {
     let mut left = 0
-    let mut right = len(values) - 1
+    let mut right = len(index.values) - 1
 
     while left <= right {
         let middle = left + (right - left) // 2
-        if values[middle] == target {
+        if index.values[middle] == target {
             return middle
-        } else if values[middle] < target {
+        } else if index.values[middle] < target {
             left = middle + 1
         } else {
             right = middle - 1
@@ -29,8 +35,9 @@ fn binary_search(values: List[Int], target: Int) -> Int {
 
 fn main() {
     let data = [1, 3, 5, 7, 9, 11]
-    print(binary_search(data, 7))
-    print(binary_search(data, 1))
-    print(binary_search(data, 11))
-    print(binary_search(data, 4))
+    let index: SearchIndex = SearchIndex(values: data)
+    print(binary_search(index, 7))
+    print(binary_search(index, 1))
+    print(binary_search(index, 11))
+    print(binary_search(index, 4))
 }

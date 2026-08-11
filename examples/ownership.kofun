@@ -1,19 +1,61 @@
-fn inspect(read handle: Resource) -> Bool {
-    return is_open(handle)
+# Bounded affine resource-handle checkpoint.
+#
+# Kofun does not claim a general ownership pass. The implemented boundary is
+# one explicit protocol: reads borrow an `AffineTransport`, state transitions
+# take the old handle and return at most one successor, and close returns a
+# copyable summary. `task affine-resource-handle` owns the negative and host
+# generation checks; this example keeps the successful path runnable.
+
+type AffineTransport = {
+    generation: Int,
+    payload: Int,
+    unread: Bool,
 }
 
-fn consume(take handle: Resource) {
-    print(inspect(handle))
+type TerminalSummary = {
+    terminal: Int,
+    generation: Int,
 }
 
-fn main() {
-    let own socket = resource("demo-socket")
-    print(inspect(socket))
-    consume(socket)
+fn inspect(read handle: AffineTransport) -> Int {
+    return handle.payload
+}
 
-    # Uncommenting this line is a use after `take`. The general ownership pass
-    # that would reject it here is open (docs/MVP_IMPLEMENTED.md); the
-    # rejection is executable today only for records, as `E2S123` in
-    # tests/conformance/records/use_after_move.kofun.
-    # print(inspect(socket))
+fn write(take handle: AffineTransport, amount: Int) -> AffineTransport {
+    let successor: AffineTransport = AffineTransport(
+        generation: handle.generation + 1,
+        payload: handle.payload + amount,
+        unread: true,
+    )
+    take handle
+    return successor
+}
+
+fn close(take handle: AffineTransport) -> TerminalSummary {
+    let summary: TerminalSummary = TerminalSummary(
+        terminal: 1,
+        generation: handle.generation + 1,
+    )
+    take handle
+    return summary
+}
+
+fn main() -> Int {
+    let initial: AffineTransport = AffineTransport(
+        generation: 0,
+        payload: 10,
+        unread: false,
+    )
+    print(inspect(initial))
+
+    let written: AffineTransport = write(initial, 5)
+    take initial
+    print(inspect(written))
+    print(written.generation)
+
+    let summary: TerminalSummary = close(written)
+    take written
+    print(summary.terminal)
+    print(summary.generation)
+    return 0
 }
