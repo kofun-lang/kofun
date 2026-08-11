@@ -5814,6 +5814,26 @@ static int64_t field_postfix_end(
     ) {
         return -1;
     }
+    /*
+     * A `List[Int]` record field read is a value this slice indexes (#1197),
+     * so one subscript may follow the field exactly as it may follow a bound
+     * local. Only one: a chain past it is not in this slice, and leaving the
+     * rest unconsumed keeps the existing refusal rather than inventing a
+     * shape for it.
+     *
+     * The guard is the same whole-source one the bound-local case uses, and
+     * it is sufficient here rather than needing a record-field variant: a
+     * literal must be bound before it can be passed, so every program that
+     * populates a `List[Int]` field has a `List[Int]` local somewhere in the
+     * file to have built the value from.
+     */
+    int64_t index_open = skip_trivia(source, token_end(source, field));
+    if (
+        index_open < length && token_equal(source, index_open, "[") &&
+        source_has_list_int_local(source)
+    ) {
+        return balanced_end(source, index_open, "[", "]");
+    }
     return token_end(source, field);
 }
 
@@ -7617,6 +7637,54 @@ static char *emit_list_int_value(
         );
     }
     int64_t after = skip_trivia(source, token_end(source, cursor));
+    /*
+     * A record field declared `List[Int]` is the third admissible form
+     * (#1197). #1183 admitted the field's declaration and construction and
+     * stopped there, so reading one back was refused by the two-form rule
+     * below even though the field's own carrier is already exactly the
+     * `List[Int]` carrier this slice passes.
+     *
+     * The read names the field's storage, and C copies a struct on
+     * assignment and on an argument, so what the caller receives is a copy
+     * of the 520-byte carrier rather than a view into the record. Mutating
+     * the source binding afterwards cannot change what was read.
+     *
+     * Exactly one `.` is consumed and the field must end the value. A nested
+     * path leaves a token before `end` and falls through to the refusal, so
+     * `a.b.samples` is still outside this slice rather than silently reading
+     * its prefix.
+     */
+    if (after < end && token_equal(source, after, ".")) {
+        int64_t field_cursor = skip_trivia(source, token_end(source, after));
+        char *field_binding = hir_use_binding_id(hir, cursor);
+        if (
+            field_binding[0] != '\0' &&
+            skip_trivia(source, token_end(source, field_cursor)) >= end
+        ) {
+            char *record_type = hir_binding_field(hir, field_binding, 5);
+            char *field = token_copy(source, field_cursor);
+            char *field_type = record_field_type_named(
+                source,
+                record_type,
+                field
+            );
+            bool list_field = strcmp(field_type, "List[Int]") == 0;
+            free(field_type);
+            free(record_type);
+            if (list_field) {
+                char *c_field = record_c_field_name(field);
+                Buffer output;
+                buffer_init(&output);
+                buffer_format(&output, "k_b%s.%s", field_binding, c_field);
+                free(c_field);
+                free(field);
+                free(field_binding);
+                return output.data;
+            }
+            free(field);
+        }
+        free(field_binding);
+    }
     if (after >= end || !token_equal(source, after, "(")) {
         char *binding_id = hir_use_binding_id(hir, cursor);
         char *binding_type = hir_binding_field(hir, binding_id, 5);
@@ -7657,34 +7725,21 @@ static char *emit_list_int_value(
 
 /* Validate one List[Int] subscript once for both reads and writes, then return
  * the emitted Int index. The caller owns the operation-specific C wrapper. */
-static char *emit_list_int_index_value(
+/*
+ * The index half of a subscript, shared by both subjects that can carry one
+ * (#1197). Only the subject check differs between them -- a bound local
+ * carries its type in HIR, a record field carries it in the record
+ * declaration -- so the caller does that and this does the rest.
+ * `literal_count` is the subject's known literal length for the
+ * constant-bounds check, or -1 when there is none to check against, which is
+ * the case for a field read.
+ */
+static char *emit_list_int_subscript(
     const char *source,
     const char *hir,
-    int64_t binding_start,
-    int64_t open
+    int64_t open,
+    int64_t literal_count
 ) {
-    char *binding_id = hir_use_binding_id(hir, binding_start);
-    char *binding_type = hir_binding_field(hir, binding_id, 5);
-    if (strcmp(binding_type, "List[Int]") != 0) {
-        Buffer message;
-        buffer_init(&message);
-        buffer_format(
-            &message,
-            "indexing requires List[Int], got %s",
-            binding_type
-        );
-        free(binding_type);
-        free(binding_id);
-        char *error = lower_error(
-            "E2S157",
-            message.data,
-            binding_start
-        );
-        free(message.data);
-        return error;
-    }
-    free(binding_type);
-    free(binding_id);
     int64_t index_start = skip_trivia(source, token_end(source, open));
     int64_t index_end = expression_end(source, index_start);
     int64_t close = index_end < 0 ? -1 : skip_trivia(source, index_end);
@@ -7731,11 +7786,6 @@ static char *emit_list_int_index_value(
     }
     free(index_type);
     int64_t constant = 0;
-    int64_t literal_count = list_int_binding_literal_count(
-        source,
-        hir,
-        binding_start
-    );
     if (
         literal_count >= 0 &&
         list_int_constant_index(
@@ -7764,6 +7814,42 @@ static char *emit_list_int_index_value(
         return error;
     }
     return emit_expression(source, hir, index_start, index_end);
+}
+
+static char *emit_list_int_index_value(
+    const char *source,
+    const char *hir,
+    int64_t binding_start,
+    int64_t open
+) {
+    char *binding_id = hir_use_binding_id(hir, binding_start);
+    char *binding_type = hir_binding_field(hir, binding_id, 5);
+    if (strcmp(binding_type, "List[Int]") != 0) {
+        Buffer message;
+        buffer_init(&message);
+        buffer_format(
+            &message,
+            "indexing requires List[Int], got %s",
+            binding_type
+        );
+        free(binding_type);
+        free(binding_id);
+        char *error = lower_error(
+            "E2S157",
+            message.data,
+            binding_start
+        );
+        free(message.data);
+        return error;
+    }
+    free(binding_type);
+    free(binding_id);
+    return emit_list_int_subscript(
+        source,
+        hir,
+        open,
+        list_int_binding_literal_count(source, hir, binding_start)
+    );
 }
 
 static int64_t list_int_index_close(const char *source, int64_t open) {
@@ -8166,6 +8252,53 @@ static char *emit_primary(
                     );
                 }
                 char *c_field = record_c_field_name(field);
+                /*
+                 * A `List[Int]` field read may carry one subscript, so it
+                 * indexes exactly as a bound local does (#1197). The view is
+                 * taken of the field's own storage, so the bounds check reads
+                 * the length stored in that carrier rather than the record's.
+                 */
+                int64_t field_index_open = skip_trivia(
+                    source,
+                    token_end(source, field_cursor)
+                );
+                if (
+                    field_index_open < end &&
+                    token_equal(source, field_index_open, "[") &&
+                    strcmp(field_type, "List[Int]") == 0
+                ) {
+                    char *field_index = emit_list_int_subscript(
+                        source,
+                        hir,
+                        field_index_open,
+                        -1
+                    );
+                    if (strncmp(field_index, "error[", 6) == 0) {
+                        free(c_field);
+                        free(field_type);
+                        free(field);
+                        free(binding_type);
+                        free(binding_id);
+                        free(name);
+                        free(output.data);
+                        return field_index;
+                    }
+                    buffer_format(
+                        &output,
+                        "kofun_list_int_index(kofun_list_int_view(&k_b%s.%s), %s)",
+                        binding_id,
+                        c_field,
+                        field_index
+                    );
+                    free(field_index);
+                    free(c_field);
+                    free(field_type);
+                    free(field);
+                    free(binding_type);
+                    free(binding_id);
+                    free(name);
+                    return output.data;
+                }
                 buffer_format(
                     &output,
                     "k_b%s.%s",

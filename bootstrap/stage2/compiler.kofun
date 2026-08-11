@@ -3032,6 +3032,23 @@ fn field_postfix_end(source: Text, primary: Int) -> Int {
     if field >= len(source) || token_kind(source, field) != "identifier" {
         return -1
     }
+    # A `List[Int]` record field read is a value this slice indexes (#1197),
+    # so one subscript may follow the field exactly as it may follow a bound
+    # local. Only one: a chain past it is not in this slice, and leaving the
+    # rest unconsumed keeps the existing refusal rather than inventing a
+    # shape for it.
+    #
+    # The guard is the same whole-source one the bound-local case uses, and
+    # it is sufficient here rather than needing a record-field variant: a
+    # literal must be bound before it can be passed, so every program that
+    # populates a `List[Int]` field has a `List[Int]` local somewhere in the
+    # file to have built the value from.
+    let index_open = skip_trivia(source, token_end(source, field))
+    if index_open < len(source) &&
+       token_text(source, index_open) == "[" &&
+       source_has_list_int_local(source) {
+        return balanced_end(source, index_open, "[", "]")
+    }
     return token_end(source, field)
 }
 
@@ -4412,6 +4429,35 @@ fn emit_list_int_value(
         to_text(cursor)
     }
     let after = skip_trivia(source, token_end(source, cursor))
+    # A record field declared `List[Int]` is the third admissible form
+    # (#1197). #1183 admitted the field's declaration and construction and
+    # stopped there, so reading one back was refused by the two-form rule
+    # below even though the field's own carrier is already exactly the
+    # `List[Int]` carrier this slice passes.
+    #
+    # The read names the field's storage, and C copies a struct on
+    # assignment and on an argument, so what the caller receives is a copy
+    # of the 520-byte carrier rather than a view into the record. Mutating
+    # the source binding afterwards cannot change what was read.
+    #
+    # Exactly one `.` is consumed and the field must end the value. A nested
+    # path leaves a token before `end` and falls through to the refusal, so
+    # `a.b.samples` is still outside this slice rather than silently reading
+    # its prefix.
+    if after < end && token_text(source, after) == "." {
+        let field_cursor = skip_trivia(source, token_end(source, after))
+        let field_binding = hir_use_binding_id(hir, cursor)
+        if len(field_binding) > 0 &&
+           skip_trivia(source, token_end(source, field_cursor)) >= end &&
+           record_field_type_named(
+               source,
+               hir_binding_field(hir, field_binding, 5),
+               token_text(source, field_cursor)
+           ) == "List[Int]" {
+            return "k_b" + field_binding + "." +
+            record_c_field_name(token_text(source, field_cursor))
+        }
+    }
     if after >= end || token_text(source, after) != "(" {
         let binding_id = hir_use_binding_id(hir, cursor)
         if len(binding_id) == 0 ||
@@ -4434,18 +4480,18 @@ fn emit_list_int_value(
 
 # Validate one List[Int] subscript once for both reads and writes, then return
 # the emitted Int index. The caller owns the operation-specific C wrapper.
-fn emit_list_int_index_value(
+# The index half of a subscript, shared by both subjects that can carry one
+# (#1197). Only the subject check differs between them — a bound local carries
+# its type in HIR, a record field carries it in the record declaration — so
+# the caller does that and this does the rest. `literal_count` is the
+# subject's known literal length for the constant-bounds check, or -1 when
+# there is none to check against, which is the case for a field read.
+fn emit_list_int_subscript(
     source: Text,
     hir: Text,
-    binding_start: Int,
-    open: Int
+    open: Int,
+    literal_count: Int
 ) -> Text {
-    let binding_id = hir_use_binding_id(hir, binding_start)
-    let binding_type = hir_binding_field(hir, binding_id, 5)
-    if binding_type != "List[Int]" {
-        return "error[E2S157]: indexing requires List[Int], got " +
-        binding_type + " at byte " + to_text(binding_start)
-    }
     let index_start = skip_trivia(source, token_end(source, open))
     let index_end = expression_end(source, index_start)
     let mut close = -1
@@ -4473,11 +4519,6 @@ fn emit_list_int_index_value(
         index_type + " at byte " + to_text(index_start)
     }
     let constant = list_int_constant_index(source, index_start, index_end)
-    let literal_count = list_int_binding_literal_count(
-        source,
-        hir,
-        binding_start
-    )
     if len(constant) > 0 && literal_count >= 0 {
         let numeric = decimal_value(constant)
         if numeric < 0 - literal_count || numeric >= literal_count {
@@ -4487,6 +4528,26 @@ fn emit_list_int_index_value(
         }
     }
     return emit_expression(source, hir, index_start, index_end)
+}
+
+fn emit_list_int_index_value(
+    source: Text,
+    hir: Text,
+    binding_start: Int,
+    open: Int
+) -> Text {
+    let binding_id = hir_use_binding_id(hir, binding_start)
+    let binding_type = hir_binding_field(hir, binding_id, 5)
+    if binding_type != "List[Int]" {
+        return "error[E2S157]: indexing requires List[Int], got " +
+        binding_type + " at byte " + to_text(binding_start)
+    }
+    return emit_list_int_subscript(
+        source,
+        hir,
+        open,
+        list_int_binding_literal_count(source, hir, binding_start)
+    )
 }
 
 fn list_int_index_close(source: Text, open: Int) -> Int {
@@ -4687,6 +4748,34 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
                     }
                     return "error[E2S32]: unknown nominal record field read at byte " +
                     to_text(field_cursor)
+                }
+                # A `List[Int]` field read may carry one subscript, so it
+                # indexes exactly as a bound local does (#1197). The view is
+                # taken of the field's own storage, so the bounds check reads
+                # the length stored in that carrier rather than the record's.
+                let field_index_open = skip_trivia(
+                    source,
+                    token_end(source, field_cursor)
+                )
+                if field_index_open < end &&
+                   token_text(source, field_index_open) == "[" &&
+                   record_field_type_named(
+                       source,
+                       binding_type,
+                       field
+                   ) == "List[Int]" {
+                    let field_index = emit_list_int_subscript(
+                        source,
+                        hir,
+                        field_index_open,
+                        0 - 1
+                    )
+                    if starts_with(field_index, "error[") {
+                        return field_index
+                    }
+                    return "kofun_list_int_index(kofun_list_int_view(&k_b" +
+                    binding_id + "." + record_c_field_name(field) + ")" +
+                    ", " + field_index + ")"
                 }
                 return "k_b" + binding_id + "." +
                 record_c_field_name(field)
