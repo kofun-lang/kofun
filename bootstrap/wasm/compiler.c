@@ -1080,12 +1080,28 @@ static bool parse_signature(Parser *parser, Function *function, bool declare) {
             }
             const char *parameter = parser->token.start;
             size_t parameter_length = parser->token.length;
+            next_token(parser);
+            /*
+             * `external internal: Int` — two names before the colon. The first
+             * is the call-site label and the second is what the body binds, so
+             * on seeing a second name the first is discarded here and the
+             * binding is made from the internal one. A label is call-site
+             * vocabulary only and must never become a lexical binding
+             * (call-arguments v1, rule 4).
+             *
+             * The label itself is recorded by the caller's declaration pass;
+             * this loop only has to stop treating the pair as a syntax error.
+             */
+            if (parser->token.kind == TOKEN_IDENTIFIER) {
+                parameter = parser->token.start;
+                parameter_length = parser->token.length;
+                next_token(parser);
+            }
             if (declare &&
                 !check_new_binding(parser, parameter, parameter_length,
                                    "duplicate parameter in wasm32 Core")) {
                 return false;
             }
-            next_token(parser);
             if (!expect(parser, TOKEN_COLON,
                         "expected `:` after the parameter name")) {
                 return false;
