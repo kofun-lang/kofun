@@ -20,6 +20,14 @@ Kofun's product direction is **the language where you state an algebraic law
 and the compiler hands you a counterexample.** General ownership and law
 checking remain open work.
 
+Its systems target is equally explicit: Kofun is intended to become a
+Rust/Zig-class, self-contained native toolchain. The accepted
+[`kofun-only-native/v1`](rfcs/0013-self-contained-native-toolchain.md)
+completion contract requires the compiler, direct ELF image writer, build,
+package, test, and full-language fixed-point path to run in Kofun without a
+host C/C++ compiler, assembler, linker, Rust, Cargo, Zig, Node.js, or Python.
+That is a target contract, not a claim about the bounded compiler today.
+
 ## Try it
 
 ```sh

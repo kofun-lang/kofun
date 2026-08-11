@@ -9,6 +9,8 @@ Kofun advances milestones by correctness gate, not by feature count.
 - attach a reproducible benchmark to every performance claim
 - distinguish the strength of law evidence as `bounded`, `proven-finite`, or `proven`
 - do not call the project "self-hosting complete" before the Stage 2 fixed point
+- do not call the native toolchain complete while its required core build runs
+  a host compiler, assembler, linker, Rust, Zig, Node.js, or Python
 
 A milestone is advanced by evidence, not by a decision having been accepted.
 The [RFC process](https://kofun-lang.github.io/kofun/docs/rfc-process/) records
@@ -17,6 +19,13 @@ an accepted RFC carries no schedule and moves no milestone until
 [`release/claims.json`](../release/claims.json) evidences the capability. The
 RFC sets named here are decision work, and appear on this roadmap only once
 they have implementation evidence to advance.
+
+RFC-0013 fixes the final product boundary: the required x86-64/AArch64 native
+toolchain is full-language, Kofun-authored, source-free across package
+interfaces, and linker-free. The current C11 fixed point is bootstrap evidence
+toward that profile, not completion of it. `task native-toolchain-contract`
+checks the decision while `release/claims.json` continues to say what is
+actually implemented.
 
 ## Current critical-path order
 

@@ -363,7 +363,7 @@ rounding mode whenever digits may be discarded:
 let tax: Fixed[2] = Fixed.from_decimal(
     exact_tax,
     rounding: HalfUp,
-)
+)?
 ```
 
 Values with different scales are different types. Cross-scale conversion is
@@ -394,6 +394,13 @@ prevent implicit rounding, but provide **no static scale safety**. A future
 Decimal-backed Fixed implementation must reuse the existing const-generic
 identity, move scale into the Decimal-backed value type, and replace this
 profile rather than presenting runtime arguments as that guarantee.
+
+RFC-0015 now fixes that future profile without claiming it implemented:
+`Fixed[S]` is an owned nominal wrapper over the arbitrary-precision carrier,
+literal `S` is limited to `0..6144`, construction and clone return typed
+`DecimalError`, conversion back to Decimal is exact, and the first arithmetic
+surface is exact `+`, `-`, scale-additive `*`, and formatting at `S`. Fixed
+division remains deferred to the explicit Decimal division API.
 
 ## Laws
 
@@ -457,8 +464,6 @@ formats.
 
 The following details are intentionally not invented by this design:
 
-- the first cross-backend digit, scale, allocation, and operation-cost limits;
-- stable diagnostic codes for those resource failures;
 - the implementation schedule for Decimal-backed `Fixed[scale]` and for const
   expressions or inference beyond the shipped literal nominal profile;
 - locale-aware formatting and exponent-selection thresholds beyond the exact

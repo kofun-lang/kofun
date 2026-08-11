@@ -139,6 +139,29 @@ The field participates in **both** semantic digests, so changing a module's
 trust class invalidates its interface digest and every dependent's cached view
 of it. A trust change is an interface change.
 
+### Amendment RFC-0012/A01 — ordinary modules have explicit bytes
+
+Recorded 2026-08-11 for
+[#1212](https://github.com/kofun-lang/kofun/issues/1212). The paragraph above
+originally required `0x800A` while describing a closed v1 value set containing
+only `raw-foreign`; that left no legal required payload for the source default
+`ordinary`.
+
+The active semantics are option A: `0x800A` is required UTF-8 from the exact
+set **`ordinary`** or **`raw-foreign`**. Source still spells a `trust` line only
+for `raw-foreign`; the compiler serializes the implicit ordinary source state
+as the explicit bytes `ordinary`. Missing, unknown, and source-contradictory
+values all reject as rebuild-required before facts are consumed.
+
+This is a clarification within the active RFC-0012 envelope domain, not a new
+version: no implementation or released artifact existed for the contradictory
+schema. An old reader rejects either value because `0x800A` is a required field
+it does not understand. A new reader accepts an old artifact only if it already
+contains one of the two exact values; an artifact missing the tag is never
+grandfathered. Option B's empty payload is rejected because absence/empty is
+too easy to conflate, and option C is rejected because optionality reopens the
+anti-downgrade hole.
+
 ### 5. Propagation
 
 The crossing is **façade-local**.

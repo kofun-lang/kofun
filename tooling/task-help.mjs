@@ -28,6 +28,7 @@ export const GROUPS = Object.freeze([
             'selfhost-frontend', 'selfhost-c11', 'selfhost-c11-control',
             'selfhost-native', 'stage2', 'stage2-events', 'native', 'wasm',
             'wasm-host-abi', 'wasm-host-profile', 'wasi-command-profile',
+            'native-toolchain-contract',
             'wasm-object-arena',
             'wasm-list-v1', 'c-abi', 'bindgen-c'
         ]
@@ -44,6 +45,8 @@ export const GROUPS = Object.freeze([
             'scoped-parallelism', 'schedule-trace', 'type-reduction-trace',
             'generics', 'const-generics', 'hm-levels', 'effect-inference', 'traits',
             'trait-dictionary-c11',
+            'fixed-decimal-profile', 'decimal-backend-profiles',
+            'generics-execution-profile', 'generic-proof-kernel-profile',
             'optional', 'optional-narrowing',
             'optional-construction', 'optional-coalescing', 'optional-pair',
             'text-results', 'list-int-values', 'while-list-int', 'else-if-chain', 'list-int-signatures',
@@ -61,6 +64,7 @@ export const GROUPS = Object.freeze([
             'visibility-api-leaks', 'module-interface-artifact', 'incremental',
             'package-roots', 'source-file-mapping', 'namespaces', 'module-identity',
             'semantic-identity',
+            'kif-module-trust-profile', 'kif-generics-profile',
             'visibility-spec', 'visibility-syntax', 'visibility-access',
             're-exports-spec', 'aggregate-layout', 'reuse-candidate'
         ]
@@ -81,6 +85,8 @@ export const GROUPS = Object.freeze([
         hint: 'Host integration, measured costs, and the executable standard-library capability surface.',
         tasks: [
             'rust-shim', 'http', 'stdlib', 'alloc-contract', 'kotest', 'tzdb', 'clock-adapters',
+            'environment-authority-compiler-contract', 'host-process-authority-contract',
+            'directory-authority-contract', 'http-carrier-profile',
             'benchmark-summary', 'capabilities'
         ]
     },

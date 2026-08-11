@@ -614,6 +614,61 @@ tasks:
     cmds:
       - "sh spec/wasi-command-profile-v1/check.sh"
 
+  native-toolchain-contract:
+    desc: "Verify the Kofun-only native toolchain and all accepted decision profiles"
+    cmds:
+      - "sh spec/native-toolchain-v1/check.sh all"
+
+  kif-module-trust-profile:
+    desc: "Verify explicit ordinary/raw-foreign KIF module-trust bytes"
+    cmds:
+      - "sh spec/native-toolchain-v1/check.sh kif-module-trust"
+
+  environment-authority-compiler-contract:
+    desc: "Verify the bounded environment authority compiler profile"
+    cmds:
+      - "sh spec/native-toolchain-v1/check.sh environment-authority"
+
+  host-process-authority-contract:
+    desc: "Verify bounded process spawn, capture, wait, and authority decisions"
+    cmds:
+      - "sh spec/native-toolchain-v1/check.sh process-authority"
+
+  directory-authority-contract:
+    desc: "Verify bounded directory enumeration and path authority decisions"
+    cmds:
+      - "sh spec/native-toolchain-v1/check.sh directory-authority"
+
+  fixed-decimal-profile:
+    desc: "Verify the Decimal-backed Fixed[S] carrier and conversion profile"
+    cmds:
+      - "sh spec/native-toolchain-v1/check.sh fixed-decimal"
+
+  decimal-backend-profiles:
+    desc: "Verify Decimal/Float profiles for C11, direct ELF, and wasm"
+    cmds:
+      - "sh spec/native-toolchain-v1/check.sh decimal-backends"
+
+  http-carrier-profile:
+    desc: "Verify the bounded generic HTTP/1.1 scripted carrier profile"
+    cmds:
+      - "sh spec/native-toolchain-v1/check.sh http-carrier"
+
+  generics-execution-profile:
+    desc: "Verify rank-1 specialization and static dictionary decisions"
+    cmds:
+      - "sh spec/native-toolchain-v1/check.sh generics"
+
+  kif-generics-profile:
+    desc: "Verify source-free KIF generics v3 records and boundaries"
+    cmds:
+      - "sh spec/native-toolchain-v1/check.sh kif-generics"
+
+  generic-proof-kernel-profile:
+    desc: "Verify the trusted generic proof-kernel decision boundary"
+    cmds:
+      - "sh spec/native-toolchain-v1/check.sh generic-proof-kernel"
+
   wasm-object-arena:
     desc: "Verify the bounded wasm32-hostabi1 object arena and u64 headers"
     cmds:
@@ -985,6 +1040,7 @@ tasks:
             wasm-host-abi \
             wasm-host-profile \
             wasi-command-profile \
+            native-toolchain-contract \
             wasm-object-arena \
             wasm-list-v1 \
             typed-sidecar-spec \

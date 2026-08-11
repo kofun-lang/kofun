@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kofun-lang.invalid/spec/native-toolchain-v1/schema.json",
+  "title": "Kofun native toolchain decision contract v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "profile",
+    "objective",
+    "decisions"
+  ],
+  "properties": {
+    "schema": {
+      "const": "kofun.native-toolchain-decisions/v1"
+    },
+    "profile": {
+      "const": "kofun-only-native/v1"
+    },
+    "objective": {
+      "$ref": "#/$defs/objective"
+    },
+    "decisions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kif_module_trust",
+        "environment_authority",
+        "process_authority",
+        "directory_authority",
+        "fixed_decimal",
+        "decimal_backends",
+        "http_carrier",
+        "generics",
+        "kif_generics",
+        "generic_proof_kernel"
+      ],
+      "properties": {
+        "kif_module_trust": { "$ref": "#/$defs/decision" },
+        "environment_authority": { "$ref": "#/$defs/decision" },
+        "process_authority": { "$ref": "#/$defs/decision" },
+        "directory_authority": { "$ref": "#/$defs/decision" },
+        "fixed_decimal": { "$ref": "#/$defs/decision" },
+        "decimal_backends": { "$ref": "#/$defs/decision" },
+        "http_carrier": { "$ref": "#/$defs/decision" },
+        "generics": { "$ref": "#/$defs/decision" },
+        "kif_generics": { "$ref": "#/$defs/decision" },
+        "generic_proof_kernel": { "$ref": "#/$defs/decision" }
+      }
+    }
+  },
+  "$defs": {
+    "nonemptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "objective": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "replacement_class",
+        "meaning",
+        "required_language_for_shipped_toolchain",
+        "required_native_targets",
+        "required_portable_target",
+        "allowed_external_boundary",
+        "forbidden_core_build_requirements",
+        "completion_evidence",
+        "claim_boundary"
+      ],
+      "properties": {
+        "replacement_class": { "$ref": "#/$defs/nonemptyStringArray" },
+        "meaning": { "$ref": "#/$defs/nonemptyString" },
+        "required_language_for_shipped_toolchain": { "const": "Kofun" },
+        "required_native_targets": { "$ref": "#/$defs/nonemptyStringArray" },
+        "required_portable_target": { "$ref": "#/$defs/nonemptyString" },
+        "allowed_external_boundary": { "$ref": "#/$defs/nonemptyStringArray" },
+        "forbidden_core_build_requirements": { "$ref": "#/$defs/nonemptyStringArray" },
+        "completion_evidence": { "$ref": "#/$defs/nonemptyStringArray" },
+        "claim_boundary": { "$ref": "#/$defs/nonemptyString" }
+      }
+    },
+    "nonemptyStringArray": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/nonemptyString" }
+    },
+    "decision": {
+      "type": "object",
+      "required": [
+        "issue"
+      ],
+      "properties": {
+        "issue": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  }
+}
