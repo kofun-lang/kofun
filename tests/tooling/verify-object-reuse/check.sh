@@ -90,12 +90,16 @@ assert_grep 'stage2-events keeps clang analyzer coverage local' \
     -Fq -- 'clang --analyze' "$ROOT/tests/typed-sidecar/stage2-events.sh"
 assert_grep 'stage2-events keeps GCC analyzer coverage local' \
     -Fq -- '-fanalyzer' "$ROOT/tests/typed-sidecar/stage2-events.sh"
-assert_num 'discovery keeps only four sanitizer producer source profiles' \
+assert_num 'discovery run has no repeated sanitizer producer source lists' \
     "$(grep -Fc 'bootstrap/stage2/semantic_producer.c' \
-        "$ROOT/tests/conformance/discovery/run.sh")" -eq 4
+        "$ROOT/tests/conformance/discovery/run.sh")" -eq 0
+assert_num 'discovery helper owns one sanitizer producer member' \
+    "$(grep -Fc \
+        "'semantic-producer|semantic-producer-library.o|bootstrap/stage2/semantic_producer.c'" \
+        "$ROOT/tests/conformance/discovery/sanitizer-objects.sh")" -eq 1
 assert_grep 'discovery keeps sanitizer coverage local' \
     -Fq -- '-fsanitize=address,undefined' \
-    "$ROOT/tests/conformance/discovery/run.sh"
+    "$ROOT/tests/conformance/discovery/sanitizer-objects.sh"
 assert_grep 'LSP keeps its PIC producer source profile local' \
     -Fq -- '-fPIC' "$ROOT/tooling/lsp/build-semantic-bundle.sh"
 assert_grep 'LSP still compiles the producer source' \
@@ -164,6 +168,21 @@ assert_not_grep 'verify runner cleanup does not recursively chmod a mutable root
 assert_not_grep 'object cleanup does not recursively chmod a mutable root' \
     -Eq '^[[:space:]]*chmod -R' \
     "$ROOT/bootstrap/stage2/semantic-objects.sh"
+
+# These fixtures copy 0444 bundle members into a writable, run-owned
+# directory.  Bare rm prompts when this gate has a TTY, so assert the exact
+# noninteractive removal before reaching any of the mutations.
+for owned_fixture_removal in \
+    '$partial/semantic-producer-library.o' \
+    '$nonregular/semantic-producer-main.o' \
+    '$missing_manifest/manifest-v1.tsv' \
+    '$o0_bundle/semantic-producer-main.o' \
+    '$swapped_bundle/.semantic-producer-main.o.saved'
+do
+    assert_grep "owned fixture removal is noninteractive: $owned_fixture_removal" \
+        -Fxq "rm -f -- \"$owned_fixture_removal\"" \
+        "$ROOT/tests/tooling/verify-object-reuse/check.sh"
+done
 
 if test -n "${KOFUN_VERIFY_REAL_CC:-}"; then
     real_cc=$KOFUN_VERIFY_REAL_CC
@@ -327,6 +346,11 @@ census_count() {
                 field["producer_object"] == 1) selected = 1
             if (classifier == "sanitizer" &&
                 field["class"] == "special-sanitizer") selected = 1
+            if (classifier == "discovery-sanitizer" &&
+                field["class"] == "special-sanitizer" &&
+                field["output"] == "semantic-producer-library.o" &&
+                field["library"] == 1 && field["compile_only"] == 1)
+                selected = 1
             if (classifier == "analyzer" &&
                 field["class"] == "special-analyzer") selected = 1
             if (classifier == "pic" &&
@@ -451,7 +475,9 @@ if test "${KOFUN_STAGE2_SEMANTIC_OBJECT_DIR+x}" = x; then
     build_log=$KOFUN_VERIFY_OBJECT_REUSE_CENSUS_LOG
     assert_standard_bundle_census "$build_log"
     assert_num 'full verify sanitizer producer classification' \
-        "$(census_count "$build_log" sanitizer)" -eq 5
+        "$(census_count "$build_log" sanitizer)" -eq 2
+    assert_num 'full verify discovery sanitizer producer compile' \
+        "$(census_count "$build_log" discovery-sanitizer)" -eq 1
     assert_num 'full verify PIC producer classification' \
         "$(census_count "$build_log" pic)" -eq 1
     unexpected_semantic_source_count=$(
@@ -944,14 +970,14 @@ expect_refusal missing "$WORK/missing-bundle" \
 
 partial=$WORK/partial-bundle
 copy_bundle "$partial"
-rm "$partial/semantic-producer-library.o"
+rm -f -- "$partial/semantic-producer-library.o"
 seal_bundle "$partial"
 expect_refusal partial "$partial" \
     'bundle member is missing: semantic-producer-library.o'
 
 nonregular=$WORK/nonregular-bundle
 copy_bundle "$nonregular"
-rm "$nonregular/semantic-producer-main.o"
+rm -f -- "$nonregular/semantic-producer-main.o"
 mkdir "$nonregular/semantic-producer-main.o"
 seal_bundle "$nonregular"
 expect_refusal nonregular "$nonregular" \
@@ -988,7 +1014,7 @@ expect_refusal marker "$wrong_marker" \
 
 missing_manifest=$WORK/missing-manifest-bundle
 copy_bundle "$missing_manifest"
-rm "$missing_manifest/manifest-v1.tsv"
+rm -f -- "$missing_manifest/manifest-v1.tsv"
 seal_bundle "$missing_manifest"
 expect_refusal missing-manifest "$missing_manifest" \
     'bundle member is missing: manifest-v1.tsv'
@@ -1017,7 +1043,7 @@ expect_refusal profile-manifest "$profile_manifest" \
 
 o0_bundle=$WORK/o0-bundle
 copy_bundle "$o0_bundle"
-rm "$o0_bundle/semantic-producer-main.o"
+rm -f -- "$o0_bundle/semantic-producer-main.o"
 "$real_cc" -std=c11 -O0 -g -Wall -Wextra -Werror -pedantic \
     -I"$ROOT/bootstrap/stage2" \
     -c "$ROOT/bootstrap/stage2/semantic_producer.c" \
@@ -1037,7 +1063,7 @@ cp "$swapped_bundle/semantic-producer-library.o" \
     "$swapped_bundle/semantic-producer-main.o"
 cp "$swapped_bundle/.semantic-producer-main.o.saved" \
     "$swapped_bundle/semantic-producer-library.o"
-rm "$swapped_bundle/.semantic-producer-main.o.saved"
+rm -f -- "$swapped_bundle/.semantic-producer-main.o.saved"
 chmod 0444 "$swapped_bundle/semantic-producer-main.o" \
     "$swapped_bundle/semantic-producer-library.o"
 seal_bundle "$swapped_bundle"
