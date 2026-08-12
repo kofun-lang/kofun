@@ -81,7 +81,7 @@ export const GROUPS = Object.freeze([
             'task-help', 'discovery', 'discovery-sanitizer-reuse',
             'cli-framework', 'tui-framework', 'build-system',
             'verify-object-reuse', 'packages', 'typed-sidecar-spec', 'typed-sidecar-codec',
-            'typed-sidecar-projector', 'upgrade-patch', 'documentation-index', 'ownership-view',
+            'typed-sidecar-captures', 'typed-sidecar-projector', 'upgrade-patch', 'documentation-index', 'ownership-view',
             'artifact-qualification', 'lsp', 'roadmap',
             'graphify-setup', 'graphify-update'
         ]
