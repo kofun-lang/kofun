@@ -13,7 +13,8 @@
 // refused at.
 
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -34,6 +35,13 @@ import {
     projectSidecarV2,
     validateCaptureStream,
 } from '../../tooling/typed-sidecar/captures.mjs'
+import {
+    canReplaceTypedSidecar,
+    canonicalTypedSidecarBytes,
+    encodeTypedSidecar,
+    readTypedSidecar,
+    writeTypedSidecarAtomic,
+} from '../../tooling/typed-sidecar/codec.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(HERE, '..', '..')
@@ -255,8 +263,109 @@ assert.throws(
     'a base document that is already v2 is refused',
 )
 
+// ----------------------------------------------------------- publication
+//
+// A v2 document publishes through the same codec, the same replacement
+// decision, and the same atomic write as v1. That is the point of teaching the
+// v1 validator the v2 schema rather than writing a second one: a parallel
+// publisher is how the byte limit, the depth bound, and the replay rule come
+// to differ between versions without anyone choosing that.
+
+const encoded = encodeTypedSidecar(v2)
+assert.equal(encoded.ok, true, `a v2 document must encode: ${JSON.stringify(encoded)}`)
+const reread = readTypedSidecar(encoded.bytes)
+assert.equal(reread.ok, true, 'a v2 document must read back')
+assert.deepEqual(
+    JSON.parse(JSON.stringify(reread.document.captures)),
+    JSON.parse(JSON.stringify(v2.captures)),
+    'the captures survive the round trip',
+)
+assert.equal(
+    Buffer.from(encodeTypedSidecar(v2).bytes).toString('utf8'),
+    Buffer.from(encoded.bytes).toString('utf8'),
+    'canonical v2 bytes are stable across runs',
+)
+
+// v1 encodes to exactly what it did before this slice taught the validator v2.
+const encodedV1 = encodeTypedSidecar(v1Document)
+assert.equal(encodedV1.ok, true, 'a v1 document still encodes')
+assert.equal(
+    Buffer.from(encodedV1.bytes).toString('utf8'),
+    canonicalTypedSidecarBytes(v1Document),
+    'v1 canonical bytes are unchanged',
+)
+
+const digest = v1Document.file.content_sha256
+const newer = JSON.parse(JSON.stringify(v2))
+newer.generation.sequence += 1
+assert.deepEqual(canReplaceTypedSidecar(v2, newer, digest), { allow: true, reason: 'allow' })
+
+// Replay: the same document, or an older one, is refused rather than written
+// again — a publisher that crashed and retried must not move the sidecar
+// backwards.
+assert.equal(canReplaceTypedSidecar(v2, v2, digest).reason, 'stale-sequence')
+const older = JSON.parse(JSON.stringify(v2))
+older.generation.sequence = Math.max(0, older.generation.sequence - 1)
+assert.equal(canReplaceTypedSidecar(newer, older, digest).reason, 'stale-sequence')
+
+// The source moved under the publisher.
+assert.equal(canReplaceTypedSidecar(v2, newer, 'f'.repeat(64)).reason, 'source-mismatch')
+
+// A different file entirely.
+const otherFile = JSON.parse(JSON.stringify(newer))
+otherFile.file.file_id = 'c'.repeat(64)
+assert.equal(canReplaceTypedSidecar(v2, otherFile, digest).reason, 'wrong-file')
+
+// Cancellation: a run that stopped publishes a partial document, and it is a
+// valid v2 document rather than a special case.
+const cancelled = JSON.parse(JSON.stringify(v2))
+cancelled.completeness = 'partial'
+cancelled.source_status = 'cancelled'
+cancelled.generation.sequence += 2
+const encodedCancelled = encodeTypedSidecar(cancelled)
+assert.equal(encodedCancelled.ok, true, 'a cancelled v2 document must encode')
+assert.deepEqual(canReplaceTypedSidecar(v2, cancelled, digest), { allow: true, reason: 'allow' })
+
+// A v2 document whose captures are malformed never becomes bytes.
+for (const [name, mutate] of [
+    ['an unknown mode', (doc) => { doc.captures[0].mode = 'borrow' }],
+    ['a duplicate capture identity', (doc) => { doc.captures.push({ ...doc.captures[0] }) }],
+    ['a target that is neither place nor unknown', (doc) => { doc.captures[0].target = { kind: 'other' } }],
+    ['a capture with no origin', (doc) => { doc.captures[0].origin_node_ids = [] }],
+    ['the wrong capture profile', (doc) => { doc.capture_profile = 'kofun.stage2-analysis/other/v1' }],
+    ['a v1 limits profile', (doc) => { doc.limits.profile = 'default-v1' }],
+]) {
+    const broken = JSON.parse(JSON.stringify(v2))
+    mutate(broken)
+    assert.equal(encodeTypedSidecar(broken).ok, false, `${name} must not encode`)
+}
+
+// Atomic publication: the bytes on disk are the canonical bytes, and a stale
+// replacement leaves them alone.
+const work = mkdtempSync(join(tmpdir(), 'kofun-captures-'))
+const destination = join(work, 'sidecar.json')
+const published = await writeTypedSidecarAtomic(destination, v2, { currentSourceDigest: digest })
+assert.equal(published.ok, true, `atomic publication must succeed: ${JSON.stringify(published)}`)
+assert.equal(
+    readFileSync(destination, 'utf8'),
+    canonicalTypedSidecarBytes(v2),
+    'the published file is the canonical v2 bytes',
+)
+const replayed = await writeTypedSidecarAtomic(destination, v2, { currentSourceDigest: digest })
+assert.equal(replayed.ok, false, 'republishing the same sequence is refused')
+assert.equal(
+    readFileSync(destination, 'utf8'),
+    canonicalTypedSidecarBytes(v2),
+    'a refused replacement leaves the published bytes untouched',
+)
+const advanced = await writeTypedSidecarAtomic(destination, newer, { currentSourceDigest: digest })
+assert.equal(advanced.ok, true, 'a newer sequence publishes')
+assert.equal(readFileSync(destination, 'utf8'), canonicalTypedSidecarBytes(newer))
+rmSync(work, { recursive: true, force: true })
+
 process.stdout.write(
     'PASS: production KSE2 capture frames equal the frozen wire and round-trip exactly\n' +
     'PASS: the projected captures and v2 document equal the frozen projection\n' +
-    'PASS: truncation, corruption, closed vocabularies, and broken links are refused\n',
+    'PASS: truncation, corruption, closed vocabularies, and broken links are refused\n' +
+    'PASS: v2 publishes through the v1 codec, replay and cancellation included, and v1 bytes are unchanged\n',
 )
