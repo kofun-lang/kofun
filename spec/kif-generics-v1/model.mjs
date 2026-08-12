@@ -1225,23 +1225,59 @@ function validateCycles(all, byId) {
     }
     layoutEdges.set(hex(record.id), targets);
   }
+  /*
+   * A value cycle is rejected outright. There is no declaration that makes one
+   * legal, because no layout exists: the exception the decision grants applies
+   * to *interface reference* cycles, which do not require infinite storage.
+   * Folding the two rules together -- as this first did -- would have let a
+   * declared component admit a type that cannot be laid out at all.
+   */
+  detectCycle(layoutEdges, (path) => {
+    fail("forbidden-cycle", `value cycle requiring infinite layout at ${path.at(-1)}`, {
+      path,
+    });
+  });
+
+  /*
+   * The decision's other half -- "interface reference cycles are accepted only
+   * through an explicit ID edge and within the declared strongly connected
+   * component" -- needs no check here, and saying why is more useful than
+   * adding one that cannot fail.
+   *
+   * Every TypeRef form that can reach another declaration is ID-addressed:
+   * `nominal`, `parameter`, and `constructed` carry an identity, and there is
+   * no inline structural form for a cycle to close through instead. So an
+   * interface reference cycle is an explicit ID edge by construction, and its
+   * members are exactly the records present in this document, which link
+   * closure has already required.
+   *
+   * The alternative was to add a component field to `GenericTypeDeclaration`.
+   * Its payload is closed by RFC-0017 -- TypeId, visibility, binders, shape,
+   * body availability -- so that would extend the accepted record set to make
+   * a check possible, which is the wrong way round.
+   */
+}
+
+/*
+ * Depth-first cycle detection that hands the whole cycle path to its caller.
+ * The two rules above differ only in what they do with that path, so the walk
+ * is written once -- two copies would be two places for the edge set and the
+ * traversal to drift apart.
+ */
+function detectCycle(edges, onCycle) {
   const state = new Map();
   const visit = (node, path) => {
     if (state.get(node) === "done") return;
     if (state.get(node) === "open") {
-      const declared = byId.get(`${node}:${RECORD_KINDS.GenericTypeDeclaration}`);
-      if (!declared?.stronglyConnectedComponent) {
-        fail("forbidden-cycle", `value cycle requiring infinite layout at ${node}`, {
-          path: [...path, node],
-        });
-      }
+      const start = path.indexOf(node);
+      onCycle(start === -1 ? [...path, node] : [...path.slice(start), node]);
       return;
     }
     state.set(node, "open");
-    for (const next of layoutEdges.get(node) ?? []) visit(next, [...path, node]);
+    for (const next of edges.get(node) ?? []) visit(next, [...path, node]);
     state.set(node, "done");
   };
-  for (const node of layoutEdges.keys()) visit(node, []);
+  for (const node of edges.keys()) visit(node, []);
 }
 
 /* ------------------------------------------------------------ publication */
