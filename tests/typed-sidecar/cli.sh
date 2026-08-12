@@ -157,7 +157,16 @@ expect_status 3 equal-clean check "$COMPLETE" \
     --emit-typed-sidecar "$WORK/output/complete.kofun-semantic.json" \
     --generation 1
 assert_grep "equal-clean.stderr" -q '^ETS05: ' "$WORK/equal-clean.stderr"
-cmp "$WORK/complete.stdout" "$WORK/equal-clean.stdout"
+# This compared `equal-clean.stdout` with the accepting run's `ok:` line, to
+# state that a tooling failure does not change the language channel. #1360
+# keeps the intent and moves where it is read: a run that exits nonzero prints
+# no `ok:`, because that line is a claim about the whole run and this run did
+# not do what was asked. What must not change is the *verdict*, and that is
+# asserted directly below by checking the same source again without the flag.
+assert_file_empty "equal-clean.stdout" "$WORK/equal-clean.stdout"
+expect_status 0 equal-clean-verdict check "$COMPLETE"
+assert_grep "equal-clean-verdict.stdout" -Fx "ok: $COMPLETE" \
+    "$WORK/equal-clean-verdict.stdout"
 cmp "$WORK/equal.before" "$WORK/output/complete.kofun-semantic.json"
 
 cp "$WORK/output/failed.json" "$WORK/equal-failed.before"
@@ -205,20 +214,62 @@ else
     test "$declaration_sidecar_status" -eq "$declaration_plain_status" ||
         fail "declaration-limit check changed the source failure status"
 fi
-cmp "$WORK/declaration-limit-plain.stdout" \
-    "$WORK/declaration-limit.stdout"
+# #1360. This run exits 3, so it prints no `ok:`. It used to print one, and
+# the three signals disagreed: stdout said the program was fine, stderr said
+# the projection failed, and the exit code said the check failed. The plain
+# run below is what states the verdict is unchanged.
+assert_file_empty "declaration-limit.stdout" "$WORK/declaration-limit.stdout"
+test "$declaration_plain_status" -ne 0 ||
+    assert_grep "declaration-limit-plain.stdout" \
+        -Fx "ok: $WORK/declaration-limit.kofun" \
+        "$WORK/declaration-limit-plain.stdout"
 plain_stderr_lines=$(wc -l <"$WORK/declaration-limit-plain.stderr")
 head -n "$plain_stderr_lines" "$WORK/declaration-limit.stderr" \
     >"$WORK/declaration-limit.language.stderr"
 cmp "$WORK/declaration-limit-plain.stderr" \
     "$WORK/declaration-limit.language.stderr"
-tail -n 1 "$WORK/declaration-limit.stderr" |
-    grep -Fqx 'ETS04: semantic producer declaration limit exceeded'
+# The diagnostic has to start an investigation. `ETS04` alone named neither
+# which of the two limits was reached, nor the bound, nor where, so the first
+# thing anyone did with it was bisect the source -- the work the message
+# exists to save.
+tail -n 1 "$WORK/declaration-limit.stderr" >"$WORK/declaration-limit.ets04"
+assert_grep "declaration-limit ETS04 names the limit, count, offset, and bound" \
+    -Eq -- '^ETS04: declaration limit exceeded: fn tokens reached 65 at byte [0-9]+; this producer projects at most 64$' \
+    "$WORK/declaration-limit.ets04"
+# The offset is the token that crossed the limit, not the start of the file.
+declaration_limit_offset=$(sed -n 's/.*at byte \([0-9][0-9]*\);.*/\1/p' \
+    "$WORK/declaration-limit.ets04")
+test -n "$declaration_limit_offset" ||
+    fail 'the ETS04 detail carried no byte offset'
+dd if="$WORK/declaration-limit.kofun" bs=1 \
+    skip="$declaration_limit_offset" count=2 2>/dev/null \
+    >"$WORK/declaration-limit.at-offset"
+assert_grep "the ETS04 offset lands on a fn token" \
+    -Fx -- 'fn' "$WORK/declaration-limit.at-offset"
 ! grep -Eq 'double free|free\\(\\)|Aborted|core dumped|sanitizer' \
     "$WORK/declaration-limit.stderr" ||
     fail "declaration-limit path exposed a process abort"
 assert_absent "output/declaration-limit.json" \
     "$WORK/output/declaration-limit.json"
+
+# One `fn` token fewer projects, so the refusal above is the limit itself and
+# not something about a file of generated declarations.
+: >"$WORK/within-profile.kofun"
+declaration=0
+while test "$declaration" -lt 63
+do
+    printf 'fn g%s(value: Int) -> Int { return value }\n' "$declaration" \
+        >>"$WORK/within-profile.kofun"
+    declaration=$((declaration + 1))
+done
+printf 'fn main() { print(42) }\n' >>"$WORK/within-profile.kofun"
+expect_status 0 within-profile check "$WORK/within-profile.kofun" \
+    --emit-typed-sidecar "$WORK/output/within-profile.json" --generation 1
+assert_grep "within-profile.stdout" -Fx "ok: $WORK/within-profile.kofun" \
+    "$WORK/within-profile.stdout"
+assert_file_empty "within-profile.stderr" "$WORK/within-profile.stderr"
+assert_file_nonempty "output/within-profile.json" \
+    "$WORK/output/within-profile.json"
 
 expect_status 2 build-reject build "$COMPLETE" \
     --emit-typed-sidecar "$WORK/output/build.json" --generation 1
@@ -238,5 +289,6 @@ cmp "$WORK/no-flag-a.stderr" "$WORK/no-flag-b.stderr"
 assert_absent "$ROOT/bootstrap/fixtures/answer.kofun-semantic.json" \
     "$ROOT/bootstrap/fixtures/answer.kofun-semantic.json"
 
+
 printf '%s\n' \
-    'PASS: typed-sidecar CLI grammar, exact fallback channels, races, exit precedence, and no-flag compatibility'
+    'PASS: typed-sidecar CLI grammar, exact fallback channels, races, exit precedence, no-flag compatibility, and one agreeing set of signals when a program is outside the declaration profile'

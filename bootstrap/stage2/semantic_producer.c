@@ -438,8 +438,28 @@ static void copy_token_text(
     output[length] = '\0';
 }
 
+/*
+ * The declaration profile, and what it reports when a source is outside it.
+ *
+ * `ETS04: semantic producer declaration limit exceeded` named neither which of
+ * the two limits was reached, nor the bound, nor where. A reader could not
+ * tell whether to split the program, shorten a function, or stop trying, and
+ * the first thing anyone did with the message was re-derive it by bisecting
+ * the source -- which is the work the diagnostic exists to save.
+ *
+ * The counts are lexical tokens rather than declarations: a `fn` inside a
+ * lambda counts, and so does a `let` in any scope. That is a deliberately
+ * conservative proxy for the fixed arrays downstream, so the message says
+ * `fn tokens` rather than `functions` -- naming what was counted keeps a
+ * reader from splitting a file by top-level declarations and finding the
+ * limit unmoved.
+ */
 static bool producer_source_within_declaration_profile(
-    const char *source
+    const char *source,
+    const char **limit_name,
+    size_t *limit_bound,
+    size_t *limit_count,
+    int64_t *limit_offset
 ) {
     int64_t length = (int64_t)strlen(source);
     int64_t cursor = skip_trivia(source, 0);
@@ -450,12 +470,24 @@ static bool producer_source_within_declaration_profile(
         if (end <= cursor) return true;
         if (token_equal(source, cursor, "fn")) {
             functions += 1u;
-            if (functions > PRODUCER_MAX_FUNCTIONS) return false;
+            if (functions > PRODUCER_MAX_FUNCTIONS) {
+                *limit_name = "fn tokens";
+                *limit_bound = PRODUCER_MAX_FUNCTIONS;
+                *limit_count = functions;
+                *limit_offset = cursor;
+                return false;
+            }
         }
         if (token_equal(source, cursor, "let") ||
             token_equal(source, cursor, "for")) {
             bindings += 1u;
-            if (bindings > PRODUCER_MAX_BINDINGS) return false;
+            if (bindings > PRODUCER_MAX_BINDINGS) {
+                *limit_name = "let/for tokens";
+                *limit_bound = PRODUCER_MAX_BINDINGS;
+                *limit_count = bindings;
+                *limit_offset = cursor;
+                return false;
+            }
         }
         cursor = skip_trivia(source, end);
     }
@@ -4307,13 +4339,30 @@ static bool producer_run(
         free(owned_source);
         return false;
     }
-    if (!producer_source_within_declaration_profile(owned_source)) {
-        free(owned_source);
-        producer_set_tooling_error(
-            result, "ETS04", 0u, PRODUCER_EVENT_NONE,
-            "semantic producer declaration limit exceeded"
-        );
-        return false;
+    {
+        const char *limit_name = "";
+        size_t limit_bound = 0u;
+        size_t limit_count = 0u;
+        int64_t limit_offset = 0;
+        if (!producer_source_within_declaration_profile(
+                owned_source, &limit_name, &limit_bound,
+                &limit_count, &limit_offset)) {
+            /* Sized to the destination so the message cannot be truncated
+             * into a different claim: a detail cut at 160 bytes could end
+             * mid-number and name a limit nobody has. */
+            char detail[KOFUN_SEMANTIC_ERROR_DETAIL_BYTES];
+            (void)snprintf(
+                detail, sizeof(detail),
+                "declaration limit exceeded: %s reached %zu at byte %lld; "
+                "this producer projects at most %zu",
+                limit_name, limit_count, (long long)limit_offset, limit_bound
+            );
+            free(owned_source);
+            producer_set_tooling_error(
+                result, "ETS04", 0u, PRODUCER_EVENT_NONE, detail
+            );
+            return false;
+        }
     }
     if (!(input->authority == KOFUN_STAGE2_SEMANTIC_OWNERSHIP ?
           stage2_ownership_outcome(

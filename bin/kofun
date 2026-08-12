@@ -679,18 +679,30 @@ check_with_typed_sidecar() (
         test "$emitter_status" -eq 0 || tooling_failure=$emitter_stderr
     fi
 
-    test ! -s "$frozen_stdout" || cat "$frozen_stdout"
+    # The status is decided before anything is printed, because `ok:` is a
+    # claim about the whole run and the run includes the projection the caller
+    # asked for. Printing it first and then exiting 3 published two answers to
+    # one question: a caller reading stdout saw a program that is fine, and a
+    # caller reading the exit code saw a failed check of a program that
+    # checked.
+    #
+    # The language verdict is still not the tooling's to change: a failed
+    # projection turns a `0` into a `3` and never turns a nonzero compiler
+    # status into success.
+    exit_status=$compiler_status
+    if test "$emitter_status" -ne 0 && test "$exit_status" -eq 0; then
+        exit_status=3
+    fi
+    if test "$exit_status" -eq 0; then
+        test ! -s "$frozen_stdout" || cat "$frozen_stdout"
+    fi
     test ! -s "$frozen_stderr" || cat "$frozen_stderr" >&2
     if test "$emitter_status" -ne 0; then
         test -z "$tooling_failure" ||
             test ! -s "$tooling_failure" ||
             cat "$tooling_failure" >&2
-        if test "$compiler_status" -ne 0; then
-            exit "$compiler_status"
-        fi
-        exit 3
     fi
-    exit "$compiler_status"
+    exit "$exit_status"
 )
 
 emit_c() (
