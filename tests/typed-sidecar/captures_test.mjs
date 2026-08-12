@@ -271,6 +271,24 @@ assert.throws(
 // publisher is how the byte limit, the depth bound, and the replay rule come
 // to differ between versions without anyone choosing that.
 
+// The tracked v2 schema is a third party to this: neither the production
+// projector nor #1219's model wrote it, so the document's shape is joined to
+// it rather than only to the two implementations that agree with each other.
+const v2Schema = JSON.parse(readFileSync(
+    join(ROOT, 'spec/typed-sidecar/kofun.typed-sidecar.v2.schema.json'), 'utf8'))
+assert.deepEqual(
+    Object.keys(v2).sort(),
+    [...v2Schema.required].sort(),
+    'the projected document carries exactly the fields the v2 schema requires',
+)
+assert.equal(v2.schema, v2Schema.properties.schema.const)
+assert.equal(v2.capture_profile, v2Schema.properties.capture_profile.const)
+assert.equal(v2.limits.profile, v2Schema.properties.limits.properties.profile.const)
+assert.ok(
+    v2.captures.length <= v2Schema.properties.captures.maxItems,
+    'the capture count is within the schema bound',
+)
+
 const encoded = encodeTypedSidecar(v2)
 assert.equal(encoded.ok, true, `a v2 document must encode: ${JSON.stringify(encoded)}`)
 const reread = readTypedSidecar(encoded.bytes)
