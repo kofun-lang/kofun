@@ -183,3 +183,17 @@ identifier       = IDENT ;
 integer          = INT ;
 float            = FLOAT ;
 string           = STRING ;
+
+(* #1357.  A STRING is a double-quoted sequence of UTF-8 bytes in which a
+   backslash introduces exactly one of a closed set of escapes.  The set is
+   closed rather than deferred to the host C compiler: before it was decided,
+   `\x41` and `\q` emitted invalid C while the compiler exited 0, `\0`
+   truncated the value at the NUL, and `\u{41}` meant whatever the host
+   compiler's vintage decided.
+
+   text_escape     = "\\n" | "\\t" | "\\r" | "\\b" | "\\f"
+                   | "\\\\" | "\\\"" ;
+
+   Every other backslash sequence is a diagnostic at the escape's own byte,
+   including `\0`: `Text` is a NUL-terminated carrier and cannot hold one.
+   The same set is stated in docs/SEMANTICS.md. *)

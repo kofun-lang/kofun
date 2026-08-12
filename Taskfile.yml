@@ -341,6 +341,11 @@ tasks:
     cmds:
       - "sh tests/stage2/list-int-values/run.sh"
 
+  text-escapes:
+    desc: "Verify the closed Text literal escape set and its refusals"
+    cmds:
+      - "sh tests/stage2/text-escapes/run.sh"
+
   record-values:
     desc: "Verify a Stage 2 binding inferred from a record-returning call"
     cmds:
@@ -1077,6 +1082,7 @@ tasks:
             int-bits \
             list-int-values \
             record-values \
+            text-escapes \
             while-list-int \
             else-if-chain \
             list-int-signatures \

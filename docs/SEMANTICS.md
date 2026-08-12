@@ -86,6 +86,43 @@ Int }` still has a field, and both keep working in a file that uses the
 operations: a name is meaningful only as a member of an `Int` receiver, exactly
 as `join` is.
 
+## `Text` literal escapes
+
+A `Text` literal is a double-quoted sequence of UTF-8 bytes. A backslash
+introduces exactly one of a **closed** set, and the set is this:
+
+| Escape | Byte | |
+| --- | --- | --- |
+| `\n` | 0x0A | line feed |
+| `\t` | 0x09 | tab |
+| `\r` | 0x0D | carriage return |
+| `\b` | 0x08 | backspace |
+| `\f` | 0x0C | form feed |
+| `\\` | 0x5C | backslash |
+| `\"` | 0x22 | double quote |
+
+Every other backslash sequence is refused at the escape's own byte offset, and
+no artifact is produced. That includes `\0`: `Text` is a NUL-terminated
+carrier, so an embedded NUL cannot be represented, and truncating the value at
+it silently is not an outcome the language offers.
+
+Bytes outside the escape syntax are carried through unchanged, so a literal
+holds exactly the UTF-8 the source contained.
+
+The set is closed rather than deferred to the host C compiler, and the reason
+is what the deferral cost. Until #1357 the literal reached the emitter as a
+slice of the source, so `\x41` and `\q` produced invalid C while the compiler
+exited 0, `\0` truncated the value, and `\u{41}` meant whatever the host
+compiler's vintage decided — GCC 13 implements C23 delimited escapes and
+earlier versions reject them, so one program had two meanings and neither was
+Kofun's.
+
+The set was chosen by measuring: every source this compiler lowers uses only
+`\n`, `\t`, `\r`, `\\`, and `\"`, and `\b` and `\f` are included because
+`stdlib/json` and `stdlib/toml` already write them. Widening it later is a
+decision with its own evidence; the grammar in `spec/grammar.ebnf` states the
+same set.
+
 ## Integer division
 
 `//` floors toward negative infinity. `%` is defined with the paired floor
