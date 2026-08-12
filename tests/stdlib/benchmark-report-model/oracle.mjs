@@ -200,7 +200,7 @@ function sweepSource(counts) {
         '    # The call is here because every function in model.kofun and',
         '    # corpus.kofun must be *referenced* or the build fails at `cc` with',
         '    # -Werror=unused-function (#1358), and `run_group` names them all.',
-        '    let mut ran = run_group(6) + run_comparison_group(6)',
+        '    let mut ran = run_group(6) + run_comparison_group(6) + run_vector_group(6)',
     )
     for (const count of counts) parts.push(`    ran = ran + sweep_${count}()`)
     parts.push('    print("sweep cases " + to_text(ran))', '}', '')
