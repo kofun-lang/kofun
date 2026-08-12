@@ -149,7 +149,20 @@ function u32be(value) {
   return bytes;
 }
 
+/*
+ * An absent or malformed identity is refused with a status rather than
+ * whatever `Buffer.from` happens to throw. A caller that catches
+ * `KifGenericsError` and nothing else would otherwise crash on a missing `id`
+ * instead of refusing the document -- the same outcome as accepting it, from
+ * the perspective of a process that must produce no artifact.
+ */
 function identity(value, what) {
+  if (typeof value !== "string" && !Buffer.isBuffer(value)) {
+    fail("corrupt", `${what} is absent`);
+  }
+  if (typeof value === "string" && !/^[0-9a-f]{64}$/.test(value)) {
+    fail("corrupt", `${what} is not 64 lowercase hexadecimal digits`);
+  }
   const bytes = typeof value === "string" ? Buffer.from(value, "hex") : value;
   if (!Buffer.isBuffer(bytes) || bytes.length !== 32) {
     fail("corrupt", `${what} is not a 32-byte identity`);
@@ -335,8 +348,26 @@ export function recordLinks(record) {
   return links;
 }
 
+/*
+ * Identity shape is checked here, not only at encode time, so validation
+ * reports a malformed identity as `corrupt` rather than as whatever it fails
+ * to resolve against. A four-digit identity is not a link that closes on
+ * nothing; it is not an identity, and saying "dangling" would send the reader
+ * looking for a missing record.
+ */
 function hex(value) {
-  return typeof value === "string" ? value : Buffer.from(value).toString("hex");
+  if (typeof value === "string") {
+    if (!/^[0-9a-f]{64}$/.test(value)) {
+      fail("corrupt", `identity \`${value}\` is not 64 lowercase hexadecimal digits`);
+    }
+    return value;
+  }
+  if (Buffer.isBuffer(value)) {
+    if (value.length !== 32) fail("corrupt", "an identity is not 32 bytes");
+    return value.toString("hex");
+  }
+  fail("corrupt", "an identity field is absent where one is required");
+  return "";
 }
 
 /* ----------------------------------------------------------- record bodies */

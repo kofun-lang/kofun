@@ -272,6 +272,47 @@ assert.notEqual(
 );
 pass("the two semantic digest domains are separate protocols");
 
+/*
+ * Excluded data cannot reach the bytes. Source paths, display names, and host
+ * addresses are the three the decision names, and the encoder must ignore
+ * them rather than merely omit them from its own fixtures -- a producer that
+ * carries extra fields on its record structs is the ordinary case, not the
+ * hostile one.
+ */
+const decorated = clone(document);
+for (const entry of decorated.publicRecords) {
+  entry.sourcePath = "/home/someone/kofun/src/sort.kofun";
+  entry.displayName = "sort<T>";
+  entry.hostAddress = 0x7ffd_0000;
+  entry.declarationOrder = 41;
+}
+assert.equal(
+  encodeDocument(decorated, decodeOptions).toString("hex"),
+  bytes.toString("hex"),
+  "an excluded field reached the semantic bytes",
+);
+pass("source paths, display names, and host addresses do not reach the bytes");
+
+/*
+ * The framed preimage itself. `module-identity.md` forbids concatenating an
+ * unframed domain and payload, and the failure it prevents is a payload whose
+ * leading bytes could be read as part of the domain -- so the test is that a
+ * boundary shift between the two produces a different value.
+ */
+{
+  const framed = framedHash("kofun.test.domain/v1", Buffer.from("payload"));
+  const shifted = framedHash("kofun.test.domain/v", Buffer.from("1payload"));
+  assert.notEqual(framed.toString("hex"), shifted.toString("hex"),
+    "the domain/payload boundary is not framed; a shifted split collides");
+  const unframed = createHash("sha256")
+    .update("kofun.test.domain/v1")
+    .update("payload")
+    .digest("hex");
+  assert.notEqual(framed.toString("hex"), unframed,
+    "the framed preimage equals a bare concatenation");
+  pass("the framed identity preimage is not a bare concatenation");
+}
+
 /* --------------------------------------------------- 3. refusals */
 
 function refuses(status, label, act) {
@@ -460,6 +501,24 @@ refuses("corrupt", "an envelope without the KIF magic", () => {
 });
 
 pass("every named refusal produces an error and no document");
+
+refuses("corrupt", "a TypeRef with an unknown tag", () => {
+  const bad = clone(document);
+  record(bad, FUNCTION).result = { tag: "existential", id: PRIMITIVE_INT };
+  encodeDocument(bad, decodeOptions);
+});
+
+refuses("corrupt", "a record whose identity is missing", () => {
+  const bad = clone(document);
+  delete record(bad, DICTIONARY).id;
+  encodeDocument(bad, decodeOptions);
+});
+
+refuses("corrupt", "an identity that is not 32 bytes", () => {
+  const bad = clone(document);
+  record(bad, DICTIONARY).trait = "00ff";
+  encodeDocument(bad, decodeOptions);
+});
 
 /* ------------------------------------------- publication transaction */
 
