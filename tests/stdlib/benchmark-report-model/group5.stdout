@@ -1,0 +1,6 @@
+higher-regression 0 2 501 500
+higher-improvement 0 1 -501 500
+half-away-from-zero 0 2 501 500
+negative-half-away-from-zero 0 1 -501 500
+maximum-threshold 0 0 0 1000000
+cases 5

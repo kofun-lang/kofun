@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { summarize, outlierFlags } from '../../../spec/benchmark-report-v1/model.mjs'
+import { summarize, outlierFlags, compareReports } from '../../../spec/benchmark-report-v1/model.mjs'
 import { LIMITS } from '../../../spec/benchmark-report-v1/contract.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -192,11 +192,18 @@ function sweepSource(counts) {
     }
     parts.push(
         'fn main() {',
-        '    # Group 6 matches no branch, so this runs no case and prints nothing.',
-        '    # The call is here because every function in model.kofun and',
-        '    # corpus.kofun must be *referenced* or the build fails at `cc` with',
-        '    # -Werror=unused-function (#1358), and `run_group` names them all.',
-        '    let mut ran = run_group(6)',
+        '    # A negative group matches no branch, so this runs no case and',
+        '    # prints nothing. The call is here because every function in',
+        '    # model.kofun and corpus.kofun must be *referenced* or the build',
+        '    # fails at `cc` with -Werror=unused-function (#1358), and',
+        '    # `run_group` names them all.',
+        '    #',
+        '    # It was group 6 until #1313 added one. A sentinel taken from the',
+        '    # unused end of a range stops being a sentinel the moment the range',
+        '    # grows, and the failure is silent in the worst way: the sweep still',
+        '    # runs, with another group\'s output prepended to its own. A negative',
+        '    # group cannot be added later.',
+        '    let mut ran = run_group(0 - 1)',
     )
     for (const count of counts) parts.push(`    ran = ran + sweep_${count}()`)
     parts.push('    print("sweep cases " + to_text(ran))', '}', '')
@@ -218,10 +225,137 @@ function sweepExpect(counts) {
     return lines
 }
 
+
+// --------------------------------------------------------------- comparison
+//
+// #1313. The comparison groups run the decision's own boundary set:
+// `spec/benchmark-report-v1/vectors/comparison.json` is what #1310 froze, and
+// the corpus calls each vector by name with the vector's own arguments.
+//
+// Two joins rather than one copy. The arguments in `corpus.kofun` are read
+// back and required to equal the manifest's, so the corpus cannot drift from
+// the vectors; and every vector is required to have a case, so a boundary
+// added upstream fails here instead of going unrun. The expectation itself is
+// computed by calling `compareReports` -- the same function
+// `spec/benchmark-report-v1/check.sh` asserts the manifest against -- so the
+// two sides of this gate cannot agree by sharing a stale constant.
+
+const COMPARISON = JSON.parse(
+    readFileSync(
+        join(HERE, '../../../spec/benchmark-report-v1/vectors/comparison.json'),
+        'utf8',
+    ),
+)
+const MINIMAL = JSON.parse(
+    readFileSync(
+        join(HERE, '../../../spec/benchmark-report-v1/vectors/positive/minimal.json'),
+        'utf8',
+    ),
+)
+
+const DIRECTION_TAG = { 'lower-is-better': 0, 'higher-is-better': 1 }
+const RESULT_TAG = { equivalent: 0, improved: 1, regressed: 2 }
+const STATUS_ARITHMETIC_OVERFLOW = 7
+
+function corpusComparisons() {
+    const pattern = /run_comparison\("([^"]+)", (-?\d+), (-?\d+), (\d+), (0 - 1|-?\d+)\)/g
+    const found = new Map()
+    for (const match of CORPUS.matchAll(pattern)) {
+        found.set(match[1], {
+            baseline: Number(match[2]),
+            candidate: Number(match[3]),
+            direction_tag: Number(match[4]),
+            threshold_bps: match[5] === '0 - 1' ? -1 : Number(match[5]),
+        })
+    }
+    return found
+}
+
+const CORPUS_COMPARISONS = corpusComparisons()
+
+for (const vector of COMPARISON.vectors) {
+    const call = CORPUS_COMPARISONS.get(vector.name)
+    if (call === undefined) {
+        throw new Error(`corpus.kofun has no case for comparison vector ${vector.name}`)
+    }
+    const wanted = {
+        baseline: vector.baseline,
+        candidate: vector.candidate,
+        direction_tag: DIRECTION_TAG[vector.direction],
+        threshold_bps: vector.threshold_bps,
+    }
+    if (JSON.stringify(call) !== JSON.stringify(wanted)) {
+        throw new Error(
+            `corpus case ${vector.name} calls ${JSON.stringify(call)}, ` +
+                `vector says ${JSON.stringify(wanted)}`,
+        )
+    }
+}
+
+function oneSample(sample, direction) {
+    const report = structuredClone(MINIMAL)
+    report.identity.direction = direction
+    report.budget.sample_cap = 1
+    report.measurement.sample_count = 1
+    report.measurement.sampling_stop = 'sample-cap'
+    report.samples = [sample]
+    report.outliers = [false]
+    report.summary = { ...summarize(report.samples) }
+    return report
+}
+
+// The four-field flat carrier #1313 specifies. A refusal carries its status
+// and three zeros; there is no partial answer to read.
+function comparisonLine(vector) {
+    const baseline = oneSample(vector.baseline, vector.direction)
+    const candidate = oneSample(vector.candidate, vector.direction)
+    let outcome
+    try {
+        outcome = compareReports(baseline, candidate, vector.threshold_bps)
+    } catch (error) {
+        if (error?.code !== 'BR007') throw error
+        return `${vector.name} ${STATUS_ARITHMETIC_OVERFLOW} 0 0 0`
+    }
+    if (outcome.kind === 'indeterminate') {
+        return `${vector.name} 0 3 0 ${outcome.threshold_bps}`
+    }
+    return `${vector.name} 0 ${RESULT_TAG[outcome.verdict]} ` +
+        `${outcome.change_bps} ${outcome.threshold_bps}`
+}
+
+// The corpus splits the vectors across groups because the bounded Text arena
+// is a whole-run budget (#1359); the split is read back out of the corpus
+// rather than restated here.
+function comparisonGroupNames(group) {
+    const body = new RegExp(
+        `if group == ${group} \\{([\\s\\S]*?)\\n    \\}`,
+    ).exec(CORPUS)
+    if (body === null) throw new Error(`corpus.kofun has no group ${group}`)
+    return [...body[1].matchAll(/run_comparison\("([^"]+)"/g)].map((match) => match[1])
+}
+
+function expectComparisonGroup(group) {
+    const names = comparisonGroupNames(group)
+    const byName = new Map(COMPARISON.vectors.map((vector) => [vector.name, vector]))
+    const lines = names.map((name) => {
+        const vector = byName.get(name)
+        if (vector === undefined) {
+            throw new Error(`corpus group ${group} runs ${name}, which is not a comparison vector`)
+        }
+        return comparisonLine(vector)
+    })
+    lines.push(`cases ${names.length}`)
+    return lines
+}
+
 const [mode, argument] = process.argv.slice(2)
 
 if (mode === 'group') {
-    process.stdout.write(expectGroup(Number(argument)).join('\n') + '\n')
+    const group = Number(argument)
+    const lines = group >= 4
+        ? expectComparisonGroup(group)
+        : expectGroup(group)
+    process.stdout.write(lines.join('\n') + '\n')
 } else if (mode === 'sweep-source') {
     process.stdout.write(sweepSource(sweepCounts()))
 } else if (mode === 'sweep-expect') {

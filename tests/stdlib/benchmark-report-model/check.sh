@@ -58,9 +58,21 @@ assert_not_grep 'model names host time, file, network, or randomness' \
     -qE -- 'clock_gettime|nanosleep|fopen|open\(|socket\(|connect\(|random|rand\(' \
     "$model"
 # Comments name what this child does not own, so the scope check reads code.
+#
+# `compare_reports` was on this list until #1313, which is the slice that owns
+# comparison; the codec and the Bytes carrier still are. Removing the name
+# rather than the assertion is the point -- the boundary moved by exactly one
+# entry, and the two that remain still fail closed.
 grep -vE '^[[:space:]]*#' "$model" >"$WORK/model.code"
-assert_not_grep 'model reaches for Bytes, a codec, or a comparison' \
-    -qE -- 'Bytes|encode|decode|compare_reports' "$WORK/model.code"
+assert_not_grep 'model reaches for Bytes or a codec' \
+    -qE -- 'Bytes|encode|decode' "$WORK/model.code"
+# Comparison is owned here now, and it is owned *whole*: a model that declared
+# the carrier without the function, or the function without the vectors the
+# oracle joins, would satisfy every other assertion in this file.
+assert_grep 'model owns the comparison carrier' \
+    -Fq -- 'type Stage2BenchmarkComparisonOutcome' "$WORK/model.code"
+assert_grep 'model owns the comparison itself' \
+    -Fq -- 'fn compare_reports(' "$WORK/model.code"
 
 # The model is a library: a `main` in it would make the corpus optional, and
 # the four groups exist precisely because one program cannot run every case.
@@ -147,15 +159,21 @@ run_group() {
         "$WORK/$stem.c"
 }
 
-for group in 0 1 2 3
+for group in 0 1 2 3 4 5 6 7 8 9
 do
     run_group "$group"
 done
 
-# The two groups of valid reports are joined to the independent oracle. The
-# refusal groups have no oracle: their expectation is the contract's error
-# code, which the golden states and the mutations below defend.
-for group in 0 1
+# The two groups of valid reports and the three comparison groups are joined
+# to the independent oracle. The refusal groups have no oracle: their
+# expectation is the contract's error code, which the golden states and the
+# mutations below defend.
+#
+# Groups 4..6 run the comparison vectors `spec/benchmark-report-v1` froze for
+# #1310, by name and with the vector's own arguments. The oracle reads that
+# manifest and refuses to run when a vector has no case here, so a boundary
+# added upstream fails this gate rather than going unrun.
+for group in 0 1 4 5 6
 do
     node "$oracle" group "$group" >"$WORK/group$group.expected"
     cmp "$WORK/group$group.expected" "$WORK/group$group.stdout" ||
@@ -231,9 +249,56 @@ mutation neutral-leak \
     's|        suite: "",|        suite: "leaked",|' \
     2
 
+# ------------------------------------------------------- comparison defects
+#
+# #1313. Each of these is a way the comparison can be wrong while every report
+# in the corpus stays valid, so the report groups above cannot see any of them.
+
+# The threshold is a boundary, not a band. `>=` calls a change exactly on the
+# threshold a regression, which is the one case a corpus of strictly-inside
+# and strictly-outside values would never separate.
+mutation threshold-strictness \
+    's|    if change > threshold_bps {|    if change >= threshold_bps {|' \
+    4
+
+# Positive means worse in both directions. Reading the tag the other way round
+# swaps improved and regressed for every higher-is-better metric, and leaves
+# every lower-is-better case in the corpus correct.
+mutation direction-tag \
+    's|    if baseline.direction_tag == 0 {|    if baseline.direction_tag == 1 {|' \
+    5
+
+# The ceiling is tested before the quotient is scaled, because the product it
+# would otherwise form traps as R010 first. Disarming that guard is the defect
+# that looks like a check and never fires: the overflow case then reaches the
+# multiplication and the process dies instead of reporting BR007.
+#
+# The guard is turned *off* rather than always-on, and the difference matters.
+# `quotient > 0 - 1` is always true, so it returns the overflow sentinel for
+# every input -- which changes nothing in this group, because both other cases
+# take the zero-baseline branch before any division. That mutation edited the
+# source, ran, and proved nothing; only a guard that never fires separates the
+# two behaviours.
+mutation overflow-guard \
+    's|        if quotient > limit_integer() {|        if quotient < 0 {|' \
+    6
+
+# Every runtime compatibility field is compared on its own. Dropping one leaves
+# two reports that differ in it comparable, and the seven others still refuse,
+# so only the case for that field can tell.
+mutation compatibility-iterations \
+    's|    if baseline.iterations_per_sample != candidate.iterations_per_sample {|    if baseline.iterations_per_sample != baseline.iterations_per_sample {|' \
+    9
+
+# An invalid input report reports its own validation tag. Reporting a generic
+# refusal instead loses which of the two reports was wrong and why.
+mutation candidate-status \
+    's|        return comparison_failure(candidate.status_tag)|        return comparison_failure(status_invalid_threshold())|' \
+    9
+
 printf '%s\n' \
     'PASS: the model constructs one 49-field outcome from four typed list locals in both constructors' \
     "PASS: segmented summaries and strict outliers agree with the benchmark-report-v1 oracle at counts: $counts" \
     'PASS: every refusal maps to its contract code and carries no field of a report' \
     'PASS: -O0, -O2, the reference executor, and a repeat execution agree' \
-    'PASS: four reintroduced defects are refused'
+    'PASS: nine reintroduced defects are refused, five of them comparison defects every valid-report group is blind to'

@@ -1170,3 +1170,242 @@ fn print_case(name: Text, report: BenchReport) -> Int {
 # single program cannot construct every corpus report. Each group runs in its
 # own process, which is also why the model must not depend on state left by a
 # previous case.
+
+# --------------------------------------------------------------- comparison
+#
+# #1313. Two validated reports and a caller threshold produce one flat
+# outcome. The carrier is deliberately not a `Result` or a payload-bearing
+# ADT: every refusal is a status tag on the same four-field record, so a
+# caller reads one shape whatever happened.
+#
+# `status_tag` 0 is success. A failed input report reports its own validation
+# tag; 7/8/9 are BR007 arithmetic overflow, BR008 incompatible comparison, and
+# BR009 invalid threshold. On any nonzero status the other three fields are
+# zero -- a refusal that echoed a threshold or a partial change would invite a
+# caller to read a number that no comparison produced.
+
+fn limit_threshold_bps() -> Int {
+    return 1000000
+}
+
+fn status_arithmetic_overflow() -> Int {
+    return 7
+}
+
+fn status_incompatible() -> Int {
+    return 8
+}
+
+fn status_invalid_threshold() -> Int {
+    return 9
+}
+
+fn result_equivalent() -> Int {
+    return 0
+}
+
+fn result_improved() -> Int {
+    return 1
+}
+
+fn result_regressed() -> Int {
+    return 2
+}
+
+fn result_zero_baseline() -> Int {
+    return 3
+}
+
+type Stage2BenchmarkComparisonOutcome = {
+    status_tag: Int,
+    result_tag: Int,
+    change_bps: Int,
+    threshold_bps: Int,
+}
+
+fn comparison_failure(status_tag: Int) -> Stage2BenchmarkComparisonOutcome {
+    let value: Stage2BenchmarkComparisonOutcome =
+        Stage2BenchmarkComparisonOutcome(
+            status_tag: status_tag,
+            result_tag: 0,
+            change_bps: 0,
+            threshold_bps: 0,
+        )
+    return value
+}
+
+fn comparison_success(
+    result_tag: Int,
+    change_bps: Int,
+    threshold_bps: Int
+) -> Stage2BenchmarkComparisonOutcome {
+    let value: Stage2BenchmarkComparisonOutcome =
+        Stage2BenchmarkComparisonOutcome(
+            status_tag: status_valid(),
+            result_tag: result_tag,
+            change_bps: change_bps,
+            threshold_bps: threshold_bps,
+        )
+    return value
+}
+
+# `magnitude * 10000 / base`, rounded to the nearest basis point with exact
+# halves away from zero, computed as four guarded long-division steps.
+#
+# The product is never formed, and that is a correctness requirement rather
+# than a preference: at the report integer ceiling `magnitude * 10000` is
+# 9.0e20, which traps as R010 before any ceiling test could run. A ceiling
+# check written after the multiplication would therefore never execute -- the
+# program is already gone. Each step tests the quotient *before* scaling it.
+#
+# Returns -1 when the true result exceeds the ceiling. The magnitude is never
+# negative, so -1 cannot be mistaken for an answer.
+fn rounded_basis_points(magnitude: Int, base: Int) -> Int {
+    let mut quotient = magnitude // base
+    let mut remainder = magnitude % base
+    let mut step = 0
+    while step < 4 {
+        if quotient > limit_integer() {
+            return 0 - 1
+        }
+        remainder = remainder * 10
+        quotient = quotient * 10 + remainder // base
+        remainder = remainder % base
+        step = step + 1
+    }
+    if remainder * 2 >= base {
+        quotient = quotient + 1
+    }
+    if quotient > limit_integer() {
+        return 0 - 1
+    }
+    return quotient
+}
+
+# Runtime compatibility is exactly the fields two reports must share for their
+# medians to mean the same thing. Schema and unit are absent on purpose: they
+# are fixed constants of this nominal type, so a non-`ns` document is refused
+# by report validation as BR003 and can never arrive here to be reported as a
+# comparison mismatch.
+fn runtime_compatible(
+    baseline: BenchReport,
+    candidate: BenchReport
+) -> Int {
+    if baseline.suite != candidate.suite {
+        return 0
+    }
+    if baseline.case != candidate.case {
+        return 0
+    }
+    let mut baseline_present = 0
+    if baseline.parameter_present {
+        baseline_present = 1
+    }
+    let mut candidate_present = 0
+    if candidate.parameter_present {
+        candidate_present = 1
+    }
+    if baseline_present != candidate_present {
+        return 0
+    }
+    if baseline.parameter != candidate.parameter {
+        return 0
+    }
+    if baseline.metric != candidate.metric {
+        return 0
+    }
+    if baseline.direction_tag != candidate.direction_tag {
+        return 0
+    }
+    if baseline.clock_tag != candidate.clock_tag {
+        return 0
+    }
+    if baseline.iterations_per_sample != candidate.iterations_per_sample {
+        return 0
+    }
+    return 1
+}
+
+# The precedence is fixed and each step is a separate `if`, because the order
+# is observable: an invalid candidate with an invalid threshold reports the
+# candidate, and an incompatible pair with an invalid threshold reports BR009.
+# Validation before threshold before compatibility.
+fn compare_reports(
+    baseline: BenchReport,
+    candidate: BenchReport,
+    threshold_bps: Int
+) -> Stage2BenchmarkComparisonOutcome {
+    if baseline.status_tag != status_valid() {
+        return comparison_failure(baseline.status_tag)
+    }
+    if candidate.status_tag != status_valid() {
+        return comparison_failure(candidate.status_tag)
+    }
+    if threshold_bps < 0 {
+        return comparison_failure(status_invalid_threshold())
+    }
+    if threshold_bps > limit_threshold_bps() {
+        return comparison_failure(status_invalid_threshold())
+    }
+    if runtime_compatible(baseline, candidate) == 0 {
+        return comparison_failure(status_incompatible())
+    }
+
+    let base = baseline.summary_median
+    let next = candidate.summary_median
+    if base == 0 {
+        # Both zero is an ordinary equivalent result. A zero baseline against a
+        # nonzero candidate has no proportional change to report at all, which
+        # is a fourth result rather than an error: the comparison ran and its
+        # answer is that the question has no ratio.
+        if next == 0 {
+            return comparison_success(result_equivalent(), 0, threshold_bps)
+        }
+        return comparison_success(result_zero_baseline(), 0, threshold_bps)
+    }
+
+    # Positive always means worse, whichever direction the metric improves in.
+    let mut magnitude = 0
+    let mut negative = 0
+    if baseline.direction_tag == 0 {
+        if next < base {
+            magnitude = base - next
+            negative = 1
+        } else {
+            magnitude = next - base
+        }
+    } else {
+        if base < next {
+            magnitude = next - base
+            negative = 1
+        } else {
+            magnitude = base - next
+        }
+    }
+
+    let scaled = rounded_basis_points(magnitude, base)
+    if scaled < 0 {
+        return comparison_failure(status_arithmetic_overflow())
+    }
+    let mut change = scaled
+    if negative == 1 {
+        change = 0 - scaled
+    }
+    if change > threshold_bps {
+        return comparison_success(result_regressed(), change, threshold_bps)
+    }
+    if change < 0 - threshold_bps {
+        return comparison_success(result_improved(), change, threshold_bps)
+    }
+    return comparison_success(result_equivalent(), change, threshold_bps)
+}
+
+fn print_comparison(
+    name: Text,
+    outcome: Stage2BenchmarkComparisonOutcome
+) -> Int {
+    print(name + " " + to_text(outcome.status_tag) + " " +
+        to_text(outcome.result_tag) + " " + to_text(outcome.change_bps) + " " +
+        to_text(outcome.threshold_bps))
+    return 1
+}

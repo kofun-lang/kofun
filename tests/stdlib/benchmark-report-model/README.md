@@ -63,3 +63,46 @@ child that reads bytes.
 The fixed `Samples8` scaffold in
 [`../benchmark-summary`](../benchmark-summary) is deliberately retained. Only
 #1320 may decide and perform its deletion.
+
+## Comparison (#1313)
+
+`compare_reports` takes two validated reports and a caller threshold and
+returns `Stage2BenchmarkComparisonOutcome(status_tag, result_tag, change_bps,
+threshold_bps)` — a flat four-field carrier, not a `Result` or a
+payload-bearing ADT, so a caller reads one shape whatever happened. A refusal
+carries its status and three zeros; there is no partial answer to read.
+
+Groups 4–6 run **the decision's own comparison vectors**, by name and with the
+vector's own arguments. `spec/benchmark-report-v1/vectors/comparison.json` is
+the boundary set #1310 froze, and the oracle joins to it twice: it reads the
+arguments back out of `corpus.kofun` and requires them to equal the manifest's,
+and it requires every vector in the manifest to have a case here. A boundary
+added upstream fails this gate rather than going unrun. The expectation itself
+comes from calling `compareReports`, the same function
+`spec/benchmark-report-v1/check.sh` asserts the manifest against.
+
+Groups 7–9 are the runtime-only concerns the manifest cannot express: each of
+the eight compatibility fields mismatching on its own, the threshold's two
+refusals, and the precedence between them. Their expectation is the contract's
+error code, like the other refusal groups.
+
+### Arithmetic
+
+`magnitude * 10000` is not computed. At the report integer ceiling it is 9.0e20,
+which traps as R010 — so a ceiling check written after the multiplication would
+never execute, because the process is already gone. The quotient is built in
+four guarded long-division steps, each testing the ceiling *before* scaling,
+and the exact half rounds away from zero at the end.
+
+### What the comparison mutations are for
+
+Five of the nine reintroduced defects are comparison defects, and every one of
+them leaves all the reports in the corpus valid — so none of the groups above
+can see them. The threshold's strictness, the direction tag's reading, the
+overflow guard's position, one compatibility field, and which report's status a
+refusal reports.
+
+One of them had to be rewritten to mean anything. Turning the overflow guard
+*always on* edits the source, runs, and proves nothing: both other cases in that
+group take the zero-baseline branch before any division, so the output does not
+move. Only a guard that never fires separates the two behaviours.

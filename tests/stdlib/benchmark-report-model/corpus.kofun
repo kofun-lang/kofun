@@ -334,6 +334,199 @@ fn run_counter_case(name: Text, value: Int) -> Int {
 # own process; the arena is the reason, and the count each group returns is
 # what the golden pins.
 
+
+# ------------------------------------------------------------- comparison
+#
+# #1313. A comparison needs two reports, and the cheapest way to fix a median
+# exactly is a one-sample series: the median of `[v]` is `v`. That keeps each
+# case to two reports and leaves the Text arena (#1359) enough room for a
+# group to run at all.
+
+fn comparison_identity(
+    suite: Text,
+    case_name: Text,
+    present_tag: Int,
+    parameter: Text,
+    metric: Text,
+    direction_tag: Int
+) -> ReportIdentity {
+    if present_tag == 1 {
+        let present: ReportIdentity = ReportIdentity(
+            suite: suite,
+            case: case_name,
+            parameter_present: true,
+            parameter: parameter,
+            metric: metric,
+            direction_tag: direction_tag
+        )
+        return present
+    }
+    let absent: ReportIdentity = ReportIdentity(
+        suite: suite,
+        case: case_name,
+        parameter_present: false,
+        parameter: "",
+        metric: metric,
+        direction_tag: direction_tag
+    )
+    return absent
+}
+
+fn comparison_schedule(clock_tag: Int, iterations: Int) -> ReportSchedule {
+    let value: ReportSchedule = ReportSchedule(
+        clock_tag: clock_tag,
+        warmup_cap_ns: 1000000,
+        sampling_cap_ns: 2000000000,
+        sample_cap: 1,
+        warmup_iterations: 32,
+        warmup_stop_tag: 1,
+        iterations_per_sample: iterations,
+        sample_count: 1,
+        sampling_stop_tag: 0,
+        harness_overhead_ns: 12
+    )
+    return value
+}
+
+fn comparison_report(
+    identity: ReportIdentity,
+    schedule: ReportSchedule,
+    value: Int
+) -> BenchReport {
+    let samples0: List[Int] = [value]
+    let samples1: List[Int] = []
+    let counters: ReportCounters = corpus_counters()
+    let digests: ReportDigests = corpus_digests()
+    let host: ReportHost = corpus_host()
+    let report: BenchReport = produce_report(
+        identity,
+        schedule,
+        counters,
+        digests,
+        host,
+        samples0,
+        samples1
+    )
+    return report
+}
+
+# The ordinary pair: one identity, one schedule, two medians, one threshold.
+fn run_comparison(
+    name: Text,
+    base: Int,
+    next: Int,
+    direction_tag: Int,
+    threshold: Int
+) -> Int {
+    let identity: ReportIdentity =
+        comparison_identity("s", "c", 1, "n=1", "duration", direction_tag)
+    let schedule: ReportSchedule = comparison_schedule(0, 8)
+    let baseline: BenchReport = comparison_report(identity, schedule, base)
+    let candidate: BenchReport = comparison_report(identity, schedule, next)
+    let outcome: Stage2BenchmarkComparisonOutcome =
+        compare_reports(baseline, candidate, threshold)
+    return print_comparison(name, outcome)
+}
+
+
+# One report differs from the other in exactly one runtime compatibility
+# field. The `field` tag selects which, so the eight cases share one builder
+# and cannot drift apart in anything but the field under test.
+fn compatibility_identity(field: Int) -> ReportIdentity {
+    if field == 1 {
+        let suite: ReportIdentity =
+            comparison_identity("t", "c", 1, "n=1", "duration", 0)
+        return suite
+    }
+    if field == 2 {
+        let case_name: ReportIdentity =
+            comparison_identity("s", "d", 1, "n=1", "duration", 0)
+        return case_name
+    }
+    if field == 3 {
+        let absent: ReportIdentity =
+            comparison_identity("s", "c", 0, "", "duration", 0)
+        return absent
+    }
+    if field == 4 {
+        let parameter: ReportIdentity =
+            comparison_identity("s", "c", 1, "n=2", "duration", 0)
+        return parameter
+    }
+    if field == 5 {
+        let metric: ReportIdentity =
+            comparison_identity("s", "c", 1, "n=1", "bytes", 0)
+        return metric
+    }
+    if field == 6 {
+        let direction: ReportIdentity =
+            comparison_identity("s", "c", 1, "n=1", "duration", 1)
+        return direction
+    }
+    let same: ReportIdentity =
+        comparison_identity("s", "c", 1, "n=1", "duration", 0)
+    return same
+}
+
+fn compatibility_schedule(field: Int) -> ReportSchedule {
+    if field == 7 {
+        let clock: ReportSchedule = comparison_schedule(1, 8)
+        return clock
+    }
+    if field == 8 {
+        let iterations: ReportSchedule = comparison_schedule(0, 16)
+        return iterations
+    }
+    let same: ReportSchedule = comparison_schedule(0, 8)
+    return same
+}
+
+# One report differs from the other in exactly one runtime compatibility
+# field. The `field` tag selects which, so the eight cases share one builder
+# and cannot drift apart in anything but the field under test. A nominal
+# record binding is immutable in this slice, so the variant is chosen by a
+# function rather than by reassigning one binding.
+fn run_compatibility(name: Text, field: Int) -> Int {
+    let base_identity: ReportIdentity =
+        comparison_identity("s", "c", 1, "n=1", "duration", 0)
+    let base_schedule: ReportSchedule = comparison_schedule(0, 8)
+    let other_identity: ReportIdentity = compatibility_identity(field)
+    let other_schedule: ReportSchedule = compatibility_schedule(field)
+    let baseline: BenchReport =
+        comparison_report(base_identity, base_schedule, 1000)
+    let candidate: BenchReport =
+        comparison_report(other_identity, other_schedule, 1000)
+    let outcome: Stage2BenchmarkComparisonOutcome =
+        compare_reports(baseline, candidate, 0)
+    return print_comparison(name, outcome)
+}
+
+# Precedence needs a pair that fails two ways at once, so that reporting the
+# wrong one is visible. Case 1 is an invalid candidate with an invalid
+# threshold; case 2 is an incompatible pair with an invalid threshold.
+fn run_precedence(name: Text, case_tag: Int) -> Int {
+    let identity: ReportIdentity =
+        comparison_identity("s", "c", 1, "n=1", "duration", 0)
+    let schedule: ReportSchedule = comparison_schedule(0, 8)
+    let baseline: BenchReport = comparison_report(identity, schedule, 1000)
+    if case_tag == 1 {
+        let broken_identity: ReportIdentity =
+            comparison_identity("", "c", 1, "n=1", "duration", 0)
+        let broken: BenchReport =
+            comparison_report(broken_identity, schedule, 1000)
+        let first: Stage2BenchmarkComparisonOutcome =
+            compare_reports(baseline, broken, 0 - 1)
+        return print_comparison(name, first)
+    }
+    let other_identity: ReportIdentity =
+        comparison_identity("t", "c", 1, "n=1", "duration", 0)
+    let candidate: BenchReport =
+        comparison_report(other_identity, schedule, 1000)
+    let second: Stage2BenchmarkComparisonOutcome =
+        compare_reports(baseline, candidate, 0 - 1)
+    return print_comparison(name, second)
+}
+
 fn run_group(group: Int) -> Int {
     let empty: List[Int] = []
     let mut cases = 0
@@ -391,6 +584,63 @@ fn run_group(group: Int) -> Int {
         cases = cases + run_digest_case("upperdigest",
             "0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef")
         cases = cases + run_counter_case("counterneutral", 7)
+    }
+
+    if group == 4 {
+        # The decision's own comparison vectors, run verbatim. These are not
+        # cases this gate invented: `spec/benchmark-report-v1/vectors/comparison.json`
+        # is the boundary set #1310 froze, and the oracle refuses to run if any
+        # vector in it has no case here.
+        cases = cases + run_comparison("lower-below-threshold", 10000, 10499, 0, 500)
+        cases = cases + run_comparison("lower-equal-threshold", 10000, 10500, 0, 500)
+        cases = cases + run_comparison("lower-above-threshold", 10000, 10501, 0, 500)
+        cases = cases + run_comparison("lower-improvement", 10000, 9499, 0, 500)
+        cases = cases + run_comparison("lower-improvement-equal-threshold", 10000, 9500, 0, 500)
+    }
+
+    if group == 5 {
+        # Both half-away-from-zero signs and the two directions' regressions.
+        cases = cases + run_comparison("higher-regression", 10000, 9499, 1, 500)
+        cases = cases + run_comparison("higher-improvement", 10000, 10501, 1, 500)
+        cases = cases + run_comparison("half-away-from-zero", 20000, 21001, 0, 500)
+        cases = cases + run_comparison("negative-half-away-from-zero", 20000, 18999, 0, 500)
+        cases = cases + run_comparison("maximum-threshold", 10000, 10000, 0, 1000000)
+    }
+
+    if group == 6 {
+        # Zero baselines and the checked overflow.
+        cases = cases + run_comparison("zero-equals-zero", 0, 0, 0, 0)
+        cases = cases + run_comparison("zero-baseline", 0, 1, 0, 0)
+        cases = cases + run_comparison("checked-overflow", 1, 9007199254740991, 0, 0)
+    }
+
+    if group == 7 {
+        # The threshold's own validity, and its two refusals. `1000000` is the
+        # last accepted value.
+        cases = cases + run_comparison("maxthreshold", 1000, 1000, 0, 1000000)
+        cases = cases + run_comparison("overthreshold", 1000, 1000, 0, 1000001)
+        cases = cases + run_comparison("negthreshold", 1000, 1000, 0, 0 - 1)
+        cases = cases + run_compatibility("suite", 1)
+        cases = cases + run_compatibility("case", 2)
+    }
+
+    if group == 8 {
+        # Each runtime compatibility field mismatches on its own. A single
+        # combined case would pass with any one of the eight comparisons
+        # missing.
+        cases = cases + run_compatibility("presence", 3)
+        cases = cases + run_compatibility("parameter", 4)
+        cases = cases + run_compatibility("metric", 5)
+        cases = cases + run_compatibility("direction", 6)
+    }
+
+    if group == 9 {
+        cases = cases + run_compatibility("clock", 7)
+        cases = cases + run_compatibility("iterations", 8)
+        # Precedence. An invalid candidate outranks an invalid threshold, and
+        # an invalid threshold outranks an incompatible pair.
+        cases = cases + run_precedence("badcandidate", 1)
+        cases = cases + run_precedence("badthreshold", 2)
     }
 
     return cases
