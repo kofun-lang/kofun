@@ -157,7 +157,9 @@ for stem in arity_short arity_long float_receiver float_receiver_used \
             unknown_after_bit label_before_type type_before_label \
             type_before_trailing_lambda trailing_before_arity \
             optional_receiver optional_argument receiver_before_unknown \
-            type_before_unknown label_before_unknown; do
+            type_before_unknown label_before_unknown \
+            nested_receiver_before_unknown nested_label_before_unknown \
+            callable_named_argument callable_direct_argument; do
     set +e
     "$WORK/kofun-stage2" --compile-outcome "$CASES/$stem.kofun" \
         "$WORK/$stem.c" "$WORK/$stem.ir" "$WORK/$stem.tokens" \
@@ -278,6 +280,18 @@ assert_grep 'an earlier bad type outranks a later unresolved argument' \
 assert_grep 'a label outranks resolution of its value' \
     -Fq -- 'takes positional arguments' \
     "$CASES/label_before_unknown.stderr"
+assert_grep 'a nested bad receiver outranks its unresolved argument' \
+    -Fq -- 'this receiver is `Bool`' \
+    "$CASES/nested_receiver_before_unknown.stderr"
+assert_grep 'a nested label outranks resolution of its value' \
+    -Fq -- 'takes positional arguments' \
+    "$CASES/nested_label_before_unknown.stderr"
+assert_grep 'a declared function value is not an Int argument' \
+    -Fq -- '`and` takes `Int` arguments' \
+    "$CASES/callable_named_argument.stderr"
+assert_grep 'a direct lambda is not an Int argument' \
+    -Fq -- '`and` takes `Int` arguments' \
+    "$CASES/callable_direct_argument.stderr"
 
 # The eight names stay ordinary identifiers. This is checked against the
 # compiler pair rather than only by fixture, because a future implementation
@@ -333,8 +347,8 @@ assert_grep 'R010 is also observed by the int-bits adapter' \
 present_count=$(find "$CASES" -name '*.kofun' -type f | wc -l | tr -d ' ')
 golden_count=$(find "$CASES" \( -name '*.stdout' -o -name '*.stderr' \) \
     -type f | wc -l | tr -d ' ')
-assert_num 'every source fixture is exercised' "$present_count" -eq 38
-assert_num 'every source fixture has one golden' "$golden_count" -eq 38
+assert_num 'every source fixture is exercised' "$present_count" -eq 42
+assert_num 'every source fixture has one golden' "$golden_count" -eq 42
 
 printf '%s\n' \
     'PASS: eight Int bit operations execute with the semantics RFC-0013 fixes' \

@@ -36,8 +36,10 @@ function verifyPair(cText, kofunText) {
   const failures = [];
   const cOptional = section(cText, "static char *validate_optional_uses(", "static char *emit_condition_into(", "C");
   const kOptional = section(kofunText, "fn validate_optional_uses(", "fn emit_condition_into(", "Kofun");
-  const cPreflight = section(cText, "static char *int_bit_error_before_unresolved(", "static char *scope_hir_error(", "C");
-  const kPreflight = section(kofunText, "fn int_bit_error_before_unresolved(", "fn build_scope_hir_mode(", "Kofun");
+  const cPreflight = section(cText, "static char *int_bit_error_before_unresolved_in(", "static char *int_bit_error_before_unresolved(", "C");
+  const kPreflight = section(kofunText, "fn int_bit_error_before_unresolved_in(", "fn int_bit_error_before_unresolved(", "Kofun");
+  const cClassifier = section(cText, "/* Bounded classification keeps operators", "static char *optional_int_value(", "C");
+  const kClassifier = section(kofunText, "fn initializer_type_bounded(", "# Scope construction normally owns E2S35.", "Kofun");
   const cChain = section(cText, "static char *emit_int_bit_chain(", "static char *emit_primary(", "C");
   const kChain = section(kofunText, "fn emit_int_bit_chain(", "fn emit_primary(", "Kofun");
   const cScope = section(cText, "static char *build_scope_hir_mode(", "static char *build_scope_hir(", "C");
@@ -46,6 +48,20 @@ function verifyPair(cText, kofunText) {
   for (const [side, optional] of [["C", cOptional], ["Kofun", kOptional]]) {
     if (!optional.includes("bit_expression")) failures.push(`${side} missing Optional bit-call deferral`);
     if (!optional.includes("optional && !bit_expression")) failures.push(`${side} Optional deferral is not bit-call bounded`);
+  }
+  for (const [side, classifier] of [["C", cClassifier], ["Kofun", kClassifier]]) {
+    const truth = side === "C" ? {
+      direct: "if (lambda_end >= 0 && lambda_end <= end)",
+      lexical: "if (callable && call_argument_position(source, cursor))",
+      declared: "function_arity(source, name) >= 0 && call_argument_position(source, cursor)",
+    } : {
+      direct: "if lambda_end >= 0 && lambda_end <= end",
+      lexical: "if callable && call_argument_position(source, cursor)",
+      declared: "function_arity(source, cursor_text) >= 0 && call_argument_position(source, cursor)",
+    };
+    if (!classifier.includes(truth.direct)) failures.push(`${side} missing direct callable classifier`);
+    if (!classifier.includes(truth.lexical)) failures.push(`${side} missing lexical callable classifier`);
+    if (!classifier.includes(truth.declared)) failures.push(`${side} missing declared callable classifier`);
   }
   for (const [side, preflight, chain, scope] of [
     ["C", cPreflight, cChain, cScope],
@@ -57,12 +73,14 @@ function verifyPair(cText, kofunText) {
       argumentRefusal: 'if (strcmp(argument_type, "Int") != 0)',
       labelRefusal: 'if (colon >= 0 && colon < close && token_equal(source, colon, ":"))',
       scopeGuard: "if (bit_error != NULL)",
+      nestedGuard: "if (target >= argument && target < bound)",
     } : {
       unknownBranch: "if arity < 0",
       receiverRefusal: 'if receiver_type != "Int"',
       argumentRefusal: 'if argument_type != "Int"',
       labelRefusal: 'if colon >= 0 && colon < close && token_text(source, colon) == ":"',
       scopeGuard: "if len(bit_error) > 0",
+      nestedGuard: "if target >= argument && target < bound",
     };
     ordered(failures, side, preflight, [
       ["preflight receiver classifier", "receiver_type = initializer_type_bounded("],
@@ -74,6 +92,8 @@ function verifyPair(cText, kofunText) {
     if (!preflight.includes(truth.receiverRefusal)) failures.push(`${side} missing preflight receiver type refusal`);
     if (!preflight.includes(truth.labelRefusal)) failures.push(`${side} missing preflight label refusal`);
     if (!preflight.includes(truth.argumentRefusal)) failures.push(`${side} missing preflight argument type refusal`);
+    if (!preflight.includes(truth.nestedGuard)) failures.push(`${side} missing nested preflight guard`);
+    if (!preflight.includes("return int_bit_error_before_unresolved_in(")) failures.push(`${side} missing nested preflight recursion`);
     if (!scope.includes("int_bit_error_before_unresolved(")) failures.push(`${side} missing scope-order deferral`);
     if (!scope.includes(truth.scopeGuard)) failures.push(`${side} missing scope-order guard`);
     ordered(failures, side, chain, [
@@ -157,6 +177,40 @@ if (mode === "self-test") {
       Kofun: ["if len(bit_error) > 0", "if false"],
     },
     {
+      rule: "nested preflight",
+      functionName: "int_bit_error_before_unresolved_in",
+      expected: "missing nested preflight guard",
+      C: ["if (target >= argument && target < bound)", "if (false)"],
+      Kofun: ["if target >= argument && target < bound", "if false"],
+    },
+    {
+      rule: "direct callable type",
+      functionName: "initializer_type_bounded",
+      expected: "missing direct callable classifier",
+      C: ["if (lambda_end >= 0 && lambda_end <= end)", "if (false)"],
+      Kofun: ["if lambda_end >= 0 && lambda_end <= end", "if false"],
+    },
+    {
+      rule: "lexical callable type",
+      functionName: "initializer_type_bounded",
+      expected: "missing lexical callable classifier",
+      C: ["if (callable && call_argument_position(source, cursor))", "if (false)"],
+      Kofun: ["if callable && call_argument_position(source, cursor)", "if false"],
+    },
+    {
+      rule: "declared callable type",
+      functionName: "initializer_type_bounded",
+      expected: "missing declared callable classifier",
+      C: [
+        "function_arity(source, name) >= 0 &&\n            call_argument_position(source, cursor)",
+        "function_arity(source, name) < 0 &&\n            call_argument_position(source, cursor)",
+      ],
+      Kofun: [
+        "function_arity(source, cursor_text) >= 0 &&\n           call_argument_position(source, cursor)",
+        "function_arity(source, cursor_text) < 0 &&\n           call_argument_position(source, cursor)",
+      ],
+    },
+    {
       rule: "label order",
       functionName: "emit_int_bit_chain",
       expected: "missing label refusal branch",
@@ -188,6 +242,8 @@ if (mode === "self-test") {
         validate_optional_uses: cStyle ? "static char *emit_condition_into(" : "fn emit_condition_into(",
         emit_int_bit_chain: cStyle ? "static char *emit_primary(" : "fn emit_primary(",
         build_scope_hir_mode: cStyle ? "static char *build_scope_hir(" : "fn build_scope_hir(",
+        int_bit_error_before_unresolved_in: cStyle ? "static char *int_bit_error_before_unresolved(" : "fn int_bit_error_before_unresolved(",
+        initializer_type_bounded: cStyle ? "static char *optional_int_value(" : "# Scope construction normally owns E2S35.",
       };
       const sources = { ...original };
       sources[side] = mutateSection(sources[side], start, ends[functionName], needle, replacement, `${side} ${rule}`);
@@ -196,8 +252,8 @@ if (mode === "self-test") {
       process.stdout.write(`PASS [int-bit-mutation] ${side} ${rule}\n`);
     }
   }
-  assert.equal(mutations, 14, "mutation matrix must remain exactly 14 cases");
-  process.stdout.write("PASS: 14 independent Int-bit authority mutations are refused across both twins\n");
+  assert.equal(mutations, 22, "mutation matrix must remain exactly 22 cases");
+  process.stdout.write("PASS: 22 independent Int-bit authority mutations are refused across both twins\n");
 }
 
-process.stdout.write("PASS: Int-bit Optional, scope order, actual types, suffix, labels, and fn anchors agree across both twins\n");
+process.stdout.write("PASS: Int-bit Optional, nested scope order, actual types, suffix, labels, and fn anchors agree across both twins\n");

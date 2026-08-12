@@ -15039,6 +15039,10 @@ static char *initializer_type_bounded(
     } else if (end < 0) {
         end = token_end(source, initializer);
     }
+    int64_t lambda_end = lambda_parameters_end(source, -1, initializer);
+    if (lambda_end >= 0 && lambda_end <= end) {
+        return owned_text("Fn");
+    }
     /*
      * A `let` whose whole initializer is a bit-operation chain binds `Int`,
      * whatever the receiver is, because the eight operations return `Int`.
@@ -15181,6 +15185,14 @@ static char *initializer_type_bounded(
         char *binding_id = hir_resolve_binding(hir, scope_id, cursor, name);
         free(scope_id);
         if (binding_id[0] != '\0') {
+            bool callable =
+                lambda_binding_open(source, hir, binding_id) >= 0 ||
+                callable_parameter_type_start(source, hir, binding_id) >= 0;
+            if (callable && call_argument_position(source, cursor)) {
+                free(binding_id);
+                free(name);
+                return owned_text("Fn");
+            }
             char *type = hir_binding_field(hir, binding_id, 5);
             free(binding_id);
             free(name);
@@ -15228,6 +15240,13 @@ static char *initializer_type_bounded(
             return owned_text("Int");
         }
         free(binding_id);
+        if (
+            function_arity(source, name) >= 0 &&
+            call_argument_position(source, cursor)
+        ) {
+            free(name);
+            return owned_text("Fn");
+        }
         char *owner = enum_constructor_owner(source, name);
         free(name);
         if (owner[0] != '\0') return owner;
@@ -15481,17 +15500,19 @@ static char *emit_optional_int_coalescing_temporaries(
  * name. It returns an earlier bit-call error, or NULL when that unresolved use
  * is itself the first failure and E2S35 must remain authoritative.
  */
-static char *int_bit_error_before_unresolved(
+static char *int_bit_error_before_unresolved_in(
     const char *source,
     const char *hir,
-    int64_t target
+    int64_t target,
+    int64_t range_start,
+    int64_t range_end
 ) {
-    int64_t start = skip_trivia(source, 0);
+    int64_t start = skip_trivia(source, range_start);
     int64_t end = -1;
     int64_t first_dot = -1;
-    while (start <= target && start < source_length(source)) {
+    while (start <= target && start < range_end) {
         int64_t candidate_end = primary_end(source, start);
-        if (candidate_end > target) {
+        if (candidate_end > target && candidate_end <= range_end) {
             int64_t candidate_dot = int_bit_chain_dot(
                 source,
                 start,
@@ -15607,7 +15628,13 @@ static char *int_bit_error_before_unresolved(
             }
             if (target >= argument && target < bound) {
                 free(name);
-                return NULL;
+                return int_bit_error_before_unresolved_in(
+                    source,
+                    hir,
+                    target,
+                    argument,
+                    bound
+                );
             }
             if (bound <= target) {
                 char *argument_type = initializer_type_bounded(
@@ -15681,6 +15708,20 @@ static char *int_bit_error_before_unresolved(
         cursor = close;
     }
     return NULL;
+}
+
+static char *int_bit_error_before_unresolved(
+    const char *source,
+    const char *hir,
+    int64_t target
+) {
+    return int_bit_error_before_unresolved_in(
+        source,
+        hir,
+        target,
+        0,
+        source_length(source)
+    );
 }
 
 static char *scope_hir_error(

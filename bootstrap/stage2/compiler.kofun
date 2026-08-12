@@ -10936,6 +10936,10 @@ fn initializer_type_bounded(
     } else if end < 0 {
         end = token_end(source, initializer)
     }
+    let lambda_end = lambda_parameters_end(source, -1, initializer)
+    if lambda_end >= 0 && lambda_end <= end {
+        return "Fn"
+    }
     # A `let` whose whole initializer is a bit-operation chain binds `Int`,
     # whatever the receiver is, because the eight operations return `Int`.
     # Without this, `let y = f.and(1)` bound `y` as `Float` and the reader was
@@ -11069,6 +11073,11 @@ fn initializer_type_bounded(
             cursor_text
         )
         if len(binding_id) > 0 {
+            let callable = lambda_binding_open(source, hir, binding_id) >= 0 ||
+                callable_parameter_type_start(source, hir, binding_id) >= 0
+            if callable && call_argument_position(source, cursor) {
+                return "Fn"
+            }
             let binding_type = hir_binding_field(hir, binding_id, 5)
             if len(binding_type) > 0 {
                 if open < len(source) && token_text(source, open) == "." {
@@ -11101,6 +11110,10 @@ fn initializer_type_bounded(
             }
             return "Int"
         }
+        if function_arity(source, cursor_text) >= 0 &&
+           call_argument_position(source, cursor) {
+            return "Fn"
+        }
         let owner = enum_constructor_owner(source, cursor_text)
         if len(owner) > 0 {
             return owner
@@ -11114,17 +11127,19 @@ fn initializer_type_bounded(
 # preflight is called only when the use pass is about to reject an unresolved
 # name. It returns an earlier bit-call error, or empty text when that unresolved
 # use itself is the first failure and E2S35 must remain authoritative.
-fn int_bit_error_before_unresolved(
+fn int_bit_error_before_unresolved_in(
     source: Text,
     hir: Text,
-    target: Int
+    target: Int,
+    range_start: Int,
+    range_end: Int
 ) -> Text {
-    let mut start = skip_trivia(source, 0)
+    let mut start = skip_trivia(source, range_start)
     let mut end = -1
     let mut first_dot = -1
-    while start <= target && start < len(source) && first_dot < 0 {
+    while start <= target && start < range_end && first_dot < 0 {
         let candidate_end = primary_end(source, start)
-        if candidate_end > target {
+        if candidate_end > target && candidate_end <= range_end {
             let candidate_dot = int_bit_chain_dot(
                 source,
                 start,
@@ -11219,7 +11234,13 @@ fn int_bit_error_before_unresolved(
                 )
             }
             if target >= argument && target < bound {
-                return ""
+                return int_bit_error_before_unresolved_in(
+                    source,
+                    hir,
+                    target,
+                    argument,
+                    bound
+                )
             }
             if bound <= target {
                 let argument_type = initializer_type_bounded(
@@ -11268,6 +11289,20 @@ fn int_bit_error_before_unresolved(
         cursor = close
     }
     return ""
+}
+
+fn int_bit_error_before_unresolved(
+    source: Text,
+    hir: Text,
+    target: Int
+) -> Text {
+    return int_bit_error_before_unresolved_in(
+        source,
+        hir,
+        target,
+        0,
+        len(source)
+    )
 }
 
 fn build_scope_hir_mode(
