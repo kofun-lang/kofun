@@ -592,8 +592,20 @@ export function encodeRecordPayload(record) {
   return Buffer.alloc(0);
 }
 
+/*
+ * Text or bytes, where "bytes" is any view over a buffer rather than a
+ * `Buffer` specifically. `structuredClone` turns a `Buffer` into a plain
+ * `Uint8Array`, so a guard written as `Buffer.isBuffer` refuses a body that
+ * merely travelled through a copy -- which is what any caller holding a
+ * document across a boundary does.
+ */
 function typedBody(value) {
-  const bytes = Buffer.isBuffer(value) ? value : Buffer.from(value, "utf8");
+  if (typeof value !== "string" && !ArrayBuffer.isView(value)) {
+    fail("corrupt", "typed body is absent");
+  }
+  const bytes = typeof value === "string"
+    ? Buffer.from(value, "utf8")
+    : Buffer.from(value.buffer, value.byteOffset, value.byteLength);
   if (bytes.length > LIMITS.typedBodyBytes) {
     fail("limit-exhausted", "typed body exceeds 8 MiB");
   }

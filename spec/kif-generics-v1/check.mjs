@@ -577,6 +577,42 @@ assert.equal(
 );
 pass("two implementations of one trait and self type refuse identically in either order");
 
+
+/*
+ * No raw exception escapes the model's vocabulary.
+ *
+ * For a process that must produce no artifact, a crash and a refusal are only
+ * distinguishable if the caller can catch both. A `TypeError` from deep inside
+ * an encoder is indistinguishable from a bug in the caller, so every missing
+ * field has to arrive as a status. The three hand-written cases that found the
+ * first one were the fields I happened to think of; this asks the same
+ * question of every field of every record.
+ */
+let deletions = 0;
+for (const view of ["publicRecords", "internalRecords"]) {
+  for (let index = 0; index < document[view].length; index += 1) {
+    for (const field of Object.keys(document[view][index])) {
+      if (field === "kind") continue;
+      const bad = clone(document);
+      delete bad[view][index][field];
+      deletions += 1;
+      try {
+        encodeDocument(bad, decodeOptions);
+      } catch (error) {
+        assert.ok(
+          error instanceof KifGenericsError,
+          `deleting ${view}[${index}].${field} threw ${error?.constructor?.name}: ${error?.message}`,
+        );
+        assert.ok(
+          typeof error.status === "string" && error.status.length > 0,
+          `deleting ${view}[${index}].${field} refused without a status`,
+        );
+      }
+    }
+  }
+}
+pass(`${deletions} single-field deletions each encode or refuse with a status`);
+
 /* ------------------------------------------- publication transaction */
 
 const store = new Map();
