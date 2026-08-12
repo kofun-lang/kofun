@@ -167,9 +167,20 @@ depends on, because a build that silently reads an undeclared file is not
 reproducible from the declared set however well every declared digest matches.
 `task selfhost-declared-inputs` runs both.
 
-That is the producer-owned half of B6. The reproduction itself — by a builder
-that did not produce the evidence — stays open as #274, and diverse double
-compilation (B7) stays open too.
+That is the producer-owned half of B6.
+
+`sh bootstrap/selfhost/reproduce.sh OUTPUT REPORT` is the other half's
+interface: the one command an independent builder runs, which sequences the
+four gates above and writes one canonical report, and
+`sh bootstrap/selfhost/check-reproduction-report.sh REPORT` is what a reviewer
+runs on what comes back. `bootstrap/selfhost/b6/README.md` documents the report
+format and, more usefully, what the validator refuses to conclude: it records a
+builder's identity and stated basis, and states in its own output that it
+cannot authenticate either. `task selfhost-b6-report` is the gate.
+
+Those are mechanics. The reproduction itself — by a builder that did not
+produce the evidence — stays open as #274, deciding what counts as operational
+independence is #1290, and diverse double compilation (B7) stays open too.
 
 The implementation order is
 [#619](https://github.com/kofun-lang/kofun/issues/619) through

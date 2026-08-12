@@ -56,11 +56,72 @@ boundary in the grammar, which `pipeline_coalescing_subject.kofun` pins from
 the other direction: `left ?? 4 |> add(delta: 2)` has `left ?? 4` as its
 subject, so `??` binds first.
 
-Recognition is the whole of that slice — binding is #1226, checking #1227, and
-C11 lowering #1228 — so both cases still fail closed. What recognition buys is
-the diagnostic. Before it, each of these reported an argument list the author
-had not got wrong (`missing argument \`base\``, or `expects 2 arguments, got
-1`) and never mentioned the pipeline that was actually unsupported.
+What recognition buys is the diagnostic. Before it, each of these reported an
+argument list the author had not got wrong (`missing argument \`base\``, or
+`expects 2 arguments, got 1`) and never mentioned the pipeline that was
+actually unsupported.
+
+#1226 then binds the subject to **slot 0**, before any explicit argument is
+read, which is what keeps the rest of the binder free of special cases:
+positional arguments start at slot 1 because slot 0 is taken, and a label
+naming slot 0 lands on the ordinary duplicate path.
+`pipeline_positional_rest.kofun` is the case where a missing binding would
+otherwise be invisible — without it the written `2` binds slot 0 and the call
+looks well formed. `pipeline_duplicate_slot_zero.kofun` writes `into:`, slot
+0's declared label, and gets E2S163 against the declaration it collides with.
+The externally labelled case proves the rule rather than a coincidence: the
+subject satisfies `into` without that label appearing anywhere in the call.
+
+#1227 then checks the bound call. Effective arity is one subject plus the
+written arguments, so `pipeline_effective_arity.kofun` reports 3 for a
+two-parameter callee. That case is worth its own assertion for a subtle reason:
+the four canonical shapes stopped reaching `E2S17` the moment #1190 refused
+them, whether or not anything counted — so only an *overflow* distinguishes a
+correct count from an earlier refusal.
+
+`pipeline_subject_type_mismatch.kofun` checks the subject against slot 0 and
+reports at the subject's own span, because pointing at the callee would name
+the one token that is not wrong.
+
+The RFC-0010 transfer arrives without a label:
+`pipeline_take_subject.kofun` pipes a bare binding into a `take` slot 0, so it
+moves exactly once and the later use is the existing E2S123 with both spans.
+`move_call_binding` admits it on the declared mode of slot 0 rather than on how
+it was written — a subject is never written with a label — which is what leaves
+the ordinary positional call outside that path.
+`pipeline_compound_subject.kofun` is the other half: `left + right` transfers
+nothing, because there is no binding for a move to invalidate. That case caught
+a real defect. The bare-binding test measured the subject with `expression_end`,
+which since #1190 swallows the whole `subject |> callee(...)`, so every subject
+looked compound and no move was ever recorded. The subject's own extent has to
+be measured with `coalescing_expression_end`.
+
+#1228 lowers it. A checked pipeline now builds and runs through the **shared**
+`emit_fixed_slot_call` and its existing temporary family — there is no
+pipeline-only emitter, walker, or namespace. The subject is assigned to slot 0
+before anything inside the parentheses, because that is where it is written, so
+the loop over explicit arguments is unchanged and a positional rest simply
+continues at slot 1.
+
+`pipeline_source_order.kofun` is where the whole sequence is visible at once:
+`1` is the subject and prints first, `2` is the explicit argument, and `12` is
+the callee reading its slots in declaration order — subject first, each value
+exactly once, ABI vector only after every assignment. The gate also asserts the
+emitted C contains no labels, no runtime map or dispatch, no allocation, and no
+`|>`; a second temporary family would surface there first.
+
+A pipeline always takes fixed slots whatever it carries, unlike an ordinary
+unlabelled call which needs a `List[Int]` to justify them. Its subject sits
+outside the parentheses and must be assigned first, which the unsequenced call
+cannot express.
+
+The binder runs from inside the pipeline pass rather than from
+`validate_core_calls`, because that pass returns first and the call validators
+would never see the call — and it cannot simply run after them, since the arity
+check counts only the parenthesised arguments and would report the subject as a
+missing one. `validate_core_calls` therefore adds the subject to its own count
+for a pipeline target, which is #1227's effective arity reaching the ordinary
+path.
 
 Because a recognizer that refuses everything is indistinguishable from one that
 recognizes nothing, the gate asserts the **spans** the production publishes:
@@ -77,13 +138,22 @@ builder cannot resolve, so without an earlier refusal it reports
 `E2S35 unknown lexical binding` about a binding the author never meant to
 reference.
 
-Pipeline binding, block-bodied trailing lambdas, labelled calls inside lifted
-lambdas, indirect/lexical callees, and direct-native/Wasm lowering retain
-E2S158 and remain owned by #882. The last two are different boundaries under
-one code, so `trailing_lambda_block.kofun` and `lifted_lambda_call.kofun` are
-asserted separately rather than through one pattern: the first is about what a
-trailing lambda's body may be, the second about where a labelled call may
-appear. A slice that admits one must leave the other's wording intact.
+Bare pipeline targets, member pipeline targets, pipeline chains, pipelines
+with trailing lambdas, block-bodied trailing lambdas, labelled calls inside
+lifted lambdas, and lexical/indirect targets remain unsupported at their
+existing E2S158 or earlier named refusal boundaries and remain owned by #882.
+The one-stage direct top-level Stage 2/C11 pipeline no longer belongs to that
+unsupported set: #1226 binds its subject to slot zero, #1227 checks it, and
+#1228 lowers it. Direct-native/Wasm pipeline behavior is unclaimed and
+uncovered here; #1192 owns its exact support-or-source-refusal differential and
+is the sole remaining direct-backend blocker.
+
+The block-bodied trailing lambda and labelled call inside a lifted lambda are
+different boundaries under one code, so `trailing_lambda_block.kofun` and
+`lifted_lambda_call.kofun` are asserted separately rather than through one
+pattern: the first is about what a trailing lambda's body may be, the second
+about where a labelled call may appear. A slice that admits one must leave the
+other's wording intact.
 
 Supplying the final parameter twice — once by label and again by the trailing
 lambda — is E2S167, not E2S158. It is a binding failure rather than a lowering

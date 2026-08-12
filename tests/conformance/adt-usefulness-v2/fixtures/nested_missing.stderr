@@ -1,0 +1,1 @@
+error[E2S25]: non-exhaustive match on `Outer`: no arm matches `Wrap(Right)`; hint: add the missing case or a wildcard arm

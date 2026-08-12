@@ -1,0 +1,3 @@
+module demo.trust_positive
+trust raw-foreign
+fn outer() -> Int { return 1 }

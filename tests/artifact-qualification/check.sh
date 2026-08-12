@@ -12,6 +12,7 @@ VALIDATOR="$ROOT/tests/artifact-qualification/validate.mjs"
 INVALID="$ROOT/tests/artifact-qualification/make-invalid.mjs"
 MEASURE="$ROOT/tests/artifact-qualification/measure.mjs"
 KIF_CASES="$ROOT/tests/conformance/modules/kif-v1"
+. "$ROOT/bootstrap/stage2/semantic-objects.sh"
 
 fail() {
     printf '%s\n' "FAIL: artifact qualification: $*" >&2
@@ -26,6 +27,7 @@ command -v node >/dev/null 2>&1 || fail 'Node.js is required'
 command -v "$CC" >/dev/null 2>&1 || fail 'a C11 compiler is required'
 rm -rf "$WORK"
 mkdir -p "$WORK/invalid"
+kofun_stage2_semantic_common_inputs "$ROOT"
 
 node --check "$VALIDATOR"
 node --check "$INVALID"
@@ -52,19 +54,21 @@ then
     fail "expected 8 negative mutations, ran $negative_count"
 fi
 
+KOFUN_STAGE2_COMMON_LINK_ID=artifact-qualification/kif-tool \
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
     -I"$ROOT/bootstrap/stage2" \
     "$ROOT/bootstrap/stage2/kif_v1_tool.c" \
-    "$ROOT/bootstrap/stage2/kif_v1.c" \
-    "$ROOT/unicode/kofun_unicode.c" \
-    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$KOFUN_STAGE2_COMMON_KIF_V1_INPUT" \
+    "$KOFUN_STAGE2_COMMON_UNICODE_INPUT" \
+    "$KOFUN_STAGE2_COMMON_SHA256_INPUT" \
     -o "$WORK/kif-tool"
+KOFUN_STAGE2_COMMON_LINK_ID=artifact-qualification/kif-measure \
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
     -I"$ROOT/bootstrap/stage2" \
     "$ROOT/tests/artifact-qualification/kif_measure.c" \
-    "$ROOT/bootstrap/stage2/kif_v1.c" \
-    "$ROOT/unicode/kofun_unicode.c" \
-    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$KOFUN_STAGE2_COMMON_KIF_V1_INPUT" \
+    "$KOFUN_STAGE2_COMMON_UNICODE_INPUT" \
+    "$KOFUN_STAGE2_COMMON_SHA256_INPUT" \
     -o "$WORK/kif-measure"
 
 printf '%s|%s|%s|%s|%s\n' \

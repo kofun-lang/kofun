@@ -1,0 +1,7 @@
+# `Int` is 64 bits, so there is no 65-bit modulus to add in.
+
+fn main() -> Int {
+    let value = 1
+    print(to_text(value.wrapping_add(1, 65)))
+    return 0
+}

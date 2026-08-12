@@ -1,7 +1,7 @@
 kofun-module-symbols/v1
 package|id=1111111111111111111111111111111111111111111111111111111111111111
-module|id=2222222222222222222222222222222222222222222222222222222222222222|file=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|path=src/alpha.kofun
-module|id=3333333333333333333333333333333333333333333333333333333333333333|file=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|path=src/beta.kofun
+module|id=2222222222222222222222222222222222222222222222222222222222222222|file=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|path=src/alpha.kofun|trust=ordinary
+module|id=3333333333333333333333333333333333333333333333333333333333333333|file=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|path=src/beta.kofun|trust=ordinary
 decl|module=0|ns=0:value|kind=function|name=second|symbol=00e3d0acb258bdf2bfd213ba224d22258aa10b50b213520e78e6b347f0eb1424|visibility=internal|path=src/alpha.kofun|header=66..111|name-span=78..84|signature=66..94
 decl|module=0|ns=0:value|kind=function|name=recursive|symbol=6caa64918e426ae2181d713e69aba7b89f305387c63350d600c8f3ac3133cabb|visibility=private(explicit)|path=src/alpha.kofun|header=113..169|name-span=124..133|signature=113..143
 decl|module=0|ns=0:value|kind=function|name=start|symbol=956cfca9de2b8f70239f195e8bb8665a0fc441aefecaf7846982becdf8c25571|visibility=pub|path=src/alpha.kofun|header=19..64|name-span=26..31|signature=19..41

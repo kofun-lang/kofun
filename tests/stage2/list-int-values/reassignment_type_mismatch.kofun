@@ -1,0 +1,11 @@
+# A `List[Int]` binding assigned an `Int`. The `let` path already refuses the
+# mirror of this as an initializer type mismatch; the assignment path did not
+# check at all, so the value was emitted into a carrier that could not hold it.
+
+fn main() -> Int {
+    let values: List[Int] = [10, 20]
+    let mut current = values
+    current = 5
+    print(to_text(current[0]))
+    return 0
+}

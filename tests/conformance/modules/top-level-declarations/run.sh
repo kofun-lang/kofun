@@ -206,7 +206,10 @@ printf '%s|%s|%s|%s|%s\n' \
 
 for stem in duplicate_function function_constructor_collision duplicate_adt \
     duplicate_constructor malformed_function malformed_adt body_local_function \
-    unknown_call import_deferred
+    unknown_call import_deferred \
+    trust_duplicate trust_detached trust_unattached trust_unknown_class \
+    trust_spaced_class trust_trailing_text trust_anonymous \
+    trust_ordinary_identifier
 do
     write_one_inventory "$stem" "$CASES/$stem.kofun"
 done
@@ -242,6 +245,50 @@ expect_failure unknown_call E2S53
 expect_failure import_deferred E2S54
 expect_failure cross_module E2S54
 expect_failure transaction_failure E2S52
+
+# RFC-0012 step 1. `trust` joins the module header's own authority, under the
+# same refusals: none of these is repaired from the filesystem path, and each
+# fails at its own span.
+#
+# `trust_spaced_class` is the one that looks like pedantry and is not. Admitting
+# `raw - foreign` would give one trust class two spellings, and a class two
+# readers can spell differently is a class they can disagree about — which is
+# the whole failure this header exists to close.
+#
+# `trust_unknown_class` is refused rather than ignored for the same reason in
+# the other direction: treating a class this compiler does not understand as
+# absent is the permissive reading, and absent is exactly the downgrade
+# RFC-0012 exists to prevent.
+expect_failure trust_duplicate E2S57
+expect_failure trust_detached E2S57
+expect_failure trust_unattached E2S57
+expect_failure trust_unknown_class E2S57
+expect_failure trust_spaced_class E2S57
+expect_failure trust_trailing_text E2S57
+expect_failure trust_anonymous E2S57
+
+# And the half that must keep working: `trust` is a keyword on one line and an
+# ordinary identifier everywhere else. A gate that only proved the refusals
+# would be green with `trust` reserved globally, which would break every
+# existing source that happens to use the name.
+"$WORK/kofun-module-symbols" "$WORK/trust_ordinary_identifier.inventory" \
+    "$WORK/trust_ordinary_identifier.out" \
+    >"$WORK/trust_ordinary_identifier.actual" 2>&1 ||
+    fail '`trust` stopped being usable as an ordinary declaration name'
+grep -q '|trust=ordinary$' "$WORK/trust_ordinary_identifier.out" ||
+    fail 'a module without a trust line is not recorded as ordinary'
+grep -q '|kind=function|name=trust|' "$WORK/trust_ordinary_identifier.out" ||
+    fail '`trust` was not collected as an ordinary function declaration'
+
+# The fact reaches the module table, and reaches it on every module. A field
+# that appeared only when set could not tell "ordinary" from "written by a
+# producer that did not know about trust".
+write_one_inventory trust_positive "$CASES/trust_positive.kofun"
+"$WORK/kofun-module-symbols" "$WORK/trust_positive.inventory" \
+    "$WORK/trust_positive.out" >"$WORK/trust_positive.actual" 2>&1 ||
+    fail 'a module carrying `trust raw-foreign` was refused'
+grep -q '|trust=raw-foreign$' "$WORK/trust_positive.out" ||
+    fail '`trust raw-foreign` did not reach the module table'
 
 set +e
 "$WORK/kofun-module-symbols" "$WORK/positive.inventory" \

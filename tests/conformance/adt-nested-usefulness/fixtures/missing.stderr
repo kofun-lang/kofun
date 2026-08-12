@@ -1,1 +1,0 @@
-error[E2S25]: non-exhaustive nested ADT matrix for `Outer`: missing `Wrap(Right)`; hint: add the missing cases or a wildcard row

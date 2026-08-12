@@ -1,0 +1,45 @@
+# Reassigning a whole `List[Int]` binding (#1353).
+#
+# The replacement carrier the assignment statement declares used to be
+# `int64_t` whatever the binding was, so this program emitted
+# `int64_t kofun_replacement = <KofunIntListValue>`: the compiler exited 0 and
+# only `cc` reported the failure, naming the lowering's internals for a mistake
+# that was the compiler's own.
+#
+# The loop is the point. A single reassignment can be written around by binding
+# a new name each time; a loop cannot, and the loop is the shape a digest
+# driver needs — `state = absorb(state, block)` is exactly this.
+
+fn step(values: List[Int]) -> List[Int] {
+    let mut next: List[Int] = [0, 0]
+    next[0] = values[0] + 1
+    next[1] = values[1] * 2
+    return next
+}
+
+fn main() -> Int {
+    let seed: List[Int] = [1, 1]
+
+    # From another binding.
+    let other: List[Int] = [30, 40]
+    let mut copied = seed
+    copied = other
+    print(to_text(copied[0]))
+
+    # From a call, once.
+    let mut once = seed
+    once = step(once)
+    print(to_text(once[0]))
+    print(to_text(once[1]))
+
+    # From a call, in a loop.
+    let mut current = seed
+    let mut round = 0
+    while round < 3 {
+        current = step(current)
+        round = round + 1
+    }
+    print(to_text(current[0]))
+    print(to_text(current[1]))
+    return 0
+}

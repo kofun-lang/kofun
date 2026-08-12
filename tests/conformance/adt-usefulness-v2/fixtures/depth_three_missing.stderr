@@ -1,0 +1,1 @@
+error[E2S25]: non-exhaustive match on `Level1`: no arm matches `W1(W2(B3))`; hint: add the missing case or a wildcard arm

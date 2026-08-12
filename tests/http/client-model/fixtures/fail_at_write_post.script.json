@@ -1,0 +1,35 @@
+{
+  "schema": "kofun.http-transport-script/v1",
+  "name": "fail_at_write_post",
+  "request": {
+    "method": "POST",
+    "target": "/submit",
+    "host": "example.test",
+    "headers": [
+      [
+        "Content-Type",
+        "application/octet-stream"
+      ]
+    ],
+    "body": [
+      0,
+      1,
+      2,
+      253,
+      254,
+      255
+    ]
+  },
+  "limits": {
+    "max_header_bytes": 4096,
+    "max_headers": 16,
+    "max_body_bytes": 65536,
+    "max_chunk_bytes": 4096
+  },
+  "operations": [
+    {
+      "op": "fail",
+      "at": "write"
+    }
+  ]
+}

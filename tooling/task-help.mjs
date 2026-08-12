@@ -24,9 +24,10 @@ export const GROUPS = Object.freeze([
             'compiler', 'bootstrap', 'selfhost-profile', 'selfhost-self-compile',
             'selfhost-driver-diagnostics', 'selfhost-generations',
             'selfhost-fixed-point', 'selfhost-diverse-double-compilation',
-            'selfhost-declared-inputs',
+            'selfhost-declared-inputs', 'selfhost-b6-report',
             'selfhost-frontend', 'selfhost-c11', 'selfhost-c11-control',
-            'selfhost-native', 'stage2', 'stage2-events', 'native', 'wasm',
+            'selfhost-native', 'stage1-adapter', 'stage2', 'stage2-events',
+            'native', 'wasm',
             'wasm-host-abi', 'wasm-host-profile', 'wasi-command-profile',
             'native-toolchain-contract',
             'wasm-object-arena',
@@ -37,7 +38,7 @@ export const GROUPS = Object.freeze([
         title: 'Language semantics',
         hint: 'Syntax, typing, diagnostics, data types, numerics, and deterministic fuzzing.',
         tasks: [
-            'diagnostics', 'fuzz', 'unicode', 'patterns', 'adt', 'records',
+            'diagnostics', 'fuzz', 'fuzz-sanitizer-reuse', 'unicode', 'patterns', 'adt', 'records',
             'aggregate-bridge',
             'move-assertion', 'usability-corpus', 'call-arguments',
             'call-arguments-spec',
@@ -51,8 +52,10 @@ export const GROUPS = Object.freeze([
             'generics-execution-profile', 'generic-proof-kernel-profile',
             'optional', 'optional-narrowing',
             'optional-construction', 'optional-coalescing', 'optional-pair',
-            'text-results', 'list-int-values', 'while-list-int', 'else-if-chain', 'list-int-signatures',
-            'adt-exhaustiveness', 'enum-match-value', 'module-constants',
+            'text-results', 'int-bits', 'list-int-values', 'while-list-int', 'else-if-chain',
+            'list-int-signatures',
+            'adt-exhaustiveness', 'adt-usefulness-v2',
+            'enum-match-value', 'module-constants',
             'decimal', 'decimal-arithmetic',
             'date-time', 'syntax'
         ]
@@ -87,7 +90,8 @@ export const GROUPS = Object.freeze([
         title: 'Runtime and standard library',
         hint: 'Host integration, measured costs, and the executable standard-library capability surface.',
         tasks: [
-            'rust-shim', 'http', 'stdlib', 'alloc-contract', 'kotest', 'tzdb', 'clock-adapters',
+            'rust-shim', 'http', 'http-client-model', 'stdlib',
+            'alloc-contract', 'kotest', 'tzdb', 'clock-adapters',
             'environment-authority-compiler-contract', 'host-process-authority-contract',
             'directory-authority-contract', 'http-carrier-profile',
             'benchmark-summary', 'benchmark-report-spec', 'capabilities'

@@ -1,0 +1,3 @@
+module bad.trust_unattached
+fn outer() -> Int { return 1 }
+trust raw-foreign

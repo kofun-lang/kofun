@@ -12,9 +12,8 @@ states the project status; this section says what the digits mean.
 `MAJOR.MINOR.PATCH-seed` while the leading digit is `0`:
 
 - **`-seed`** marks every release cut before the compiler is a general parser
-  and type checker. It is not decoration: `release/claims.json` records 34 of
-  47 capabilities as bounded checkpoints, and a `-seed` release promises
-  exactly the bounded slices that manifest evidences, and nothing wider.
+  and type checker. It is not decoration: a `-seed` release promises exactly
+  the bounded slices `release/claims.json` evidences, and nothing wider.
 - **MINOR** rises when a published claim's state rises, when a claim is added,
   or when a bounded slice widens.
 - **PATCH** rises for everything else, including fixes and internal work.
@@ -66,16 +65,31 @@ Run from a clean checkout of `main`, with the working tree clean.
    git commit -m "release: 0.3.50-seed" VERSION
    ```
 
-4. **Confirm the tree agrees.** `task repository-check` must pass; it compares
+4. **Bind the evidence pack to the number.** The pack records `VERSION` and its
+   digest, so changing the number makes the pack from step 2 stale by design.
+   Run `task release-evidence`, then `task release-claims`, and commit the
+   regenerated pack separately before pushing:
+
+   ```sh
+   task release-evidence
+   task release-claims
+   git commit -m "release: bind evidence to $(cat VERSION)" \
+     -- artifacts/release-evidence
+   ```
+
+   Keeping this commit separate preserves the reviewable VERSION-only commit
+   without leaving the release commit bound to the previous version's pack.
+
+5. **Confirm the tree agrees.** `task repository-check` must pass; it compares
    `bin/kofun --version` against `VERSION` and refuses a literal written
    elsewhere.
 
-5. **Push and let CI prove it.** Push `main` and wait for the Kofun
+6. **Push and let CI prove it.** Push `main` and wait for the Kofun
    verification, Backlog issue state, and Release evidence pack jobs to pass
    at that exact commit. A release is cut from a commit CI has proven, never
    from a local run alone.
 
-6. **Tag it.** The tag is `v` followed by `VERSION`, exactly:
+7. **Tag it.** The tag is `v` followed by `VERSION`, exactly:
 
    ```sh
    git tag "v$(cat VERSION)"
@@ -89,7 +103,7 @@ Run from a clean checkout of `main`, with the working tree clean.
    release. A `-seed` version is published as a pre-release, because the
    suffix and the flag say the same thing and must not disagree.
 
-7. **Write the notes.** The workflow generates notes from the commit range;
+8. **Write the notes.** The workflow generates notes from the commit range;
    replace them with what changed in terms of claims — which capability rose,
    which bounded slice widened, which refusals moved.
    `artifacts/release-evidence/CLAIMS.md` is the source for that wording, so

@@ -1,0 +1,11 @@
+# The labelled-call grammar admits `a.and(value: 2)`, and the eight operations
+# have no parameter names for a label to select. Before this was refused,
+# `value` was read as a binding that does not exist and the call lowered to
+# `kofun_bit_and(k_b0, k_b)` — invalid C that the compiler exited 0 on, leaving
+# `cc` to report a diagnostic naming the lowering's internals.
+
+fn main() -> Int {
+    let value = 1
+    print(to_text(value.and(value: 2)))
+    return 0
+}

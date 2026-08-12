@@ -3166,7 +3166,110 @@ fn borrowed_collection_check(source: Text) -> Text {
     return "ok"
 }
 
+# RFC-0013. The eight bit operations are members of an `Int` receiver, not
+# reserved words: `and` stays an ordinary identifier everywhere else, exactly as
+# `join` does, so `fn and()` still declares and `type P = { xor: Int }` still
+# has a field. A name is meaningful only in `<Int>.name(...)` position, which is
+# why this table is consulted from the postfix reader rather than the lexer.
+#
+# The arity is returned rather than a `Bool` because it is the one fact both
+# readers need — the parser to know a call follows, the lowerer to refuse a call
+# that supplies the wrong number of arguments — and keeping one table means the
+# two cannot disagree about what the set is.
+fn int_bit_method_arity(name: Text) -> Int {
+    if name == "not" {
+        return 0
+    }
+    if name == "and" || name == "or" || name == "xor" ||
+       name == "shl" || name == "shr" {
+        return 1
+    }
+    if name == "rotr" || name == "wrapping_add" {
+        return 2
+    }
+    return -1
+}
+
+# The same table read at a position. Both readers below hold a cursor rather
+# than a name, and one place that turns a cursor into an arity keeps them from
+# disagreeing about what counts as a table name.
+fn int_bit_method_arity_at(source: Text, cursor: Int) -> Int {
+    if cursor >= len(source) || token_kind(source, cursor) != "identifier" {
+        return -1
+    }
+    return int_bit_method_arity(token_text(source, cursor))
+}
+
+# Zero or more `.name(arguments)` calls drawn from that table, left to right.
+# A name outside the table, or a table name with no call after it, is left
+# unconsumed, so the record-field reader below keeps its existing answer for
+# `p.and` and for every member this slice does not own.
+fn int_bit_postfix_end(source: Text, primary: Int) -> Int {
+    let mut cursor = primary
+    while cursor < len(source) {
+        let dot = skip_trivia(source, cursor)
+        if dot >= len(source) || token_text(source, dot) != "." {
+            return cursor
+        }
+        # Any member call is consumed, not only a table name. An unknown member
+        # left the `(` behind, and the argument counter then read the enclosing
+        # call as malformed: `to_text(x.frobnicate(2))` was refused as `to_text`
+        # expecting 1 argument and getting -1. The lowerer decides what the
+        # member means; this only decides where the expression ends.
+        let name = skip_trivia(source, token_end(source, dot))
+        if name >= len(source) || token_kind(source, name) != "identifier" {
+            return cursor
+        }
+        let open = skip_trivia(source, token_end(source, name))
+        if open >= len(source) || token_text(source, open) != "(" {
+            return cursor
+        }
+        let close = balanced_end(source, open, "(", ")")
+        if close < 0 {
+            return cursor
+        }
+        # A trailing lambda binds to the call it follows, so it has to be inside
+        # this span even though no bit operation has a functional final slot.
+        # Leaving it here made the argument counter read the *enclosing* call as
+        # malformed: `to_text(x.and(2) fn(y) => y)` was refused as `to_text`
+        # expecting 1 argument and getting -1, blaming a call the author did not
+        # get wrong. The refusal that names the lambda is in the lowerer.
+        #
+        # A block body spans to -1 and is already refused as `E2S158` at its own
+        # `fn`, so it is left where that rule reports it.
+        let lambda_open = trailing_lambda_open(source, close)
+        if lambda_open >= 0 {
+            let lambda_close = lambda_parameters_end(source, -1, lambda_open)
+            if lambda_close < 0 {
+                return close
+            }
+            cursor = lambda_close
+        } else {
+            cursor = close
+        }
+    }
+    return cursor
+}
+
 fn field_postfix_end(source: Text, primary: Int) -> Int {
+    # A bit-operation chain is tried first because the record-field reader
+    # consumes `.and` on its own and would leave the `(` behind — the argument
+    # counter then read the call as a malformed one and the program was refused
+    # for an arity it never had.
+    let leading_bits = int_bit_postfix_end(source, primary)
+    if leading_bits > primary {
+        return leading_bits
+    }
+    let field_read = field_read_postfix_end(source, primary)
+    if field_read <= primary {
+        return field_read
+    }
+    # A field read may carry a chain of its own: `state.h0.xor(mask)` is one
+    # `Int` receiver like any other.
+    return int_bit_postfix_end(source, field_read)
+}
+
+fn field_read_postfix_end(source: Text, primary: Int) -> Int {
     let dot = skip_trivia(source, primary)
     if dot < len(source) && token_text(source, dot) == "[" &&
        source_has_list_int_local(source) {
@@ -4124,7 +4227,13 @@ fn fixed_slot_call_shape(
     if count < 1 || count > 8 {
         return false
     }
-    if labelled &&
+    # A pipeline always needs fixed slots, whatever it carries. Its subject is
+    # written outside the parentheses and must be assigned before any explicit
+    # argument, which the ordinary unsequenced call cannot express — so it joins
+    # the labelled mode in using the full carrier matrix and in not needing a
+    # `List[Int]` to justify the slots.
+    let piped = call_is_pipeline_target(source, call_start)
+    if (labelled || piped) &&
        !call_slot_carried(source, function_return_type(source, callee)) {
         return false
     }
@@ -4134,7 +4243,7 @@ fn fixed_slot_call_shape(
         let parameter_type = function_parameter_type(source, callee, index)
         let mut carried = parameter_type == "Int" ||
             parameter_type == "List[Int]"
-        if labelled {
+        if labelled || piped {
             carried = call_slot_carried(source, parameter_type)
         }
         if parameter_type == "List[Int]" {
@@ -4145,7 +4254,7 @@ fn fixed_slot_call_shape(
         }
         index = index + 1
     }
-    return labelled || has_list
+    return labelled || piped || has_list
 }
 
 fn fixed_slot_call_supported(
@@ -4316,6 +4425,28 @@ fn emit_fixed_slot_call(
     let mut emitted = "("
     let mut argument = skip_trivia(source, token_end(source, open))
     let mut source_index = 0
+    # The subject is assigned before anything inside the parentheses, because
+    # that is where it is written. Doing it here rather than in a pipeline-only
+    # emitter is what keeps one temporary family and one ABI vector: after this
+    # assignment the loop below is unchanged, and slot 0 is simply already
+    # taken, so a positional rest continues at slot 1 exactly as #1226 bound it.
+    let pipeline_subject = pipeline_subject_for_call(source, call_start)
+    if pipeline_subject >= 0 && parameter_count_value > 0 {
+        let subject_value = emit_argument(
+            source,
+            hir,
+            pipeline_subject,
+            coalescing_expression_end(source, pipeline_subject),
+            callee,
+            0
+        )
+        if starts_with(subject_value, "error[") {
+            return subject_value
+        }
+        emitted = emitted + "(kofun_call_arg_" + to_text(call_start) +
+            "_0 = " + subject_value + "), "
+        source_index = 1
+    }
     while (labelled || source_index < parameter_count_value) &&
           argument < end && token_text(source, argument) != ")" {
         let bound = argument_end(source, argument)
@@ -4719,8 +4850,194 @@ fn list_int_index_close(source: Text, open: Int) -> Int {
     return close
 }
 
+# Where a bit-operation chain begins inside one primary's span, or -1.
+#
+# The search is at bracket depth zero, so the receiver is everything the chain
+# is applied to and nothing else: in `a.and(b.or(c))` the answer is the dot
+# before `and`, and the inner chain is found again when its own argument is
+# lowered. A field read on the way — `state.h0.xor(mask)` — is stepped over
+# rather than claimed, because `h0` is not in the table.
+fn int_bit_chain_dot(source: Text, start: Int, end: Int) -> Int {
+    let mut cursor = skip_trivia(source, start)
+    let mut depth = 0
+    while cursor < end {
+        let token = token_text(source, cursor)
+        if token == "(" || token == "[" {
+            depth = depth + 1
+        } else if token == ")" || token == "]" {
+            depth = depth - 1
+        } else if depth == 0 && token == "." {
+            let name = skip_trivia(source, token_end(source, cursor))
+            if name < end && int_bit_method_arity_at(source, name) >= 0 {
+                let open = skip_trivia(source, token_end(source, name))
+                if open < end && token_text(source, open) == "(" {
+                    return cursor
+                }
+            }
+        }
+        let next = token_end(source, cursor)
+        if next <= cursor {
+            return -1
+        }
+        cursor = skip_trivia(source, next)
+    }
+    return -1
+}
+
+# RFC-0013's eight operations, applied left to right to one receiver.
+#
+# Each becomes one call on a checked runtime helper rather than a bare C
+# operator. That is not indirection for its own sake: C leaves a shift by 64
+# undefined and leaves a signed right shift implementation-defined, and the
+# whole point of naming these operations was to give them answers the language
+# states rather than answers the host compiler picks.
+fn emit_int_bit_chain(
+    source: Text,
+    hir: Text,
+    start: Int,
+    first_dot: Int,
+    end: Int
+) -> Text {
+    let function_open = enclosing_function_open(source, start)
+    let receiver_type = numeric_primary_type(
+        source,
+        hir,
+        function_open,
+        start
+    )
+    if receiver_type == "Decimal" || receiver_type == "Float" {
+        return lower_error(
+            "E2S168",
+            "bit operations are defined on `Int`, and this receiver is `" +
+            receiver_type + "`",
+            first_dot
+        )
+    }
+    if text_operand(source, hir, function_open, start) {
+        return lower_error(
+            "E2S168",
+            "bit operations are defined on `Int`, and this receiver is `Text`",
+            first_dot
+        )
+    }
+    let mut emitted = emit_primary(source, hir, start, first_dot)
+    if starts_with(emitted, "error[") {
+        return emitted
+    }
+    let mut cursor = first_dot
+    while cursor < end {
+        let dot = skip_trivia(source, cursor)
+        if dot >= end || token_text(source, dot) != "." {
+            return emitted
+        }
+        let name_at = skip_trivia(source, token_end(source, dot))
+        let name = token_text(source, name_at)
+        let arity = int_bit_method_arity(name)
+        if arity < 0 {
+            return emitted
+        }
+        let open = skip_trivia(source, token_end(source, name_at))
+        if open >= end || token_text(source, open) != "(" {
+            return emitted
+        }
+        let close = balanced_end(source, open, "(", ")")
+        if close < 0 {
+            return lower_error(
+                "E2S169",
+                "`" + name + "` is missing its closing parenthesis",
+                open
+            )
+        }
+        # No bit operation has a functional final slot, so a trailing lambda
+        # cannot be an argument of one. The span is the `fn` that opens it,
+        # which is the token the author would delete, rather than the call it
+        # attached itself to.
+        let trailing = trailing_lambda_open(source, close)
+        if trailing >= 0 {
+            return lower_error(
+                "E2S169",
+                "`" + name + "` takes no trailing lambda; the bit " +
+                "operations have no functional parameter",
+                trailing
+            )
+        }
+        # The labelled-call grammar admits `a.and(value: 2)`, and the eight
+        # operations have no parameter names for a label to select. Without
+        # this, `value` was read as a binding that does not exist and the call
+        # lowered to `kofun_bit_and(k_b0, k_b)` — invalid C that the compiler
+        # exited 0 on, leaving `cc` to report it.
+        if call_has_labelled_argument(source, open) {
+            return lower_error(
+                "E2S169",
+                "`" + name + "` takes positional arguments; the bit " +
+                "operations have no parameter names",
+                open
+            )
+        }
+        let mut argument = skip_trivia(source, token_end(source, open))
+        let mut arguments = 0
+        let mut rendered = ""
+        while argument < close && token_text(source, argument) != ")" {
+            let bound = argument_end(source, argument)
+            if bound < 0 {
+                return lower_error(
+                    "E2S169",
+                    "`" + name +
+                    "` was given an argument this slice cannot read",
+                    argument
+                )
+            }
+            let argument_type = numeric_primary_type(
+                source,
+                hir,
+                function_open,
+                argument
+            )
+            if argument_type == "Decimal" || argument_type == "Float" ||
+               text_operand(source, hir, function_open, argument) {
+                return lower_error(
+                    "E2S168",
+                    "`" + name + "` takes `Int` arguments",
+                    argument
+                )
+            }
+            let value = emit_expression(source, hir, argument, bound)
+            if starts_with(value, "error[") {
+                return value
+            }
+            rendered = rendered + ", " + value
+            arguments = arguments + 1
+            let separator = skip_trivia(source, bound)
+            if separator < close && token_text(source, separator) == "," {
+                argument = skip_trivia(source, token_end(source, separator))
+            } else {
+                argument = separator
+            }
+        }
+        if arguments != arity {
+            return lower_error(
+                "E2S169",
+                "`" + name + "` expects " + to_text(arity) +
+                " arguments, got " + to_text(arguments),
+                name_at
+            )
+        }
+        emitted = "kofun_bit_" + name + "(" + emitted + rendered + ")"
+        cursor = close
+    }
+    return emitted
+}
+
 fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
     let cursor = skip_trivia(source, start)
+    # A bit-operation chain owns the whole span, so it is dispatched before any
+    # receiver form is examined: the receiver may be a literal, a binding, a
+    # record field, a call result, or a parenthesised expression, and none of
+    # them has to know that a chain can follow it.
+    let bit_dot = int_bit_chain_dot(source, cursor, end)
+    if bit_dot >= 0 {
+        return emit_int_bit_chain(source, hir, cursor, bit_dot, end)
+    }
     let kind = token_kind(source, cursor)
     if token_text(source, cursor) == "[" {
         return emit_list_int_literal(source, hir, cursor)
@@ -4818,16 +5135,30 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
                 return "((int64_t)kofun_list_int_value_length(" +
                 list_value + "))"
             }
-            return "((int64_t)strlen(" + emit_expression(
-                source, hir, value, value_end) + "))"
+            # `len`, `to_text` and `text_slice` each appended their argument
+            # without inspecting it, so a refused argument became C source: the
+            # diagnostic was emitted inside the call, the compiler still exited
+            # 0, and only `cc` reported the failure. That is the same defect
+            # the general call path below already names; these three direct
+            # branches never had the check. Reached first by RFC-0013, whose
+            # refusals are the first ones an argument of `to_text` can raise.
+            let measured = emit_expression(source, hir, value, value_end)
+            if starts_with(measured, "error[") {
+                return measured
+            }
+            return "((int64_t)strlen(" + measured + "))"
         }
         # `to_text(Int)` lowers beside `len`, the other one-argument builtin
         # the ordinary Core path emits directly.
         if open < end && token_text(source, open) == "(" &&
            name == "to_text" {
             let value = skip_trivia(source, token_end(source, open))
-            return "kofun_to_text(" + emit_expression(
-                source, hir, value, argument_end(source, value)) + ")"
+            let rendered = emit_expression(
+                source, hir, value, argument_end(source, value))
+            if starts_with(rendered, "error[") {
+                return rendered
+            }
+            return "kofun_to_text(" + rendered + ")"
         }
         if open < end && token_text(source, open) == "(" &&
            name == "text_slice" {
@@ -4844,10 +5175,21 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
                 source,
                 token_end(source, second_separator)
             )
-            return "kofun_text_slice(" + emit_expression(
-                source, hir, value, value_end) + ", " + emit_expression(
-                source, hir, first, first_end) + ", " + emit_expression(
-                source, hir, second, argument_end(source, second)) + ")"
+            let subject = emit_expression(source, hir, value, value_end)
+            if starts_with(subject, "error[") {
+                return subject
+            }
+            let from = emit_expression(source, hir, first, first_end)
+            if starts_with(from, "error[") {
+                return from
+            }
+            let to = emit_expression(
+                source, hir, second, argument_end(source, second))
+            if starts_with(to, "error[") {
+                return to
+            }
+            return "kofun_text_slice(" + subject + ", " + from + ", " + to +
+            ")"
         }
         if open >= end || token_text(source, open) != "(" {
             let binding_id = hir_use_binding_id(hir, cursor)
@@ -4901,6 +5243,22 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
                         return "error[E2S154]: scoped parallelism `" + field +
                         "` is specified but not implemented at byte " +
                         to_text(field_cursor)
+                    }
+                    # RFC-0013/A01. A member call on an `Int` receiver is a
+                    # member of `Int`, and the eight are the whole set. Falling
+                    # through to the record rule below sent the reader to a
+                    # record they never wrote, exactly as the scoped-parallelism
+                    # case above says.
+                    if member_call < len(source) &&
+                       token_text(source, member_call) == "(" &&
+                       numeric_primary_type(
+                           source,
+                           hir,
+                           enclosing_function_open(source, cursor),
+                           cursor
+                       ) == "Int" {
+                        return "error[E2S168]: unknown `Int` member `" + field +
+                        "` at byte " + to_text(field_cursor)
                     }
                     return "error[E2S32]: unknown nominal record field read at byte " +
                     to_text(field_cursor)
@@ -5252,6 +5610,39 @@ fn emit_arithmetic_expression(
 # suppresses both branches until the surrounding statement observes
 # `kofun_failed`.
 fn emit_expression(source: Text, hir: Text, start: Int, end: Int) -> Text {
+    # `|>` is the lowest-precedence boundary, so it is dispatched before the
+    # coalescing operator here, mirroring `expression_end` exactly. Putting it
+    # any deeper would let `??` or arithmetic claim the subject and leave the
+    # call behind as a separate expression — which is what happened before the
+    # pipeline was a production.
+    let subject_end = coalescing_expression_end(source, start)
+    if subject_end >= 0 {
+        let pipe = skip_trivia(source, subject_end)
+        if pipe < end && token_text(source, pipe) == "|>" {
+            let callee_at = skip_trivia(source, token_end(source, pipe))
+            let call_open = skip_trivia(source, token_end(source, callee_at))
+            let piped_name = token_text(source, callee_at)
+            let piped_labelled = call_has_labelled_argument(source, call_open)
+            if fixed_slot_call_supported(
+                source,
+                hir,
+                callee_at,
+                piped_name,
+                call_open,
+                piped_labelled
+            ) {
+                return emit_fixed_slot_call(
+                    source,
+                    hir,
+                    callee_at,
+                    call_open,
+                    end,
+                    piped_name,
+                    piped_labelled
+                )
+            }
+        }
+    }
     let operator_start = optional_int_coalescing_operator(
         source,
         start,
@@ -5677,6 +6068,84 @@ fn call_binding_failure(
 # Bind one selected named call to fixed declaration-order slots. The C seed
 # publishes the corresponding source-order observations for semantic tooling;
 # this canonical implementation enforces the same slot and diagnostic rules.
+# Whether the call whose callee token is at `call_start` is a pipeline target.
+#
+# Binding needs the reverse of what recognition needed. `validate_pipeline_calls`
+# walks forward from a `|>` to its call; here the call is what we hold and the
+# `|>` is what we must find. Scanning left token by token is not available, so
+# this re-walks the enclosing body and matches on the callee offset, which is
+# exactly the identity the recognizer used.
+#
+# The C authority resolves the subject's start as well, because it publishes
+# spans. This checkpoint records slots as markers rather than offsets, so
+# whether a subject exists is all it needs.
+# The start of the expression whose coalescing end is exactly `pipe`.
+#
+# The subject's extent cannot be found by scanning left: `|>` binds looser than
+# everything, so the subject may be an arithmetic or coalescing expression, and
+# the token before `|>` is only its last token. This asks the grammar the same
+# question the parser asks — which start position produces a coalescing
+# expression ending exactly here — and takes the earliest, outermost answer.
+#
+# #1190 left this out of the checkpoint because nothing there published spans.
+# #1228 needs it for a different reason: lowering has to emit the subject's
+# value, so the checkpoint now resolves it too.
+fn pipeline_subject_start(source: Text, body_open: Int, pipe: Int) -> Int {
+    let mut candidate = skip_trivia(source, token_end(source, body_open))
+    while candidate < pipe {
+        let bound = coalescing_expression_end(source, candidate)
+        if bound >= 0 && skip_trivia(source, bound) == pipe {
+            return candidate
+        }
+        candidate = skip_trivia(source, token_end(source, candidate))
+    }
+    return -1
+}
+
+# The subject of the pipeline whose callee token is at `call_start`, or -1 when
+# that call is not a pipeline target.
+fn pipeline_subject_for_call(source: Text, call_start: Int) -> Int {
+    if !contains(source, "|>") {
+        return -1
+    }
+    let body_open = enclosing_function_open(source, call_start)
+    if body_open < 0 {
+        return -1
+    }
+    let mut cursor = skip_trivia(source, token_end(source, body_open))
+    while cursor < call_start {
+        if token_text(source, cursor) == "|>" {
+            let callee_at = skip_trivia(source, token_end(source, cursor))
+            if callee_at == call_start {
+                return pipeline_subject_start(source, body_open, cursor)
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return -1
+}
+
+fn call_is_pipeline_target(source: Text, call_start: Int) -> Bool {
+    if !contains(source, "|>") {
+        return false
+    }
+    let body_open = enclosing_function_open(source, call_start)
+    if body_open < 0 {
+        return false
+    }
+    let mut cursor = skip_trivia(source, token_end(source, body_open))
+    while cursor < call_start {
+        if token_text(source, cursor) == "|>" {
+            let callee_at = skip_trivia(source, token_end(source, cursor))
+            if callee_at == call_start {
+                return true
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return false
+}
+
 fn validate_declared_call_arguments(
     source: Text,
     callee: Text,
@@ -5706,12 +6175,30 @@ fn validate_declared_call_arguments(
         parameter_external_start(source, parameter, parameters_end) >= 0
         parameter_index = parameter_index + 1
     }
-    if !has_external_parameter && !call_has_labelled_argument(source, open) {
+    # A pipeline supplies slot 0 from outside the parentheses, so it needs this
+    # binder even when nothing in the call is labelled. Without the extra term
+    # `start |> add(2)` would take the ordinary positional path, which binds the
+    # written `2` to slot 0 and never learns the subject exists.
+    let piped = call_is_pipeline_target(source, call_start)
+    if !has_external_parameter && !call_has_labelled_argument(source, open) &&
+       !piped {
         return ""
     }
     let mut bound = "|"
     let mut saw_label = false
     let mut next_positional = 0
+    # The subject claims slot 0 before any explicit argument is read, which is
+    # what makes the rest of this loop correct without further special cases:
+    # positional binding starts at slot 1 because slot 0 is taken, and a label
+    # naming slot 0 lands on the existing duplicate path.
+    #
+    # The C authority also publishes a `call-argument|` observation for the
+    # subject here. This frontend checkpoint emits none, so it records the
+    # binding and nothing else.
+    if piped && count > 0 {
+        bound = bound + "0|"
+        next_positional = 1
+    }
     let mut argument = skip_trivia(source, token_end(source, open))
     let mut scanning = true
     while scanning && argument < close && token_text(source, argument) != ")" {
@@ -5989,6 +6476,55 @@ fn validate_record_uses(source: Text) -> Text {
 # `E2S17 expects N, got N-1` — diagnostics that describe an argument list the
 # author did not get wrong, and that say nothing about the pipeline they did
 # write.
+# Effective arity and the slot-0 carrier check for a pipeline whose subject has
+# already bound slot 0.
+#
+# Everything here checks against the *bound slot*, never the source position:
+# the subject is slot 0 wherever it is written. Checking by position is what the
+# pre-#1226 code did, and it is why the four canonical shapes used to report a
+# missing or miscounted argument.
+#
+# The C authority also type-checks the subject's value against slot 0's carrier
+# and reports E2S15 at the subject's span. This frontend checkpoint has no
+# `initializer_type` reaching pipeline subjects, so it carries the arity and
+# carrier-matrix halves and leaves the value typing to the authority.
+fn validate_pipeline_checked(
+    source: Text,
+    callee: Text,
+    call_start: Int,
+    open: Int
+) -> Text {
+    let declaration = function_start_named(source, callee)
+    if declaration < 0 {
+        return "ok"
+    }
+    let expected = parameter_count(source, declaration)
+    # One subject plus everything inside the parentheses. `call_arity` already
+    # counts a trailing lambda, and a pipeline with one is refused before this
+    # point, so the sum needs no further term.
+    let written = call_arity(source, open)
+    if written < 0 {
+        return "ok"
+    }
+    let effective = written + 1
+    if effective != expected {
+        return "error[E2S17]: Core function `" + callee + "` expects " +
+        to_text(expected) + " arguments, got " + to_text(effective) +
+        " at byte " + to_text(call_start)
+    }
+    if expected > 0 {
+        let carrier = function_parameter_type(source, callee, 0)
+        if !call_slot_carried(source, carrier) {
+            return pipeline_refusal(
+                "a pipeline subject whose slot 0 carrier is outside the " +
+                "call-arguments v1 matrix is not checked",
+                call_start
+            )
+        }
+    }
+    return "ok"
+}
+
 fn validate_pipeline_calls(source: Text) -> Text {
     if !contains(source, "|>") {
         return "ok"
@@ -6021,11 +6557,43 @@ fn validate_pipeline_calls(source: Text) -> Text {
                     # either — so the two halves agree on the refusal and on
                     # what the production is, and the checkpoint carries no
                     # span helper it would never use.
-                    return pipeline_refusal(
-                        "a pipeline subject is recognized by call-arguments " +
-                        "v1; slot binding is owned by #1226",
-                        cursor
+                    #
+                    # #1226 binds before the boundary holds. The binder runs
+                    # from here rather than from `validate_core_calls`, because
+                    # this pass returns first and that one would never see the
+                    # call — and it cannot simply be moved after, since the
+                    # arity check would then count the parenthesised arguments
+                    # alone and report the subject as a missing one. Counting
+                    # the subject is #1227's effective arity.
+                    #
+                    # A binding failure is the author's error and outranks the
+                    # boundary, so E2S162-E2S166 are returned as-is.
+                    let callee_at = skip_trivia(source, token_end(source, cursor))
+                    let open_at = skip_trivia(source, token_end(source, callee_at))
+                    let binding = validate_declared_call_arguments(
+                        source,
+                        token_text(source, callee_at),
+                        callee_at,
+                        open_at
                     )
+                    if starts_with(binding, "error[") {
+                        return binding
+                    }
+                    let checked = validate_pipeline_checked(
+                        source,
+                        token_text(source, callee_at),
+                        callee_at,
+                        open_at
+                    )
+                    if starts_with(checked, "error[") {
+                        return checked
+                    }
+                    # #1228 admits the checked shape. There is no refusal left
+                    # here: the call reaches the shared fixed-slot emitter,
+                    # which assigns slot 0 from the subject before anything in
+                    # the parentheses. A carrier this slice cannot lower was
+                    # already refused by the carrier-matrix check above.
+                    return "ok"
                 }
                 cursor = skip_trivia(source, token_end(source, cursor))
             }
@@ -6115,7 +6683,14 @@ fn validate_core_calls(source: Text, hir: Text) -> Text {
                         name + "` at byte " + to_text(cursor)
                     }
                 }
-                let actual = call_arity(source, open)
+                # A pipeline supplies slot 0 from outside the parentheses, so
+                # its subject is one of the call's arguments. Counting only what
+                # is written between them is what made every pipeline report
+                # `expects N, got N-1` before #1190.
+                let mut actual = call_arity(source, open)
+                if call_is_pipeline_target(source, cursor) {
+                    actual = actual + 1
+                }
                 if actual != expected {
                     return "error[E2S17]: Core function `" + name +
                     "` expects " + to_text(expected) + " arguments, got " +
@@ -10294,6 +10869,17 @@ fn initializer_type_bounded(
     } else if end < 0 {
         end = token_end(source, initializer)
     }
+    # A `let` whose whole initializer is a bit-operation chain binds `Int`,
+    # whatever the receiver is, because the eight operations return `Int`.
+    # Without this, `let y = f.and(1)` bound `y` as `Float` and the reader was
+    # sent to `to_text` for a mistake that is in the receiver. The chain has to
+    # cover the whole initializer: `"a" + b.and(1)` is still classified by the
+    # rules below.
+    let chain_bound = primary_end(source, initializer)
+    if chain_bound == end &&
+       int_bit_chain_dot(source, initializer, chain_bound) >= 0 {
+        return "Int"
+    }
     let optional_coalescing = optional_int_coalescing_operator(
         source,
         initializer,
@@ -13349,10 +13935,55 @@ fn lower_body(
                         return "error[E2S12]: invalid Int expression at byte " +
                         to_text(value_start)
                     }
+                    # The replacement carrier was `int64_t` whatever the
+                    # binding was, so `cur = f(cur)` on a `List[Int]` emitted
+                    # `int64_t kofun_replacement = <KofunIntListValue>` — the
+                    # compiler exited 0 and only `cc` reported it. The `let`
+                    # path above already derives the C type and the value
+                    # emitter from the binding's type; this derives them the
+                    # same way rather than a second way (#1353).
+                    let binding_type = hir_binding_field(hir, binding_id, 5)
+                    # Scoped to `List[Int]` on purpose. The carrier below is a
+                    # struct, so a value of another type cannot go in it, and
+                    # that is the whole question this change raises. Checking
+                    # every assignment instead would restate rules that other
+                    # slices own — narrowing makes `seen = x + 1` legal for
+                    # `seen: Int` and `x: Int?`, and a general check refused it.
+                    if binding_type == "List[Int]" &&
+                       initializer_type(
+                           source,
+                           hir,
+                           function_open,
+                           value_start
+                       ) != "List[Int]" {
+                        return "error[E2S15]: assignment type mismatch at byte " +
+                        to_text(value_start)
+                    }
+                    let mut replacement_type = "int64_t"
+                    let mut replacement = emit_expression(
+                        source,
+                        hir,
+                        value_start,
+                        value_end
+                    )
+                    if binding_type == "List[Int]" {
+                        replacement_type = "KofunIntListValue"
+                        replacement = emit_list_int_value(
+                            source,
+                            hir,
+                            value_start,
+                            value_end,
+                            true
+                        )
+                    }
+                    # The rejected value became the C initializer text here too.
+                    if starts_with(replacement, "error[") {
+                        return replacement
+                    }
                     emitted = emitted +
                     "    {\n" +
-                    "        int64_t kofun_replacement = " +
-                    emit_expression(source, hir, value_start, value_end) + ";\n" +
+                    "        " + replacement_type + " kofun_replacement = " +
+                    replacement + ";\n" +
                     "        if (kofun_failed) return " + failure_result + ";\n" +
                     "        k_b" + binding_id + " = kofun_replacement;\n" +
                     "    }\n"
@@ -13646,6 +14277,11 @@ fn validate_argument_lambda_captures(source: Text, hir: Text) -> Text {
 # "" rather than a default is deliberate. `Text`, `Bool` and unresolved names
 # are not numeric operands, and the mixed-arithmetic check must skip them
 # instead of inventing an `Int` and reporting a mismatch that is not there.
+#
+# A bit-operation chain reports its receiver's type, which is the answer to the
+# only question asked of it about one: `emit_int_bit_chain` needs to know
+# whether the receiver is an `Int`. What the whole chain evaluates to is a
+# separate judgement, made in `initializer_type_bounded`.
 fn numeric_primary_type(
     source: Text,
     hir: Text,
@@ -14649,14 +15285,61 @@ fn move_use_position(source: Text, previous: Int, cursor: Int) -> Bool {
 # refuses a program the ownership gate requires the compiler to accept.
 # Widening to positional calls is a change to that accepted model, not to
 # this lowering slice, and is owned by #882 rather than assumed here.
+# Whether `cursor` is a pipeline subject flowing into a `take` slot 0.
+#
+# The subject is never written with a label — it sits outside the parentheses —
+# so `call_argument_labelled` and `call_argument_expected_mode` cannot see it at
+# all: both look inside the argument list. The declared mode therefore has to
+# come from slot 0 of the callee that follows the pipe.
+#
+# `coalescing_expression_end`, not `expression_end`: since the pipeline became a
+# production, `expression_end` swallows the whole `subject |> callee(...)` and
+# would never equal the subject's single token. Measuring the subject's own
+# extent is what keeps a compound subject out — `a + b |> consume()` transfers
+# nothing, because there is no binding for the move to invalidate.
+fn pipeline_subject_take(source: Text, cursor: Int) -> Bool {
+    if coalescing_expression_end(source, cursor) !=
+       token_end(source, cursor) {
+        return false
+    }
+    let pipe = skip_trivia(source, token_end(source, cursor))
+    if pipe >= len(source) || token_text(source, pipe) != "|>" {
+        return false
+    }
+    if pipeline_call_end(source, pipe) < 0 {
+        return false
+    }
+    let callee_at = skip_trivia(source, token_end(source, pipe))
+    let declaration = function_start_named(source, token_text(source, callee_at))
+    if declaration < 0 || parameter_count(source, declaration) < 1 {
+        return false
+    }
+    # Slot 0 is the first token after `(`, so no parameter walk is needed — and
+    # an ownership mode, when present, is the head of its parameter.
+    let parameters = parameter_open(source, declaration)
+    if parameters < 0 {
+        return false
+    }
+    return token_text(source, skip_trivia(source, token_end(source, parameters))) == "take"
+}
+
 fn move_call_binding(
     source: Text,
     hir: Text,
     cursor: Int
 ) -> Bool {
     if token_kind(source, cursor) != "identifier" ||
-       len(hir_use_binding_id(hir, cursor)) == 0 ||
-       call_argument_expected_mode(source, cursor) != "take" ||
+       len(hir_use_binding_id(hir, cursor)) == 0 {
+        return false
+    }
+    # A pipeline subject reaches its slot without a label, so it is admitted on
+    # the declared mode of slot 0 rather than on how it was written. Every other
+    # shape keeps the existing rule exactly, which is what leaves the ordinary
+    # positional call outside the RFC-0010 move path.
+    if pipeline_subject_take(source, cursor) {
+        return true
+    }
+    if call_argument_expected_mode(source, cursor) != "take" ||
        call_argument_labelled(source, cursor) != "yes" {
         return false
     }
@@ -14999,6 +15682,14 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
             "    (void)kofun_neg;\n" +
             "    (void)kofun_floor_div;\n" +
             "    (void)kofun_floor_mod;\n" +
+            "    (void)kofun_bit_and;\n" +
+            "    (void)kofun_bit_or;\n" +
+            "    (void)kofun_bit_xor;\n" +
+            "    (void)kofun_bit_not;\n" +
+            "    (void)kofun_bit_shl;\n" +
+            "    (void)kofun_bit_shr;\n" +
+            "    (void)kofun_bit_rotr;\n" +
+            "    (void)kofun_bit_wrapping_add;\n" +
             decimal_cleanup + body + "}\n"
         } else {
             bodies = bodies + "static " + c_result + " kofun_fn_" + name +
@@ -15164,8 +15855,79 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     "    int64_t r = a % b;\n" +
     "    if (r != 0 && ((r < 0) != (b < 0))) { r += b; }\n" +
     "    return r;\n" +
-    "}\n\n" + optional_declarations + emit_record_c_declarations(source) +
+    "}\n" + emit_int_bit_c_runtime() +
+    "\n" + optional_declarations + emit_record_c_declarations(source) +
     prototypes + "\n" + bodies
+}
+
+# RFC-0013's runtime. Every operation is expressed on the unsigned bit pattern
+# and converted back explicitly, because C is not willing to answer the
+# questions these operations ask: a shift by the operand width is undefined, a
+# signed right shift is implementation-defined, and a conversion of a pattern
+# above `INT64_MAX` back to a signed type is implementation-defined too. The
+# whole reason for naming these operations was to give them answers the language
+# states, so none of the three is left to the host compiler.
+fn emit_int_bit_c_runtime() -> Text {
+    return "static inline int64_t kofun_from_bits(uint64_t bits) {\n" +
+    "    if (bits <= (uint64_t)INT64_MAX) return (int64_t)bits;\n" +
+    "    return -(int64_t)(~bits) - 1;\n" +
+    "}\n" +
+    "static inline bool kofun_bit_count_ok(int64_t count, const char *message) {\n" +
+    "    if (count < 0 || count > 63) { kofun_error(message); return false; }\n" +
+    "    return true;\n" +
+    "}\n" +
+    "static inline uint64_t kofun_bit_mask(int64_t width, const char *message) {\n" +
+    "    if (width < 1 || width > 64) { kofun_error(message); return 0; }\n" +
+    "    if (width == 64) return ~(uint64_t)0;\n" +
+    "    return ((uint64_t)1 << (unsigned)width) - (uint64_t)1;\n" +
+    "}\n" +
+    "static inline int64_t kofun_bit_and(int64_t a, int64_t b) {\n" +
+    "    return kofun_from_bits((uint64_t)a & (uint64_t)b);\n" +
+    "}\n" +
+    "static inline int64_t kofun_bit_or(int64_t a, int64_t b) {\n" +
+    "    return kofun_from_bits((uint64_t)a | (uint64_t)b);\n" +
+    "}\n" +
+    "static inline int64_t kofun_bit_xor(int64_t a, int64_t b) {\n" +
+    "    return kofun_from_bits((uint64_t)a ^ (uint64_t)b);\n" +
+    "}\n" +
+    "static inline int64_t kofun_bit_not(int64_t a) {\n" +
+    "    return kofun_from_bits(~(uint64_t)a);\n" +
+    "}\n" +
+    "static inline int64_t kofun_bit_shr(int64_t a, int64_t n) {\n" +
+    "    if (!kofun_bit_count_ok(n,\n" +
+    "        \"error[R011]: shift count for `shr` is outside `0..63`\")) return 0;\n" +
+    "    uint64_t bits = (uint64_t)a >> (unsigned)n;\n" +
+    "    if (a < 0 && n > 0) { bits |= ~(uint64_t)0 << (unsigned)(64 - n); }\n" +
+    "    return kofun_from_bits(bits);\n" +
+    "}\n" +
+    "static inline int64_t kofun_bit_shl(int64_t a, int64_t n) {\n" +
+    "    if (!kofun_bit_count_ok(n,\n" +
+    "        \"error[R011]: shift count for `shl` is outside `0..63`\")) return 0;\n" +
+    "    int64_t result = kofun_from_bits((uint64_t)a << (unsigned)n);\n" +
+    "    if (kofun_bit_shr(result, n) != a) {\n" +
+    "        kofun_error(\"error[R010]: integer overflow in `shl`\"); return 0;\n" +
+    "    }\n" +
+    "    return result;\n" +
+    "}\n" +
+    "static inline int64_t kofun_bit_rotr(int64_t a, int64_t n, int64_t width) {\n" +
+    "    uint64_t mask = kofun_bit_mask(width,\n" +
+    "        \"error[R011]: bit width for `rotr` is outside `1..64`\");\n" +
+    "    if (mask == 0) return 0;\n" +
+    "    if (!kofun_bit_count_ok(n,\n" +
+    "        \"error[R011]: rotation count for `rotr` is outside `0..63`\")) return 0;\n" +
+    "    uint64_t value = (uint64_t)a & mask;\n" +
+    "    unsigned places = (unsigned)(n % width);\n" +
+    "    if (places == 0) return kofun_from_bits(value);\n" +
+    "    uint64_t rotated = (value >> places) |\n" +
+    "        (value << ((unsigned)width - places));\n" +
+    "    return kofun_from_bits(rotated & mask);\n" +
+    "}\n" +
+    "static inline int64_t kofun_bit_wrapping_add(int64_t a, int64_t b, int64_t width) {\n" +
+    "    uint64_t mask = kofun_bit_mask(width,\n" +
+    "        \"error[R011]: bit width for `wrapping_add` is outside `1..64`\");\n" +
+    "    if (mask == 0) return 0;\n" +
+    "    return kofun_from_bits((((uint64_t)a & mask) + ((uint64_t)b & mask)) & mask);\n" +
+    "}\n"
 }
 
 fn lower_c(source: Text, hir: Text) -> Text {

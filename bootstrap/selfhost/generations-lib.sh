@@ -76,7 +76,23 @@ digest_of() {
 # One digest over a set of files, independent of glob order. The build gate
 # records these and the check gate recomputes them, so the two computations
 # must be this one function or "stale" becomes a false positive.
+#
+# The arguments are checked before they are digested, because the alternative
+# is silent. `kofun-digest` reports an unreadable path on stderr and the
+# pipeline's status is the last stage's, so a set whose files are all missing
+# digests an empty stream and returns
+# e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 — the digest
+# of nothing, which compares equal to itself run after run and looks like
+# evidence. Every existing caller passes a glob of files that are always there,
+# so this had never fired; the first caller to pass a directory got that value
+# and a successful exit.
 tree_digest() {
+    test "$#" -gt 0 ||
+        fail "tree_digest was given no file, and the digest of nothing is not a set digest"
+    for tree_digest_path in "$@"; do
+        test -f "$tree_digest_path" ||
+            fail "tree_digest cannot read \`$tree_digest_path\` as a file"
+    done
     "$repo_root/bin/kofun-digest" "$@" | LC_ALL=C sort |
         "$repo_root/bin/kofun-digest" | awk '{ print $1 }'
 }

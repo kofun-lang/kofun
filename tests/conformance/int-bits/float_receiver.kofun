@@ -1,0 +1,8 @@
+# The operations are defined on `Int`. The refusal names the receiver, and
+# it fires whether or not anything downstream ever reads the result.
+
+fn main() -> Int {
+    let value = 1.5f64
+    let masked = value.and(1)
+    return 0
+}

@@ -1,0 +1,1 @@
+error[E2S25]: non-exhaustive match on `Color`: no arm matches `Blue`; hint: add the missing case or a wildcard arm

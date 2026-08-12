@@ -1,0 +1,53 @@
+{
+  "schema": "kofun.http-transport-script/v1",
+  "name": "get_informational_status",
+  "request": {
+    "method": "GET",
+    "target": "/index.html",
+    "host": "example.test",
+    "headers": [
+      [
+        "Accept",
+        "*/*"
+      ]
+    ]
+  },
+  "limits": {
+    "max_header_bytes": 4096,
+    "max_headers": 16,
+    "max_body_bytes": 65536,
+    "max_chunk_bytes": 4096
+  },
+  "operations": [
+    {
+      "op": "deliver",
+      "bytes": [
+        72,
+        84,
+        84,
+        80,
+        47,
+        49,
+        46,
+        49,
+        32,
+        49,
+        48,
+        48,
+        32,
+        67,
+        111,
+        110,
+        116,
+        105,
+        110,
+        117,
+        101,
+        13,
+        10,
+        13,
+        10
+      ]
+    }
+  ]
+}

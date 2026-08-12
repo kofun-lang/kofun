@@ -1,0 +1,1 @@
+error[R011]: bit width for `wrapping_add` is outside `1..64`

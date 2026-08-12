@@ -222,6 +222,7 @@ for stem in \
     out_of_range \
     out_of_range_write \
     oversized \
+    reassignment_type_mismatch \
     unsupported_annotation \
     unsupported_element
 do
@@ -241,9 +242,35 @@ do
     cmp "$fixtures/$stem.stdout" "$work/refuse-$stem.stdout"
 done
 
+# Reassigning a whole `List[Int]` binding (#1353). The carrier the assignment
+# statement declares has to be the binding's own C type; it was `int64_t`
+# unconditionally, so this program emitted C that only `cc` rejected. The loop
+# case is the one that cannot be written around by binding a new name.
+"$work/kofun-stage2" \
+    "$fixtures/reassignment.kofun" \
+    "$work/reassignment.c" \
+    "$work/reassignment.ir" \
+    "$work/reassignment.tokens" \
+    >"$work/reassignment.compile.stdout" \
+    2>"$work/reassignment.compile.stderr"
+assert_file_empty "reassignment compiler stderr" \
+    "$work/reassignment.compile.stderr"
+"$compiler" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+    "$work/reassignment.c" -o "$work/reassignment" ||
+    assert_fail "reassignment emitted invalid C11"
+"$work/reassignment" >"$work/reassignment.stdout" 2>"$work/reassignment.stderr"
+cmp "$fixtures/reassignment.stdout" "$work/reassignment.stdout"
+assert_file_empty "reassignment runtime stderr" "$work/reassignment.stderr"
+assert_grep "the replacement carrier is the binding's own type" \
+    -Fq -- "KofunIntListValue kofun_replacement = " "$work/reassignment.c"
+assert_not_grep "an int64_t carrier still holds a List[Int]" \
+    -Eq -- "int64_t kofun_replacement = \\(*kofun_(fn|list)" \
+    "$work/reassignment.c"
+
 (
     cd "$root"
     "$root/bin/kofun-digest" -c bootstrap/stage2/SHA256SUMS
 )
 
 echo "PASS: Stage 2 List[Int] locals, bounded literals, len, and checked indexing"
+echo "PASS: a whole List[Int] binding is reassignable from a binding, a call, and in a loop"

@@ -1,0 +1,8 @@
+# A shift count of 64 is not a shift of the whole word; it is a mistake.
+# Masking it to 0 would compute `x` and call it an answer.
+
+fn main() -> Int {
+    let value = 1
+    print(to_text(value.shl(64)))
+    return 0
+}

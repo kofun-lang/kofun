@@ -1,0 +1,11 @@
+# The same wrong receiver, with the result read. The refusal that leads must
+# still be the one that names the receiver: a chain is `Int`, so `masked` binds
+# `Int`, and `to_text` has no complaint to make. Before the whole-initializer
+# chain rule, this reported `to_text` for a mistake in the receiver.
+
+fn main() -> Int {
+    let value = 1.5f64
+    let masked = value.and(1)
+    print(to_text(masked))
+    return 0
+}

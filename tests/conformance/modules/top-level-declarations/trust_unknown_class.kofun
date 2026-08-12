@@ -1,0 +1,3 @@
+module bad.trust_unknown_class
+trust raw-native
+fn outer() -> Int { return 1 }

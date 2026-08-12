@@ -291,12 +291,41 @@ unsupported_case "$cases/trailing_lambda_block.kofun" \
 # mentioned the pipeline that was actually unsupported. Each shape outside the
 # production gets its own wording, so a later slice admitting one leaves the
 # others' evidence standing.
-unsupported_case "$cases/pipeline_subject.kofun" \
-    'error[E2S158]: a pipeline subject is recognized by call-arguments v1; slot binding is owned by #1226 at byte 127' \
-    'direct-call pipeline subject'
-unsupported_case "$cases/pipeline_coalescing_subject.kofun" \
-    'error[E2S158]: a pipeline subject is recognized by call-arguments v1; slot binding is owned by #1226 at byte 139' \
-    'pipeline subject containing a coalescing expression'
+# #1228 admits them. These three were refusal fixtures through #1190, #1226 and
+# #1227; converting rather than deleting them keeps the record that the
+# boundary moved, and each now protects the *behaviour* its refusal used to
+# describe.
+#
+# What each is here for, so a future disagreement is easy to adjudicate:
+#   pipeline_subject           - the labelled rest binds by declaration slot
+#   pipeline_positional_rest   - a positional rest starts at slot 1, not 0
+#   pipeline_coalescing_subject- `??` binds inside the subject, at runtime
+executes_case pipeline_subject 'labelled-rest pipeline'
+executes_case pipeline_positional_rest 'positional-rest pipeline'
+executes_case pipeline_coalescing_subject 'pipeline over a coalescing subject'
+
+# The ordering the whole slice exists for. `1` is the subject and prints first,
+# `2` is the explicit argument, and `12` is the callee reading slots in
+# declaration order — so the subject evaluated first, each value exactly once,
+# and the ABI vector ran only after both assignments.
+executes_case pipeline_source_order 'pipeline evaluates the subject first'
+pipeline_key=$(call_site_key "$temporary/pipeline_source_order.c")
+test -n "$pipeline_key" ||
+    fail 'pipeline reserved no keyed temporary'
+# The subject's assignment precedes the explicit argument's, and the call
+# follows both. A pipeline-only emitter or a second temporary family would
+# break this pattern rather than merely reorder it.
+tr -d '\n' <"$temporary/pipeline_source_order.c" |
+    grep -E "kofun_call_arg_${pipeline_key}_0 = .*kofun_call_arg_${pipeline_key}_1 = .*kofun_fn_combine\(kofun_call_arg_${pipeline_key}_0, kofun_call_arg_${pipeline_key}_1\)" \
+    >/dev/null ||
+    fail 'pipeline C did not assign the subject before the argument and the call'
+# `|>` must not survive into the artifact, and neither may the labels or any
+# runtime dispatch. This is where a second namespace would show first.
+no_runtime_dispatch "$temporary/pipeline_source_order.c" \
+    'as_first|as_second' 'pipeline C'
+if grep -F '|>' "$temporary/pipeline_source_order.c" >/dev/null; then
+    fail 'pipeline C retained the pipe operator'
+fi
 unsupported_case "$cases/pipeline_bare_target.kofun" \
     'error[E2S158]: a pipeline target must be a direct call written with its parentheses at byte 105' \
     'pipeline with a bare callee'
@@ -313,6 +342,77 @@ unsupported_case "$cases/pipeline_chain.kofun" \
 unsupported_case "$cases/pipeline_trailing_lambda.kofun" \
     'error[E2S158]: a pipeline with a trailing lambda is specified by call-arguments v1 but not recognized at byte 131' \
     'pipeline with a trailing lambda'
+
+# #1226 binds the subject to slot 0 before any explicit argument is read. Both
+# halves of that are asserted, because either alone would pass while the call
+# was still wrong: the subject must take slot 0 at source index 0, and the
+# explicit arguments must then start at slot 1 rather than overwrite it.
+#
+# The externally labelled case is the one that proves the rule rather than a
+# coincidence: `into` is slot 0's declared label, and the subject binds it
+# without the label being written anywhere in the call.
+subject_binding=$(
+    "$temporary/observer" "$cases/pipeline_subject.kofun" |
+        grep '^call-argument|'
+)
+test "$subject_binding" = 'call-argument|add|0|0|121|121|unlabelled|base|Int|copy
+call-argument|add|1|1|134|141|delta|amount|Int|copy' ||
+    fail 'pipeline subject did not bind slot 0 ahead of the labelled argument'
+
+# The positional case is where a missing slot-0 binding would be invisible:
+# without it the written `2` binds slot 0 and the call looks well formed.
+positional_binding=$(
+    "$temporary/observer" "$cases/pipeline_positional_rest.kofun" |
+        grep '^call-argument|'
+)
+test "$positional_binding" = 'call-argument|add|0|0|115|115|unlabelled|base|Int|copy
+call-argument|add|1|1|128|128|unlabelled|amount|Int|copy' ||
+    fail 'positional explicit arguments did not start at slot 1'
+
+# Supplying slot 0 again by its declared label is an ordinary duplicate, and
+# reaches the existing E2S163 producer with the declaration as its related span
+# — the subject binding is a binding like any other, not a special case beside
+# the binder.
+unsupported_case "$cases/pipeline_duplicate_slot_zero.kofun" \
+    'error[E2S163]: duplicate call label `into` at byte 139' \
+    'pipeline subject and an explicit argument for slot 0'
+
+# #1227 checks the bound call. Effective arity is one subject plus the written
+# arguments, so this reports 3 for a two-parameter callee — the count is now
+# right, rather than merely kept away by an earlier refusal. Asserting the
+# overflow is what distinguishes those two: the four canonical shapes stopped
+# reaching E2S17 the moment #1190 refused them, whether or not anything counted.
+unsupported_case "$cases/pipeline_effective_arity.kofun" \
+    'error[E2S17]: Core function `add` expects 2 arguments, got 3 at byte 124' \
+    'pipeline effective arity counts the subject'
+
+# The subject is checked against slot 0 and reported at its own span. Pointing
+# at the callee would name the one token that is not wrong.
+unsupported_case "$cases/pipeline_subject_type_mismatch.kofun" \
+    'error[E2S15]: Core function `add` expects Int for argument 1, got Text at byte 126' \
+    'pipeline subject type is checked against slot 0'
+
+# RFC-0010, reached without a label: the subject flows into a `take` slot 0, so
+# it moves exactly once and the later use is the existing E2S123 with both
+# spans. `move_call_binding` admits it on the declared mode of slot 0 rather
+# than on how it was written, because a subject is never written with a label.
+unsupported_case "$cases/pipeline_take_subject.kofun" \
+    'error[E2S123]: `ticket` was moved by `take` and cannot be used again at bytes 280..286; moved by `take` at bytes 241..247' \
+    'pipeline subject moves once into a take slot'
+
+# This fixture protects the *code*, not the model: it asserts that something
+# does **not** happen. A compound subject transfers nothing, because there is
+# no binding for a move to invalidate — so `left` is still readable afterwards,
+# and its `1` in the golden is the whole proof. A synthetic move would make
+# that read E2S123 and this case would stop running at all.
+#
+# It has already earned its place once. The bare-binding test measured the
+# subject with `expression_end`, which since #1190 swallows the whole
+# `subject |> callee(...)`; every subject looked compound and no move was ever
+# recorded. Only a case that must keep running distinguished that from a
+# correct rule — the bare case passed either way. The extent must be measured
+# with `coalescing_expression_end`.
+executes_case pipeline_compound_subject 'compound pipeline subject records no move'
 
 # The spans the binder in #1226 inherits. Asserting them here is what makes the
 # production reviewable before anything consumes it: a recognizer that refuses
@@ -340,4 +440,4 @@ test "$coalescing_spans" = 'pipeline|add|129|138|139|142|145|154|129|155' ||
     fail 'coalescing pipeline subject did not bind `??` first'
 
 printf '%s\n' \
-    'PASS: labelled calls bind fixed HIR slots and the Int/Text/List[Int]/Optional/enum/record C11 slice evaluates once in source order; take slots move once and refuse double transfer as E2S123; the expression-bodied trailing lambda binds the final parameter as a lifted address; the direct-call pipeline is one production whose spans are published and whose binding fails closed; #882 retains pipeline binding, block-bodied trailing, and lambda-body forms and other backends'
+    'PASS: labelled calls bind fixed HIR slots and the Int/Text/List[Int]/Optional/enum/record C11 slice evaluates once in source order; take slots move once and refuse double transfer as E2S123; the expression-bodied trailing lambda binds the final parameter as a lifted address; the direct-call pipeline is one production whose spans are published, whose subject binds slot 0 ahead of the explicit arguments and is then counted, type-checked, and moved once into a take slot, and whose C11 lowering evaluates the subject first and exactly once before the explicit arguments; #882 retains bare/member/chain/trailing-lambda pipeline forms, block-bodied trailing calls, labelled calls in lifted lambdas, and lexical/indirect targets; direct-native/Wasm pipeline behavior is unclaimed and its exact differential remains owned by #1192'

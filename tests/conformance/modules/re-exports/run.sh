@@ -21,10 +21,46 @@ ALTERNATE_MODULE=555555555555555555555555555555555555555555555555555555555555555
 ALTERNATE_FILE=5656565656565656565656565656565656565656565656565656565656565656
 ASSERT_CONTEXT='re-exports'
 . "$ROOT/tests/assertions/assert.sh"
+. "$ROOT/bootstrap/stage2/semantic-objects.sh"
 
 fail() {
     printf '%s\n' "FAIL: $*" >&2
     exit 1
+}
+
+run_re_export_analyzer() {
+    re_exports_analyzer_output=$1
+    re_exports_analyzer_stdout="$re_exports_analyzer_output.stdout"
+    re_exports_analyzer_stderr="$re_exports_analyzer_output.stderr"
+    rm -f -- "$re_exports_analyzer_output" \
+        "$re_exports_analyzer_stdout" "$re_exports_analyzer_stderr"
+    if "$CC" -std=c11 -O0 -Wall -Wextra -Werror -pedantic -fanalyzer \
+        -I"$ROOT/bootstrap/stage2" \
+        "$ROOT/bootstrap/stage2/re_exports.c" \
+        "$ROOT/bootstrap/stage2/kif_v1.c" \
+        "$ROOT/bootstrap/stage2/visibility_access.c" \
+        "$ROOT/unicode/kofun_unicode.c" \
+        "$ROOT/bootstrap/stage2/sha256.c" \
+        -o "$re_exports_analyzer_output" \
+        >"$re_exports_analyzer_stdout" 2>"$re_exports_analyzer_stderr"
+    then
+        printf '%s\n' \
+            'PASS: GCC analyzer accepts the re-export resolver and KIF projection'
+        return 0
+    else
+        re_exports_analyzer_status=$?
+    fi
+    rm -f -- "$re_exports_analyzer_output"
+    printf '%s\n' \
+        "FAIL: re-exports: GCC analyzer compile failed with status $re_exports_analyzer_status; stdout=$re_exports_analyzer_stdout; stderr=$re_exports_analyzer_stderr" \
+        >&2
+    if test -s "$re_exports_analyzer_stdout"; then
+        cat "$re_exports_analyzer_stdout" >&2
+    fi
+    if test -s "$re_exports_analyzer_stderr"; then
+        cat "$re_exports_analyzer_stderr" >&2
+    fi
+    return "$re_exports_analyzer_status"
 }
 
 case $WORK in
@@ -34,28 +70,32 @@ esac
 
 rm -rf "$WORK"
 mkdir -p "$WORK"
+kofun_stage2_semantic_common_inputs "$ROOT"
 
+KOFUN_STAGE2_COMMON_LINK_ID=re-exports/resolver \
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
     -DKOFUN_TEST_DIAGNOSTIC_FAULTS \
     -I"$ROOT/bootstrap/stage2" \
     "$ROOT/bootstrap/stage2/re_exports.c" \
-    "$ROOT/bootstrap/stage2/kif_v1.c" \
-    "$ROOT/bootstrap/stage2/visibility_access.c" \
-    "$ROOT/unicode/kofun_unicode.c" \
-    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$KOFUN_STAGE2_COMMON_KIF_V1_INPUT" \
+    "$KOFUN_STAGE2_COMMON_VISIBILITY_INPUT" \
+    "$KOFUN_STAGE2_COMMON_UNICODE_INPUT" \
+    "$KOFUN_STAGE2_COMMON_SHA256_INPUT" \
     -o "$TOOL"
 
+KOFUN_STAGE2_COMMON_LINK_ID=re-exports/reader \
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
     -I"$ROOT/bootstrap/stage2" \
     "$ROOT/bootstrap/stage2/kif_v1_tool.c" \
-    "$ROOT/bootstrap/stage2/kif_v1.c" \
-    "$ROOT/unicode/kofun_unicode.c" \
-    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$KOFUN_STAGE2_COMMON_KIF_V1_INPUT" \
+    "$KOFUN_STAGE2_COMMON_UNICODE_INPUT" \
+    "$KOFUN_STAGE2_COMMON_SHA256_INPUT" \
     -o "$KIF_TOOL"
+KOFUN_STAGE2_COMMON_LINK_ID=re-exports/export-binding-reference \
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
     -I"$ROOT/bootstrap/stage2" \
     "$CASES/export_binding_reference.c" \
-    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$KOFUN_STAGE2_COMMON_SHA256_INPUT" \
     -o "$WORK/export-binding-reference"
 
 write_inventory() {
@@ -1112,17 +1152,132 @@ UBSAN_OPTIONS=halt_on_error=1 \
     "$WORK/sanitized.hir" "$WORK/sanitized.kif" "$WORK/sanitized.tooling"
 cmp "$WORK/positive.kif" "$WORK/sanitized.kif"
 
-if "$CC" -std=c11 -O0 -Wall -Wextra -Werror -pedantic -fanalyzer \
-    -I"$ROOT/bootstrap/stage2" \
-    "$ROOT/bootstrap/stage2/re_exports.c" \
-    "$ROOT/bootstrap/stage2/kif_v1.c" \
-    "$ROOT/bootstrap/stage2/visibility_access.c" \
-    "$ROOT/unicode/kofun_unicode.c" \
-    "$ROOT/bootstrap/stage2/sha256.c" \
-    -o "$WORK/re-exports-analyzed" >/dev/null 2>&1
+re_exports_analyzer_evidence="$WORK/re-exports-analyzer.evidence"
+run_re_export_analyzer "$WORK/re-exports-analyzed" \
+    >"$re_exports_analyzer_evidence"
+assert_num "named re-export analyzer PASS count" \
+    "$(grep -Fxc \
+        'PASS: GCC analyzer accepts the re-export resolver and KIF projection' \
+        "$re_exports_analyzer_evidence")" -eq 1
+assert_executable "successful re-export analyzer output" \
+    "$WORK/re-exports-analyzed"
+assert_file_empty "successful re-export analyzer stdout" \
+    "$WORK/re-exports-analyzed.stdout"
+assert_file_empty "successful re-export analyzer stderr" \
+    "$WORK/re-exports-analyzed.stderr"
+cat "$re_exports_analyzer_evidence"
+
+# The same fail-closed arm used above must preserve a compiler's stderr, name
+# the failed profile, publish no PASS, and leave no partial executable.  A
+# synthetic compiler keeps this mutation cheap enough to run under both the
+# direct task and the diagnostics adapter, which owns a second full execution.
+re_exports_analyzer_fake_cc="$WORK/re-exports-analyzer-failure-cc"
+re_exports_analyzer_fake_argv="$WORK/re-exports-analyzer-failure.argv"
+re_exports_analyzer_fake_partial="$WORK/re-exports-analyzer-failure.partial"
+re_exports_analyzer_expected_argv="$WORK/re-exports-analyzer-failure.expected"
+re_exports_analyzer_mutation_output="$WORK/re-exports-analyzer-failure-output"
+re_exports_analyzer_mutation_stdout="$WORK/re-exports-analyzer-failure-observer.stdout"
+re_exports_analyzer_mutation_stderr="$WORK/re-exports-analyzer-failure-observer.stderr"
+cat >"$re_exports_analyzer_fake_cc" <<'EOF'
+#!/usr/bin/env sh
+set -eu
+: "${KOFUN_RE_EXPORT_ANALYZER_FAKE_ARGV:?}"
+: "${KOFUN_RE_EXPORT_ANALYZER_FAKE_PARTIAL:?}"
+printf '%s\n' "$@" >"$KOFUN_RE_EXPORT_ANALYZER_FAKE_ARGV"
+re_exports_fake_output=
+re_exports_fake_output_count=0
+while test "$#" -gt 0
+do
+    if test "$1" = -o; then
+        re_exports_fake_output_count=$((re_exports_fake_output_count + 1))
+        shift
+        if test "$#" -eq 0; then
+            printf '%s\n' 'fake analyzer compiler: -o has no target' >&2
+            exit 97
+        fi
+        re_exports_fake_output=$1
+    fi
+    shift
+done
+if test "$re_exports_fake_output_count" -ne 1 ||
+    test -z "$re_exports_fake_output"
 then
-    printf '%s\n' 'PASS: GCC analyzer accepts the re-export resolver and KIF projection'
+    printf '%s\n' 'fake analyzer compiler: expected exactly one -o target' >&2
+    exit 97
 fi
+if test -e "$re_exports_fake_output"; then
+    printf '%s\n' 'fake analyzer compiler: output was not clean before launch' >&2
+    exit 97
+fi
+printf '%s\n' 'partial analyzer executable' >"$re_exports_fake_output"
+if ! test -f "$re_exports_fake_output"; then
+    printf '%s\n' 'fake analyzer compiler: partial output is not regular' >&2
+    exit 97
+fi
+printf '%s\n' "$re_exports_fake_output" \
+    >"$KOFUN_RE_EXPORT_ANALYZER_FAKE_PARTIAL"
+printf '%s\n' 'forced re-export analyzer failure after partial output' >&2
+exit 73
+EOF
+chmod 0755 "$re_exports_analyzer_fake_cc"
+rm -f -- "$re_exports_analyzer_fake_argv" \
+    "$re_exports_analyzer_fake_partial"
+set +e
+(
+    CC="$re_exports_analyzer_fake_cc"
+    KOFUN_RE_EXPORT_ANALYZER_FAKE_ARGV="$re_exports_analyzer_fake_argv"
+    KOFUN_RE_EXPORT_ANALYZER_FAKE_PARTIAL="$re_exports_analyzer_fake_partial"
+    export CC KOFUN_RE_EXPORT_ANALYZER_FAKE_ARGV
+    export KOFUN_RE_EXPORT_ANALYZER_FAKE_PARTIAL
+    run_re_export_analyzer "$re_exports_analyzer_mutation_output"
+) >"$re_exports_analyzer_mutation_stdout" \
+    2>"$re_exports_analyzer_mutation_stderr"
+re_exports_analyzer_mutation_status=$?
+set -e
+assert_num "forced re-export analyzer failure status" \
+    "$re_exports_analyzer_mutation_status" -eq 73
+assert_file_empty "forced re-export analyzer observer stdout" \
+    "$re_exports_analyzer_mutation_stdout"
+assert_grep "forced re-export analyzer named failure" \
+    -F "FAIL: re-exports: GCC analyzer compile failed with status 73;" \
+    "$re_exports_analyzer_mutation_stderr"
+assert_grep "forced re-export analyzer captured stderr" \
+    -Fx 'forced re-export analyzer failure after partial output' \
+    "$re_exports_analyzer_mutation_output.stderr"
+assert_grep "forced re-export analyzer replayed stderr" \
+    -Fx 'forced re-export analyzer failure after partial output' \
+    "$re_exports_analyzer_mutation_stderr"
+assert_not_grep "forced re-export analyzer emitted no PASS" \
+    -F 'PASS: GCC analyzer accepts the re-export resolver and KIF projection' \
+    "$re_exports_analyzer_mutation_stderr"
+assert_absent "forced re-export analyzer output" \
+    "$re_exports_analyzer_mutation_output"
+assert_grep "forced re-export analyzer created a partial regular output" \
+    -Fx "$re_exports_analyzer_mutation_output" \
+    "$re_exports_analyzer_fake_partial"
+# Keep the runtime strings below exact while splitting directory and filename
+# tokens so this golden fixture is not counted as a static compile site.
+{
+    printf '%s\n' \
+        -std=c11 \
+        -O0 \
+        -Wall \
+        -Wextra \
+        -Werror \
+        -pedantic \
+        -fanalyzer \
+        "-I$ROOT/bootstrap/stage2" \
+        "$ROOT/bootstrap/stage2/re_exports.c" \
+        "$ROOT/bootstrap/stage2"/kif_v1.c \
+        "$ROOT/bootstrap/stage2"/visibility_access.c \
+        "$ROOT/unicode"/kofun_unicode.c \
+        "$ROOT/bootstrap/stage2"/sha256.c \
+        -o \
+        "$re_exports_analyzer_mutation_output"
+} >"$re_exports_analyzer_expected_argv"
+cmp "$re_exports_analyzer_expected_argv" \
+    "$re_exports_analyzer_fake_argv" ||
+    fail 'forced re-export analyzer did not receive the exact production argv'
 
 printf '%s\n' \
     'PASS: explicit public re-exports preserve target identities and non-widening visibility' \

@@ -175,6 +175,14 @@ tasks:
       - "sh bootstrap/selfhost/check-declared-inputs.sh build/{{.NAMESPACE}}selfhost-inputs"
       - "sh bootstrap/selfhost/check-inputs-sufficient.sh build/{{.NAMESPACE}}selfhost-inputs"
 
+  # The packet an independent builder is handed, and the validator a reviewer
+  # runs on what comes back. Mechanics only: it records a builder's identity
+  # and basis, states that it cannot authenticate them, and does not close B6.
+  selfhost-b6-report:
+    desc: "Run the delegated reproduction command and validate its canonical report"
+    cmds:
+      - "sh bootstrap/selfhost/check-b6-report.sh"
+
   # RFC-0001 stage 1. The canonical contract and its bounded Stage 2
   # projection, pinned against each other. The seed grants no capability;
   # the gate refuses one appearing.
@@ -299,6 +307,16 @@ tasks:
     cmds:
       - "sh tests/conformance/text-results/run.sh"
 
+  # RFC-0013 (#1348). The eight bit operations on `Int`, spelled as postfix
+  # methods. The gate is written so a wrong implementation produces a different
+  # number rather than a crash: C leaves a shift by the operand width undefined
+  # and a signed right shift implementation-defined, and the reason these were
+  # named at all was to give them answers the language states.
+  int-bits:
+    desc: "Verify the eight Int bit operations, their traps, and their refusals"
+    cmds:
+      - "sh tests/conformance/int-bits/run.sh"
+
   # #1174. Statement-position `else if` chains. The corpus exists mainly for
   # one property that a passing program cannot show: a later condition must be
   # evaluated only when every earlier one was false, so the gate puts a
@@ -332,6 +350,11 @@ tasks:
     desc: "Verify resolved flat-ADT match diagnostics"
     cmds:
       - "sh tests/conformance/adt-exhaustiveness/run.sh"
+
+  adt-usefulness-v2:
+    desc: "Verify the bounded recursive pattern-matrix usefulness oracle"
+    cmds:
+      - "sh tests/conformance/adt-usefulness-v2/run.sh"
 
   enum-match-value:
     desc: "Verify a concrete-enum match producing one Int in value position"
@@ -429,6 +452,11 @@ tasks:
     cmds:
       - "sh tests/tooling/discovery-sanitizer-reuse/check.sh"
 
+  stage1-adapter:
+    desc: "Verify the c11-stage1 conformance backend runs only the Stage 1 seed"
+    cmds:
+      - "sh tests/conformance/stage1-adapter/check.sh"
+
   native:
     desc: "Build and execute the Kofun-emitted ELF64 fixture"
     cmds:
@@ -468,6 +496,14 @@ tasks:
     desc: "Verify the first-party HTTP/API framework"
     cmds:
       - "sh tests/http/check.sh"
+
+  # The client-side reference model for #644. Executable specification evidence
+  # over a scripted transport: no socket, no capability, and no claim that a
+  # client exists.
+  http-client-model:
+    desc: "Verify the deterministic HTTP/1.1 reference model and its corpus"
+    cmds:
+      - "sh tests/http/client-model/run.sh"
 
   cli-framework:
     desc: "Verify the direct-static native CLI framework"
@@ -562,9 +598,14 @@ tasks:
       - "sh tests/tooling/stage2-build-reuse/check.sh"
 
   verify-object-reuse:
-    desc: "Verify runner-scoped semantic producer object reuse"
+    desc: "Verify runner-scoped semantic and strict-O2 common object reuse"
     cmds:
       - "sh tests/tooling/verify-object-reuse/check.sh"
+
+  fuzz-sanitizer-reuse:
+    desc: "Verify runner-scoped fuzz sanitizer compiler object reuse"
+    cmds:
+      - "sh tests/tooling/fuzz-sanitizer-reuse/check.sh"
 
   packages:
     desc: "Verify locked package fetch and offline use"
@@ -984,6 +1025,7 @@ tasks:
             selfhost-fixed-point \
             selfhost-diverse-double-compilation \
             selfhost-declared-inputs \
+            selfhost-b6-report \
             selfhost-native \
             stage2 \
             stage2-events \
@@ -1002,11 +1044,13 @@ tasks:
             optional-coalescing \
             optional-pair \
             text-results \
+            int-bits \
             list-int-values \
             while-list-int \
             else-if-chain \
             list-int-signatures \
             adt-exhaustiveness \
+            adt-usefulness-v2 \
             enum-match-value \
             module-constants \
             module-symbols \
@@ -1025,6 +1069,7 @@ tasks:
             date-time \
             tzdb \
             discovery \
+            stage1-adapter \
             native \
             wasm \
             examples \
@@ -1033,6 +1078,7 @@ tasks:
             bindgen-c \
             rust-shim \
             http \
+            http-client-model \
             cli-framework \
             tui-framework \
             stdlib \
