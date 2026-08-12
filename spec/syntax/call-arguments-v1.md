@@ -24,10 +24,16 @@ landed and gated by `task call-arguments`.
 Bare pipeline targets, pipeline chains, pipelines with trailing lambdas,
 block-bodied trailing lambdas, labelled calls inside lifted lambdas,
 and lexical/member/indirect targets remain at their existing `E2S158` or
-earlier named refusal boundaries. Direct-native/Wasm pipeline behavior is
-unclaimed and uncovered by this C11 slice; #1192 owns its exact
-support-or-source-refusal differential and is the sole remaining direct-backend
-blocker.
+earlier named refusal boundaries. Direct-native and Wasm behavior is measured
+by the same corpus: the labelled Int call executes on both and is compared
+against the C11 golden, and every other shape stops at one named source-located
+boundary per backend. #1192 landed the direct-native and Wasm differential.
+
+Naming a boundary is not admitting it. Those refusals previously described the
+punctuation each parser wanted next — a missing `,`, a missing `)`, or print's
+argument count — about tokens the author had written correctly, and none of
+them named the pipeline, the Optional, or the function type that was actually
+unsupported. The shapes refuse exactly as before; only the wording moved.
 
 The layers landed in order:
 
@@ -284,8 +290,9 @@ The decision deliberately separates follow-up work:
    slot-zero binding, checking, and shared fixed-slot C11 lowering for the
    one-stage direct top-level pipeline. `task call-arguments` gates that result.
    The other pipeline and lambda shapes named above remain refused, and #1192
-   is the sole remaining direct-backend blocker for native/Wasm differential
-   evidence.
+   closed the direct-backend differential: the same corpus now runs on
+   direct-native and wasm32, one shape executing against C11's own golden and
+   every other stopping at a named source-located boundary.
 
 Each child lifts this document's unsupported-current-compiler boundary exactly
 as far as its own executable gate reaches, and no further. #880 lifted none of

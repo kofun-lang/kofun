@@ -439,5 +439,130 @@ coalescing_spans=$(
 test "$coalescing_spans" = 'pipeline|add|129|138|139|142|145|154|129|155' ||
     fail 'coalescing pipeline subject did not bind `??` first'
 
+# #1192: the same corpus on the direct-native and Wasm backends.
+#
+# Everything above measures one backend against a golden. What makes this
+# section a *differential* is that it measures the other two against the same
+# golden file, not against a copy — `source_order_int.stdout` is the artifact
+# the C11 case already ran on, so a backend that disagreed with C11 in either
+# the result or the observable order fails here without anyone having to
+# restate what the right answer is.
+#
+# The golden carries both facts at once: `2` then `1` is the source order the
+# call is written in, and `12` is the ABI vector in declaration order. A
+# backend that evaluated in declaration order would still print `12` — only
+# the first two lines separate it from a correct one.
+for tool in node; do
+    command -v "$tool" >/dev/null 2>&1 ||
+        fail "the three-backend differential requires $tool"
+done
+
+backend_run() {
+    case $1 in
+        x86_64-linux) "$2" ;;
+        wasm32) node "$root/bootstrap/wasm/run.mjs" "$2" ;;
+    esac
+}
+
+agrees_with_c11() {
+    stem=$1
+    target=$2
+    artifact="$temporary/$stem.$target"
+    "$root/bin/kofun" build "$cases/$stem.kofun" -o "$artifact" \
+        --target "$target" >"$temporary/$stem.$target.stdout" \
+        2>"$temporary/$stem.$target.stderr" ||
+        fail "$target did not build $stem: $(cat "$temporary/$stem.$target.stderr")"
+    backend_run "$target" "$artifact" >"$temporary/$stem.$target.run"
+    cmp "$cases/$stem.stdout" "$temporary/$stem.$target.run" ||
+        fail "$target disagreed with the C11 golden for $stem"
+}
+
+# One shape executes on all three backends today: the all-Int labelled call.
+# It is the only one that can be a differential at all -- the rest have no
+# second executable side, which is what the refusals below record.
+agrees_with_c11 source_order_int x86_64-linux
+agrees_with_c11 source_order_int wasm32
+
+# No backend may resolve a label at runtime. On C11 that is asserted against
+# the generated source; here the artifacts are binaries, so the labels are
+# looked for in the bytes that shipped.
+for target in x86_64-linux wasm32; do
+    if LC_ALL=C grep -a -E 'as_first|as_second' \
+        "$temporary/source_order_int.$target" >/dev/null; then
+        fail "$target shipped a call label in its artifact"
+    fi
+done
+
+# Every other shape the merged C11 children deliver stops at exactly one
+# named, source-located boundary per backend. Asserting the wording -- not
+# merely that something failed -- is the point: each of these used to report
+# the punctuation the parser wanted next, about a comma, a paren, or an
+# argument list the author had written correctly.
+refuses_on() {
+    stem=$1
+    target=$2
+    expected=$3
+    label=$4
+    artifact="$temporary/refusal.$target"
+    rm -f "$artifact"
+    set +e
+    "$root/bin/kofun" build "$cases/$stem.kofun" -o "$artifact" \
+        --target "$target" >"$temporary/refusal.stdout" \
+        2>"$temporary/refusal.stderr"
+    refusal_status=$?
+    set -e
+    test "$refusal_status" -eq 1 ||
+        fail "$label on $target did not refuse"
+    test ! -e "$artifact" ||
+        fail "$label on $target committed an artifact"
+    test ! -s "$temporary/refusal.stdout" ||
+        fail "$label on $target wrote stdout"
+    test "$(cat "$temporary/refusal.stderr")" = "$expected" ||
+        fail "$label on $target: $(cat "$temporary/refusal.stderr")"
+}
+
+# #1228's pipeline. `|>` is the grammar's lowest-precedence boundary, so both
+# backends name it where an expression ends rather than where their own caller
+# ran out of patience.
+refuses_on pipeline_subject x86_64-linux \
+    'kofun native: unsupported function Core at byte 127: a pipeline is specified by call-arguments v1 but not recognized by native Core' \
+    'the pipeline'
+refuses_on pipeline_subject wasm32 \
+    'kofun wasm32: line 7: a pipeline is specified by call-arguments v1 but not recognized by wasm32 Core' \
+    'the pipeline'
+
+# #1191's trailing lambda. Both backends stop at the *declaration* it binds --
+# a function-typed parameter -- which is the first thing either one cannot
+# read, so that is what the refusal names.
+refuses_on trailing_lambda x86_64-linux \
+    'kofun native: unsupported function Core at byte 166: a function-typed parameter, which is what a trailing lambda binds, is specified by call-arguments v1 but not implemented by native Core' \
+    'the trailing lambda'
+refuses_on trailing_lambda wasm32 \
+    'kofun wasm32: line 9: a function-typed parameter, which is what a trailing lambda binds, is specified by call-arguments v1 but not implemented by wasm32 Core' \
+    'the trailing lambda'
+
+# #1189's wider carriers, in three groups because the backends stop at three
+# different places: the Optional suffix, the mixed Text/List[Int] parameter,
+# and the `type` declaration a record or enum needs before any call is
+# reached at all.
+refuses_on reordered_optional x86_64-linux \
+    'kofun native: unsupported function Core at byte 30: an Optional type is specified by call-arguments v1 but native Core has only Int and Text' \
+    'the Optional carrier'
+refuses_on reordered_optional wasm32 \
+    'kofun wasm32: line 1: an Optional type is specified by call-arguments v1 but wasm32 Core has only Int' \
+    'the Optional carrier'
+refuses_on source_order_carriers x86_64-linux \
+    'kofun native: unsupported function Core at byte 127: native Core Text helper parameters must have type Text' \
+    'the Text/List[Int] carriers'
+refuses_on source_order_carriers wasm32 \
+    'kofun wasm32: line 6: wasm32 Core accepts only Int parameters' \
+    'the Text/List[Int] carriers'
+refuses_on source_order_wide x86_64-linux \
+    'kofun native: unsupported function Core at byte 0: expected top-level native Core function' \
+    'the enum and record carriers'
+refuses_on source_order_wide wasm32 \
+    'kofun wasm32: line 1: wasm32 Core supports only top-level `fn` declarations' \
+    'the enum and record carriers'
+
 printf '%s\n' \
-    'PASS: labelled calls bind fixed HIR slots and the Int/Text/List[Int]/Optional/enum/record C11 slice evaluates once in source order; take slots move once and refuse double transfer as E2S123; the expression-bodied trailing lambda binds the final parameter as a lifted address; the direct-call pipeline is one production whose spans are published, whose subject binds slot 0 ahead of the explicit arguments and is then counted, type-checked, and moved once into a take slot, and whose C11 lowering evaluates the subject first and exactly once before the explicit arguments; #882 retains bare/member/chain/trailing-lambda pipeline forms, block-bodied trailing calls, labelled calls in lifted lambdas, and lexical/indirect targets; direct-native/Wasm pipeline behavior is unclaimed and its exact differential remains owned by #1192'
+    'PASS: labelled calls bind fixed HIR slots and the Int/Text/List[Int]/Optional/enum/record C11 slice evaluates once in source order; take slots move once and refuse double transfer as E2S123; the expression-bodied trailing lambda binds the final parameter as a lifted address; the direct-call pipeline is one production whose spans are published, whose subject binds slot 0 ahead of the explicit arguments and is then counted, type-checked, and moved once into a take slot, and whose C11 lowering evaluates the subject first and exactly once before the explicit arguments; #882 retains bare/member/chain/trailing-lambda pipeline forms, block-bodied trailing calls, labelled calls in lifted lambdas, and lexical/indirect targets; the labelled Int call executes on direct-native and wasm32 against the same golden as C11, carrying no label into either artifact, and the pipeline, trailing lambda, Optional, Text/List[Int], and enum/record shapes each stop at one named source-located boundary per backend'

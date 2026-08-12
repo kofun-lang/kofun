@@ -403,6 +403,23 @@ struct FunctionExpression {
     FunctionExpression *right;
     FunctionExpression **arguments;
     size_t argument_count;
+    /*
+     * `arguments` is indexed by *declaration slot*, so the ABI vector is filled
+     * in declaration order simply by walking it. `argument_order` records which
+     * slot each source position filled, so evaluation walks source order
+     * instead. Keeping the two orders in separate arrays is what lets a
+     * labelled call evaluate as written and place as declared without either
+     * loop knowing about labels.
+     *
+     * For an unlabelled call the two coincide: slot i is written i-th.
+     *
+     * Sized for the syscall intrinsic rather than for a Core call. A
+     * `__linux_syscall6` carries seven values — the number and six arguments —
+     * which the comment on `FUNCTION_SYSCALL_MAX_ARGUMENTS` calls out as one
+     * more than a Core function may take, and this array is indexed by the same
+     * loops that walk both kinds.
+     */
+    size_t argument_order[FUNCTION_SYSCALL_MAX_ARGUMENTS];
 };
 
 typedef enum {
@@ -424,6 +441,13 @@ typedef struct {
 typedef struct {
     char name[MAX_CORE_NAME];
     char parameters[MAX_CORE_PARAMETERS][MAX_CORE_NAME];
+    /*
+     * The declaration-site external label of each parameter, empty when the
+     * parameter has none. `parameters` stays the *internal* name, because that
+     * is what the body binds — a label is call-site vocabulary only, and no
+     * lookup inside the function may see it (call-arguments v1, rule 4).
+     */
+    char parameter_labels[MAX_CORE_PARAMETERS][MAX_CORE_NAME];
     FunctionValueKind parameter_types[MAX_CORE_PARAMETERS];
     size_t parameter_count;
     char locals[MAX_CORE_STATEMENTS][MAX_CORE_NAME];
@@ -1738,6 +1762,32 @@ static bool function_consume_char(
     return true;
 }
 
+/* Look without consuming. A labelled parameter head is only distinguishable
+ * from an unlabelled one by what follows the first name, so the decision has to
+ * be made before anything is taken. */
+static bool function_peek_char(
+    FunctionParser *parser,
+    char wanted
+) {
+    function_skip_trivia(parser);
+    return parser->cursor < parser->limit &&
+        parser->source[parser->cursor] == wanted;
+}
+
+/* The two-character suffixes that end a type are all written correctly by the
+ * author, so they have to be recognized before anything consumes them and
+ * reports the punctuation that follows. */
+static bool function_peek_pair(
+    FunctionParser *parser,
+    char first,
+    char second
+) {
+    function_skip_trivia(parser);
+    return parser->cursor + 1 < parser->limit &&
+        parser->source[parser->cursor] == first &&
+        parser->source[parser->cursor + 1] == second;
+}
+
 static bool function_consume_pair(
     FunctionParser *parser,
     char first,
@@ -1809,6 +1859,22 @@ static size_t function_parameter_find(
     return SIZE_MAX;
 }
 
+/* The declaration slot carrying `label`, or SIZE_MAX. Separate from
+ * `function_parameter_find` on purpose: an internal name is not a label, and
+ * accepting one here would let a call spell a binding the callee owns. */
+static size_t function_label_find(
+    const FunctionDeclaration *function,
+    const char *label
+) {
+    for (size_t index = 0; index < function->parameter_count; ++index) {
+        if (function->parameter_labels[index][0] != '\0' &&
+            strcmp(function->parameter_labels[index], label) == 0) {
+            return index;
+        }
+    }
+    return SIZE_MAX;
+}
+
 static size_t function_local_find(
     const FunctionDeclaration *function,
     const char *name
@@ -1852,20 +1918,44 @@ static bool function_parse_type(
 ) {
     if (function_consume_word(parser, "Int")) {
         *kind = FUNCTION_VALUE_INT;
-        return true;
-    }
-    if (function_consume_word(parser, "Text")) {
+    } else if (function_consume_word(parser, "Text")) {
         *kind = FUNCTION_VALUE_TEXT;
-        return true;
-    }
-    if (function_consume_word(parser, "List")) {
+    } else if (function_consume_word(parser, "List")) {
         function_error(
             parser,
             "native Core function List parameter/result types are unsupported"
         );
         return false;
+    } else {
+        return false;
     }
-    return false;
+    /*
+     * `Int?` and `Int -> Int` are two shapes the C11 side executes and this
+     * backend does not have at all. Both are reported here, at the suffix
+     * itself, because every caller of this parser recovers by describing the
+     * punctuation it wanted next: an Optional parameter was reported as a
+     * missing `,` between parameters, which sends the author to a comma that
+     * is exactly where it belongs, and a function-typed parameter said the
+     * same about the one token that made it a function type.
+     */
+    if (function_peek_char(parser, '?')) {
+        function_error(
+            parser,
+            "an Optional type is specified by call-arguments v1 but native "
+            "Core has only Int and Text"
+        );
+        return false;
+    }
+    if (function_peek_pair(parser, '-', '>')) {
+        function_error(
+            parser,
+            "a function-typed parameter, which is what a trailing lambda "
+            "binds, is specified by call-arguments v1 but not implemented by "
+            "native Core"
+        );
+        return false;
+    }
+    return true;
 }
 
 static bool function_body_end(
@@ -2025,12 +2115,30 @@ static bool function_headers(
                 }
                 char *parameter =
                     function->parameters[function->parameter_count];
+                char *label =
+                    function->parameter_labels[function->parameter_count];
+                label[0] = '\0';
                 if (!function_identifier(&parser, parameter)) {
                     function_error(
                         &parser,
                         "expected native Core parameter name"
                     );
                     break;
+                }
+                /*
+                 * `external internal: Type` — two names before the colon. The
+                 * first is the call-site label and the second is what the body
+                 * binds, so the label is moved aside and `parameter` keeps the
+                 * internal name. One name is the unlabelled form and stays
+                 * exactly as it was.
+                 */
+                function_skip_trivia(&parser);
+                if (!function_peek_char(&parser, ':')) {
+                    char internal[MAX_CORE_NAME];
+                    if (function_identifier(&parser, internal)) {
+                        memcpy(label, parameter, MAX_CORE_NAME);
+                        memcpy(parameter, internal, MAX_CORE_NAME);
+                    }
                 }
                 if (function_parameter_find(function, parameter) !=
                     SIZE_MAX) {
@@ -2187,6 +2295,13 @@ static FunctionExpression *function_expression(
     expression->right = right;
     expression->arguments = NULL;
     expression->argument_count = 0;
+    /* Every other field here is set explicitly rather than relying on the
+     * allocator, and the source order is no exception. */
+    for (size_t index = 0;
+         index < FUNCTION_SYSCALL_MAX_ARGUMENTS;
+         ++index) {
+        expression->argument_order[index] = index;
+    }
     return expression;
 }
 
@@ -2413,6 +2528,15 @@ static FunctionExpression *function_parse_atom(FunctionParser *parser) {
             call->arguments = allocate(
                 expected * sizeof(*call->arguments)
             );
+            /* `allocate` is malloc, not calloc. A labelled call fills slots out
+             * of order and asks "is this slot already taken?", so every slot
+             * has to start empty — otherwise that question reads uninitialized
+             * memory and a duplicate label is detected at random. */
+            memset(
+                call->arguments,
+                0,
+                expected * sizeof(*call->arguments)
+            );
         }
         function_skip_trivia(parser);
         if (!function_consume_char(parser, ')')) {
@@ -2426,24 +2550,82 @@ static FunctionExpression *function_parse_atom(FunctionParser *parser) {
                     );
                     return call;
                 }
+                /*
+                 * `label: value` binds the slot the declaration gave that
+                 * label; anything else takes the next free slot in order. The
+                 * label is looked up in the callee's declaration, never used to
+                 * choose the callee — labels do not participate in overload
+                 * selection (call-arguments v1).
+                 */
+                size_t slot = call->argument_count;
+                char label[MAX_CORE_NAME];
+                size_t rewind = parser->cursor;
+                if (function_identifier(parser, label) &&
+                    function_peek_char(parser, ':')) {
+                    (void)function_consume_char(parser, ':');
+                    size_t labelled_slot = function_label_find(
+                        &parser->program->functions[target],
+                        label
+                    );
+                    if (labelled_slot == SIZE_MAX) {
+                        function_error(
+                            parser,
+                            "native Core function `%s` has no parameter "
+                            "labelled `%s`",
+                            name,
+                            label
+                        );
+                        return call;
+                    }
+                    if (call->arguments[labelled_slot] != NULL) {
+                        function_error(
+                            parser,
+                            "duplicate call label `%s` for native Core "
+                            "function `%s`",
+                            label,
+                            name
+                        );
+                        return call;
+                    }
+                    slot = labelled_slot;
+                } else {
+                    parser->cursor = rewind;
+                    while (slot < expected &&
+                           call->arguments[slot] != NULL) {
+                        ++slot;
+                    }
+                    if (slot < expected &&
+                        parser->program->functions[target]
+                            .parameter_labels[slot][0] != '\0') {
+                        function_error(
+                            parser,
+                            "native Core function `%s` parameter %zu requires "
+                            "its label `%s`",
+                            name,
+                            slot + 1,
+                            parser->program->functions[target]
+                                .parameter_labels[slot]
+                        );
+                        return call;
+                    }
+                }
                 FunctionExpression *argument =
                     function_parse_expression(parser);
                 if (argument == NULL) return call;
                 FunctionValueKind wanted =
-                    parser->program->functions[target].parameter_types[
-                        call->argument_count
-                    ];
+                    parser->program->functions[target].parameter_types[slot];
                 if (argument->value_kind != wanted) {
                     function_error(
                         parser,
                         "native Core function `%s` argument %zu requires %s",
                         name,
-                        call->argument_count + 1,
+                        slot + 1,
                         function_type_name(wanted)
                     );
                     return call;
                 }
-                call->arguments[call->argument_count++] = argument;
+                call->arguments[slot] = argument;
+                call->argument_order[call->argument_count++] = slot;
                 if (function_consume_char(parser, ')')) break;
                 if (!function_consume_char(parser, ',')) {
                     function_error(
@@ -2620,7 +2802,7 @@ static FunctionExpression *function_parse_sum(FunctionParser *parser) {
     return left;
 }
 
-static FunctionExpression *function_parse_expression(
+static FunctionExpression *function_parse_comparison(
     FunctionParser *parser
 ) {
     FunctionExpression *left = function_parse_sum(parser);
@@ -2666,6 +2848,28 @@ static FunctionExpression *function_parse_expression(
     );
 }
 
+/*
+ * `|>` is the grammar's lowest-precedence boundary, so a finished expression is
+ * exactly where a pipeline would continue and this is the only place the pipe
+ * has to be named. Leaving it for the caller meant each caller blamed its own
+ * punctuation instead: `print(start |> add(delta: 2))` reported that print
+ * requires one Int or Text, about an argument the author had not got wrong.
+ */
+static FunctionExpression *function_parse_expression(
+    FunctionParser *parser
+) {
+    FunctionExpression *value = function_parse_comparison(parser);
+    if (parser->error[0] != '\0') return value;
+    if (function_peek_pair(parser, '|', '>')) {
+        function_error(
+            parser,
+            "a pipeline is specified by call-arguments v1 but not recognized "
+            "by native Core"
+        );
+    }
+    return value;
+}
+
 static bool function_statement_add(
     FunctionParser *parser,
     FunctionDeclaration *function,
@@ -2699,7 +2903,6 @@ static bool function_bodies(
             .program = program,
             .function = function,
         };
-        bool is_main = function_index == program->main_index;
         while (true) {
             function_skip_trivia(&parser);
             if (parser.cursor >= parser.limit) break;
@@ -2751,12 +2954,22 @@ static bool function_bodies(
                 }
             } else if (function_consume_word(&parser, "print")) {
                 statement.kind = FUNCTION_STATEMENT_PRINT;
-                if (!is_main) {
-                    function_error(
-                        &parser,
-                        "native Core print is only supported in main"
-                    );
-                } else if (!function_consume_char(&parser, '(')) {
+                /*
+                 * `print` is an ordinary statement in any function, not a
+                 * privilege of `main`. Nothing in the emitter ever required
+                 * that: it evaluates into eval slot 0, moves to the first
+                 * argument register, and calls the runtime helper — the same
+                 * shape as any other call, in any frame. The layout already
+                 * counted a print's expression pressure and already treated a
+                 * print as a call for callee-saved purposes.
+                 *
+                 * The restriction cost more than it protected. A language whose
+                 * functions cannot report anything has no way to observe
+                 * evaluation order, so every ordering guarantee on this backend
+                 * was untestable — the guarantee held, but nothing could show
+                 * it.
+                 */
+                if (!function_consume_char(&parser, '(')) {
                     function_error(
                         &parser,
                         "expected `(` after native Core print"
@@ -5478,16 +5691,29 @@ static void function_expression_pressure(
             return;
         case FUNCTION_CALL:
         case FUNCTION_SYSCALL:
-            for (size_t index = 0;
-                 index < expression->argument_count;
-                 ++index) {
-                if (index > 0 &&
+            /*
+             * Depth follows the order arguments are *evaluated*, not the slot
+             * they end up in. Evaluating an expression at depth d may use any
+             * depth at or above d, so a value already computed is only safe
+             * while later evaluations start deeper than it — which holds when
+             * written position, not declaration slot, chooses the depth.
+             *
+             * A labelled call that assigned depth by slot broke exactly that:
+             * the argument written first took the higher slot, the argument
+             * written second was evaluated at a lower depth, and its own nested
+             * call reused the higher depth and destroyed the first value.
+             */
+            for (size_t written = 0;
+                 written < expression->argument_count;
+                 ++written) {
+                size_t index = expression->argument_order[written];
+                if (written > 0 &&
                     function_expression_calls(expression->arguments[index])) {
-                    function_pressure_mark(pressure, depth, depth + index);
+                    function_pressure_mark(pressure, depth, depth + written);
                 }
                 function_expression_pressure(
                     expression->arguments[index],
-                    depth + index,
+                    depth + written,
                     pressure
                 );
             }
@@ -5858,16 +6084,27 @@ static void x64_function_expression(
         return;
     }
     if (expression->kind == FUNCTION_CALL) {
-        for (size_t index = 0; index < expression->argument_count; ++index) {
+        /*
+         * Evaluate in written order at increasing depth, then permute into the
+         * boundary. Depth tracks the written position so each evaluation only
+         * disturbs depths at or above its own; the declaration slot appears
+         * only when choosing which argument register a depth is moved into.
+         */
+        for (size_t written = 0;
+             written < expression->argument_count;
+             ++written) {
             x64_function_expression(
                 text,
-                expression->arguments[index],
+                expression->arguments[expression->argument_order[written]],
                 emitter,
                 layout,
-                depth + index
+                depth + written
             );
         }
-        for (size_t index = 0; index < expression->argument_count; ++index) {
+        for (size_t written = 0;
+             written < expression->argument_count;
+             ++written) {
+            size_t index = expression->argument_order[written];
             if (index >= MAX_CORE_PARAMETERS) {
                 fatal("x86-64 Core call has too many arguments");
             }
@@ -5876,7 +6113,7 @@ static void x64_function_expression(
             x64_mov_register_operand(
                 text,
                 x64_argument_registers[index],
-                target_eval_operand(layout, depth + index)
+                target_eval_operand(layout, depth + written)
             );
         }
         x64_function_call(text, emitter, expression->function_index);
@@ -6124,24 +6361,32 @@ static void x64_function_tail_call(
     size_t self_index,
     size_t body_start
 ) {
-    for (size_t index = 0; index < call->argument_count; ++index) {
-        if (index >= MAX_CORE_PARAMETERS) {
+    /*
+     * Evaluate in written order at increasing depth, then permute into the ABI
+     * vector. Depth tracks the written position so each evaluation only
+     * disturbs depths at or above its own; the declaration slot appears only
+     * when a depth is moved to its destination. This is the same separation the
+     * C11 backend gets from its comma expression over fixed temporaries.
+     */
+    for (size_t written = 0; written < call->argument_count; ++written) {
+        if (written >= MAX_CORE_PARAMETERS) {
             fatal("x86-64 Core call has too many arguments");
         }
         x64_function_expression(
             text,
-            call->arguments[index],
+            call->arguments[call->argument_order[written]],
             emitter,
             layout,
-            index
+            written
         );
     }
     if (call->function_index == self_index) {
-        for (size_t index = 0; index < call->argument_count; ++index) {
+        for (size_t written = 0; written < call->argument_count; ++written) {
+            size_t index = call->argument_order[written];
             x64_move(
                 text,
                 target_value_operand(layout, index),
-                target_eval_operand(layout, index)
+                target_eval_operand(layout, written)
             );
         }
         x64_patch_rel32(text, x64_local_jmp(text), body_start);
@@ -6149,11 +6394,11 @@ static void x64_function_tail_call(
     }
     /* Argument registers are never allocated, so filling the boundary cannot
      * overwrite an argument that has not been moved yet. */
-    for (size_t index = 0; index < call->argument_count; ++index) {
+    for (size_t written = 0; written < call->argument_count; ++written) {
         x64_mov_register_operand(
             text,
-            x64_argument_registers[index],
-            target_eval_operand(layout, index)
+            x64_argument_registers[call->argument_order[written]],
+            target_eval_operand(layout, written)
         );
     }
     /* The saved registers still live in frame slots, so they are reloaded
@@ -7500,16 +7745,24 @@ static void a64_function_expression(
         return;
     }
     if (expression->kind == FUNCTION_CALL) {
-        for (size_t index = 0; index < expression->argument_count; ++index) {
+        /* Evaluate in written order at increasing depth, then permute into the
+         * boundary — the same separation the x86-64 expression path makes, so
+         * both targets observe one evaluation order for a labelled call. */
+        for (size_t written = 0;
+             written < expression->argument_count;
+             ++written) {
             a64_function_expression(
                 text,
-                expression->arguments[index],
+                expression->arguments[expression->argument_order[written]],
                 emitter,
                 layout,
-                depth + index
+                depth + written
             );
         }
-        for (size_t index = 0; index < expression->argument_count; ++index) {
+        for (size_t written = 0;
+             written < expression->argument_count;
+             ++written) {
+            size_t index = expression->argument_order[written];
             if (index >= MAX_CORE_PARAMETERS) {
                 fatal("aarch64 Core call has too many arguments");
             }
@@ -7518,7 +7771,7 @@ static void a64_function_expression(
             a64_move(
                 text,
                 target_register_operand((unsigned)index),
-                target_eval_operand(layout, depth + index)
+                target_eval_operand(layout, depth + written)
             );
         }
         a64_function_call(text, emitter, expression->function_index);
@@ -7650,24 +7903,28 @@ static void a64_function_tail_call(
     size_t self_index,
     size_t body_start
 ) {
-    for (size_t index = 0; index < call->argument_count; ++index) {
-        if (index >= MAX_CORE_PARAMETERS) {
+    /* Evaluate in written order at increasing depth, then permute into the ABI
+     * vector — the same separation the x86-64 emitter makes, so both targets
+     * observe the same evaluation order for a labelled call. */
+    for (size_t written = 0; written < call->argument_count; ++written) {
+        if (written >= MAX_CORE_PARAMETERS) {
             fatal("aarch64 Core call has too many arguments");
         }
         a64_function_expression(
             text,
-            call->arguments[index],
+            call->arguments[call->argument_order[written]],
             emitter,
             layout,
-            index
+            written
         );
     }
     if (call->function_index == self_index) {
-        for (size_t index = 0; index < call->argument_count; ++index) {
+        for (size_t written = 0; written < call->argument_count; ++written) {
+            size_t index = call->argument_order[written];
             a64_move(
                 text,
                 target_value_operand(layout, index),
-                target_eval_operand(layout, index)
+                target_eval_operand(layout, written)
             );
         }
         size_t back = text->length;
@@ -7677,11 +7934,13 @@ static void a64_function_tail_call(
     }
     /* Argument registers are never allocated, so filling the boundary cannot
      * overwrite an argument that has not been moved yet. */
-    for (size_t index = 0; index < call->argument_count; ++index) {
+    for (size_t written = 0; written < call->argument_count; ++written) {
         a64_move(
             text,
-            target_register_operand((unsigned)index),
-            target_eval_operand(layout, index)
+            target_register_operand(
+                (unsigned)call->argument_order[written]
+            ),
+            target_eval_operand(layout, written)
         );
     }
     /* The saved registers still live in frame slots, so they are reloaded

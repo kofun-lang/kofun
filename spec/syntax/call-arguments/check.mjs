@@ -155,7 +155,8 @@ const pipelineTruth = {
 const requiredRunTruth = [
   "whose C11 lowering evaluates the subject first and exactly once before the explicit arguments",
   "#882 retains bare/member/chain/trailing-lambda pipeline forms, block-bodied trailing calls, labelled calls in lifted lambdas, and lexical/indirect targets",
-  "direct-native/Wasm pipeline behavior is unclaimed and its exact differential remains owned by #1192",
+  "the labelled Int call executes on direct-native and wasm32 against the same golden as C11",
+  "each stop at one named source-located boundary per backend",
 ];
 
 function assertPipelineDocumentation({ expressions, spec, readme, run }) {
@@ -176,16 +177,27 @@ function assertPipelineDocumentation({ expressions, spec, readme, run }) {
     "binding is #1226",
     "pipeline binding (#1226)",
     "Pipeline binding,",
+    // #1192 landed. Both halves of the old status are now false, and the
+    // second is the more dangerous one to leave lying around: a reader who
+    // believed the backends were uncovered would re-derive a differential the
+    // corpus already runs.
+    "Direct-native/Wasm pipeline behavior is unclaimed and uncovered",
+    "#1192 is the sole remaining direct-backend blocker",
   ]) assert.ok(!pipelineDocs.includes(stale), `stale pipeline status: ${stale}`);
   for (const current of [
     "The subject binds declaration/ABI slot zero",
     "#1190, #1226, #1227, and #1228 are landed",
     "#1226 binds its subject to slot zero, #1227 checks it, and #1228 lowers it",
-    "#1192 is the sole remaining direct-backend blocker",
+    "#1192 landed the direct-native and Wasm differential",
   ]) assert.ok(pipelineDocs.includes(current), `missing pipeline status: ${current}`);
 
-  const nativeBoundary = "Direct-native/Wasm pipeline behavior is unclaimed and uncovered";
-  const nativeOverclaim = /(?:Direct-native\/Wasm[^.]{0,200}\bE2S158\b|\bE2S158\b[^.]{0,200}Direct-native\/Wasm)/i;
+  // Each document states the measured backend result in its own right. The
+  // three are asserted separately because a reader arrives at exactly one of
+  // them, and the sentence they must all carry is what that reader is owed:
+  // one shape executes and is compared against C11's own golden, and every
+  // other shape has a named boundary rather than a silent gap.
+  const nativeBoundary = "Direct-native and Wasm behavior is measured by the same corpus: the labelled Int call executes on both and is compared against the C11 golden, and every other shape stops at one named source-located boundary per backend";
+  const nativeOverclaim = /(?:Direct-native[^.]{0,200}\bE2S158\b|\bE2S158\b[^.]{0,200}Direct-native)/i;
   for (const [owner, text] of [
     ["expressions contract", normalizedExpressions],
     ["call-arguments specification", normalizedSpec],
@@ -209,11 +221,19 @@ function rejectsPipelineMutation(name, expected, mutation) {
   );
 }
 
+/* The three documents wrap the sentence at different columns, so the mutation
+ * is built from the sentence itself rather than written out with one file's
+ * line breaks baked in. A mutation that silently matched nothing would leave
+ * this self-test passing while asserting nothing. */
 function withoutNativeBoundary(text) {
-  return text.replace(
-    /Direct-native\/Wasm\s+pipeline behavior is\s+unclaimed and\s+uncovered/,
-    "Direct-native/Wasm pipeline behavior is uncovered",
+  const wrapped = new RegExp(
+    "the labelled Int call executes on both and is compared against the C11 golden"
+      .split(" ")
+      .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("\\s+"),
   );
+  assert.ok(wrapped.test(text), "native/Wasm boundary mutation matched nothing");
+  return text.replace(wrapped, "the labelled Int call executes on both");
 }
 
 function withoutExpressionsCurrent(text) {

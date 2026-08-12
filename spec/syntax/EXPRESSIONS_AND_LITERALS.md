@@ -177,9 +177,11 @@ slot, and observes the bounded bare-binding `take` rule; fixed-slot C11
 lowering evaluates it first and exactly once before explicit arguments in
 source order. Bare/member targets, chains, pipeline-plus-trailing-lambda, and
 the other full-language pipeline shapes remain open at their existing Stage 2
-refusal boundaries. Direct-native/Wasm pipeline behavior is unclaimed and
-uncovered by this C11 slice; #1192 owns its exact support-or-source-refusal
-differential.
+refusal boundaries. Direct-native and Wasm behavior is measured by the same
+corpus: the labelled Int call executes on both and is compared against the C11
+golden, and every other shape stops at one named source-located boundary per
+backend. On both backends `|>` is named where an expression ends, which is the
+one place a pipeline can continue.
 
 ## Issue 50: null literal
 
