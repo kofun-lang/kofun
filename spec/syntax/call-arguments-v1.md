@@ -10,15 +10,24 @@ source order and a later transfer is refused as `E2S123`. Supplying that final
 parameter both by label and by the trailing lambda is `E2S167`, a binding
 failure rather than a lowering boundary.
 
-`subject |> callee(arguments)` is **recognized** as one production, with `|>` as
-the lowest-precedence boundary in the expression grammar, so `a ?? b |> f(c)`
-has `a ?? b` as its subject. Recognition is all it is: the production publishes
-its subject, pipe, callee, parenthesis and whole-expression spans and then
-fails closed, because binding is #1226, checking #1227, and C11 lowering #1228.
-Every other shape on this page — pipeline binding, block-bodied trailing
-lambdas, labelled calls inside lifted lambdas, indirect/lexical callees, and
-the direct-native/Wasm backends — remains at the explicit `E2S158` boundary
-owned by #882.
+`subject |> callee(arguments)` is implemented for one-stage direct top-level
+calls on Stage 2/C11, within the fixed carrier matrix above. `|>` is the
+lowest-precedence boundary in the expression grammar, so `a ?? b |> f(c)` has
+`a ?? b` as its subject. The subject binds declaration/ABI slot zero, counts
+toward effective arity, and is checked against that slot. A bare binding piped
+to a declared `take` slot moves exactly once; a compound subject records no
+move. C11 lowering evaluates the subject first and exactly once, evaluates each
+explicit argument once in source order, stores every value in a fixed slot, and
+invokes only after all slots are assigned. #1190, #1226, #1227, and #1228 are
+landed and gated by `task call-arguments`.
+
+Bare pipeline targets, pipeline chains, pipelines with trailing lambdas,
+block-bodied trailing lambdas, labelled calls inside lifted lambdas,
+and lexical/member/indirect targets remain at their existing `E2S158` or
+earlier named refusal boundaries. Direct-native/Wasm pipeline behavior is
+unclaimed and uncovered by this C11 slice; #1192 owns its exact
+support-or-source-refusal differential and is the sole remaining direct-backend
+blocker.
 
 The layers landed in order:
 
@@ -36,6 +45,10 @@ The layers landed in order:
   vector. #1189 adds `Int?`, concrete enum, and nominal record carriers and
   preserves a `take` slot as one semantic transfer. `task call-arguments` is
   the executable gate.
+- **#1190, #1226, #1227, #1228** — pipeline. #1190 recognizes the production and
+  publishes its spans; #1226 binds the subject to slot zero; #1227 checks
+  effective arity, slot-zero type, and the bounded `take` transfer; and #1228
+  lowers the checked call through the shared fixed-slot C11 emitter.
 
 The words MUST, MUST NOT, SHOULD, SHOULD NOT, and MAY are normative.
 
@@ -266,18 +279,22 @@ The decision deliberately separates follow-up work:
 3. #882: pipeline/trailing lowering plus C11/direct-native differential
    evidence — its carrier children landed (#1097 all-`Int`, #1107 widened to
    `Text`/`List[Int]`, and #1189 widened to `Int?`, concrete enum, nominal
-   record, and a bounded `take` transfer), #1191 landed the expression-bodied
-   trailing lambda, and #1190 landed pipeline recognition, gated by
-   `task call-arguments`; pipeline binding (#1226), checking (#1227) and
-   lowering (#1228), the block-bodied trailing lambda, lambda-body lowering,
-   and non-C11 backends stay open.
+   record, and a bounded `take` transfer); #1191 landed the expression-bodied
+   trailing lambda; and #1190, #1226, #1227, and #1228 landed recognition,
+   slot-zero binding, checking, and shared fixed-slot C11 lowering for the
+   one-stage direct top-level pipeline. `task call-arguments` gates that result.
+   The other pipeline and lambda shapes named above remain refused, and #1192
+   is the sole remaining direct-backend blocker for native/Wasm differential
+   evidence.
 
 Each child lifts this document's unsupported-current-compiler boundary exactly
 as far as its own executable gate reaches, and no further. #880 lifted none of
-it: the parser it added deliberately stops short of binding. What that change
-bought was a refusal that names the form, so `E2S158` is what a reader finds
-where the misparse used to be — and it is still what the unresolved shapes
-#882 retains produce today.
+it: the parser it added deliberately stops short of binding. #1190 first moved
+the pipeline production from misleading argument failures to a refusal that
+names the form and publishes its spans. #1226, #1227, and #1228 then moved the
+one-stage direct top-level Stage 2/C11 shape through binding, checking, and
+lowering. The other pipeline, lambda, and target shapes listed above retain
+their named refusals; #1192 changes only the direct backend coverage.
 
 The one place the surface parser touches a signature is trailing-lambda
 attachment, because this document requires it to: the callee's resolved

@@ -168,11 +168,18 @@ source | > consume    # the operator is one token
 
 ### Current status
 
-The Stage 0 draft grammar and design decision DD-011 record `|>` and its
-first-argument rewrite. The Stage 2 scanner recognizes the pair token, but the
-current integer Core does not parse, type-check, or lower pipelines. Pipeline
-AST/HIR, ownership behavior, diagnostics, and differential execution remain
-open.
+The Stage 0 draft grammar and design decision DD-011 record the full `|>`
+language and its first-argument rewrite. Stage 2/C11 now parses, type-checks,
+and lowers the bounded one-stage `subject |> callee(arguments)` subset when
+`callee` is a direct top-level function in the current carrier matrix: the
+subject binds slot zero, counts toward effective arity, is checked against that
+slot, and observes the bounded bare-binding `take` rule; fixed-slot C11
+lowering evaluates it first and exactly once before explicit arguments in
+source order. Bare/member targets, chains, pipeline-plus-trailing-lambda, and
+the other full-language pipeline shapes remain open at their existing Stage 2
+refusal boundaries. Direct-native/Wasm pipeline behavior is unclaimed and
+uncovered by this C11 slice; #1192 owns its exact support-or-source-refusal
+differential.
 
 ## Issue 50: null literal
 
