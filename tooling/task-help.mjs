@@ -95,7 +95,8 @@ export const GROUPS = Object.freeze([
             'environment-authority-compiler-contract', 'host-process-authority-contract',
             'directory-authority-contract', 'http-carrier-profile',
             'benchmark-summary', 'benchmark-report-spec', 'benchmark-report-model',
-            'benchmark-report-comparison', 'capabilities'
+            'benchmark-report-comparison', 'kofun-digest-model',
+            'capabilities'
         ]
     },
     {
