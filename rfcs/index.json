@@ -912,6 +912,30 @@
         "result": "`0`, `0` and `0` at 1c27baa8, the audited commit, across 1067 tracked `.kofun` sources carrying 109 module headers. No tracked source begins a line with `trust`, none writes `trusted import`, and no generated raw binding is committed, so the two contextual keywords collide with nothing and no tracked module acquires a class.",
         "evidence": "spec/modules/module-identity.md"
       }
+    },
+    {
+      "id": "RFC-0013",
+      "title": "Bit operations on `Int` are named methods, and the operator symbols stay free",
+      "provenance": "rfc",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "rfcs/0013-int-bit-operations.md",
+      "document": "rfcs/0013-int-bit-operations.md",
+      "dates": {
+        "opened_on": "2026-08-12",
+        "review_closed_on": "2026-08-12",
+        "decided_on": "2026-08-12"
+      },
+      "normative_spec": [
+        "rfcs/0013-int-bit-operations.md"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "No tracked program changes meaning and none stops compiling. There is no grammar change: `postfix = primary, { call | member | index }` already admits the member-call form that `handle.join()` uses. No word is reserved — `and`, `or`, `xor`, `not`, `shl`, `shr`, `rotr` and `wrapping_add` stay ordinary identifiers everywhere, and become meaningful only as members of an `Int` receiver. No operator symbol is added: `&`, `^`, `<<` and `>>` are free in the grammar but are left free, because `|` is not — it delimits the `par` scope token and separates ADT variants, so an operator set could cover four of the five and would leave one spelling mixed into every dense expression. `R011` is a new runtime code for a shift count outside `0..63` or a width outside `1..64`; no existing program can reach it, because no existing program can call an operation that raises it.",
+        "corpus_query": "git ls-files '*.kofun' | wc -l; git grep -cE '^[[:space:]]*fn (and|or|xor|not|shl|shr|rotr|wrapping_add)\\(' -- '*.kofun' | wc -l; git grep -cE '\\.(and|or|xor|not|shl|shr|rotr|wrapping_add)\\(' -- '*.kofun' | wc -l",
+        "result": "`1105`, `0` and `0` at ffa3d8a7, the audited commit. No tracked source declares a function with any of the eight names and none calls a member with them, so no spelling collides and nothing acquires new behaviour. The motivating gap is measured the same way: no tracked `.kofun` source implements a digest, and `bin/kofun-digest` is a shell script that builds `bootstrap/stage2/sha256_tool.c`, so every SHA-256 preimage the compiler is specified to assign — ModuleId, FileId, SymbolId, and scope-HIR v2 ParId/TaskId/JoinId — is computed by C the language cannot express.",
+        "evidence": "spec/grammar.ebnf"
+      }
     }
   ]
 }
