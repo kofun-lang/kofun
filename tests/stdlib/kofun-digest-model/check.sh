@@ -144,19 +144,31 @@ assert_num 'every corpus message was compared with the C oracle' "$lines" -eq 9
 # A wrong digest is stable and self-consistent, so the only evidence that this
 # gate can tell right from wrong is that a wrong implementation fails it.
 
+# A mutation is evidence only if the mutant **builds**. A mutant that fails to
+# compile exits non-zero, and a harness that reads "non-zero" as "caught" is
+# reporting the compiler's opinion rather than the model's behaviour — which is
+# what this harness did until #1358 made an uncalled function build. Two of the
+# mutations here deleted the only call to a function; both failed to compile,
+# both looked like they bit, and one of them could not have changed the output
+# even if it had run.
+#
+# So the build is required, and its failure is a gate failure with its own
+# message rather than a silent pass.
 mutation() {
     name=$1
     expression=$2
     sed "$expression" "$model" >"$WORK/mutant-$name.kofun"
     cmp -s "$model" "$WORK/mutant-$name.kofun" &&
         assert_fail "mutation $name changed nothing; its pattern no longer matches"
-    if "$ROOT/bin/kofun" run "$WORK/mutant-$name.kofun" \
-        >"$WORK/mutant-$name.stdout" 2>"$WORK/mutant-$name.stderr"
+    "$ROOT/bin/kofun" build "$WORK/mutant-$name.kofun" \
+        -o "$WORK/mutant-$name.bin" \
+        >"$WORK/mutant-$name.build.stdout" 2>"$WORK/mutant-$name.build.stderr" ||
+        assert_fail "mutation $name does not build; it is testing the compiler rather than the digest: $(head -1 "$WORK/mutant-$name.build.stderr")"
+    "$WORK/mutant-$name.bin" >"$WORK/mutant-$name.stdout" \
+        2>"$WORK/mutant-$name.stderr" || true
+    if cmp -s "$WORK/digests.stdout" "$WORK/mutant-$name.stdout"
     then
-        if cmp -s "$WORK/digests.stdout" "$WORK/mutant-$name.stdout"
-        then
-            assert_fail "mutation $name produced the same digests; the gate does not bite"
-        fi
+        assert_fail "mutation $name produced the same digests; the gate does not bite"
     fi
 }
 
