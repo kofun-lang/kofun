@@ -37,6 +37,24 @@ try {
 
     const mutations = [
         ['host compiler dependency', (copy) => copy.objective.forbidden_core_build_requirements = ['rustc']],
+        ['Linux-only native targets', (copy) => {
+            copy.objective.required_native_targets = copy.objective.required_native_targets.slice(0, 2)
+        }],
+        ['missing Windows operating system', (copy) => {
+            copy.objective.required_native_operating_systems = ['linux', 'macos']
+        }],
+        ['missing PE image writer', (copy) => {
+            copy.objective.required_native_image_formats = ['ELF64', 'Mach-O-64']
+        }],
+        ['system SDK dependency', (copy) => {
+            copy.objective.forbidden_core_build_requirements =
+                copy.objective.forbidden_core_build_requirements
+                    .filter((entry) => entry !== 'system-sdk')
+        }],
+        ['missing native execution evidence', (copy) => {
+            copy.objective.completion_evidence = copy.objective.completion_evidence
+                .filter((entry) => !entry.startsWith('native execution evidence'))
+        }],
         ['implicit root authority', (copy) => copy.decisions.environment_authority.hidden_root = true],
         ['ambient process PATH', (copy) => copy.decisions.process_authority.path_search = true],
         ['directory symlink following', (copy) => copy.decisions.directory_authority.symlinks = 'follow'],
@@ -61,7 +79,7 @@ try {
     }
 
     process.stdout.write(`PASS: native toolchain decision contract (${requested})\n`)
-    process.stdout.write(`PASS: ${mutations.length} authority, dependency, ABI, and trust mutations fail closed\n`)
+    process.stdout.write(`PASS: ${mutations.length} target, authority, dependency, ABI, and trust mutations fail closed\n`)
 } catch (error) {
     process.stderr.write(`native-toolchain-v1: ${error.message}\n`)
     process.exit(1)

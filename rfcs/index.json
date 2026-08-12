@@ -1083,7 +1083,19 @@
       "compatibility": {
         "category": "none",
         "statement": "This target contract changes no accepted program and promotes no capability. Existing C11, shell, Node.js, Rust-shim, and go-task paths remain valid bounded bootstrap, test, or interoperability evidence; they simply do not satisfy `kofun-only-native/v1` until the required core build path is implemented entirely by the released Kofun toolchain."
-      }
+      },
+      "amendments": [
+        {
+          "id": "A01",
+          "recorded_on": "2026-08-13",
+          "delta": "The completion profile requires six native targets rather than two: Linux, Windows, and macOS on x86-64 and AArch64. Kofun directly writes ELF64, PE32+, and Mach-O 64 images, including machine code, runtime, imports, symbol/fixup resolution, and final layout. A supported-host Kofun compiler cross-emits all six. Matching real OS/architecture execution, repeated byte identity, and a self-rebuilt compiler repeating the matrix are completion evidence. OS kernels, loaders, Windows system APIs, dyld, and libSystem are execution boundaries; system SDKs and import libraries are forbidden build inputs. Shell build drivers and go-task join the forbidden core build requirements.",
+          "original_semantics": "`native-x86_64-linux-elf64` and `native-aarch64-linux-elf64` emit deterministic complete ELF images directly, including the selected runtime; no assembler or linker process runs.\n\nPlatform expansion beyond Linux ELF64 and `wasm32-hostabi1`, the audit body for a 1.0 release, and the schedule remain separate work. None can weaken the two required native targets or introduce a hidden hosted build.",
+          "compatibility": {
+            "category": "none",
+            "statement": "This strengthens a future completion label and changes no accepted program or current implementation claim. Existing Linux ELF checkpoints retain exactly their bounded status."
+          }
+        }
+      ]
     }
   ]
 }

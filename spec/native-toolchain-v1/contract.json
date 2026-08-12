@@ -6,15 +6,30 @@
       "Rust",
       "Zig"
     ],
-    "meaning": "A production Kofun release can compile, link, package, test, and rebuild its supported native programs and its own full-language toolchain without requiring a C/C++ compiler, assembler, system linker, Rust, Cargo, Zig, Node.js, Python, or a second build language.",
+    "meaning": "A production Kofun release can compile, link, package, test, and rebuild its supported native programs and its own full-language toolchain for Linux, Windows, and macOS without requiring a C/C++ compiler, assembler, system linker, Rust, Cargo, Zig, Node.js, Python, a shell build driver, or a second build language.",
     "required_language_for_shipped_toolchain": "Kofun",
     "required_native_targets": [
       "native-x86_64-linux-elf64",
-      "native-aarch64-linux-elf64"
+      "native-aarch64-linux-elf64",
+      "native-x86_64-windows-pe32plus",
+      "native-aarch64-windows-pe32plus",
+      "native-x86_64-macos-macho64",
+      "native-aarch64-macos-macho64"
+    ],
+    "required_native_operating_systems": [
+      "linux",
+      "windows",
+      "macos"
+    ],
+    "required_native_image_formats": [
+      "ELF64",
+      "PE32+",
+      "Mach-O-64"
     ],
     "required_portable_target": "wasm32-hostabi1",
     "allowed_external_boundary": [
       "operating-system-kernel-abi",
+      "operating-system-loader-and-system-api",
       "firmware-or-wasm-host-abi",
       "explicit-versioned-foreign-library-adapter"
     ],
@@ -27,11 +42,19 @@
       "cargo",
       "zig",
       "node",
-      "python"
+      "python",
+      "shell-build-driver",
+      "go-task",
+      "system-sdk",
+      "import-library",
+      "non-kofun-build-language"
     ],
     "completion_evidence": [
       "clean full-language fixed point from a released Kofun compiler",
-      "byte-identical repeated native artifacts for both required native targets",
+      "byte-identical repeated native artifacts for all six required native targets",
+      "native execution evidence on matching Linux, Windows, and macOS x86-64 and AArch64 hosts",
+      "each supported-host Kofun compiler cross-emits all six required native targets",
+      "recorded process graph contains no forbidden core build requirement",
       "source-free dependency build from KIF and package artifacts",
       "toolchain commands implemented in Kofun and exercised without forbidden core build requirements",
       "capability manifest and release artifacts read back from the exact release commit"

@@ -10,7 +10,8 @@ Kofun advances milestones by correctness gate, not by feature count.
 - distinguish the strength of law evidence as `bounded`, `proven-finite`, or `proven`
 - do not call the project "self-hosting complete" before the Stage 2 fixed point
 - do not call the native toolchain complete while its required core build runs
-  a host compiler, assembler, linker, Rust, Zig, Node.js, or Python
+  a host compiler, assembler, linker, Rust, Zig, Node.js, Python, shell build
+  driver, system SDK, or import library
 
 A milestone is advanced by evidence, not by a decision having been accepted.
 The [RFC process](https://kofun-lang.github.io/kofun/docs/rfc-process/) records
@@ -20,12 +21,13 @@ an accepted RFC carries no schedule and moves no milestone until
 RFC sets named here are decision work, and appear on this roadmap only once
 they have implementation evidence to advance.
 
-RFC-0018 fixes the final product boundary: the required x86-64/AArch64 native
-toolchain is full-language, Kofun-authored, source-free across package
-interfaces, and linker-free. The current C11 fixed point is bootstrap evidence
-toward that profile, not completion of it. `task native-toolchain-contract`
-checks the decision while `release/claims.json` continues to say what is
-actually implemented.
+RFC-0018/A01 fixes the final product boundary: six native targets cover Linux,
+Windows, and macOS on x86-64 and AArch64. The toolchain is full-language,
+Kofun-authored, source-free across package interfaces, and directly writes
+ELF64, PE32+, and Mach-O 64 without a linker. The current C11 fixed point and
+Linux ELF checkpoints are bootstrap evidence toward that profile, not
+completion of it. `task native-toolchain-contract` checks the decision while
+`release/claims.json` continues to say what is actually implemented.
 
 ## Current critical-path order
 
@@ -162,6 +164,11 @@ Deliverables:
 - generational GC
 - deterministic owned resources
 - native backend
+- one Kofun frontend and typed IR shared by all six native targets
+- Kofun x86-64 and AArch64 instruction encoders and fixup resolver
+- Kofun ELF64, PE32+, and Mach-O 64 final-image writers
+- Kofun Linux, Windows, and macOS startup/runtime adapters
+- Kofun build, package, test, verification, and release orchestration
 - ADT, match, generics, traits
 - Result/error propagation
 - effects phase 1
@@ -178,7 +185,10 @@ Exit criteria:
 - safe subset memory safety audit
 - VM/native differential tests
 - benchmark suite against C, Rust, Python, Julia, and Go where meaningful
-- Linux/macOS primary support
+- native Linux, Windows, and macOS execution on x86-64 and AArch64
+- each supported-host Kofun compiler cross-emits all six targets
+- a process trace proves the core build ran no forbidden external tool
+- two clean builds and the self-rebuilt compiler reproduce all six target images byte for byte
 - generic optimizer rewrites require checked proof evidence
 - malformed proof certificates cannot crash or escape the kernel
 
@@ -192,7 +202,6 @@ Deliverables:
 - debugger/profiler integration
 - typed hygienic macros
 - scientific stack phase 2
-- Windows support
 - Wasm/WASI support
 - documentation generator
 - migration and edition tooling

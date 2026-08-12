@@ -85,12 +85,13 @@ There is no single integrated compiler core yet. `docs/MVP_IMPLEMENTED.md` is
 the exact capability matrix, and `task release-claims` fails when it and
 `release/claims.json` disagree.
 
-The accepted end state is not a larger C-hosted frontend. RFC-0018 requires a
-full-language Kofun compiler/toolchain that directly emits complete x86-64 and
-AArch64 ELF images without a host compiler, assembler, or linker. The C11 seed
-and the independent bounded native C compilers above remain honest bootstrap
-provenance until that Kofun-only fixed point exists; they are not silently
-promoted into the completion claim.
+The accepted end state is not a larger C-hosted frontend. RFC-0018/A01 requires
+a full-language Kofun compiler/toolchain that directly emits complete ELF64,
+PE32+, and Mach-O 64 images for Linux, Windows, and macOS on x86-64 and AArch64
+without a host compiler, assembler, linker, SDK, import library, or shell build
+driver. The C11 seed and the independent bounded native C compilers above
+remain honest bootstrap provenance until that Kofun-only six-target fixed point
+exists; they are not silently promoted into the completion claim.
 
 ### Reading order
 

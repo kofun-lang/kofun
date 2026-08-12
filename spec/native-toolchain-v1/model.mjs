@@ -31,15 +31,48 @@ export function validateContract(contract) {
     const objective = contract.objective ?? fail('objective: missing')
     equal(objective.required_language_for_shipped_toolchain, 'Kofun', 'objective.required_language_for_shipped_toolchain')
     hasAll(objective.replacement_class, ['Rust', 'Zig'], 'objective.replacement_class')
-    hasAll(objective.required_native_targets,
-        ['native-x86_64-linux-elf64', 'native-aarch64-linux-elf64'],
-        'objective.required_native_targets')
+    const requiredTargets = [
+        'native-x86_64-linux-elf64',
+        'native-aarch64-linux-elf64',
+        'native-x86_64-windows-pe32plus',
+        'native-aarch64-windows-pe32plus',
+        'native-x86_64-macos-macho64',
+        'native-aarch64-macos-macho64',
+    ]
+    hasAll(objective.required_native_targets, requiredTargets, 'objective.required_native_targets')
+    equal(objective.required_native_targets.length, requiredTargets.length,
+        'objective.required_native_targets length')
+    hasAll(objective.required_native_operating_systems,
+        ['linux', 'windows', 'macos'],
+        'objective.required_native_operating_systems')
+    equal(objective.required_native_operating_systems.length, 3,
+        'objective.required_native_operating_systems length')
+    hasAll(objective.required_native_image_formats,
+        ['ELF64', 'PE32+', 'Mach-O-64'],
+        'objective.required_native_image_formats')
+    equal(objective.required_native_image_formats.length, 3,
+        'objective.required_native_image_formats length')
     hasAll(objective.forbidden_core_build_requirements,
-        ['cc', 'c++', 'assembler', 'system-linker', 'rustc', 'cargo', 'zig', 'node', 'python'],
+        ['cc', 'c++', 'assembler', 'system-linker', 'rustc', 'cargo', 'zig', 'node', 'python',
+            'shell-build-driver', 'go-task', 'system-sdk', 'import-library',
+            'non-kofun-build-language'],
         'objective.forbidden_core_build_requirements')
     hasAll(objective.allowed_external_boundary,
-        ['operating-system-kernel-abi', 'firmware-or-wasm-host-abi', 'explicit-versioned-foreign-library-adapter'],
+        ['operating-system-kernel-abi', 'operating-system-loader-and-system-api',
+            'firmware-or-wasm-host-abi', 'explicit-versioned-foreign-library-adapter'],
         'objective.allowed_external_boundary')
+    equal(objective.allowed_external_boundary.length, 4,
+        'objective.allowed_external_boundary length')
+    hasAll(objective.completion_evidence,
+        ['clean full-language fixed point from a released Kofun compiler',
+            'byte-identical repeated native artifacts for all six required native targets',
+            'native execution evidence on matching Linux, Windows, and macOS x86-64 and AArch64 hosts',
+            'each supported-host Kofun compiler cross-emits all six required native targets',
+            'recorded process graph contains no forbidden core build requirement',
+            'source-free dependency build from KIF and package artifacts',
+            'toolchain commands implemented in Kofun and exercised without forbidden core build requirements',
+            'capability manifest and release artifacts read back from the exact release commit'],
+        'objective.completion_evidence')
     if (!objective.claim_boundary.includes('does not claim')) fail('objective.claim_boundary: must refuse a current implementation claim')
 
     const decisions = contract.decisions ?? fail('decisions: missing')

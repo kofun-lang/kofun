@@ -5,6 +5,12 @@
 - Status: accepted
 - Decided: 2026-08-11
 
+> **Amended: `RFC-0018/A01` (2026-08-13).** The accepted text below is
+> preserved as written. Its Linux-only minimum is superseded: the completion
+> profile now requires Linux, Windows, and macOS on both x86-64 and AArch64,
+> with direct ELF64, PE32+, and Mach-O 64 image writing. The ledger amendment
+> and `spec/native-toolchain-v1/contract.json` are authoritative.
+
 This RFC records the completion contract behind the native-toolchain direction
 in [#1218](https://github.com/kofun-lang/kofun/issues/1218), the bootstrap
 reproduction work in [#274](https://github.com/kofun-lang/kofun/issues/274),
