@@ -13340,6 +13340,22 @@ fn lower_body(
                         return initializer
                     }
                 }
+                # The carrier an inferred binding gets is the carrier its type
+                # already names. A nominal record was the one type with no row
+                # here, so it fell through to `int64_t` and every later use of
+                # the name became a member access on a scalar -- accepted by
+                # the checker, rejected by `cc`, in a file the author did not
+                # write.
+                #
+                # The record row derives its C type from
+                # `record_c_type_name`, which is what the *annotated* binding
+                # path uses, so the two spellings of one binding cannot
+                # disagree. It is not written as a call to
+                # `call_slot_declaration_prefix`, which carries the same
+                # vocabulary: that helper returns a trailing space this site
+                # does not want, and it does not know `Decimal`, `Float`, or
+                # `DecimalResult`, so folding the two ladders together here
+                # would trade this defect for those three.
                 let mut c_type = "int64_t"
                 if inferred_type == "Decimal" {
                     c_type = "KofunDecimal *"
@@ -13351,6 +13367,8 @@ fn lower_body(
                     c_type = "const char *"
                 } else if inferred_type == "List[Int]" {
                     c_type = "KofunIntListValue"
+                } else if record_declaration_start(source, inferred_type) >= 0 {
+                    c_type = record_c_type_name(inferred_type)
                 }
                 if mutable && inferred_type != "Int" &&
                    inferred_type != "List[Int]" {

@@ -1,0 +1,32 @@
+# #1356. The binding carries no annotation and its initializer is a call
+# returning a nominal record. The carrier the lowering declares must come from
+# the callee's declared return type; an `int64_t` here makes every later use of
+# the name a member access on a scalar, which the checker accepts and only `cc`
+# reports.
+
+type Point = {
+    x: Int,
+    y: Int,
+}
+
+fn origin() -> Point {
+    let value: Point = Point(x: 3, y: 4)
+    return value
+}
+
+fn shifted(base: Point) -> Point {
+    let value: Point = Point(x: base.x + 1, y: base.y + 1)
+    return value
+}
+
+fn main() {
+    let start = origin()
+    print(to_text(start.x))
+    print(to_text(start.y))
+    # The second binding proves the carrier is derived per binding rather than
+    # once: a lowering that remembered the first record type would still pass
+    # a single-binding fixture.
+    let moved = shifted(start)
+    print(to_text(moved.x))
+    print(to_text(moved.y))
+}

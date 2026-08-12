@@ -1,0 +1,20 @@
+# The annotated form of the same program. It worked before #1356 and must keep
+# working: the fix derives the inferred carrier the way this path already
+# derives the written one, so a change that broke this would mean the two
+# spellings had stopped agreeing.
+
+type Point = {
+    x: Int,
+    y: Int,
+}
+
+fn origin() -> Point {
+    let value: Point = Point(x: 3, y: 4)
+    return value
+}
+
+fn main() {
+    let start: Point = origin()
+    print(to_text(start.x))
+    print(to_text(start.y))
+}
