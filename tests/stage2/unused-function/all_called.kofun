@@ -1,0 +1,15 @@
+# The same program with every function called. It built before this change and
+# must keep building: the reference is additional, not a replacement, and a
+# duplicate reference to a function that is also called is still valid C.
+
+fn first(value: Int) -> Int {
+    return value + 1
+}
+
+fn second(value: Int) -> Int {
+    return first(value) + 2
+}
+
+fn main() {
+    print(to_text(second(39)))
+}

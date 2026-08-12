@@ -1,0 +1,23 @@
+# #1358. `check` accepts a program with a function nobody calls, and before
+# this the same program failed at `cc` with `-Werror=unused-function` -- a
+# diagnostic about generated C, for source the language accepts.
+#
+# Two uncalled functions rather than one: the reference is emitted per
+# function, so a fix that referenced only the first would still leave the
+# second unbuildable.
+
+fn unused_first(value: Int) -> Int {
+    return value + 1
+}
+
+fn unused_second(value: Int) -> Int {
+    return value + 2
+}
+
+fn used(value: Int) -> Int {
+    return value * 2
+}
+
+fn main() {
+    print(to_text(used(21)))
+}
