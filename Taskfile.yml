@@ -591,6 +591,11 @@ tasks:
     cmds:
       - "sh tests/stdlib/benchmark-report-model/check.sh"
 
+  kofun-digest-model:
+    desc: "Verify SHA-256 in Kofun against NIST vectors and the C oracle"
+    cmds:
+      - "sh tests/stdlib/kofun-digest-model/check.sh"
+
   benchmark-report-comparison:
     desc: "Verify deterministic threshold comparison, rounding, and precedence"
     cmds:
@@ -1123,6 +1128,7 @@ tasks:
             benchmark-report-spec \
             benchmark-report-model \
             benchmark-report-comparison \
+            kofun-digest-model \
             move-assertion \
             usability-corpus \
             capabilities \
