@@ -146,8 +146,12 @@ The one-stage direct top-level Stage 2/C11 pipeline no longer belongs to that
 unsupported set: #1226 binds its subject to slot zero, #1227 checks it, and
 #1228 lowers it.
 
-#1192 then measures the direct-native and Wasm backends against the same
-corpus. One shape executes on all three: the all-Int labelled call. It is
+Direct-native and Wasm behavior is measured by the same corpus: the labelled
+Int call executes on both and is compared against the C11 golden, and every
+other shape stops at one named source-located boundary per backend. #1192
+landed the direct-native and Wasm differential.
+
+One shape executes on all three: the all-Int labelled call. It is
 asserted against `source_order_int.stdout` itself rather than a per-backend
 copy, so no one has to restate what the right answer is — and because that
 golden carries the source order (`2`, then `1`) as well as the result (`12`),
