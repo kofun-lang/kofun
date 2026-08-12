@@ -541,12 +541,21 @@ export function encodeRecordPayload(record) {
           ]),
         ),
       ]);
-    case RECORD_KINDS.GenericBodyTemplate:
+    case RECORD_KINDS.GenericBodyTemplate: {
+      /*
+       * The length prefix is the byte count of the encoded body, taken from
+       * the encoded bytes themselves. Reading it from the input's own
+       * `.length` was wrong for a string body: that is a count of UTF-16 code
+       * units, so any multi-byte character made the declared length disagree
+       * with the bytes that followed and the decoder sliced the record apart
+       * at the wrong offset.
+       */
+      const body = typedBody(record.typedCore);
       return concat([
         identity(record.id, "body template id"),
         identity(record.declaration, "declaration id"),
-        u32be(record.typedCore.length),
-        typedBody(record.typedCore),
+        u32be(body.length),
+        body,
         sequence(record.binderMap ?? [], (entry) =>
           concat([identity(entry.binder, "binder"), u16be(entry.slot)]),
         ),
@@ -555,6 +564,7 @@ export function encodeRecordPayload(record) {
         u16be(record.cleanupInputs ?? 0),
         identity(record.bodyDigest, "body digest"),
       ]);
+    }
     case RECORD_KINDS.PublishedInstantiation:
       return concat([
         identity(record.id, "instantiation id"),

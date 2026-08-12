@@ -141,6 +141,27 @@ assert.equal(closed.publicRecords.length, document.publicRecords.length);
 assert.equal(closed.internalRecords.length, document.internalRecords.length);
 pass("every linked identity closes");
 
+/*
+ * A typed body whose bytes and characters disagree. The length prefix has to
+ * be the byte count of what was written, and a body of ASCII text cannot tell
+ * the two apart -- which is why the fixture's body is ASCII and this case is
+ * separate.
+ */
+{
+  const wide = clone(document);
+  record(wide, BODY).typedCore = "core:並列 sort";
+  const wideBytes = encodeDocument(wide, decodeOptions);
+  const back = decodeDocument(wideBytes, decodeOptions);
+  const body = back.publicRecords.concat(back.internalRecords)
+    .find((entry) => entry.kind === RECORD_KINDS.GenericBodyTemplate);
+  assert.equal(
+    Buffer.from(body.typedCore).toString("utf8"),
+    "core:並列 sort",
+    "a multi-byte typed body did not survive the round trip",
+  );
+  pass("a typed body is length-prefixed in bytes, not characters");
+}
+
 /* --------------------------------------------- 2. no field is dead */
 
 /*
