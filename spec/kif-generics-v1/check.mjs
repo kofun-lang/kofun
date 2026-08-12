@@ -520,6 +520,42 @@ refuses("corrupt", "an identity that is not 32 bytes", () => {
   encodeDocument(bad, decodeOptions);
 });
 
+/*
+ * Coherence overlap, asserted from both directions. The second half is the
+ * one that matters: the same two implementations must refuse identically
+ * whichever order they were combined in, because a graph that picked one
+ * would be letting import order decide which body a call reaches.
+ */
+function overlappingDocument(reversed) {
+  const bad = clone(document);
+  const rival = clone(record(bad, IMPLEMENTATION));
+  rival.id = id("implementation:Comparable[Int]:rival");
+  rival.methodBodies = [{ method: TRAIT_METHOD, bodyDigest: DIGEST_B }];
+  bad.publicRecords.push(rival);
+  if (reversed) bad.publicRecords.reverse();
+  return bad;
+}
+
+const overlapMessages = [];
+for (const reversed of [false, true]) {
+  let raised;
+  try {
+    encodeDocument(overlappingDocument(reversed), decodeOptions);
+  } catch (error) {
+    raised = error;
+  }
+  assert.ok(raised instanceof KifGenericsError, "an overlapping implementation was accepted");
+  assert.equal(raised.status, "coherence-overlap", `overlap refused as ${raised.status}`);
+  overlapMessages.push(raised.message);
+  checks += 1;
+}
+assert.equal(
+  overlapMessages[0],
+  overlapMessages[1],
+  "the overlap refusal depends on which implementation was combined first",
+);
+pass("two implementations of one trait and self type refuse identically in either order");
+
 /* ------------------------------------------- publication transaction */
 
 const store = new Map();
@@ -627,5 +663,5 @@ try {
 }
 
 process.stdout.write(
-  `PASS: KIF generics v3 encodes eleven record kinds canonically, sorts by identity rather than declaration order, moves a semantic digest for every field, refuses unknown kinds/versions, duplicate and dangling identities, invalid binders, forbidden layout cycles, visibility leaks, slot mismatch, limit overflow, truncation, corruption, digest mismatch, downgrade, replay, and cancellation without replacing a prior artifact, and is refused as rebuild-required by the production v1/v2 reader (${checks} checks)\n`,
+  `PASS: KIF generics v3 encodes eleven record kinds canonically, sorts by identity rather than declaration order, moves a semantic digest for every field, refuses unknown kinds/versions, duplicate and dangling identities, invalid binders, forbidden layout cycles, visibility leaks, slot mismatch, coherence overlap in either combination order, limit overflow, truncation, corruption, digest mismatch, downgrade, replay, and cancellation without replacing a prior artifact, and is refused as rebuild-required by the production v1/v2 reader (${checks} checks)\n`,
 );

@@ -1098,8 +1098,37 @@ export function validateDocument(document, options = {}) {
   validateBinders(all, byId);
   validateVisibility(publicRecords, internalRecords, byId);
   validateDictionarySlots(all, byId);
+  validateCoherence(all);
   validateCycles(all, byId);
   return document;
+}
+
+/*
+ * "Combining package graphs completes overlap checking before selection;
+ * import order cannot choose a candidate."
+ *
+ * Two implementations of one trait for one self type are an overlap, and the
+ * refusal is the point: if the graph merely picked one, the choice would fall
+ * to whichever arrived first, which is import order deciding semantics. The
+ * check runs over the sorted key rather than the record order so the same two
+ * implementations refuse identically whichever way round they were combined.
+ */
+function validateCoherence(all) {
+  const seen = new Map();
+  for (const record of all) {
+    if (record.kind !== RECORD_KINDS.Implementation) continue;
+    const key = `${hex(record.trait)}:${encodeTypeRef(record.self).toString("hex")}`;
+    const previous = seen.get(key);
+    if (previous) {
+      const [first, second] = [hex(previous.id), hex(record.id)].sort();
+      fail(
+        "coherence-overlap",
+        `implementations ${first} and ${second} both cover one trait and self type`,
+        { trait: hex(record.trait) },
+      );
+    }
+    seen.set(key, record);
+  }
 }
 
 function validateBinders(all, byId) {
