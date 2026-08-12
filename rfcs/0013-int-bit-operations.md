@@ -4,6 +4,11 @@
 - Opened: 2026-08-12
 - Status: accepted
 
+> **Amended: `RFC-0013/A01` (2026-08-12).** The accepted text below is
+> preserved as written. It is no longer the complete current contract for
+> semantics, diagnostics, compatibility evidence, or identity provenance;
+> the ledger amendment is authoritative for those changes.
+
 ## Summary
 
 `Int` gains eight bit operations, spelled as postfix methods: `and`, `or`,
