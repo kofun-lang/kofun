@@ -1,0 +1,3 @@
+fn main() {
+    print(to_text(len("a\x41b")))
+}

@@ -56,6 +56,119 @@ fn string_end(source: Text, start: Int) -> Int {
     return -1
 }
 
+# ---------------------------------------------------------- text literals
+#
+# #1357. A `Text` literal used to reach the emitter as a slice of the source,
+# quotes and backslashes included, so every escape meant whatever the host C
+# compiler decided. Three spellings emitted invalid C while the compiler
+# exited 0, `\0` truncated the value at the NUL, and `\u{41}` depended on the
+# host compiler being new enough to implement delimited escapes.
+#
+# The set below is closed and is the same fact as the one written in
+# `docs/SEMANTICS.md` and `spec/grammar.ebnf`. It was chosen by measuring what
+# Kofun sources actually contain rather than by copying C's table: every source
+# this backend lowers uses only `\n`, `\t`, `\r`, `\\`, and `\"`, and `\b`
+# and `\f` are added because `stdlib/json` and `stdlib/toml` already write them
+# as Text literals.
+#
+# Anything else is refused at the escape's own byte, which is the difference
+# between a diagnostic a reader can act on and `cc` naming a generated file.
+
+fn text_escape_byte(symbol: Text) -> Text {
+    if symbol == "n" {
+        return "\n"
+    }
+    if symbol == "t" {
+        return "\t"
+    }
+    if symbol == "r" {
+        return "\r"
+    }
+    if symbol == "b" {
+        return "\b"
+    }
+    if symbol == "f" {
+        return "\f"
+    }
+    if symbol == "\\" {
+        return "\\"
+    }
+    if symbol == "\"" {
+        return "\""
+    }
+    return ""
+}
+
+# The canonical C spelling of one decoded character. Only the five control
+# characters and the two C metacharacters are escaped; every other byte,
+# including a UTF-8 continuation byte, is written as itself so the emitted C
+# reads the way the source did.
+fn text_c_escape(symbol: Text) -> Text {
+    if symbol == "\n" {
+        return "\\n"
+    }
+    if symbol == "\t" {
+        return "\\t"
+    }
+    if symbol == "\r" {
+        return "\\r"
+    }
+    if symbol == "\b" {
+        return "\\b"
+    }
+    if symbol == "\f" {
+        return "\\f"
+    }
+    if symbol == "\\" {
+        return "\\\\"
+    }
+    if symbol == "\"" {
+        return "\\\""
+    }
+    return symbol
+}
+
+# Decode the literal at `start` and re-encode it as a canonical C string
+# literal, or return an `error[...]` the caller propagates. The emitted C
+# cannot contain an escape the source did not define, because every byte is
+# written by `text_c_escape` rather than copied.
+fn text_literal_c_form(source: Text, start: Int) -> Text {
+    let symbols = chars(source)
+    let finish = string_end(source, start)
+    if finish < 0 {
+        return "error[E2S12]: unterminated Text literal at byte " +
+        to_text(start)
+    }
+    let mut cursor = start + 1
+    let mut emitted = "\""
+    while cursor < finish - 1 {
+        let symbol = symbols[cursor]
+        if symbol == "\\" {
+            if cursor + 1 >= finish - 1 {
+                return "error[E2S12]: Text literal ends inside an escape at byte " +
+                to_text(cursor)
+            }
+            let escape = symbols[cursor + 1]
+            if escape == "0" {
+                return "error[E2S12]: `\\0` is not a Kofun Text escape; Text cannot carry an embedded NUL at byte " +
+                to_text(cursor)
+            }
+            let decoded = text_escape_byte(escape)
+            if len(decoded) == 0 {
+                return "error[E2S12]: `\\" + escape +
+                "` is not a Kofun Text escape; the set is \\n \\t \\r \\b \\f \\\\ \\\" at byte " +
+                to_text(cursor)
+            }
+            emitted = emitted + text_c_escape(decoded)
+            cursor = cursor + 2
+        } else {
+            emitted = emitted + text_c_escape(symbol)
+            cursor = cursor + 1
+        }
+    }
+    return emitted + "\""
+}
+
 fn pair_token(token: Text) -> Bool {
     return token == "->" || token == "==" || token == "!=" ||
     token == "<=" || token == ">=" || token == "&&" ||
@@ -5106,7 +5219,7 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
         replace(text_slice(source, cursor, end), "_", "") + ")"
     }
     if kind == "string" {
-        return text_slice(source, cursor, token_end(source, cursor))
+        return text_literal_c_form(source, cursor)
     }
     if kind == "identifier" {
         let numeric_member = numeric_conversion_at(source, cursor)

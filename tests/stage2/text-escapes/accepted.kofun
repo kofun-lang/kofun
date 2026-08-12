@@ -1,0 +1,20 @@
+# #1357. Every escape Kofun defines, decoded and re-encoded rather than passed
+# to the host C compiler. `len` is the check that matters: it counts the bytes
+# the value actually holds, so a spelling that survived only because C happened
+# to agree would show up here as the wrong number.
+
+fn main() {
+    print(to_text(len("a\nb")))
+    print(to_text(len("a\tb")))
+    print(to_text(len("a\rb")))
+    print(to_text(len("a\bb")))
+    print(to_text(len("a\fb")))
+    print(to_text(len("a\\b")))
+    print(to_text(len("a\"b")))
+    # Bytes outside the escape syntax are carried through unchanged, so a
+    # literal holds exactly the UTF-8 the source contained.
+    print(to_text(len("並列")))
+    print("a\tb")
+    print("a\\b")
+    print("a\"b")
+}

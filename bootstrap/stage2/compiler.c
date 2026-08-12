@@ -4940,6 +4940,108 @@ static int64_t optional_int_type_end(const char *source, int64_t type_start) {
 }
 
 /*
+ * #1357. Text literal escapes.
+ *
+ * A `Text` literal used to reach the emitter as a slice of the source, quotes
+ * and backslashes included, so every escape meant whatever the host C compiler
+ * decided.  Three spellings emitted invalid C while the compiler exited 0,
+ * `\0` truncated the value at the NUL, and `\u{41}` depended on the host
+ * compiler being new enough to implement delimited escape sequences.
+ *
+ * The closed set below is the same fact as the one in `docs/SEMANTICS.md` and
+ * `spec/grammar.ebnf`, and it was chosen by measuring what Kofun sources
+ * contain rather than by copying C's table.
+ */
+static char text_escape_byte(char symbol) {
+    if (symbol == 'n') return '\n';
+    if (symbol == 't') return '\t';
+    if (symbol == 'r') return '\r';
+    if (symbol == 'b') return '\b';
+    if (symbol == 'f') return '\f';
+    if (symbol == '\\') return '\\';
+    if (symbol == '"') return '"';
+    return '\0';
+}
+
+/*
+ * The canonical C spelling of one decoded byte.  Only the five control
+ * characters and the two C metacharacters are escaped; every other byte,
+ * including a UTF-8 continuation byte, is written as itself so the emitted C
+ * reads the way the source did.
+ */
+static void append_c_escaped(Buffer *output, char symbol) {
+    if (symbol == '\n') { buffer_append(output, "\\n"); return; }
+    if (symbol == '\t') { buffer_append(output, "\\t"); return; }
+    if (symbol == '\r') { buffer_append(output, "\\r"); return; }
+    if (symbol == '\b') { buffer_append(output, "\\b"); return; }
+    if (symbol == '\f') { buffer_append(output, "\\f"); return; }
+    if (symbol == '\\') { buffer_append(output, "\\\\"); return; }
+    if (symbol == '"') { buffer_append(output, "\\\""); return; }
+    char single[2];
+    single[0] = symbol;
+    single[1] = '\0';
+    buffer_append(output, single);
+}
+
+/*
+ * Decode the literal at `start` and re-encode it as a canonical C string
+ * literal, or return an `error[...]` the caller propagates.  The emitted C
+ * cannot contain an escape the source did not define, because every byte is
+ * written by `append_c_escaped` rather than copied.
+ */
+static char *text_literal_c_form(const char *source, int64_t start) {
+    int64_t finish = string_end(source, start);
+    if (finish < 0) {
+        return lower_error("E2S12", "unterminated Text literal", start);
+    }
+    Buffer output;
+    buffer_init(&output);
+    buffer_append(&output, "\"");
+    int64_t cursor = start + 1;
+    while (cursor < finish - 1) {
+        char symbol = source[cursor];
+        if (symbol == '\\') {
+            if (cursor + 1 >= finish - 1) {
+                free(output.data);
+                return lower_error(
+                    "E2S12", "Text literal ends inside an escape", cursor
+                );
+            }
+            char escape = source[cursor + 1];
+            if (escape == '0') {
+                free(output.data);
+                return lower_error(
+                    "E2S12",
+                    "`\\0` is not a Kofun Text escape; Text cannot carry an "
+                    "embedded NUL",
+                    cursor
+                );
+            }
+            char decoded = text_escape_byte(escape);
+            if (decoded == '\0') {
+                char detail[96];
+                (void)snprintf(
+                    detail, sizeof(detail),
+                    "`\\%c` is not a Kofun Text escape; the set is "
+                    "\\n \\t \\r \\b \\f \\\\ \\\"",
+                    escape
+                );
+                free(output.data);
+                return lower_error("E2S12", detail, cursor);
+            }
+            append_c_escaped(&output, decoded);
+            cursor += 2;
+        } else {
+            append_c_escaped(&output, symbol);
+            cursor += 1;
+        }
+    }
+    buffer_append(&output, "\"");
+    return output.data;
+}
+
+
+/*
  * Whether any declaration in the program annotates `Int` with a `?` suffix.
  * The layered spelling counts too — `??` is one token, so `Int??` would
  * otherwise look like a program with no optional in it, and the refusal that
@@ -8592,7 +8694,7 @@ static char *emit_primary(
         return output.data;
     }
     if (strcmp(kind, "string") == 0) {
-        return source_slice(source, cursor, token_end(source, cursor));
+        return text_literal_c_form(source, cursor);
     }
     if (strcmp(kind, "identifier") == 0) {
         char *conversion = numeric_conversion_at(source, cursor);
