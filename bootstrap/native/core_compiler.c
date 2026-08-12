@@ -1774,6 +1774,20 @@ static bool function_peek_char(
         parser->source[parser->cursor] == wanted;
 }
 
+/* The two-character suffixes that end a type are all written correctly by the
+ * author, so they have to be recognized before anything consumes them and
+ * reports the punctuation that follows. */
+static bool function_peek_pair(
+    FunctionParser *parser,
+    char first,
+    char second
+) {
+    function_skip_trivia(parser);
+    return parser->cursor + 1 < parser->limit &&
+        parser->source[parser->cursor] == first &&
+        parser->source[parser->cursor + 1] == second;
+}
+
 static bool function_consume_pair(
     FunctionParser *parser,
     char first,
@@ -1904,20 +1918,44 @@ static bool function_parse_type(
 ) {
     if (function_consume_word(parser, "Int")) {
         *kind = FUNCTION_VALUE_INT;
-        return true;
-    }
-    if (function_consume_word(parser, "Text")) {
+    } else if (function_consume_word(parser, "Text")) {
         *kind = FUNCTION_VALUE_TEXT;
-        return true;
-    }
-    if (function_consume_word(parser, "List")) {
+    } else if (function_consume_word(parser, "List")) {
         function_error(
             parser,
             "native Core function List parameter/result types are unsupported"
         );
         return false;
+    } else {
+        return false;
     }
-    return false;
+    /*
+     * `Int?` and `Int -> Int` are two shapes the C11 side executes and this
+     * backend does not have at all. Both are reported here, at the suffix
+     * itself, because every caller of this parser recovers by describing the
+     * punctuation it wanted next: an Optional parameter was reported as a
+     * missing `,` between parameters, which sends the author to a comma that
+     * is exactly where it belongs, and a function-typed parameter said the
+     * same about the one token that made it a function type.
+     */
+    if (function_peek_char(parser, '?')) {
+        function_error(
+            parser,
+            "an Optional type is specified by call-arguments v1 but native "
+            "Core has only Int and Text"
+        );
+        return false;
+    }
+    if (function_peek_pair(parser, '-', '>')) {
+        function_error(
+            parser,
+            "a function-typed parameter, which is what a trailing lambda "
+            "binds, is specified by call-arguments v1 but not implemented by "
+            "native Core"
+        );
+        return false;
+    }
+    return true;
 }
 
 static bool function_body_end(
@@ -2764,7 +2802,7 @@ static FunctionExpression *function_parse_sum(FunctionParser *parser) {
     return left;
 }
 
-static FunctionExpression *function_parse_expression(
+static FunctionExpression *function_parse_comparison(
     FunctionParser *parser
 ) {
     FunctionExpression *left = function_parse_sum(parser);
@@ -2808,6 +2846,28 @@ static FunctionExpression *function_parse_expression(
         left,
         right
     );
+}
+
+/*
+ * `|>` is the grammar's lowest-precedence boundary, so a finished expression is
+ * exactly where a pipeline would continue and this is the only place the pipe
+ * has to be named. Leaving it for the caller meant each caller blamed its own
+ * punctuation instead: `print(start |> add(delta: 2))` reported that print
+ * requires one Int or Text, about an argument the author had not got wrong.
+ */
+static FunctionExpression *function_parse_expression(
+    FunctionParser *parser
+) {
+    FunctionExpression *value = function_parse_comparison(parser);
+    if (parser->error[0] != '\0') return value;
+    if (function_peek_pair(parser, '|', '>')) {
+        function_error(
+            parser,
+            "a pipeline is specified by call-arguments v1 but not recognized "
+            "by native Core"
+        );
+    }
+    return value;
 }
 
 static bool function_statement_add(

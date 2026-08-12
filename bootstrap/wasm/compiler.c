@@ -454,6 +454,36 @@ static void next_token(Parser *parser) {
                 parser->token.kind = TOKEN_SLASH;
             }
             return;
+        case '|':
+            /*
+             * `|` reaches the lexer only as the head of `|>`; wasm32 Core has
+             * no bitwise or alternation operator. Naming the pipeline here is
+             * what stops the generic unknown-token wording from describing a
+             * pipe the author wrote deliberately and correctly.
+             */
+            if (peek_is(parser, '>')) {
+                ++parser->cursor;
+                parser->token.length = 2;
+                parser->token.kind = TOKEN_EOF;
+                parse_error(
+                    parser,
+                    "a pipeline is specified by call-arguments v1 but not "
+                    "recognized by wasm32 Core"
+                );
+                return;
+            }
+            parser->token.kind = TOKEN_EOF;
+            parse_error(parser, "unsupported token in wasm32 arithmetic Core");
+            return;
+        case '?':
+            /* `Int?` and `??` are the Optional surface. */
+            parser->token.kind = TOKEN_EOF;
+            parse_error(
+                parser,
+                "an Optional type is specified by call-arguments v1 but "
+                "wasm32 Core has only Int"
+            );
+            return;
         default:
             parser->token.kind = TOKEN_EOF;
             parse_error(parser, "unsupported token in wasm32 arithmetic Core");
@@ -1221,6 +1251,21 @@ static bool parse_signature(Parser *parser, Function *function, bool declare) {
             }
             if (!expect_word(parser, "Int",
                              "wasm32 Core accepts only Int parameters")) {
+                return false;
+            }
+            /*
+             * An arrow directly after a parameter's type makes it a function
+             * type — the shape a trailing lambda binds. The parameter list is
+             * written correctly, so reporting the missing `)` here named the
+             * one token that was not wrong.
+             */
+            if (parser->token.kind == TOKEN_ARROW) {
+                parse_error(
+                    parser,
+                    "a function-typed parameter, which is what a trailing "
+                    "lambda binds, is specified by call-arguments v1 but not "
+                    "implemented by wasm32 Core"
+                );
                 return false;
             }
             if (declare) commit_binding(parser, parameter, parameter_length);
