@@ -9,7 +9,7 @@ fail() {
     exit 1
 }
 
-for command in awk node sha256sum
+for command in awk node
 do
     if ! command -v "$command" >/dev/null 2>&1; then
         fail "$command is required"
@@ -21,7 +21,11 @@ node --check "$HERE/check.mjs"
 node "$HERE/check.mjs"
 
 cd "$ROOT"
-if ! sha256sum --check "$HERE/v1.sha256"; then
+# `bin/kofun-digest -c`, not GNU `sha256sum`: #1213 replaced that dependency
+# with the repository's own tool precisely because `sha256sum` is absent
+# outside a GNU userland, and this gate was the last caller it left behind.
+# Four other gates already check their SHA256SUMS this way.
+if ! "$ROOT/bin/kofun-digest" -c "$HERE/v1.sha256"; then
     fail "a frozen v1 contract or example changed"
 fi
 
