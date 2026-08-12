@@ -304,14 +304,33 @@ assert.equal(
     'canonical v2 bytes are stable across runs',
 )
 
-// v1 encodes to exactly what it did before this slice taught the validator v2.
-const encodedV1 = encodeTypedSidecar(v1Document)
-assert.equal(encodedV1.ok, true, 'a v1 document still encodes')
+// v1 encodes to exactly what it did before this slice taught the validator v2,
+// pinned against the **tracked example file** rather than against
+// `canonicalTypedSidecarBytes` of the same document.
+//
+// The self-comparison was the first thing written here and it defends nothing:
+// the encoder and the canonicaliser live in one module, so a change to
+// canonicalisation moves both sides of that equation together and the
+// assertion still passes. `spec/typed-sidecar/examples/complete.json` is
+// checked in, is already canonical byte for byte, and does not move when this
+// codec does.
+const trackedExamplePath = join(ROOT, 'spec/typed-sidecar/examples/complete.json')
+const trackedExample = readFileSync(trackedExamplePath, 'utf8')
+const encodedTracked = encodeTypedSidecar(JSON.parse(trackedExample))
+assert.equal(encodedTracked.ok, true, 'the tracked v1 example still encodes')
 assert.equal(
-    Buffer.from(encodedV1.bytes).toString('utf8'),
-    canonicalTypedSidecarBytes(v1Document),
-    'v1 canonical bytes are unchanged',
+    Buffer.from(encodedTracked.bytes).toString('utf8'),
+    trackedExample,
+    'the tracked v1 example must encode to its own tracked bytes',
 )
+assert.equal(
+    canonicalTypedSidecarBytes(JSON.parse(trackedExample)),
+    trackedExample,
+    'canonicalisation itself must still produce the tracked bytes',
+)
+
+const encodedV1 = encodeTypedSidecar(v1Document)
+assert.equal(encodedV1.ok, true, 'a v1 document with a substituted file id still encodes')
 
 const digest = v1Document.file.content_sha256
 const newer = JSON.parse(JSON.stringify(v2))
