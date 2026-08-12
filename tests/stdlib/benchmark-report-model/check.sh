@@ -99,10 +99,10 @@ run_group() {
     # `run_comparison_group(6)` matches no branch and runs nothing. It is here
     # because every function in the concatenated program must be *referenced*
     # or the build fails at `cc` with -Werror=unused-function (#1358), and the
-    # corpus now carries the #1313 comparison cases as well.
+    # corpus now carries the #1313 comparison cases and #1367's vectors.
     {
         printf 'fn main() {\n'
-        printf '    let mut cases = run_comparison_group(6)\n'
+        printf '    let mut cases = run_comparison_group(6) + run_vector_group(6)\n'
         printf '    cases = cases + run_group(%s)\n' "$group"
         printf '    print("cases " + to_text(cases))\n'
         printf '}\n'

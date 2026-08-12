@@ -1,0 +1,6 @@
+lower-below-threshold 0 0 499 500
+lower-equal-threshold 0 0 500 500
+lower-above-threshold 0 2 501 500
+lower-improvement 0 1 -501 500
+lower-improvement-equal-threshold 0 0 -500 500
+cases 5
