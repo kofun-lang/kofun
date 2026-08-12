@@ -30,6 +30,12 @@ const KIND_EVENT = Object.freeze(Object.fromEntries(
 // tag it knows and whose payload it does not.
 const WIRE = Object.freeze({ bytes: 1, id: 3, u8: 4, u32: 5, 'id-list': 8 })
 
+// The frozen bounds, re-stated here because this module must not import the
+// oracle. `events` is the only one this file does not enforce, and that is
+// deliberate rather than an omission: it bounds a whole KSE2 stream of every
+// event kind, while this reader only ever sees the capture section, whose
+// `capture_events` bound is tighter. A limit with no reader is otherwise a
+// rule nothing performs, so it is worth saying which one is operative and why.
 export const KSE2_LIMITS = Object.freeze({
     capture_events: 8384,
     event_bytes: 16 * 1024 * 1024,
