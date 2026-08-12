@@ -211,6 +211,16 @@ cmp "$WORK/sweep.expected" "$WORK/sweep.stdout" ||
 # Each mutation reintroduces a defect the model is the fix for, and the gate
 # must refuse it. A gate that only passes is not evidence that it bites.
 
+# A mutation is evidence only if the mutant **builds**. A mutant that fails to
+# compile exits non-zero, and a harness that reads "non-zero" as "caught" is
+# reporting the compiler's opinion rather than the model's behaviour — which is
+# what this harness did until #1358 made an uncalled function build. Two of the
+# mutations here deleted the only call to a function; both failed to compile,
+# both looked like they bit, and one of them could not have changed the output
+# even if it had run.
+#
+# So the build is required, and its failure is a gate failure with its own
+# message rather than a silent pass.
 mutation() {
     name=$1
     expression=$2
@@ -220,13 +230,15 @@ mutation() {
         assert_fail "mutation $name changed nothing; its pattern no longer matches"
     cat "$WORK/mutant-$name.model.kofun" "$compare" "$corpus" \
         "$WORK/group$group.main.kofun" >"$WORK/mutant-$name.kofun"
-    if "$ROOT/bin/kofun" run "$WORK/mutant-$name.kofun" \
-        >"$WORK/mutant-$name.stdout" 2>"$WORK/mutant-$name.stderr"
+    "$ROOT/bin/kofun" build "$WORK/mutant-$name.kofun" \
+        -o "$WORK/mutant-$name.bin" \
+        >"$WORK/mutant-$name.build.stdout" 2>"$WORK/mutant-$name.build.stderr" ||
+        assert_fail "mutation $name does not build; it is testing the compiler rather than the model: $(head -1 "$WORK/mutant-$name.build.stderr")"
+    "$WORK/mutant-$name.bin" >"$WORK/mutant-$name.stdout" \
+        2>"$WORK/mutant-$name.stderr" || true
+    if cmp -s "$CASES/group$group.stdout" "$WORK/mutant-$name.stdout"
     then
-        if cmp -s "$CASES/group$group.stdout" "$WORK/mutant-$name.stdout"
-        then
-            assert_fail "mutation $name produced the golden output; the gate does not bite"
-        fi
+        assert_fail "mutation $name produced the golden output; the gate does not bite"
     fi
 }
 
