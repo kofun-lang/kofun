@@ -1,0 +1,16 @@
+empty 6 0 0 0 0 0 0 0
+empty flags 0 0 0
+empty neutral 1
+split 6 0 0 0 0 0 0 0
+split flags 0 0 0
+split neutral 1
+count 6 0 0 0 0 0 0 0
+count flags 0 0 0
+count neutral 1
+capshort 6 0 0 0 0 0 0 0
+capshort flags 0 0 0
+capshort neutral 1
+capfull 6 0 0 0 0 0 0 0
+capfull flags 0 0 0
+capfull neutral 1
+cases 5

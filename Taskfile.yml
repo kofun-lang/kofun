@@ -576,6 +576,11 @@ tasks:
     cmds:
       - "sh spec/benchmark-report-v1/check.sh"
 
+  benchmark-report-model:
+    desc: "Verify the bounded benchmark report model, segments, and refusals"
+    cmds:
+      - "sh tests/stdlib/benchmark-report-model/check.sh"
+
   move-assertion:
     desc: "Verify the unstable compile-time move assertion and its erasure"
     cmds:
@@ -1094,6 +1099,7 @@ tasks:
             example-law-evidence \
             benchmark-summary \
             benchmark-report-spec \
+            benchmark-report-model \
             move-assertion \
             usability-corpus \
             capabilities \

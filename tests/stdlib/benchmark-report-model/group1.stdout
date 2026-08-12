@@ -1,0 +1,17 @@
+n65 0 65 1 100000 1611 1273 1923 325
+n65 outlier 5
+n65 outlier 40
+n65 flags 64 1 2
+n99 0 99 1 100000 1611 1286 1936 325
+n99 outlier 5
+n99 outlier 40
+n99 flags 64 35 2
+n100 0 100 1 100000 1611 1286 1936 325
+n100 outlier 5
+n100 outlier 40
+n100 flags 64 36 2
+timecap 0 63 1 100000 1624 1273 1936 312
+timecap outlier 5
+timecap outlier 40
+timecap flags 63 0 2
+cases 4
