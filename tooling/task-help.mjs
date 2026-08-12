@@ -69,7 +69,7 @@ export const GROUPS = Object.freeze([
             'visibility-api-leaks', 'module-interface-artifact', 'incremental',
             'package-roots', 'source-file-mapping', 'namespaces', 'module-identity',
             'semantic-identity',
-            'kif-module-trust-profile', 'kif-generics-profile',
+            'kif-module-trust-profile', 'kif-generics-profile', 'kif-generics-codec',
             'visibility-spec', 'visibility-syntax', 'visibility-access',
             're-exports-spec', 'aggregate-layout', 'reuse-candidate'
         ]

@@ -396,6 +396,11 @@ tasks:
     cmds:
       - "sh tests/conformance/modules/kif-v1/run.sh"
 
+  kif-generics-codec:
+    desc: "Verify the KIF generics v3 codec, corpus, and adversarial model"
+    cmds:
+      - "sh spec/kif-generics-v1/check.sh"
+
   stage2-kif-producer:
     desc: "Verify committed Stage 2 declarations publish KIF"
     cmds:
@@ -1069,6 +1074,7 @@ tasks:
             imports-selective \
             re-exports \
             kif-v1 \
+            kif-generics-codec \
             stage2-kif-producer \
             visibility-filtering \
             visibility-api-leaks \
