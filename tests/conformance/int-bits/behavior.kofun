@@ -1,0 +1,54 @@
+# RFC-0013's eight operations. Every value here is written so that a wrong
+# implementation produces a different number rather than a crash: the results
+# are what the RFC states, not what the host C compiler happens to do.
+
+fn mask32() -> Int {
+    return 4294967295
+}
+
+fn sigma0(word: Int) -> Int {
+    # SHA-256's first message schedule rotation, the shape this exists for.
+    return word.rotr(7, 32).xor(word.rotr(18, 32)).xor(word.shr(3))
+}
+
+fn main() -> Int {
+    let a = 240
+    let b = 15
+
+    # Bitwise, on the two's-complement pattern.
+    print(to_text(a.and(b)))
+    print(to_text(a.or(b)))
+    print(to_text(a.xor(b)))
+    print(to_text(a.not()))
+    print(to_text((0).not()))
+    print(to_text((0 - 1).and(255)))
+    print(to_text((0 - 1).xor(0 - 1)))
+
+    # Shifts. `shr` replicates the sign bit; there is no logical form.
+    print(to_text(a.shl(2)))
+    print(to_text(a.shr(2)))
+    print(to_text((0 - 8).shr(1)))
+    print(to_text((0 - 1).shr(63)))
+    print(to_text((1).shl(62)))
+    print(to_text(a.shl(0)))
+    print(to_text(a.shr(63)))
+
+    # Rotation and modular addition carry their width.
+    print(to_text((1).rotr(1, 32)))
+    print(to_text((1).rotr(0, 32)))
+    print(to_text(mask32().rotr(4, 32)))
+    print(to_text(mask32().wrapping_add(1, 32)))
+    print(to_text((0 - 1).wrapping_add(0, 32)))
+    print(to_text((1).rotr(1, 64)))
+    print(to_text((1).wrapping_add(0 - 1, 64)))
+
+    # A rotation count is reduced within the width, and the width is not 64.
+    print(to_text((1).rotr(33, 32)))
+
+    # Chaining is left to right, and any Int expression is a receiver.
+    print(to_text(a.and(b).or(1).xor(3)))
+    print(to_text((a + b).and(255)))
+    print(to_text(mask32().and(a.shl(4))))
+    print(to_text(sigma0(1)))
+    return 0
+}

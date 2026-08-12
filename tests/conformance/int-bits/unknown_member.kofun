@@ -1,0 +1,16 @@
+# RFC-0013/A01: a member call on an `Int` receiver is a member of `Int`, and the
+# eight operations are the whole set.
+#
+# Before this, the answer depended on where the call sat. In `let` or `return`
+# position it was `E2S32: unknown nominal record field read` — sending the
+# reader to a record they never wrote. Inside another call it was worse: the
+# member call was left unconsumed, so the argument counter read the *enclosing*
+# call as malformed and reported `to_text` expecting 1 argument and getting -1.
+#
+# Both are the same mistake: blaming a construct the author did not get wrong.
+
+fn main() -> Int {
+    let value = 1
+    print(to_text(value.frobnicate(2)))
+    return 0
+}

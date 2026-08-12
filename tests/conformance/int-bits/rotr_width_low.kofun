@@ -1,0 +1,7 @@
+# A width of 0 leaves nothing to rotate within.
+
+fn main() -> Int {
+    let value = 1
+    print(to_text(value.rotr(1, 0)))
+    return 0
+}

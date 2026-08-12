@@ -1,0 +1,7 @@
+# `not` takes the receiver and nothing else.
+
+fn main() -> Int {
+    let value = 1
+    print(to_text(value.not(1)))
+    return 0
+}

@@ -1,0 +1,7 @@
+# `rotr` carries its width, so one argument is not a rotation.
+
+fn main() -> Int {
+    let value = 1
+    print(to_text(value.rotr(7)))
+    return 0
+}

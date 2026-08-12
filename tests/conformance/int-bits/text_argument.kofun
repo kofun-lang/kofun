@@ -1,0 +1,7 @@
+# An argument is an `Int` too.
+
+fn main() -> Int {
+    let value = 1
+    print(to_text(value.and("mask")))
+    return 0
+}
