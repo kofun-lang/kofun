@@ -1,0 +1,7 @@
+# Optional(Int) is not an Int argument; the bit-call rule owns this boundary.
+
+fn main() -> Int {
+    let maybe: Int? = 1
+    print(to_text((1).and(maybe)))
+    return 0
+}

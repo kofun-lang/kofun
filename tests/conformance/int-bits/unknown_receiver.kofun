@@ -1,0 +1,7 @@
+# An unresolved receiver keeps the lexical-binding diagnostic that precedes
+# any type judgement.
+
+fn main() -> Int {
+    print(to_text(mystery.and(1)))
+    return 0
+}

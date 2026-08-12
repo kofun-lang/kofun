@@ -9,7 +9,7 @@ diagnostic identities. Each row records:
 4. primary and secondary span policy;
 5. output-artifact policy;
 6. one executable fixture owner, fixture, and exact or inline golden; and
-7. the adapter that reports the observation.
+7. the comma-separated adapters that report observations.
 
 A code with more than one active producer lists them `;`-separated, most
 reachable first — the form eighteen rows already used before it was written
@@ -18,6 +18,10 @@ and by the standalone record frontend, and naming only one of the two would
 send a reader to the file that did not print the message they are holding.
 Fixture ownership stays singular: one adapter owns the evidence for a code
 however many producers agree on it.
+Observation ownership may be plural. Every listed adapter must publish the
+same routing, exit, span, and artifact policy, while duplicate `(code,
+adapter)` observations are refused. The canonical fixture owner must be one of
+the listed observers; it does not become the owner of every observation.
 
 Span policy is `required`, `not-applicable`, or a named `debt(...)`. The three
 pre-existing Stage 2 omissions remain
@@ -68,6 +72,7 @@ diff.
 ## Negative contract
 
 `self-test.sh` creates temporary mutations and proves deterministic rejection
-of a duplicate code, an unknown observed code, a missing active fixture, a
-public routing mismatch, and a forbidden partial artifact. It never edits the
-checked-in registry or goldens.
+of a duplicate code, a duplicate `(code, adapter)` observation, an unknown or
+unregistered observation, a missing declared observation, a missing active
+fixture, a public routing mismatch, and a forbidden partial artifact. It never
+edits the checked-in registry or goldens.

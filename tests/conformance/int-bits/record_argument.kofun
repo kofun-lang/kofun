@@ -1,0 +1,11 @@
+# A nominal record cannot enter an Int parameter of a bit method.
+
+type Pair = {
+    value: Int,
+}
+
+fn main() -> Int {
+    let pair: Pair = Pair(value: 1)
+    print(to_text((1).and(pair)))
+    return 0
+}

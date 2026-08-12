@@ -1,0 +1,7 @@
+# Optional(Int) is not an Int receiver; the bit-call rule owns this boundary.
+
+fn main() -> Int {
+    let maybe: Int? = 1
+    print(to_text(maybe.and(1)))
+    return 0
+}

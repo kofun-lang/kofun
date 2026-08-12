@@ -337,7 +337,7 @@
       "public_status": "implemented for Core",
       "state": "implemented",
       "area": "frontend",
-      "bounded_capability": "Every Core `Int` operation is checked: overflow and non-representable results are refused or trapped, never wrapped.",
+      "bounded_capability": "Every ordinary Core `Int` arithmetic operation is checked: overflow and non-representable results are refused or trapped, never implicitly wrapped. Explicitly named modular operations are outside this claim.",
       "targets": [
         "c11",
         "native-aarch64",
@@ -348,7 +348,7 @@
       "specification": [
         "docs/SEMANTICS.md"
       ],
-      "compatibility": "The checked contract holds across every backend that claims the Core; a backend that cannot honour it must report unsupported.",
+      "compatibility": "The ordinary checked-arithmetic contract holds across every backend that claims the Core; no backend may wrap an ordinary operation implicitly, and a backend that cannot honour it must report unsupported. Explicitly named modular operations require a separate bounded capability claim before publication.",
       "positive_gate": {
         "command": "sh tests/conformance/run.sh",
         "observation": "The numeric conformance corpus passes on every supported backend."
@@ -356,7 +356,7 @@
       "negative_boundary": {
         "kind": "trap",
         "evidence": "tests/conformance/numeric/reject_slash_operator.kofun",
-        "observation": "Operations that cannot be represented are refused or trapped rather than wrapping."
+        "observation": "Ordinary operations that cannot be represented are refused or trapped rather than wrapping implicitly."
       },
       "safety": {
         "classification": "refusal-boundary",

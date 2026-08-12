@@ -1,0 +1,6 @@
+# An unresolved argument is diagnosed before its type can be compared to Int.
+
+fn main() -> Int {
+    print(to_text((1).and(mystery)))
+    return 0
+}

@@ -1,0 +1,7 @@
+# A List[Int] cannot enter an Int parameter of a bit method.
+
+fn main() -> Int {
+    let values = [1]
+    print(to_text((1).and(values)))
+    return 0
+}

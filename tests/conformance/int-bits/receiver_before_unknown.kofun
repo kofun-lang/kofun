@@ -1,0 +1,6 @@
+# Receiver type is checked before an unresolved ordinary argument.
+
+fn main() -> Int {
+    print(to_text(true.and(missing)))
+    return 0
+}

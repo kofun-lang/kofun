@@ -1,0 +1,10 @@
+# A declared function value is callable, not an Int bit argument.
+
+fn double(value: Int) -> Int {
+    return value * 2
+}
+
+fn main() -> Int {
+    print(to_text((1).and(double)))
+    return 0
+}

@@ -1,0 +1,6 @@
+# A label on an argument is checked before resolving that argument's value.
+
+fn main() -> Int {
+    print(to_text((1).and(value: missing)))
+    return 0
+}

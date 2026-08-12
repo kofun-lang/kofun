@@ -1,4 +1,4 @@
-# `shl` is checked arithmetic, exactly as `a * 2**n` is.
+# `shl` traps when the mathematical value `a × 2^n` leaves signed Int64.
 
 fn main() -> Int {
     let value = 3

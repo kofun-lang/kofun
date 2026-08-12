@@ -3555,6 +3555,28 @@ fn primary_end(source: Text, start: Int) -> Int {
        kind == "string" {
         return field_postfix_end(source, token_end(source, cursor))
     }
+    # Bool expressions remain outside this bounded arithmetic reader. The one
+    # owned exception is a Bool written as the receiver of a known bit method:
+    # measuring that primary lets the Int-only rule report E2S168, without
+    # broadening unrelated Bool value-position grammar.
+    if token_text(source, cursor) == "true" ||
+       token_text(source, cursor) == "false" {
+        let primary = token_end(source, cursor)
+        let dot = skip_trivia(source, primary)
+        let mut name = -1
+        if dot < len(source) && token_text(source, dot) == "." {
+            name = skip_trivia(source, token_end(source, dot))
+        }
+        let mut open = -1
+        if name >= 0 {
+            open = skip_trivia(source, token_end(source, name))
+        }
+        if name >= 0 && int_bit_method_arity_at(source, name) >= 0 &&
+           open < len(source) && token_text(source, open) == "(" {
+            return int_bit_postfix_end(source, primary)
+        }
+        return -1
+    }
     if kind == "identifier" {
         if len(numeric_conversion_at(source, cursor)) > 0 {
             let dot = skip_trivia(source, token_end(source, cursor))
@@ -4884,13 +4906,36 @@ fn int_bit_chain_dot(source: Text, start: Int, end: Int) -> Int {
     return -1
 }
 
+# Whether `target` belongs to a primary that contains a depth-zero Int bit
+# call. Enum validation normally owns every enum use before lowering, but a
+# bit call has the more specific A01 rule: its receiver and every argument
+# must be `Int`, with E2S168 and the bit-call precedence. Deferring only this
+# bounded primary lets that rule diagnose enum receivers/arguments without
+# weakening the match-only rule anywhere else (including nested calls that
+# merely contain a bit expression).
+fn int_bit_expression_contains(source: Text, target: Int) -> Bool {
+    let mut cursor = skip_trivia(source, 0)
+    while cursor <= target && cursor < len(source) {
+        let end = primary_end(source, cursor)
+        if end > target && int_bit_chain_dot(source, cursor, end) >= 0 {
+            return true
+        }
+        let next = token_end(source, cursor)
+        if next <= cursor {
+            return false
+        }
+        cursor = skip_trivia(source, next)
+    }
+    return false
+}
+
 # RFC-0013's eight operations, applied left to right to one receiver.
 #
-# Each becomes one call on a checked runtime helper rather than a bare C
-# operator. That is not indirection for its own sake: C leaves a shift by 64
-# undefined and leaves a signed right shift implementation-defined, and the
-# whole point of naming these operations was to give them answers the language
-# states rather than answers the host compiler picks.
+# Each becomes one call on a checked helper emitted by this Stage 2 C11
+# backend rather than a bare C operator. These are not a cross-backend runtime
+# authority: C leaves a shift by 64 undefined and leaves a signed right shift
+# implementation-defined, so this backend must spell the language's answers
+# explicitly instead of inheriting its host compiler's answers.
 fn emit_int_bit_chain(
     source: Text,
     hir: Text,
@@ -4899,24 +4944,18 @@ fn emit_int_bit_chain(
     end: Int
 ) -> Text {
     let function_open = enclosing_function_open(source, start)
-    let receiver_type = numeric_primary_type(
+    let receiver_type = initializer_type_bounded(
         source,
         hir,
         function_open,
-        start
+        start,
+        first_dot
     )
-    if receiver_type == "Decimal" || receiver_type == "Float" {
+    if receiver_type != "Int" {
         return lower_error(
             "E2S168",
             "bit operations are defined on `Int`, and this receiver is `" +
             receiver_type + "`",
-            first_dot
-        )
-    }
-    if text_operand(source, hir, function_open, start) {
-        return lower_error(
-            "E2S168",
-            "bit operations are defined on `Int`, and this receiver is `Text`",
             first_dot
         )
     }
@@ -4934,7 +4973,11 @@ fn emit_int_bit_chain(
         let name = token_text(source, name_at)
         let arity = int_bit_method_arity(name)
         if arity < 0 {
-            return emitted
+            return lower_error(
+                "E2S168",
+                "unknown `Int` member `" + name + "`",
+                name_at
+            )
         }
         let open = skip_trivia(source, token_end(source, name_at))
         if open >= end || token_text(source, open) != "(" {
@@ -4945,32 +4988,6 @@ fn emit_int_bit_chain(
             return lower_error(
                 "E2S169",
                 "`" + name + "` is missing its closing parenthesis",
-                open
-            )
-        }
-        # No bit operation has a functional final slot, so a trailing lambda
-        # cannot be an argument of one. The span is the `fn` that opens it,
-        # which is the token the author would delete, rather than the call it
-        # attached itself to.
-        let trailing = trailing_lambda_open(source, close)
-        if trailing >= 0 {
-            return lower_error(
-                "E2S169",
-                "`" + name + "` takes no trailing lambda; the bit " +
-                "operations have no functional parameter",
-                trailing
-            )
-        }
-        # The labelled-call grammar admits `a.and(value: 2)`, and the eight
-        # operations have no parameter names for a label to select. Without
-        # this, `value` was read as a binding that does not exist and the call
-        # lowered to `kofun_bit_and(k_b0, k_b)` — invalid C that the compiler
-        # exited 0 on, leaving `cc` to report it.
-        if call_has_labelled_argument(source, open) {
-            return lower_error(
-                "E2S169",
-                "`" + name + "` takes positional arguments; the bit " +
-                "operations have no parameter names",
                 open
             )
         }
@@ -4987,14 +5004,30 @@ fn emit_int_bit_chain(
                     argument
                 )
             }
-            let argument_type = numeric_primary_type(
+            # A01 binds and checks each ordinary argument left to right: its
+            # label first, then that argument's type.
+            let label = skip_trivia(source, argument)
+            let mut colon = -1
+            if parameter_word_token(source, label) {
+                colon = skip_trivia(source, token_end(source, label))
+            }
+            if colon >= 0 && colon < close &&
+               token_text(source, colon) == ":" {
+                return lower_error(
+                    "E2S169",
+                    "`" + name + "` takes positional arguments; the bit " +
+                    "operations have no parameter names",
+                    label
+                )
+            }
+            let argument_type = initializer_type_bounded(
                 source,
                 hir,
                 function_open,
-                argument
+                argument,
+                bound
             )
-            if argument_type == "Decimal" || argument_type == "Float" ||
-               text_operand(source, hir, function_open, argument) {
+            if argument_type != "Int" {
                 return lower_error(
                     "E2S168",
                     "`" + name + "` takes `Int` arguments",
@@ -5013,6 +5046,18 @@ fn emit_int_bit_chain(
             } else {
                 argument = separator
             }
+        }
+        # ABI consumers key an expression lambda on its parameter `(`. This
+        # diagnostic instead names the preceding `fn`, as A01 requires.
+        let trailing_parameters = trailing_lambda_open(source, close)
+        if trailing_parameters >= 0 {
+            let trailing = skip_trivia(source, close)
+            return lower_error(
+                "E2S169",
+                "`" + name + "` takes no trailing lambda; the bit " +
+                "operations have no functional parameter",
+                trailing
+            )
         }
         if arguments != arity {
             return lower_error(
@@ -7328,6 +7373,24 @@ fn argument_end(source: Text, start: Int) -> Int {
         return lambda_end
     }
     let label = skip_trivia(source, start)
+    if token_text(source, label) == "true" ||
+       token_text(source, label) == "false" {
+        let primary = token_end(source, label)
+        let dot = skip_trivia(source, primary)
+        let mut name = -1
+        if dot < len(source) && token_text(source, dot) == "." {
+            name = skip_trivia(source, token_end(source, dot))
+        }
+        let mut open = -1
+        if name >= 0 {
+            open = skip_trivia(source, token_end(source, name))
+        }
+        if name >= 0 && int_bit_method_arity_at(source, name) >= 0 &&
+           open < len(source) && token_text(source, open) == "(" {
+            return int_bit_postfix_end(source, primary)
+        }
+        return primary
+    }
     if parameter_word_token(source, label) {
         let colon = skip_trivia(source, token_end(source, label))
         if token_text(source, colon) == ":" {
@@ -8171,8 +8234,12 @@ fn validate_optional_uses(source: Text) -> Text {
                                    token_text(source, after) == "("
                         let optional = !call &&
                             optional_int_binding(source, cursor, name)
+                        let bit_expression = int_bit_expression_contains(
+                            source,
+                            cursor
+                        )
                         if call && optional_int_result(source, name) {
-                            if cursor != carrier &&
+                            if !bit_expression && cursor != carrier &&
                                !optional_int_coalescing_left_site(
                                    source,
                                    cursor
@@ -8186,7 +8253,7 @@ fn validate_optional_uses(source: Text) -> Text {
                                 )
                             }
                         } else {
-                            if optional {
+                            if optional && !bit_expression {
                                 if optional_int_declaration_count(
                                     source,
                                     cursor,
@@ -10869,6 +10936,10 @@ fn initializer_type_bounded(
     } else if end < 0 {
         end = token_end(source, initializer)
     }
+    let lambda_end = lambda_parameters_end(source, -1, initializer)
+    if lambda_end >= 0 && lambda_end <= end {
+        return "Fn"
+    }
     # A `let` whose whole initializer is a bit-operation chain binds `Int`,
     # whatever the receiver is, because the eight operations return `Int`.
     # Without this, `let y = f.and(1)` bound `y` as `Float` and the reader was
@@ -11002,6 +11073,11 @@ fn initializer_type_bounded(
             cursor_text
         )
         if len(binding_id) > 0 {
+            let callable = lambda_binding_open(source, hir, binding_id) >= 0 ||
+                callable_parameter_type_start(source, hir, binding_id) >= 0
+            if callable && call_argument_position(source, cursor) {
+                return "Fn"
+            }
             let binding_type = hir_binding_field(hir, binding_id, 5)
             if len(binding_type) > 0 {
                 if open < len(source) && token_text(source, open) == "." {
@@ -11034,12 +11110,199 @@ fn initializer_type_bounded(
             }
             return "Int"
         }
+        if function_arity(source, cursor_text) >= 0 &&
+           call_argument_position(source, cursor) {
+            return "Fn"
+        }
         let owner = enum_constructor_owner(source, cursor_text)
         if len(owner) > 0 {
             return owner
         }
     }
     return "Int"
+}
+
+# Scope construction normally owns E2S35. Inside one Int-bit call, however,
+# A01 fixes the order as receiver, then each argument's label and type. This
+# preflight is called only when the use pass is about to reject an unresolved
+# name. It returns an earlier bit-call error, or empty text when that unresolved
+# use itself is the first failure and E2S35 must remain authoritative.
+fn int_bit_error_before_unresolved_in(
+    source: Text,
+    hir: Text,
+    target: Int,
+    range_start: Int,
+    range_end: Int
+) -> Text {
+    let mut start = skip_trivia(source, range_start)
+    let mut end = -1
+    let mut first_dot = -1
+    while start <= target && start < range_end && first_dot < 0 {
+        let candidate_end = primary_end(source, start)
+        if candidate_end > target && candidate_end <= range_end {
+            let candidate_dot = int_bit_chain_dot(
+                source,
+                start,
+                candidate_end
+            )
+            if candidate_dot >= 0 {
+                end = candidate_end
+                first_dot = candidate_dot
+            }
+        }
+        if first_dot < 0 {
+            let next = token_end(source, start)
+            if next <= start {
+                return ""
+            }
+            start = skip_trivia(source, next)
+        }
+    }
+    if first_dot < 0 || end < 0 || target < first_dot {
+        return ""
+    }
+
+    let function_open = enclosing_function_open(source, start)
+    let receiver_type = initializer_type_bounded(
+        source,
+        hir,
+        function_open,
+        start,
+        first_dot
+    )
+    if receiver_type != "Int" {
+        return lower_error(
+            "E2S168",
+            "bit operations are defined on `Int`, and this receiver is `" +
+            receiver_type + "`",
+            first_dot
+        )
+    }
+
+    let mut cursor = first_dot
+    while cursor < end && cursor < target {
+        let dot = skip_trivia(source, cursor)
+        if dot >= end || token_text(source, dot) != "." {
+            return ""
+        }
+        let name_at = skip_trivia(source, token_end(source, dot))
+        let name = token_text(source, name_at)
+        let arity = int_bit_method_arity(name)
+        if arity < 0 {
+            return lower_error(
+                "E2S168",
+                "unknown `Int` member `" + name + "`",
+                name_at
+            )
+        }
+        let open = skip_trivia(source, token_end(source, name_at))
+        if open >= end || token_text(source, open) != "(" {
+            return ""
+        }
+        let close = balanced_end(source, open, "(", ")")
+        if close < 0 {
+            return lower_error(
+                "E2S169",
+                "`" + name + "` is missing its closing parenthesis",
+                open
+            )
+        }
+        let mut argument = skip_trivia(source, token_end(source, open))
+        let mut arguments = 0
+        while argument < close && token_text(source, argument) != ")" {
+            let bound = argument_end(source, argument)
+            if bound < 0 {
+                return lower_error(
+                    "E2S169",
+                    "`" + name +
+                    "` was given an argument this slice cannot read",
+                    argument
+                )
+            }
+            let label = skip_trivia(source, argument)
+            let mut colon = -1
+            if parameter_word_token(source, label) {
+                colon = skip_trivia(source, token_end(source, label))
+            }
+            if colon >= 0 && colon < close &&
+               token_text(source, colon) == ":" {
+                return lower_error(
+                    "E2S169",
+                    "`" + name + "` takes positional arguments; the bit " +
+                    "operations have no parameter names",
+                    label
+                )
+            }
+            if target >= argument && target < bound {
+                return int_bit_error_before_unresolved_in(
+                    source,
+                    hir,
+                    target,
+                    argument,
+                    bound
+                )
+            }
+            if bound <= target {
+                let argument_type = initializer_type_bounded(
+                    source,
+                    hir,
+                    function_open,
+                    argument,
+                    bound
+                )
+                if argument_type != "Int" {
+                    return lower_error(
+                        "E2S168",
+                        "`" + name + "` takes `Int` arguments",
+                        argument
+                    )
+                }
+            }
+            arguments = arguments + 1
+            let separator = skip_trivia(source, bound)
+            if separator < close && token_text(source, separator) == "," {
+                argument = skip_trivia(source, token_end(source, separator))
+            } else {
+                argument = separator
+            }
+        }
+        if target <= close {
+            return ""
+        }
+        let trailing_parameters = trailing_lambda_open(source, close)
+        if trailing_parameters >= 0 {
+            return lower_error(
+                "E2S169",
+                "`" + name + "` takes no trailing lambda; the bit " +
+                "operations have no functional parameter",
+                skip_trivia(source, close)
+            )
+        }
+        if arguments != arity {
+            return lower_error(
+                "E2S169",
+                "`" + name + "` expects " + to_text(arity) +
+                " arguments, got " + to_text(arguments),
+                name_at
+            )
+        }
+        cursor = close
+    }
+    return ""
+}
+
+fn int_bit_error_before_unresolved(
+    source: Text,
+    hir: Text,
+    target: Int
+) -> Text {
+    return int_bit_error_before_unresolved_in(
+        source,
+        hir,
+        target,
+        0,
+        len(source)
+    )
 }
 
 fn build_scope_hir_mode(
@@ -11847,6 +12110,14 @@ fn build_scope_hir_mode(
                            !constant_is_declared(source, name) &&
                            !(function_arity(source, name) >= 0 &&
                              call_argument_position(source, cursor)) {
+                            let bit_error = int_bit_error_before_unresolved(
+                                source,
+                                hir,
+                                cursor
+                            )
+                            if len(bit_error) > 0 {
+                                return bit_error
+                            }
                             return "error[E2S35]: unknown lexical binding `" +
                             name + "` at byte " + to_text(cursor)
                         }
@@ -11941,8 +12212,10 @@ fn validate_enum_uses(source: Text, hir: Text) -> Text {
                                     source,
                                     cursor
                                 ) == binding_type
+                            let bit_expression =
+                                int_bit_expression_contains(source, cursor)
                             if !match_scrutinee && !enum_argument &&
-                               !enum_return {
+                               !enum_return && !bit_expression {
                                 return "error[E2S32]: concrete enum binding `" +
                                 name +
                                 "` is match-only in this Core slice at byte " +
@@ -11975,8 +12248,14 @@ fn validate_enum_uses(source: Text, hir: Text) -> Text {
                                         source,
                                         cursor
                                     ) == constructor_owner
+                                let bit_expression =
+                                    int_bit_expression_contains(
+                                        source,
+                                        cursor
+                                    )
                                 if len(constructor_owner) > 0 &&
-                                   !enum_argument && !enum_return {
+                                   !enum_argument && !enum_return &&
+                                   !bit_expression {
                                     return "error[E2S32]: concrete enum constructor `" +
                                     name +
                                     "` is only valid in an explicitly typed enum initializer or match pattern at byte " +

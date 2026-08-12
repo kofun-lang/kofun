@@ -1,0 +1,10 @@
+# A bit call owns the specific Int-argument refusal before the general
+# match-only enum-use validator.
+
+type Signal = | Red | Blue
+
+fn main() -> Int {
+    let signal: Signal = Red
+    print(to_text((1).and(signal)))
+    return 0
+}

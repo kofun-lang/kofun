@@ -1,0 +1,6 @@
+# A direct arrow lambda is callable, not an Int bit argument.
+
+fn main() -> Int {
+    print(to_text((1).and(value => value * 2)))
+    return 0
+}

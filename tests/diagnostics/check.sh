@@ -68,7 +68,10 @@ awk -F '\t' '
         if ($13 ~ /^gap\([a-z0-9-]+\)$/) {
             print $1 "\t" $13 > gaps
         } else {
-            print $1 > covered
+            count = split($13, observers, ",")
+            for (observer_index = 1; observer_index <= count; ++observer_index) {
+                print $1 "\t" observers[observer_index] > covered
+            }
         }
     }
 ' gaps="$WORK/gaps" covered="$WORK/covered.codes" \
@@ -77,6 +80,7 @@ awk -F '\t' '
 LC_ALL=C sort "$WORK/registry.codes" >"$WORK/registry.sorted"
 cmp "$WORK/registry.codes" "$WORK/registry.sorted" >/dev/null ||
     fail "registry codes are not bytewise sorted"
+LC_ALL=C sort "$WORK/covered.codes" >"$WORK/covered.sorted"
 
 awk -F '\t' '
     /^#/ || NF == 0 { next }
@@ -140,6 +144,10 @@ do
                     "$WORK/adapters" ||
                     fail "unknown observing adapter for $code: $allowed"
             done
+            case ",$adapters," in
+                *,"$owner",*) ;;
+                *) fail "canonical fixture owner is not an observer for $code: $owner" ;;
+            esac
             ;;
     esac
 done <"$REGISTRY"
@@ -170,12 +178,12 @@ awk -F '\t' '
             NR, NF, expected > "/dev/stderr"
         exit 1
     }
-    seen[$1]++ {
-        printf "diagnostic registry: duplicate observed code: %s\n",
-            $1 > "/dev/stderr"
+    seen[$1 SUBSEP $2]++ {
+        printf "diagnostic registry: duplicate observed code/adapter: %s/%s\n",
+            $1, $2 > "/dev/stderr"
         exit 1
     }
-    { print $1 }
+    { print $1 "\t" $2 }
 ' "$WORK/observed.tsv" >"$WORK/observed.codes"
 
 while IFS='	' read -r code owner channel exit_class primary secondary artifact
@@ -196,8 +204,6 @@ do
         *,"$owner",*) ;;
         *) fail "unregistered observing adapter for $code: $owner" ;;
     esac
-    test "$owner" = "$registry_owner" ||
-        fail "fixture ownership mismatch for $code: $owner != $registry_owner"
     test "$channel" = "$registry_channel" ||
         fail "routing mismatch for $code: $channel != $registry_channel"
     test "$exit_class" = "$registry_exit" ||
@@ -216,10 +222,10 @@ do
 done <"$WORK/observed.tsv"
 
 LC_ALL=C sort "$WORK/observed.codes" >"$WORK/observed.sorted"
-cmp "$WORK/covered.codes" "$WORK/observed.sorted" >/dev/null || {
-    missing=$(comm -23 "$WORK/covered.codes" "$WORK/observed.sorted" |
+cmp "$WORK/covered.sorted" "$WORK/observed.sorted" >/dev/null || {
+    missing=$(comm -23 "$WORK/covered.sorted" "$WORK/observed.sorted" |
         paste -sd, -)
-    unknown=$(comm -13 "$WORK/covered.codes" "$WORK/observed.sorted" |
+    unknown=$(comm -13 "$WORK/covered.sorted" "$WORK/observed.sorted" |
         paste -sd, -)
     test -z "$missing" || printf '%s\n' \
         "diagnostic registry: declared-but-unobserved active codes: $missing" >&2
@@ -232,7 +238,7 @@ count=$(wc -l <"$WORK/registry.codes" | tr -d ' ')
 covered_count=$(wc -l <"$WORK/covered.codes" | tr -d ' ')
 gap_count=$(wc -l <"$WORK/gaps" | tr -d ' ')
 printf '%s\n' \
-    "diagnostic registry: $count stable codes; $covered_count executable owners agree; $gap_count explicit evidence gaps"
+    "diagnostic registry: $count stable codes; $covered_count registered adapter observations agree; $gap_count explicit evidence gaps"
 
 if test "$MODE" != check && test "$MODE" != --registry-only; then
     fail "unknown mode: $MODE"
