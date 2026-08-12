@@ -55,10 +55,16 @@ builds all_called
 # reference, so a fix that emitted one line for the first function would leave
 # the second unbuildable on a host that reports the warning -- and this gate
 # would otherwise agree with it.
-for name in unused_first unused_second used; do
+for name in unused_first unused_second used k_u005408_u008A08; do
     assert_grep "the emitted C references $name" \
         -Fq -- "(void)kofun_fn_$name;" "$work/uncalled.c"
 done
+
+# The non-ASCII name is referenced by its escaped spelling and never by its
+# raw one. That is the defect this fixture exists for: the first version of
+# this fix wrote the raw name, and only `tests/unicode` caught it.
+assert_not_grep 'no reference uses the raw non-ASCII identifier' \
+    -Fq -- '(void)kofun_fn_合計;' "$work/uncalled.c"
 
 # `main` is not referenced: it is the entry point, never `static`, and a
 # `(void)kofun_fn_main;` would name a symbol that does not exist.

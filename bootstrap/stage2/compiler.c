@@ -24776,7 +24776,16 @@ static char *emit_function_references(const char *source) {
     while (cursor < length) {
         char *name = function_name(source, cursor);
         if (strcmp(name, "main") != 0) {
-            buffer_format(&references, "    (void)kofun_fn_%s;\n", name);
+            /*
+             * The same spelling the prototype uses.  A Kofun identifier may be
+             * non-ASCII and `c_identifier_name` escapes it to `k_uXXXX`; a
+             * reference written from the raw name names a symbol that was
+             * never declared, which `tests/unicode/stage2_identifiers.kofun`
+             * catches and nothing else does.
+             */
+            char *symbol = c_identifier_name(name);
+            buffer_format(&references, "    (void)kofun_fn_%s;\n", symbol);
+            free(symbol);
         }
         free(name);
         cursor = next_function_start(source, function_end(source, cursor));

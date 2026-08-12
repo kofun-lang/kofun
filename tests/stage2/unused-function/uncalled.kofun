@@ -14,6 +14,16 @@ fn unused_second(value: Int) -> Int {
     return value + 2
 }
 
+# A non-ASCII name, uncalled. The reference has to be spelled the way the
+# prototype is: `c_identifier_name` escapes a non-ASCII identifier to
+# `k_uXXXX`, and a reference written from the raw name asks the C compiler for
+# a symbol that was never declared. The first version of this fix did exactly
+# that, and only `tests/unicode` caught it -- a gate for this feature that
+# cannot see its own feature's defect is worth less than the one that found it.
+fn 合計(value: Int) -> Int {
+    return value + 3
+}
+
 fn used(value: Int) -> Int {
     return value * 2
 }
