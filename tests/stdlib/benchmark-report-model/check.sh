@@ -109,15 +109,31 @@ run_group() {
     } >"$WORK/$stem.main.kofun"
     cat "$model" "$compare" "$corpus" "$WORK/$stem.main.kofun" >"$WORK/$stem.kofun"
 
-    # No `--emit-typed-sidecar` here, deliberately: on a program this size the
-    # projector prints `ok:`, writes `ETS04`, exits 3, and produces no file
-    # (#1360). The assertion belongs in this gate and returns when that is
-    # fixed; asserting on a projection that cannot run would only pin the bug.
     "$ROOT/bin/kofun" check "$WORK/$stem.kofun" \
         >"$WORK/$stem.check.stdout" 2>"$WORK/$stem.check.stderr" ||
         assert_fail "$stem did not check: $(cat "$WORK/$stem.check.stderr")"
     assert_grep "$stem is accepted by the checker" \
         -Fq -- 'ok:' "$WORK/$stem.check.stdout"
+
+    # #1360 restored this. The projector still cannot describe a program this
+    # size -- it is past the producer's `fn` token profile -- but the three
+    # signals now agree, so the outcome is assertable instead of skippable.
+    # What this catches is a silent change of outcome in either direction: a
+    # projector that starts writing a file here, and a run that goes back to
+    # claiming `ok:` while exiting nonzero.
+    set +e
+    "$ROOT/bin/kofun" check "$WORK/$stem.kofun" \
+        --emit-typed-sidecar "$WORK/$stem.sidecar.json" --generation 1 \
+        >"$WORK/$stem.sidecar.stdout" 2>"$WORK/$stem.sidecar.stderr"
+    sidecar_status=$?
+    set -e
+    test "$sidecar_status" -eq 3 ||
+        assert_fail "$stem sidecar projection exited $sidecar_status instead of 3"
+    assert_file_empty "$stem.sidecar.stdout" "$WORK/$stem.sidecar.stdout"
+    assert_absent "$stem.sidecar.json" "$WORK/$stem.sidecar.json"
+    assert_grep "$stem sidecar refusal names its limit" \
+        -Eq -- '^ETS04: declaration limit exceeded: fn tokens reached [0-9]+ at byte [0-9]+; this producer projects at most [0-9]+$' \
+        "$WORK/$stem.sidecar.stderr"
 
     "$ROOT/bin/kofun" build "$WORK/$stem.kofun" -o "$WORK/$stem.bin" \
         --emit-c "$WORK/$stem.c" \
