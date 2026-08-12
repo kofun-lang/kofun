@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { summarize, outlierFlags } from '../../../spec/benchmark-report-v1/model.mjs'
+import { summarize, outlierFlags, compareReports } from '../../../spec/benchmark-report-v1/model.mjs'
 import { LIMITS } from '../../../spec/benchmark-report-v1/contract.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -196,7 +196,7 @@ function sweepSource(counts) {
         '    # The call is here because every function in model.kofun and',
         '    # corpus.kofun must be *referenced* or the build fails at `cc` with',
         '    # -Werror=unused-function (#1358), and `run_group` names them all.',
-        '    let mut ran = run_group(6)',
+        '    let mut ran = run_group(6) + run_comparison_group(6)',
     )
     for (const count of counts) parts.push(`    ran = ran + sweep_${count}()`)
     parts.push('    print("sweep cases " + to_text(ran))', '}', '')
@@ -218,6 +218,120 @@ function sweepExpect(counts) {
     return lines
 }
 
+// ------------------------------------------------------------- comparison
+//
+// The #1313 expectation. `compareReports` is the same frozen oracle, and it
+// takes the nested wire document rather than the flat Stage 2 outcome, so each
+// case is built by overriding the tracked `minimal.json` vector — the smallest
+// valid report there is — and letting `summarize`/`outlierFlags` fill the
+// derived fields. Building the document by hand here would be a second
+// implementation of the thing under test.
+
+const MINIMAL = JSON.parse(readFileSync(
+    join(HERE, '..', '..', '..', 'spec/benchmark-report-v1/vectors/positive/minimal.json'), 'utf8'))
+
+const STATUS = Object.freeze({ BR006: 6, BR007: 7, BR008: 8, BR009: 9 })
+const RESULT = Object.freeze({ equivalent: 0, improved: 1, regressed: 2 })
+
+function reportWith(options) {
+    const report = JSON.parse(JSON.stringify(MINIMAL))
+    const samples = options.samples ?? [options.median]
+    report.identity.suite = options.suite ?? 'kofun.core'
+    report.identity.case = 'list_int_sum'
+    report.identity.metric = options.metric ?? 'duration'
+    report.identity.direction = options.direction ?? 'lower-is-better'
+    if (options.parameterAbsent === true) {
+        delete report.identity.parameter
+    } else {
+        report.identity.parameter = 'n=64'
+    }
+    report.clock = options.clock ?? 'monotonic'
+    report.budget = { warmup_cap_ns: 1000000, sampling_cap_ns: 2000000000, sample_cap: samples.length }
+    report.measurement = {
+        warmup_iterations: 32,
+        warmup_stop: 'steady',
+        iterations_per_sample: options.iterations ?? 8,
+        sample_count: samples.length,
+        sampling_stop: 'sample-cap',
+        harness_overhead_ns: 12,
+    }
+    report.samples = samples
+    report.outliers = [...outlierFlags(samples)]
+    report.summary = { ...summarize(samples) }
+    return report
+}
+
+// Each case names the two sides the Kofun corpus builds and the threshold it
+// passes, in `run_comparison_group` order.
+const COMPARISONS = Object.freeze({
+    0: [
+        ['equal', { median: 1000 }, { median: 1000 }, 0],
+        ['halfup', { median: 32 }, { median: 33 }, 0],
+        ['halfdown', { median: 32 }, { median: 31 }, 0],
+        ['exact', { median: 8 }, { median: 9 }, 0],
+    ],
+    1: [
+        ['atthreshold', { median: 1000 }, { median: 1100 }, 1000],
+        ['overthreshold', { median: 1000 }, { median: 1100 }, 999],
+        ['higherworse', { median: 1000, direction: 'higher-is-better' },
+            { median: 900, direction: 'higher-is-better' }, 0],
+        ['higherbetter', { median: 1000, direction: 'higher-is-better' },
+            { median: 1100, direction: 'higher-is-better' }, 0],
+    ],
+    2: [
+        ['zeroboth', { median: 0 }, { median: 0 }, 0],
+        ['zerobase', { median: 0 }, { median: 5 }, 0],
+        ['overflow', { median: 1 }, { median: LIMITS.integer }, 0],
+        ['thresholdlow', { median: 1000 }, { median: 1000 }, -1],
+        ['thresholdhigh', { median: 1000 }, { median: 1000 }, LIMITS.thresholdBps + 1],
+    ],
+    3: [
+        ['suite', { median: 1000 }, { median: 1000, suite: 'other.suite' }, 0],
+        ['metric', { median: 1000 }, { median: 1000, metric: 'throughput' }, 0],
+        ['direction', { median: 1000 }, { median: 1000, direction: 'higher-is-better' }, 0],
+    ],
+    4: [
+        ['clock', { median: 1000 }, { median: 1000, clock: 'process-cpu' }, 0],
+        ['batch', { median: 1000 }, { median: 1000, iterations: 16 }, 0],
+        ['parameter', { median: 1000 }, { median: 1000, parameterAbsent: true }, 0],
+    ],
+    5: [
+        // The invalid-baseline case has no oracle document: an empty series is
+        // not a report, so the model refuses it before comparison and the
+        // expectation is the model's own BR006. Stated rather than computed.
+        ['invalidbase', null, null, STATUS.BR006],
+        ['thresholdfirst', { median: 1000 }, { median: 1000, suite: 'other.suite' }, -1],
+        ['alloweddelta', { median: 1000 }, { samples: [900, 1000, 1100] }, 0],
+    ],
+})
+
+function comparisonLine(name, baseline, candidate, threshold) {
+    if (baseline === null) return `${name} ${threshold} 0 0 0`
+    try {
+        const result = compareReports(reportWith(baseline), reportWith(candidate), threshold)
+        if (result.kind === 'indeterminate') return `${name} 0 3 0 ${result.threshold_bps}`
+        return `${name} 0 ${RESULT[result.verdict]} ${result.change_bps} ${result.threshold_bps}`
+    } catch (error) {
+        const code = error?.code ?? error?.details?.code
+        const status = STATUS[code]
+        if (status === undefined) throw error
+        return `${name} ${status} 0 0 0`
+    }
+}
+
+export function comparisonGroup(group) {
+    const cases = COMPARISONS[group]
+    if (cases === undefined) throw new Error(`no comparison group ${group}`)
+    const lines = cases.map(([name, baseline, candidate, threshold]) =>
+        comparisonLine(name, baseline, candidate, threshold))
+    lines.push(`cases ${cases.length}`)
+    return lines
+}
+
+// --------------------------------------------------------------------- cli
+//
+// Last, so every mode it dispatches to is defined above it.
+
 const [mode, argument] = process.argv.slice(2)
 
 if (mode === 'group') {
@@ -226,6 +340,8 @@ if (mode === 'group') {
     process.stdout.write(sweepSource(sweepCounts()))
 } else if (mode === 'sweep-expect') {
     process.stdout.write(sweepExpect(sweepCounts()).join('\n') + '\n')
+} else if (mode === 'comparison') {
+    process.stdout.write(comparisonGroup(Number(argument)).join('\n') + '\n')
 } else if (mode === 'sweep-counts') {
     process.stdout.write(sweepCounts().join(' ') + '\n')
 } else {

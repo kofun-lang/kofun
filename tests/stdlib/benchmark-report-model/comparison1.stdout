@@ -1,0 +1,5 @@
+atthreshold 0 0 1000 1000
+overthreshold 0 2 1000 999
+higherworse 0 2 1000 0
+higherbetter 0 1 -1000 0
+cases 4

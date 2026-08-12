@@ -1,0 +1,5 @@
+equal 0 0 0 0
+halfup 0 2 313 0
+halfdown 0 1 -313 0
+exact 0 2 1250 0
+cases 4

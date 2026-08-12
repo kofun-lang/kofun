@@ -42,9 +42,11 @@ else
 fi
 
 model="$CASES/model.kofun"
+compare="$CASES/compare.kofun"
 corpus="$CASES/corpus.kofun"
 oracle="$CASES/oracle.mjs"
 assert_regular_file 'Kofun model' "$model"
+assert_regular_file 'Kofun comparison' "$compare"
 assert_regular_file 'Kofun corpus' "$corpus"
 assert_regular_file 'independent oracle' "$oracle"
 
@@ -94,13 +96,18 @@ done
 run_group() {
     group=$1
     stem="group$group"
+    # `run_comparison_group(6)` matches no branch and runs nothing. It is here
+    # because every function in the concatenated program must be *referenced*
+    # or the build fails at `cc` with -Werror=unused-function (#1358), and the
+    # corpus now carries the #1313 comparison cases as well.
     {
         printf 'fn main() {\n'
-        printf '    let cases = run_group(%s)\n' "$group"
+        printf '    let mut cases = run_comparison_group(6)\n'
+        printf '    cases = cases + run_group(%s)\n' "$group"
         printf '    print("cases " + to_text(cases))\n'
         printf '}\n'
     } >"$WORK/$stem.main.kofun"
-    cat "$model" "$corpus" "$WORK/$stem.main.kofun" >"$WORK/$stem.kofun"
+    cat "$model" "$compare" "$corpus" "$WORK/$stem.main.kofun" >"$WORK/$stem.kofun"
 
     # No `--emit-typed-sidecar` here, deliberately: on a program this size the
     # projector prints `ok:`, writes `ETS04`, exits 3, and produces no file
@@ -171,7 +178,7 @@ done
 node "$oracle" sweep-source >"$WORK/sweep.main.kofun"
 node "$oracle" sweep-expect >"$WORK/sweep.expected"
 counts=$(node "$oracle" sweep-counts)
-cat "$model" "$corpus" "$WORK/sweep.main.kofun" >"$WORK/sweep.kofun"
+cat "$model" "$compare" "$corpus" "$WORK/sweep.main.kofun" >"$WORK/sweep.kofun"
 
 "$ROOT/bin/kofun" build "$WORK/sweep.kofun" -o "$WORK/sweep.bin" \
     --emit-c "$WORK/sweep.c" \
@@ -195,8 +202,8 @@ mutation() {
     sed "$expression" "$model" >"$WORK/mutant-$name.model.kofun"
     cmp -s "$model" "$WORK/mutant-$name.model.kofun" &&
         assert_fail "mutation $name changed nothing; its pattern no longer matches"
-    cat "$WORK/mutant-$name.model.kofun" "$corpus" "$WORK/group$group.main.kofun" \
-        >"$WORK/mutant-$name.kofun"
+    cat "$WORK/mutant-$name.model.kofun" "$compare" "$corpus" \
+        "$WORK/group$group.main.kofun" >"$WORK/mutant-$name.kofun"
     if "$ROOT/bin/kofun" run "$WORK/mutant-$name.kofun" \
         >"$WORK/mutant-$name.stdout" 2>"$WORK/mutant-$name.stderr"
     then
