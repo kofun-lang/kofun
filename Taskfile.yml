@@ -586,6 +586,11 @@ tasks:
     cmds:
       - "sh tests/stdlib/benchmark-report-model/check.sh"
 
+  benchmark-report-comparison:
+    desc: "Verify deterministic threshold comparison, rounding, and precedence"
+    cmds:
+      - "sh tests/stdlib/benchmark-report-model/compare.sh"
+
   move-assertion:
     desc: "Verify the unstable compile-time move assertion and its erasure"
     cmds:
@@ -1111,6 +1116,7 @@ tasks:
             benchmark-summary \
             benchmark-report-spec \
             benchmark-report-model \
+            benchmark-report-comparison \
             move-assertion \
             usability-corpus \
             capabilities \

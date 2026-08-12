@@ -1,0 +1,287 @@
+# The deterministic threshold comparison (#1313), in Kofun.
+#
+# `spec/benchmark-report-v1.md` defines the value; this computes it on the
+# executable Stage 2 C11 profile, over two outcomes `model.kofun` produced.
+# `check.sh` concatenates `model.kofun`, this file, `corpus.kofun`, and one
+# generated driver, in that order.
+#
+# The arithmetic is the reason this file is not three lines. The mathematical
+# result is `difference * 10000 / base`, and production must not evaluate
+# `difference * 10000` in `Int`: every report integer may be as large as
+# 2^53-1, so that product overflows the carrier for values the contract admits.
+# What follows is the contract's bounded decomposition — a whole quotient, four
+# decimal digits extracted one at a time, and a final rounding decision — where
+# every intermediate is proved to fit.
+
+type Stage2BenchmarkComparisonOutcome = {
+    status_tag: Int,
+    result_tag: Int,
+    change_bps: Int,
+    threshold_bps: Int,
+}
+
+# The magnitude and whether computing it overflowed. A sentinel magnitude would
+# be indistinguishable from a real one, so the status travels beside it.
+type BasisPoints = {
+    status_tag: Int,
+    magnitude: Int,
+}
+
+fn limit_threshold_bps() -> Int {
+    return 1000000
+}
+
+# checked summary/comparison arithmetic overflow
+fn status_arithmetic_overflow() -> Int {
+    return 7
+}
+
+# reports are not comparison-compatible
+fn status_incompatible() -> Int {
+    return 8
+}
+
+# invalid caller threshold
+fn status_invalid_threshold() -> Int {
+    return 9
+}
+
+fn result_equivalent() -> Int {
+    return 0
+}
+
+fn result_improved() -> Int {
+    return 1
+}
+
+fn result_regressed() -> Int {
+    return 2
+}
+
+fn result_zero_baseline() -> Int {
+    return 3
+}
+
+# Every nonsuccess carries no verdict, no change, and no threshold: a caller
+# that read `change_bps` on a refused comparison would be reading a number the
+# comparison never computed.
+fn neutral_comparison(status_tag: Int) -> Stage2BenchmarkComparisonOutcome {
+    let value: Stage2BenchmarkComparisonOutcome = Stage2BenchmarkComparisonOutcome(
+        status_tag: status_tag,
+        result_tag: 0,
+        change_bps: 0,
+        threshold_bps: 0
+    )
+    return value
+}
+
+# --------------------------------------------------------- compatibility
+#
+# Exactly the equality list the contract names: suite, case, the optional
+# parameter's presence *and* value, metric, direction, clock, and the batch
+# shape. Everything else — budgets, counts, raw values, summaries, flags,
+# counters, digests, host, overhead — may differ, because comparing builds and
+# hosts is what a report is for.
+
+fn comparison_compatible(
+    baseline: BenchReport,
+    candidate: BenchReport
+) -> Int {
+    if baseline.suite != candidate.suite {
+        return 0
+    }
+    if baseline.case != candidate.case {
+        return 0
+    }
+    if baseline.parameter_present {
+        if candidate.parameter_present {
+            if baseline.parameter != candidate.parameter {
+                return 0
+            }
+        } else {
+            return 0
+        }
+    } else {
+        if candidate.parameter_present {
+            return 0
+        }
+    }
+    if baseline.metric != candidate.metric {
+        return 0
+    }
+    if baseline.direction_tag != candidate.direction_tag {
+        return 0
+    }
+    if baseline.clock_tag != candidate.clock_tag {
+        return 0
+    }
+    if baseline.iterations_per_sample != candidate.iterations_per_sample {
+        return 0
+    }
+    return 1
+}
+
+# ------------------------------------------------------------- arithmetic
+#
+# `difference` is a nonnegative magnitude here; the sign is applied by the
+# caller, last, so that rounding is away from zero without a second rule.
+#
+# `whole` is bounded before it is scaled: the report ceiling divided by 10000
+# is the largest whole quotient whose scaled form can still be represented, and
+# anything above it is BR007 before any multiplication happens. Each digit step
+# multiplies a remainder that is strictly below `base`, so `remainder * 10` is
+# below 10 * 2^53, well inside the carrier.
+
+fn rounded_basis_points(difference: Int, base: Int) -> BasisPoints {
+    let whole = difference // base
+    if whole > limit_integer() // 10000 {
+        let overflow: BasisPoints = BasisPoints(
+            status_tag: status_arithmetic_overflow(),
+            magnitude: 0
+        )
+        return overflow
+    }
+
+    let mut remainder = difference % base
+    let mut fraction = 0
+    let mut digit_index = 0
+    while digit_index < 4 {
+        remainder = remainder * 10
+        let digit = remainder // base
+        fraction = fraction * 10 + digit
+        remainder = remainder % base
+        digit_index = digit_index + 1
+    }
+
+    let mut magnitude = whole * 10000 + fraction
+    # The exact half rounds up. `2 * remainder >= base` is the same test as
+    # `remainder >= base // 2 + base % 2` without the parity case.
+    if 2 * remainder >= base {
+        magnitude = magnitude + 1
+    }
+    if magnitude > limit_integer() {
+        let overflow: BasisPoints = BasisPoints(
+            status_tag: status_arithmetic_overflow(),
+            magnitude: 0
+        )
+        return overflow
+    }
+    let points: BasisPoints = BasisPoints(
+        status_tag: status_valid(),
+        magnitude: magnitude
+    )
+    return points
+}
+
+# ------------------------------------------------------------- comparison
+#
+# Precedence is fixed and observable: the baseline's own validity, then the
+# candidate's, then the threshold, then compatibility. A caller handed an
+# invalid candidate and an invalid threshold is told about the candidate.
+
+fn compare_reports(
+    baseline: BenchReport,
+    candidate: BenchReport,
+    threshold_bps: Int
+) -> Stage2BenchmarkComparisonOutcome {
+    if baseline.status_tag != status_valid() {
+        let refused: Stage2BenchmarkComparisonOutcome = neutral_comparison(baseline.status_tag)
+        return refused
+    }
+    if candidate.status_tag != status_valid() {
+        let refused: Stage2BenchmarkComparisonOutcome = neutral_comparison(candidate.status_tag)
+        return refused
+    }
+    if threshold_bps < 0 {
+        let refused: Stage2BenchmarkComparisonOutcome = neutral_comparison(status_invalid_threshold())
+        return refused
+    }
+    if threshold_bps > limit_threshold_bps() {
+        let refused: Stage2BenchmarkComparisonOutcome = neutral_comparison(status_invalid_threshold())
+        return refused
+    }
+    if comparison_compatible(baseline, candidate) == 0 {
+        let refused: Stage2BenchmarkComparisonOutcome = neutral_comparison(status_incompatible())
+        return refused
+    }
+
+    let base = baseline.summary_median
+    let next = candidate.summary_median
+
+    # A zero baseline has no ratio. Two zeros are equivalent with no change;
+    # a zero baseline against a nonzero candidate is indeterminate, and no
+    # change is fabricated for it.
+    if base == 0 {
+        if next == 0 {
+            let equal: Stage2BenchmarkComparisonOutcome = Stage2BenchmarkComparisonOutcome(
+                status_tag: status_valid(),
+                result_tag: result_equivalent(),
+                change_bps: 0,
+                threshold_bps: threshold_bps
+            )
+            return equal
+        }
+        let indeterminate: Stage2BenchmarkComparisonOutcome = Stage2BenchmarkComparisonOutcome(
+            status_tag: status_valid(),
+            result_tag: result_zero_baseline(),
+            change_bps: 0,
+            threshold_bps: threshold_bps
+        )
+        return indeterminate
+    }
+
+    # A positive signed change always means worse, whichever direction the
+    # metric is measured in.
+    let mut difference = 0
+    let mut negative = 0
+    if baseline.direction_tag == 0 {
+        if next < base {
+            difference = base - next
+            negative = 1
+        } else {
+            difference = next - base
+        }
+    } else {
+        if next > base {
+            difference = next - base
+            negative = 1
+        } else {
+            difference = base - next
+        }
+    }
+
+    let points: BasisPoints = rounded_basis_points(difference, base)
+    if points.status_tag != status_valid() {
+        let overflowed: Stage2BenchmarkComparisonOutcome = neutral_comparison(points.status_tag)
+        return overflowed
+    }
+
+    let mut change = points.magnitude
+    if negative == 1 {
+        change = 0 - change
+    }
+
+    let mut result = result_equivalent()
+    if change > threshold_bps {
+        result = result_regressed()
+    }
+    if change < 0 - threshold_bps {
+        result = result_improved()
+    }
+
+    let outcome: Stage2BenchmarkComparisonOutcome = Stage2BenchmarkComparisonOutcome(
+        status_tag: status_valid(),
+        result_tag: result,
+        change_bps: change,
+        threshold_bps: threshold_bps
+    )
+    return outcome
+}
+
+fn comparison_line(name: Text, outcome: Stage2BenchmarkComparisonOutcome) -> Int {
+    let head: Text = name + " " + to_text(outcome.status_tag) + " " +
+        to_text(outcome.result_tag)
+    let tail: Text = to_text(outcome.change_bps) + " " + to_text(outcome.threshold_bps)
+    print(head + " " + tail)
+    return 1
+}

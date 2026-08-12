@@ -63,3 +63,39 @@ child that reads bytes.
 The fixed `Samples8` scaffold in
 [`../benchmark-summary`](../benchmark-summary) is deliberately retained. Only
 #1320 may decide and perform its deletion.
+
+## Comparison (#1313)
+
+`compare.kofun` is the deterministic caller-threshold comparison over two
+outcomes this model produced, and `compare.sh` is its gate:
+
+```sh
+task benchmark-report-comparison
+```
+
+The arithmetic is why that file is not three lines. The value is
+`difference * 10000 / base`, and production must not evaluate
+`difference * 10000` in `Int` — every report integer may be 2^53-1, so the
+product overflows the carrier for inputs the contract admits. Production uses
+#1310's decomposition instead: a whole quotient bounded *before* it is scaled,
+four decimal digits extracted one at a time from a remainder that stays below
+`base`, and one rounding decision at the end. The oracle computes the same
+value in BigInt, and the gate requires them to agree.
+
+Two rules the corpus is built to make observable rather than to assert:
+
+- **An exact half rounds away from zero.** 32 → 33 is +312.5 and 32 → 31 is
+  −312.5, so a model that truncated, or that rounded before applying the sign,
+  disagrees on both.
+- **Precedence is an order, and an order is invisible to inputs that are wrong
+  in only one way.** The fixtures are wrong in two at once: an invalid baseline
+  *and* an invalid threshold reports the baseline; an incompatible pair *and* an
+  invalid threshold reports the threshold.
+
+Five mutations defend it: dropping the half-rounding, admitting equality at the
+threshold, removing the pre-scaling overflow bound, dropping
+`iterations_per_sample` from compatibility, and swapping the threshold and
+compatibility checks.
+
+Out of scope here as well: the codec, publication, the runner, and any
+capability or release claim. This child owns comparison.

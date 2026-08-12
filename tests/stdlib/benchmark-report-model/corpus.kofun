@@ -395,3 +395,250 @@ fn run_group(group: Int) -> Int {
 
     return cases
 }
+
+# ---------------------------------------------------- comparison corpus
+#
+# A comparison needs two valid reports whose medians are chosen, and a
+# one-sample report's median is its sample, so each side is built from a single
+# value. Everything a comparison is allowed to ignore — counts, counters,
+# digests, host, overhead — stays identical here unless a case is about it.
+
+fn comparison_report(
+    median: Int,
+    suite: Text,
+    metric: Text,
+    direction_tag: Int,
+    clock_tag: Int,
+    iterations: Int
+) -> BenchReport {
+    let samples0: List[Int] = [median]
+    let samples1: List[Int] = []
+    let identity: ReportIdentity = ReportIdentity(
+        suite: suite,
+        case: "list_int_sum",
+        parameter_present: true,
+        parameter: "n=64",
+        metric: metric,
+        direction_tag: direction_tag
+    )
+    let schedule: ReportSchedule = ReportSchedule(
+        clock_tag: clock_tag,
+        warmup_cap_ns: 1000000,
+        sampling_cap_ns: 2000000000,
+        sample_cap: 1,
+        warmup_iterations: 32,
+        warmup_stop_tag: 1,
+        iterations_per_sample: iterations,
+        sample_count: 1,
+        sampling_stop_tag: 0,
+        harness_overhead_ns: 12
+    )
+    let counters: ReportCounters = corpus_counters()
+    let digests: ReportDigests = corpus_digests()
+    let host: ReportHost = corpus_host()
+    let report: BenchReport = produce_report(
+        identity,
+        schedule,
+        counters,
+        digests,
+        host,
+        samples0,
+        samples1
+    )
+    return report
+}
+
+# The ordinary case: both sides identical except for the medians.
+fn run_comparison(name: Text, base_median: Int, next_median: Int, threshold: Int) -> Int {
+    let baseline: BenchReport = comparison_report(base_median, "kofun.core", "duration", 0, 0, 8)
+    let candidate: BenchReport = comparison_report(next_median, "kofun.core", "duration", 0, 0, 8)
+    let outcome: Stage2BenchmarkComparisonOutcome = compare_reports(
+        baseline,
+        candidate,
+        threshold
+    )
+    return comparison_line(name, outcome)
+}
+
+# `higher-is-better`, where a larger candidate is the improvement.
+fn run_higher_comparison(name: Text, base_median: Int, next_median: Int, threshold: Int) -> Int {
+    let baseline: BenchReport = comparison_report(base_median, "kofun.core", "duration", 1, 0, 8)
+    let candidate: BenchReport = comparison_report(next_median, "kofun.core", "duration", 1, 0, 8)
+    let outcome: Stage2BenchmarkComparisonOutcome = compare_reports(
+        baseline,
+        candidate,
+        threshold
+    )
+    return comparison_line(name, outcome)
+}
+
+# One identity field differs on the candidate side; the medians do not, so a
+# result other than the incompatibility refusal would mean the field was not
+# consulted.
+fn run_incompatible(
+    name: Text,
+    suite: Text,
+    metric: Text,
+    direction_tag: Int,
+    clock_tag: Int,
+    iterations: Int
+) -> Int {
+    let baseline: BenchReport = comparison_report(1000, "kofun.core", "duration", 0, 0, 8)
+    let candidate: BenchReport = comparison_report(1000, suite, metric, direction_tag, clock_tag, iterations)
+    let outcome: Stage2BenchmarkComparisonOutcome = compare_reports(baseline, candidate, 0)
+    return comparison_line(name, outcome)
+}
+
+# The candidate carries no parameter where the baseline carries one. Presence
+# is part of compatibility, so this is BR008 even though every other field
+# agrees.
+fn run_parameter_absent(name: Text) -> Int {
+    let baseline: BenchReport = comparison_report(1000, "kofun.core", "duration", 0, 0, 8)
+    let samples0: List[Int] = [1000]
+    let samples1: List[Int] = []
+    let identity: ReportIdentity = ReportIdentity(
+        suite: "kofun.core",
+        case: "list_int_sum",
+        parameter_present: false,
+        parameter: "",
+        metric: "duration",
+        direction_tag: 0
+    )
+    let schedule: ReportSchedule = corpus_schedule(1, 1, 0)
+    let counters: ReportCounters = corpus_counters()
+    let digests: ReportDigests = corpus_digests()
+    let host: ReportHost = corpus_host()
+    let candidate: BenchReport = produce_report(
+        identity,
+        schedule,
+        counters,
+        digests,
+        host,
+        samples0,
+        samples1
+    )
+    let outcome: Stage2BenchmarkComparisonOutcome = compare_reports(baseline, candidate, 0)
+    return comparison_line(name, outcome)
+}
+
+# A candidate with a different series shape and different counters, which the
+# contract says stays comparable: only the equality list is identity.
+fn run_allowed_delta(name: Text) -> Int {
+    let baseline: BenchReport = comparison_report(1000, "kofun.core", "duration", 0, 0, 8)
+    let samples0: List[Int] = [900, 1000, 1100]
+    let samples1: List[Int] = []
+    let identity: ReportIdentity = corpus_identity()
+    let schedule: ReportSchedule = corpus_schedule(3, 3, 0)
+    let digests: ReportDigests = ReportDigests(
+        toolchain_sha256: "1111111111111111111111111111111111111111111111111111111111111111",
+        source_sha256: "2222222222222222222222222222222222222222222222222222222222222222",
+        artifact_sha256: "3333333333333333333333333333333333333333333333333333333333333333"
+    )
+    let counters: ReportCounters = ReportCounters(
+        allocated_bytes_available: false,
+        allocated_bytes_value: 0,
+        allocation_count_available: false,
+        allocation_count_value: 0,
+        gc_collections_available: true,
+        gc_collections_value: 3,
+        vm_peak_bytes_available: false,
+        vm_peak_bytes_value: 0,
+        cpu_cycles_available: true,
+        cpu_cycles_value: 987654
+    )
+    let host: ReportHost = corpus_host()
+    let candidate: BenchReport = produce_report(
+        identity,
+        schedule,
+        counters,
+        digests,
+        host,
+        samples0,
+        samples1
+    )
+    let outcome: Stage2BenchmarkComparisonOutcome = compare_reports(baseline, candidate, 0)
+    return comparison_line(name, outcome)
+}
+
+# An invalid baseline against an invalid threshold, which pins the precedence:
+# the baseline's own refusal is reported, not BR009.
+fn run_invalid_baseline(name: Text, threshold: Int) -> Int {
+    let empty: List[Int] = []
+    let identity: ReportIdentity = corpus_identity()
+    let schedule: ReportSchedule = corpus_schedule(0, 1, 0)
+    let counters: ReportCounters = corpus_counters()
+    let digests: ReportDigests = corpus_digests()
+    let host: ReportHost = corpus_host()
+    let baseline: BenchReport = produce_report(
+        identity,
+        schedule,
+        counters,
+        digests,
+        host,
+        empty,
+        empty
+    )
+    let candidate: BenchReport = comparison_report(1000, "kofun.core", "duration", 0, 0, 8)
+    let outcome: Stage2BenchmarkComparisonOutcome = compare_reports(baseline, candidate, threshold)
+    return comparison_line(name, outcome)
+}
+
+# An incompatible pair *and* an invalid threshold: the threshold is decided
+# first, so this is BR009 rather than BR008.
+fn run_threshold_before_compatibility(name: Text) -> Int {
+    let baseline: BenchReport = comparison_report(1000, "kofun.core", "duration", 0, 0, 8)
+    let candidate: BenchReport = comparison_report(1000, "other.suite", "duration", 0, 0, 8)
+    let outcome: Stage2BenchmarkComparisonOutcome = compare_reports(baseline, candidate, 0 - 1)
+    return comparison_line(name, outcome)
+}
+
+fn run_comparison_group(group: Int) -> Int {
+    let mut cases = 0
+
+    if group == 0 {
+        # Rounding: an exact half rounds away from zero in both directions.
+        cases = cases + run_comparison("equal", 1000, 1000, 0)
+        cases = cases + run_comparison("halfup", 32, 33, 0)
+        cases = cases + run_comparison("halfdown", 32, 31, 0)
+        cases = cases + run_comparison("exact", 8, 9, 0)
+    }
+
+    if group == 1 {
+        # The threshold is strict on both sides.
+        cases = cases + run_comparison("atthreshold", 1000, 1100, 1000)
+        cases = cases + run_comparison("overthreshold", 1000, 1100, 999)
+        cases = cases + run_higher_comparison("higherworse", 1000, 900, 0)
+        cases = cases + run_higher_comparison("higherbetter", 1000, 1100, 0)
+    }
+
+    if group == 2 {
+        # Zero baselines, the arithmetic ceiling, and the threshold bounds.
+        cases = cases + run_comparison("zeroboth", 0, 0, 0)
+        cases = cases + run_comparison("zerobase", 0, 5, 0)
+        cases = cases + run_comparison("overflow", 1, 9007199254740991, 0)
+        cases = cases + run_comparison("thresholdlow", 1000, 1000, 0 - 1)
+        cases = cases + run_comparison("thresholdhigh", 1000, 1000, 1000001)
+    }
+
+    if group == 3 {
+        # One identity field at a time, with the medians equal.
+        cases = cases + run_incompatible("suite", "other.suite", "duration", 0, 0, 8)
+        cases = cases + run_incompatible("metric", "kofun.core", "throughput", 0, 0, 8)
+        cases = cases + run_incompatible("direction", "kofun.core", "duration", 1, 0, 8)
+    }
+
+    if group == 4 {
+        cases = cases + run_incompatible("clock", "kofun.core", "duration", 0, 1, 8)
+        cases = cases + run_incompatible("batch", "kofun.core", "duration", 0, 0, 16)
+        cases = cases + run_parameter_absent("parameter")
+    }
+
+    if group == 5 {
+        # Precedence, and one pair that differs in every allowed way.
+        cases = cases + run_invalid_baseline("invalidbase", 0 - 1)
+        cases = cases + run_threshold_before_compatibility("thresholdfirst")
+        cases = cases + run_allowed_delta("alloweddelta")
+    }
+
+    return cases
+}
