@@ -144,9 +144,30 @@ lifted lambdas, and lexical/indirect targets remain unsupported at their
 existing E2S158 or earlier named refusal boundaries and remain owned by #882.
 The one-stage direct top-level Stage 2/C11 pipeline no longer belongs to that
 unsupported set: #1226 binds its subject to slot zero, #1227 checks it, and
-#1228 lowers it. Direct-native/Wasm pipeline behavior is unclaimed and
-uncovered here; #1192 owns its exact support-or-source-refusal differential and
-is the sole remaining direct-backend blocker.
+#1228 lowers it.
+
+#1192 then measures the direct-native and Wasm backends against the same
+corpus. One shape executes on all three: the all-Int labelled call. It is
+asserted against `source_order_int.stdout` itself rather than a per-backend
+copy, so no one has to restate what the right answer is — and because that
+golden carries the source order (`2`, then `1`) as well as the result (`12`),
+a backend that evaluated in declaration order fails it while still producing
+the same number. Both artifacts are also searched for the labels themselves:
+the C11 assertions read generated source, and these read the bytes that
+shipped.
+
+Every other shape stops at one named, source-located boundary per backend, and
+the gate asserts the wording rather than merely that something failed. Each of
+those messages used to describe the punctuation the parser wanted next —
+`print(start |> add(delta: 2))` reported that print requires one Int or Text,
+an `Int?` parameter reported a missing `,`, and a function-typed parameter
+reported a missing `)`. All three named a token the author had written
+correctly and none named the pipeline, the Optional, or the function type. The
+boundaries themselves did not move: naming one is not admitting it.
+
+The Text refusal wording is deliberately left alone. `spec/wasm-host-profile-v1`
+owns it and pins it, which is why `pipeline_subject_type_mismatch` still stops
+at its `"text"` subject on wasm32 rather than at its pipe.
 
 The block-bodied trailing lambda and labelled call inside a lifted lambda are
 different boundaries under one code, so `trailing_lambda_block.kofun` and

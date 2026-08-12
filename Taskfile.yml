@@ -839,7 +839,7 @@ tasks:
       - "sh spec/syntax/call-arguments/check.sh"
 
   call-arguments:
-    desc: "Verify labelled-call binding and source-ordered C11 Int lowering"
+    desc: "Verify labelled-call binding and source order across C11, native, and wasm32"
     cmds:
       - "sh tests/conformance/call-arguments/run.sh"
 
