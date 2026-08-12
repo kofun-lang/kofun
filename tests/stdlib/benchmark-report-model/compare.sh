@@ -210,10 +210,27 @@ mutation overflow-guard 's|    if whole > limit_integer() // 10000 {|    if whol
 mutation batch-compatibility \
     's|    if baseline.iterations_per_sample != candidate.iterations_per_sample {|    if baseline.iterations_per_sample == 0 - 1 {|' 4
 
-# The threshold is decided before compatibility. Swapping them reports BR008
-# for a pair that is both incompatible and given an invalid threshold.
+# The threshold is decided before compatibility. Disabling the threshold guard
+# makes the pair that is both incompatible and given an invalid threshold
+# report BR008 instead of BR009, which is precisely that precedence failing.
+#
+# This mutation used to disable the *compatibility* guard instead, and it
+# proved nothing: with compatibility unchecked, the group-5 pair still reports
+# BR009 because the threshold refusal fires first, so the golden did not move.
+# It passed only because deleting the sole call to `comparison_compatible`
+# made that function unused and the mutant failed to *build* -- the gate was
+# reading a `-Werror=unused-function` failure as evidence about precedence.
+# #1358 gave every generated function a reference, the mutant started
+# building, and the mutation stopped biting. The build failure had been
+# carrying it.
 mutation precedence \
-    's|    if comparison_compatible(baseline, candidate) == 0 {|    if threshold_bps == 0 - 2 {|' 5
+    's|    if threshold_bps < 0 {|    if threshold_bps == 0 - 2 {|' 5
+
+# Compatibility is checked at all. Group 3 is where that shows: those pairs
+# carry a valid threshold, so an unchecked compatibility turns BR008 into a
+# comparable verdict, where in group 5 it changes nothing.
+mutation compatibility-checked \
+    's|    if comparison_compatible(baseline, candidate) == 0 {|    if threshold_bps == 0 - 2 {|' 3
 
 printf '%s\n' \
     'PASS: every verdict, change, and refusal agrees with the benchmark-report-v1 oracle' \
@@ -221,4 +238,4 @@ printf '%s\n' \
     'PASS: exact halves round away from zero and both threshold boundaries are strict' \
     'PASS: invalid report, invalid threshold, and incompatibility keep their stated precedence' \
     'PASS: -O0, -O2, and a repeat execution agree' \
-    'PASS: five reintroduced defects are refused'
+    'PASS: six reintroduced defects are refused'
