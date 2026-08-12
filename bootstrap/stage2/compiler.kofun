@@ -13594,10 +13594,55 @@ fn lower_body(
                         return "error[E2S12]: invalid Int expression at byte " +
                         to_text(value_start)
                     }
+                    # The replacement carrier was `int64_t` whatever the
+                    # binding was, so `cur = f(cur)` on a `List[Int]` emitted
+                    # `int64_t kofun_replacement = <KofunIntListValue>` — the
+                    # compiler exited 0 and only `cc` reported it. The `let`
+                    # path above already derives the C type and the value
+                    # emitter from the binding's type; this derives them the
+                    # same way rather than a second way (#1353).
+                    let binding_type = hir_binding_field(hir, binding_id, 5)
+                    # Scoped to `List[Int]` on purpose. The carrier below is a
+                    # struct, so a value of another type cannot go in it, and
+                    # that is the whole question this change raises. Checking
+                    # every assignment instead would restate rules that other
+                    # slices own — narrowing makes `seen = x + 1` legal for
+                    # `seen: Int` and `x: Int?`, and a general check refused it.
+                    if binding_type == "List[Int]" &&
+                       initializer_type(
+                           source,
+                           hir,
+                           function_open,
+                           value_start
+                       ) != "List[Int]" {
+                        return "error[E2S15]: assignment type mismatch at byte " +
+                        to_text(value_start)
+                    }
+                    let mut replacement_type = "int64_t"
+                    let mut replacement = emit_expression(
+                        source,
+                        hir,
+                        value_start,
+                        value_end
+                    )
+                    if binding_type == "List[Int]" {
+                        replacement_type = "KofunIntListValue"
+                        replacement = emit_list_int_value(
+                            source,
+                            hir,
+                            value_start,
+                            value_end,
+                            true
+                        )
+                    }
+                    # The rejected value became the C initializer text here too.
+                    if starts_with(replacement, "error[") {
+                        return replacement
+                    }
                     emitted = emitted +
                     "    {\n" +
-                    "        int64_t kofun_replacement = " +
-                    emit_expression(source, hir, value_start, value_end) + ";\n" +
+                    "        " + replacement_type + " kofun_replacement = " +
+                    replacement + ";\n" +
                     "        if (kofun_failed) return " + failure_result + ";\n" +
                     "        k_b" + binding_id + " = kofun_replacement;\n" +
                     "    }\n"

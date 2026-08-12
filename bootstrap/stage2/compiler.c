@@ -20772,19 +20772,82 @@ static char *lower_body(
                         value_start
                     );
                 }
-                char *value = emit_expression(
-                    source,
-                    hir,
-                    value_start,
-                    value_end
-                );
+                /*
+                 * The replacement carrier was `int64_t` whatever the binding
+                 * was, so `cur = f(cur)` on a `List[Int]` emitted
+                 * `int64_t kofun_replacement = <KofunIntListValue>` — the
+                 * compiler exited 0 and only `cc` reported it. The `let` path
+                 * above already derives the C type and the value emitter from
+                 * the binding's type; this derives them the same way rather
+                 * than a second way (#1353).
+                 */
+                char *binding_type = hir_binding_field(hir, binding_id, 5);
+                /*
+                 * Scoped to `List[Int]` on purpose. The carrier below is a
+                 * struct, so a value of another type cannot go in it, and that
+                 * is the whole question this change raises. Checking every
+                 * assignment instead would restate rules that other slices
+                 * own — narrowing makes `seen = x + 1` legal for `seen: Int`
+                 * and `x: Int?`, and a general check refused it.
+                 */
+                if (strcmp(binding_type, "List[Int]") == 0) {
+                    char *actual_type = initializer_type(
+                        source,
+                        hir,
+                        function_open,
+                        value_start
+                    );
+                    bool matches = strcmp(actual_type, "List[Int]") == 0;
+                    free(actual_type);
+                    if (!matches) {
+                        free(binding_type);
+                        free(mutability);
+                        free(binding_id);
+                        free(name);
+                        free(emitted.data);
+                        return lower_error(
+                            "E2S15",
+                            "assignment type mismatch",
+                            value_start
+                        );
+                    }
+                }
+                const char *replacement_type = "int64_t";
+                char *value = NULL;
+                if (strcmp(binding_type, "List[Int]") == 0) {
+                    replacement_type = "KofunIntListValue";
+                    value = emit_list_int_value(
+                        source,
+                        hir,
+                        value_start,
+                        value_end,
+                        true
+                    );
+                } else {
+                    value = emit_expression(
+                        source,
+                        hir,
+                        value_start,
+                        value_end
+                    );
+                }
+                free(binding_type);
+                /* The rejected value became the C initializer text here too. */
+                if (strncmp(value, "error[", 6) == 0) {
+                    free(mutability);
+                    free(binding_id);
+                    free(name);
+                    free(emitted.data);
+                    return value;
+                }
                 buffer_format(
                     &emitted,
                     "    {\n"
-                    "        int64_t kofun_replacement = %s;\n"
+                    "        %s kofun_replacement = %s;\n"
                     "        if (kofun_failed) return %s;\n"
                     "        k_b%s = kofun_replacement;\n"
                     "    }\n",
+                    replacement_type,
                     value,
                     failure_result,
                     binding_id
