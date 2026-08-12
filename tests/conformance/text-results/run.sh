@@ -95,7 +95,8 @@ assert_grep 'string data containing helper names survived unchanged' \
     -Fq -- '"kofun_to_text(kofun_text_concat(kofun_text_slice("' \
     "$WORK/values.first/output.c"
 
-# The arena is monotonic. No modulo ring and no per-site overwrite may return:
+# The arena advances within a statement and is wound back only at the end of a
+# loop iteration (#1359). No modulo ring and no per-site overwrite may return:
 # the two calls to `render` in values.kofun share the same producer site and
 # stay independently observable as 81 and 92.
 assert_grep 'emitted bounded Text arena' \
@@ -172,6 +173,68 @@ run_runtime_refusal temporary_exhaustion R022
 assert_file_empty 'temporary exhaustion has no partial stdout' \
     "$WORK/temporary_exhaustion.stdout"
 
+# A loop reclaims, and live Text still does not (#1359).
+#
+# These two fixtures are the pair that separates the two behaviours, and
+# neither alone would. `temporary_exhaustion` recurses, so every frame's Text
+# is live at once and the ceiling must still stop it — that fixture is above
+# and is unchanged. `loop_reclamation` produces 25000 pieces of Text across two
+# loops, none of them live past its iteration, and must reach the end.
+compile_positive loop_reclamation.compile "$CASES/loop_reclamation.kofun"
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+    "$WORK/loop_reclamation.compile/output.c" -o "$WORK/loop_reclamation" ||
+    fail 'loop reclamation emitted C is not strict ISO C11'
+"$WORK/loop_reclamation" >"$WORK/loop_reclamation.stdout" \
+    2>"$WORK/loop_reclamation.stderr" ||
+    fail 'a loop that produces more Text than the arena holds did not run'
+compare 'loop reclamation stdout' \
+    "$CASES/loop_reclamation.stdout" "$WORK/loop_reclamation.stdout"
+assert_file_empty 'loop reclamation runtime stderr' \
+    "$WORK/loop_reclamation.stderr"
+
+# The mark is per loop and the release is at the end of the iteration. Reading
+# the emitted C for both is what makes a silent removal of either fail here
+# rather than only in a program long enough to notice.
+assert_grep 'each loop takes an arena mark' \
+    -Fq -- 'const size_t kofun_text_mark = kofun_text_next_slot;' \
+    "$WORK/loop_reclamation.compile/output.c"
+assert_grep 'each iteration releases back to its mark' \
+    -Fq -- 'kofun_text_next_slot = kofun_text_mark;' \
+    "$WORK/loop_reclamation.compile/output.c"
+
+# The release must sit inside the loop. Hoisting it out would leave the program
+# above correct and every longer one broken, so the count is pinned: two loops,
+# two marks, two releases.
+marks=$(grep -c 'const size_t kofun_text_mark' "$WORK/loop_reclamation.compile/output.c")
+releases=$(grep -c 'kofun_text_next_slot = kofun_text_mark;' \
+    "$WORK/loop_reclamation.compile/output.c")
+assert_num 'one arena mark per loop' "$marks" -eq 2
+assert_num 'one release per loop' "$releases" -eq 2
+
+# The sanitizer run is here for the same reason the positive above has one, and
+# it is *not* what proves reclamation safe. A released slot is a live element of
+# a static array, so a Text read after its iteration reads valid memory holding
+# the wrong bytes — ASan cannot see that, and neither can UBSan.
+#
+# What proves it is the value: `loop_reclamation.stdout` ends in `a`, which is
+# the slice taken *before* the second loop and printed *after* 5000 iterations
+# have reused the arena above it. If a release ever reclaimed below its mark,
+# that line changes and this comparison fails.
+"$CC" -std=c11 -O1 -g -Wall -Wextra -Werror -pedantic \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    "$WORK/loop_reclamation.compile/output.c" -o "$WORK/loop_reclamation.sanitize" ||
+    fail 'the C compiler cannot build the sanitizer-backed loop reclamation'
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+UBSAN_OPTIONS=halt_on_error=1 \
+    "$WORK/loop_reclamation.sanitize" \
+    >"$WORK/loop_reclamation.sanitize.stdout" \
+    2>"$WORK/loop_reclamation.sanitize.stderr" ||
+    fail 'sanitizer-backed loop reclamation failed'
+compare 'sanitized loop reclamation stdout' \
+    "$CASES/loop_reclamation.stdout" "$WORK/loop_reclamation.sanitize.stdout"
+assert_file_empty 'ASan/UBSan loop reclamation report' \
+    "$WORK/loop_reclamation.sanitize.stderr"
+
 # The two source/transliteration surfaces must carry the same boundaries.
 for source in \
     "$ROOT/bootstrap/stage2/compiler.kofun" \
@@ -185,6 +248,7 @@ do
 done
 
 printf '%s\n' \
+    'PASS: a loop reclaims its Text while recursion still meets the ceiling' \
     'PASS: Text arguments/results survive nested and later temporary calls' \
     'PASS: to_text covers zero, signs, and both Int64 boundaries exactly' \
     'PASS: Text concatenation is bounded while Int addition stays checked' \
