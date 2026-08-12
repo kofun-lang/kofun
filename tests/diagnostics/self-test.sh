@@ -47,12 +47,37 @@ awk -F '\t' '!/^#/ && NF { print; exit }' "$REGISTRY" \
 expect_rejection duplicate-code "duplicate code" \
     "$WORK/duplicate.tsv" "$WORK/observed.tsv"
 
+cp "$WORK/observed.tsv" "$WORK/duplicate-observation.tsv"
+awk -F '\t' '$1 == "R010" && $2 == "int-bits" { print; exit }' \
+    "$WORK/observed.tsv" >>"$WORK/duplicate-observation.tsv"
+expect_rejection duplicate-observation "duplicate observed code/adapter" \
+    "$REGISTRY" "$WORK/duplicate-observation.tsv"
+
 cp "$WORK/observed.tsv" "$WORK/unknown-observed.tsv"
 printf '%s\n' \
     'Z999	stage2	stdout	1	required	not-applicable	forbidden' \
     >>"$WORK/unknown-observed.tsv"
 expect_rejection unknown-observed "unknown observed code: Z999" \
     "$REGISTRY" "$WORK/unknown-observed.tsv"
+
+awk -F '\t' 'BEGIN { OFS = FS }
+    $1 == "R010" { $13 = "runtime" }
+    { print }
+' "$REGISTRY" >"$WORK/unregistered-observer.tsv"
+expect_rejection unregistered-observer "unregistered observing adapter for R010: int-bits" \
+    "$WORK/unregistered-observer.tsv" "$WORK/observed.tsv"
+
+awk -F '\t' '!( $1 == "R010" && $2 == "int-bits" )' \
+    "$WORK/observed.tsv" >"$WORK/missing-observer.tsv"
+expect_rejection missing-observer "declared-but-unobserved active codes" \
+    "$REGISTRY" "$WORK/missing-observer.tsv"
+
+awk -F '\t' 'BEGIN { OFS = FS }
+    $1 == "R010" { $10 = "stage2" }
+    { print }
+' "$REGISTRY" >"$WORK/owner-not-observer.tsv"
+expect_rejection owner-not-observer "canonical fixture owner is not an observer" \
+    "$WORK/owner-not-observer.tsv" "$WORK/observed.tsv"
 
 awk -F '\t' 'BEGIN { OFS = FS }
     /^#/ || changed { print; next }
@@ -75,4 +100,4 @@ awk -F '\t' 'BEGIN { OFS = FS }
 expect_rejection forbidden-artifact "forbidden partial artifact observed" \
     "$REGISTRY" "$WORK/artifact.tsv"
 
-printf '%s\n' "5 diagnostic registry negative self-tests passed"
+printf '%s\n' "9 diagnostic registry negative self-tests passed"

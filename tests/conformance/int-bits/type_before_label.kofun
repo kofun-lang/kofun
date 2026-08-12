@@ -1,0 +1,7 @@
+# Arguments are checked left to right: the first bad type wins over a label on
+# the later argument.
+
+fn main() -> Int {
+    print(to_text((1).rotr("s", width: 32)))
+    return 0
+}

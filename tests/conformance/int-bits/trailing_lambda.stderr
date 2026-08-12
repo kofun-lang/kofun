@@ -1,1 +1,1 @@
-error[E2S169]: `and` takes no trailing lambda; the bit operations have no functional parameter at byte 723
+error[E2S169]: `and` takes no trailing lambda; the bit operations have no functional parameter at byte 721

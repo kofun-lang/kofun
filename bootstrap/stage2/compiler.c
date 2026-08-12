@@ -5679,6 +5679,17 @@ static bool call_argument_position(const char *source, int64_t target) {
     return token_equal(source, previous, ",");
 }
 
+/* Defined with the single RFC-0013 method table below. Argument spanning uses
+ * the same table so a Bool bit receiver reaches the Int-only diagnostic. */
+static int64_t int_bit_method_arity_at(
+    const char *source,
+    int64_t cursor
+);
+static int64_t int_bit_postfix_end(
+    const char *source,
+    int64_t primary
+);
+
 /*
  * The byte after an argument, which is either an ordinary bounded expression
  * or an arrow lambda passed directly.
@@ -5692,6 +5703,28 @@ static int64_t argument_end(const char *source, int64_t start) {
     int64_t lambda_end = lambda_parameters_end(source, -1, start);
     if (lambda_end >= 0) return lambda_end;
     int64_t label = skip_trivia(source, start);
+    if (
+        token_equal(source, label, "true") ||
+        token_equal(source, label, "false")
+    ) {
+        int64_t primary = token_end(source, label);
+        int64_t dot = skip_trivia(source, primary);
+        int64_t name = dot < source_length(source) &&
+            token_equal(source, dot, ".")
+            ? skip_trivia(source, token_end(source, dot))
+            : -1;
+        int64_t open = name >= 0
+            ? skip_trivia(source, token_end(source, name))
+            : -1;
+        if (
+            name >= 0 && int_bit_method_arity_at(source, name) >= 0 &&
+            open < source_length(source) &&
+            token_equal(source, open, "(")
+        ) {
+            return int_bit_postfix_end(source, primary);
+        }
+        return primary;
+    }
     if (parameter_word_token(source, label)) {
         int64_t colon = skip_trivia(source, token_end(source, label));
         if (token_equal(source, colon, ":")) {
@@ -6412,6 +6445,30 @@ static int64_t primary_end(const char *source, int64_t start) {
         strcmp(kind, "string") == 0
     ) {
         return field_postfix_end(source, token_end(source, cursor));
+    }
+    /* Bool expressions remain outside this bounded arithmetic reader. The
+     * one owned exception is a Bool written as the receiver of a known bit
+     * method: measuring that primary lets the Int-only rule report E2S168,
+     * without broadening unrelated Bool value-position grammar. */
+    if (
+        token_equal(source, cursor, "true") ||
+        token_equal(source, cursor, "false")
+    ) {
+        int64_t primary = token_end(source, cursor);
+        int64_t dot = skip_trivia(source, primary);
+        int64_t name = dot < length && token_equal(source, dot, ".")
+            ? skip_trivia(source, token_end(source, dot))
+            : -1;
+        int64_t open = name >= 0
+            ? skip_trivia(source, token_end(source, name))
+            : -1;
+        if (
+            name >= 0 && int_bit_method_arity_at(source, name) >= 0 &&
+            open < length && token_equal(source, open, "(")
+        ) {
+            return int_bit_postfix_end(source, primary);
+        }
+        return -1;
     }
     if (strcmp(kind, "identifier") == 0) {
         char *conversion = numeric_conversion_at(source, cursor);
@@ -8223,13 +8280,42 @@ static int64_t int_bit_chain_dot(
 }
 
 /*
+ * Whether `target` belongs to a primary that contains a depth-zero Int bit
+ * call. Enum validation normally owns every enum use before lowering, but a
+ * bit call has the more specific A01 rule: its receiver and every argument
+ * must be `Int`, with E2S168 and the bit-call precedence. Deferring only this
+ * bounded primary lets that rule diagnose enum receivers/arguments without
+ * weakening the match-only rule anywhere else (including nested calls that
+ * merely contain a bit expression).
+ */
+static bool int_bit_expression_contains(
+    const char *source,
+    int64_t target
+) {
+    int64_t cursor = skip_trivia(source, 0);
+    while (cursor <= target && cursor < source_length(source)) {
+        int64_t end = primary_end(source, cursor);
+        if (
+            end > target &&
+            int_bit_chain_dot(source, cursor, end) >= 0
+        ) {
+            return true;
+        }
+        int64_t next = token_end(source, cursor);
+        if (next <= cursor) return false;
+        cursor = skip_trivia(source, next);
+    }
+    return false;
+}
+
+/*
  * RFC-0013's eight operations, applied left to right to one receiver.
  *
- * Each becomes one call on a checked runtime helper rather than a bare C
- * operator. That is not indirection for its own sake: C leaves a shift by 64
- * undefined and leaves a signed right shift implementation-defined, and the
- * whole point of naming these operations was to give them answers the language
- * states rather than answers the host compiler picks.
+ * Each becomes one call on a checked helper emitted by this Stage 2 C11
+ * backend rather than a bare C operator. These are not a cross-backend runtime
+ * authority: C leaves a shift by 64 undefined and leaves a signed right shift
+ * implementation-defined, so this backend must spell the language's answers
+ * explicitly instead of inheriting its host compiler's answers.
  */
 static char *emit_int_bit_chain(
     const char *source,
@@ -8239,16 +8325,14 @@ static char *emit_int_bit_chain(
     int64_t end
 ) {
     int64_t function_open = enclosing_function_open(source, start);
-    const char *receiver_type = numeric_primary_type(
+    char *receiver_type = initializer_type_bounded(
         source,
         hir,
         function_open,
-        start
+        start,
+        first_dot
     );
-    if (
-        strcmp(receiver_type, "Decimal") == 0 ||
-        strcmp(receiver_type, "Float") == 0
-    ) {
+    if (strcmp(receiver_type, "Int") != 0) {
         Buffer message;
         buffer_init(&message);
         buffer_format(
@@ -8256,17 +8340,12 @@ static char *emit_int_bit_chain(
             "bit operations are defined on `Int`, and this receiver is `%s`",
             receiver_type
         );
+        free(receiver_type);
         char *refusal = lower_error("E2S168", message.data, first_dot);
         free(message.data);
         return refusal;
     }
-    if (text_operand(source, hir, function_open, start)) {
-        return lower_error(
-            "E2S168",
-            "bit operations are defined on `Int`, and this receiver is `Text`",
-            first_dot
-        );
-    }
+    free(receiver_type);
     char *emitted = emit_primary(source, hir, start, first_dot);
     if (strncmp(emitted, "error[", 6) == 0) return emitted;
     int64_t cursor = first_dot;
@@ -8277,8 +8356,14 @@ static char *emit_int_bit_chain(
         char *name = token_copy(source, name_at);
         int64_t arity = int_bit_method_arity(name);
         if (arity < 0) {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(&message, "unknown `Int` member `%s`", name);
             free(name);
-            return emitted;
+            free(emitted);
+            char *refusal = lower_error("E2S168", message.data, name_at);
+            free(message.data);
+            return refusal;
         }
         int64_t open = skip_trivia(source, token_end(source, name_at));
         if (open >= end || !token_equal(source, open, "(")) {
@@ -8292,48 +8377,6 @@ static char *emit_int_bit_chain(
             buffer_format(
                 &message,
                 "`%s` is missing its closing parenthesis",
-                name
-            );
-            char *refusal = lower_error("E2S169", message.data, open);
-            free(message.data);
-            free(name);
-            free(emitted);
-            return refusal;
-        }
-        /*
-         * No bit operation has a functional final slot, so a trailing lambda
-         * cannot be an argument of one. The span is the `fn` that opens it,
-         * which is the token the author would delete, rather than the call it
-         * attached itself to.
-         */
-        int64_t trailing = trailing_lambda_open(source, close);
-        if (trailing >= 0) {
-            Buffer message;
-            buffer_init(&message);
-            buffer_format(
-                &message,
-                "`%s` takes no trailing lambda; the bit operations have no functional parameter",
-                name
-            );
-            char *refusal = lower_error("E2S169", message.data, trailing);
-            free(message.data);
-            free(name);
-            free(emitted);
-            return refusal;
-        }
-        /*
-         * The labelled-call grammar admits `a.and(value: 2)`, and the eight
-         * operations have no parameter names for a label to select. Without
-         * this, `value` was read as a binding that does not exist and the call
-         * lowered to `kofun_bit_and(k_b0, k_b)` — invalid C that the compiler
-         * exited 0 on, leaving `cc` to report it.
-         */
-        if (call_has_labelled_argument(source, open)) {
-            Buffer message;
-            buffer_init(&message);
-            buffer_format(
-                &message,
-                "`%s` takes positional arguments; the bit operations have no parameter names",
                 name
             );
             char *refusal = lower_error("E2S169", message.data, open);
@@ -8363,20 +8406,40 @@ static char *emit_int_bit_chain(
                 free(emitted);
                 return refusal;
             }
-            const char *argument_type = numeric_primary_type(
+            /* A01 binds and checks each ordinary argument left to right: its
+             * label first, then that argument's type. A later label must not
+             * outrank an earlier bad expression. */
+            int64_t label = skip_trivia(source, argument);
+            int64_t colon = parameter_word_token(source, label)
+                ? skip_trivia(source, token_end(source, label))
+                : -1;
+            if (colon >= 0 && colon < close && token_equal(source, colon, ":")) {
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(
+                    &message,
+                    "`%s` takes positional arguments; the bit operations have no parameter names",
+                    name
+                );
+                char *refusal = lower_error("E2S169", message.data, label);
+                free(message.data);
+                free(rendered.data);
+                free(name);
+                free(emitted);
+                return refusal;
+            }
+            char *argument_type = initializer_type_bounded(
                 source,
                 hir,
                 function_open,
-                argument
+                argument,
+                bound
             );
-            if (
-                strcmp(argument_type, "Decimal") == 0 ||
-                strcmp(argument_type, "Float") == 0 ||
-                text_operand(source, hir, function_open, argument)
-            ) {
+            if (strcmp(argument_type, "Int") != 0) {
                 Buffer message;
                 buffer_init(&message);
                 buffer_format(&message, "`%s` takes `Int` arguments", name);
+                free(argument_type);
                 char *refusal = lower_error("E2S168", message.data, argument);
                 free(message.data);
                 free(rendered.data);
@@ -8384,6 +8447,7 @@ static char *emit_int_bit_chain(
                 free(emitted);
                 return refusal;
             }
+            free(argument_type);
             char *value = emit_expression(source, hir, argument, bound);
             if (strncmp(value, "error[", 6) == 0) {
                 free(rendered.data);
@@ -8401,6 +8465,26 @@ static char *emit_int_bit_chain(
             } else {
                 argument = separator;
             }
+        }
+        /* Expression trailing lambdas are checked only after every ordinary
+         * argument. `trailing_lambda_open` returns the parameter `(` for ABI
+         * consumers, so recover the preceding `fn` token for this diagnostic. */
+        int64_t trailing_parameters = trailing_lambda_open(source, close);
+        if (trailing_parameters >= 0) {
+            int64_t trailing = skip_trivia(source, close);
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(
+                &message,
+                "`%s` takes no trailing lambda; the bit operations have no functional parameter",
+                name
+            );
+            char *refusal = lower_error("E2S169", message.data, trailing);
+            free(message.data);
+            free(rendered.data);
+            free(name);
+            free(emitted);
+            return refusal;
         }
         if (arguments != arity) {
             Buffer message;
@@ -11932,12 +12016,17 @@ static char *validate_optional_uses(const char *source) {
                             token_equal(source, after, "(");
                 bool optional = !call &&
                                 optional_int_binding(source, cursor, name);
+                bool bit_expression = int_bit_expression_contains(
+                    source,
+                    cursor
+                );
                 char *failure = NULL;
                 if (call && optional_int_result(source, name)) {
                     /* An `Int?` result travels whole or not at all: it may
                      * initialize an `Int?` binding or be returned from a
                      * function declared `Int?`, and nothing else. */
                     if (
+                        !bit_expression &&
                         cursor != carrier &&
                         !optional_int_coalescing_left_site(source, cursor)
                     ) {
@@ -11949,7 +12038,7 @@ static char *validate_optional_uses(const char *source) {
                             cursor
                         );
                     }
-                } else if (optional) {
+                } else if (optional && !bit_expression) {
                     if (optional_int_declaration_count(source, cursor, name) > 1) {
                         failure = lower_error(
                             "E2S147",
@@ -15385,6 +15474,215 @@ static char *emit_optional_int_coalescing_temporaries(
     return output.data;
 }
 
+/*
+ * Scope construction normally owns E2S35. Inside one Int-bit call, however,
+ * A01 fixes the order as receiver, then each argument's label and type. This
+ * preflight is called only when the use pass is about to reject an unresolved
+ * name. It returns an earlier bit-call error, or NULL when that unresolved use
+ * is itself the first failure and E2S35 must remain authoritative.
+ */
+static char *int_bit_error_before_unresolved(
+    const char *source,
+    const char *hir,
+    int64_t target
+) {
+    int64_t start = skip_trivia(source, 0);
+    int64_t end = -1;
+    int64_t first_dot = -1;
+    while (start <= target && start < source_length(source)) {
+        int64_t candidate_end = primary_end(source, start);
+        if (candidate_end > target) {
+            int64_t candidate_dot = int_bit_chain_dot(
+                source,
+                start,
+                candidate_end
+            );
+            if (candidate_dot >= 0) {
+                end = candidate_end;
+                first_dot = candidate_dot;
+                break;
+            }
+        }
+        int64_t next = token_end(source, start);
+        if (next <= start) return NULL;
+        start = skip_trivia(source, next);
+    }
+    if (first_dot < 0 || end < 0 || target < first_dot) return NULL;
+
+    int64_t function_open = enclosing_function_open(source, start);
+    char *receiver_type = initializer_type_bounded(
+        source,
+        hir,
+        function_open,
+        start,
+        first_dot
+    );
+    if (strcmp(receiver_type, "Int") != 0) {
+        Buffer message;
+        buffer_init(&message);
+        buffer_format(
+            &message,
+            "bit operations are defined on `Int`, and this receiver is `%s`",
+            receiver_type
+        );
+        free(receiver_type);
+        char *refusal = lower_error("E2S168", message.data, first_dot);
+        free(message.data);
+        return refusal;
+    }
+    free(receiver_type);
+
+    int64_t cursor = first_dot;
+    while (cursor < end && cursor < target) {
+        int64_t dot = skip_trivia(source, cursor);
+        if (dot >= end || !token_equal(source, dot, ".")) return NULL;
+        int64_t name_at = skip_trivia(source, token_end(source, dot));
+        char *name = token_copy(source, name_at);
+        int64_t arity = int_bit_method_arity(name);
+        if (arity < 0) {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(&message, "unknown `Int` member `%s`", name);
+            free(name);
+            char *refusal = lower_error("E2S168", message.data, name_at);
+            free(message.data);
+            return refusal;
+        }
+        int64_t open = skip_trivia(source, token_end(source, name_at));
+        if (open >= end || !token_equal(source, open, "(")) {
+            free(name);
+            return NULL;
+        }
+        int64_t close = balanced_end(source, open, "(", ")");
+        if (close < 0) {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(
+                &message,
+                "`%s` is missing its closing parenthesis",
+                name
+            );
+            char *refusal = lower_error("E2S169", message.data, open);
+            free(message.data);
+            free(name);
+            return refusal;
+        }
+        int64_t argument = skip_trivia(source, token_end(source, open));
+        int64_t arguments = 0;
+        while (argument < close && !token_equal(source, argument, ")")) {
+            int64_t bound = argument_end(source, argument);
+            if (bound < 0) {
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(
+                    &message,
+                    "`%s` was given an argument this slice cannot read",
+                    name
+                );
+                char *refusal = lower_error(
+                    "E2S169",
+                    message.data,
+                    argument
+                );
+                free(message.data);
+                free(name);
+                return refusal;
+            }
+            int64_t label = skip_trivia(source, argument);
+            int64_t colon = parameter_word_token(source, label)
+                ? skip_trivia(source, token_end(source, label))
+                : -1;
+            if (colon >= 0 && colon < close && token_equal(source, colon, ":")) {
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(
+                    &message,
+                    "`%s` takes positional arguments; the bit operations have no parameter names",
+                    name
+                );
+                char *refusal = lower_error("E2S169", message.data, label);
+                free(message.data);
+                free(name);
+                return refusal;
+            }
+            if (target >= argument && target < bound) {
+                free(name);
+                return NULL;
+            }
+            if (bound <= target) {
+                char *argument_type = initializer_type_bounded(
+                    source,
+                    hir,
+                    function_open,
+                    argument,
+                    bound
+                );
+                if (strcmp(argument_type, "Int") != 0) {
+                    Buffer message;
+                    buffer_init(&message);
+                    buffer_format(
+                        &message,
+                        "`%s` takes `Int` arguments",
+                        name
+                    );
+                    free(argument_type);
+                    char *refusal = lower_error(
+                        "E2S168",
+                        message.data,
+                        argument
+                    );
+                    free(message.data);
+                    free(name);
+                    return refusal;
+                }
+                free(argument_type);
+            }
+            ++arguments;
+            int64_t separator = skip_trivia(source, bound);
+            argument = separator < close && token_equal(source, separator, ",")
+                ? skip_trivia(source, token_end(source, separator))
+                : separator;
+        }
+        if (target <= close) {
+            free(name);
+            return NULL;
+        }
+        int64_t trailing_parameters = trailing_lambda_open(source, close);
+        if (trailing_parameters >= 0) {
+            int64_t trailing = skip_trivia(source, close);
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(
+                &message,
+                "`%s` takes no trailing lambda; the bit operations have no functional parameter",
+                name
+            );
+            char *refusal = lower_error("E2S169", message.data, trailing);
+            free(message.data);
+            free(name);
+            return refusal;
+        }
+        if (arguments != arity) {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(
+                &message,
+                "`%s` expects %" PRId64 " arguments, got %" PRId64,
+                name,
+                arity,
+                arguments
+            );
+            char *refusal = lower_error("E2S169", message.data, name_at);
+            free(message.data);
+            free(name);
+            return refusal;
+        }
+        free(name);
+        cursor = close;
+    }
+    return NULL;
+}
+
 static char *scope_hir_error(
     Buffer *hir,
     const char *message,
@@ -16753,6 +17051,19 @@ static char *build_scope_hir_mode(
                             !(function_arity(source, name) >= 0 &&
                               call_argument_position(source, cursor))
                         ) {
+                            char *bit_error = int_bit_error_before_unresolved(
+                                source,
+                                hir.data,
+                                cursor
+                            );
+                            if (bit_error != NULL) {
+                                free(name);
+                                free(scope_id);
+                                free(binding_id);
+                                free(owner);
+                                free(hir.data);
+                                return bit_error;
+                            }
                             Buffer message;
                             buffer_init(&message);
                             buffer_format(
@@ -16914,12 +17225,15 @@ static char *validate_enum_uses(const char *source, const char *hir) {
                             bool enum_return =
                                 strcmp(previous, "return") == 0 &&
                                 strcmp(return_type, binding_type) == 0;
+                            bool bit_expression =
+                                int_bit_expression_contains(source, cursor);
                             free(argument_type);
                             free(return_type);
                             if (
                                 !match_scrutinee &&
                                 !enum_argument &&
-                                !enum_return
+                                !enum_return &&
+                                !bit_expression
                             ) {
                                 Buffer error;
                                 buffer_init(&error);
@@ -16984,12 +17298,18 @@ static char *validate_enum_uses(const char *source, const char *hir) {
                                         return_type,
                                         constructor_owner
                                     ) == 0;
+                                bool bit_expression =
+                                    int_bit_expression_contains(
+                                        source,
+                                        cursor
+                                    );
                                 free(argument_type);
                                 free(return_type);
                                 if (
                                     constructor_owner[0] != '\0' &&
                                     !enum_argument &&
-                                    !enum_return
+                                    !enum_return &&
+                                    !bit_expression
                                 ) {
                                     Buffer error;
                                     buffer_init(&error);

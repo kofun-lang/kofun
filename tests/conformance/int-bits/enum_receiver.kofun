@@ -1,0 +1,10 @@
+# Concrete enum bindings remain match-only except that a bit call owns the
+# more specific Int-receiver refusal.
+
+type Signal = | Red | Blue
+
+fn main() -> Int {
+    let signal: Signal = Red
+    print(to_text(signal.and(1)))
+    return 0
+}

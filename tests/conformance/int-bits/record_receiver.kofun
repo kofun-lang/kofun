@@ -1,0 +1,11 @@
+# Nominal records do not acquire Int's method table.
+
+type Pair = {
+    value: Int,
+}
+
+fn main() -> Int {
+    let pair: Pair = Pair(value: 1)
+    print(to_text(pair.and(1)))
+    return 0
+}

@@ -34,7 +34,15 @@ the five and left the fifth spelled differently in the same expression.
 | `a.shl(n)` | left shift, checked |
 | `a.shr(n)` | right shift, arithmetic |
 | `a.rotr(n, width)` | right rotate within `width` bits |
-| `a.wrapping_add(b, width)` | addition modulo `2**width` |
+| `a.wrapping_add(b, width)` | addition modulo `2^width` |
+
+These methods exist only on an `Int` receiver, and every parameter is
+positional, unlabelled, and `Int`. The eight names remain ordinary function
+and field names anywhere else. Receiver resolution leads; then each ordinary
+argument is checked left to right (label before type), followed by an
+expression trailing lambda and finally arity. A non-`Int` receiver or argument
+is `E2S168`; labels, expression trailing lambdas, and arity are `E2S169`.
+Block trailing lambdas remain the parser-owned `E2S158` boundary.
 
 The four decisions an implementer must not inherit from their host language:
 
@@ -44,19 +52,34 @@ The four decisions an implementer must not inherit from their host language:
   `-4`. Kofun has no unsigned type, so there is no second logical form; a
   caller who wants a logical shift masks first. C leaves this
   implementation-defined, which is exactly why it is stated here.
-- **A shift count outside `0..63` is `R011`,** not a mask and not a
+- **A shift count outside `0..63` is `R011`,** checked before overflow, not a
+  mask and not a
   saturation. Masking is the behaviour that computes `x.shl(64)` as `x`, which
   is a wrong answer that looks like an answer. C leaves it undefined. A width
   outside `1..64` is `R011` for the same reason.
-- **`shl` traps on overflow as `R010`,** exactly as `a * 2**n` does. A shift is
-  not an exception to checked arithmetic, which is why `wrapping_add` exists as
-  a separately named operation rather than as a mode.
+- **`shl` traps on overflow as `R010`** when the mathematical value
+  `a × 2^n` leaves signed Int64. This definition does not rely on an executable
+  `**` operator. A shift is not an exception to ordinary checked arithmetic,
+  which is why `wrapping_add` exists as a separately named operation rather
+  than as a mode.
 
 `rotr` and `wrapping_add` take an explicit `width` because Kofun has one
-integer type. Both reduce their value operands modulo `2**width` first, and
-`rotr` reduces its count modulo `width`, so a caller working in 32 bits does
-not mask before every call. The result is the width-bit pattern, which is
-non-negative for every width below 64.
+integer type. Both reduce their value operands modulo `2^width` first, and
+`rotr` reduces its already-range-checked count modulo `width`, so a caller
+working in 32 bits does not mask before every call. `rotr` checks `width`
+before `n`; thus `(1).rotr(64, 0)` reports the width error, while
+`(1).rotr(64, 32)` reports the count error. The result is the width-bit
+pattern, non-negative below width 64; at width 64 the high bit maps to signed
+Int64, so `0x8000000000000000` is `-9223372036854775808` and all ones is `-1`.
+Runtime diagnostics use the exact `error[CODE]: MESSAGE\n` framing and carry no
+source span. The overflow line is exactly:
+
+```text
+error[R010]: integer overflow in `shl`
+```
+
+It terminates with one newline. Range errors are `R011` lines naming the method
+and count or width bound.
 
 The eight names are not reserved. `fn and()` still declares, `type P = { xor:
 Int }` still has a field, and both keep working in a file that uses the

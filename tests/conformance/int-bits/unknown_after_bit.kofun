@@ -1,0 +1,7 @@
+# Once a known bit call establishes an Int receiver, an unknown suffix is an
+# unknown Int member rather than a nominal-record or enclosing-call error.
+
+fn main() -> Int {
+    print(to_text((1).and(1).frobnicate(2)))
+    return 0
+}

@@ -1,0 +1,7 @@
+# A List[Int] is not an Int merely because its elements are Int.
+
+fn main() -> Int {
+    let values = [1]
+    print(to_text(values.and(1)))
+    return 0
+}

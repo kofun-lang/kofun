@@ -1,0 +1,6 @@
+# A block trailing lambda retains the parser-owned E2S158 refusal at `fn`.
+
+fn main() -> Int {
+    print(to_text((1).and(2) fn(y) { return y }))
+    return 0
+}

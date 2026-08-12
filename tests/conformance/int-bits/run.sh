@@ -23,6 +23,13 @@ command -v "$CC" >/dev/null 2>&1 ||
     assert_fail 'a C11 compiler is required'
 
 kofun_stage2_build "$ROOT" "$WORK/kofun-stage2"
+node --check "$CASES/check-pair.mjs"
+node "$CASES/check-pair.mjs" \
+    "$ROOT/bootstrap/stage2/compiler.c" \
+    "$ROOT/bootstrap/stage2/compiler.kofun" check
+node "$CASES/check-pair.mjs" \
+    "$ROOT/bootstrap/stage2/compiler.c" \
+    "$ROOT/bootstrap/stage2/compiler.kofun" self-test
 mkdir -p "$WORK/remapped"
 cp "$CASES/behavior.kofun" "$WORK/remapped/behavior.kofun"
 
@@ -79,19 +86,22 @@ assert_eq 'rotr reduces its operand modulo the width' \
     "$(behavior_line 19)" '4294967295'
 assert_eq 'a 64-bit rotation produces the signed pattern' \
     "$(behavior_line 20)" '-9223372036854775808'
+assert_eq 'the width-64 all-ones pattern maps to signed Int -1' \
+    "$(behavior_line 21)" '-1'
 assert_eq 'wrapping_add wraps at the width rather than trapping' \
     "$(behavior_line 18)" '0'
 assert_eq 'a rotation count is reduced within the width' \
-    "$(behavior_line 22)" '2147483648'
+    "$(behavior_line 23)" '2147483648'
 # sigma0(1) = ROTR7(1) ^ ROTR18(1) ^ SHR3(1) = 0x02000000 ^ 0x4000 ^ 0
 assert_eq 'the SHA-256 sigma0 round produces its published value' \
-    "$(behavior_line 26)" '33570816'
+    "$(behavior_line 27)" '33570816'
 
-# Every operation lowers to a checked helper, never to a bare C operator: that
-# is what makes the answers above the language's rather than the host's.
+# Every operation lowers to a checked helper emitted by this Stage 2 C11
+# backend, never to a bare C operator. The RFC is the authority; these helpers
+# implement that contract for this backend rather than defining it globally.
 emitted="$WORK/behavior.c"
 for helper in and or xor not shl shr rotr wrapping_add; do
-    assert_grep "$helper lowers to its checked helper" \
+    assert_grep "$helper lowers to its Stage2 C11 checked helper" \
         -Fq -- "kofun_bit_$helper(" "$emitted"
 done
 assert_grep 'the pattern conversion is defined rather than cast' \
@@ -108,7 +118,8 @@ assert_file_empty 'a shift reached lowered code without its count check' \
 # Traps. Each fails at its own bound, with nothing on stdout: an operation that
 # computed a wrong answer and then trapped would still have printed.
 for stem in shl_overflow shl_count_high shr_count_negative \
-            rotr_width_low rotr_count_high wrapping_add_width_high; do
+            rotr_width_low rotr_count_high rotr_width_before_count \
+            wrapping_add_width_high; do
     compile_case "$CASES/$stem.kofun" "$stem"
     "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
         "$WORK/$stem.c" -o "$WORK/$stem" ||
@@ -125,16 +136,28 @@ done
 assert_grep 'overflow stays R010, the code checked arithmetic already uses' \
     -Fq -- 'error[R010]:' "$CASES/shl_overflow.stderr"
 for stem in shl_count_high shr_count_negative rotr_width_low \
-            rotr_count_high wrapping_add_width_high; do
+            rotr_count_high rotr_width_before_count \
+            wrapping_add_width_high; do
     assert_grep "$stem is R011, not R010" \
         -Fq -- 'error[R011]:' "$CASES/$stem.stderr"
 done
+assert_grep 'rotr validates width before its simultaneously bad count' \
+    -Fq -- 'bit width for `rotr`' \
+    "$CASES/rotr_width_before_count.stderr"
+assert_grep 'shl validates count before mathematical overflow' \
+    -Fq -- 'shift count for `shl`' "$CASES/shl_count_high.stderr"
 
 # Refusals. Each fails before a C artifact exists and keeps its parsed IR and
 # token checkpoints, so "no backend artifact" is not read as "no output".
 for stem in arity_short arity_long float_receiver float_receiver_used \
             text_argument labelled_argument trailing_lambda \
-            unknown_member; do
+            unknown_member bool_receiver bool_argument \
+            list_receiver list_argument record_receiver record_argument \
+            enum_receiver enum_argument unknown_receiver unknown_argument \
+            unknown_after_bit label_before_type type_before_label \
+            type_before_trailing_lambda trailing_before_arity \
+            optional_receiver optional_argument receiver_before_unknown \
+            type_before_unknown label_before_unknown; do
     set +e
     "$WORK/kofun-stage2" --compile-outcome "$CASES/$stem.kofun" \
         "$WORK/$stem.c" "$WORK/$stem.ir" "$WORK/$stem.tokens" \
@@ -152,6 +175,23 @@ for stem in arity_short arity_long float_receiver float_receiver_used \
     cmp "$CASES/$stem.stderr" "$WORK/$stem.actual" ||
         assert_fail "$stem diagnostic changed"
 done
+# A block trailing lambda is refused by the parser before the IR/token
+# checkpoints exist. It still must be atomic: no C or partial checkpoint.
+stem=block_trailing_lambda
+set +e
+"$WORK/kofun-stage2" --compile-outcome "$CASES/$stem.kofun" \
+    "$WORK/$stem.c" "$WORK/$stem.ir" "$WORK/$stem.tokens" \
+    >"$WORK/$stem.actual" 2>"$WORK/$stem.internal.stderr"
+status=$?
+set -e
+assert_num "$stem compile status" "$status" -eq 1
+assert_file_empty "$stem wrote internal stderr" \
+    "$WORK/$stem.internal.stderr"
+assert_absent "$stem emitted a C artifact" "$WORK/$stem.c"
+assert_absent "$stem emitted a partial IR checkpoint" "$WORK/$stem.ir"
+assert_absent "$stem emitted a partial token checkpoint" "$WORK/$stem.tokens"
+cmp "$CASES/$stem.stderr" "$WORK/$stem.actual" ||
+    assert_fail "$stem diagnostic changed"
 assert_grep 'a wrong argument count is an arity refusal' \
     -Fq -- 'error[E2S169]:' "$CASES/arity_short.stderr"
 assert_grep 'a non-Int operand is a type refusal, not an arity one' \
@@ -186,6 +226,58 @@ assert_grep 'the read-result receiver fixture still reads its result' \
     -Fq -- 'to_text(masked)' "$CASES/float_receiver_used.kofun"
 assert_grep 'a read result does not move the refusal to the reader' \
     -Fq -- 'error[E2S168]:' "$CASES/float_receiver_used.stderr"
+
+# A01's Int-only boundary is exhaustive over the actual types this Core slice
+# can resolve. Unknown bindings are earlier lexical errors; a known Int chain
+# followed by an unknown suffix is instead the exact unknown-Int-member error.
+for stem in bool_receiver list_receiver record_receiver enum_receiver; do
+    assert_grep "$stem names the non-Int receiver's actual type" \
+        -Fq -- 'bit operations are defined on `Int`' "$CASES/$stem.stderr"
+done
+for stem in bool_argument list_argument record_argument enum_argument; do
+    assert_grep "$stem is refused as a non-Int ordinary argument" \
+        -Fq -- 'takes `Int` arguments' "$CASES/$stem.stderr"
+done
+for stem in unknown_receiver unknown_argument; do
+    assert_grep "$stem keeps lexical resolution precedence" \
+        -Fq -- 'error[E2S35]: unknown lexical binding `mystery`' \
+        "$CASES/$stem.stderr"
+done
+assert_grep 'a known bit chain gives its unknown suffix Int authority' \
+    -Fq -- 'error[E2S168]: unknown `Int` member `frobnicate`' \
+    "$CASES/unknown_after_bit.stderr"
+assert_grep 'Optional(Int) receiver is owned by the Int-bit boundary' \
+    -Fq -- 'this receiver is `Int?`' "$CASES/optional_receiver.stderr"
+assert_grep 'Optional(Int) argument is owned by the Int-bit boundary' \
+    -Fq -- 'takes `Int` arguments' "$CASES/optional_argument.stderr"
+
+# Per ordinary argument: bind/check its label, then type-check its expression;
+# after all ordinary arguments: expression trailing lambda, then arity. A
+# block trailing lambda remains parser-owned E2S158.
+assert_grep 'an earlier bad type outranks a later label' \
+    -Fq -- 'error[E2S168]: `rotr` takes `Int` arguments' \
+    "$CASES/type_before_label.stderr"
+assert_grep 'an earlier bad type outranks a trailing lambda' \
+    -Fq -- 'error[E2S168]: `and` takes `Int` arguments' \
+    "$CASES/type_before_trailing_lambda.stderr"
+assert_grep 'a receiver error outranks the receiver call label' \
+    -Fq -- 'this receiver is `Bool`' "$CASES/bool_receiver.stderr"
+assert_grep 'a label outranks the labelled value type' \
+    -Fq -- 'takes positional arguments' "$CASES/label_before_type.stderr"
+assert_grep 'an expression trailing lambda outranks wrong arity' \
+    -Fq -- 'takes no trailing lambda' \
+    "$CASES/trailing_before_arity.stderr"
+assert_grep 'a block trailing lambda keeps E2S158 authority' \
+    -Fq -- 'error[E2S158]:' "$CASES/block_trailing_lambda.stderr"
+assert_grep 'a bad receiver outranks a later unresolved argument' \
+    -Fq -- 'this receiver is `Bool`' \
+    "$CASES/receiver_before_unknown.stderr"
+assert_grep 'an earlier bad type outranks a later unresolved argument' \
+    -Fq -- '`rotr` takes `Int` arguments' \
+    "$CASES/type_before_unknown.stderr"
+assert_grep 'a label outranks resolution of its value' \
+    -Fq -- 'takes positional arguments' \
+    "$CASES/label_before_unknown.stderr"
 
 # The eight names stay ordinary identifiers. This is checked against the
 # compiler pair rather than only by fixture, because a future implementation
@@ -225,18 +317,29 @@ assert_grep 'E2S169 remains a registered diagnostic identity' \
 assert_grep 'R011 remains a registered runtime identity' \
     -Eq -- '^R011[[:space:]]+int-bit-runtime[[:space:]]+runtime' \
     "$ROOT/tests/diagnostics/registry.tsv"
+assert_grep 'R010 registers the Stage2 shl producer and checked runtime trap' \
+    -Eq -- '^R010[[:space:]]+integer-runtime[[:space:]]+runtime[[:space:]]+bootstrap/stage2/compiler\.kofun;bootstrap/stage2/compiler\.c;bootstrap/selfhost/c11/trap_division\.c' \
+    "$ROOT/tests/diagnostics/registry.tsv"
+assert_grep 'R010 registers both the runtime owner and int-bits observer' \
+    -Eq -- 'runtime,int-bits$' "$ROOT/tests/diagnostics/registry.tsv"
+assert_grep 'R010 keeps its canonical runtime diagnostic report' \
+    -Eq -- '^R010[[:space:]]+runtime[[:space:]]' \
+    "$ROOT/tests/diagnostics/reports/runtime.tsv"
+assert_grep 'R010 is also observed by the int-bits adapter' \
+    -Eq -- '^R010[[:space:]]+int-bits[[:space:]]' \
+    "$ROOT/tests/diagnostics/reports/int-bits.tsv"
 
 # Adding a fixture without adding it to this gate must fail the count.
 present_count=$(find "$CASES" -name '*.kofun' -type f | wc -l | tr -d ' ')
 golden_count=$(find "$CASES" \( -name '*.stdout' -o -name '*.stderr' \) \
     -type f | wc -l | tr -d ' ')
-assert_num 'every source fixture is exercised' "$present_count" -eq 16
-assert_num 'every source fixture has one golden' "$golden_count" -eq 16
+assert_num 'every source fixture is exercised' "$present_count" -eq 38
+assert_num 'every source fixture has one golden' "$golden_count" -eq 38
 
 printf '%s\n' \
     'PASS: eight Int bit operations execute with the semantics RFC-0013 fixes' \
     'PASS: shr is arithmetic, rotr and wrapping_add carry their width' \
-    'PASS: shl overflow is R010 and every range mistake is R011, each at its bound' \
-    'PASS: a non-Int operand and a wrong argument count refuse before any artifact' \
+    'PASS: width/count precedence is fixed; shl overflow is R010 and ranges are R011' \
+    'PASS: every resolved non-Int operand and wrong shape refuses before any artifact' \
     'PASS: the eight names remain ordinary functions, fields, and identifiers' \
     'PASS: emitted C is deterministic strict C11 through checked helpers only'

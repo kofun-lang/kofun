@@ -40,6 +40,8 @@ fn main() -> Int {
     print(to_text(mask32().wrapping_add(1, 32)))
     print(to_text((0 - 1).wrapping_add(0, 32)))
     print(to_text((1).rotr(1, 64)))
+    # The width-64 all-ones bit pattern maps back to signed Int -1.
+    print(to_text((0).not().wrapping_add(0, 64)))
     print(to_text((1).wrapping_add(0 - 1, 64)))
 
     # A rotation count is reduced within the width, and the width is not 64.

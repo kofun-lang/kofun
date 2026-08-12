@@ -1,0 +1,7 @@
+# Expression trailing-lambda refusal precedes the method's arity check: `not`
+# has no ordinary parameters, but the lambda is the earlier A01 boundary.
+
+fn main() -> Int {
+    print(to_text((1).not(2) fn(y) => y))
+    return 0
+}
