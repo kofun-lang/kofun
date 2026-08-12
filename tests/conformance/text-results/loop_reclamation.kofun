@@ -1,0 +1,39 @@
+# A loop produces far more Text than the arena holds, and runs (#1359).
+#
+# Before reclamation this program stopped at `error[R022]` after 4096
+# iterations, because `kofun_text_next_slot` only ever advanced. The count is
+# deliberately 20000 — nearly five times the arena — so that a reclamation
+# that happened once, or per function, or every other iteration, would still
+# fail. Only winding the arena back at the end of every iteration reaches the
+# end of this loop.
+#
+# The inner comparison keeps each slice live for the length of the iteration
+# and dead after it, which is the exact lifetime the release depends on.
+
+fn main() -> Int {
+    let source: Text = "0123456789abcdef"
+    let mut index = 0
+    let mut hits = 0
+    while index < 20000 {
+        let byte: Text = text_slice(source, index % 16, index % 16 + 1)
+        if byte == "f" {
+            hits = hits + 1
+        }
+        index = index + 1
+    }
+    print(to_text(hits))
+
+    # A value taken before an inner loop is still itself after it: the inner
+    # mark is taken below this slot, so the release cannot reach it.
+    let held: Text = text_slice(source, 10, 11)
+    let mut outer = 0
+    while outer < 5000 {
+        let ignored: Text = text_slice(source, outer % 16, outer % 16 + 1)
+        if ignored == "zzz" {
+            print("unreachable")
+        }
+        outer = outer + 1
+    }
+    print(held)
+    return 0
+}

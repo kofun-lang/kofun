@@ -20719,15 +20719,38 @@ static char *lower_body(
              * leaves kofun_condition unusable, and a loop that ignored that
              * would spin on it instead of failing.
              */
+            /*
+             * Every Text an iteration produces is dead when the iteration
+             * ends, so the arena is wound back to where the iteration found it
+             * (#1359). Without this, kofun_text_next_slot only ever advances
+             * and a loop exhausts all 4096 slots -- which is why no Kofun
+             * program could emit more than 4096 pieces of text, ever.
+             *
+             * A high-water mark rather than a walk of the bindings: the
+             * temporaries an iteration creates are not all named. `let echoed =
+             * echo_back(part)` allocates in text_slice, hands the pointer
+             * through a call, and binds the result; only a mark reclaims the
+             * first one.
+             *
+             * It is sound because nothing an iteration allocates can outlive
+             * it. The emitter declares a loop binding's C storage inside the
+             * generated `for` block, so it is a fresh variable each time round;
+             * a mutable Text binding is refused (E2S144) so no outer name can
+             * be made to point at it; lists are Int-only; and a `return` from
+             * inside the body leaves before the restore runs, which is exactly
+             * right for a Text the caller keeps.
+             */
             buffer_format(
                 &emitted,
                 "    for (;;) {\n"
+                "        const size_t kofun_text_mark = kofun_text_next_slot;\n"
                 "%s"
                 "        if (kofun_failed) return %s;\n"
                 "        if (!kofun_condition) {\n"
                 "            break;\n"
                 "        }\n"
                 "%s"
+                "        kofun_text_next_slot = kofun_text_mark;\n"
                 "    }\n",
                 condition,
                 failure_result,
