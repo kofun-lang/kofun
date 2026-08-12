@@ -1,0 +1,1172 @@
+# The bounded benchmark report model (#1311), in Kofun.
+#
+# `spec/benchmark-report-v1.md` is the contract and the pure oracle; this file
+# is its production realisation on the executable Stage 2 C11 profile. It owns
+# the 49-field flat outcome, closed validation, raw-order retention, and the
+# deterministic 100-sample summaries. It owns no Bytes, no codec, no
+# filesystem, and no comparison: those are #1312, #1313, and #1320.
+#
+# Two shapes in here are the profile's, not preference:
+#
+#   * every logical series is two `List[Int]` segments, because RFC-0011's
+#     bounded list carries exactly 64 elements. Raw indices 0..63 are segment
+#     0 and 64..99 are segment 1, so a 100-sample report never needs a list the
+#     ABI cannot hold, and no concatenated 65..100-element list is ever built,
+#     not even as a temporary;
+#
+#   * every constructor binds its four lists as typed locals before it
+#     constructs the record. A direct list literal in a record field emits a
+#     pointer/value C type mismatch on this profile, and binding first is what
+#     the merged #1310 contract froze rather than a compiler change.
+#
+# The summaries are computed here in full. A nearest rank over the union of two
+# sorted segments is selected by a bounded two-way walk, so the model never
+# materialises the merged series it is describing.
+
+# ------------------------------------------------------------------ outcomes
+#
+# `status_tag` is 0 for a valid complete report and 1..12 for BR001..BR012.
+# Only the codes this model can reach have a name here. BR001/BR002 are the
+# decoder's, BR007 is comparison arithmetic, and BR008..BR012 belong to the
+# comparison and runner children; naming them would advertise a path this file
+# cannot take.
+#
+# The codes are also the model's precedence order. `first_failure` keeps the
+# lowest-numbered applicable code, which is exactly the contract's stated
+# order: shape (BR003) before limits (BR004) before identity (BR005) before
+# invariants (BR006). Reporting whichever check happened to run first is what
+# that rule exists to forbid.
+
+fn status_valid() -> Int {
+    return 0
+}
+
+# wrong schema, type, enum, required/unknown field, or availability shape
+fn status_schema_shape() -> Int {
+    return 3
+}
+
+# byte, count, Text, or exactly-representable integer limit exceeded
+fn status_limit_exceeded() -> Int {
+    return 4
+}
+
+# invalid Unicode scalar/control policy, identity, or digest
+fn status_invalid_identity() -> Int {
+    return 5
+}
+
+# count, budget, stop, raw/flag, or summary invariant failed
+fn status_invalid_invariant() -> Int {
+    return 6
+}
+
+fn first_failure(earlier: Int, later: Int) -> Int {
+    if earlier == 0 {
+        return later
+    }
+    if later == 0 {
+        return earlier
+    }
+    if earlier < later {
+        return earlier
+    }
+    return later
+}
+
+# ------------------------------------------------------------------- bounds
+
+fn limit_samples() -> Int {
+    return 100
+}
+
+fn limit_segment0() -> Int {
+    return 64
+}
+
+fn limit_segment1() -> Int {
+    return 36
+}
+
+fn limit_identity_bytes() -> Int {
+    return 96
+}
+
+fn limit_host_bytes() -> Int {
+    return 128
+}
+
+fn limit_note_bytes() -> Int {
+    return 255
+}
+
+# Every report integer is a JSON integer a conforming consumer preserves
+# exactly, so the ceiling is 2^53-1 rather than the Int carrier's own range.
+fn limit_integer() -> Int {
+    return 9007199254740991
+}
+
+fn limit_warmup_cap_ns() -> Int {
+    return 500000000
+}
+
+fn limit_sampling_cap_ns() -> Int {
+    return 3000000000
+}
+
+# --------------------------------------------------------------- input shape
+#
+# The outcome record is flat by contract. These inputs are not: they group the
+# 49 fields the way the wire document does, so a producer passes six values
+# rather than forty-nine positional ones, and so a field that belongs to the
+# host cannot be handed to the identity by accident.
+
+type ReportIdentity = {
+    suite: Text,
+    case: Text,
+    parameter_present: Bool,
+    parameter: Text,
+    metric: Text,
+    direction_tag: Int,
+}
+
+type ReportSchedule = {
+    clock_tag: Int,
+    warmup_cap_ns: Int,
+    sampling_cap_ns: Int,
+    sample_cap: Int,
+    warmup_iterations: Int,
+    warmup_stop_tag: Int,
+    iterations_per_sample: Int,
+    sample_count: Int,
+    sampling_stop_tag: Int,
+    harness_overhead_ns: Int,
+}
+
+type ReportCounters = {
+    allocated_bytes_available: Bool,
+    allocated_bytes_value: Int,
+    allocation_count_available: Bool,
+    allocation_count_value: Int,
+    gc_collections_available: Bool,
+    gc_collections_value: Int,
+    vm_peak_bytes_available: Bool,
+    vm_peak_bytes_value: Int,
+    cpu_cycles_available: Bool,
+    cpu_cycles_value: Int,
+}
+
+type ReportDigests = {
+    toolchain_sha256: Text,
+    source_sha256: Text,
+    artifact_sha256: Text,
+}
+
+type ReportHost = {
+    host_id_sha256: Text,
+    host_os: Text,
+    host_arch: Text,
+    host_cpu: Text,
+    host_affinity_available: Bool,
+    host_affinity: Text,
+    host_frequency_hz_available: Bool,
+    host_frequency_hz: Int,
+    host_noise: Text,
+}
+
+type ReportSummary = {
+    minimum: Int,
+    maximum: Int,
+    median: Int,
+    p25: Int,
+    p75: Int,
+    median_absolute_deviation: Int,
+}
+
+# ------------------------------------------------------------ the outcome
+#
+# The 49 fields in `STAGE2_REPORT_FIELDS` order. Declaration order is part of
+# the contract: the codec child reads this record positionally.
+
+type BenchReport = {
+    status_tag: Int,
+    suite: Text,
+    case: Text,
+    parameter_present: Bool,
+    parameter: Text,
+    metric: Text,
+    direction_tag: Int,
+    clock_tag: Int,
+    warmup_cap_ns: Int,
+    sampling_cap_ns: Int,
+    sample_cap: Int,
+    warmup_iterations: Int,
+    warmup_stop_tag: Int,
+    iterations_per_sample: Int,
+    sample_count: Int,
+    sampling_stop_tag: Int,
+    harness_overhead_ns: Int,
+    sample_segment0: List[Int],
+    sample_segment1: List[Int],
+    outlier_segment0: List[Int],
+    outlier_segment1: List[Int],
+    summary_minimum: Int,
+    summary_maximum: Int,
+    summary_median: Int,
+    summary_p25: Int,
+    summary_p75: Int,
+    summary_median_absolute_deviation: Int,
+    allocated_bytes_available: Bool,
+    allocated_bytes_value: Int,
+    allocation_count_available: Bool,
+    allocation_count_value: Int,
+    gc_collections_available: Bool,
+    gc_collections_value: Int,
+    vm_peak_bytes_available: Bool,
+    vm_peak_bytes_value: Int,
+    cpu_cycles_available: Bool,
+    cpu_cycles_value: Int,
+    toolchain_sha256: Text,
+    source_sha256: Text,
+    artifact_sha256: Text,
+    host_id_sha256: Text,
+    host_os: Text,
+    host_arch: Text,
+    host_cpu: Text,
+    host_affinity_available: Bool,
+    host_affinity: Text,
+    host_frequency_hz_available: Bool,
+    host_frequency_hz: Int,
+    host_noise: Text,
+}
+
+# ------------------------------------------------------------- arithmetic
+
+fn ceil_div(numerator: Int, denominator: Int) -> Int {
+    return (numerator + denominator - 1) // denominator
+}
+
+fn absolute_distance(value: Int, centre: Int) -> Int {
+    if value < centre {
+        return centre - value
+    }
+    return value - centre
+}
+
+# ---------------------------------------------------------------- ordering
+#
+# Insertion sort over a copy. The copy is the point: raw order is semantic and
+# is never rewritten, so every ordering step here works on a value the report
+# does not publish.
+
+fn sorted_copy(values: List[Int]) -> List[Int] {
+    let mut out = values
+    let mut i = 1
+    while i < len(out) {
+        let key = out[i]
+        let mut j = i - 1
+        let mut placing = 1
+        while placing == 1 {
+            if j < 0 {
+                placing = 0
+            } else {
+                if out[j] > key {
+                    out[j + 1] = out[j]
+                    j = j - 1
+                } else {
+                    placing = 0
+                }
+            }
+        }
+        out[j + 1] = key
+        i = i + 1
+    }
+    return out
+}
+
+# The one-based nearest rank over the union of two already sorted segments.
+#
+# This is the reason the 64+36 split costs nothing: the rank is reached by
+# advancing whichever segment holds the smaller head, so the union is walked
+# without ever being built. `rank` is derived from the two lengths by the
+# caller and is always in `1..len(left) + len(right)`.
+
+fn merged_rank(left: List[Int], right: List[Int], rank: Int) -> Int {
+    let mut taken = 0
+    let mut i = 0
+    let mut j = 0
+    let mut value = 0
+    while taken < rank {
+        if i < len(left) {
+            if j < len(right) {
+                if left[i] <= right[j] {
+                    value = left[i]
+                    i = i + 1
+                } else {
+                    value = right[j]
+                    j = j + 1
+                }
+            } else {
+                value = left[i]
+                i = i + 1
+            }
+        } else {
+            value = right[j]
+            j = j + 1
+        }
+        taken = taken + 1
+    }
+    return value
+}
+
+fn deviation_segment(values: List[Int], centre: Int) -> List[Int] {
+    let mut out = values
+    let mut i = 0
+    while i < len(out) {
+        out[i] = absolute_distance(values[i], centre)
+        i = i + 1
+    }
+    return out
+}
+
+# ---------------------------------------------------------------- summaries
+
+fn summarize_segments(samples0: List[Int], samples1: List[Int]) -> ReportSummary {
+    let count = len(samples0) + len(samples1)
+    let sorted0: List[Int] = sorted_copy(samples0)
+    let sorted1: List[Int] = sorted_copy(samples1)
+
+    let minimum = merged_rank(sorted0, sorted1, 1)
+    let maximum = merged_rank(sorted0, sorted1, count)
+    let median = merged_rank(sorted0, sorted1, ceil_div(count, 2))
+    let p25 = merged_rank(sorted0, sorted1, ceil_div(count, 4))
+    let p75 = merged_rank(sorted0, sorted1, ceil_div(3 * count, 4))
+
+    # The deviations are taken from the two raw segments and sorted the same
+    # way, so the MAD selection walks two aligned segments rather than a
+    # concatenation of them.
+    let raw_deviation0: List[Int] = deviation_segment(samples0, median)
+    let raw_deviation1: List[Int] = deviation_segment(samples1, median)
+    let deviation0: List[Int] = sorted_copy(raw_deviation0)
+    let deviation1: List[Int] = sorted_copy(raw_deviation1)
+    let deviation = merged_rank(deviation0, deviation1, ceil_div(count, 2))
+
+    let summary: ReportSummary = ReportSummary(
+        minimum: minimum,
+        maximum: maximum,
+        median: median,
+        p25: p25,
+        p75: p75,
+        median_absolute_deviation: deviation
+    )
+    return summary
+}
+
+# Tukey's 1.5-IQR fences without fractions: `2 * distance > 3 * IQR` is the
+# same predicate as `distance > 1.5 * IQR`, and equality is not an outlier.
+# Flags are produced in raw order and align with their sample by index.
+
+fn outlier_segment(values: List[Int], p25: Int, p75: Int) -> List[Int] {
+    let mut flags = values
+    let spread = p75 - p25
+    let mut i = 0
+    while i < len(values) {
+        let value = values[i]
+        let mut flag = 0
+        if value < p25 {
+            let below = p25 - value
+            if 2 * below > 3 * spread {
+                flag = 1
+            }
+        }
+        if value > p75 {
+            let above = value - p75
+            if 2 * above > 3 * spread {
+                flag = 1
+            }
+        }
+        flags[i] = flag
+        i = i + 1
+    }
+    return flags
+}
+
+# --------------------------------------------------------------- text rules
+#
+# `len` on Text is UTF-8 bytes and `text_slice` is byte-indexed, which is what
+# the contract's byte limits need. The control-character policy this model can
+# state is the three controls with portable escapes; the full C0/DEL set needs
+# either a byte-valued Text primitive or the decoded escape set of #1357, and
+# it belongs to the decoder child that reads bytes rather than to this model.
+
+# Sixteen literal comparisons rather than a scan of a constant table. The
+# table reads better and costs 16 one-byte `text_slice` temporaries per digest
+# byte, which is 1024 per digest; the bounded Text arena is 4096 bytes for the
+# whole run and is never reclaimed (#1359), so the table alone exhausted it
+# inside the second report. A literal comparison allocates nothing.
+
+fn hex_digit_ok(byte: Text) -> Int {
+    if byte == "0" {
+        return 1
+    }
+    if byte == "1" {
+        return 1
+    }
+    if byte == "2" {
+        return 1
+    }
+    if byte == "3" {
+        return 1
+    }
+    if byte == "4" {
+        return 1
+    }
+    if byte == "5" {
+        return 1
+    }
+    if byte == "6" {
+        return 1
+    }
+    if byte == "7" {
+        return 1
+    }
+    if byte == "8" {
+        return 1
+    }
+    if byte == "9" {
+        return 1
+    }
+    if byte == "a" {
+        return 1
+    }
+    if byte == "b" {
+        return 1
+    }
+    if byte == "c" {
+        return 1
+    }
+    if byte == "d" {
+        return 1
+    }
+    if byte == "e" {
+        return 1
+    }
+    if byte == "f" {
+        return 1
+    }
+    return 0
+}
+
+fn digest_ok(value: Text) -> Int {
+    if len(value) != 64 {
+        return 0
+    }
+    let mut i = 0
+    while i < len(value) {
+        let byte: Text = text_slice(value, i, i + 1)
+        if hex_digit_ok(byte) == 0 {
+            return 0
+        }
+        i = i + 1
+    }
+    return 1
+}
+
+fn control_free(value: Text) -> Int {
+    let mut i = 0
+    while i < len(value) {
+        let byte: Text = text_slice(value, i, i + 1)
+        if byte == "\t" {
+            return 0
+        }
+        if byte == "\n" {
+            return 0
+        }
+        if byte == "\r" {
+            return 0
+        }
+        i = i + 1
+    }
+    return 1
+}
+
+# One identity or host Text: nonempty, within its byte ceiling, and free of the
+# controls above. The ceiling differs by field, so it is a parameter.
+
+fn identity_text_status(value: Text, ceiling: Int) -> Int {
+    if len(value) == 0 {
+        return status_invalid_identity()
+    }
+    if len(value) > ceiling {
+        return status_limit_exceeded()
+    }
+    if control_free(value) == 0 {
+        return status_invalid_identity()
+    }
+    return status_valid()
+}
+
+# ------------------------------------------------------------- validation
+
+fn identity_status(identity: ReportIdentity) -> Int {
+    let mut status = status_valid()
+    if identity.direction_tag < 0 {
+        status = first_failure(status, status_schema_shape())
+    }
+    if identity.direction_tag > 1 {
+        status = first_failure(status, status_schema_shape())
+    }
+    let suite = identity_text_status(identity.suite, limit_identity_bytes())
+    status = first_failure(status, suite)
+    let case = identity_text_status(identity.case, limit_identity_bytes())
+    status = first_failure(status, case)
+    let metric = identity_text_status(identity.metric, limit_identity_bytes())
+    status = first_failure(status, metric)
+
+    # Omission is distinct from a present value, and the flat encoding gives
+    # each logical value exactly one physical form: absent means empty Text.
+    if identity.parameter_present {
+        let parameter = identity_text_status(identity.parameter, limit_identity_bytes())
+        status = first_failure(status, parameter)
+    } else {
+        if len(identity.parameter) != 0 {
+            status = first_failure(status, status_schema_shape())
+        }
+    }
+    return status
+}
+
+fn schedule_status(schedule: ReportSchedule, total: Int) -> Int {
+    let mut status = status_valid()
+
+    if schedule.clock_tag < 0 {
+        status = first_failure(status, status_schema_shape())
+    }
+    if schedule.clock_tag > 2 {
+        status = first_failure(status, status_schema_shape())
+    }
+    if schedule.warmup_stop_tag < 0 {
+        status = first_failure(status, status_schema_shape())
+    }
+    if schedule.warmup_stop_tag > 2 {
+        status = first_failure(status, status_schema_shape())
+    }
+    if schedule.sampling_stop_tag < 0 {
+        status = first_failure(status, status_schema_shape())
+    }
+    if schedule.sampling_stop_tag > 1 {
+        status = first_failure(status, status_schema_shape())
+    }
+
+    if schedule.warmup_cap_ns < 0 {
+        status = first_failure(status, status_limit_exceeded())
+    }
+    if schedule.warmup_cap_ns > limit_warmup_cap_ns() {
+        status = first_failure(status, status_limit_exceeded())
+    }
+    if schedule.sampling_cap_ns < 1 {
+        status = first_failure(status, status_limit_exceeded())
+    }
+    if schedule.sampling_cap_ns > limit_sampling_cap_ns() {
+        status = first_failure(status, status_limit_exceeded())
+    }
+    if schedule.sample_cap < 1 {
+        status = first_failure(status, status_limit_exceeded())
+    }
+    if schedule.sample_cap > limit_samples() {
+        status = first_failure(status, status_limit_exceeded())
+    }
+    if schedule.warmup_iterations < 0 {
+        status = first_failure(status, status_limit_exceeded())
+    }
+    if schedule.warmup_iterations > limit_integer() {
+        status = first_failure(status, status_limit_exceeded())
+    }
+    if schedule.iterations_per_sample < 1 {
+        status = first_failure(status, status_limit_exceeded())
+    }
+    if schedule.iterations_per_sample > limit_integer() {
+        status = first_failure(status, status_limit_exceeded())
+    }
+    if schedule.harness_overhead_ns < 0 {
+        status = first_failure(status, status_limit_exceeded())
+    }
+    if schedule.harness_overhead_ns > limit_integer() {
+        status = first_failure(status, status_limit_exceeded())
+    }
+
+    # The count is the raw series length, so a disagreement is the report
+    # describing a series it does not carry.
+    if schedule.sample_count != total {
+        status = first_failure(status, status_invalid_invariant())
+    }
+    if schedule.sample_count > schedule.sample_cap {
+        status = first_failure(status, status_invalid_invariant())
+    }
+
+    # A zero warmup cap is paired only with `disabled` and exactly zero warmup
+    # iterations; a nonzero cap is paired with `steady` or `time-cap` and at
+    # least one iteration.
+    if schedule.warmup_cap_ns == 0 {
+        if schedule.warmup_stop_tag != 0 {
+            status = first_failure(status, status_invalid_invariant())
+        }
+        if schedule.warmup_iterations != 0 {
+            status = first_failure(status, status_invalid_invariant())
+        }
+    } else {
+        if schedule.warmup_stop_tag == 0 {
+            status = first_failure(status, status_invalid_invariant())
+        }
+        if schedule.warmup_iterations < 1 {
+            status = first_failure(status, status_invalid_invariant())
+        }
+    }
+
+    # A `sample-cap` stop has exactly the requested count; a `time-cap` stop
+    # has strictly fewer and still publishes at least one.
+    if schedule.sampling_stop_tag == 0 {
+        if schedule.sample_count != schedule.sample_cap {
+            status = first_failure(status, status_invalid_invariant())
+        }
+    } else {
+        if schedule.sample_count >= schedule.sample_cap {
+            status = first_failure(status, status_invalid_invariant())
+        }
+    }
+    return status
+}
+
+fn segment_values_status(values: List[Int]) -> Int {
+    let mut status = status_valid()
+    let mut i = 0
+    while i < len(values) {
+        if values[i] < 0 {
+            status = first_failure(status, status_limit_exceeded())
+        }
+        if values[i] > limit_integer() {
+            status = first_failure(status, status_limit_exceeded())
+        }
+        i = i + 1
+    }
+    return status
+}
+
+fn series_status(samples0: List[Int], samples1: List[Int]) -> Int {
+    let mut status = status_valid()
+    let total = len(samples0) + len(samples1)
+
+    if len(samples0) > limit_segment0() {
+        status = first_failure(status, status_limit_exceeded())
+    }
+    if len(samples1) > limit_segment1() {
+        status = first_failure(status, status_limit_exceeded())
+    }
+    if total > limit_samples() {
+        status = first_failure(status, status_limit_exceeded())
+    }
+    if total < 1 {
+        status = first_failure(status, status_invalid_invariant())
+    }
+
+    # The second segment starts only after a full first segment. A split that
+    # puts raw index 64 anywhere else is a different series with the same
+    # values, which is why it is refused rather than normalised.
+    if len(samples1) > 0 {
+        if len(samples0) != limit_segment0() {
+            status = first_failure(status, status_invalid_invariant())
+        }
+    }
+
+    status = first_failure(status, segment_values_status(samples0))
+    status = first_failure(status, segment_values_status(samples1))
+    return status
+}
+
+# `available` arrives as 0/1 rather than as the `Bool` it is in the record: a
+# Core parameter is an Int, Text, concrete enum, or nominal record, and a Bool
+# parameter is refused. Converting at the five call sites keeps one copy of the
+# rule instead of five inlined copies of it.
+
+fn counter_status(available: Int, value: Int) -> Int {
+    let mut status = status_valid()
+    if available == 1 {
+        if value < 0 {
+            status = first_failure(status, status_limit_exceeded())
+        }
+        if value > limit_integer() {
+            status = first_failure(status, status_limit_exceeded())
+        }
+    } else {
+        # Unavailable carries no number. Available-zero, available-nonzero, and
+        # unavailable stay three distinct values because the absent case has
+        # exactly one physical form.
+        if value != 0 {
+            status = first_failure(status, status_schema_shape())
+        }
+    }
+    return status
+}
+
+fn counters_status(counters: ReportCounters) -> Int {
+    let mut status = status_valid()
+
+    let mut allocated_available = 0
+    if counters.allocated_bytes_available {
+        allocated_available = 1
+    }
+    let allocated = counter_status(allocated_available, counters.allocated_bytes_value)
+    status = first_failure(status, allocated)
+
+    let mut allocations_available = 0
+    if counters.allocation_count_available {
+        allocations_available = 1
+    }
+    let allocations = counter_status(allocations_available, counters.allocation_count_value)
+    status = first_failure(status, allocations)
+
+    let mut collections_available = 0
+    if counters.gc_collections_available {
+        collections_available = 1
+    }
+    let collections = counter_status(collections_available, counters.gc_collections_value)
+    status = first_failure(status, collections)
+
+    let mut peak_available = 0
+    if counters.vm_peak_bytes_available {
+        peak_available = 1
+    }
+    let peak = counter_status(peak_available, counters.vm_peak_bytes_value)
+    status = first_failure(status, peak)
+
+    let mut cycles_available = 0
+    if counters.cpu_cycles_available {
+        cycles_available = 1
+    }
+    let cycles = counter_status(cycles_available, counters.cpu_cycles_value)
+    status = first_failure(status, cycles)
+
+    return status
+}
+
+fn digests_status(digests: ReportDigests) -> Int {
+    let mut status = status_valid()
+    if digest_ok(digests.toolchain_sha256) == 0 {
+        status = first_failure(status, status_invalid_identity())
+    }
+    if digest_ok(digests.source_sha256) == 0 {
+        status = first_failure(status, status_invalid_identity())
+    }
+    if digest_ok(digests.artifact_sha256) == 0 {
+        status = first_failure(status, status_invalid_identity())
+    }
+    return status
+}
+
+fn host_status(host: ReportHost) -> Int {
+    let mut status = status_valid()
+    if digest_ok(host.host_id_sha256) == 0 {
+        status = first_failure(status, status_invalid_identity())
+    }
+    let os = identity_text_status(host.host_os, limit_host_bytes())
+    status = first_failure(status, os)
+    let arch = identity_text_status(host.host_arch, limit_host_bytes())
+    status = first_failure(status, arch)
+    let cpu = identity_text_status(host.host_cpu, limit_host_bytes())
+    status = first_failure(status, cpu)
+
+    if host.host_affinity_available {
+        let affinity = identity_text_status(host.host_affinity, limit_host_bytes())
+        status = first_failure(status, affinity)
+    } else {
+        if len(host.host_affinity) != 0 {
+            status = first_failure(status, status_schema_shape())
+        }
+    }
+
+    if host.host_frequency_hz_available {
+        if host.host_frequency_hz < 1 {
+            status = first_failure(status, status_invalid_invariant())
+        }
+        if host.host_frequency_hz > limit_integer() {
+            status = first_failure(status, status_limit_exceeded())
+        }
+    } else {
+        if host.host_frequency_hz != 0 {
+            status = first_failure(status, status_schema_shape())
+        }
+    }
+
+    # `noise` admits TAB, LF, and CR so an observation can be recorded without
+    # inventing another string type, and it may be empty.
+    if len(host.host_noise) > limit_note_bytes() {
+        status = first_failure(status, status_limit_exceeded())
+    }
+    return status
+}
+
+# ------------------------------------------------------------ constructors
+#
+# Every nonzero outcome is this record: no partial report survives an error,
+# because there is exactly one neutral value per physical type and this
+# constructor writes all of them. It is also why the neutral lists are bound
+# here as typed locals rather than relying on a generic zero record — that
+# would represent Text as a null C pointer.
+
+fn neutral_report(status_tag: Int) -> BenchReport {
+    let sample_segment0: List[Int] = []
+    let sample_segment1: List[Int] = []
+    let outlier_segment0: List[Int] = []
+    let outlier_segment1: List[Int] = []
+    let value: BenchReport = BenchReport(
+        status_tag: status_tag,
+        suite: "",
+        case: "",
+        parameter_present: false,
+        parameter: "",
+        metric: "",
+        direction_tag: 0,
+        clock_tag: 0,
+        warmup_cap_ns: 0,
+        sampling_cap_ns: 0,
+        sample_cap: 0,
+        warmup_iterations: 0,
+        warmup_stop_tag: 0,
+        iterations_per_sample: 0,
+        sample_count: 0,
+        sampling_stop_tag: 0,
+        harness_overhead_ns: 0,
+        sample_segment0: sample_segment0,
+        sample_segment1: sample_segment1,
+        outlier_segment0: outlier_segment0,
+        outlier_segment1: outlier_segment1,
+        summary_minimum: 0,
+        summary_maximum: 0,
+        summary_median: 0,
+        summary_p25: 0,
+        summary_p75: 0,
+        summary_median_absolute_deviation: 0,
+        allocated_bytes_available: false,
+        allocated_bytes_value: 0,
+        allocation_count_available: false,
+        allocation_count_value: 0,
+        gc_collections_available: false,
+        gc_collections_value: 0,
+        vm_peak_bytes_available: false,
+        vm_peak_bytes_value: 0,
+        cpu_cycles_available: false,
+        cpu_cycles_value: 0,
+        toolchain_sha256: "",
+        source_sha256: "",
+        artifact_sha256: "",
+        host_id_sha256: "",
+        host_os: "",
+        host_arch: "",
+        host_cpu: "",
+        host_affinity_available: false,
+        host_affinity: "",
+        host_frequency_hz_available: false,
+        host_frequency_hz: 0,
+        host_noise: ""
+    )
+    return value
+}
+
+# The complete outcome. Validation runs first and returns before any summary
+# work, so the constructor phase below cannot fail: it sorts copies, selects
+# ranks, and writes fields, and every input it reads has already been bounded.
+
+fn produce_report(
+    identity: ReportIdentity,
+    schedule: ReportSchedule,
+    counters: ReportCounters,
+    digests: ReportDigests,
+    host: ReportHost,
+    samples0: List[Int],
+    samples1: List[Int]
+) -> BenchReport {
+    let total = len(samples0) + len(samples1)
+    let mut status = series_status(samples0, samples1)
+    status = first_failure(status, schedule_status(schedule, total))
+    status = first_failure(status, identity_status(identity))
+    status = first_failure(status, digests_status(digests))
+    status = first_failure(status, host_status(host))
+    status = first_failure(status, counters_status(counters))
+    if status != status_valid() {
+        let refused: BenchReport = neutral_report(status)
+        return refused
+    }
+
+    let summary: ReportSummary = summarize_segments(samples0, samples1)
+    let sample_segment0: List[Int] = samples0
+    let sample_segment1: List[Int] = samples1
+    let outlier_segment0: List[Int] = outlier_segment(samples0, summary.p25, summary.p75)
+    let outlier_segment1: List[Int] = outlier_segment(samples1, summary.p25, summary.p75)
+
+    let value: BenchReport = BenchReport(
+        status_tag: status_valid(),
+        suite: identity.suite,
+        case: identity.case,
+        parameter_present: identity.parameter_present,
+        parameter: identity.parameter,
+        metric: identity.metric,
+        direction_tag: identity.direction_tag,
+        clock_tag: schedule.clock_tag,
+        warmup_cap_ns: schedule.warmup_cap_ns,
+        sampling_cap_ns: schedule.sampling_cap_ns,
+        sample_cap: schedule.sample_cap,
+        warmup_iterations: schedule.warmup_iterations,
+        warmup_stop_tag: schedule.warmup_stop_tag,
+        iterations_per_sample: schedule.iterations_per_sample,
+        sample_count: schedule.sample_count,
+        sampling_stop_tag: schedule.sampling_stop_tag,
+        harness_overhead_ns: schedule.harness_overhead_ns,
+        sample_segment0: sample_segment0,
+        sample_segment1: sample_segment1,
+        outlier_segment0: outlier_segment0,
+        outlier_segment1: outlier_segment1,
+        summary_minimum: summary.minimum,
+        summary_maximum: summary.maximum,
+        summary_median: summary.median,
+        summary_p25: summary.p25,
+        summary_p75: summary.p75,
+        summary_median_absolute_deviation: summary.median_absolute_deviation,
+        allocated_bytes_available: counters.allocated_bytes_available,
+        allocated_bytes_value: counters.allocated_bytes_value,
+        allocation_count_available: counters.allocation_count_available,
+        allocation_count_value: counters.allocation_count_value,
+        gc_collections_available: counters.gc_collections_available,
+        gc_collections_value: counters.gc_collections_value,
+        vm_peak_bytes_available: counters.vm_peak_bytes_available,
+        vm_peak_bytes_value: counters.vm_peak_bytes_value,
+        cpu_cycles_available: counters.cpu_cycles_available,
+        cpu_cycles_value: counters.cpu_cycles_value,
+        toolchain_sha256: digests.toolchain_sha256,
+        source_sha256: digests.source_sha256,
+        artifact_sha256: digests.artifact_sha256,
+        host_id_sha256: host.host_id_sha256,
+        host_os: host.host_os,
+        host_arch: host.host_arch,
+        host_cpu: host.host_cpu,
+        host_affinity_available: host.host_affinity_available,
+        host_affinity: host.host_affinity,
+        host_frequency_hz_available: host.host_frequency_hz_available,
+        host_frequency_hz: host.host_frequency_hz,
+        host_noise: host.host_noise
+    )
+    return value
+}
+
+# Every field of a refused outcome, checked rather than asserted: a partial
+# report that kept one Text or one list would answer 0 here.
+
+fn neutral_outcome_ok(report: BenchReport) -> Int {
+    if len(report.suite) != 0 {
+        return 0
+    }
+    if len(report.case) != 0 {
+        return 0
+    }
+    if report.parameter_present {
+        return 0
+    }
+    if len(report.parameter) != 0 {
+        return 0
+    }
+    if len(report.metric) != 0 {
+        return 0
+    }
+    if report.direction_tag != 0 {
+        return 0
+    }
+    if report.clock_tag != 0 {
+        return 0
+    }
+    if report.warmup_cap_ns != 0 {
+        return 0
+    }
+    if report.sampling_cap_ns != 0 {
+        return 0
+    }
+    if report.sample_cap != 0 {
+        return 0
+    }
+    if report.warmup_iterations != 0 {
+        return 0
+    }
+    if report.warmup_stop_tag != 0 {
+        return 0
+    }
+    if report.iterations_per_sample != 0 {
+        return 0
+    }
+    if report.sample_count != 0 {
+        return 0
+    }
+    if report.sampling_stop_tag != 0 {
+        return 0
+    }
+    if report.harness_overhead_ns != 0 {
+        return 0
+    }
+    if len(report.sample_segment0) != 0 {
+        return 0
+    }
+    if len(report.sample_segment1) != 0 {
+        return 0
+    }
+    if len(report.outlier_segment0) != 0 {
+        return 0
+    }
+    if len(report.outlier_segment1) != 0 {
+        return 0
+    }
+    if report.summary_minimum != 0 {
+        return 0
+    }
+    if report.summary_maximum != 0 {
+        return 0
+    }
+    if report.summary_median != 0 {
+        return 0
+    }
+    if report.summary_p25 != 0 {
+        return 0
+    }
+    if report.summary_p75 != 0 {
+        return 0
+    }
+    if report.summary_median_absolute_deviation != 0 {
+        return 0
+    }
+    if report.allocated_bytes_available {
+        return 0
+    }
+    if report.allocated_bytes_value != 0 {
+        return 0
+    }
+    if report.allocation_count_available {
+        return 0
+    }
+    if report.allocation_count_value != 0 {
+        return 0
+    }
+    if report.gc_collections_available {
+        return 0
+    }
+    if report.gc_collections_value != 0 {
+        return 0
+    }
+    if report.vm_peak_bytes_available {
+        return 0
+    }
+    if report.vm_peak_bytes_value != 0 {
+        return 0
+    }
+    if report.cpu_cycles_available {
+        return 0
+    }
+    if report.cpu_cycles_value != 0 {
+        return 0
+    }
+    if len(report.toolchain_sha256) != 0 {
+        return 0
+    }
+    if len(report.source_sha256) != 0 {
+        return 0
+    }
+    if len(report.artifact_sha256) != 0 {
+        return 0
+    }
+    if len(report.host_id_sha256) != 0 {
+        return 0
+    }
+    if len(report.host_os) != 0 {
+        return 0
+    }
+    if len(report.host_arch) != 0 {
+        return 0
+    }
+    if len(report.host_cpu) != 0 {
+        return 0
+    }
+    if report.host_affinity_available {
+        return 0
+    }
+    if len(report.host_affinity) != 0 {
+        return 0
+    }
+    if report.host_frequency_hz_available {
+        return 0
+    }
+    if report.host_frequency_hz != 0 {
+        return 0
+    }
+    if len(report.host_noise) != 0 {
+        return 0
+    }
+    return 1
+}
+
+# --------------------------------------------------------------- transcript
+#
+# The flags are reported as the raw indices they are set at, one line each,
+# followed by the two segment lengths and the total.
+#
+# Rendering them as a digit string was the obvious form and does not fit: a
+# mutable `Text` local is outside this lowering slice, and building the string
+# by recursion instead raises `R022`, the 4096-byte bounded Text temporary
+# limit, at 63 samples. The index list carries the same information — a flag
+# vector is determined by its set positions and its length — and its size grows
+# with the outliers rather than with the series.
+
+fn print_outliers(name: Text, flags: List[Int], base: Int) -> Int {
+    let mut set = 0
+    let mut i = 0
+    while i < len(flags) {
+        if flags[i] == 1 {
+            print(name + " outlier " + to_text(base + i))
+            set = set + 1
+        }
+        i = i + 1
+    }
+    return set
+}
+
+fn report_line(report: BenchReport) -> Text {
+    let counts: Text = to_text(report.status_tag) + " " + to_text(report.sample_count)
+    let low: Text = to_text(report.summary_minimum) + " " + to_text(report.summary_maximum)
+    let middle: Text = to_text(report.summary_median) + " " + to_text(report.summary_p25)
+    let high: Text = to_text(report.summary_p75) + " " +
+        to_text(report.summary_median_absolute_deviation)
+    return counts + " " + low + " " + middle + " " + high
+}
+
+# These return the number of cases printed rather than nothing. A Core
+# function with no return type admits only Int and concrete-enum parameters, so
+# a procedure taking a report or a name is refused; counting the cases also
+# gives the transcript a final line that changes if a case stops running.
+
+fn print_case(name: Text, report: BenchReport) -> Int {
+    let summary: Text = report_line(report)
+    print(name + " " + summary)
+    let set0 = print_outliers(name, report.outlier_segment0, 0)
+    let set1 = print_outliers(name, report.outlier_segment1, limit_segment0())
+    let lengths: Text = to_text(len(report.outlier_segment0)) + " " +
+        to_text(len(report.outlier_segment1))
+    print(name + " flags " + lengths + " " + to_text(set0 + set1))
+    if report.status_tag != status_valid() {
+        print(name + " neutral " + to_text(neutral_outcome_ok(report)))
+    }
+    return 1
+}
+
+# ------------------------------------------------------------------ drivers
+#
+# This file declares no `main`. It is the model, and `corpus.kofun` plus one
+# generated driver complete a program; `check.sh` concatenates the three in
+# that order. The split is forced rather than stylistic: the bounded Text
+# arena is 4096 bytes for a whole run and is never reclaimed (#1359), so a
+# single program cannot construct every corpus report. Each group runs in its
+# own process, which is also why the model must not depend on state left by a
+# previous case.

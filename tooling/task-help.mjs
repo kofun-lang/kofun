@@ -94,7 +94,8 @@ export const GROUPS = Object.freeze([
             'alloc-contract', 'kotest', 'tzdb', 'clock-adapters',
             'environment-authority-compiler-contract', 'host-process-authority-contract',
             'directory-authority-contract', 'http-carrier-profile',
-            'benchmark-summary', 'benchmark-report-spec', 'capabilities'
+            'benchmark-summary', 'benchmark-report-spec', 'benchmark-report-model',
+            'capabilities'
         ]
     },
     {
