@@ -1,0 +1,7 @@
+# `shl` is checked arithmetic, exactly as `a * 2**n` is.
+
+fn main() -> Int {
+    let value = 3
+    print(to_text(value.shl(62)))
+    return 0
+}

@@ -1,0 +1,17 @@
+# No bit operation has a functional final parameter, so a trailing lambda
+# cannot be an argument of one. The span is the `fn` that opens the lambda —
+# the token the author would delete — not the call it attached itself to.
+#
+# Before this was refused, the trailing lambda was left unconsumed, which made
+# the argument counter read the *enclosing* call as malformed: this program was
+# rejected as `to_text` expecting 1 argument and getting -1, blaming a call the
+# author did not get wrong.
+#
+# The block-body spelling keeps its own `E2S158` at its own `fn`: that rule is
+# about block bodies not being parsed at all, which is a different fact.
+
+fn main() -> Int {
+    let value = 1
+    print(to_text(value.and(2) fn(y) => y))
+    return 0
+}

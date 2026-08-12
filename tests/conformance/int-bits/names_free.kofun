@@ -1,0 +1,64 @@
+# The eight names are not reserved. Each may be a function, two of them are
+# also record fields here, and all of that keeps working in a file that uses
+# the operations — a name is meaningful only as a member of an `Int` receiver.
+
+type State = {
+    xor: Int,
+    shl: Int,
+}
+
+fn and(left: Int, right: Int) -> Int {
+    return left * right
+}
+
+fn or(value: Int) -> Int {
+    return value + 1
+}
+
+fn xor(value: Int) -> Int {
+    return value + 2
+}
+
+fn not(value: Int) -> Int {
+    return 0 - value
+}
+
+fn shl(value: Int) -> Int {
+    return value + 3
+}
+
+fn shr(value: Int) -> Int {
+    return value + 4
+}
+
+fn rotr(value: Int, places: Int) -> Int {
+    return value - places
+}
+
+fn wrapping_add(left: Int, right: Int) -> Int {
+    return left + right
+}
+
+fn main() -> Int {
+    let s: State = State(xor: 12, shl: 240)
+
+    # Prefix calls to the user's own functions, all eight names.
+    print(to_text(and(6, 7)))
+    print(to_text(or(6)))
+    print(to_text(xor(6)))
+    print(to_text(not(6)))
+    print(to_text(shl(6)))
+    print(to_text(shr(6)))
+    print(to_text(rotr(6, 2)))
+    print(to_text(wrapping_add(6, 2)))
+
+    # Field reads, including fields whose names are table names.
+    print(to_text(s.xor))
+    print(to_text(s.shl))
+
+    # The operations, in the same file, on a field receiver.
+    print(to_text(s.shl.and(15)))
+    print(to_text(s.xor.or(3)))
+    print(to_text(s.shl.rotr(4, 32).and(255)))
+    return 0
+}

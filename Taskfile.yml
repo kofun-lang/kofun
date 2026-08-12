@@ -307,6 +307,16 @@ tasks:
     cmds:
       - "sh tests/conformance/text-results/run.sh"
 
+  # RFC-0013 (#1348). The eight bit operations on `Int`, spelled as postfix
+  # methods. The gate is written so a wrong implementation produces a different
+  # number rather than a crash: C leaves a shift by the operand width undefined
+  # and a signed right shift implementation-defined, and the reason these were
+  # named at all was to give them answers the language states.
+  int-bits:
+    desc: "Verify the eight Int bit operations, their traps, and their refusals"
+    cmds:
+      - "sh tests/conformance/int-bits/run.sh"
+
   # #1174. Statement-position `else if` chains. The corpus exists mainly for
   # one property that a passing program cannot show: a later condition must be
   # evaluated only when every earlier one was false, so the gate puts a
@@ -979,6 +989,7 @@ tasks:
             optional-coalescing \
             optional-pair \
             text-results \
+            int-bits \
             list-int-values \
             while-list-int \
             else-if-chain \

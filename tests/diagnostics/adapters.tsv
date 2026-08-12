@@ -22,3 +22,4 @@ native	tests/diagnostics/native/run.sh	verify	tests/diagnostics/reports/native.t
 c-abi	tests/diagnostics/c-abi/run.sh	verify	tests/diagnostics/reports/c-abi.tsv
 affine-resource-handle	tests/ownership/affine-resource-handle/check.sh	verify	tests/diagnostics/reports/affine-resource-handle.tsv
 runtime	tests/diagnostics/runtime/run.sh	verify	tests/diagnostics/reports/runtime.tsv
+int-bits	tests/conformance/int-bits/run.sh	verify	tests/diagnostics/reports/int-bits.tsv

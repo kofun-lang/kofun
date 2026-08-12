@@ -1,0 +1,7 @@
+# The width bounds the rotation, but the count is still a shift count.
+
+fn main() -> Int {
+    let value = 1
+    print(to_text(value.rotr(64, 32)))
+    return 0
+}

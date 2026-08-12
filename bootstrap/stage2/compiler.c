@@ -5952,7 +5952,130 @@ static char *argument_lambda_name(int64_t open) {
     return output.data;
 }
 
+/*
+ * RFC-0013. The eight bit operations are members of an `Int` receiver, not
+ * reserved words: `and` stays an ordinary identifier everywhere else, exactly
+ * as `join` does, so `fn and()` still declares and `type P = { xor: Int }`
+ * still has a field. A name is meaningful only in `<Int>.name(...)` position,
+ * which is why this table is consulted from the postfix reader rather than the
+ * lexer.
+ *
+ * The arity is returned rather than a `bool` because it is the one fact both
+ * readers need — the parser to know a call follows, the lowerer to refuse a
+ * call that supplies the wrong number of arguments — and keeping one table
+ * means the two cannot disagree about what the set is.
+ */
+static int64_t int_bit_method_arity(const char *name) {
+    if (strcmp(name, "not") == 0) return 0;
+    if (
+        strcmp(name, "and") == 0 || strcmp(name, "or") == 0 ||
+        strcmp(name, "xor") == 0 || strcmp(name, "shl") == 0 ||
+        strcmp(name, "shr") == 0
+    ) {
+        return 1;
+    }
+    if (strcmp(name, "rotr") == 0 || strcmp(name, "wrapping_add") == 0) {
+        return 2;
+    }
+    return -1;
+}
+
+/*
+ * The same table read at a position. Both readers below hold a cursor rather
+ * than a name, and one place that turns a cursor into an arity keeps them from
+ * disagreeing about what counts as a table name.
+ */
+static int64_t int_bit_method_arity_at(const char *source, int64_t cursor) {
+    if (
+        cursor >= source_length(source) ||
+        strcmp(token_kind(source, cursor), "identifier") != 0
+    ) {
+        return -1;
+    }
+    char *name = token_copy(source, cursor);
+    int64_t arity = int_bit_method_arity(name);
+    free(name);
+    return arity;
+}
+
+/*
+ * Zero or more `.name(arguments)` calls drawn from that table, left to right.
+ * A name outside the table, or a table name with no call after it, is left
+ * unconsumed, so the record-field reader below keeps its existing answer for
+ * `p.and` and for every member this slice does not own.
+ */
+static int64_t int_bit_postfix_end(const char *source, int64_t primary) {
+    int64_t length = source_length(source);
+    int64_t cursor = primary;
+    while (cursor < length) {
+        int64_t dot = skip_trivia(source, cursor);
+        if (dot >= length || !token_equal(source, dot, ".")) return cursor;
+        /*
+         * Any member call is consumed, not only a table name. An unknown member
+         * left the `(` behind, and the argument counter then read the enclosing
+         * call as malformed: `to_text(x.frobnicate(2))` was refused as `to_text`
+         * expecting 1 argument and getting -1. The lowerer decides what the
+         * member means; this only decides where the expression ends.
+         */
+        int64_t name = skip_trivia(source, token_end(source, dot));
+        if (
+            name >= length ||
+            strcmp(token_kind(source, name), "identifier") != 0
+        ) {
+            return cursor;
+        }
+        int64_t open = skip_trivia(source, token_end(source, name));
+        if (open >= length || !token_equal(source, open, "(")) return cursor;
+        int64_t close = balanced_end(source, open, "(", ")");
+        if (close < 0) return cursor;
+        /*
+         * A trailing lambda binds to the call it follows, so it has to be
+         * inside this span even though no bit operation has a functional final
+         * slot. Leaving it here made the argument counter read the *enclosing*
+         * call as malformed: `to_text(x.and(2) fn(y) => y)` was refused as
+         * `to_text` expecting 1 argument and getting -1, blaming a call the
+         * author did not get wrong. The refusal that names the lambda is in the
+         * lowerer.
+         *
+         * A block body spans to -1 and is already refused as `E2S158` at its
+         * own `fn`, so it is left where that rule reports it.
+         */
+        int64_t lambda_open = trailing_lambda_open(source, close);
+        if (lambda_open >= 0) {
+            int64_t lambda_close = lambda_parameters_end(source, -1, lambda_open);
+            if (lambda_close < 0) return close;
+            cursor = lambda_close;
+        } else {
+            cursor = close;
+        }
+    }
+    return cursor;
+}
+
+static int64_t field_read_postfix_end(const char *source, int64_t primary);
+
 static int64_t field_postfix_end(
+    const char *source,
+    int64_t primary
+) {
+    /*
+     * A bit-operation chain is tried first because the record-field reader
+     * consumes `.and` on its own and would leave the `(` behind — the argument
+     * counter then read the call as a malformed one and the program was
+     * refused for an arity it never had.
+     */
+    int64_t leading_bits = int_bit_postfix_end(source, primary);
+    if (leading_bits > primary) return leading_bits;
+    int64_t field_read = field_read_postfix_end(source, primary);
+    if (field_read <= primary) return field_read;
+    /*
+     * A field read may carry a chain of its own: `state.h0.xor(mask)` is one
+     * `Int` receiver like any other.
+     */
+    return int_bit_postfix_end(source, field_read);
+}
+
+static int64_t field_read_postfix_end(
     const char *source,
     int64_t primary
 ) {
@@ -8060,6 +8183,260 @@ static int64_t list_int_index_close(const char *source, int64_t open) {
     return close;
 }
 
+/*
+ * Where a bit-operation chain begins inside one primary's span, or -1.
+ *
+ * The search is at bracket depth zero, so the receiver is everything the chain
+ * is applied to and nothing else: in `a.and(b.or(c))` the answer is the dot
+ * before `and`, and the inner chain is found again when its own argument is
+ * lowered. A field read on the way — `state.h0.xor(mask)` — is stepped over
+ * rather than claimed, because `h0` is not in the table.
+ */
+static int64_t int_bit_chain_dot(
+    const char *source,
+    int64_t start,
+    int64_t end
+) {
+    int64_t cursor = skip_trivia(source, start);
+    int64_t depth = 0;
+    while (cursor < end) {
+        if (token_equal(source, cursor, "(") ||
+            token_equal(source, cursor, "[")) {
+            depth = depth + 1;
+        } else if (token_equal(source, cursor, ")") ||
+                   token_equal(source, cursor, "]")) {
+            depth = depth - 1;
+        } else if (depth == 0 && token_equal(source, cursor, ".")) {
+            int64_t name = skip_trivia(source, token_end(source, cursor));
+            if (name < end && int_bit_method_arity_at(source, name) >= 0) {
+                int64_t open = skip_trivia(source, token_end(source, name));
+                if (open < end && token_equal(source, open, "(")) {
+                    return cursor;
+                }
+            }
+        }
+        int64_t next = token_end(source, cursor);
+        if (next <= cursor) return -1;
+        cursor = skip_trivia(source, next);
+    }
+    return -1;
+}
+
+/*
+ * RFC-0013's eight operations, applied left to right to one receiver.
+ *
+ * Each becomes one call on a checked runtime helper rather than a bare C
+ * operator. That is not indirection for its own sake: C leaves a shift by 64
+ * undefined and leaves a signed right shift implementation-defined, and the
+ * whole point of naming these operations was to give them answers the language
+ * states rather than answers the host compiler picks.
+ */
+static char *emit_int_bit_chain(
+    const char *source,
+    const char *hir,
+    int64_t start,
+    int64_t first_dot,
+    int64_t end
+) {
+    int64_t function_open = enclosing_function_open(source, start);
+    const char *receiver_type = numeric_primary_type(
+        source,
+        hir,
+        function_open,
+        start
+    );
+    if (
+        strcmp(receiver_type, "Decimal") == 0 ||
+        strcmp(receiver_type, "Float") == 0
+    ) {
+        Buffer message;
+        buffer_init(&message);
+        buffer_format(
+            &message,
+            "bit operations are defined on `Int`, and this receiver is `%s`",
+            receiver_type
+        );
+        char *refusal = lower_error("E2S168", message.data, first_dot);
+        free(message.data);
+        return refusal;
+    }
+    if (text_operand(source, hir, function_open, start)) {
+        return lower_error(
+            "E2S168",
+            "bit operations are defined on `Int`, and this receiver is `Text`",
+            first_dot
+        );
+    }
+    char *emitted = emit_primary(source, hir, start, first_dot);
+    if (strncmp(emitted, "error[", 6) == 0) return emitted;
+    int64_t cursor = first_dot;
+    while (cursor < end) {
+        int64_t dot = skip_trivia(source, cursor);
+        if (dot >= end || !token_equal(source, dot, ".")) return emitted;
+        int64_t name_at = skip_trivia(source, token_end(source, dot));
+        char *name = token_copy(source, name_at);
+        int64_t arity = int_bit_method_arity(name);
+        if (arity < 0) {
+            free(name);
+            return emitted;
+        }
+        int64_t open = skip_trivia(source, token_end(source, name_at));
+        if (open >= end || !token_equal(source, open, "(")) {
+            free(name);
+            return emitted;
+        }
+        int64_t close = balanced_end(source, open, "(", ")");
+        if (close < 0) {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(
+                &message,
+                "`%s` is missing its closing parenthesis",
+                name
+            );
+            char *refusal = lower_error("E2S169", message.data, open);
+            free(message.data);
+            free(name);
+            free(emitted);
+            return refusal;
+        }
+        /*
+         * No bit operation has a functional final slot, so a trailing lambda
+         * cannot be an argument of one. The span is the `fn` that opens it,
+         * which is the token the author would delete, rather than the call it
+         * attached itself to.
+         */
+        int64_t trailing = trailing_lambda_open(source, close);
+        if (trailing >= 0) {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(
+                &message,
+                "`%s` takes no trailing lambda; the bit operations have no functional parameter",
+                name
+            );
+            char *refusal = lower_error("E2S169", message.data, trailing);
+            free(message.data);
+            free(name);
+            free(emitted);
+            return refusal;
+        }
+        /*
+         * The labelled-call grammar admits `a.and(value: 2)`, and the eight
+         * operations have no parameter names for a label to select. Without
+         * this, `value` was read as a binding that does not exist and the call
+         * lowered to `kofun_bit_and(k_b0, k_b)` — invalid C that the compiler
+         * exited 0 on, leaving `cc` to report it.
+         */
+        if (call_has_labelled_argument(source, open)) {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(
+                &message,
+                "`%s` takes positional arguments; the bit operations have no parameter names",
+                name
+            );
+            char *refusal = lower_error("E2S169", message.data, open);
+            free(message.data);
+            free(name);
+            free(emitted);
+            return refusal;
+        }
+        int64_t argument = skip_trivia(source, token_end(source, open));
+        int64_t arguments = 0;
+        Buffer rendered;
+        buffer_init(&rendered);
+        while (argument < close && !token_equal(source, argument, ")")) {
+            int64_t bound = argument_end(source, argument);
+            if (bound < 0) {
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(
+                    &message,
+                    "`%s` was given an argument this slice cannot read",
+                    name
+                );
+                char *refusal = lower_error("E2S169", message.data, argument);
+                free(message.data);
+                free(rendered.data);
+                free(name);
+                free(emitted);
+                return refusal;
+            }
+            const char *argument_type = numeric_primary_type(
+                source,
+                hir,
+                function_open,
+                argument
+            );
+            if (
+                strcmp(argument_type, "Decimal") == 0 ||
+                strcmp(argument_type, "Float") == 0 ||
+                text_operand(source, hir, function_open, argument)
+            ) {
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(&message, "`%s` takes `Int` arguments", name);
+                char *refusal = lower_error("E2S168", message.data, argument);
+                free(message.data);
+                free(rendered.data);
+                free(name);
+                free(emitted);
+                return refusal;
+            }
+            char *value = emit_expression(source, hir, argument, bound);
+            if (strncmp(value, "error[", 6) == 0) {
+                free(rendered.data);
+                free(name);
+                free(emitted);
+                return value;
+            }
+            buffer_append(&rendered, ", ");
+            buffer_append(&rendered, value);
+            free(value);
+            arguments = arguments + 1;
+            int64_t separator = skip_trivia(source, bound);
+            if (separator < close && token_equal(source, separator, ",")) {
+                argument = skip_trivia(source, token_end(source, separator));
+            } else {
+                argument = separator;
+            }
+        }
+        if (arguments != arity) {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(
+                &message,
+                "`%s` expects %" PRId64 " arguments, got %" PRId64,
+                name,
+                arity,
+                arguments
+            );
+            char *refusal = lower_error("E2S169", message.data, name_at);
+            free(message.data);
+            free(rendered.data);
+            free(name);
+            free(emitted);
+            return refusal;
+        }
+        Buffer wrapped;
+        buffer_init(&wrapped);
+        buffer_format(
+            &wrapped,
+            "kofun_bit_%s(%s%s)",
+            name,
+            emitted,
+            rendered.data
+        );
+        free(rendered.data);
+        free(name);
+        free(emitted);
+        emitted = wrapped.data;
+        cursor = close;
+    }
+    return emitted;
+}
+
 static char *emit_primary(
     const char *source,
     const char *hir,
@@ -8067,6 +8444,16 @@ static char *emit_primary(
     int64_t end
 ) {
     int64_t cursor = skip_trivia(source, start);
+    /*
+     * A bit-operation chain owns the whole span, so it is dispatched before any
+     * receiver form is examined: the receiver may be a literal, a binding, a
+     * record field, a call result, or a parenthesised expression, and none of
+     * them has to know that a chain can follow it.
+     */
+    int64_t bit_dot = int_bit_chain_dot(source, cursor, end);
+    if (bit_dot >= 0) {
+        return emit_int_bit_chain(source, hir, cursor, bit_dot, end);
+    }
     const char *kind = token_kind(source, cursor);
     /* A pipeline never reaches here: `|>` is the lowest-precedence boundary, so
      * `emit_expression` claims the whole production before any deeper layer
@@ -8280,6 +8667,21 @@ static char *emit_primary(
                         emitted
                     );
                 }
+            } else if (strncmp(emitted, "error[", 6) == 0) {
+                /*
+                 * `len`, `to_text` and `text_slice` each appended their
+                 * argument without inspecting it, so a refused argument became
+                 * C source: the diagnostic was emitted inside the call, the
+                 * compiler still exited 0, and only `cc` reported the failure.
+                 * That is the same defect the general call path below already
+                 * names; these three direct branches never had the check.
+                 * Reached first by RFC-0013, whose refusals are the first ones
+                 * an argument of `to_text` can raise.
+                 */
+                free(actual);
+                free(name);
+                free(length.data);
+                return emitted;
             } else {
                 buffer_format(&length, "((int64_t)strlen(%s))", emitted);
             }
@@ -8299,6 +8701,10 @@ static char *emit_primary(
                 value,
                 argument_end(source, value)
             );
+            if (strncmp(emitted, "error[", 6) == 0) {
+                free(name);
+                return emitted;
+            }
             Buffer converted_text;
             buffer_init(&converted_text);
             buffer_format(&converted_text, "kofun_to_text(%s)", emitted);
@@ -8324,13 +8730,28 @@ static char *emit_primary(
                 token_end(source, second_separator)
             );
             char *value_text = emit_expression(source, hir, value, value_end);
+            if (strncmp(value_text, "error[", 6) == 0) {
+                free(name);
+                return value_text;
+            }
             char *first_text = emit_expression(source, hir, first, first_end);
+            if (strncmp(first_text, "error[", 6) == 0) {
+                free(value_text);
+                free(name);
+                return first_text;
+            }
             char *second_text = emit_expression(
                 source,
                 hir,
                 second,
                 argument_end(source, second)
             );
+            if (strncmp(second_text, "error[", 6) == 0) {
+                free(first_text);
+                free(value_text);
+                free(name);
+                return second_text;
+            }
             Buffer slice;
             buffer_init(&slice);
             buffer_format(
@@ -8427,12 +8848,52 @@ static char *emit_primary(
                             field
                         );
                     }
+                    /*
+                     * RFC-0013/A01. A member call on an `Int` receiver is a
+                     * member of `Int`, and the eight are the whole set. Falling
+                     * through to the record rule below sent the reader to a
+                     * record they never wrote, exactly as the scoped-parallelism
+                     * case above says.
+                     */
+                    bool int_member_form =
+                        !parallel_form &&
+                        member_call < source_length(source) &&
+                        token_equal(source, member_call, "(") &&
+                        strcmp(
+                            numeric_primary_type(
+                                source,
+                                hir,
+                                enclosing_function_open(source, cursor),
+                                cursor
+                            ),
+                            "Int"
+                        ) == 0;
+                    Buffer unknown_member;
+                    buffer_init(&unknown_member);
+                    if (int_member_form) {
+                        buffer_format(
+                            &unknown_member,
+                            "unknown `Int` member `%s`",
+                            field
+                        );
+                    }
                     free(field_type);
                     free(field);
                     free(binding_type);
                     free(binding_id);
                     free(name);
                     free(output.data);
+                    if (int_member_form) {
+                        char *refusal = lower_error(
+                            "E2S168",
+                            unknown_member.data,
+                            field_cursor
+                        );
+                        free(unknown_member.data);
+                        free(parallel.data);
+                        return refusal;
+                    }
+                    free(unknown_member.data);
                     if (parallel_form) {
                         char *refusal = lower_error(
                             "E2S154",
@@ -14488,6 +14949,21 @@ static char *initializer_type_bounded(
         end = bounded_end;
     } else if (end < 0) {
         end = token_end(source, initializer);
+    }
+    /*
+     * A `let` whose whole initializer is a bit-operation chain binds `Int`,
+     * whatever the receiver is, because the eight operations return `Int`.
+     * Without this, `let y = f.and(1)` bound `y` as `Float` and the reader was
+     * sent to `to_text` for a mistake that is in the receiver. The chain has to
+     * cover the whole initializer: `"a" + b.and(1)` is still classified by the
+     * rules below.
+     */
+    int64_t chain_bound = primary_end(source, initializer);
+    if (
+        chain_bound == end &&
+        int_bit_chain_dot(source, initializer, chain_bound) >= 0
+    ) {
+        return owned_text("Int");
     }
     bool optional_coalescing =
         optional_int_coalescing_operator(source, initializer, end) >= 0;
@@ -21479,6 +21955,11 @@ static bool arithmetic_operator_at(const char *source, int64_t cursor) {
  * instead of inventing an `Int` and reporting a mismatch that is not there.
  *
  * The returned pointer is a static string, never owned.
+ *
+ * A bit-operation chain reports its receiver's type, which is the answer to the
+ * only question asked of it about one: `emit_int_bit_chain` needs to know
+ * whether the receiver is an `Int`. What the whole chain evaluates to is a
+ * separate judgement, made in `initializer_type_bounded`.
  */
 static const char *numeric_primary_type(
     const char *source,
@@ -23689,6 +24170,85 @@ static int64_t count_text_sites(const char *bodies) {
     return site_count;
 }
 
+/*
+ * RFC-0013's runtime. Every operation is expressed on the unsigned bit pattern
+ * and converted back explicitly, because C is not willing to answer the
+ * questions these operations ask: a shift by the operand width is undefined, a
+ * signed right shift is implementation-defined, and a conversion of a pattern
+ * above `INT64_MAX` back to a signed type is implementation-defined too. The
+ * whole reason for naming these operations was to give them answers the
+ * language states, so none of the three is left to the host compiler.
+ */
+static char *emit_int_bit_c_runtime(void) {
+    Buffer output;
+    buffer_init(&output);
+    buffer_append(
+        &output,
+        "static inline int64_t kofun_from_bits(uint64_t bits) {\n"
+        "    if (bits <= (uint64_t)INT64_MAX) return (int64_t)bits;\n"
+        "    return -(int64_t)(~bits) - 1;\n"
+        "}\n"
+        "static inline bool kofun_bit_count_ok(int64_t count, const char *message) {\n"
+        "    if (count < 0 || count > 63) { kofun_error(message); return false; }\n"
+        "    return true;\n"
+        "}\n"
+        "static inline uint64_t kofun_bit_mask(int64_t width, const char *message) {\n"
+        "    if (width < 1 || width > 64) { kofun_error(message); return 0; }\n"
+        "    if (width == 64) return ~(uint64_t)0;\n"
+        "    return ((uint64_t)1 << (unsigned)width) - (uint64_t)1;\n"
+        "}\n"
+        "static inline int64_t kofun_bit_and(int64_t a, int64_t b) {\n"
+        "    return kofun_from_bits((uint64_t)a & (uint64_t)b);\n"
+        "}\n"
+        "static inline int64_t kofun_bit_or(int64_t a, int64_t b) {\n"
+        "    return kofun_from_bits((uint64_t)a | (uint64_t)b);\n"
+        "}\n"
+        "static inline int64_t kofun_bit_xor(int64_t a, int64_t b) {\n"
+        "    return kofun_from_bits((uint64_t)a ^ (uint64_t)b);\n"
+        "}\n"
+        "static inline int64_t kofun_bit_not(int64_t a) {\n"
+        "    return kofun_from_bits(~(uint64_t)a);\n"
+        "}\n"
+        "static inline int64_t kofun_bit_shr(int64_t a, int64_t n) {\n"
+        "    if (!kofun_bit_count_ok(n,\n"
+        "        \"error[R011]: shift count for `shr` is outside `0..63`\")) return 0;\n"
+        "    uint64_t bits = (uint64_t)a >> (unsigned)n;\n"
+        "    if (a < 0 && n > 0) { bits |= ~(uint64_t)0 << (unsigned)(64 - n); }\n"
+        "    return kofun_from_bits(bits);\n"
+        "}\n"
+        "static inline int64_t kofun_bit_shl(int64_t a, int64_t n) {\n"
+        "    if (!kofun_bit_count_ok(n,\n"
+        "        \"error[R011]: shift count for `shl` is outside `0..63`\")) return 0;\n"
+        "    int64_t result = kofun_from_bits((uint64_t)a << (unsigned)n);\n"
+        "    if (kofun_bit_shr(result, n) != a) {\n"
+        "        kofun_error(\"error[R010]: integer overflow in `shl`\"); return 0;\n"
+        "    }\n"
+        "    return result;\n"
+        "}\n"
+        "static inline int64_t kofun_bit_rotr(int64_t a, int64_t n, int64_t width) {\n"
+        "    uint64_t mask = kofun_bit_mask(width,\n"
+        "        \"error[R011]: bit width for `rotr` is outside `1..64`\");\n"
+        "    if (mask == 0) return 0;\n"
+        "    if (!kofun_bit_count_ok(n,\n"
+        "        \"error[R011]: rotation count for `rotr` is outside `0..63`\")) return 0;\n"
+        "    uint64_t value = (uint64_t)a & mask;\n"
+        "    unsigned places = (unsigned)(n % width);\n"
+        "    if (places == 0) return kofun_from_bits(value);\n"
+        "    uint64_t rotated = (value >> places) |\n"
+        "        (value << ((unsigned)width - places));\n"
+        "    return kofun_from_bits(rotated & mask);\n"
+        "}\n"
+        "static inline int64_t kofun_bit_wrapping_add(int64_t a, int64_t b, int64_t width) {\n"
+        "    uint64_t mask = kofun_bit_mask(width,\n"
+        "        \"error[R011]: bit width for `wrapping_add` is outside `1..64`\");\n"
+        "    if (mask == 0) return 0;\n"
+        "    return kofun_from_bits((((uint64_t)a & mask) + ((uint64_t)b & mask)) & mask);\n"
+        "}\n"
+    );
+    return output.data;
+}
+
+
 static char *lower_c_body(const char *source, const char *hir) {
     int64_t length = source_length(source);
     char *identity_check = validate_struct_identity(source);
@@ -23982,6 +24542,14 @@ static char *lower_c_body(const char *source, const char *hir) {
                 "    (void)kofun_neg;\n"
                 "    (void)kofun_floor_div;\n"
                 "    (void)kofun_floor_mod;\n"
+                "    (void)kofun_bit_and;\n"
+                "    (void)kofun_bit_or;\n"
+                "    (void)kofun_bit_xor;\n"
+                "    (void)kofun_bit_not;\n"
+                "    (void)kofun_bit_shl;\n"
+                "    (void)kofun_bit_shr;\n"
+                "    (void)kofun_bit_rotr;\n"
+                "    (void)kofun_bit_wrapping_add;\n"
             );
             if (fractional_values) {
                 buffer_append(
@@ -24186,8 +24754,12 @@ static char *lower_c_body(const char *source, const char *hir) {
         "    int64_t r = a % b;\n"
         "    if (r != 0 && ((r < 0) != (b < 0))) { r += b; }\n"
         "    return r;\n"
-        "}\n\n"
+        "}\n"
     );
+    char *bit_runtime = emit_int_bit_c_runtime();
+    buffer_append(&output, bit_runtime);
+    free(bit_runtime);
+    buffer_append(&output, "\n");
     if (source_uses_optional_int(source)) {
         char *optional_declarations = emit_optional_int_c_declarations();
         buffer_append(&output, optional_declarations);

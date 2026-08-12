@@ -1,0 +1,4 @@
+# code	adapter	channel	exit	primary-span	secondary-span	artifact
+E2S168	int-bits	stdout	1	required	not-applicable	forbidden
+E2S169	int-bits	stdout	1	required	not-applicable	forbidden
+R011	int-bits	stderr	1	not-applicable	not-applicable	required
