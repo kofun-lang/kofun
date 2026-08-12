@@ -412,8 +412,14 @@ struct FunctionExpression {
      * loop knowing about labels.
      *
      * For an unlabelled call the two coincide: slot i is written i-th.
+     *
+     * Sized for the syscall intrinsic rather than for a Core call. A
+     * `__linux_syscall6` carries seven values — the number and six arguments —
+     * which the comment on `FUNCTION_SYSCALL_MAX_ARGUMENTS` calls out as one
+     * more than a Core function may take, and this array is indexed by the same
+     * loops that walk both kinds.
      */
-    size_t argument_order[MAX_CORE_PARAMETERS];
+    size_t argument_order[FUNCTION_SYSCALL_MAX_ARGUMENTS];
 };
 
 typedef enum {
@@ -2253,7 +2259,9 @@ static FunctionExpression *function_expression(
     expression->argument_count = 0;
     /* Every other field here is set explicitly rather than relying on the
      * allocator, and the source order is no exception. */
-    for (size_t index = 0; index < MAX_CORE_PARAMETERS; ++index) {
+    for (size_t index = 0;
+         index < FUNCTION_SYSCALL_MAX_ARGUMENTS;
+         ++index) {
         expression->argument_order[index] = index;
     }
     return expression;
@@ -2835,7 +2843,6 @@ static bool function_bodies(
             .program = program,
             .function = function,
         };
-        bool is_main = function_index == program->main_index;
         while (true) {
             function_skip_trivia(&parser);
             if (parser.cursor >= parser.limit) break;
@@ -2887,12 +2894,22 @@ static bool function_bodies(
                 }
             } else if (function_consume_word(&parser, "print")) {
                 statement.kind = FUNCTION_STATEMENT_PRINT;
-                if (!is_main) {
-                    function_error(
-                        &parser,
-                        "native Core print is only supported in main"
-                    );
-                } else if (!function_consume_char(&parser, '(')) {
+                /*
+                 * `print` is an ordinary statement in any function, not a
+                 * privilege of `main`. Nothing in the emitter ever required
+                 * that: it evaluates into eval slot 0, moves to the first
+                 * argument register, and calls the runtime helper — the same
+                 * shape as any other call, in any frame. The layout already
+                 * counted a print's expression pressure and already treated a
+                 * print as a call for callee-saved purposes.
+                 *
+                 * The restriction cost more than it protected. A language whose
+                 * functions cannot report anything has no way to observe
+                 * evaluation order, so every ordering guarantee on this backend
+                 * was untestable — the guarantee held, but nothing could show
+                 * it.
+                 */
+                if (!function_consume_char(&parser, '(')) {
                     function_error(
                         &parser,
                         "expected `(` after native Core print"
@@ -5614,16 +5631,29 @@ static void function_expression_pressure(
             return;
         case FUNCTION_CALL:
         case FUNCTION_SYSCALL:
-            for (size_t index = 0;
-                 index < expression->argument_count;
-                 ++index) {
-                if (index > 0 &&
+            /*
+             * Depth follows the order arguments are *evaluated*, not the slot
+             * they end up in. Evaluating an expression at depth d may use any
+             * depth at or above d, so a value already computed is only safe
+             * while later evaluations start deeper than it — which holds when
+             * written position, not declaration slot, chooses the depth.
+             *
+             * A labelled call that assigned depth by slot broke exactly that:
+             * the argument written first took the higher slot, the argument
+             * written second was evaluated at a lower depth, and its own nested
+             * call reused the higher depth and destroyed the first value.
+             */
+            for (size_t written = 0;
+                 written < expression->argument_count;
+                 ++written) {
+                size_t index = expression->argument_order[written];
+                if (written > 0 &&
                     function_expression_calls(expression->arguments[index])) {
-                    function_pressure_mark(pressure, depth, depth + index);
+                    function_pressure_mark(pressure, depth, depth + written);
                 }
                 function_expression_pressure(
                     expression->arguments[index],
-                    depth + index,
+                    depth + written,
                     pressure
                 );
             }
@@ -5994,16 +6024,27 @@ static void x64_function_expression(
         return;
     }
     if (expression->kind == FUNCTION_CALL) {
-        for (size_t index = 0; index < expression->argument_count; ++index) {
+        /*
+         * Evaluate in written order at increasing depth, then permute into the
+         * boundary. Depth tracks the written position so each evaluation only
+         * disturbs depths at or above its own; the declaration slot appears
+         * only when choosing which argument register a depth is moved into.
+         */
+        for (size_t written = 0;
+             written < expression->argument_count;
+             ++written) {
             x64_function_expression(
                 text,
-                expression->arguments[index],
+                expression->arguments[expression->argument_order[written]],
                 emitter,
                 layout,
-                depth + index
+                depth + written
             );
         }
-        for (size_t index = 0; index < expression->argument_count; ++index) {
+        for (size_t written = 0;
+             written < expression->argument_count;
+             ++written) {
+            size_t index = expression->argument_order[written];
             if (index >= MAX_CORE_PARAMETERS) {
                 fatal("x86-64 Core call has too many arguments");
             }
@@ -6012,7 +6053,7 @@ static void x64_function_expression(
             x64_mov_register_operand(
                 text,
                 x64_argument_registers[index],
-                target_eval_operand(layout, depth + index)
+                target_eval_operand(layout, depth + written)
             );
         }
         x64_function_call(text, emitter, expression->function_index);
@@ -6261,31 +6302,31 @@ static void x64_function_tail_call(
     size_t body_start
 ) {
     /*
-     * Evaluate in source order, into the slot each argument was bound to. The
-     * ABI vector below then walks slots in declaration order, so a labelled
-     * call written out of order still evaluates as written and is placed as
-     * declared — the same separation the C11 backend gets from its comma
-     * expression over fixed temporaries.
+     * Evaluate in written order at increasing depth, then permute into the ABI
+     * vector. Depth tracks the written position so each evaluation only
+     * disturbs depths at or above its own; the declaration slot appears only
+     * when a depth is moved to its destination. This is the same separation the
+     * C11 backend gets from its comma expression over fixed temporaries.
      */
     for (size_t written = 0; written < call->argument_count; ++written) {
-        size_t index = call->argument_order[written];
-        if (index >= MAX_CORE_PARAMETERS) {
+        if (written >= MAX_CORE_PARAMETERS) {
             fatal("x86-64 Core call has too many arguments");
         }
         x64_function_expression(
             text,
-            call->arguments[index],
+            call->arguments[call->argument_order[written]],
             emitter,
             layout,
-            index
+            written
         );
     }
     if (call->function_index == self_index) {
-        for (size_t index = 0; index < call->argument_count; ++index) {
+        for (size_t written = 0; written < call->argument_count; ++written) {
+            size_t index = call->argument_order[written];
             x64_move(
                 text,
                 target_value_operand(layout, index),
-                target_eval_operand(layout, index)
+                target_eval_operand(layout, written)
             );
         }
         x64_patch_rel32(text, x64_local_jmp(text), body_start);
@@ -6293,11 +6334,11 @@ static void x64_function_tail_call(
     }
     /* Argument registers are never allocated, so filling the boundary cannot
      * overwrite an argument that has not been moved yet. */
-    for (size_t index = 0; index < call->argument_count; ++index) {
+    for (size_t written = 0; written < call->argument_count; ++written) {
         x64_mov_register_operand(
             text,
-            x64_argument_registers[index],
-            target_eval_operand(layout, index)
+            x64_argument_registers[call->argument_order[written]],
+            target_eval_operand(layout, written)
         );
     }
     /* The saved registers still live in frame slots, so they are reloaded
@@ -7644,16 +7685,24 @@ static void a64_function_expression(
         return;
     }
     if (expression->kind == FUNCTION_CALL) {
-        for (size_t index = 0; index < expression->argument_count; ++index) {
+        /* Evaluate in written order at increasing depth, then permute into the
+         * boundary — the same separation the x86-64 expression path makes, so
+         * both targets observe one evaluation order for a labelled call. */
+        for (size_t written = 0;
+             written < expression->argument_count;
+             ++written) {
             a64_function_expression(
                 text,
-                expression->arguments[index],
+                expression->arguments[expression->argument_order[written]],
                 emitter,
                 layout,
-                depth + index
+                depth + written
             );
         }
-        for (size_t index = 0; index < expression->argument_count; ++index) {
+        for (size_t written = 0;
+             written < expression->argument_count;
+             ++written) {
+            size_t index = expression->argument_order[written];
             if (index >= MAX_CORE_PARAMETERS) {
                 fatal("aarch64 Core call has too many arguments");
             }
@@ -7662,7 +7711,7 @@ static void a64_function_expression(
             a64_move(
                 text,
                 target_register_operand((unsigned)index),
-                target_eval_operand(layout, depth + index)
+                target_eval_operand(layout, depth + written)
             );
         }
         a64_function_call(text, emitter, expression->function_index);
@@ -7794,28 +7843,28 @@ static void a64_function_tail_call(
     size_t self_index,
     size_t body_start
 ) {
-    /* Source order for evaluation, declaration order for the ABI vector below —
-     * the same separation the x86-64 emitter makes, so both targets observe the
-     * same evaluation order for a labelled call. */
+    /* Evaluate in written order at increasing depth, then permute into the ABI
+     * vector — the same separation the x86-64 emitter makes, so both targets
+     * observe the same evaluation order for a labelled call. */
     for (size_t written = 0; written < call->argument_count; ++written) {
-        size_t index = call->argument_order[written];
-        if (index >= MAX_CORE_PARAMETERS) {
+        if (written >= MAX_CORE_PARAMETERS) {
             fatal("aarch64 Core call has too many arguments");
         }
         a64_function_expression(
             text,
-            call->arguments[index],
+            call->arguments[call->argument_order[written]],
             emitter,
             layout,
-            index
+            written
         );
     }
     if (call->function_index == self_index) {
-        for (size_t index = 0; index < call->argument_count; ++index) {
+        for (size_t written = 0; written < call->argument_count; ++written) {
+            size_t index = call->argument_order[written];
             a64_move(
                 text,
                 target_value_operand(layout, index),
-                target_eval_operand(layout, index)
+                target_eval_operand(layout, written)
             );
         }
         size_t back = text->length;
@@ -7825,11 +7874,13 @@ static void a64_function_tail_call(
     }
     /* Argument registers are never allocated, so filling the boundary cannot
      * overwrite an argument that has not been moved yet. */
-    for (size_t index = 0; index < call->argument_count; ++index) {
+    for (size_t written = 0; written < call->argument_count; ++written) {
         a64_move(
             text,
-            target_register_operand((unsigned)index),
-            target_eval_operand(layout, index)
+            target_register_operand(
+                (unsigned)call->argument_order[written]
+            ),
+            target_eval_operand(layout, written)
         );
     }
     /* The saved registers still live in frame slots, so they are reloaded
