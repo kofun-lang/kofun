@@ -52,7 +52,7 @@ export const GROUPS = Object.freeze([
             'generics-execution-profile', 'generic-proof-kernel-profile',
             'optional', 'optional-narrowing',
             'optional-construction', 'optional-coalescing', 'optional-pair',
-            'text-results', 'int-bits', 'list-int-values', 'while-list-int', 'else-if-chain',
+            'text-results', 'int-bits', 'list-int-values', 'record-values', 'while-list-int', 'else-if-chain',
             'list-int-signatures',
             'adt-exhaustiveness', 'adt-usefulness-v2',
             'enum-match-value', 'module-constants',

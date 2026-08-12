@@ -20085,7 +20085,21 @@ static char *lower_body(
                     return value;
                 }
             }
+            /*
+             * The carrier an inferred binding gets is the carrier its type
+             * already names.  A nominal record was the one type with no row
+             * here, so it fell through to `int64_t` and every later use of
+             * the name became a member access on a scalar: accepted by the
+             * checker, rejected by `cc`, in a file the author did not write.
+             *
+             * The record row derives its C type from `record_c_type_name`,
+             * which is what the annotated binding path uses, so the two
+             * spellings of one binding cannot disagree.  It owns storage,
+             * unlike every other row here, so it is held separately and freed
+             * on both exits below.
+             */
             const char *c_type = "int64_t";
+            char *record_type_owned = NULL;
             if (strcmp(binding_type, "Decimal") == 0) {
                 c_type = "KofunDecimal *";
             } else if (strcmp(binding_type, "Float") == 0) {
@@ -20096,12 +20110,16 @@ static char *lower_body(
                 c_type = "const char *";
             } else if (strcmp(binding_type, "List[Int]") == 0) {
                 c_type = "KofunIntListValue";
+            } else if (record_declaration_start(source, binding_type) >= 0) {
+                record_type_owned = record_c_type_name(binding_type);
+                c_type = record_type_owned;
             }
             if (
                 mutable &&
                 strcmp(binding_type, "Int") != 0 &&
                 strcmp(binding_type, "List[Int]") != 0
             ) {
+                free(record_type_owned);
                 free(binding_type);
                 free(value);
                 free(binding_id);
@@ -20123,6 +20141,7 @@ static char *lower_body(
                 value,
                 failure_result
             );
+            free(record_type_owned);
             free(binding_type);
             free(value);
             free(name);
