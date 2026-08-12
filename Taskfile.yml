@@ -764,6 +764,11 @@ tasks:
       - "sh tests/typed-sidecar/atomic-write.sh"
       - "sh tests/typed-sidecar/authority-boundary.sh"
 
+  typed-sidecar-captures:
+    desc: "Verify the KSE2 capture codec and typed-sidecar v2 capture projection"
+    cmds:
+      - "sh tests/typed-sidecar/captures.sh"
+
   typed-sidecar-projector:
     desc: "Verify Stage 2 event projection and single-file CLI emission"
     cmds:
@@ -1124,6 +1129,7 @@ tasks:
             wasm-list-v1 \
             typed-sidecar-spec \
             typed-sidecar-codec \
+            typed-sidecar-captures \
             typed-sidecar-projector \
             upgrade-patch \
             documentation-index \

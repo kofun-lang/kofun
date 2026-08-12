@@ -341,13 +341,30 @@ function structuralDepth(value, depth = 1, ancestors = new WeakSet()) {
   return maximum;
 }
 
+// A v2 document is a v1 document plus the two capture fields, and it is
+// validated by this same function rather than a parallel one (#1224). The
+// alternative — a second validator for v2 — is how the replacement decision,
+// the byte limit, and the depth bound would come to differ between versions
+// without anyone choosing that.
+const V1_ROOT_FIELDS = Object.freeze([
+  "authoritative", "compiler", "completeness", "diagnostics", "file",
+  "generation", "limits", "nodes", "references", "schema", "source_status",
+]);
+
+const V2_ROOT_FIELDS = Object.freeze([...V1_ROOT_FIELDS, "capture_profile", "captures"]);
+
+const CAPTURE_PROFILE = "kofun.stage2-analysis/scoped-captures/v1";
+const CAPTURE_MODES = Object.freeze(["read", "edit", "take"]);
+const UNKNOWN_REASONS = Object.freeze([
+  "unresolved-call", "projection-depth-exceeded", "unnameable-place",
+]);
+
 function validateDocument(doc) {
-  object(doc, "$", [
-    "authoritative", "compiler", "completeness", "diagnostics", "file",
-    "generation", "limits", "nodes", "references", "schema", "source_status",
-  ]);
+  const isV2 = doc !== null && typeof doc === "object" &&
+    doc.schema === "kofun.typed-sidecar/v2";
+  object(doc, "$", isV2 ? V2_ROOT_FIELDS : V1_ROOT_FIELDS);
   if (doc.authoritative !== false) fail("$.authoritative: must be false");
-  if (doc.schema !== "kofun.typed-sidecar/v1") fail("$.schema: unsupported schema");
+  if (!isV2 && doc.schema !== "kofun.typed-sidecar/v1") fail("$.schema: unsupported schema");
   if (structuralDepth(doc) > LIMITS.maxDepth) fail("document exceeds default-v1 structural depth", "TS004");
 
   object(doc.compiler, "$.compiler", ["edition", "semantic_compatibility"]);
@@ -369,9 +386,11 @@ function validateDocument(doc) {
   integer(doc.generation.sequence, "$.generation.sequence", 0, Number.MAX_SAFE_INTEGER);
   object(doc.limits, "$.limits", ["document_bytes", "max_depth", "profile"]);
   if (doc.limits.document_bytes !== LIMITS.documentBytes ||
-      doc.limits.max_depth !== LIMITS.maxDepth || doc.limits.profile !== "default-v1") {
+      doc.limits.max_depth !== LIMITS.maxDepth ||
+      doc.limits.profile !== (isV2 ? "default-v2" : "default-v1")) {
     fail("$.limits: unknown or incorrect bounded profile");
   }
+  if (isV2) validateCaptures(doc);
 
   const validPair = (doc.completeness === "complete" && doc.source_status === "checked") ||
     (doc.completeness === "partial" && ["failed", "cancelled"].includes(doc.source_status));
@@ -573,6 +592,67 @@ function deepFreeze(root) {
     Object.freeze(value);
   }
   return root;
+}
+
+// The capture section a v2 document publishes. This checks the shape a reader
+// depends on — identities, the closed vocabularies, and the alignment between
+// a target's kind and the payload it carries. What the captures *mean* is the
+// scope-HIR's business and is checked against it by `task typed-sidecar-captures`;
+// a document that arrives here has already been projected.
+function validateCaptures(doc) {
+  if (doc.capture_profile !== CAPTURE_PROFILE) {
+    fail("$.capture_profile: unknown capture profile");
+  }
+  const captures = array(doc.captures, "$.captures", LIMITS.nodes);
+  const seen = new Set();
+  for (const [index, capture] of captures.entries()) {
+    const at = `$.captures[${index}]`;
+    object(capture, at, ["id", "mode", "origin_node_ids", "target", "task_id"]);
+    hex(capture.id, `${at}.id`);
+    hex(capture.task_id, `${at}.task_id`);
+    if (seen.has(capture.id)) fail(`${at}.id: duplicate capture identity`);
+    seen.add(capture.id);
+    if (!CAPTURE_MODES.includes(capture.mode)) fail(`${at}.mode: unknown capture mode`);
+    const origins = array(capture.origin_node_ids, `${at}.origin_node_ids`, LIMITS.nodes);
+    if (origins.length === 0) fail(`${at}.origin_node_ids: a capture names at least one origin`);
+    const originSet = new Set();
+    for (const [originIndex, origin] of origins.entries()) {
+      hex(origin, `${at}.origin_node_ids[${originIndex}]`);
+      if (originSet.has(origin)) fail(`${at}.origin_node_ids: origins repeat`);
+      originSet.add(origin);
+    }
+    const target = capture.target;
+    if (target === null || typeof target !== "object") fail(`${at}.target: expected an object`);
+    if (target.kind === "place") {
+      object(target, `${at}.target`, ["kind", "place"]);
+      object(target.place, `${at}.target.place`,
+        ["base_binding_id", "canonical_bytes", "id", "projections"]);
+      hex(target.place.base_binding_id, `${at}.target.place.base_binding_id`);
+      hex(target.place.id, `${at}.target.place.id`);
+      if (typeof target.place.canonical_bytes !== "string" ||
+          !/^(?:[0-9a-f]{2})+$/.test(target.place.canonical_bytes)) {
+        fail(`${at}.target.place.canonical_bytes: expected lowercase hexadecimal bytes`);
+      }
+      array(target.place.projections, `${at}.target.place.projections`, LIMITS.nodes);
+    } else if (target.kind === "unknown") {
+      object(target, `${at}.target`, ["kind", "unknown"]);
+      object(target.unknown, `${at}.target.unknown`,
+        ["canonical_bytes", "id", "reason", "witness_node_id"]);
+      hex(target.unknown.id, `${at}.target.unknown.id`);
+      hex(target.unknown.witness_node_id, `${at}.target.unknown.witness_node_id`);
+      if (!UNKNOWN_REASONS.includes(target.unknown.reason)) {
+        fail(`${at}.target.unknown.reason: unknown reason`);
+      }
+      // An unknown target is a place the analysis could not name, so it has
+      // exactly one witness and one origin; more than one would be a claim
+      // this document cannot support.
+      if (origins.length !== 1) {
+        fail(`${at}.origin_node_ids: an unknown target carries exactly one origin`);
+      }
+    } else {
+      fail(`${at}.target.kind: expected place or unknown`);
+    }
+  }
 }
 
 function validatedClone(document) {
