@@ -19,7 +19,11 @@ import { summarize, outlierFlags, compareReports } from '../../../spec/benchmark
 import { LIMITS } from '../../../spec/benchmark-report-v1/contract.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const CORPUS = readFileSync(join(HERE, 'corpus.kofun'), 'utf8')
+// Both inputs are overridable for one reason: the gate proves the coverage
+// check bites by pointing them at a manifest with one extra vector and at a
+// corpus with one case removed. Production reads the tracked files.
+const CORPUS = readFileSync(
+    process.env.KOFUN_COMPARISON_CORPUS ?? join(HERE, 'corpus.kofun'), 'utf8')
 
 function literal(name) {
     const match = new RegExp(
@@ -328,6 +332,90 @@ export function comparisonGroup(group) {
     return lines
 }
 
+
+// -------------------------------------------------- frozen boundary vectors
+//
+// #1310's thirteen comparison boundaries, run by name against the Kofun
+// implementation (#1367). Coverage is asserted from the manifest's side: a
+// vector with no case in `corpus.kofun` fails here rather than going unrun,
+// which is the whole point — the corpus can be complete today and silently
+// incomplete the moment a boundary is added upstream.
+
+// The manifest path is overridable so the gate can prove the coverage check
+// bites: it points this at a copy carrying one extra vector and requires the
+// refusal. Production reads the tracked file.
+const VECTORS_PATH = process.env.KOFUN_COMPARISON_VECTORS ??
+    join(HERE, '..', '..', '..', 'spec/benchmark-report-v1/vectors/comparison.json')
+const VECTORS = JSON.parse(readFileSync(VECTORS_PATH, 'utf8'))
+
+// Which vectors each group runs, read out of the corpus rather than restated,
+// so the two cannot disagree about what ran.
+function corpusVectorNames() {
+    const names = []
+    for (const match of CORPUS.matchAll(/run_vector\("([^"]+)"/g)) names.push(match[1])
+    return names
+}
+
+function vectorCoverage() {
+    const declared = VECTORS.vectors.map((vector) => vector.name)
+    const covered = corpusVectorNames()
+    const missing = declared.filter((name) => !covered.includes(name))
+    const unknown = covered.filter((name) => !declared.includes(name))
+    if (missing.length > 0) {
+        throw new Error(
+            `corpus.kofun has no case for frozen comparison ${missing.length === 1 ? 'vector' : 'vectors'}: ` +
+            `${missing.join(', ')}`)
+    }
+    if (unknown.length > 0) {
+        throw new Error(`corpus.kofun runs vectors the manifest does not declare: ${unknown.join(', ')}`)
+    }
+    const duplicated = covered.filter((name, index) => covered.indexOf(name) !== index)
+    if (duplicated.length > 0) {
+        throw new Error(`corpus.kofun runs a vector more than once: ${duplicated.join(', ')}`)
+    }
+    return declared
+}
+
+// The groups the corpus splits them into, in `run_vector_group` order. The
+// split exists for the bounded Text arena (#1359), not for meaning.
+const VECTOR_GROUPS = Object.freeze([
+    ['lower-below-threshold', 'lower-equal-threshold', 'lower-above-threshold',
+        'lower-improvement', 'lower-improvement-equal-threshold'],
+    ['higher-regression', 'higher-improvement', 'half-away-from-zero',
+        'negative-half-away-from-zero'],
+    ['maximum-threshold', 'zero-equals-zero', 'zero-baseline', 'checked-overflow'],
+])
+
+function vectorLine(vector) {
+    if (vector.error !== undefined) {
+        const status = STATUS[vector.error]
+        if (status === undefined) throw new Error(`unmapped vector error ${vector.error}`)
+        return `${vector.name} ${status} 0 0 0`
+    }
+    const expected = vector.expected
+    if (expected.kind === 'indeterminate') {
+        return `${vector.name} 0 3 0 ${expected.threshold_bps}`
+    }
+    return `${vector.name} 0 ${RESULT[expected.verdict]} ${expected.change_bps} ${expected.threshold_bps}`
+}
+
+export function vectorGroup(group) {
+    vectorCoverage()
+    const names = VECTOR_GROUPS[group]
+    if (names === undefined) throw new Error(`no vector group ${group}`)
+    const lines = names.map((name) => {
+        const vector = VECTORS.vectors.find((entry) => entry.name === name)
+        if (vector === undefined) throw new Error(`group ${group} names an unknown vector ${name}`)
+        return vectorLine(vector)
+    })
+    lines.push(`cases ${names.length}`)
+    return lines
+}
+
+export function vectorNames() {
+    return vectorCoverage()
+}
+
 // --------------------------------------------------------------------- cli
 //
 // Last, so every mode it dispatches to is defined above it.
@@ -340,6 +428,10 @@ if (mode === 'group') {
     process.stdout.write(sweepSource(sweepCounts()))
 } else if (mode === 'sweep-expect') {
     process.stdout.write(sweepExpect(sweepCounts()).join('\n') + '\n')
+} else if (mode === 'vectors') {
+    process.stdout.write(vectorGroup(Number(argument)).join('\n') + '\n')
+} else if (mode === 'vector-names') {
+    process.stdout.write(vectorNames().join(' ') + '\n')
 } else if (mode === 'comparison') {
     process.stdout.write(comparisonGroup(Number(argument)).join('\n') + '\n')
 } else if (mode === 'sweep-counts') {

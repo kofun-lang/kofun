@@ -642,3 +642,57 @@ fn run_comparison_group(group: Int) -> Int {
 
     return cases
 }
+
+# -------------------------------------------------- frozen boundary vectors
+#
+# #1310 froze thirteen comparison boundaries in
+# `spec/benchmark-report-v1/vectors/comparison.json`, and #1367 is the join:
+# every one of them runs here, under its own name, and `oracle.mjs` refuses if
+# a vector in that manifest has no case below. The six groups above cover
+# precedence and compatibility, which a value-oriented vector set does not; the
+# manifest covers boundaries a hand-picked corpus has no reason to invent.
+
+fn run_vector(
+    name: Text,
+    direction_tag: Int,
+    base_median: Int,
+    next_median: Int,
+    threshold: Int
+) -> Int {
+    let baseline: BenchReport = comparison_report(base_median, "kofun.core", "duration", direction_tag, 0, 8)
+    let candidate: BenchReport = comparison_report(next_median, "kofun.core", "duration", direction_tag, 0, 8)
+    let outcome: Stage2BenchmarkComparisonOutcome = compare_reports(
+        baseline,
+        candidate,
+        threshold
+    )
+    return comparison_line(name, outcome)
+}
+
+fn run_vector_group(group: Int) -> Int {
+    let mut cases = 0
+
+    if group == 0 {
+        cases = cases + run_vector("lower-below-threshold", 0, 10000, 10499, 500)
+        cases = cases + run_vector("lower-equal-threshold", 0, 10000, 10500, 500)
+        cases = cases + run_vector("lower-above-threshold", 0, 10000, 10501, 500)
+        cases = cases + run_vector("lower-improvement", 0, 10000, 9499, 500)
+        cases = cases + run_vector("lower-improvement-equal-threshold", 0, 10000, 9500, 500)
+    }
+
+    if group == 1 {
+        cases = cases + run_vector("higher-regression", 1, 10000, 9499, 500)
+        cases = cases + run_vector("higher-improvement", 1, 10000, 10501, 500)
+        cases = cases + run_vector("half-away-from-zero", 0, 20000, 21001, 500)
+        cases = cases + run_vector("negative-half-away-from-zero", 0, 20000, 18999, 500)
+    }
+
+    if group == 2 {
+        cases = cases + run_vector("maximum-threshold", 0, 10000, 10000, 1000000)
+        cases = cases + run_vector("zero-equals-zero", 0, 0, 0, 0)
+        cases = cases + run_vector("zero-baseline", 0, 0, 1, 0)
+        cases = cases + run_vector("checked-overflow", 0, 1, 9007199254740991, 0)
+    }
+
+    return cases
+}

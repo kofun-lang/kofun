@@ -68,13 +68,14 @@ assert_not_grep 'comparison evaluates difference * 10000 directly' \
 
 # ----------------------------------------------------------------- groups
 
-run_comparison_group() {
-    group=$1
-    stem="comparison$group"
+run_case_group() {
+    driver=$1
+    group=$2
+    stem="$3$group"
     {
         printf 'fn main() {\n'
-        printf '    let mut cases = run_group(6)\n'
-        printf '    cases = cases + run_comparison_group(%s)\n' "$group"
+        printf '    let mut cases = run_group(6) + run_comparison_group(6) + run_vector_group(6)\n'
+        printf '    cases = cases + %s(%s)\n' "$driver" "$group"
         printf '    print("cases " + to_text(cases))\n'
         printf '}\n'
     } >"$WORK/$stem.main.kofun"
@@ -104,15 +105,72 @@ run_comparison_group() {
     cmp "$CASES/$stem.stdout" "$WORK/$stem.stdout" ||
         assert_fail "$stem differs from its golden"
 
-    node "$oracle" comparison "$group" >"$WORK/$stem.expected"
+    node "$oracle" "$4" "$group" >"$WORK/$stem.expected"
     cmp "$WORK/$stem.expected" "$WORK/$stem.stdout" ||
-        assert_fail "comparison group $group disagrees with the benchmark-report-v1 oracle"
+        assert_fail "$stem disagrees with the benchmark-report-v1 oracle"
 }
 
 for group in 0 1 2 3 4 5
 do
-    run_comparison_group "$group"
+    run_case_group run_comparison_group "$group" comparison comparison
 done
+
+# ------------------------------------------------- frozen boundary vectors
+#
+# #1310's thirteen comparison boundaries, run by name against the production
+# comparison (#1367). The value join above uses cases chosen here; this one
+# uses cases chosen by the contract, and its coverage is asserted from the
+# manifest's side so a boundary added upstream cannot go unrun.
+
+for group in 0 1 2
+do
+    run_case_group run_vector_group "$group" vectors vectors
+done
+
+covered=$(node "$oracle" vector-names | wc -w | tr -d ' ')
+assert_num 'every frozen comparison vector has a Kofun case' "$covered" -eq 13
+
+# --------------------------------------------------- coverage mutations
+#
+# The coverage rule is the point of this join, so it is proved rather than
+# read: a vector added upstream with no case must fail, and a case removed
+# from the corpus must fail.
+
+add_one_vector() {
+    node -e '
+        const { readFileSync, writeFileSync } = require("node:fs")
+        const manifest = JSON.parse(readFileSync(process.argv[1], "utf8"))
+        manifest.vectors.push({
+            name: "added-upstream",
+            direction: "lower-is-better",
+            baseline: 10000,
+            candidate: 10001,
+            threshold_bps: 0,
+            expected: { kind: "comparable", verdict: "regressed", change_bps: 1, threshold_bps: 0 },
+        })
+        writeFileSync(process.argv[2], JSON.stringify(manifest, null, 2))
+    ' "$ROOT/spec/benchmark-report-v1/vectors/comparison.json" "$WORK/comparison-plus-one.json"
+}
+
+add_one_vector
+if KOFUN_COMPARISON_VECTORS="$WORK/comparison-plus-one.json" \
+    node "$oracle" vectors 0 >"$WORK/coverage-added.stdout" 2>"$WORK/coverage-added.stderr"
+then
+    assert_fail 'a frozen vector with no Kofun case did not fail the coverage check'
+fi
+assert_grep 'the coverage refusal names the uncovered vector' \
+    -Fq -- 'added-upstream' "$WORK/coverage-added.stderr"
+
+sed '/run_vector("zero-baseline"/d' "$corpus" >"$WORK/corpus-missing-case.kofun"
+cmp -s "$corpus" "$WORK/corpus-missing-case.kofun" &&
+    assert_fail 'the removed-case mutation changed nothing; its pattern no longer matches'
+if KOFUN_COMPARISON_CORPUS="$WORK/corpus-missing-case.kofun" \
+    node "$oracle" vector-names >"$WORK/coverage-removed.stdout" 2>"$WORK/coverage-removed.stderr"
+then
+    assert_fail 'a corpus missing a frozen vector case did not fail the coverage check'
+fi
+assert_grep 'the coverage refusal names the missing vector' \
+    -Fq -- 'zero-baseline' "$WORK/coverage-removed.stderr"
 
 # -------------------------------------------------------------- mutations
 
@@ -159,6 +217,7 @@ mutation precedence \
 
 printf '%s\n' \
     'PASS: every verdict, change, and refusal agrees with the benchmark-report-v1 oracle' \
+    "PASS: all 13 frozen comparison vectors run by name, and an uncovered one fails the gate" \
     'PASS: exact halves round away from zero and both threshold boundaries are strict' \
     'PASS: invalid report, invalid threshold, and incompatibility keep their stated precedence' \
     'PASS: -O0, -O2, and a repeat execution agree' \

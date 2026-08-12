@@ -99,3 +99,21 @@ compatibility checks.
 
 Out of scope here as well: the codec, publication, the runner, and any
 capability or release claim. This child owns comparison.
+
+### The frozen boundary vectors (#1367)
+
+`spec/benchmark-report-v1/vectors/comparison.json` holds the thirteen
+comparison boundaries #1310 froze. All of them run here, by name, against the
+production comparison — and coverage is asserted **from the manifest's side**:
+`oracle.mjs` refuses if a declared vector has no case, if the corpus runs a
+vector the manifest does not declare, or if one runs twice.
+
+That direction is the whole point. A corpus can be complete today and silently
+incomplete the moment a boundary is added upstream, and a gate that only checks
+the cases it has would stay green through it. Both halves are proved rather
+than read: the gate points the oracle at a manifest carrying one extra vector
+and requires the refusal to name it, and at a corpus with one case deleted and
+requires the same.
+
+The six groups above stay, because they cover precedence and compatibility,
+which a value-oriented vector set does not.
