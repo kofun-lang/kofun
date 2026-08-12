@@ -911,7 +911,20 @@
         "corpus_query": "git grep -nE '^[[:space:]]*trust[[:space:]]' -- '*.kofun' | wc -l; git grep -nE '^[[:space:]]*trusted[[:space:]]+import' -- '*.kofun' | wc -l; git ls-files '*.raw.kofun' | wc -l",
         "result": "`0`, `0` and `0` at 1c27baa8, the audited commit, across 1067 tracked `.kofun` sources carrying 109 module headers. No tracked source begins a line with `trust`, none writes `trusted import`, and no generated raw binding is committed, so the two contextual keywords collide with nothing and no tracked module acquires a class.",
         "evidence": "spec/modules/module-identity.md"
-      }
+      },
+      "amendments": [
+        {
+          "id": "A01",
+          "recorded_on": "2026-08-11",
+          "change": "https://github.com/kofun-lang/kofun/issues/1212",
+          "delta": "Required top-level KIF tag `0x800A` carries exactly canonical UTF-8 `ordinary` or `raw-foreign`. Source still spells only `raw-foreign`; a writer serializes the default ordinary state explicitly. Missing, unknown, and source-contradictory values reject as rebuild-required. This clarifies the active RFC-0012 envelope rather than creating a new version.",
+          "original_semantics": "The active envelope requires `0x800A` carrying canonical UTF-8 from a closed set whose only v1 value is `raw-foreign`, while absence of the source `trust` line means the module is ordinary.",
+          "compatibility": {
+            "category": "none",
+            "statement": "No compiler implements RFC-0012 and no tracked KIF artifact carries its top-level `0x800A`, so no program or artifact changes meaning. The amendment makes the previously impossible ordinary writer state representable. Old readers reject the required unknown tag; new readers reject a missing tag and accept only the two exact values, so no artifact is silently reinterpreted."
+          }
+        }
+      ]
     },
     {
       "id": "RFC-0013",
@@ -952,6 +965,125 @@
           }
         }
       ]
+    },
+    {
+      "id": "RFC-0014",
+      "title": "Host operations use explicit bounded authorities",
+      "provenance": "rfc",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "rfcs/0014-explicit-host-authority-profiles.md",
+      "document": "rfcs/0014-explicit-host-authority-profiles.md",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/1241",
+      "dates": {
+        "opened_on": "2026-08-11",
+        "review_closed_on": "2026-08-11",
+        "decided_on": "2026-08-11"
+      },
+      "normative_spec": [
+        "rfcs/0014-explicit-host-authority-profiles.md",
+        "spec/native-toolchain-v1/contract.json"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "Existing zero-argument entrypoints and programs retain their meaning. The opt-in root entrypoint, `pure fn`, compiler-known authority types, process request, and directory enumeration profile are new target surface that no active compiler accepts. No existing host helper is reclassified as a shipped language capability."
+      }
+    },
+    {
+      "id": "RFC-0015",
+      "title": "Decimal and Fixed keep one value model across direct backends",
+      "provenance": "rfc",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "rfcs/0015-decimal-fixed-backend-profiles.md",
+      "document": "rfcs/0015-decimal-fixed-backend-profiles.md",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/1255",
+      "dates": {
+        "opened_on": "2026-08-11",
+        "review_closed_on": "2026-08-11",
+        "decided_on": "2026-08-11"
+      },
+      "normative_spec": [
+        "rfcs/0015-decimal-fixed-backend-profiles.md",
+        "docs/DECIMAL.md",
+        "spec/native-toolchain-v1/contract.json"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "No current compiler implements Decimal-backed `Fixed[S]`, and direct native and Wasm Decimal inputs remain unsupported, so no accepted executable program changes meaning. Existing C11 Decimal v1 values, bytes, limits, and D001-D007 retain their exact meaning. The design-era Fixed example gains an explicit typed-result boundary before it becomes executable."
+      }
+    },
+    {
+      "id": "RFC-0016",
+      "title": "HTTP/1.1 core uses the generic bounded carrier profile",
+      "provenance": "rfc",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "rfcs/0016-http-c11-carrier-profile.md",
+      "document": "rfcs/0016-http-c11-carrier-profile.md",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/1256",
+      "dates": {
+        "opened_on": "2026-08-11",
+        "review_closed_on": "2026-08-11",
+        "decided_on": "2026-08-11"
+      },
+      "normative_spec": [
+        "rfcs/0016-http-c11-carrier-profile.md",
+        "docs/stdlib/http-client.md",
+        "spec/native-toolchain-v1/contract.json"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "The portable HTTP client and its generic carriers are specified but unimplemented, so no accepted program changes meaning. Choosing the ordinary generic Stream avoids introducing and later removing a temporary monomorphic public API; existing server/framework checkpoints and live network capability claims remain unchanged."
+      }
+    },
+    {
+      "id": "RFC-0017",
+      "title": "Rank-1 generics use static dictionaries, source-free KIF v3, and a small proof kernel",
+      "provenance": "rfc",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "rfcs/0017-generics-kif-proof-profile.md",
+      "document": "rfcs/0017-generics-kif-proof-profile.md",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/1265",
+      "dates": {
+        "opened_on": "2026-08-11",
+        "review_closed_on": "2026-08-11",
+        "decided_on": "2026-08-11"
+      },
+      "normative_spec": [
+        "rfcs/0017-generics-kif-proof-profile.md",
+        "spec/roadmap-31-34/generics-and-traits.md",
+        "spec/native-toolchain-v1/contract.json",
+        "spec/native-toolchain-v1/schema.json"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "Production paths currently refuse the new generic and trait shapes or stop before backend output. KIF v1/v2, const-generic identities, standalone frontend goldens, the bounded self-host fixed point, and law-evidence v2 remain byte-identical, and no old artifact is reinterpreted as v3."
+      }
+    },
+    {
+      "id": "RFC-0018",
+      "title": "Kofun is a self-contained native toolchain, not a hosted-language frontend",
+      "provenance": "rfc",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "rfcs/0018-self-contained-native-toolchain.md",
+      "document": "rfcs/0018-self-contained-native-toolchain.md",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/1218",
+      "dates": {
+        "opened_on": "2026-08-11",
+        "review_closed_on": "2026-08-11",
+        "decided_on": "2026-08-11"
+      },
+      "normative_spec": [
+        "rfcs/0018-self-contained-native-toolchain.md",
+        "spec/native-toolchain-v1/contract.json"
+      ],
+      "compatibility": {
+        "category": "none",
+        "statement": "This target contract changes no accepted program and promotes no capability. Existing C11, shell, Node.js, Rust-shim, and go-task paths remain valid bounded bootstrap, test, or interoperability evidence; they simply do not satisfy `kofun-only-native/v1` until the required core build path is implemented entirely by the released Kofun toolchain."
+      }
     }
   ]
 }

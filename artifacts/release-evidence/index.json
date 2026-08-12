@@ -705,7 +705,7 @@
     }
   ],
   "evidence_digests": {
-    "Taskfile.yml": "7dc97eca152770f55dc01ae31ab94f9d856a8adcabe408d83f89333911d6afe8",
+    "Taskfile.yml": "6e8b7c6a33315dbc69fa8da04f3791b817984c77a021468ade9e55ec01918cd7",
     "bootstrap/native/check.sh": "b12493d09eb1919b349f37c78e3c81f4441a1c00be2aa7d2e6c30512eea998eb",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/check-diverse-double-compilation-refusals.sh": "55fc39166070b9bc612fca6898086938b1a8ca122b1c1fb8e928f1a5d4cde572",
@@ -719,8 +719,8 @@
     "bootstrap/wasm/fixtures/unsupported_text.kofun": "e0a45136410ddb85e9f5b3e5c39e7903d96da39aa53aaf3078d2555b4f383864",
     "bootstrap/wasm/object_arena_check.sh": "c415a46c7b83493ce72f07cd846d895ddf0980dc0f83e36023cb57fadb5f732f",
     "docs/BUILD_SYSTEM.md": "d4a372fc97c53874cc2438f3de132289beb033ce2bf1e67518b702de796b05a8",
-    "docs/COMPILER_ARCHITECTURE.md": "9a5efcc5198106a9ca9f86708c200bd6681be481185618954b23c5affa62e2a5",
-    "docs/DECIMAL.md": "f11dd11dad6bf6e4345914093a99376aaba42e238cd94c0616362c2bc9c583e6",
+    "docs/COMPILER_ARCHITECTURE.md": "cc245e9ffd07037d32295aee673de1a6357142759f6f38622ec654f253c9afef",
+    "docs/DECIMAL.md": "bb85e7a82ed948fe60eea16b8c99a4787e74c772ebea5c606ea564a58600c659",
     "docs/DOCUMENTATION_INDEX.md": "f0e22ded32b0dfebd4e628e0c57036574c197b12889d07771539f6e29640b4d9",
     "docs/GETTING_STARTED.md": "f0e48a73e7c024d4da46668f6b16221c1f5fba5595bf56942527297c0efa4e96",
     "docs/LAW_SYSTEM.md": "b974f0ad762bec778ee76afa5d0a2176423ac96a3a583739eee55dcb8dca5043",
@@ -728,7 +728,7 @@
     "docs/MEMORY_MODEL.md": "2ad150ffa325a6ac8778ce307b6d9d15584916ec116ae697a22028dc2e6c102e",
     "docs/MVP_IMPLEMENTED.md": "704cd29efad6e2d0008d7aca204671ae857bad0eda2ea363eebffb5cc0ec3071",
     "docs/NATIVE_BACKEND.md": "ab16b7bc6ae59071f9ae73c6fafde44732c887d122bb711104eb231297680bfe",
-    "docs/ROADMAP.md": "d3ee21fded0b17cb451d30663d2206851321c60f9fb4aa6a62ffd6b3288b9a2c",
+    "docs/ROADMAP.md": "d7862b4bd5c1052f16792403ba0f22e0f324b8b8ef786867d2d86e4be8bc97c1",
     "docs/RUST_CRATE_SHIMS.md": "4365b064cbc9a05733710d3a609c1db2623b28cb9ed4ba0e48536e35f9d58c47",
     "docs/SECURITY.md": "630dd512b406ba9db360d75e051c2421eb6f611550bad839d197eec25ea750aa",
     "docs/SELF_HOSTING.md": "46195e8254f2ad63c478bd64d3e0095c7485d94ee9968178006d5cb5f56d083d",

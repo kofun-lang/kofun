@@ -1,0 +1,329 @@
+{
+  "schema": "kofun.native-toolchain-decisions/v1",
+  "profile": "kofun-only-native/v1",
+  "objective": {
+    "replacement_class": [
+      "Rust",
+      "Zig"
+    ],
+    "meaning": "A production Kofun release can compile, link, package, test, and rebuild its supported native programs and its own full-language toolchain without requiring a C/C++ compiler, assembler, system linker, Rust, Cargo, Zig, Node.js, Python, or a second build language.",
+    "required_language_for_shipped_toolchain": "Kofun",
+    "required_native_targets": [
+      "native-x86_64-linux-elf64",
+      "native-aarch64-linux-elf64"
+    ],
+    "required_portable_target": "wasm32-hostabi1",
+    "allowed_external_boundary": [
+      "operating-system-kernel-abi",
+      "firmware-or-wasm-host-abi",
+      "explicit-versioned-foreign-library-adapter"
+    ],
+    "forbidden_core_build_requirements": [
+      "cc",
+      "c++",
+      "assembler",
+      "system-linker",
+      "rustc",
+      "cargo",
+      "zig",
+      "node",
+      "python"
+    ],
+    "completion_evidence": [
+      "clean full-language fixed point from a released Kofun compiler",
+      "byte-identical repeated native artifacts for both required native targets",
+      "source-free dependency build from KIF and package artifacts",
+      "toolchain commands implemented in Kofun and exercised without forbidden core build requirements",
+      "capability manifest and release artifacts read back from the exact release commit"
+    ],
+    "claim_boundary": "This contract defines completion. It does not claim the current bounded compiler already meets it."
+  },
+  "decisions": {
+    "kif_module_trust": {
+      "issue": 1212,
+      "tag": "0x800A",
+      "required": true,
+      "ordinary_bytes": "ordinary",
+      "raw_foreign_bytes": "raw-foreign",
+      "missing": "rebuild-required",
+      "unknown": "reject",
+      "contradictory": "reject",
+      "versioning": "RFC-0012 clarification in the active envelope domain"
+    },
+    "environment_authority": {
+      "issue": 1241,
+      "profile": "kofun.environment-authority/compiler-v1",
+      "types": [
+        "RootAuthority",
+        "EnvironmentAuthority",
+        "EnvironmentKey"
+      ],
+      "entrypoints": [
+        "fn main() -> Int",
+        "fn main(take root: RootAuthority) -> Int"
+      ],
+      "root_creation": "runtime-only-once",
+      "hidden_root": false,
+      "known_key_fact": "sorted-unique-literal-keys",
+      "unknown_key_fact": "explicit-unknown-never-empty-or-unrestricted",
+      "pure_boundary": "pure fn",
+      "pre_runtime": {
+        "check": "may-emit-typed-facts",
+        "build": "refuse-before-authority-carrier-abi",
+        "run": "refuse-before-authority-carrier-abi"
+      },
+      "diagnostic_precedence": [
+        "parse-type-ownership",
+        "E351-E355",
+        "E350",
+        "E356"
+      ]
+    },
+    "process_authority": {
+      "issue": 1231,
+      "profile": "kofun.process-authority/v1",
+      "authority": "ProcessAuthority",
+      "executable_identity": "approved-absolute-path-plus-artifact-digest",
+      "shell": false,
+      "path_search": false,
+      "ambient_environment": false,
+      "ambient_cwd": false,
+      "inherited_file_descriptors": "none-except-explicit-mapping",
+      "argv_encoding": "Bytes",
+      "shell_metacharacters": "ordinary-bytes",
+      "outcomes": [
+        "StartError",
+        "Exited",
+        "Signaled",
+        "CaptureLimitExceeded",
+        "Cancelled"
+      ],
+      "limits": {
+        "argv_count": 256,
+        "argument_bytes": 65536,
+        "argv_total_bytes": 1048576,
+        "stdout_bytes": 8388608,
+        "stderr_bytes": 8388608
+      },
+      "capture": "concurrent-bounded-dual-stream-drain-then-affine-reap",
+      "toolchain_use": "not-required-by-core-native-build"
+    },
+    "directory_authority": {
+      "issue": 1234,
+      "profile": "kofun.directory-authority/v1",
+      "authority": "DirectoryAuthority",
+      "derivation": "attenuated-open-directory-handle",
+      "ambient_cwd": false,
+      "relative_components": "nonempty-bytes-excluding-dot-dotdot-and-nul",
+      "symlinks": "refuse-before-follow-by-default",
+      "lookup": "component-relative-beneath-authorized-handle",
+      "filename": "Bytes-with-explicit-validated-Text-conversion",
+      "dot_entries": "excluded",
+      "ordering": "unsigned-byte-lexicographic",
+      "snapshot": "all-or-error-if-directory-identity-or-version-changes",
+      "limits": {
+        "entries": 65536,
+        "name_bytes": 255,
+        "total_name_bytes": 67108864,
+        "depth": 64
+      },
+      "targets": {
+        "linux": "direct-getdents64-adapter",
+        "wasi": "preopen-relative-adapter-with-identical-language-semantics"
+      }
+    },
+    "fixed_decimal": {
+      "issue": 1249,
+      "profile": "kofun.fixed-decimal/v1",
+      "carrier": "compiler-known-nominal-wrapper-over-KofunDecimal",
+      "runtime_scale_identity": false,
+      "type_identity": "Fixed plus literal scale S",
+      "construction": "destination-driven-Fixed.from_decimal",
+      "construction_result": "Result[Fixed[S], DecimalError]",
+      "back_conversion": "Decimal.from_fixed-is-exact",
+      "implicit_conversion": false,
+      "scale_min": 0,
+      "scale_max": 6144,
+      "ownership": "Owned-non-Copy-read-edit-take",
+      "copy": "explicit-fallible-clone",
+      "operations": {
+        "add_subtract": "Fixed[S] x Fixed[S] -> Fixed[S] exact",
+        "multiply": "Fixed[A] x Fixed[B] -> Fixed[A+B] exact-or-D002",
+        "divide": "deferred-use-Decimal.divide-with-explicit-scale-and-rounding",
+        "format": "exact-at-S-preserving-trailing-zeroes"
+      },
+      "failures": [
+        "D001",
+        "D002",
+        "D003",
+        "D004"
+      ]
+    },
+    "decimal_backends": {
+      "issue": 1255,
+      "profile": "kofun.decimal-backends/v1",
+      "declared_conformance_targets": [
+        "c11-stage1",
+        "c11-stage2",
+        "native-x86_64",
+        "native-aarch64",
+        "wasm32-node",
+        "wasm32-hostabi1"
+      ],
+      "bare_wasm32": "permanent-bounded-numeric-profile-no-Decimal-claim",
+      "wasm_decimal_target": "wasm32-hostabi1",
+      "wasm_arena_bytes": 65536,
+      "wasm_allocation_exhaustion": "D004-before-partial-artifact-or-result",
+      "native": "preserve-existing-direct-static-ELF-targets-and-emit-bounded-runtime-as-machine-code",
+      "host_linker": false,
+      "shared_runtime_binary": false,
+      "resource_profile": {
+        "significand_digits": 4096,
+        "scale_min": -6144,
+        "scale_max": 6144,
+        "diagnostics": [
+          "D001",
+          "D002",
+          "D003",
+          "D004",
+          "D005",
+          "D006",
+          "D007"
+        ]
+      },
+      "float": "IEEE-754-binary64-with-explicit-canonical-observation-profile",
+      "promotion": "target-by-target-only-after-literal-operation-rounding-format-error-and-repeat-differential-corpus"
+    },
+    "http_carrier": {
+      "issue": 1256,
+      "profile": "kofun.http1-scripted-c11/v1",
+      "bytes": "owned-length-capacity-data",
+      "headers": "bounded-List[Header]-preserve-order-and-duplicates",
+      "origin": "HttpOrigin-https-flag-ascii-host-optional-port-origin-form-target",
+      "errors": "closed-HttpError-ADT-with-retry-safety-fact",
+      "stream": "generic-synchronous-finite-Stream[Bytes,HttpError]",
+      "script": "versioned-affine-write-read-eof-failure-cancel-operations",
+      "time": "injected-events-only",
+      "live_network_claim": false,
+      "limits": {
+        "request_bytes": 1048576,
+        "header_count": 128,
+        "header_name_bytes": 256,
+        "header_value_bytes": 8192,
+        "header_total_bytes": 65536,
+        "status_line_bytes": 8192,
+        "chunk_line_bytes": 8192,
+        "chunk_count": 65536,
+        "chunk_bytes": 8388608,
+        "trailer_count": 64,
+        "trailer_total_bytes": 32768,
+        "buffered_body_bytes": 1048576,
+        "read_all_hard_bytes": 67108864,
+        "early_drain_bytes": 1048576,
+        "script_operations": 4096
+      }
+    },
+    "generics": {
+      "issue": 1265,
+      "profile": "kofun.generics-execution/v1",
+      "source": "explicit-rank1-type-application",
+      "inference": false,
+      "variance": "invariant",
+      "higher_kinds": false,
+      "runtime_instance_search": false,
+      "identity": "framed-declaration-TypeId-plus-ordered-canonical-TypeRefs",
+      "lowering": "per-concrete-C11-specialization-with-mandatory-static-dictionary-semantics",
+      "separate_compilation": "versioned-KIF-typed-template-source-free",
+      "limits": {
+        "type_parameters": 2,
+        "instantiations_per_declaration": 8,
+        "constructed_depth": 8,
+        "dictionary_slots": 2,
+        "dictionary_parameters": 2,
+        "generated_symbol_bytes": 255
+      },
+      "optimization_modes": [
+        "dictionary",
+        "monomorphic",
+        "hybrid"
+      ],
+      "non_c11": "explicit-refusal-until-executable-evidence"
+    },
+    "kif_generics": {
+      "issue": 1266,
+      "profile": "kofun.kif/generics-v3",
+      "preserve_versions": [
+        "kif-v1",
+        "kif-v2"
+      ],
+      "envelope": "new-version-no-reinterpretation-or-downgrade",
+      "records": [
+        "TypeBinder",
+        "ConstructedTypeRef",
+        "GenericTypeDeclaration",
+        "GenericFunctionDeclaration",
+        "TraitDeclaration",
+        "TraitMethod",
+        "Implementation",
+        "DictionaryAbi",
+        "GenericBodyTemplate",
+        "PublishedInstantiation",
+        "GenericLawReference"
+      ],
+      "body_strategy": "normalized-typed-template-plus-optional-provider-published-closed-instantiations",
+      "consumer_ownership": "consumer-instantiation-never-reowns-provider-declaration",
+      "coherence": "complete-dependency-graph-before-selection",
+      "visibility": "hidden-facts-never-satisfy-exported-bounds",
+      "ordering": "canonical-by-stable-id-not-import-or-source-order",
+      "limits": {
+        "records": 65536,
+        "type_ref_depth": 64,
+        "text_bytes": 65536,
+        "body_bytes": 8388608,
+        "links": 262144
+      },
+      "failure": "atomic-no-output-on-version-link-cycle-visibility-limit-corruption-or-cancellation-error"
+    },
+    "generic_proof_kernel": {
+      "issue": 1267,
+      "profile": "kofun.generic-proof-kernel/v1",
+      "propositions": "rank1-type-and-value-quantification-over-pure-total-typed-Core",
+      "identity": "alpha-normalized-binders-canonical-TypeRefs-TermIds-and-selected-ImplementationIds",
+      "rules": [
+        "hypothesis",
+        "reflexivity",
+        "symmetry",
+        "transitivity",
+        "congruence",
+        "typed-beta",
+        "typed-let",
+        "adt-case-reduction",
+        "named-proven-rewrite"
+      ],
+      "recursion": "unsupported-in-v1-certificates",
+      "opaque_calls": "unsupported-unless-named-proven-rewrite-binds-exact-body-digest",
+      "producer_trusted": false,
+      "checker_trusted": true,
+      "assurance": "proven",
+      "first_theorem": "forall T,E and r:Result[T,E], Result.map(r, identity[T]) equals r",
+      "first_theorem_ground_enumeration_sufficient": false,
+      "proof_id_inputs": [
+        "proposition-digest",
+        "compiler-digest",
+        "interface-digest",
+        "body-digests",
+        "implementation-ids",
+        "certificate-digest",
+        "kernel-profile"
+      ],
+      "limits": {
+        "certificate_bytes": 8388608,
+        "nodes": 100000,
+        "depth": 1024,
+        "rewrite_steps": 1000000,
+        "text_bytes": 65536
+      },
+      "legacy_evidence": "bounded-exhaustive-and-proven-finite-never-upgrade-or-substitute"
+    }
+  }
+}

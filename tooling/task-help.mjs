@@ -29,6 +29,7 @@ export const GROUPS = Object.freeze([
             'selfhost-native', 'stage1-adapter', 'stage2', 'stage2-events',
             'native', 'wasm',
             'wasm-host-abi', 'wasm-host-profile', 'wasi-command-profile',
+            'native-toolchain-contract',
             'wasm-object-arena',
             'wasm-list-v1', 'c-abi', 'bindgen-c'
         ]
@@ -47,6 +48,8 @@ export const GROUPS = Object.freeze([
             'schedule-trace', 'type-reduction-trace',
             'generics', 'const-generics', 'hm-levels', 'effect-inference', 'traits',
             'trait-dictionary-c11',
+            'fixed-decimal-profile', 'decimal-backend-profiles',
+            'generics-execution-profile', 'generic-proof-kernel-profile',
             'optional', 'optional-narrowing',
             'optional-construction', 'optional-coalescing', 'optional-pair',
             'text-results', 'int-bits', 'list-int-values', 'while-list-int', 'else-if-chain',
@@ -66,6 +69,7 @@ export const GROUPS = Object.freeze([
             'visibility-api-leaks', 'module-interface-artifact', 'incremental',
             'package-roots', 'source-file-mapping', 'namespaces', 'module-identity',
             'semantic-identity',
+            'kif-module-trust-profile', 'kif-generics-profile',
             'visibility-spec', 'visibility-syntax', 'visibility-access',
             're-exports-spec', 'aggregate-layout', 'reuse-candidate'
         ]
@@ -88,6 +92,8 @@ export const GROUPS = Object.freeze([
         tasks: [
             'rust-shim', 'http', 'http-client-model', 'stdlib',
             'alloc-contract', 'kotest', 'tzdb', 'clock-adapters',
+            'environment-authority-compiler-contract', 'host-process-authority-contract',
+            'directory-authority-contract', 'http-carrier-profile',
             'benchmark-summary', 'benchmark-report-spec', 'capabilities'
         ]
     },
