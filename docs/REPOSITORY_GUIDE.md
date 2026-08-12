@@ -22,7 +22,7 @@ it open during your first changes.
    `bootstrap/`, and `docs/` explains design and project state.
 
 The repository's current hosted gates and the product end state are also
-separate. [RFC-0013](../rfcs/0013-self-contained-native-toolchain.md) requires
+separate. [RFC-0018](../rfcs/0018-self-contained-native-toolchain.md) requires
 the released core compiler/build/package/test/native-image path to run in
 Kofun alone. Current shell, C11, Node.js, and go-task paths remain bounded
 bootstrap and verification machinery until executable evidence replaces them.

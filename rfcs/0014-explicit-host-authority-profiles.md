@@ -94,7 +94,7 @@ Limits are 256 arguments, 65,536 bytes per argument, 1 MiB total argv, and
 8 MiB for each captured stream. Exceeding a limit fails before spawn where it
 is known, otherwise kills and reaps the child before returning the typed error.
 
-The self-contained native build in RFC-0013 may not require this authority to
+The self-contained native build in RFC-0018 may not require this authority to
 run a compiler, assembler, or linker. It exists for explicit application and
 optional adapter behavior.
 

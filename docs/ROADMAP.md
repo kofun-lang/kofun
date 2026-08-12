@@ -20,7 +20,7 @@ an accepted RFC carries no schedule and moves no milestone until
 RFC sets named here are decision work, and appear on this roadmap only once
 they have implementation evidence to advance.
 
-RFC-0013 fixes the final product boundary: the required x86-64/AArch64 native
+RFC-0018 fixes the final product boundary: the required x86-64/AArch64 native
 toolchain is full-language, Kofun-authored, source-free across package
 interfaces, and linker-free. The current C11 fixed point is bootstrap evidence
 toward that profile, not completion of it. `task native-toolchain-contract`

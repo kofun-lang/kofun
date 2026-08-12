@@ -1,4 +1,4 @@
-# RFC-0013: Kofun is a self-contained native toolchain, not a hosted-language frontend
+# RFC-0018: Kofun is a self-contained native toolchain, not a hosted-language frontend
 
 - Shepherd: hjosugi
 - Opened: 2026-08-11
