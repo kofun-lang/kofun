@@ -27,7 +27,7 @@ export const GROUPS = Object.freeze([
             'selfhost-declared-inputs', 'selfhost-b6-report',
             'selfhost-frontend', 'selfhost-c11', 'selfhost-c11-control',
             'selfhost-native', 'stage1-adapter', 'stage2', 'stage2-events',
-            'native', 'wasm',
+            'native', 'native-host-evidence', 'wasm',
             'wasm-host-abi', 'wasm-host-profile', 'wasi-command-profile',
             'native-toolchain-contract',
             'wasm-object-arena',
