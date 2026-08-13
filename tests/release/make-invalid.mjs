@@ -83,6 +83,17 @@ const MUTATIONS = {
             find(manifest, 'arithmetic-core').reproduction.command = 'make native'
         },
     },
+    'unused-prerequisite': {
+        blame: 'arithmetic-core',
+        apply(manifest) {
+            // The published pack tells a reader to install every name in this
+            // list. #1213 migrated every call site off GNU `sha256sum` and left
+            // three claims still demanding it, because nothing checked a
+            // declared prerequisite against the command it describes. This is
+            // that defect in its general form: a tool no reachable script names.
+            find(manifest, 'arithmetic-core').reproduction.prerequisites.push('sha256sum')
+        },
+    },
     'unknown-state': {
         blame: 'claims[0].state',
         apply(manifest) {

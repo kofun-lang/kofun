@@ -4,7 +4,7 @@
   "version": "0.8.0-seed",
   "inputs": {
     "VERSION": "b11eb28b848c294c76fa43c1de9fa0053803485c7710b385b1e3585757fa3073",
-    "release/claims.json": "7e488d626d39a25910504597f1e8cd1a3f3ea6e2cad1c42938c5818f3ef9112c",
+    "release/claims.json": "f12b2b7ab92be7030386d9cc1f072521bdc1f6ad9779fbb804e6301295d8f0b2",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
     "bootstrap/manifest.json": "5b03d83371894faef02bbcf97e13d835ae47b5e3c0641c65fb7a9024d667e77a"
   },
@@ -58,8 +58,7 @@
         "cc",
         "clang",
         "node",
-        "readelf",
-        "sha256sum"
+        "readelf"
       ]
     },
     {
@@ -202,8 +201,7 @@
       "negative_boundary": "bootstrap/selfhost/driver/corpus_builtin_rejects.tsv",
       "reproduction": "task bootstrap",
       "prerequisites": [
-        "cc",
-        "sha256sum"
+        "cc"
       ]
     },
     {
@@ -588,8 +586,7 @@
       "negative_boundary": "bootstrap/stage1/SHA256SUMS",
       "reproduction": "task bootstrap",
       "prerequisites": [
-        "cc",
-        "sha256sum"
+        "cc"
       ]
     },
     {
@@ -786,7 +783,7 @@
     "bootstrap/selfhost/driver/corpus_reject.stdout": "b11ae682acae186b10022c3469af65b54cd03c2e88a4756eba1cbe5b0e9356f9",
     "bootstrap/stage1/README.md": "449e52413da5d35eafee5b56a7c243ee0363774b8d4110d2a3a998a49f95d52f",
     "bootstrap/stage1/SHA256SUMS": "0dc3d2677f03dfe3bd6f9da9f923315dd5f30dcaeca4768f3c63ec1f66744b94",
-    "bootstrap/stage2/README.md": "298e9f848b49f340ff32c0fbe2c870f09ce3e1d03b1779896b3d46287f809855",
+    "bootstrap/stage2/README.md": "2b3fe1d2204940727ca6ee250dd805121f456e283c3e56da41d773865bfca79e",
     "bootstrap/stage2/fixtures/borrowed_move_text.kofun": "34502461891e7c8f42c9017e9fbfc857e54b10ca4fe59551be9ab9ab22d2c1b6",
     "bootstrap/wasm/fixtures/unsupported_text.kofun": "e0a45136410ddb85e9f5b3e5c39e7903d96da39aa53aaf3078d2555b4f383864",
     "bootstrap/wasm/object_arena_check.sh": "c415a46c7b83493ce72f07cd846d895ddf0980dc0f83e36023cb57fadb5f732f",
@@ -794,7 +791,7 @@
     "docs/COMPILER_ARCHITECTURE.md": "bfc07394786505574419bd1a88bb33ed5553902c0127b9ceb2767b73291c3f59",
     "docs/DECIMAL.md": "bb85e7a82ed948fe60eea16b8c99a4787e74c772ebea5c606ea564a58600c659",
     "docs/DOCUMENTATION_INDEX.md": "f0e22ded32b0dfebd4e628e0c57036574c197b12889d07771539f6e29640b4d9",
-    "docs/GETTING_STARTED.md": "f0e48a73e7c024d4da46668f6b16221c1f5fba5595bf56942527297c0efa4e96",
+    "docs/GETTING_STARTED.md": "cbbe5d0df1a008c9ca2194792e5619527d8701bedf7fd6b6b777e27169008f0c",
     "docs/LAW_SYSTEM.md": "b974f0ad762bec778ee76afa5d0a2176423ac96a3a583739eee55dcb8dca5043",
     "docs/LINGUIST_RECOGNITION.md": "279f9afa7157c90e41d656974c2f5020f8b6d25acbbd389ee760efbb2d6d6166",
     "docs/MEMORY_MODEL.md": "2ad150ffa325a6ac8778ce307b6d9d15584916ec116ae697a22028dc2e6c102e",
