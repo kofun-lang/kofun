@@ -1,0 +1,36 @@
+# contract: kofun.backend-differential/v1
+# expect-exit: 0
+# expect-stdout: 0
+# expect-stdout: 255
+# expect-stdout: 255
+# expect-stdout: -241
+# expect-stdout: 960
+# expect-stdout: 60
+# expect-stdout: 15
+# expect-stdout: -9223372036854775569
+
+# RFC-0013's eight operations, one line each, in the order the RFC lists them.
+#
+# Every value is written so that a wrong lowering produces a different number
+# rather than a crash. `not` and `wrapping_add` are the two that a backend
+# reusing host C semantics gets wrong quietly: C leaves a shift by the operand
+# width undefined and signed overflow undefined, and the whole reason these
+# operations were named is that the language answers where C does not.
+#
+# `print` takes the Int directly rather than through `to_text`, so a backend
+# that lowers all eight but has no Text surface still passes. Testing the
+# operation through a conversion it does not need would record "does not lower
+# bit operations" about a backend that does.
+
+fn main() {
+    let a = 240
+    let b = 15
+    print(a.and(b))
+    print(a.or(b))
+    print(a.xor(b))
+    print(a.not())
+    print(a.shl(2))
+    print(a.shr(2))
+    print(a.rotr(4, 32))
+    print(a.wrapping_add(9223372036854775807, 64))
+}
