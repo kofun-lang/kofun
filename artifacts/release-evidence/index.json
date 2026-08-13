@@ -705,7 +705,7 @@
     }
   ],
   "evidence_digests": {
-    "Taskfile.yml": "c8ce2eeb5c4145e243bd0311d3e66b1a8940f336963b465a77692a9682f97b37",
+    "Taskfile.yml": "7df8d23d19dcbf483048188a7a144a678381e8c3407def24ba1771d3528dd941",
     "bootstrap/native/check.sh": "b12493d09eb1919b349f37c78e3c81f4441a1c00be2aa7d2e6c30512eea998eb",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/check-diverse-double-compilation-refusals.sh": "55fc39166070b9bc612fca6898086938b1a8ca122b1c1fb8e928f1a5d4cde572",
@@ -752,7 +752,7 @@
     "tests/cli.sh": "6ca726adc3cb5fa4437d34665603b6556a63d01d26db1141a93af3388c5240f9",
     "tests/cli_stage2_outcomes.sh": "9f84a95495afab023a1572b37a2508a4ee02a3a89881df14b887c209a628a9a7",
     "tests/conformance/aggregate-bridge/README.md": "aec3624a10648a59d18723bf7429422ff017cec17995402653e403f065ec0f0a",
-    "tests/conformance/capabilities.tsv": "3fc973e48617a2699f1cfe4cd41d4e874f9406f31ed6fc402cc595d4ac54de86",
+    "tests/conformance/capabilities.tsv": "7dca885522b8fd775dea20b0622d62fb774d8c8df0b8c71672f379894cdc2eab",
     "tests/conformance/functions/division_floor_signs.kofun": "6bfd48679ebcf604305c78271b80e803866a64d8e9c8f732f5b1884d4d0d67b0",
     "tests/conformance/modules/re-exports/run.sh": "1da6763ce0862591c974a7a92acc1490477f8c3c6daa5ca2f66b2ffef957607b",
     "tests/conformance/numeric/reject_slash_operator.kofun": "49a14dbd0392e6920a681168af44018182f78175a921592283631c9942045c24",

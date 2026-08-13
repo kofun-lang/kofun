@@ -1788,6 +1788,55 @@ static bool function_peek_pair(
         parser->source[parser->cursor + 1] == second;
 }
 
+/* RFC-0013's eight `Int` bit operations, spelled as postfix methods. This
+ * backend does not lower them (#1383), and the point of naming them here is
+ * that it did not *say* so: `a.and(b)` left the `.` unconsumed, so whichever
+ * construct contained the expression reported its own failure. In a `print`
+ * that read "native Core print requires one Int or Text" — about an argument
+ * that is an `Int` expression, at a `print` that is not the problem.
+ *
+ * The list is written once and the refusal derives from it, so an operation
+ * added to the RFC and to the pair reaches a reader here rather than falling
+ * back to the generic wording. */
+static const char *const FUNCTION_BIT_OPERATIONS[] = {
+    "and", "or", "xor", "not", "shl", "shr", "rotr", "wrapping_add"
+};
+
+static const char *function_peek_bit_operation(FunctionParser *parser) {
+    size_t saved = parser->cursor;
+    function_skip_trivia(parser);
+    if (parser->cursor >= parser->limit ||
+        parser->source[parser->cursor] != '.') {
+        parser->cursor = saved;
+        return NULL;
+    }
+    size_t after_dot = parser->cursor + 1;
+    for (size_t index = 0;
+         index < sizeof FUNCTION_BIT_OPERATIONS /
+             sizeof FUNCTION_BIT_OPERATIONS[0];
+         ++index) {
+        const char *name = FUNCTION_BIT_OPERATIONS[index];
+        size_t length = strlen(name);
+        if (after_dot + length <= parser->limit &&
+            memcmp(parser->source + after_dot, name, length) == 0) {
+            /* `.and(` and not `.android`: the call parenthesis is what makes
+             * this a bit operation rather than a longer name that starts the
+             * same way. Trivia may sit between, as it may anywhere else. */
+            size_t at = after_dot + length;
+            while (at < parser->limit &&
+                (parser->source[at] == ' ' || parser->source[at] == '\t')) {
+                ++at;
+            }
+            if (at < parser->limit && parser->source[at] == '(') {
+                parser->cursor = saved;
+                return name;
+            }
+        }
+    }
+    parser->cursor = saved;
+    return NULL;
+}
+
 static bool function_consume_pair(
     FunctionParser *parser,
     char first,
@@ -2860,6 +2909,19 @@ static FunctionExpression *function_parse_expression(
 ) {
     FunctionExpression *value = function_parse_comparison(parser);
     if (parser->error[0] != '\0') return value;
+    const char *bit_operation = function_peek_bit_operation(parser);
+    if (bit_operation != NULL) {
+        char message[256];
+        snprintf(
+            message,
+            sizeof message,
+            "`.%s` is one of RFC-0013's eight Int bit operations, which "
+            "native Core does not lower",
+            bit_operation
+        );
+        function_error(parser, message);
+        return value;
+    }
     if (function_peek_pair(parser, '|', '>')) {
         function_error(
             parser,

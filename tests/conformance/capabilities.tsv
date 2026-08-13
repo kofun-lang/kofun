@@ -2,6 +2,7 @@ backend	corpus	state	evidence	reason
 c11-stage1	const-generics	unsupported	-	The Stage 1 C11 Core has no const type parameter surface and no per-literal specialization
 c11-stage1	decimal-arithmetic	unsupported	-	The Stage 1 C11 Core does not lower Decimal or Float values
 c11-stage1	functions	unsupported	-	The Stage 1 C11 Core takes at most five parameters, requires main to return Void, and does not accept unary - as a binary operand
+c11-stage1	int-bits-lowering	unsupported	-	The Stage 1 C11 Core has no postfix method surface, so RFC-0013's eight Int bit operations do not parse; it refuses with EA103 at the start of the declaration rather than at the operation
 c11-stage1	list	unsupported	-	The Stage 1 C11 Core does not lower List values
 c11-stage1	numeric	supported	tests/conformance/run.sh	-
 c11-stage1	optional-coalescing	unsupported	-	The Stage 1 C11 Core has no executable Optional(Int) carrier or coalescing lowering
@@ -9,6 +10,7 @@ c11-stage1	text	unsupported	-	The Stage 1 C11 Core does not lower Text values
 c11-stage2	const-generics	supported	tests/conformance/run.sh	-
 c11-stage2	decimal-arithmetic	supported	tests/conformance/run.sh	-
 c11-stage2	functions	supported	tests/conformance/run.sh	-
+c11-stage2	int-bits-lowering	supported	tests/conformance/run.sh	-
 c11-stage2	list	unsupported	-	The Stage 2 C11 Core supports capacity-64 List[Int] locals, direct signatures, and nominal record fields and field reads; general List[T], List[Text], growth, heap-backed lists, and nested aggregate lowering remain unsupported
 c11-stage2	numeric	supported	tests/conformance/run.sh	-
 c11-stage2	optional-coalescing	supported	tests/conformance/optional-coalescing/run.sh	-
@@ -16,6 +18,7 @@ c11-stage2	text	unsupported	-	The Stage 2 C11 Core supports Text literals, direc
 native-aarch64	const-generics	unsupported	-	The direct AArch64 backend does not specialize per distinct const literal
 native-aarch64	decimal-arithmetic	unsupported	-	The direct AArch64 backend has no arbitrary-precision Decimal runtime
 native-aarch64	functions	supported	bootstrap/native/check.sh	-
+native-aarch64	int-bits-lowering	unsupported	-	The direct AArch64 backend does not lower RFC-0013's eight Int bit operations; it names the operation and refuses
 native-aarch64	list	supported	bootstrap/native/check.sh	-
 native-aarch64	numeric	supported	bootstrap/native/check.sh	-
 native-aarch64	optional-coalescing	unsupported	-	The direct AArch64 backend has no executable Optional(Int) carrier or coalescing lowering
@@ -23,6 +26,7 @@ native-aarch64	text	supported	bootstrap/native/check.sh	-
 native-x86_64	const-generics	unsupported	-	The direct x86-64 backend does not specialize per distinct const literal
 native-x86_64	decimal-arithmetic	unsupported	-	The direct x86-64 backend has no arbitrary-precision Decimal runtime
 native-x86_64	functions	supported	bootstrap/native/check.sh	-
+native-x86_64	int-bits-lowering	unsupported	-	The direct x86-64 backend does not lower RFC-0013's eight Int bit operations; it names the operation and refuses
 native-x86_64	list	supported	bootstrap/native/check.sh	-
 native-x86_64	numeric	supported	bootstrap/native/check.sh	-
 native-x86_64	optional-coalescing	unsupported	-	The direct x86-64 backend has no executable Optional(Int) carrier or coalescing lowering
@@ -30,6 +34,7 @@ native-x86_64	text	supported	bootstrap/native/check.sh	-
 wasm32-node	const-generics	unsupported	-	The wasm32 backend does not specialize per distinct const literal
 wasm32-node	decimal-arithmetic	unsupported	-	The wasm32 backend has no arbitrary-precision Decimal runtime
 wasm32-node	functions	supported	bootstrap/wasm/check.sh	-
+wasm32-node	int-bits-lowering	unsupported	-	The wasm32 backend does not lower RFC-0013's eight Int bit operations; it names the operation and refuses
 wasm32-node	list	unsupported	-	The wasm32 Core does not lower List values
 wasm32-node	numeric	supported	bootstrap/wasm/check.sh	-
 wasm32-node	optional-coalescing	unsupported	-	The wasm32 backend has no executable Optional(Int) carrier or coalescing lowering

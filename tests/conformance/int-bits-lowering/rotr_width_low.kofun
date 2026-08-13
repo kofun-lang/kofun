@@ -1,0 +1,12 @@
+# contract: kofun.backend-differential/v1
+# expect-exit: 1
+# expect-stderr: error[R011]: bit width for `rotr` is outside `1..64`
+
+# RFC-0013/A01 checks `rotr`'s width before its count. A width of 0 leaves
+# nothing to rotate within, and this case reaches that check with a count that
+# would be legal for any width.
+
+fn main() {
+    let value = 1
+    print(value.rotr(1, 0))
+}

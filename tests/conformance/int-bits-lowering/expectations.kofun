@@ -1,0 +1,22 @@
+# Executable manifest for kofun.backend-differential/v1.
+
+fn corpus_name() -> Text {
+    return "int-bits-lowering"
+}
+
+fn expected_cases() -> Int {
+    return 4
+}
+
+fn case_names() -> List[Text] {
+    return [
+        "behavior.kofun",
+        "rotr_width_low.kofun",
+        "shl_count_high.kofun",
+        "shl_overflow.kofun"
+    ]
+}
+
+fn observations_sha256() -> Text {
+    return "ce6d533637b3c7e3c005715b8ec74399d90d7a8366bf3e58b720b4ea3547193b"
+}

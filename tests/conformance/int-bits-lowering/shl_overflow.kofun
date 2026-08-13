@@ -1,0 +1,12 @@
+# contract: kofun.backend-differential/v1
+# expect-exit: 1
+# expect-stderr: error[R010]: integer overflow in `shl`
+
+# RFC-0013/A01 fixes the order: the count is checked first, then the overflow.
+# `3.shl(62)` has a legal count and a value that leaves signed Int64, so it is
+# the case that reaches the second check.
+
+fn main() {
+    let value = 3
+    print(value.shl(62))
+}

@@ -1,0 +1,12 @@
+# contract: kofun.backend-differential/v1
+# expect-exit: 1
+# expect-stderr: error[R011]: shift count for `shl` is outside `0..63`
+
+# A count of 64 is not a shift of the whole word, it is a mistake. Masking it
+# to 0 -- which is what a host C shift would do on x86 -- computes `x` and
+# calls it an answer.
+
+fn main() {
+    let value = 1
+    print(value.shl(64))
+}

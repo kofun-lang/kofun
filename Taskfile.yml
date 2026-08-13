@@ -317,6 +317,18 @@ tasks:
     cmds:
       - "sh tests/conformance/int-bits/run.sh"
 
+  # #1383. RFC-0013 step 3. The eight operations exist on the canonical pair
+  # and nowhere else, and before this the other backends refused them without
+  # saying so: the native wording named a `print` that was not the problem and
+  # the wasm32 one named no token at all. This registers the operations as a
+  # backend-differential corpus, so `capabilities.tsv` has to carry a row per
+  # declared backend, and holds each `unsupported` row to an actual refusal
+  # that names the operation.
+  int-bits-lowering:
+    desc: "Verify every declared backend lowers the eight Int bit operations or refuses them by name"
+    cmds:
+      - "sh tests/conformance/int-bits-lowering/check.sh"
+
   # #1174. Statement-position `else if` chains. The corpus exists mainly for
   # one property that a passing program cannot show: a later condition must be
   # evaluated only when every earlier one was false, so the gate puts a
@@ -1085,6 +1097,7 @@ tasks:
             optional-pair \
             text-results \
             int-bits \
+            int-bits-lowering \
             list-int-values \
             record-values \
             text-escapes \

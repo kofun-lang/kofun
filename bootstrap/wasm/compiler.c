@@ -484,6 +484,76 @@ static void next_token(Parser *parser) {
                 "wasm32 Core has only Int"
             );
             return;
+        case '.': {
+            /*
+             * `.` reaches the lexer only as the head of one of RFC-0013's
+             * eight `Int` bit operations, spelled as postfix methods. wasm32
+             * Core does not lower them (#1383); before this it did not say so,
+             * because `.` is not a token here and the generic wording named
+             * neither the character nor the operation.
+             *
+             * The list is written once and the wording derives from it, so an
+             * operation added to the RFC and to the canonical pair reaches a
+             * reader here instead of falling back to the generic case.
+             */
+            static const struct {
+                const char *name;
+                const char *message;
+            } bit_operations[] = {
+                {"and", "`.and` is one of RFC-0013's eight Int bit operations, "
+                    "which wasm32 Core does not lower"},
+                {"or", "`.or` is one of RFC-0013's eight Int bit operations, "
+                    "which wasm32 Core does not lower"},
+                {"xor", "`.xor` is one of RFC-0013's eight Int bit operations, "
+                    "which wasm32 Core does not lower"},
+                {"not", "`.not` is one of RFC-0013's eight Int bit operations, "
+                    "which wasm32 Core does not lower"},
+                {"shl", "`.shl` is one of RFC-0013's eight Int bit operations, "
+                    "which wasm32 Core does not lower"},
+                {"shr", "`.shr` is one of RFC-0013's eight Int bit operations, "
+                    "which wasm32 Core does not lower"},
+                {"rotr", "`.rotr` is one of RFC-0013's eight Int bit "
+                    "operations, which wasm32 Core does not lower"},
+                {"wrapping_add", "`.wrapping_add` is one of RFC-0013's eight "
+                    "Int bit operations, which wasm32 Core does not lower"}
+            };
+            /*
+             * `parser->error` is a `const char *` the parser stores rather than
+             * a buffer it copies into, so each wording has to outlive this
+             * frame. Written out per operation for that reason; the gate reads
+             * every one of them from the same list the pair uses, so a missing
+             * row fails rather than silently falling through.
+             */
+            for (size_t index = 0;
+                 index < sizeof bit_operations / sizeof bit_operations[0];
+                 ++index) {
+                const char *name = bit_operations[index].name;
+                size_t length = strlen(name);
+                size_t at = parser->cursor;
+                if (at + length > parser->length ||
+                    memcmp(parser->source + at, name, length) != 0) {
+                    continue;
+                }
+                size_t after = at + length;
+                while (after < parser->length &&
+                    (parser->source[after] == ' ' ||
+                     parser->source[after] == '\t')) {
+                    ++after;
+                }
+                /* The call parenthesis is what separates `.and(` from a longer
+                 * name that starts the same way. */
+                if (after >= parser->length ||
+                    parser->source[after] != '(') {
+                    continue;
+                }
+                parser->token.kind = TOKEN_EOF;
+                parse_error(parser, bit_operations[index].message);
+                return;
+            }
+            parser->token.kind = TOKEN_EOF;
+            parse_error(parser, "unsupported token in wasm32 arithmetic Core");
+            return;
+        }
         default:
             parser->token.kind = TOKEN_EOF;
             parse_error(parser, "unsupported token in wasm32 arithmetic Core");
