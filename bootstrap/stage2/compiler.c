@@ -20189,6 +20189,35 @@ static char *lower_body(
                 return value;
             }
             char *binding_type = hir_binding_field(hir, binding_id, 5);
+            /* #1315, first slice. The carrier, its frozen field order, and the
+             * nine status tags are in place, but the cleanup funnel is not:
+             * every `return`, every fallthrough, and every
+             * `if (kofun_failed) return ...` guard is an exit that would have
+             * to reclaim still-live storage in reverse creation order.
+             * Binding one today would emit a `KofunBytesValue` that nothing
+             * ever frees.
+             *
+             * `backend limitation` is one of the nine REASON values this issue
+             * defines, and it is the honest one for a shape the backend cannot
+             * yet lower. It is refused here rather than left to leak, and the
+             * refusal is what the following slice replaces. */
+            if (strcmp(binding_type, "Bytes") == 0) {
+                Buffer refusal;
+                buffer_init(&refusal);
+                buffer_format(
+                    &refusal,
+                    "error[E2S170]: Stage 2 Bytes[65536] cannot lower possible "
+                    "managed Bytes alias for `%s` (backend limitation) at byte "
+                    "%" PRId64,
+                    name,
+                    value_start
+                );
+                free(binding_type);
+                free(binding_id);
+                free(name);
+                free(emitted.data);
+                return refusal.data;
+            }
             char *actual_type = initializer_type(
                 source,
                 hir,

@@ -1,0 +1,7 @@
+# diagnostic-mode: compile
+# expect-code: E2S170
+# expect-span: byte 109
+fn main() -> Int {
+    let holder = stage2_bytes_empty()
+    return 0
+}
