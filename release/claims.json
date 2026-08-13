@@ -1785,7 +1785,7 @@
       "specification": [
         "spec/tooling/typed-sidecar.md"
       ],
-      "compatibility": "The supported request set is gated; latency budgets are part of the claim.",
+      "compatibility": "The supported request set is gated; CPU-time budgets are part of the claim. Wall-clock latency is recorded evidence and is not asserted, because a fixed wall-clock number measures the host: seven observations of one unchanged assertion spanned 30.52ms to 570.24ms and did not order by load (#1379).",
       "positive_gate": {
         "command": "sh tests/lsp/check.sh",
         "observation": "Every supported request answers and the measured percentiles stay inside their budgets."
@@ -1801,8 +1801,8 @@
       "performance": {
         "classification": "budgeted",
         "benchmark": "tests/lsp/performance_test.js",
-        "environment": "Run alone under `task lsp`, after the concurrent verify lane, so a busy machine does not perturb the percentiles.",
-        "budget": "Diagnostic p95 and max, definition p95, hover p95, and a resident-set growth ratio, each asserted against the fixed budgets written in the test."
+        "environment": "Reached two ways: `task lsp` directly, and `task verify` through `task roadmap`, which `bootstrap/stage2/verify-runner.sh` runs sequentially after the concurrent lane. Neither position makes the measurement quiet -- the two slowest of the seven recorded observations were taken after the concurrent lane and standalone respectively -- so the assertion does not depend on one.",
+        "budget": "Diagnostic p95 and max, definition p95, hover p95, cold and warm completion p95 -- six budgets, each asserted against the server's own CPU time, plus a resident-set growth ratio. The fixed values are written in the test."
       },
       "reproduction": {
         "command": "task lsp",

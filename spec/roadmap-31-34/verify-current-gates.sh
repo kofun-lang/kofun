@@ -103,7 +103,17 @@ then
     exit 1
 fi
 
-sh "$ROOT/tests/lsp/check.sh"
+# A failure here is reported by go-task as `Failed to run task "roadmap"`, and
+# `roadmap` is an issues-31-34 gate whose name has no connection to the language
+# server. #1379 measured the cost of that: a reader is sent to the wrong
+# subsystem, and the cheapest discriminator -- running the named gate alone --
+# was written down nowhere. Name it here, where the invocation is.
+sh "$ROOT/tests/lsp/check.sh" || {
+    printf '%s\n' \
+        "roadmap 31-34: the LSP gate failed. The subject is tests/lsp/check.sh, not this task." \
+        "roadmap 31-34: reproduce it alone with \`sh tests/lsp/check.sh\`." >&2
+    exit 1
+}
 
 printf '%s\n' \
     "PASS: current Stage 2 integer Core probe printed -3 and 2, then exited 42" \
