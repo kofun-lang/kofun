@@ -59,16 +59,30 @@
 #                     Stage 2 parse capability; both bodies are current and
 #                     honest. So is a body that writes the `Blocked by:` line
 #                     correctly and names a non-issue in it: #571 and #930 wait
-#                     on RFC-0001 reaching `accepted`, #885 on an explicitly
-#                     unnamed predecessor. `blockedBy()` reads issue numbers from
-#                     that line, finds none, and returns an empty list, so those
-#                     three looked identical to an issue that declared nothing.
-#                     They are exempt, not owed a fix.
+#                     on RFC-0001 reaching `accepted`. `blockedBy()` reads issue
+#                     numbers from that line, finds none, and returns an empty
+#                     list, so those two looked identical to an issue that
+#                     declared nothing. They are exempt, not owed a fix.
 #                     Recorded separately from `unnamed-blocker` for
 #                     the same reason `stateless-tracker` is separate from
 #                     `unreadable-state`: an exemption folded into the drift
 #                     ledger is indistinguishable from drift, and would be
 #                     "fixed" by someone inventing an issue number for it.
+#
+#                     #885 was the third until 2026-08-13. Its `Blocked by:`
+#                     line named an unowned compiler-produced typed-Core term
+#                     identity and a complete cross-file dependency projection:
+#                     a real dependency no issue number expressed, so the
+#                     exemption was right while it stood. It ended the other way
+#                     round from the fix this ledger anticipates — not by the
+#                     predecessor being filed and named, but by the state being
+#                     corrected to `deferred`, which is what an issue waiting on
+#                     unowned work already was. Both are improvements and only
+#                     one was written down here. An exemption for a `blocked`
+#                     issue stops applying the moment the issue stops claiming
+#                     to be blocked, and its row then fails as unused, which is
+#                     how this one surfaced — on `main`, after the merge, since
+#                     the state lives on GitHub and the row lives in the repo.
 #
 # unclaimed-progress  an open issue labelled `in-progress` that carries no live
 #                     claim, so nothing records who owns work the label says is
@@ -89,4 +103,3 @@
 #                     comments on #645 extract to zero events. An inert claim
 #                     is worse than none: its author believes the signal is
 #                     published.
-capability-blocker	885	-	Typed upgrade patches slice 1: validate schema and compute
