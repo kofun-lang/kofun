@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 95,
+  "open_issues": 96,
   "issues": [
     {
       "number": 26,
@@ -1876,6 +1876,24 @@
       "claims": [
         {
           "agent_id": "codex-root-macho-sign-1392",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "number": 1393,
+      "title": "Native host evidence: execute all six Kofun-emitted images on matching runners",
+      "state_labels": [
+        "in-progress"
+      ],
+      "state_line": "in-progress",
+      "blocked_by": [],
+      "evidence_commits": [
+        "113585e835771b1fa4abbc7d36755517ec53fa36"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-root-native-hosts-1393",
           "status": "active"
         }
       ]
