@@ -254,7 +254,7 @@ printf '%s\n' "PASS: closure"
 # build flag must produce the exact same compiler artifact.
 (
     cd "$ROOT"
-    sha256sum -c bootstrap/stage2/SHA256SUMS >/dev/null
+    "$ROOT/bin/kofun-sha256" -c bootstrap/stage2/SHA256SUMS >/dev/null
 )
 kofun_stage2_build "$ROOT" "$WORK/stage2-release"
 # stage2-build-reuse: specialized macro-variant build; keep independent.

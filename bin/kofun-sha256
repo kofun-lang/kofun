@@ -1,0 +1,30 @@
+#!/bin/sh
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+BUILD_DIR=${KOFUN_SHA256_BUILD_DIR:-"$ROOT/build/sha256"}
+TOOL="$BUILD_DIR/kofun-sha256"
+CLI_SOURCE="$ROOT/bootstrap/stage2/sha256_cli.c"
+LIBRARY_SOURCE="$ROOT/bootstrap/stage2/sha256.c"
+LIBRARY_HEADER="$ROOT/bootstrap/stage2/sha256.h"
+CC=${CC:-cc}
+
+if test ! -x "$TOOL" ||
+   test "$CLI_SOURCE" -nt "$TOOL" ||
+   test "$LIBRARY_SOURCE" -nt "$TOOL" ||
+   test "$LIBRARY_HEADER" -nt "$TOOL"
+then
+    command -v "$CC" >/dev/null 2>&1 || {
+        printf '%s\n' 'kofun-sha256: a C11 compiler is required' >&2
+        exit 1
+    }
+    mkdir -p "$BUILD_DIR"
+    temporary="$TOOL.$$"
+    trap 'rm -f "$temporary"' 0 1 2 15
+    "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+        "$CLI_SOURCE" "$LIBRARY_SOURCE" -o "$temporary"
+    mv "$temporary" "$TOOL"
+    trap - 0 1 2 15
+fi
+
+exec "$TOOL" "$@"

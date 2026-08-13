@@ -77,8 +77,8 @@ mkdir -p "$work"
     declare_file sums bootstrap/stage1/SHA256SUMS
     declare_file sums bootstrap/stage2/SHA256SUMS
 
-    # Both sums files are verified with `sha256sum -c`, which reads every file
-    # they list, so every listed file is an input whether or not the chain
+    # Both sums files are verified with the repository SHA-256 CLI, which
+    # reads every file they list, so every listed file is an input whether or not the chain
     # names it directly. Omitting these two made the acquisition set
     # insufficient: a builder who obtained exactly the manifest failed at
     # `bootstrap/stage1/SHA256SUMS does not match the checkout` before

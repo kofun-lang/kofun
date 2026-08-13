@@ -23,7 +23,7 @@ require_text() {
     grep -Fq "$needle" "$file" || fail "$file lacks required text: $needle"
 }
 
-for command in awk cmp dd grep od sha256sum sort tr wc
+for command in awk cmp dd grep od "$ROOT/bin/kofun-sha256" sort tr wc
 do
     command -v "$command" >/dev/null 2>&1 || fail "$command is required"
 done
@@ -186,7 +186,7 @@ framed_hash() {
         u32be "$(byte_count "$payload")"
         dd if="$payload" bs=4096 2>/dev/null
     } >"$output.preimage"
-    digest=$(sha256sum "$output.preimage" | awk '{ print $1 }')
+    digest=$("$ROOT/bin/kofun-sha256" "$output.preimage" | awk '{ print $1 }')
     hex_to_bytes "$digest" >"$output"
     test "$(byte_count "$output")" -eq 32 || fail "invalid hash width: $domain"
 }
@@ -276,7 +276,7 @@ printf '%s\n' '30 40' '20 10' >"$WORK/cycles-lexical"
 test "$(awk -f "$CYCLE_AWK" "$WORK/cycles-lexical")" = '10 20' ||
     fail 'canonical equal-length cycle order is not lexicographic'
 
-export_fingerprint=$(sha256sum "$WORK/export-binding.payload" | awk '{ print $1 }')
+export_fingerprint=$("$ROOT/bin/kofun-sha256" "$WORK/export-binding.payload" | awk '{ print $1 }')
 test "$export_fingerprint" = ee457889a3dc6bb542b0916cbbe1007979eee57f81ad6e052cec86d9bfd22b15 ||
     fail "ExportBindingId payload fingerprint changed: $export_fingerprint"
 

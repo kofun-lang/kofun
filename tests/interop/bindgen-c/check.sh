@@ -53,7 +53,7 @@ require_line() {
     assert_grep "$label" -Fq -- "$needle" "$file"
 }
 
-for required in clang node readelf sha256sum; do
+for required in clang node readelf "$ROOT/bin/kofun-sha256"; do
     command -v "$required" >/dev/null 2>&1 ||
         fail "required tool unavailable: $required"
 done
@@ -125,7 +125,7 @@ require_line "$report" '"trust": "raw-trusted-foreign"' \
 triple=$(clang -print-effective-triple)
 header_sha=$(
     CDPATH= cd -- "$CASES" &&
-        sha256sum fixture/kbfix.h | cut -d' ' -f1
+        "$ROOT/bin/kofun-sha256" fixture/kbfix.h | cut -d' ' -f1
 )
 require_line "$module" "target:   $triple" \
     'module does not record the effective target triple'

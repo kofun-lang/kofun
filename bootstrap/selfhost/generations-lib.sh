@@ -70,14 +70,14 @@ bounded() {
 }
 
 digest_of() {
-    sha256sum "$1" | awk '{ print $1 }'
+    "$repo_root/bin/kofun-sha256" "$1" | awk '{ print $1 }'
 }
 
 # One digest over a set of files, independent of glob order. The build gate
 # records these and the check gate recomputes them, so the two computations
 # must be this one function or "stale" becomes a false positive.
 tree_digest() {
-    sha256sum "$@" | LC_ALL=C sort | sha256sum | awk '{ print $1 }'
+    "$repo_root/bin/kofun-sha256" "$@" | LC_ALL=C sort | "$repo_root/bin/kofun-sha256" | awk '{ print $1 }'
 }
 
 corpus_digest() {

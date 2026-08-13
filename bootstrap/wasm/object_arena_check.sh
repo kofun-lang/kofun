@@ -7,7 +7,7 @@ CC=${CC:-cc}
 ASSERT_CONTEXT='wasm32 object arena'
 . "$ROOT/tests/assertions/assert.sh"
 
-for tool in "$CC" node cmp sha256sum
+for tool in "$CC" node cmp "$ROOT/bin/kofun-sha256"
 do
     command -v "$tool" >/dev/null 2>&1 || {
         printf '%s\n' "wasm32 object arena gate requires $tool" >&2
@@ -42,7 +42,7 @@ cmp "$WORK/direct.wasm" "$WORK/sanitized.wasm"
 # silently changing an existing module.
 "$WORK/compiler" \
     "$ROOT/examples/wasm_arithmetic.kofun" "$WORK/legacy.wasm"
-legacy_digest=$(sha256sum "$WORK/legacy.wasm" | cut -d ' ' -f 1)
+legacy_digest=$("$ROOT/bin/kofun-sha256" "$WORK/legacy.wasm" | cut -d ' ' -f 1)
 assert_eq "legacy wasm32 sample digest" \
     "$legacy_digest" \
     ead99da7862aee50ec77099e16d8382cd5ef3b75920136c78734e788525856da

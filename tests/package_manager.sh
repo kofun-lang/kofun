@@ -43,13 +43,13 @@ cp "$WORK/project/kofun.packages.lock" "$WORK/first.lock"
 package_command lock >"$WORK/relock.stdout"
 cmp "$WORK/first.lock" "$WORK/project/kofun.packages.lock"
 
-expected_hash=$(sha256sum "$WORK/original-libanswer.a" | awk '{ print $1 }')
+expected_hash=$("$ROOT/bin/kofun-sha256" "$WORK/original-libanswer.a" | awk '{ print $1 }')
 assert_grep "project/kofun.packages.lock" \
     -Fqx "sha256 = \"$expected_hash\"" "$WORK/project/kofun.packages.lock"
 cache_entry=$WORK/cache/sha256/$expected_hash
 assert_regular_file "cache entry" "$cache_entry"
 assert_eq "digest of $cache_entry" \
-    "$(sha256sum "$cache_entry" | awk '{ print $1 }')" "$expected_hash"
+    "$("$ROOT/bin/kofun-sha256" "$cache_entry" | awk '{ print $1 }')" "$expected_hash"
 
 # A parser failure must not be hidden by a successful downstream sort.
 cp "$WORK/project/kofun.packages.toml" "$WORK/valid-manifest"
@@ -104,7 +104,7 @@ assert_eq "contents of cache-victim" \
     "$(cat "$WORK/cache-victim")" cache-sentinel
 assert_eq "contents of lock-victim" "$(cat "$WORK/lock-victim")" lock-sentinel
 assert_eq "digest of collision-cache/sha256/$expected_hash" \
-    "$(sha256sum "$WORK/collision-cache/sha256/$expected_hash" | awk '{ print $1 }')" \
+    "$("$ROOT/bin/kofun-sha256" "$WORK/collision-cache/sha256/$expected_hash" | awk '{ print $1 }')" \
     "$expected_hash"
 
 # Package use cannot silently opt an ordinary build into the host-C ABI.
@@ -167,7 +167,7 @@ snapshot_path=$(cat "$WORK/snapshot-path")
 assert_nonempty "snapshot path" "$snapshot_path"
 assert_absent "snapshot path" "$snapshot_path"
 assert_ne "digest of $cache_entry" \
-    "$(sha256sum "$cache_entry" | awk '{ print $1 }')" "$expected_hash"
+    "$("$ROOT/bin/kofun-sha256" "$cache_entry" | awk '{ print $1 }')" "$expected_hash"
 chmod u+w "$cache_entry"
 cp "$WORK/original-libanswer.a" "$cache_entry"
 chmod 444 "$cache_entry"

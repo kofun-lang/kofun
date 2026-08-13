@@ -23,7 +23,7 @@ kofun_stage2_build "$ROOT" "$WORK/kofun-stage2" ||
 
 profile_digest=$(awk -F '|' '$1 == "source_sha256" { print $2 }' \
     "$ROOT/bootstrap/selfhost/profile.meta")
-actual_digest=$(sha256sum "$ROOT/bootstrap/stage1/compiler.kofun" |
+actual_digest=$("$ROOT/bin/kofun-sha256" "$ROOT/bootstrap/stage1/compiler.kofun" |
     awk '{ print $1 }')
 test "$profile_digest" = "$actual_digest" ||
     fail "canonical source differs from profile.meta"

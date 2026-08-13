@@ -90,7 +90,7 @@ hex_to_bytes() (
 )
 
 fingerprint() {
-    sha256sum "$1" | awk '{ print $1 }'
+    "$ROOT/bin/kofun-sha256" "$1" | awk '{ print $1 }'
 }
 
 framed_hash() {
@@ -104,7 +104,7 @@ framed_hash() {
         u32be "$(byte_count "$payload")"
         cat "$payload"
     } >"$output.preimage"
-    digest=$(sha256sum "$output.preimage" | awk '{ print $1 }')
+    digest=$("$ROOT/bin/kofun-sha256" "$output.preimage" | awk '{ print $1 }')
     hex_to_bytes "$digest" >"$output"
     test "$(byte_count "$output")" -eq 32 ||
         fail "framed hash did not produce 32 bytes: $domain"
@@ -344,7 +344,7 @@ require_text "$MAPPING_SPEC" 'kofun.module-id-input/v1'
 require_text "$NAMESPACE_SPEC" 'kofun.namespace-id/v1'
 require_text "$BUILD_DOC" 'spec/modules/module-identity.md'
 
-for command in awk cmp dd grep head od sha256sum sort tail wc
+for command in awk cmp dd grep head od "$ROOT/bin/kofun-sha256" sort tail wc
 do
     command -v "$command" >/dev/null 2>&1 ||
         fail "required command not found: $command"

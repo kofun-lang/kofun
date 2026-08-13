@@ -214,6 +214,11 @@ tasks:
       - "sh tests/typed-sidecar/stage2-events.sh"
       - "sh tests/typed-sidecar/stage2-event-stream.sh"
 
+  sha256:
+    desc: "Verify the repository SHA-256 CLI and Node digest agreement"
+    cmds:
+      - "sh tests/sha256/check.sh"
+
   patterns:
     desc: "Verify lossless general Pattern syntax trees"
     cmds:
@@ -903,6 +908,7 @@ tasks:
             selfhost-native \
             stage2 \
             stage2-events \
+            sha256 \
             patterns \
             adt \
             records \

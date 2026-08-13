@@ -519,7 +519,7 @@ structurally valid non-Core function verifies explicit lowering rejection.
 Dedicated positive and negative fixtures exercise the ownership slice both
 through the Stage 2 seed and `kofun check`; unrelated structural programs are
 explicitly rejected as outside that slice. The gate uses only POSIX shell, a
-C11 compiler, `sha256sum`, and standard comparison/search tools.
+C11 compiler, the repository SHA-256 CLI, and standard comparison/search tools.
 
 `tests/conformance/modules/visibility-syntax/run.sh` separately covers all
 basic visibility forms, same-file forward calls and execution, contextual

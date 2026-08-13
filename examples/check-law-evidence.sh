@@ -26,7 +26,7 @@ status=$(printf '%s\n' "$fields" | sed -n '2p')
 source_path=$(printf '%s\n' "$fields" | sed -n '3p')
 recorded_hash=$(printf '%s\n' "$fields" | sed -n '4p')
 diagnostic_state=$(printf '%s\n' "$fields" | sed -n '5p')
-actual_hash=$(sha256sum "$SOURCE" | awk '{ print $1 }')
+actual_hash=$("$ROOT/bin/kofun-sha256" "$SOURCE" | awk '{ print $1 }')
 
 assert_eq 'artifact schema' "$schema" 'kofun.law-evidence/v1'
 assert_eq 'artifact truth state' "$status" 'unverified'

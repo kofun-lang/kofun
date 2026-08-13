@@ -47,7 +47,7 @@ buffered-io	portable	planned	#231	no buffered reader/writer exists over the sysc
 url	portable	planned	#638	parsing and normalisation; owned by the HTTP client contract, not independent
 secure-randomness	adapter	planned	#234	the Linux entropy adapter exists; the portable capability boundary does not
 temporary-files	adapter	planned	#231	creation, cleanup on take, and collision behaviour are unspecified
-hashes-checksums	portable	deferred	#636	no consumer yet; the toolchain uses sha256sum from the host
+hashes-checksums	portable	deferred	#636	no language-level consumer yet; the internal integrity CLI is not a standard-library API
 compression-archive	module	deferred	#636	no consumer yet; belongs to the module tier when one appears
 mime	module	deferred	#638	only meaningful once the HTTP client contract fixes content negotiation
 crypto-tls	module	deferred	#638	security-critical and independently versioned; must not enter the portable tier

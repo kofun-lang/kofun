@@ -4,7 +4,7 @@
   "version": "0.5.0-seed",
   "inputs": {
     "VERSION": "fc3fe18d6d955dee3b2206c68289be837839e5de43be2056c36fa583b52cbee6",
-    "release/claims.json": "fbd87e17c26ca317a2b9711bc5e9bda09220d48aa01832e29c2f31ae1c23ec02",
+    "release/claims.json": "b5631e9ca74f341b04b037a01b370738e543cb8a8ba17179868651a0686317ba",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
     "bootstrap/manifest.json": "9d02f8df61e7d1e6db5470b10cbb62fca1b31cde2ea8c589fddd216ad1168f5b"
   },
@@ -58,8 +58,7 @@
         "cc",
         "clang",
         "node",
-        "readelf",
-        "sha256sum"
+        "readelf"
       ]
     },
     {
@@ -202,8 +201,7 @@
       "negative_boundary": "bootstrap/selfhost/driver/corpus_builtin_rejects.tsv",
       "reproduction": "task bootstrap",
       "prerequisites": [
-        "cc",
-        "sha256sum"
+        "cc"
       ]
     },
     {
@@ -519,8 +517,7 @@
       "negative_boundary": "bootstrap/stage1/SHA256SUMS",
       "reproduction": "task bootstrap",
       "prerequisites": [
-        "cc",
-        "sha256sum"
+        "cc"
       ]
     },
     {
@@ -703,8 +700,8 @@
     }
   ],
   "evidence_digests": {
-    "Taskfile.yml": "fc057dce509cde21ed96a7f6b1e8cef4e4380d7c0b0b8b816ab6c37d5ea5a564",
-    "bootstrap/native/check.sh": "fea94cb623757e1bf17e4497f43d656b1e8ff57a39a92ece871d8ff257c0f2ef",
+    "Taskfile.yml": "ae07b0ce2130fdcac161ea2810a600913cd6ba914295eb9cdaaca807bff2b25c",
+    "bootstrap/native/check.sh": "64667b157d51cff52a132b42bfd0ed23ae47c99fefbf909d2a87eb4e83e5eca0",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/check-diverse-double-compilation-refusals.sh": "55fc39166070b9bc612fca6898086938b1a8ca122b1c1fb8e928f1a5d4cde572",
     "bootstrap/selfhost/driver/corpus_builtin_rejects.tsv": "b1fa0b26247581aef797a81880554a94233a34109215530641706d76777087d4",
@@ -712,15 +709,15 @@
     "bootstrap/selfhost/driver/corpus_reject.stdout": "b11ae682acae186b10022c3469af65b54cd03c2e88a4756eba1cbe5b0e9356f9",
     "bootstrap/stage1/README.md": "449e52413da5d35eafee5b56a7c243ee0363774b8d4110d2a3a998a49f95d52f",
     "bootstrap/stage1/SHA256SUMS": "0dc3d2677f03dfe3bd6f9da9f923315dd5f30dcaeca4768f3c63ec1f66744b94",
-    "bootstrap/stage2/README.md": "10e807af63670542ba1a425d1cc49ca7a18b9323f79f8df6c83b76922a650875",
+    "bootstrap/stage2/README.md": "e34702a9aa5a87a8e4b0eebec45e77420e2b0cb43f579979680ae4ba41e75aea",
     "bootstrap/stage2/fixtures/borrowed_move_text.kofun": "34502461891e7c8f42c9017e9fbfc857e54b10ca4fe59551be9ab9ab22d2c1b6",
     "bootstrap/wasm/fixtures/unsupported_text.kofun": "e0a45136410ddb85e9f5b3e5c39e7903d96da39aa53aaf3078d2555b4f383864",
-    "bootstrap/wasm/object_arena_check.sh": "da7938dfd6dc6a441e52f5f1adb262c4e65bd5a25b0fb8108140ccbc7eafdf9a",
+    "bootstrap/wasm/object_arena_check.sh": "81b4b3de96554a3f65f1e20f97407e68eb89f9fa7a133b431c878d984b79b7f6",
     "docs/BUILD_SYSTEM.md": "d4a372fc97c53874cc2438f3de132289beb033ce2bf1e67518b702de796b05a8",
     "docs/COMPILER_ARCHITECTURE.md": "9a5efcc5198106a9ca9f86708c200bd6681be481185618954b23c5affa62e2a5",
     "docs/DECIMAL.md": "f11dd11dad6bf6e4345914093a99376aaba42e238cd94c0616362c2bc9c583e6",
     "docs/DOCUMENTATION_INDEX.md": "f0e22ded32b0dfebd4e628e0c57036574c197b12889d07771539f6e29640b4d9",
-    "docs/GETTING_STARTED.md": "f0e48a73e7c024d4da46668f6b16221c1f5fba5595bf56942527297c0efa4e96",
+    "docs/GETTING_STARTED.md": "0e78ccfc1b58d1a3927c37aaf8a097d9c0ec14ed16f302f3c57fec1aee15fbd1",
     "docs/LAW_SYSTEM.md": "b974f0ad762bec778ee76afa5d0a2176423ac96a3a583739eee55dcb8dca5043",
     "docs/LINGUIST_RECOGNITION.md": "279f9afa7157c90e41d656974c2f5020f8b6d25acbbd389ee760efbb2d6d6166",
     "docs/MEMORY_MODEL.md": "2ad150ffa325a6ac8778ce307b6d9d15584916ec116ae697a22028dc2e6c102e",
@@ -732,7 +729,7 @@
     "docs/SELF_HOSTING.md": "46195e8254f2ad63c478bd64d3e0095c7485d94ee9968178006d5cb5f56d083d",
     "docs/SEMANTICS.md": "6e1d210890f5f53f281ea32fe28a0b4118b2804f5cb1caa4260a36c961b9cb92",
     "docs/TYPE_SYSTEM.md": "75d25999ad21708385b58f5fa6b3a5dec94df4928a95025fcbdb846c2ad36efb",
-    "examples/rust-shim/check.sh": "4cffb7e16d964122e2dff480f533cff5eacd0bd939a35fe5a71f71b447139500",
+    "examples/rust-shim/check.sh": "9699b9c0552c7329c7041783a129f7bca9cb7bb26d1901ca847a1c1cddb1b7b8",
     "examples/wasm_arithmetic.kofun": "ea73b3ee6b5172a4c8080ed5b4540fb23288d31000dd6ccd59a473e97836c246",
     "rfcs/0010-affine-resource-handle-v1.md": "0deef14c3d575a97acbd92907757707fd49680c1f18c4171e1d2bf6a54d2656e",
     "spec/enum-match-exhaustiveness.md": "ac383d5cdc76a3d0817bc7cacb12a473c4b18d099551d2e9a098928cc4980f43",
@@ -746,7 +743,7 @@
     "spec/wasm-host-abi-v1.md": "b49538b8b8bbdd29c36faa7b8bcd07e34c1dc14fb86cb654f1dbe6c93f25beaf",
     "spec/wasm-host-profile-v1.md": "162c197b85ca283e72dfa8009b0615be6454366da0e93c34f26dae95f4a533b6",
     "stdlib/decimal/README.md": "ae6ac8ebf59826e12b85593a55018bd2bc47ade82c6655bf3d98a2ddae19a1f5",
-    "stdlib/tests/verify.sh": "3c9056344a95b957792a6ab38e42f81a2ff86786b5ade6680cf8dc9d31edc5dd",
+    "stdlib/tests/verify.sh": "92e656804069d6a52c2f083f37c3a9b3a6f72cedd41c7f6992b7a0c07204e06a",
     "tests/cli.sh": "6ca726adc3cb5fa4437d34665603b6556a63d01d26db1141a93af3388c5240f9",
     "tests/cli_stage2_outcomes.sh": "9f84a95495afab023a1572b37a2508a4ee02a3a89881df14b887c209a628a9a7",
     "tests/conformance/capabilities.tsv": "b752c9e2330bcd994f135ee3f51f11a226ac68d33374049e48fc700d1dfb5ad4",

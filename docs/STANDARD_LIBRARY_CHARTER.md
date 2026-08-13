@@ -121,9 +121,9 @@ are `planned`; hashes and checksums, compression and archives, MIME, and
 crypto/TLS are `deferred`; database drivers are a `non-goal`.
 
 Three of those deserve their reason stated. **Hashes and checksums** are
-deferred because there is no consumer — the toolchain uses the host's
-`sha256sum`, and a standard hash API written before something needs it will be
-the wrong API. **MIME** is deferred to the HTTP client contract, because content
+deferred because there is no language-level consumer — the toolchain's narrow
+integrity CLI is not a general standard-library API, and an API written before
+something needs it will be the wrong API. **MIME** is deferred to the HTTP client contract, because content
 negotiation is where it acquires meaning. **Crypto and TLS** are deferred *and*
 pinned to tier 4: they must never enter the portable tier, whatever their state,
 because that would put them on the compiler's release cadence.

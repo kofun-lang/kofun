@@ -83,7 +83,7 @@ anonymous_module_id_input() {
 }
 
 fingerprint() {
-    sha256sum | sed 's/[[:space:]].*//'
+    "$ROOT/bin/kofun-sha256" | sed 's/[[:space:]].*//'
 }
 
 ascii_identifier() {

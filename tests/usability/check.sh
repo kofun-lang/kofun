@@ -304,7 +304,7 @@ printf 'usability corpus: item 4 ADT, record, and enforced exhaustiveness: PASS\
 assert_regular_file 'the frozen self-host source' "$FROZEN"
 kofun_check "$FROZEN"
 
-frozen_digest=$(sha256sum "$FROZEN" | cut -d' ' -f1)
+frozen_digest=$("$ROOT/bin/kofun-sha256" "$FROZEN" | cut -d' ' -f1)
 recorded_digest=$(awk '$2 == "compiler.kofun" { print $1 }' \
     "$ROOT/bootstrap/stage1/SHA256SUMS")
 assert_eq 'the frozen self-host source no longer matches its recorded digest' \
@@ -313,7 +313,7 @@ assert_eq 'the frozen self-host source no longer matches its recorded digest' \
 # No copy of the frozen source may live in this directory. Compare digests
 # rather than names, so a renamed copy is caught too.
 for candidate in "$CASES"/*.kofun; do
-    candidate_digest=$(sha256sum "$candidate" | cut -d' ' -f1)
+    candidate_digest=$("$ROOT/bin/kofun-sha256" "$candidate" | cut -d' ' -f1)
     assert_ne "a copy of the frozen self-host source is checked in as $(basename "$candidate")" \
         "$candidate_digest" "$frozen_digest"
 done

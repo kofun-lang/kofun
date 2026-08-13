@@ -142,8 +142,7 @@
           "cc",
           "clang",
           "node",
-          "readelf",
-          "sha256sum"
+          "readelf"
         ]
       }
     },
@@ -520,8 +519,7 @@
       "reproduction": {
         "command": "task bootstrap",
         "prerequisites": [
-          "cc",
-          "sha256sum"
+          "cc"
         ]
       }
     },
@@ -1338,8 +1336,7 @@
       "reproduction": {
         "command": "task bootstrap",
         "prerequisites": [
-          "cc",
-          "sha256sum"
+          "cc"
         ]
       }
     },

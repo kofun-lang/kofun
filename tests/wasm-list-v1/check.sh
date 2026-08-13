@@ -7,7 +7,7 @@ CC=${CC:-cc}
 ASSERT_CONTEXT='wasm32-hostabi1 List'
 . "$ROOT/tests/assertions/assert.sh"
 
-for tool in "$CC" node sha256sum cmp
+for tool in "$CC" node "$ROOT/bin/kofun-sha256" cmp
 do
     command -v "$tool" >/dev/null 2>&1 || {
         printf '%s\n' "wasm32-hostabi1 List gate requires $tool" >&2
@@ -125,7 +125,7 @@ assert_grep "unsupported List diagnostic" \
 
 # Bare wasm32 remains byte-compatible with the pre-profile binding.
 "$WORK/compiler" "$ROOT/examples/wasm_arithmetic.kofun" "$WORK/legacy.wasm"
-legacy_digest=$(sha256sum "$WORK/legacy.wasm" | awk '{print $1}')
+legacy_digest=$("$ROOT/bin/kofun-sha256" "$WORK/legacy.wasm" | awk '{print $1}')
 test "$legacy_digest" = \
     'ead99da7862aee50ec77099e16d8382cd5ef3b75920136c78734e788525856da' || {
     printf '%s\n' "FAIL: legacy wasm32 byte digest changed: $legacy_digest" >&2

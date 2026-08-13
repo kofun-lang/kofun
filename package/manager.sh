@@ -10,6 +10,8 @@ umask 077
 MANIFEST=${KOFUN_PACKAGE_MANIFEST:-kofun.packages.toml}
 LOCKFILE=${KOFUN_PACKAGE_LOCK:-kofun.packages.lock}
 PROJECT_ROOT=$(pwd -P)
+REPOSITORY_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+SHA256="$REPOSITORY_ROOT/bin/kofun-sha256"
 
 die() {
     printf '%s\n' "kofun package: $*" >&2
@@ -29,15 +31,7 @@ cache_root() {
 }
 
 sha256_file() {
-    if command -v sha256sum >/dev/null 2>&1; then
-        sha256sum "$1" | awk '{ print $1 }'
-    elif command -v shasum >/dev/null 2>&1; then
-        shasum -a 256 "$1" | awk '{ print $1 }'
-    elif command -v openssl >/dev/null 2>&1; then
-        openssl dgst -sha256 "$1" | sed 's/^.*= //'
-    else
-        die "SHA-256 tool not found (tried sha256sum, shasum, openssl)"
-    fi
+    "$SHA256" "$1" | awk '{ print $1 }'
 }
 
 parse_manifest() {

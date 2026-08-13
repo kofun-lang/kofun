@@ -72,7 +72,7 @@ Four fixture files sit beside it, owned by the sanitizer gate:
 |---|---|
 | same inputs, same bytes | bindgen runs twice; module and report are compared with `cmp` |
 | outputs carry no machine identity | neither artifact may contain the repository root or the gate work directory; the report is walked for any absolute path |
-| the interpretation context is captured | the module and report must record the clang version, effective target triple, language standard, defines, include paths, sysroot, and the header's sha256, which the gate recomputes with `sha256sum` |
+| the interpretation context is captured | the module and report must record the clang version, effective target triple, language standard, defines, include paths, sysroot, and the header's sha256, which the gate recomputes with `bin/kofun-sha256` |
 | context changes invalidate the artifact | regenerating with `-D KBFIX_EXTRA=1` must change both artifacts and must add `kbfix_extra_probe`, a declaration that exists only under that define — the define provably reached clang |
 | recorded ABI facts are the C compiler's facts | [`make-abi-probe.mjs`](make-abi-probe.mjs) generates a C program from the report; clang compiles it against the real header; its `sizeof`/`_Alignof`/`offsetof`/enum-constant output must equal the report's numbers byte for byte |
 | calling conventions are checked, not asserted | each accepted function records a target- and AST-derived convention; the generated C probe compares its real function type with an explicitly attributed type, while missing/unknown data and the fixture's non-default `ms_abi` declaration must be rejected with machine-readable reasons |

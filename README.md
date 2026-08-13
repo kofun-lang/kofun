@@ -87,7 +87,8 @@ the full source/gate map.
 ## Verify
 
 The core gates require [go-task](https://taskfile.dev), a POSIX shell, a C11
-compiler, Node.js, `sha256sum`, and Linux x86-64 tooling.
+compiler, Node.js, and Linux x86-64 tooling. Digest checks use the checked-in
+`bin/kofun-sha256` CLI, built from the repository's Stage 2 SHA-256 code.
 
 ```sh
 task --list          # available gates

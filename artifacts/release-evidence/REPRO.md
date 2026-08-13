@@ -23,7 +23,6 @@ report a pass it did not observe.
 | `node` | `bindgen-c-stage1`, `compiled-visibility-interfaces`, `documentation-index`, `stage2-typed-sidecar`, `stdio-language-server`, `wasm32-arithmetic-core`, `wasm32-hostabi1-object-arena` |
 | `qemu-aarch64` | `native-aarch64-function-calls`, `native-list-int-core`, `native-text-returning-calls`, `native-utf8-text-core`, `selfhost-native-corpus` |
 | `readelf` | `bindgen-c-stage1` |
-| `sha256sum` | `bindgen-c-stage1`, `compiler-seed`, `reproducible-bootstrap` |
 
 ## Per-claim reproduction
 

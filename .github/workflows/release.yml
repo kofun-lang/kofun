@@ -65,7 +65,7 @@ jobs:
           archive="kofun-$version.tar.gz"
           git archive --format=tar --prefix="kofun-$version/" "$GITHUB_REF_NAME" \
             | gzip -n >"$archive"
-          sha256sum "$archive" >"$archive.sha256"
+          ./bin/kofun-sha256 "$archive" >"$archive.sha256"
           printf 'archive: %s\n' "$(cat "$archive.sha256")"
 
       - name: Attach the archive to the release

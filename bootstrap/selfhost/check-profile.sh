@@ -77,7 +77,7 @@ test -f "$source_path" || fail "canonical source is missing: $source_path"
 test -f "$a1_source" || fail "A1 source is missing: $a1_source"
 test -d "$corpus_root" || fail "corpus root is missing: $corpus_root"
 
-actual_sha=$(sha256sum "$source_path" | awk '{ print $1 }')
+actual_sha=$("$repo_root/bin/kofun-sha256" "$source_path" | awk '{ print $1 }')
 test "$actual_sha" = "$expected_sha" ||
     fail "$source_path changed; review profile rows and update source_sha256"
 
