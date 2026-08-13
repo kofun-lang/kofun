@@ -261,6 +261,14 @@ static bool build_interface(
         set_error(program, "E2S69", "edition is outside the KIF v2 bound");
         return false;
     }
+    /* RFC-0012 0x800A, taken from the parsed inventory rather than defaulted.
+     * This path does see raw-foreign modules, so the class is read from the
+     * same `Module` record that `module_symbols.c` set when it parsed the
+     * header — not from the rendered `trust=` column, which would be
+     * reconstructing authority from text. */
+    interface->module_trust = program->modules[module_index].trust_raw_foreign
+        ? KOFUN_KIF_TRUST_RAW_FOREIGN
+        : KOFUN_KIF_TRUST_ORDINARY;
     for (index = 0u; index < program->declaration_count; index += 1u) {
         Declaration *declaration = &program->declarations[index];
         if (declaration->module_index != module_index || !declaration_is_interface_fact(declaration)) {

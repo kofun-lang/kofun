@@ -152,6 +152,17 @@ bool kofun_stage2_publish_kif(
     memcpy(interface.package_id, snapshot.package_id.bytes, KOFUN_KIF_ID_BYTES);
     memcpy(interface.module_id, snapshot.module_id.bytes, KOFUN_KIF_ID_BYTES);
     memcpy(interface.edition, snapshot.edition, strlen(snapshot.edition) + 1u);
+    /* RFC-0012 0x800A. Ordinary here is a consequence of a refusal, not an
+     * assumption: `after_optional_module_header` consumes only `module` and a
+     * dotted path, so a source carrying a `trust` line reaches the top-level
+     * loop and is refused as E2S02. This producer's only fact source is that
+     * compiler, so a raw-foreign module cannot arrive here at all.
+     *
+     * tests/conformance/modules/stage2-kif-producer asserts that refusal
+     * directly. If the canonical compiler ever learns the trust grammar, that
+     * assertion fails and this line has to be revisited — which is the point of
+     * asserting it rather than describing it in this comment. */
+    interface.module_trust = KOFUN_KIF_TRUST_ORDINARY;
     for (index = 0u; index < snapshot.fact_count; index += 1u) {
         const KofunStage2InterfaceFact *source = &snapshot.facts[index];
         KofunKifFact *destination_fact;

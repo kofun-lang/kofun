@@ -38,8 +38,17 @@ enum {
     TAG_PUBLIC_FACTS = 0x8006u,
     TAG_INTERNAL_FACTS = 0x8007u,
     TAG_PUBLIC_DIGEST = 0x8008u,
-    TAG_INTERNAL_DIGEST = 0x8009u
+    TAG_INTERNAL_DIGEST = 0x8009u,
+    /* RFC-0012. Distinct from FACT_TAG_TARGET_MODULE below, which is the same
+     * number in the nested fact-record namespace. Not a collision: these two
+     * enums index different records and are never scanned together. */
+    TAG_MODULE_TRUST = 0x800au
 };
+
+#define ENVELOPE_TAG_COUNT ((size_t)(TAG_MODULE_TRUST - TAG_SCHEMA + 1u))
+
+#define TRUST_ORDINARY_BYTES "ordinary"
+#define TRUST_RAW_FOREIGN_BYTES "raw-foreign"
 
 enum {
     FACT_TAG_NAMESPACE_ID = 0x8001u,
@@ -768,6 +777,38 @@ static bool fact_type_references_are_visible(
     return true;
 }
 
+/* The closed v1 value set. Returns NULL for anything else, including a zeroed
+ * struct field, so an unset trust class cannot be written. */
+static const char *trust_bytes(KofunKifModuleTrust trust, size_t *length) {
+    if (trust == KOFUN_KIF_TRUST_ORDINARY) {
+        *length = sizeof(TRUST_ORDINARY_BYTES) - 1u;
+        return TRUST_ORDINARY_BYTES;
+    }
+    if (trust == KOFUN_KIF_TRUST_RAW_FOREIGN) {
+        *length = sizeof(TRUST_RAW_FOREIGN_BYTES) - 1u;
+        return TRUST_RAW_FOREIGN_BYTES;
+    }
+    *length = 0u;
+    return NULL;
+}
+
+/* Exact-bytes match against the closed set. A zero-length payload is rejected
+ * here rather than mapped to `ordinary`: RFC-0012/A01 rejected option B
+ * precisely because empty and absent are too easy to conflate. */
+static bool trust_from_bytes(ByteView value, KofunKifModuleTrust *trust) {
+    if (value.length == sizeof(TRUST_ORDINARY_BYTES) - 1u &&
+        memcmp(value.bytes, TRUST_ORDINARY_BYTES, value.length) == 0) {
+        *trust = KOFUN_KIF_TRUST_ORDINARY;
+        return true;
+    }
+    if (value.length == sizeof(TRUST_RAW_FOREIGN_BYTES) - 1u &&
+        memcmp(value.bytes, TRUST_RAW_FOREIGN_BYTES, value.length) == 0) {
+        *trust = KOFUN_KIF_TRUST_RAW_FOREIGN;
+        return true;
+    }
+    return false;
+}
+
 static KofunKifStatus validate_interface(const KofunKifInterface *interface) {
     size_t total;
     size_t index;
@@ -775,8 +816,10 @@ static KofunKifStatus validate_interface(const KofunKifInterface *interface) {
     FactReference *facts = NULL;
     FactReference *constructors = NULL;
     KofunKifStatus status = KOFUN_KIF_OK;
+    size_t trust_length;
     if (interface == NULL || !id_is_nonzero(interface->package_id) ||
         !id_is_nonzero(interface->module_id) || !normalized_edition(interface->edition) ||
+        trust_bytes(interface->module_trust, &trust_length) == NULL ||
         !checked_add(interface->public_fact_count, interface->internal_fact_count, &total) ||
         (interface->public_fact_count != 0u && interface->public_facts == NULL) ||
         (interface->internal_fact_count != 0u && interface->internal_facts == NULL)) {
@@ -1077,26 +1120,42 @@ done:
     return status;
 }
 
+/* `base_view` is the 0x8001-0x8006 prefix the envelope payload also starts
+ * with. The two digest views are built from it rather than from each other,
+ * because the trust field has to land last in both — the payload writes it
+ * after the digests, where strictly-increasing tags require it, so a view that
+ * simply prefixed the payload could not contain it. */
 static KofunKifStatus build_digest_views(
     const KofunKifInterface *interface,
     const ByteBuffer *public_vector,
     const ByteBuffer *internal_vector,
+    ByteBuffer *base_view,
     ByteBuffer *public_view,
     ByteBuffer *internal_view
 ) {
     const char *edition = interface->edition;
-    if (!buffer_field(public_view, TAG_SCHEMA, KIF_SCHEMA, sizeof(KIF_SCHEMA) - 1u) ||
-        !buffer_field(public_view, TAG_EDITION, edition, strlen(edition)) ||
-        !buffer_field(public_view, TAG_COMPATIBILITY, KIF_COMPATIBILITY,
+    size_t trust_length = 0u;
+    const char *trust = trust_bytes(interface->module_trust, &trust_length);
+    if (trust == NULL) return KOFUN_KIF_NONCANONICAL;
+    if (!buffer_field(base_view, TAG_SCHEMA, KIF_SCHEMA, sizeof(KIF_SCHEMA) - 1u) ||
+        !buffer_field(base_view, TAG_EDITION, edition, strlen(edition)) ||
+        !buffer_field(base_view, TAG_COMPATIBILITY, KIF_COMPATIBILITY,
             sizeof(KIF_COMPATIBILITY) - 1u) ||
-        !buffer_field(public_view, TAG_PACKAGE_ID, interface->package_id, 32u) ||
-        !buffer_field(public_view, TAG_MODULE_ID, interface->module_id, 32u) ||
-        !buffer_field(public_view, TAG_PUBLIC_FACTS, public_vector->bytes, public_vector->length)) {
+        !buffer_field(base_view, TAG_PACKAGE_ID, interface->package_id, 32u) ||
+        !buffer_field(base_view, TAG_MODULE_ID, interface->module_id, 32u) ||
+        !buffer_field(base_view, TAG_PUBLIC_FACTS, public_vector->bytes, public_vector->length)) {
+        return base_view->status;
+    }
+    if (!buffer_append(public_view, base_view->bytes, base_view->length) ||
+        !buffer_field(public_view, TAG_MODULE_TRUST, trust, trust_length)) {
         return public_view->status;
     }
-    if (!buffer_append(internal_view, public_view->bytes, public_view->length) ||
+    if (!buffer_append(internal_view, base_view->bytes, base_view->length) ||
         !buffer_field(internal_view, TAG_INTERNAL_FACTS,
-            internal_vector->bytes, internal_vector->length)) return internal_view->status;
+            internal_vector->bytes, internal_vector->length) ||
+        !buffer_field(internal_view, TAG_MODULE_TRUST, trust, trust_length)) {
+        return internal_view->status;
+    }
     return KOFUN_KIF_OK;
 }
 
@@ -1108,29 +1167,35 @@ static KofunKifStatus encode_interface(
 ) {
     ByteBuffer public_vector = { 0 };
     ByteBuffer internal_vector = { 0 };
+    ByteBuffer base_view = { 0 };
     ByteBuffer public_view = { 0 };
     ByteBuffer internal_view = { 0 };
     ByteBuffer payload = { 0 };
     KofunKifStatus status = validate_interface(interface);
     uint8_t version[4];
     uint8_t payload_length[4];
+    size_t trust_length = 0u;
+    const char *trust = NULL;
     static const uint8_t magic[4] = { 'K', 'I', 'F', 0 };
     if (status != KOFUN_KIF_OK) return status;
+    trust = trust_bytes(interface->module_trust, &trust_length);
+    if (trust == NULL) return KOFUN_KIF_NONCANONICAL;
     status = encode_vector(interface->public_facts, interface->public_fact_count, &public_vector);
     if (status != KOFUN_KIF_OK) goto done;
     status = encode_vector(interface->internal_facts, interface->internal_fact_count, &internal_vector);
     if (status != KOFUN_KIF_OK) goto done;
     status = build_digest_views(interface, &public_vector, &internal_vector,
-        &public_view, &internal_view);
+        &base_view, &public_view, &internal_view);
     if (status != KOFUN_KIF_OK) goto done;
     framed_hash("kofun.digest.public-semantic/v2", public_view.bytes,
         public_view.length, public_digest);
     framed_hash("kofun.digest.package-internal/v2", internal_view.bytes,
         internal_view.length, internal_digest);
-    if (!buffer_append(&payload, public_view.bytes, public_view.length) ||
+    if (!buffer_append(&payload, base_view.bytes, base_view.length) ||
         !buffer_field(&payload, TAG_INTERNAL_FACTS, internal_vector.bytes, internal_vector.length) ||
         !buffer_field(&payload, TAG_PUBLIC_DIGEST, public_digest, 32u) ||
-        !buffer_field(&payload, TAG_INTERNAL_DIGEST, internal_digest, 32u)) {
+        !buffer_field(&payload, TAG_INTERNAL_DIGEST, internal_digest, 32u) ||
+        !buffer_field(&payload, TAG_MODULE_TRUST, trust, trust_length)) {
         status = payload.status;
         goto done;
     }
@@ -1148,6 +1213,7 @@ static KofunKifStatus encode_interface(
 done:
     buffer_destroy(&public_vector);
     buffer_destroy(&internal_vector);
+    buffer_destroy(&base_view);
     buffer_destroy(&public_view);
     buffer_destroy(&internal_view);
     buffer_destroy(&payload);
@@ -1225,13 +1291,16 @@ static KofunKifStatus parse_envelope_fields(
     const uint8_t *bytes,
     size_t length,
     KofunKifLimits limits,
-    ParsedField fields[9]
+    ParsedField fields[ENVELOPE_TAG_COUNT]
 ) {
     size_t cursor;
-    KofunKifStatus status = scan_fields(bytes, length, limits, TAG_SCHEMA, 9u,
-        false, fields);
+    KofunKifStatus status = scan_fields(bytes, length, limits, TAG_SCHEMA,
+        ENVELOPE_TAG_COUNT, false, fields);
     if (status != KOFUN_KIF_OK) return status;
-    for (cursor = 0u; cursor < 9u; cursor += 1u) {
+    /* Every envelope tag is required, so a zero tag here is the absent-field
+     * refusal — including an artifact written before 0x800A existed. RFC-0012
+     * is explicit that absence is not grandfathered. */
+    for (cursor = 0u; cursor < ENVELOPE_TAG_COUNT; cursor += 1u) {
         if (fields[cursor].tag == 0u) return KOFUN_KIF_CORRUPT;
     }
     return KOFUN_KIF_OK;
@@ -1623,26 +1692,39 @@ static KofunKifStatus parse_vector(
     return KOFUN_KIF_OK;
 }
 
+/* Mirrors build_digest_views field for field. The two must agree exactly or
+ * every well-formed artifact fails its own digest check, so the trust field is
+ * appended last on both sides here as it is there. */
 static KofunKifStatus recompute_claimed_digests(
-    ParsedField fields[9],
+    ParsedField fields[ENVELOPE_TAG_COUNT],
     uint8_t public_digest[32],
     uint8_t internal_digest[32]
 ) {
+    ByteBuffer base_view = { 0 };
     ByteBuffer public_view = { 0 };
     ByteBuffer internal_view = { 0 };
     KofunKifStatus status = KOFUN_KIF_OK;
+    const ParsedField *trust = &fields[TAG_MODULE_TRUST - TAG_SCHEMA];
     size_t index;
     for (index = 0u; index <= TAG_PUBLIC_FACTS - TAG_SCHEMA; index += 1u) {
-        if (!buffer_field(&public_view, fields[index].tag,
+        if (!buffer_field(&base_view, fields[index].tag,
                 fields[index].value.bytes, fields[index].value.length)) {
-            status = public_view.status;
+            status = base_view.status;
             goto done;
         }
     }
-    if (!buffer_append(&internal_view, public_view.bytes, public_view.length) ||
+    if (!buffer_append(&public_view, base_view.bytes, base_view.length) ||
+        !buffer_field(&public_view, TAG_MODULE_TRUST,
+            trust->value.bytes, trust->value.length)) {
+        status = public_view.status;
+        goto done;
+    }
+    if (!buffer_append(&internal_view, base_view.bytes, base_view.length) ||
         !buffer_field(&internal_view, TAG_INTERNAL_FACTS,
             fields[TAG_INTERNAL_FACTS - TAG_SCHEMA].value.bytes,
-            fields[TAG_INTERNAL_FACTS - TAG_SCHEMA].value.length)) {
+            fields[TAG_INTERNAL_FACTS - TAG_SCHEMA].value.length) ||
+        !buffer_field(&internal_view, TAG_MODULE_TRUST,
+            trust->value.bytes, trust->value.length)) {
         status = internal_view.status;
         goto done;
     }
@@ -1651,6 +1733,7 @@ static KofunKifStatus recompute_claimed_digests(
     framed_hash("kofun.digest.package-internal/v2", internal_view.bytes,
         internal_view.length, internal_digest);
 done:
+    buffer_destroy(&base_view);
     buffer_destroy(&public_view);
     buffer_destroy(&internal_view);
     return status;
@@ -1662,11 +1745,12 @@ KifReadResult kofun_kif_read(
     KofunKifLimits limits
 ) {
     static const uint8_t magic[4] = { 'K', 'I', 'F', 0 };
-    ParsedField fields[9];
+    ParsedField fields[ENVELOPE_TAG_COUNT];
     KofunKifInterface *interface = NULL;
     KofunKifStatus status;
     uint8_t public_digest[32];
     uint8_t internal_digest[32];
+    KofunKifModuleTrust module_trust = KOFUN_KIF_TRUST_ORDINARY;
     size_t total;
     if (!limits_are_valid(limits) || length > limits.max_envelope_bytes ||
         length > KOFUN_KIF_MAX_ENVELOPE) return read_result(KOFUN_KIF_LIMIT_EXHAUSTED, NULL);
@@ -1690,6 +1774,12 @@ KifReadResult kofun_kif_read(
             KIF_COMPATIBILITY, sizeof(KIF_COMPATIBILITY) - 1u) != 0) {
         return read_result(KOFUN_KIF_UNSUPPORTED_SCHEMA, NULL);
     }
+    /* Unknown value in 0x800A rejects; a reader may not skip it. This runs
+     * before the digests are recomputed so a noncanonical trust class is named
+     * as such rather than surfacing as a digest mismatch. */
+    if (!trust_from_bytes(fields[TAG_MODULE_TRUST - TAG_SCHEMA].value, &module_trust)) {
+        return read_result(KOFUN_KIF_NONCANONICAL, NULL);
+    }
     if (fields[TAG_PACKAGE_ID - TAG_SCHEMA].value.length != 32u ||
         fields[TAG_MODULE_ID - TAG_SCHEMA].value.length != 32u ||
         fields[TAG_PUBLIC_DIGEST - TAG_SCHEMA].value.length != 32u ||
@@ -1705,6 +1795,7 @@ KifReadResult kofun_kif_read(
     memcpy(interface->edition, fields[TAG_EDITION - TAG_SCHEMA].value.bytes,
         fields[TAG_EDITION - TAG_SCHEMA].value.length);
     interface->edition[fields[TAG_EDITION - TAG_SCHEMA].value.length] = '\0';
+    interface->module_trust = module_trust;
     interface->owns_storage = true;
     if (!id_is_nonzero(interface->package_id) || !id_is_nonzero(interface->module_id) ||
         !normalized_edition(interface->edition)) {
@@ -1741,6 +1832,17 @@ KifReadResult kofun_kif_read(
 failed:
     kofun_kif_destroy(interface);
     return read_result(status, NULL);
+}
+
+bool kofun_kif_trust_agrees(
+    const KofunKifInterface *interface,
+    bool source_raw_foreign
+) {
+    KofunKifModuleTrust expected = source_raw_foreign
+        ? KOFUN_KIF_TRUST_RAW_FOREIGN
+        : KOFUN_KIF_TRUST_ORDINARY;
+    if (interface == NULL) return false;
+    return interface->module_trust == expected;
 }
 
 void kofun_kif_destroy(KofunKifInterface *interface) {
