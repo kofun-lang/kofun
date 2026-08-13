@@ -152,10 +152,14 @@ jobs:
           if ($actual -ne $expected) { throw "digest $actual, expected $expected" }
           $program = Join-Path $PWD "native-$($env:TARGET).exe"
           Copy-Item $env:IMAGE $program
-          $output = & $program 2>&1
-          $status = $LASTEXITCODE
+          $stdout = Join-Path $PWD 'native.stdout'
+          $stderr = Join-Path $PWD 'native.stderr'
+          $process = Start-Process -FilePath $program -NoNewWindow -Wait -PassThru `
+            -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          $status = $process.ExitCode
           if ($status -ne 0) { throw "native image exited $status" }
-          if (@($output).Count -ne 0) { throw "unexpected output: $output" }
+          if ((Get-Item $stdout).Length -ne 0) { throw 'unexpected stdout' }
+          if ((Get-Item $stderr).Length -ne 0) { throw 'unexpected stderr' }
           $fields = @(
             'native-host-execution/v1', $env:GITHUB_SHA, $env:GITHUB_RUN_ID,
             $env:GITHUB_RUN_ATTEMPT, $env:TARGET, $env:RUNNER_LABEL,
@@ -218,6 +222,11 @@ jobs:
           output=$("$IMAGE" 2>native.stderr)
           status=$?
           set -e
+          if test "$status" -ne 0; then
+            printf 'native image exited %s\n' "$status" >&2
+            sed -n '1,80p' native.stderr >&2
+            exit 1
+          fi
           test "$status" -eq 0
           test -z "$output"
           test ! -s native.stderr

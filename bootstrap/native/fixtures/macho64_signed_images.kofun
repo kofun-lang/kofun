@@ -78,10 +78,10 @@ fn macho64_bridge_page_size(cpu_type: Int) -> Int {
 
 fn macho64_bridge_code_size(cpu_type: Int) -> Int {
     if cpu_type == 16777223 {
-        return 9
+        return 3
     }
     if cpu_type == 16777228 {
-        return 12
+        return 8
     }
     return 0
 }
@@ -339,13 +339,12 @@ fn macho64_signed_prefix_byte(cpu_type: Int, index: Int) -> Int {
     }
 
     if cpu_type == 16777223 {
-        let code: List[Int] = [184, 1, 0, 0, 2, 49, 255, 15, 5]
+        let code: List[Int] = [49, 192, 195]
         return fixed_byte(code, index - 512)
     }
     let code: List[Int] = [
-        0, 0, 128, 210,
-        48, 0, 128, 210,
-        1, 16, 0, 212
+        0, 0, 128, 82,
+        192, 3, 95, 214
     ]
     return fixed_byte(code, index - 512)
 }

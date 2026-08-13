@@ -145,11 +145,11 @@ fn emit_commands() -> Int {
 fn emit_macho64(cpu_type: Int) -> Int {
     let mut cpu_subtype = 0
     let mut page_size = 16384
-    let mut code_size = 12
+    let mut code_size = 8
     if cpu_type == 16777223 {
         cpu_subtype = 3
         page_size = 4096
-        code_size = 9
+        code_size = 3
     }
 
     emit_u32(4277009103)
@@ -166,28 +166,18 @@ fn emit_macho64(cpu_type: Int) -> Int {
     emit_zeros(176)
 
     if cpu_type == 16777223 {
-        emit(184)
-        emit(1)
-        emit(0)
-        emit(0)
-        emit(2)
         emit(49)
-        emit(255)
-        emit(15)
-        emit(5)
+        emit(192)
+        emit(195)
     } else {
         emit(0)
         emit(0)
         emit(128)
-        emit(210)
-        emit(48)
-        emit(0)
-        emit(128)
-        emit(210)
-        emit(1)
-        emit(16)
-        emit(0)
-        emit(212)
+        emit(82)
+        emit(192)
+        emit(3)
+        emit(95)
+        emit(214)
     }
     emit_zeros(page_size - 512 - code_size)
     return 0

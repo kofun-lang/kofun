@@ -39,8 +39,8 @@ RFC-0018/A01. It returns a complete page-sized Mach-O 64 image with
 `__PAGEZERO`, one executable `__TEXT,__text` section, `/usr/lib/dyld` in
 `LC_LOAD_DYLINKER`, a macOS 11 `LC_BUILD_VERSION`, and `LC_MAIN`. x86-64 uses a
 4 KiB image and AArch64 uses a 16 KiB image; both place the bounded entry bytes
-at file offset 512. `macho64_entry_image` pins distinct raw `exit(0)` syscall
-sequences and imports no library.
+at file offset 512. `macho64_entry_image` pins distinct return-zero sequences
+for the function dyld calls through `LC_MAIN` and imports no library.
 
 The canonical writer is Kofun and requires no assembler, linker, system SDK,
 or foreign-language image writer. `check-macho64.sh` produces both images

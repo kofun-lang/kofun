@@ -33,7 +33,7 @@ const profiles = [
     cpuSubtype: 3,
     pageSize: 4096,
     alignment: 0,
-    code: Buffer.from([0xb8, 1, 0, 0, 2, 0x31, 0xff, 0x0f, 5]),
+    code: Buffer.from([0x31, 0xc0, 0xc3]),
   },
   {
     name: "AArch64",
@@ -42,9 +42,8 @@ const profiles = [
     pageSize: 16384,
     alignment: 2,
     code: Buffer.from([
-      0, 0, 0x80, 0xd2,
-      0x30, 0, 0x80, 0xd2,
-      1, 0x10, 0, 0xd4,
+      0, 0, 0x80, 0x52,
+      0xc0, 3, 0x5f, 0xd6,
     ]),
   },
 ];

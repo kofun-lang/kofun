@@ -748,17 +748,15 @@ fn macho64_image(cpu_type: Int, code: List[Int]) -> List[Int] {
 
 fn macho64_entry_code(cpu_type: Int) -> List[Int] {
     if cpu_type == 16777223 {
-        # macOS x86-64: exit(0), syscall class UNIX = 0x02000000.
-        # mov eax,0x02000001; xor edi,edi; syscall
-        return [184, 1, 0, 0, 2, 49, 255, 15, 5]
+        # LC_MAIN is called through dyld's process-start glue. Return zero to
+        # that caller; issuing a raw exit syscall bypasses the glue and is not
+        # the LC_MAIN entry contract.
+        # xor eax,eax; ret
+        return [49, 192, 195]
     }
     if cpu_type == 16777228 {
-        # macOS AArch64: x0=0; x16=SYS_exit; svc #0x80.
-        return [
-            0, 0, 128, 210,
-            48, 0, 128, 210,
-            1, 16, 0, 212,
-        ]
+        # mov w0,#0; ret
+        return [0, 0, 128, 82, 192, 3, 95, 214]
     }
     return []
 }
