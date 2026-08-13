@@ -55,7 +55,7 @@ fn emit_pe32plus(machine: Int) -> Int {
     emit_u32(0)
     emit_u32(0)
     emit_u16(240)
-    emit_u16(35)
+    emit_u16(34)
 
     emit_u16(523)
     emit(0)
@@ -79,7 +79,7 @@ fn emit_pe32plus(machine: Int) -> Int {
     emit_u32(512)
     emit_u32(0)
     emit_u16(3)
-    emit_u16(256)
+    emit_u16(352)
     emit_u64(1048576)
     emit_u64(4096)
     emit_u64(1048576)

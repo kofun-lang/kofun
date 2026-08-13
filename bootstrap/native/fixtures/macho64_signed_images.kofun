@@ -120,10 +120,10 @@ fn macho64_signed_prefix_byte(cpu_type: Int, index: Int) -> Int {
         return u32_le_byte(2, index - 12)
     }
     if index < 20 {
-        return u32_le_byte(7, index - 16)
+        return u32_le_byte(8, index - 16)
     }
     if index < 24 {
-        return u32_le_byte(392, index - 20)
+        return u32_le_byte(448, index - 20)
     }
     if index < 28 {
         return u32_le_byte(2097285, index - 24)
@@ -291,48 +291,80 @@ fn macho64_signed_prefix_byte(cpu_type: Int, index: Int) -> Int {
         return 0
     }
 
-    # LC_BUILD_VERSION, LC_MAIN, LC_CODE_SIGNATURE.
+    # LC_LOAD_DYLIB /usr/lib/libSystem.B.dylib, 360..415.
     if index < 364 {
-        return u32_le_byte(50, index - 360)
+        return u32_le_byte(12, index - 360)
     }
     if index < 368 {
-        return u32_le_byte(24, index - 364)
+        return u32_le_byte(56, index - 364)
     }
     if index < 372 {
-        return u32_le_byte(1, index - 368)
+        return u32_le_byte(24, index - 368)
     }
     if index < 376 {
-        return u32_le_byte(720896, index - 372)
+        return u32_le_byte(2, index - 372)
     }
     if index < 380 {
-        return u32_le_byte(720896, index - 376)
+        return u32_le_byte(65536, index - 376)
     }
     if index < 384 {
-        return 0
+        return u32_le_byte(65536, index - 380)
     }
-    if index < 388 {
-        return u32_le_byte(2147483688, index - 384)
-    }
-    if index < 392 {
-        return u32_le_byte(24, index - 388)
-    }
-    if index < 400 {
-        return u64_le_byte(512, index - 392)
-    }
-    if index < 408 {
-        return 0
-    }
-    if index < 412 {
-        return u32_le_byte(29, index - 408)
+    if index < 411 {
+        let path: List[Int] = [
+            47, 117, 115, 114, 47, 108, 105, 98,
+            47, 108, 105, 98, 83, 121, 115, 116,
+            101, 109, 46, 66, 46, 100, 121, 108,
+            105, 98, 0
+        ]
+        return fixed_byte(path, index - 384)
     }
     if index < 416 {
-        return u32_le_byte(16, index - 412)
+        return 0
     }
+
+    # LC_BUILD_VERSION, LC_MAIN, LC_CODE_SIGNATURE.
     if index < 420 {
-        return u32_le_byte(page_size, index - 416)
+        return u32_le_byte(50, index - 416)
     }
     if index < 424 {
-        return u32_le_byte(160, index - 420)
+        return u32_le_byte(24, index - 420)
+    }
+    if index < 428 {
+        return u32_le_byte(1, index - 424)
+    }
+    if index < 432 {
+        return u32_le_byte(720896, index - 428)
+    }
+    if index < 436 {
+        return u32_le_byte(720896, index - 432)
+    }
+    if index < 440 {
+        return 0
+    }
+    if index < 444 {
+        return u32_le_byte(2147483688, index - 440)
+    }
+    if index < 448 {
+        return u32_le_byte(24, index - 444)
+    }
+    if index < 456 {
+        return u64_le_byte(512, index - 448)
+    }
+    if index < 464 {
+        return 0
+    }
+    if index < 468 {
+        return u32_le_byte(29, index - 464)
+    }
+    if index < 472 {
+        return u32_le_byte(16, index - 468)
+    }
+    if index < 476 {
+        return u32_le_byte(page_size, index - 472)
+    }
+    if index < 480 {
+        return u32_le_byte(160, index - 476)
     }
     if index < 512 {
         return 0

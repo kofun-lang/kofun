@@ -463,8 +463,10 @@ fn pe32plus_coff_header(machine: Int) -> List[Int] {
     header = concat(header, u32_le(0))   # PointerToSymbolTable
     header = concat(header, u32_le(0))   # NumberOfSymbols
     header = concat(header, u16_le(240)) # SizeOfOptionalHeader, PE32+
-    # RELOCS_STRIPPED | EXECUTABLE_IMAGE | LARGE_ADDRESS_AWARE.
-    return concat(header, u16_le(35))
+    # EXECUTABLE_IMAGE | LARGE_ADDRESS_AWARE. The image contains no absolute
+    # addresses, so it needs no base-relocation records; do not advertise
+    # RELOCS_STRIPPED, which the Windows Arm64 loader rejects for this image.
+    return concat(header, u16_le(34))
 }
 
 fn pe32plus_optional_header() -> List[Int] {
@@ -489,7 +491,10 @@ fn pe32plus_optional_header() -> List[Int] {
     header = concat(header, u32_le(512))  # SizeOfHeaders
     header = concat(header, u32_le(0))    # CheckSum
     header = concat(header, u16_le(3))    # IMAGE_SUBSYSTEM_WINDOWS_CUI
-    header = concat(header, u16_le(256))  # IMAGE_DLLCHARACTERISTICS_NX_COMPAT
+    # HIGH_ENTROPY_VA | DYNAMIC_BASE | NX_COMPAT. With position-independent
+    # entry code and no absolute addresses, an empty relocation directory is
+    # intentional and matches the PE32+ contract emitted for Windows Arm64.
+    header = concat(header, u16_le(352))
     header = concat(header, u64_le(1048576)) # SizeOfStackReserve
     header = concat(header, u64_le(4096))    # SizeOfStackCommit
     header = concat(header, u64_le(1048576)) # SizeOfHeapReserve
@@ -632,8 +637,8 @@ fn macho64_header(cpu_type: Int) -> List[Int] {
     header = concat(header, u32_le(cpu_type))
     header = concat(header, u32_le(cpu_subtype))
     header = concat(header, u32_le(2))   # MH_EXECUTE
-    header = concat(header, u32_le(5))   # five load commands
-    header = concat(header, u32_le(304)) # total load-command bytes
+    header = concat(header, u32_le(6))   # six load commands
+    header = concat(header, u32_le(360)) # total load-command bytes
     # MH_NOUNDEFS | MH_DYLDLINK | MH_TWOLEVEL | MH_PIE.
     header = concat(header, u32_le(2097285))
     return concat(header, u32_le(0)) # reserved
@@ -712,6 +717,22 @@ fn macho64_dylinker_command() -> List[Int] {
     return pad_to(command, 32)
 }
 
+fn macho64_libsystem_command() -> List[Int] {
+    let mut command = u32_le(12) # LC_LOAD_DYLIB
+    command = concat(command, u32_le(56))
+    command = concat(command, u32_le(24)) # dylib name offset
+    command = concat(command, u32_le(2))  # reproducible current-version stamp
+    command = concat(command, u32_le(65536)) # current version 1.0.0
+    command = concat(command, u32_le(65536)) # compatibility version 1.0.0
+    command = concat(command, [
+        47, 117, 115, 114, 47, 108, 105, 98,
+        47, 108, 105, 98, 83, 121, 115, 116,
+        101, 109, 46, 66, 46, 100, 121, 108,
+        105, 98, 0,
+    ]) # /usr/lib/libSystem.B.dylib\0
+    return pad_to(command, 56)
+}
+
 fn macho64_build_version_command() -> List[Int] {
     let mut command = u32_le(50) # LC_BUILD_VERSION
     command = concat(command, u32_le(24))
@@ -736,9 +757,10 @@ fn macho64_image(cpu_type: Int, code: List[Int]) -> List[Int] {
     image = concat(image, macho64_pagezero_segment())
     image = concat(image, macho64_text_segment(cpu_type, len(code)))
     image = concat(image, macho64_dylinker_command())
+    image = concat(image, macho64_libsystem_command())
     image = concat(image, macho64_build_version_command())
     image = concat(image, macho64_main_command())
-    if len(image) != 336 {
+    if len(image) != 392 {
         return []
     }
     image = pad_to(image, 512)
@@ -748,9 +770,9 @@ fn macho64_image(cpu_type: Int, code: List[Int]) -> List[Int] {
 
 fn macho64_entry_code(cpu_type: Int) -> List[Int] {
     if cpu_type == 16777223 {
-        # LC_MAIN is called through dyld's process-start glue. Return zero to
-        # that caller; issuing a raw exit syscall bypasses the glue and is not
-        # the LC_MAIN entry contract.
+        # LC_MAIN is called as main(argc, argv, envp, apple) by dyld. The
+        # declared libSystem dependency supplies dyld's required exit path
+        # after this function returns zero.
         # xor eax,eax; ret
         return [49, 192, 195]
     }
@@ -857,8 +879,8 @@ fn macho64_signed_header(cpu_type: Int) -> List[Int] {
     header = concat(header, u32_le(cpu_type))
     header = concat(header, u32_le(cpu_subtype))
     header = concat(header, u32_le(2))   # MH_EXECUTE
-    header = concat(header, u32_le(7))   # seven load commands
-    header = concat(header, u32_le(392)) # total load-command bytes
+    header = concat(header, u32_le(8))   # eight load commands
+    header = concat(header, u32_le(448)) # total load-command bytes
     header = concat(header, u32_le(2097285))
     return concat(header, u32_le(0))
 }
@@ -949,13 +971,14 @@ fn macho64_signed_prefix(
         macho64_linkedit_segment(cpu_type, signature_size),
     )
     image = concat(image, macho64_dylinker_command())
+    image = concat(image, macho64_libsystem_command())
     image = concat(image, macho64_build_version_command())
     image = concat(image, macho64_main_command())
     image = concat(
         image,
         macho64_code_signature_command(cpu_type, signature_size),
     )
-    if len(image) != 424 {
+    if len(image) != 480 {
         let empty: List[Int] = []
         return empty
     }

@@ -67,8 +67,8 @@ function validate(bytes, profile) {
   expect(u32le(bytes, 4) === profile.cpuType, `${profile.name}: CPU type`);
   expect(u32le(bytes, 8) === profile.cpuSubtype, `${profile.name}: CPU subtype`);
   expect(u32le(bytes, 12) === 2, `${profile.name}: MH_EXECUTE`);
-  expect(u32le(bytes, 16) === 7, `${profile.name}: load-command count`);
-  expect(u32le(bytes, 20) === 392, `${profile.name}: load-command bytes`);
+  expect(u32le(bytes, 16) === 8, `${profile.name}: load-command count`);
+  expect(u32le(bytes, 20) === 448, `${profile.name}: load-command bytes`);
   expect(u32le(bytes, 24) === 0x200085, `${profile.name}: Mach flags`);
   expect(u32le(bytes, 28) === 0, `${profile.name}: reserved header field`);
 
@@ -126,7 +126,16 @@ function validate(bytes, profile) {
     `${profile.name}: dylinker path`,
   );
 
-  const version = 360;
+  const libsystem = 360;
+  expect(u32le(bytes, libsystem) === 0x0c, `${profile.name}: LC_LOAD_DYLIB`);
+  expect(u32le(bytes, libsystem + 4) === 56, `${profile.name}: dylib command size`);
+  expect(u32le(bytes, libsystem + 8) === 24, `${profile.name}: dylib path offset`);
+  expect(
+    bytes.subarray(libsystem + 24, libsystem + 51).equals(Buffer.from("/usr/lib/libSystem.B.dylib\0")),
+    `${profile.name}: libSystem path`,
+  );
+
+  const version = 416;
   expect(u32le(bytes, version) === 0x32, `${profile.name}: LC_BUILD_VERSION`);
   expect(u32le(bytes, version + 4) === 24, `${profile.name}: version size`);
   expect(u32le(bytes, version + 8) === 1, `${profile.name}: macOS platform`);
@@ -134,26 +143,26 @@ function validate(bytes, profile) {
   expect(u32le(bytes, version + 16) === 0x0b0000, `${profile.name}: SDK`);
   expect(u32le(bytes, version + 20) === 0, `${profile.name}: tool count`);
 
-  const main = 384;
+  const main = 440;
   expect(u32le(bytes, main) === 0x80000028, `${profile.name}: LC_MAIN`);
   expect(u32le(bytes, main + 4) === 24, `${profile.name}: main size`);
   expect(u64le(bytes, main + 8) === 512n, `${profile.name}: entry offset`);
   expect(u64le(bytes, main + 16) === 0n, `${profile.name}: stack size`);
 
-  const codeSignature = 408;
+  const codeSignature = 464;
   expect(u32le(bytes, codeSignature) === 0x1d, `${profile.name}: LC_CODE_SIGNATURE`);
   expect(u32le(bytes, codeSignature + 4) === 16, `${profile.name}: signature command size`);
   expect(u32le(bytes, codeSignature + 8) === profile.pageSize, `${profile.name}: signature offset`);
   expect(u32le(bytes, codeSignature + 12) === 160, `${profile.name}: signature size`);
 
   let commandOffset = 32;
-  for (let index = 0; index < 7; index += 1) {
+  for (let index = 0; index < 8; index += 1) {
     const commandSize = u32le(bytes, commandOffset + 4);
     expect(commandSize >= 8 && commandSize % 8 === 0, `${profile.name}: aligned command ${index}`);
     commandOffset += commandSize;
   }
-  expect(commandOffset === 424, `${profile.name}: command traversal end`);
-  expect(bytes.subarray(424, 512).every((byte) => byte === 0), `${profile.name}: header padding`);
+  expect(commandOffset === 480, `${profile.name}: command traversal end`);
+  expect(bytes.subarray(480, 512).every((byte) => byte === 0), `${profile.name}: header padding`);
   expect(
     bytes.subarray(512, 512 + profile.code.length).equals(profile.code),
     `${profile.name}: entry code`,

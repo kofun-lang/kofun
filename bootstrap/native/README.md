@@ -37,7 +37,9 @@ and indexes the canonical writer itself.
 RFC-0018/A01. It returns a complete page-sized Mach-O 64 image with
 `MH_MAGIC_64`, the exact x86-64 or AArch64 CPU identity, `MH_EXECUTE`,
 `__PAGEZERO`, one executable `__TEXT,__text` section, `/usr/lib/dyld` in
-`LC_LOAD_DYLINKER`, a macOS 11 `LC_BUILD_VERSION`, and `LC_MAIN`. x86-64 uses a
+`LC_LOAD_DYLINKER`, `/usr/lib/libSystem.B.dylib` in `LC_LOAD_DYLIB`, a macOS 11
+`LC_BUILD_VERSION`, and `LC_MAIN`. The system-library declaration lets dyld
+run its required process-exit path after `LC_MAIN` returns. x86-64 uses a
 4 KiB image and AArch64 uses a 16 KiB image; both place the bounded entry bytes
 at file offset 512. `macho64_entry_image` pins distinct return-zero sequences
 for the function dyld calls through `LC_MAIN` and imports no library.
@@ -698,8 +700,8 @@ Implemented here:
 - deterministic PE32+ DOS/COFF/optional/section-header byte encoding in Kofun
   for x86-64 and AArch64, with no imports, SDK, assembler, or linker;
 - deterministic Mach-O 64 header/segment/section/load-command encoding in
-  Kofun for x86-64 and AArch64, with no imported library, SDK, assembler, or
-  linker;
+  Kofun for x86-64 and AArch64, including the libSystem runtime dependency but
+  no SDK, import library, assembler, or linker input;
 - deterministic embedded Mach-O ad-hoc SuperBlob/CodeDirectory encoding and
   SHA-256 page hashing in Kofun for x86-64 and AArch64;
 - x86-64 `mov r32, imm32` and `syscall` encoders;

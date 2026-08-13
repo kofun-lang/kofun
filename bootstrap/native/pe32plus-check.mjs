@@ -56,7 +56,7 @@ function validate(bytes, profile) {
   expect(u32(bytes, coff + 8) === 0, `${profile.name}: symbol table`);
   expect(u32(bytes, coff + 12) === 0, `${profile.name}: symbol count`);
   expect(u16(bytes, coff + 16) === 240, `${profile.name}: optional size`);
-  expect(u16(bytes, coff + 18) === 0x23, `${profile.name}: characteristics`);
+  expect(u16(bytes, coff + 18) === 0x22, `${profile.name}: characteristics`);
 
   const optional = coff + 20;
   expect(u16(bytes, optional) === 0x20b, `${profile.name}: PE32+ magic`);
@@ -70,6 +70,7 @@ function validate(bytes, profile) {
   expect(u32(bytes, optional + 56) === 8192, `${profile.name}: image size`);
   expect(u32(bytes, optional + 60) === 512, `${profile.name}: header size`);
   expect(u16(bytes, optional + 68) === 3, `${profile.name}: console subsystem`);
+  expect(u16(bytes, optional + 70) === 0x160, `${profile.name}: DLL characteristics`);
   expect(u32(bytes, optional + 108) === 16, `${profile.name}: data directories`);
   expect(
     bytes.subarray(optional + 112, optional + 240).every((byte) => byte === 0),

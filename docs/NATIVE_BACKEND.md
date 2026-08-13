@@ -4,9 +4,10 @@
 little-endian encoding, ELF64, PE32+, and Mach-O 64 image headers, ELF
 program/section headers, separate RX/RW segments, immediate moves, Linux
 syscalls, generic DWARF v4 metadata, and the big-endian CodeDirectory/SHA-256
-records used by the Mach-O ad-hoc-signing checkpoint. The PE32+ and Mach-O
-checkpoints write complete no-import x86-64 and AArch64 images directly and
-validate their structure/determinism. The signed Mach-O slice embeds
+records used by the Mach-O ad-hoc-signing checkpoint. The PE32+ checkpoint is
+no-import; the Mach-O checkpoint declares the libSystem runtime dependency
+needed by dyld after `LC_MAIN` returns. Both write complete x86-64 and AArch64
+images directly and validate their structure/determinism. The signed Mach-O slice embeds
 `__LINKEDIT`, `LC_CODE_SIGNATURE`, and a Kofun-hashed ad-hoc CodeDirectory for
 both architectures. None of these image checkpoints yet exposes Windows/macOS
 CLI/runtime targets or host-execution, Apple-validation, notarization, or
