@@ -12438,7 +12438,9 @@ fn lower_enum_match(
     match_start: Int,
     enum_type: Text,
     is_main: Bool,
-    function_open: Int
+    function_open: Int,
+    bytes_cleanup: Text,
+    bytes_comma: Text
 ) -> Text {
     let value_start = skip_trivia(source, token_end(source, match_start))
     let value_name = token_text(source, value_start)
@@ -12598,7 +12600,9 @@ fn lower_enum_match(
             arm_open,
             is_main,
             false,
-            function_open
+            function_open,
+            bytes_cleanup,
+            bytes_comma
         )
         if starts_with(arm_body, "error[") {
             return arm_body
@@ -13070,7 +13074,9 @@ fn lower_body(
     open: Int,
     is_main: Bool,
     append_default: Bool,
-    function_open: Int
+    function_open: Int,
+    inherited_cleanup: Text,
+    inherited_comma: Text
 ) -> Text {
     let mut emitted = ""
     if open == function_open {
@@ -13116,6 +13122,29 @@ fn lower_body(
         failure_result = "\"\""
     } else if returns_list_int {
         failure_result = "KOFUN_LIST_INT_ZERO"
+    }
+    # #1315. Reclamation for the owned locals declared *so far*, and the
+    # failure value that carries them. Both start empty and grow as each owner
+    # is declared: computing them for the whole body up front emits a release
+    # for a binding the guard above its declaration cannot see, which `cc`
+    # catches as `k_b1 undeclared`. A body that owns nothing keeps the original
+    # strings byte for byte.
+    #
+    # The releases ride inside the returned expression via C's comma operator,
+    # so every `if (kofun_failed) return <failure_result>;` the emitters below
+    # produce becomes a reclaiming exit without any of them changing.
+    let failure_base = failure_result
+    # #1315. A nested block inherits the owners live where it opens. Restarting
+    # these at "" was a leak with a passing gate: `lower_body` recurses for an
+    # `if`/`else`/`while` body and for a match arm, and a `return` inside one
+    # emitted no release at all, because the inner call could not see the
+    # owners the outer one had declared. The gate did not catch it because its
+    # fixture had no conditional exit -- the assertion was structural and
+    # correct, and the data could not distinguish.
+    let mut bytes_cleanup = inherited_cleanup
+    let mut bytes_comma = inherited_comma
+    if bytes_comma != "" {
+        failure_result = "(" + bytes_comma + failure_base + ")"
     }
     while cursor < len(source) && token_text(source, cursor) != "}" {
         if returned {
@@ -13286,8 +13315,7 @@ fn lower_body(
                         emitted = emitted + "    " +
                         record_c_type_name(binding_type) + " " + storage +
                         " = " + value + ";\n" +
-                        "    if (kofun_failed) return " +
-                        failure_result + ";\n"
+                        "    if (kofun_failed) return " + failure_result + ";\n"
                         cursor = skip_trivia(source, value_end)
                     } else {
                         let record_body = lower_record_binding(
@@ -13480,7 +13508,11 @@ fn lower_body(
                 # backend cannot yet lower. It is refused here rather than
                 # left to leak, and the refusal is what the following slice
                 # replaces.
-                if inferred_type == "Bytes" {
+                # #1315. A nested block's owner would have to be reclaimed
+                # at the block's end rather than the body's, and the funnel
+                # below keys on the function body. Refusing is honest until
+                # it does.
+                if inferred_type == "Bytes" && open != function_open {
                     # Through `lower_error`, not string concatenation: the C
                     # half's helper also registers the structured diagnostic
                     # the semantic events producer reads, and the two halves
@@ -13553,7 +13585,19 @@ fn lower_body(
                     to_text(value_start)
                 }
                 emitted = emitted + "    " + c_type + " " + storage + " = " +
-                initializer + ";\n" +
+                initializer + ";\n"
+                # The binding exists from here on, so its release joins the
+                # funnel *before* the guard below it -- and ahead of every
+                # earlier owner, which is what makes reclamation run in
+                # reverse creation order.
+                if inferred_type == "Bytes" {
+                    bytes_cleanup = "kofun_bytes_release(&" + storage +
+                    "); " + bytes_cleanup
+                    bytes_comma = "kofun_bytes_release(&" + storage +
+                    "), " + bytes_comma
+                    failure_result = "(" + bytes_comma + failure_base + ")"
+                }
+                emitted = emitted +
                 "    if (kofun_failed) return " + failure_result + ";\n"
                 cursor = skip_trivia(source, value_end)
             }
@@ -13641,15 +13685,13 @@ fn lower_body(
                 } else if value_type == "Text" {
                     emitted = emitted + "    {\n" +
                     "        const char *kofun_value = " + value + ";\n" +
-                    "        if (kofun_failed) return " + failure_result +
-                    ";\n" +
+                    "        if (kofun_failed) return " + failure_result + ";\n" +
                     "        printf(\"%s\\n\", kofun_value);\n" +
                     "    }\n"
                 } else {
                     emitted = emitted + "    {\n" +
                     "        int64_t kofun_value = " + value + ";\n" +
-                    "        if (kofun_failed) return " + failure_result +
-                    ";\n" +
+                    "        if (kofun_failed) return " + failure_result + ";\n" +
                     "        printf(\"%\" PRId64 \"\\n\", kofun_value);\n" +
                     "    }\n"
                 }
@@ -13741,7 +13783,9 @@ fn lower_body(
                     branch_open,
                     is_main,
                     false,
-                    function_open
+                    function_open,
+                    bytes_cleanup,
+                    bytes_comma
                 )
                 if starts_with(branch_body, "error[") {
                     return branch_body
@@ -13803,7 +13847,9 @@ fn lower_body(
                             else_open,
                             is_main,
                             false,
-                            function_open
+                            function_open,
+                            bytes_cleanup,
+                            bytes_comma
                         )
                         if starts_with(else_body, "error[") {
                             return else_body
@@ -13851,7 +13897,9 @@ fn lower_body(
                 body_open,
                 is_main,
                 false,
-                function_open
+                function_open,
+                bytes_cleanup,
+                bytes_comma
             )
             if starts_with(loop_body, "error[") {
                 return loop_body
@@ -13932,7 +13980,9 @@ fn lower_body(
                     match_start,
                     enum_type,
                     is_main,
-                    function_open
+                    function_open,
+                    bytes_cleanup,
+                    bytes_comma
                 )
                 if starts_with(match_body, "error[") {
                     return match_body
@@ -14038,7 +14088,9 @@ fn lower_body(
                     arm_open,
                     is_main,
                     false,
-                    function_open
+                    function_open,
+                    bytes_cleanup,
+                    bytes_comma
                 )
                 if starts_with(arm_body, "error[") {
                     return arm_body
@@ -14154,7 +14206,8 @@ fn lower_body(
                 emitted = emitted +
                 "    {\n" +
                 "        KofunIntListValue kofun_result = " + value + ";\n" +
-                "        if (kofun_failed) return KOFUN_LIST_INT_ZERO;\n" +
+                "        if (kofun_failed) return " + failure_result + ";\n" +
+                bytes_cleanup +
                 "        return kofun_result;\n" +
                 "    }\n"
                 cursor = skip_trivia(source, value_end)
@@ -14178,7 +14231,8 @@ fn lower_body(
                 emitted = emitted +
                 "    {\n" +
                 "        KofunOptionalInt kofun_result = " + value + ";\n" +
-                "        if (kofun_failed) return KOFUN_OPTIONAL_INT_NONE;\n" +
+                "        if (kofun_failed) return " + failure_result + ";\n" +
+                bytes_cleanup +
                 "        return kofun_result;\n" +
                 "    }\n"
                 cursor = skip_trivia(source, value_end)
@@ -14202,7 +14256,8 @@ fn lower_body(
                 emitted = emitted +
                 "    {\n" +
                 "        KofunEnumValue kofun_result = " + value + ";\n" +
-                "        if (kofun_failed) return KOFUN_ENUM_ZERO;\n" +
+                "        if (kofun_failed) return " + failure_result + ";\n" +
+                bytes_cleanup +
                 "        return kofun_result;\n" +
                 "    }\n"
                 cursor = skip_trivia(source, value_end)
@@ -14228,6 +14283,7 @@ fn lower_body(
                 "        " + record_c_type_name(result_type) +
                 " kofun_result = " + value + ";\n" +
                 "        if (kofun_failed) return " + failure_result + ";\n" +
+                bytes_cleanup +
                 "        return kofun_result;\n" +
                 "    }\n"
                 cursor = skip_trivia(source, value_end)
@@ -14251,12 +14307,13 @@ fn lower_body(
                 "    {\n" +
                 "        const char *kofun_result = " + value + ";\n" +
                 "        if (kofun_failed) return " + failure_result + ";\n" +
+                bytes_cleanup +
                 "        return kofun_result;\n" +
                 "    }\n"
                 cursor = skip_trivia(source, value_end)
             } else if value_start < len(source) &&
                token_text(source, value_start) == "}" {
-                emitted = emitted + "    return 0;\n"
+                emitted = emitted + bytes_cleanup + "    return 0;\n"
                 cursor = value_start
             } else if value_control(token_text(source, value_start)) {
                 let value_check = validate_value_control(source, hir, value_start)
@@ -14276,10 +14333,11 @@ fn lower_body(
                     failure_result
                 )
                 if is_main {
-                    emitted = emitted +
+                    emitted = emitted + bytes_cleanup +
                     "        return (int)kofun_result;\n"
                 } else {
-                    emitted = emitted + "        return kofun_result;\n"
+                    emitted = emitted + bytes_cleanup +
+                    "        return kofun_result;\n"
                 }
                 emitted = emitted + "    }\n"
                 cursor = skip_trivia(source, value_end)
@@ -14305,10 +14363,11 @@ fn lower_body(
                 returned_value + ";\n" +
                 "        if (kofun_failed) return " + failure_result + ";\n"
                 if is_main {
-                    emitted = emitted +
+                    emitted = emitted + bytes_cleanup +
                     "        return (int)kofun_result;\n"
                 } else {
-                    emitted = emitted + "        return kofun_result;\n"
+                    emitted = emitted + bytes_cleanup +
+                    "        return kofun_result;\n"
                 }
                 emitted = emitted +
                 "    }\n"
@@ -14507,7 +14566,8 @@ fn lower_body(
                     "        int64_t kofun_result = " +
                     emit_expression(source, hir, cursor, value_end) + ";\n" +
                     "        if (kofun_failed) return " + failure_result + ";\n" +
-                    "        return kofun_result;\n" +
+                    bytes_cleanup +
+                "        return kofun_result;\n" +
                     "    }\n"
                     returned = true
                 } else {
@@ -14537,7 +14597,7 @@ fn lower_body(
             }
             return "error[E2S19]: Core function may complete without returning Int at byte " + to_text(open)
         }
-        emitted = emitted + "    return 0;\n"
+        emitted = emitted + bytes_cleanup + "    return 0;\n"
     }
     return emitted
 }
@@ -15424,6 +15484,69 @@ fn validate_numeric_literals(source: Text) -> Text {
     return "ok"
 }
 
+    # RFC-0004 Managed `Bytes` carrier (#1315). Field order is frozen by the
+    # issue and pinned by offset asserts rather than described in a comment:
+    # `length`, `capacity`, then the pointer. Empty is exactly {0,0,NULL}, which
+    # is also what a consumed binding leaves behind -- the two are deliberately
+    # indistinguishable at runtime, so use-after-take stays compile-time E2S123
+    # and no runtime tag is inferred from zero fields.
+    # The nine frozen status tags, declaration order 0..8. Frozen here so the
+    # bounded-mutation and Text-bridge children cannot renumber them; the tag
+    # values are the contract, not the spelling.
+fn bytes_carrier_prelude() -> Text {
+    return "enum { KOFUN_BYTES_CAPACITY_LIMIT = 65536 };\n" +
+    "typedef struct {\n" +
+    "    uint64_t length;\n" +
+    "    uint64_t capacity;\n" +
+    "    unsigned char *data;\n" +
+    "} KofunBytesValue;\n" +
+    "#define KOFUN_BYTES_EMPTY ((KofunBytesValue){UINT64_C(0), UINT64_C(0), NULL})\n" +
+    "_Static_assert(offsetof(KofunBytesValue, length) == 0, \"Stage 2 Bytes carrier length offset\");\n" +
+    "_Static_assert(offsetof(KofunBytesValue, capacity) == 8, \"Stage 2 Bytes carrier capacity offset\");\n" +
+    "_Static_assert(sizeof(((KofunBytesValue *)0)->data) == 8, \"Stage 2 Bytes carrier data width\");\n" +
+    "_Static_assert(_Alignof(KofunBytesValue) == 8, \"Stage 2 Bytes carrier alignment\");\n" +
+    "typedef struct { int64_t tag; int64_t detail; } KofunBytesStatus;\n" +
+    "enum {\n" +
+    "    KOFUN_BYTES_SUCCEEDED = 0,\n" +
+    "    KOFUN_BYTES_NEGATIVE_LENGTH = 1,\n" +
+    "    KOFUN_BYTES_RANGE_OUT_OF_BOUNDS = 2,\n" +
+    "    KOFUN_BYTES_INVALID_BYTE = 3,\n" +
+    "    KOFUN_BYTES_CAPACITY_EXCEEDED = 4,\n" +
+    "    KOFUN_BYTES_ALLOCATION_FAILED = 5,\n" +
+    "    KOFUN_BYTES_INVALID_UTF8 = 6,\n" +
+    "    KOFUN_BYTES_TEXT_CONTAINS_NUL = 7,\n" +
+    "    KOFUN_BYTES_TEXT_LIMIT_EXCEEDED = 8\n" +
+    "};\n" +
+    "static inline KofunBytesStatus kofun_bytes_status(int64_t tag, int64_t detail) {\n" +
+    "    KofunBytesStatus status; status.tag = tag; status.detail = detail; return status;\n" +
+    "}\n" +
+    "static inline KofunBytesValue stage2_bytes_empty(void) {\n" +
+    "    return KOFUN_BYTES_EMPTY;\n" +
+    "}\n" +
+    "static inline void kofun_bytes_release(KofunBytesValue *value) {\n" +
+    "    if (value->data != NULL) free(value->data);\n" +
+    "    value->length = UINT64_C(0); value->capacity = UINT64_C(0);\n" +
+    "    value->data = NULL;\n" +
+    "}\n"
+}
+
+# #1315. Whether any Bytes carrier is reachable in this source. The prelude is
+# emitted only when it is, because `tests/conformance/call-arguments/run.sh`
+# greps emitted C for `malloc|calloc|realloc` to prove label lowering needs no
+# runtime machinery -- and an allocator in every emitted program is real
+# degradation whether or not a gate names it.
+fn source_uses_bytes(source: Text) -> Bool {
+    let mut cursor = skip_trivia(source, 0)
+    while cursor < len(source) {
+        let token = token_text(source, cursor)
+        if token == "stage2_bytes_empty" || token == "Bytes" {
+            return true
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return false
+}
+
 fn source_uses_fractional_values(source: Text) -> Bool {
     let mut cursor = skip_trivia(source, 0)
     while cursor < len(source) {
@@ -16037,6 +16160,15 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
         return move_use_check
     }
     let fractional_values = source_uses_fractional_values(source)
+    # #1315. The carrier, its asserts, and the reclamation helper are emitted
+    # only for a source that can reach them. `calloc`/`free` in every program
+    # is degradation the call-arguments gate correctly refuses.
+    let mut bytes_prelude = ""
+    let mut bytes_include = ""
+    if source_uses_bytes(source) {
+        bytes_prelude = bytes_carrier_prelude()
+        bytes_include = "#include <stdlib.h>\n"
+    }
     # A mixed-type expression is reported before operator lowering, so
     # `1 + 1.5` names the missing explicit conversion.
     let operand_check = validate_numeric_operand_types(source, hir)
@@ -16184,7 +16316,7 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
             return "error[E2S15]: Core function `" + name +
             "` requires Int or concrete enum parameters and return"
         }
-        let body = lower_body(source, hir, open, is_main, true, open)
+        let body = lower_body(source, hir, open, is_main, true, open, "", "")
         if starts_with(body, "error[") {
             return body
         }
@@ -16239,7 +16371,7 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     "#include <stddef.h>\n" +
     "#include <stdint.h>\n" +
     "#include <stdio.h>\n" +
-    "#include <string.h>\n" + decimal_include + "\n" +
+    bytes_include + "#include <string.h>\n" + decimal_include + "\n" +
     "typedef struct {\n" +
     "    int64_t tag;\n" +
     "    int64_t payload;\n" +
@@ -16306,44 +16438,7 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     "        (size_t)resolved * KOFUN_LIST_INT_ELEMENT_SIZE;\n" +
     "    memcpy(&value, list + offset, sizeof value); return value;\n" +
     "}\n" +
-    # RFC-0004 Managed `Bytes` carrier (#1315). Field order is frozen by the
-    # issue and pinned by offset asserts rather than described in a comment:
-    # `length`, `capacity`, then the pointer. Empty is exactly {0,0,NULL}, which
-    # is also what a consumed binding leaves behind -- the two are deliberately
-    # indistinguishable at runtime, so use-after-take stays compile-time E2S123
-    # and no runtime tag is inferred from zero fields.
-    "enum { KOFUN_BYTES_CAPACITY_LIMIT = 65536 };\n" +
-    "typedef struct {\n" +
-    "    uint64_t length;\n" +
-    "    uint64_t capacity;\n" +
-    "    unsigned char *data;\n" +
-    "} KofunBytesValue;\n" +
-    "#define KOFUN_BYTES_EMPTY ((KofunBytesValue){UINT64_C(0), UINT64_C(0), NULL})\n" +
-    "_Static_assert(offsetof(KofunBytesValue, length) == 0, \"Stage 2 Bytes carrier length offset\");\n" +
-    "_Static_assert(offsetof(KofunBytesValue, capacity) == 8, \"Stage 2 Bytes carrier capacity offset\");\n" +
-    "_Static_assert(sizeof(((KofunBytesValue *)0)->data) == 8, \"Stage 2 Bytes carrier data width\");\n" +
-    "_Static_assert(_Alignof(KofunBytesValue) == 8, \"Stage 2 Bytes carrier alignment\");\n" +
-    # The nine frozen status tags, declaration order 0..8. Frozen here so the
-    # bounded-mutation and Text-bridge children cannot renumber them; the tag
-    # values are the contract, not the spelling.
-    "typedef struct { int64_t tag; int64_t detail; } KofunBytesStatus;\n" +
-    "enum {\n" +
-    "    KOFUN_BYTES_SUCCEEDED = 0,\n" +
-    "    KOFUN_BYTES_NEGATIVE_LENGTH = 1,\n" +
-    "    KOFUN_BYTES_RANGE_OUT_OF_BOUNDS = 2,\n" +
-    "    KOFUN_BYTES_INVALID_BYTE = 3,\n" +
-    "    KOFUN_BYTES_CAPACITY_EXCEEDED = 4,\n" +
-    "    KOFUN_BYTES_ALLOCATION_FAILED = 5,\n" +
-    "    KOFUN_BYTES_INVALID_UTF8 = 6,\n" +
-    "    KOFUN_BYTES_TEXT_CONTAINS_NUL = 7,\n" +
-    "    KOFUN_BYTES_TEXT_LIMIT_EXCEEDED = 8\n" +
-    "};\n" +
-    "static inline KofunBytesStatus kofun_bytes_status(int64_t tag, int64_t detail) {\n" +
-    "    KofunBytesStatus status; status.tag = tag; status.detail = detail; return status;\n" +
-    "}\n" +
-    "static inline KofunBytesValue stage2_bytes_empty(void) {\n" +
-    "    return KOFUN_BYTES_EMPTY;\n" +
-    "}\n" +
+    bytes_prelude +
     "enum { KOFUN_TEXT_TEMPORARY_LIMIT = 4096 };\n" +
     "static char kofun_text_slots[KOFUN_TEXT_TEMPORARY_LIMIT][256];\n" +
     "static size_t kofun_text_next_slot;\n" +

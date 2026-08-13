@@ -1,0 +1,29 @@
+# #1315. An owning function whose exits are not all at the top level.
+#
+# The straight-line fixture beside this one cannot distinguish a correct
+# emitter from one that reclaims only at statement-level returns: it has no
+# exit inside a nested block, so `reclaiming -eq returns` is satisfied by an
+# emitter that never looks inside one. `lower_body` recurses for an `if` body,
+# an `else` body, and a `while` body, and until #1315's inheritance fix each
+# recursion restarted the funnel empty -- so every return below leaked while
+# every assertion in this gate still passed.
+
+fn classify(limit: Int) -> Int {
+    let first = stage2_bytes_empty()
+    if limit > 10 {
+        return 1
+    }
+    let second = stage2_bytes_empty()
+    if limit > 5 {
+        return 2
+    }
+    while limit > 100 {
+        return 4
+    }
+    return 3
+}
+
+fn main() -> Int {
+    print(classify(0))
+    return 0
+}

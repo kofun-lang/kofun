@@ -1,0 +1,43 @@
+# #1315. Owners at function top level, exits three levels deep: an `if`
+# containing a `match` arm containing a `while` containing a `return`.
+#
+# `lower_body` recurses for each of those, and `lower_enum_match` recurses
+# into `lower_body` for an arm body. This is the composition case: the funnel
+# has to survive three nested inheritances rather than one. It is a regression
+# guard rather than a bug-finder -- the path was measured correct before this
+# fixture existed -- and it is here because the threading that makes it correct
+# is invisible to every other fixture in this gate.
+#
+# Owners cannot be declared inside a nested block: E2S170 refuses a Bytes
+# binding there. So "owners at top, exits nested" is the whole available
+# shape, and the match arm is the only structure this gate did not already
+# reach.
+
+type Reply =
+    | Pending
+    | Ready(value: Int)
+
+fn classify(limit: Int, reply: Reply) -> Int {
+    let first = stage2_bytes_empty()
+    let second = stage2_bytes_empty()
+    if limit > 0 {
+        match reply {
+            Ready(value) => {
+                while limit > 100 {
+                    return value
+                }
+                return 7
+            },
+            Pending => {
+            },
+        }
+        return 8
+    }
+    return 3
+}
+
+fn main() -> Int {
+    let reply: Reply = Pending
+    print(classify(1, reply))
+    return 0
+}

@@ -907,6 +907,11 @@ tasks:
     cmds:
       - "sh spec/syntax/call-arguments/check.sh"
 
+  bytes-carrier:
+    desc: "Verify Bytes[65536] owners are reclaimed at every exit in reverse order"
+    cmds:
+      - "sh tests/conformance/bytes-carrier/run.sh"
+
   call-arguments:
     desc: "Verify labelled-call binding and source order across C11, native, and wasm32"
     cmds:
@@ -1124,6 +1129,7 @@ tasks:
             record-values \
             text-escapes \
             unused-function \
+            bytes-carrier \
             while-list-int \
             else-if-chain \
             list-int-signatures \
