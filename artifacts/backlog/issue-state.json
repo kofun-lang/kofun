@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 96,
+  "open_issues": 95,
   "issues": [
     {
       "number": 26,
@@ -1860,24 +1860,6 @@
       "blocked_by": [],
       "evidence_commits": [
         "aa13cf515115e654ef5a94d7ad112fc556526da7"
-      ]
-    },
-    {
-      "number": 1391,
-      "title": "Release 0.7.0-seed: publish PE32+ and Mach-O image checkpoints",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "3720a45a7aca250773103cb649dbbb5c84185018"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-root-release-070",
-          "status": "active"
-        }
       ]
     },
     {
