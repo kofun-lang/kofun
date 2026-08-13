@@ -174,6 +174,15 @@ assert_grep 'the coverage refusal names the missing vector' \
 
 # -------------------------------------------------------------- mutations
 
+# A mutation is evidence only if the mutant **builds**. #1377 required this of
+# the other two harnesses and deliberately left this one to #1358, because the
+# mutation that exposed the whole problem lives here: `precedence` deleted the
+# only call to `comparison_compatible`, the mutant failed `-Werror=unused-function`,
+# and the harness read that non-zero exit as "the gate bit". It had never run.
+#
+# So the build is a required step with its own failure, and the comparison is
+# unconditional -- a mutant that builds and then traps at runtime leaves an
+# empty stdout, which differs from the golden and is a real refusal.
 mutation() {
     name=$1
     expression=$2
@@ -183,13 +192,15 @@ mutation() {
         assert_fail "mutation $name changed nothing; its pattern no longer matches"
     cat "$model" "$WORK/mutant-$name.compare.kofun" "$corpus" \
         "$WORK/comparison$group.main.kofun" >"$WORK/mutant-$name.kofun"
-    if "$ROOT/bin/kofun" run "$WORK/mutant-$name.kofun" \
-        >"$WORK/mutant-$name.stdout" 2>"$WORK/mutant-$name.stderr"
+    "$ROOT/bin/kofun" build "$WORK/mutant-$name.kofun" \
+        -o "$WORK/mutant-$name.bin" \
+        >"$WORK/mutant-$name.build.stdout" 2>"$WORK/mutant-$name.build.stderr" ||
+        assert_fail "mutation $name does not build; it is testing the compiler rather than the model: $(head -1 "$WORK/mutant-$name.build.stderr")"
+    "$WORK/mutant-$name.bin" >"$WORK/mutant-$name.stdout" \
+        2>"$WORK/mutant-$name.stderr" || true
+    if cmp -s "$CASES/comparison$group.stdout" "$WORK/mutant-$name.stdout"
     then
-        if cmp -s "$CASES/comparison$group.stdout" "$WORK/mutant-$name.stdout"
-        then
-            assert_fail "mutation $name produced the golden output; the gate does not bite"
-        fi
+        assert_fail "mutation $name produced the golden output; the gate does not bite"
     fi
 }
 

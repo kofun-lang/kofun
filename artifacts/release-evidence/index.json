@@ -6,7 +6,7 @@
     "VERSION": "20698107c84adaa2dad946f3dd4b27e97854fd7c641fc65cd623c741f5dfea6c",
     "release/claims.json": "b45786266dcff77a847d5a3a1f7c49f086a17d4e86c65396f1981b0ac7360e0f",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
-    "bootstrap/manifest.json": "f9ae19d92f370599bdffa5ea684640d519800c4e076ab62959e89d294a13b3a1"
+    "bootstrap/manifest.json": "0a33fcb96f05294622c576d6d1f3b6d65b5b95f663258e5d4f481e1f3d7f4abd"
   },
   "states": {
     "checkpoint": 36,
@@ -705,7 +705,7 @@
     }
   ],
   "evidence_digests": {
-    "Taskfile.yml": "b4be28feadd904cc269085768f90f69062f03567145561e59a53bf7a7f72dc76",
+    "Taskfile.yml": "c8ce2eeb5c4145e243bd0311d3e66b1a8940f336963b465a77692a9682f97b37",
     "bootstrap/native/check.sh": "b12493d09eb1919b349f37c78e3c81f4441a1c00be2aa7d2e6c30512eea998eb",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/check-diverse-double-compilation-refusals.sh": "55fc39166070b9bc612fca6898086938b1a8ca122b1c1fb8e928f1a5d4cde572",
