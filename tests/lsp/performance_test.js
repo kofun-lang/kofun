@@ -99,12 +99,30 @@ function cpuDelta(pid, before) {
 // diagnostic p95 -- a 2.4x spread, and every one of them 3x to 8x over the
 // 100 ms budget this replaces. The CPU number moved by 5%.
 //
-// Headroom is ~1.3x on the two diagnostic budgets, which carry the real cost
-// and discriminate tightly. Definition and hover sit near 1.5 ms where ordinary
-// jitter is a larger fraction, so their 4 ms is looser in ratio and still far
-// below any plausible regression. A budget with 10x headroom would gate
-// nothing, which is the failure mode of simply raising the old wall-clock
-// numbers until they stopped flaking.
+// CPU time is load-independent. It is NOT machine-independent, and that limits
+// how tight these can be. The same six quantities measured on CI, which is the
+// environment that actually gates merges:
+//
+//   quantity              this host       CI    budget   headroom on CI
+//   diagnostic p95            94-99    71.56       130            1.8x
+//   diagnostic max          99-112     73.02       145            2.0x
+//   definition p95           1.1-1.7    0.28         4             14x
+//   hover p95                1.3-1.6    0.29         4             14x
+//   cold completion p95     10.4-12.6   4.78        18            3.8x
+//   warm completion p95      5.9-6.6    2.25        10            4.4x
+//
+// So a budget cannot be anchored on CI alone: definition and hover cost five
+// times more CPU here than on the runner, and a CI-tight 1 ms would fail every
+// developer on a slower machine. The budget has to hold on the slowest host
+// that runs the gate, which leaves the two smallest quantities with headroom I
+// would otherwise call excessive -- by my own rule, a 10x budget gates nothing,
+// and 14x is worse.
+//
+// Stated plainly rather than hidden: **definition and hover are effectively
+// smoke tests, not budgets.** The discriminating assertions are the two
+// diagnostic ones at 1.8-2.0x on CI, which is where this corpus spends its
+// time. Anyone tightening the small two must re-measure on the slowest host
+// they intend to keep green, not on CI.
 const DIAGNOSTIC_P95_CPU_MS = 130;
 const DIAGNOSTIC_MAX_CPU_MS = 145;
 const DEFINITION_P95_CPU_MS = 4;
