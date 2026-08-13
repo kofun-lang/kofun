@@ -19496,6 +19496,24 @@ static char *lower_body(
                                (returns_list_int ?
                                     "KOFUN_LIST_INT_ZERO" : "0"))))
             );
+    /* #1315. Reclamation for the owned locals declared *so far*, and the
+     * failure value that carries them. Both start empty and grow as each owner
+     * is declared: computing them for the whole body up front emits a release
+     * for a binding the guard above its declaration cannot see, which `cc`
+     * catches as `k_b1 undeclared`. A body that owns nothing keeps the
+     * original strings byte for byte.
+     *
+     * The releases ride inside the returned expression via C's comma operator,
+     * so every `if (kofun_failed) return <failure_result>;` the emitters below
+     * produce becomes a reclaiming exit without any of them changing.
+     *
+     * Fixed buffers rather than heap, as `failure_record` beside them is:
+     * `lower_body` returns from many places and a heap local here is a leak
+     * waiting for one missed exit. Overflow refuses rather than truncates. */
+    const char *failure_base = failure_result;
+    char bytes_cleanup[2048] = "";
+    char bytes_comma[2048] = "";
+    char failure_with_release[2560] = "";
     while (cursor < length && !token_equal(source, cursor, "}")) {
         if (returned) {
             free(emitted.data);
@@ -20201,7 +20219,10 @@ static char *lower_body(
              * defines, and it is the honest one for a shape the backend cannot
              * yet lower. It is refused here rather than left to leak, and the
              * refusal is what the following slice replaces. */
-            if (strcmp(binding_type, "Bytes") == 0) {
+            /* #1315. A nested block's owner would have to be reclaimed at
+             * the block's end rather than the body's, and the funnel keys on
+             * the function body. Refusing is honest until it does. */
+            if (strcmp(binding_type, "Bytes") == 0 && open != function_open) {
                 Buffer message;
                 char *refusal;
                 buffer_init(&message);
@@ -20312,11 +20333,67 @@ static char *lower_body(
             }
             buffer_format(
                 &emitted,
-                "    %s k_b%s = %s;\n"
-                "    if (kofun_failed) return %s;\n",
+                "    %s k_b%s = %s;\n",
                 c_type,
                 binding_id,
-                value,
+                value
+            );
+            /* The binding exists from here on, so its release joins the funnel
+             * *before* the guard below it -- and ahead of every earlier owner,
+             * which is what makes reclamation run in reverse creation order. */
+            if (strcmp(binding_type, "Bytes") == 0) {
+                char entry[64];
+                char grown[2048];
+                int written = snprintf(
+                    entry, sizeof entry,
+                    "kofun_bytes_release(&k_b%s); ", binding_id);
+                int comma_written = snprintf(
+                    grown, sizeof grown,
+                    "kofun_bytes_release(&k_b%s), %s", binding_id, bytes_comma);
+                if (written < 0 || (size_t)written >= sizeof entry ||
+                    comma_written < 0 ||
+                    (size_t)comma_written >= sizeof grown ||
+                    (size_t)written + strlen(bytes_cleanup) >=
+                        sizeof bytes_cleanup) {
+                    free(record_type_owned);
+                    free(binding_type);
+                    free(value);
+                    free(name);
+                    free(binding_id);
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S170",
+                        "Stage 2 Bytes[65536] cannot lower possible managed "
+                        "Bytes alias for this body (backend limitation)",
+                        value_start
+                    );
+                }
+                memmove(bytes_cleanup + written, bytes_cleanup,
+                        strlen(bytes_cleanup) + 1u);
+                memcpy(bytes_cleanup, entry, (size_t)written);
+                memcpy(bytes_comma, grown, (size_t)comma_written + 1u);
+                if ((size_t)snprintf(
+                        failure_with_release, sizeof failure_with_release,
+                        "(%s%s)", bytes_comma, failure_base) >=
+                    sizeof failure_with_release) {
+                    free(record_type_owned);
+                    free(binding_type);
+                    free(value);
+                    free(name);
+                    free(binding_id);
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S170",
+                        "Stage 2 Bytes[65536] cannot lower possible managed "
+                        "Bytes alias for this body (backend limitation)",
+                        value_start
+                    );
+                }
+                failure_result = failure_with_release;
+            }
+            buffer_format(
+                &emitted,
+                "    if (kofun_failed) return %s;\n",
                 failure_result
             );
             free(record_type_owned);
@@ -21291,9 +21368,10 @@ static char *lower_body(
                     "    {\n"
                     "        KofunIntListValue kofun_result = %s;\n"
                     "        if (kofun_failed) return KOFUN_LIST_INT_ZERO;\n"
-                    "        return kofun_result;\n"
+                    "        %sreturn kofun_result;\n"
                     "    }\n",
-                    value
+                    value,
+                    bytes_cleanup
                 );
                 free(value);
                 cursor = skip_trivia(source, value_end);
@@ -21331,9 +21409,10 @@ static char *lower_body(
                     "        " OPTIONAL_INT_C_TYPE " kofun_result = %s;\n"
                     "        if (kofun_failed) return "
                     "KOFUN_OPTIONAL_INT_NONE;\n"
-                    "        return kofun_result;\n"
+                    "        %sreturn kofun_result;\n"
                     "    }\n",
-                    value
+                    value,
+                    bytes_cleanup
                 );
                 free(value);
                 cursor = skip_trivia(source, value_end);
@@ -21372,9 +21451,10 @@ static char *lower_body(
                     "    {\n"
                     "        KofunEnumValue kofun_result = %s;\n"
                     "        if (kofun_failed) return KOFUN_ENUM_ZERO;\n"
-                    "        return kofun_result;\n"
+                    "        %sreturn kofun_result;\n"
                     "    }\n",
-                    value
+                    value,
+                    bytes_cleanup
                 );
                 free(value);
                 cursor = skip_trivia(source, value_end);
@@ -21415,11 +21495,12 @@ static char *lower_body(
                     "    {\n"
                     "        %s kofun_result = %s;\n"
                     "        if (kofun_failed) return %s;\n"
-                    "        return kofun_result;\n"
+                    "        %sreturn kofun_result;\n"
                     "    }\n",
                     c_type,
                     value,
-                    failure_result
+                    failure_result,
+                    bytes_cleanup
                 );
                 free(c_type);
                 free(value);
@@ -21453,10 +21534,11 @@ static char *lower_body(
                     "    {\n"
                     "        const char *kofun_result = %s;\n"
                     "        if (kofun_failed) return %s;\n"
-                    "        return kofun_result;\n"
+                    "        %sreturn kofun_result;\n"
                     "    }\n",
                     value,
-                    failure_result
+                    failure_result,
+                    bytes_cleanup
                 );
                 free(value);
                 cursor = skip_trivia(source, value_end);
@@ -21464,7 +21546,7 @@ static char *lower_body(
                 value_start < length &&
                 token_equal(source, value_start, "}")
             ) {
-                buffer_append(&emitted, "    return 0;\n");
+                buffer_format(&emitted, "%s    return 0;\n", bytes_cleanup);
                 cursor = value_start;
             } else if (value_control(source, value_start)) {
                 int64_t value_end = -1;
@@ -21498,9 +21580,10 @@ static char *lower_body(
                 );
                 buffer_append(&emitted, value_body);
                 if (is_main) {
-                    buffer_append(
+                            buffer_format(
                         &emitted,
-                        "        return (int)kofun_result;\n"
+                        "%s        return (int)kofun_result;\n",
+                        bytes_cleanup
                     );
                 } else {
                     buffer_append(
@@ -21541,9 +21624,10 @@ static char *lower_body(
                     failure_result
                 );
                 if (is_main) {
-                    buffer_append(
+                            buffer_format(
                         &emitted,
-                        "        return (int)kofun_result;\n"
+                        "%s        return (int)kofun_result;\n",
+                        bytes_cleanup
                     );
                 } else {
                     buffer_append(
@@ -21944,10 +22028,11 @@ static char *lower_body(
                         "    {\n"
                         "        int64_t kofun_result = %s;\n"
                         "        if (kofun_failed) return %s;\n"
-                        "        return kofun_result;\n"
+                        "        %sreturn kofun_result;\n"
                         "    }\n",
                         value,
-                        failure_result
+                        failure_result,
+                        bytes_cleanup
                     );
                     returned = true;
                 } else {
@@ -21985,7 +22070,7 @@ static char *lower_body(
         );
     }
     if (!returned && append_default) {
-        buffer_append(&emitted, "    return 0;\n");
+        buffer_format(&emitted, "%s    return 0;\n", bytes_cleanup);
     }
     return emitted.data;
 }
@@ -23450,6 +23535,24 @@ static char *validate_numeric_literals(const char *source) {
     return owned_text("ok");
 }
 
+/* #1315. Whether any Bytes carrier is reachable in this source. The prelude is
+ * emitted only when it is, because tests/conformance/call-arguments/run.sh
+ * greps emitted C for `malloc|calloc|realloc` to prove label lowering needs no
+ * runtime machinery -- and an allocator in every emitted program is real
+ * degradation whether or not a gate names it. */
+static bool source_uses_bytes(const char *source) {
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, 0);
+    while (cursor < length) {
+        if (token_equal(source, cursor, "stage2_bytes_empty") ||
+            token_equal(source, cursor, "Bytes")) {
+            return true;
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return false;
+}
+
 static bool source_uses_fractional_values(const char *source) {
     int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, 0);
@@ -24875,6 +24978,10 @@ static char *lower_c_body(const char *source, const char *hir) {
     if (identity_check[0] != '\0') return identity_check;
     free(identity_check);
     bool fractional_values = source_uses_fractional_values(source);
+    /* #1315. The carrier, its asserts, and the reclamation helper are emitted
+     * only for a source that can reach them. `calloc`/`free` in every program
+     * is degradation the call-arguments gate correctly refuses. */
+    bool uses_bytes = source_uses_bytes(source);
     /* #946: the move rule runs before the assertion, so a use-after-move is
      * reported as itself rather than as whatever the erased statement leaves
      * behind. */
@@ -25231,11 +25338,13 @@ static char *lower_c_body(const char *source, const char *hir) {
         "#include <stddef.h>\n"
         "#include <stdint.h>\n"
         "#include <stdio.h>\n"
-        /* `calloc`/`free` for the Bytes carrier (#1315). Every emitted program
-         * gets it, matching how the other bounded carriers are declared
-         * unconditionally. */
-        "#include <string.h>\n"
     );
+    /* `calloc`/`free` for the Bytes carrier (#1315), only when one is
+     * reachable in this source. */
+    if (uses_bytes) {
+        buffer_append(&output, "#include <stdlib.h>\n");
+    }
+    buffer_append(&output, "#include <string.h>\n");
     if (fractional_values) {
         buffer_append(&output, "#include \"decimal_v1.c\"\n");
     }
@@ -25319,6 +25428,7 @@ static char *lower_c_body(const char *source, const char *hir) {
      *
      * The nine status tags are frozen in declaration order 0..8 so the
      * bounded-mutation and Text-bridge children cannot renumber them. */
+    if (uses_bytes) {
     buffer_append(
         &output,
         "enum { KOFUN_BYTES_CAPACITY_LIMIT = 65536 };\n"
@@ -25350,7 +25460,13 @@ static char *lower_c_body(const char *source, const char *hir) {
         "static inline KofunBytesValue stage2_bytes_empty(void) {\n"
         "    return KOFUN_BYTES_EMPTY;\n"
         "}\n"
+        "static inline void kofun_bytes_release(KofunBytesValue *value) {\n"
+        "    if (value->data != NULL) free(value->data);\n"
+        "    value->length = UINT64_C(0); value->capacity = UINT64_C(0);\n"
+        "    value->data = NULL;\n"
+        "}\n"
     );
+    }
     buffer_append(
         &output,
         "enum { KOFUN_TEXT_TEMPORARY_LIMIT = 4096 };\n"

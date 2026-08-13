@@ -1,0 +1,6 @@
+fn main() -> Int {
+    let first = stage2_bytes_empty()
+    let second = stage2_bytes_empty()
+    print(0)
+    return 0
+}
