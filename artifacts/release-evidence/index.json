@@ -763,7 +763,7 @@
     "tests/diagnostics/registry.tsv": "b4c79fdb33f9ef5e4073cb78cb2db90186c9b05eb527b54407465d6fb621003c",
     "tests/diagnostics/stage2/e2s10_unsupported_statement.kofun": "664c4d3b0d4bcd9265fee34b3ae60d8bf0eb58c9ce5c2b504579c1249aa16f2d",
     "tests/diagnostics/visibility-api-leaks.sh": "5c65b941bec961bc7b814e3979170af630df34fa8812d0fa650639e159ea755a",
-    "tests/docs/documentation_index_test.mjs": "2cc6cea953f21ef1cbf5e8c6be3ab58edacc8e6599f17d76b44130647714550b",
+    "tests/docs/documentation_index_test.mjs": "1195ff0fb6486bd046e1b70a8d364838a51ae06b47749206f851de54ac8d4c44",
     "tests/fuzz/SEMANTIC_PROTOCOL.md": "95644005013d2aae82a042deb341785a083552c766abafa71bdbf4335deea522",
     "tests/fuzz/semantic_differential.sh": "177185179f22ad295f185def9e9b311e25a8b18fea4f5ecd53576d3daa6b875b",
     "tests/http/check.sh": "f2db6a18f3e879e9dec665b4bffa51a273c8dc7dd77fbc9f77853462f13ffb4c",
