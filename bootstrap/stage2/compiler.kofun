@@ -5311,6 +5311,14 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
             }
             return "((int64_t)strlen(" + measured + "))"
         }
+        # #1315. The admitted owning origin lowers to the runtime helper
+        # directly rather than through `kofun_fn_`, which would name a
+        # function no emitted program declares. It takes no arguments, so
+        # there is nothing to emit between the parentheses.
+        if open < end && token_text(source, open) == "(" &&
+           name == "stage2_bytes_empty" {
+            return "stage2_bytes_empty()"
+        }
         # `to_text(Int)` lowers beside `len`, the other one-argument builtin
         # the ordinary Core path emits directly.
         if open < end && token_text(source, open) == "(" &&
@@ -5892,8 +5900,14 @@ fn call_arity(source: Text, open: Int) -> Int {
 # are known and arity-checked. The bounded date/time slice lowers `len(Text)`
 # and `text_slice`; the remaining accepted uses classify as unsupported
 # lowering, never as an unknown-function source error.
+# The builtin vocabulary lives in three parallel tables -- this one,
+# `builtin_return_type`, and `builtin_parameter_types` -- and nothing
+# cross-checks them. Adding a name to one and not the others fails closed
+# (`E2S16: unknown Core function` when arity is missing), which is the good
+# direction, but the tables have to be edited together. #1315 added
+# `stage2_bytes_empty` to all three.
 fn builtin_arity(name: Text) -> Int {
-    if name == "args" || name == "fail" {
+    if name == "args" || name == "fail" || name == "stage2_bytes_empty" {
         return 0
     }
     if name == "chars" || name == "is_digit" || name == "is_space" ||
@@ -5916,7 +5930,7 @@ fn builtin_arity(name: Text) -> Int {
 # `len` accepts either Text or List (its only overload); every other
 # signature is exact.
 fn builtin_parameter_types(name: Text) -> Text {
-    if name == "args" || name == "fail" {
+    if name == "args" || name == "fail" || name == "stage2_bytes_empty" {
         return ""
     }
     if name == "chars" || name == "is_digit" || name == "is_space" ||
@@ -6839,7 +6853,8 @@ fn validate_core_calls(source: Text, hir: Text) -> Text {
                         return argument_error
                     }
                     if name == "len" || name == "text_slice" ||
-                       name == "to_text" {
+                       name == "to_text" ||
+                       name == "stage2_bytes_empty" {
                         expected = builtin_expected
                     } else {
                         return "error[E2S10]: unsupported Core builtin call `" +
@@ -10821,6 +10836,13 @@ fn builtin_return_type(name: Text) -> Text {
     if name == "fail" || name == "write_text" {
         return "Void"
     }
+    # #1315. The admitted owning origin. `stage2_bytes_assign_zeroed` is not
+    # here: it is transactional on an existing binding and yields a status,
+    # not a new owning value, so classifying it as `Bytes` would make the
+    # ownership pass believe an assignment created storage.
+    if name == "stage2_bytes_empty" {
+        return "Bytes"
+    }
     return ""
 }
 
@@ -11854,6 +11876,15 @@ fn build_scope_hir_mode(
                 if binding_type == "Text" || binding_type == "List" ||
                    starts_with(binding_type, "List[") {
                     ownership = "gc"
+                }
+                # #1315. `owned` is the third kind and the one the cleanup
+                # funnel keys on: backend storage this binding must reclaim,
+                # as opposed to `gc` which the arena reclaims for the whole
+                # run. The distinction is the reason Bytes cannot simply join
+                # the `gc` set -- an arena cannot free in reverse lexical
+                # order at each exit, which is what the transfer rules need.
+                if binding_type == "Bytes" {
+                    ownership = "owned"
                 }
                 hir = hir + "binding|" + to_text(next_binding_id) + "|" +
                 scope_id + "|" + token_text(source, name) + "|" +
@@ -13485,6 +13516,8 @@ fn lower_body(
                     c_type = "const char *"
                 } else if inferred_type == "List[Int]" {
                     c_type = "KofunIntListValue"
+                } else if inferred_type == "Bytes" {
+                    c_type = "KofunBytesValue"
                 } else if record_declaration_start(source, inferred_type) >= 0 {
                     c_type = record_c_type_name(inferred_type)
                 }

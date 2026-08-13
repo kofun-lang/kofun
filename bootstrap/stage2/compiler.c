@@ -8881,6 +8881,17 @@ static char *emit_primary(
             free(name);
             return length.data;
         }
+        /* #1315. The admitted owning origin lowers to the runtime helper
+         * directly rather than through `kofun_fn_`, which would name a
+         * function no emitted program declares. It takes no arguments, so
+         * there is nothing to emit between the parentheses. */
+        if (
+            open < end && token_equal(source, open, "(") &&
+            strcmp(name, "stage2_bytes_empty") == 0
+        ) {
+            free(name);
+            return owned_text("stage2_bytes_empty()");
+        }
         if (
             open < end && token_equal(source, open, "(") &&
             strcmp(name, "to_text") == 0
@@ -9733,6 +9744,12 @@ static int64_t call_arity(const char *source, int64_t open) {
  * and `text_slice`; the remaining accepted uses classify as unsupported
  * lowering, never as an unknown-function source error.
  */
+/* The builtin vocabulary lives in three parallel tables -- this one,
+ * builtin_return_type, and builtin_parameter_types -- and nothing
+ * cross-checks them. Adding a name to one and not the others fails closed
+ * (`E2S16: unknown Core function` when arity is missing), which is the good
+ * direction, but the tables have to be edited together. #1315 added
+ * `stage2_bytes_empty` to all three. */
 static int64_t builtin_arity(const char *name) {
     static const struct {
         const char *name;
@@ -9749,6 +9766,7 @@ static int64_t builtin_arity(const char *name) {
         {"len", 1},
         {"read_text", 1},
         {"replace", 3},
+        {"stage2_bytes_empty", 0},
         {"starts_with", 2},
         {"text_slice", 3},
         {"to_text", 1},
@@ -9816,6 +9834,7 @@ static const char *builtin_parameter_types(const char *name) {
         {"len", "TextOrList"},
         {"read_text", "Text"},
         {"replace", "Text|Text|Text"},
+        {"stage2_bytes_empty", ""},
         {"starts_with", "Text|Text"},
         {"text_slice", "Text|Int|Int"},
         {"to_text", "Int"},
@@ -11059,7 +11078,8 @@ static char *validate_core_calls(const char *source, const char *hir) {
                     if (
                         strcmp(name, "len") == 0 ||
                         strcmp(name, "text_slice") == 0 ||
-                        strcmp(name, "to_text") == 0
+                        strcmp(name, "to_text") == 0 ||
+                        strcmp(name, "stage2_bytes_empty") == 0
                     ) {
                         expected = builtin_expected;
                     } else {
@@ -14838,6 +14858,12 @@ static const char *builtin_return_type(const char *name) {
         {"len", "Int"},
         {"read_text", "Text"},
         {"replace", "Text"},
+        /* #1315. The admitted owning origin. `stage2_bytes_assign_zeroed` is
+         * deliberately not here: it is transactional on an existing binding
+         * and yields a status, not a new owning value, so classifying it as
+         * `Bytes` would make the ownership pass believe an assignment created
+         * storage. */
+        {"stage2_bytes_empty", "Bytes"},
         {"starts_with", "Bool"},
         {"text_slice", "Text"},
         {"to_text", "Text"},
@@ -16536,7 +16562,15 @@ static char *build_scope_hir_mode(
                         name
                     );
                 }
+                /* #1315. `owned` is the third kind and the one the cleanup
+                 * funnel keys on: backend storage this binding must reclaim,
+                 * as opposed to `gc` which the arena reclaims for the whole
+                 * run. The distinction is the reason Bytes cannot simply join
+                 * the `gc` set -- an arena cannot free in reverse lexical
+                 * order at each exit, which is what the transfer rules
+                 * need. */
                 const char *ownership =
+                    strcmp(binding_type, "Bytes") == 0 ? "owned" :
                     strcmp(binding_type, "Text") == 0 ||
                     strcmp(binding_type, "List") == 0 ||
                     strncmp(binding_type, "List[", 5) == 0 ? "gc" : "copy";
@@ -20217,6 +20251,8 @@ static char *lower_body(
                 c_type = "const char *";
             } else if (strcmp(binding_type, "List[Int]") == 0) {
                 c_type = "KofunIntListValue";
+            } else if (strcmp(binding_type, "Bytes") == 0) {
+                c_type = "KofunBytesValue";
             } else if (record_declaration_start(source, binding_type) >= 0) {
                 record_type_owned = record_c_type_name(binding_type);
                 c_type = record_type_owned;
