@@ -25234,7 +25234,6 @@ static char *lower_c_body(const char *source, const char *hir) {
         /* `calloc`/`free` for the Bytes carrier (#1315). Every emitted program
          * gets it, matching how the other bounded carriers are declared
          * unconditionally. */
-        "#include <stdlib.h>\n"
         "#include <string.h>\n"
     );
     if (fractional_values) {
@@ -25350,32 +25349,6 @@ static char *lower_c_body(const char *source, const char *hir) {
         "}\n"
         "static inline KofunBytesValue stage2_bytes_empty(void) {\n"
         "    return KOFUN_BYTES_EMPTY;\n"
-        "}\n"
-        "static inline void kofun_bytes_release(KofunBytesValue *value) {\n"
-        "    if (value->data != NULL) free(value->data);\n"
-        "    value->length = UINT64_C(0); value->capacity = UINT64_C(0); value->data = NULL;\n"
-        "}\n"
-        "static bool kofun_bytes_allocation_fails;\n"
-        "static inline KofunBytesStatus stage2_bytes_assign_zeroed(KofunBytesValue *destination, int64_t length) {\n"
-        "    unsigned char *storage = NULL;\n"
-        "    if (length < 0) return kofun_bytes_status(KOFUN_BYTES_NEGATIVE_LENGTH, length);\n"
-        "    if (length > (int64_t)KOFUN_BYTES_CAPACITY_LIMIT) {\n"
-        "        return kofun_bytes_status(KOFUN_BYTES_CAPACITY_EXCEEDED, length);\n"
-        "    }\n"
-        "    if (length > 0) {\n"
-        "        if (kofun_bytes_allocation_fails) {\n"
-        "            return kofun_bytes_status(KOFUN_BYTES_ALLOCATION_FAILED, length);\n"
-        "        }\n"
-        "        storage = calloc((size_t)length, 1u);\n"
-        "        if (storage == NULL) {\n"
-        "            return kofun_bytes_status(KOFUN_BYTES_ALLOCATION_FAILED, length);\n"
-        "        }\n"
-        "    }\n"
-        "    kofun_bytes_release(destination);\n"
-        "    destination->length = (uint64_t)length;\n"
-        "    destination->capacity = (uint64_t)length;\n"
-        "    destination->data = storage;\n"
-        "    return kofun_bytes_status(KOFUN_BYTES_SUCCEEDED, INT64_C(0));\n"
         "}\n"
     );
     buffer_append(
