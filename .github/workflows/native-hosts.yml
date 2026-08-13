@@ -225,6 +225,12 @@ jobs:
           if test "$status" -ne 0; then
             printf 'native image exited %s\n' "$status" >&2
             sed -n '1,80p' native.stderr >&2
+            # Keep failure diagnosis on the matching host. This is read-only
+            # evidence; LLDB does not participate in producing the image.
+            lldb --batch \
+              -o run \
+              -o 'thread backtrace all' \
+              -- "$IMAGE" >&2 || true
             exit 1
           fi
           test "$status" -eq 0
