@@ -1,0 +1,200 @@
+# Executable Stage 1 bridge for the canonical Mach-O 64 image writer.
+#
+# encoder.kofun owns the canonical List[Int] implementation. The current full
+# compiler still refuses List-returning user functions, so this bounded bridge
+# emits the same scalar fields while Stage 2 parses and indexes the canonical
+# writer itself.
+
+fn emit(value: Int) -> Int {
+    print(value % 256)
+    return 0
+}
+
+fn emit_u32(value: Int) -> Int {
+    emit(value)
+    emit(value // 256)
+    emit(value // 65536)
+    emit(value // 16777216)
+    return 0
+}
+
+fn emit_u64(value: Int) -> Int {
+    emit_u32(value)
+    emit_u32(value // 4294967296)
+    return 0
+}
+
+fn emit_zeros(count: Int) -> Int {
+    let mut index = 0
+    while index < count {
+        emit(0)
+        index = index + 1
+    }
+    return 0
+}
+
+fn emit_pagezero() -> Int {
+    emit_u32(25)
+    emit_u32(72)
+    emit(95)
+    emit(95)
+    emit(80)
+    emit(65)
+    emit(71)
+    emit(69)
+    emit(90)
+    emit(69)
+    emit(82)
+    emit(79)
+    emit_zeros(6)
+    emit_u64(0)
+    emit_u64(4294967296)
+    emit_u64(0)
+    emit_u64(0)
+    emit_u32(0)
+    emit_u32(0)
+    emit_u32(0)
+    emit_u32(0)
+    return 0
+}
+
+fn emit_text(cpu_type: Int, page_size: Int, code_size: Int) -> Int {
+    emit_u32(25)
+    emit_u32(152)
+    emit(95)
+    emit(95)
+    emit(84)
+    emit(69)
+    emit(88)
+    emit(84)
+    emit_zeros(10)
+    emit_u64(4294967296)
+    emit_u64(page_size)
+    emit_u64(0)
+    emit_u64(page_size)
+    emit_u32(5)
+    emit_u32(5)
+    emit_u32(1)
+    emit_u32(0)
+
+    emit(95)
+    emit(95)
+    emit(116)
+    emit(101)
+    emit(120)
+    emit(116)
+    emit_zeros(10)
+    emit(95)
+    emit(95)
+    emit(84)
+    emit(69)
+    emit(88)
+    emit(84)
+    emit_zeros(10)
+    emit_u64(4294967808)
+    emit_u64(code_size)
+    emit_u32(512)
+    if cpu_type == 16777223 {
+        emit_u32(0)
+    } else {
+        emit_u32(2)
+    }
+    emit_u32(0)
+    emit_u32(0)
+    emit_u32(2147484672)
+    emit_u32(0)
+    emit_u32(0)
+    emit_u32(0)
+    return 0
+}
+
+fn emit_commands() -> Int {
+    emit_u32(14)
+    emit_u32(32)
+    emit_u32(12)
+    emit(47)
+    emit(117)
+    emit(115)
+    emit(114)
+    emit(47)
+    emit(108)
+    emit(105)
+    emit(98)
+    emit(47)
+    emit(100)
+    emit(121)
+    emit(108)
+    emit(100)
+    emit(0)
+    emit_zeros(6)
+
+    emit_u32(50)
+    emit_u32(24)
+    emit_u32(1)
+    emit_u32(720896)
+    emit_u32(720896)
+    emit_u32(0)
+
+    emit_u32(2147483688)
+    emit_u32(24)
+    emit_u64(512)
+    emit_u64(0)
+    return 0
+}
+
+fn emit_macho64(cpu_type: Int) -> Int {
+    let mut cpu_subtype = 0
+    let mut page_size = 16384
+    let mut code_size = 12
+    if cpu_type == 16777223 {
+        cpu_subtype = 3
+        page_size = 4096
+        code_size = 9
+    }
+
+    emit_u32(4277009103)
+    emit_u32(cpu_type)
+    emit_u32(cpu_subtype)
+    emit_u32(2)
+    emit_u32(5)
+    emit_u32(304)
+    emit_u32(2097285)
+    emit_u32(0)
+    emit_pagezero()
+    emit_text(cpu_type, page_size, code_size)
+    emit_commands()
+    emit_zeros(176)
+
+    if cpu_type == 16777223 {
+        emit(184)
+        emit(1)
+        emit(0)
+        emit(0)
+        emit(2)
+        emit(49)
+        emit(255)
+        emit(15)
+        emit(5)
+    } else {
+        emit(0)
+        emit(0)
+        emit(128)
+        emit(210)
+        emit(48)
+        emit(0)
+        emit(128)
+        emit(210)
+        emit(1)
+        emit(16)
+        emit(0)
+        emit(212)
+    }
+    emit_zeros(page_size - 512 - code_size)
+    return 0
+}
+
+fn main() {
+    emit_macho64(16777223)
+    print(999)
+    emit_macho64(16777228)
+}

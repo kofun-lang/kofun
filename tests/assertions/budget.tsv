@@ -11,6 +11,7 @@
 #
 # count	path
 0	bootstrap/c_abi/check.sh
+0	bootstrap/native/check-macho64.sh
 0	bootstrap/native/check-pe32plus.sh
 0	bootstrap/native/check.sh
 0	bootstrap/native/emit-fixture.sh

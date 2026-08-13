@@ -4,7 +4,8 @@ This directory advances issues #14 and #33 with a Kofun-owned, Python-free
 native path. `encoder.kofun` is the canonical instruction and image
 implementation. It constructs little-endian integers, x86-64 and AArch64
 instruction bytes, target-parameterized ELF64 headers, and PE32+ headers and
-sections directly. It does not emit assembly or invoke a linker.
+sections, and Mach-O 64 headers/load commands directly. It does not emit
+assembly or invoke a linker.
 
 ## PE32+ image checkpoint
 
@@ -29,6 +30,32 @@ Windows-host execution evidence are separate checkpoints. The narrow bridge
 exists for the same reason as the ELF bridges below: the current full compiler
 does not yet lower List-returning user functions, while Stage 2 still parses
 and indexes the canonical writer itself.
+
+## Mach-O 64 image checkpoint
+
+`macho64_image(cpu_type, code)` is the first macOS image-writing slice of
+RFC-0018/A01. It returns a complete page-sized Mach-O 64 image with
+`MH_MAGIC_64`, the exact x86-64 or AArch64 CPU identity, `MH_EXECUTE`,
+`__PAGEZERO`, one executable `__TEXT,__text` section, `/usr/lib/dyld` in
+`LC_LOAD_DYLINKER`, a macOS 11 `LC_BUILD_VERSION`, and `LC_MAIN`. x86-64 uses a
+4 KiB image and AArch64 uses a 16 KiB image; both place the bounded entry bytes
+at file offset 512. `macho64_entry_image` pins distinct raw `exit(0)` syscall
+sequences and imports no library.
+
+The canonical writer is Kofun and requires no assembler, linker, system SDK,
+or foreign-language image writer. `check-macho64.sh` produces both images
+twice through a Kofun Stage 1 bridge, validates every header, segment, section,
+load command, CPU identity, entry offset, and padding byte with an independent
+parser, proves five selected mutations fail, and executes the canonical
+request predicate for invalid CPU, empty, oversized, and out-of-range byte
+inputs. When present, `file` and `llvm-readobj` additionally parse the exact
+outputs. Their hashes live in `SHA256SUMS`.
+
+This checkpoint does not expose macOS CLI targets or claim macOS-host
+execution. AArch64 ad-hoc code signing, OS authorities, general Core lowering,
+and matching host execution evidence remain separate work. The Stage 1 bridge
+exists only because List-returning user functions do not yet lower through the
+full compiler; Stage 2 parses and indexes the canonical Kofun writer.
 
 ## AArch64 Native Core v1
 
@@ -635,6 +662,9 @@ Implemented here:
 - deterministic ELF64 and program-header byte encoding in Kofun;
 - deterministic PE32+ DOS/COFF/optional/section-header byte encoding in Kofun
   for x86-64 and AArch64, with no imports, SDK, assembler, or linker;
+- deterministic Mach-O 64 header/segment/section/load-command encoding in
+  Kofun for x86-64 and AArch64, with no imported library, SDK, assembler, or
+  linker;
 - x86-64 `mov r32, imm32` and `syscall` encoders;
 - deterministic absolute and PC-relative label/fixup resolution;
 - raw `write(1, address, length)` and `exit(status)` sequences;
@@ -687,8 +717,9 @@ Still open:
   self-compile;
 - general local bindings and statement/control-flow lowering inside
   user-defined functions;
-- conditional branches, allocator reuse/reclamation, Mach-O, Windows runtime
-  and CLI target admission, and additional targets;
+- conditional branches, allocator reuse/reclamation, macOS ad-hoc signing and
+  host execution, Windows runtime and host execution, CLI target admission,
+  and additional targets;
 - first-class/nested collection lambdas and general collection types;
 - broader Text bindings/calls and the Stage 1 compiler port;
 - variable/location DIEs, multi-function debug information, and AArch64

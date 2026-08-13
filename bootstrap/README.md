@@ -7,8 +7,8 @@
 - `stage2/compiler.kofun`: Kofun lexer, structural parser, IR, and stable emitter
 - `stage2/compiler.c`: hash-pinned executable checkpoint seed
 - `stage2/check.sh`: deterministic source/token/IR round-trip gate
-- `native/encoder.kofun`: direct ELF64 and PE32+ x86-64/AArch64 encoder
-- `native/check.sh`: Kofun Core Linux execution and PE32+ structure gate
+- `native/encoder.kofun`: direct ELF64, PE32+, and Mach-O 64 x86-64/AArch64 encoder
+- `native/check.sh`: Kofun Core Linux execution and PE32+/Mach-O structure gates
 - `c_abi/compiler.c`: hash-pinned canonical compiler for the bounded C ABI profile
 - `c_abi/check.sh`: libc, archive, Rust cdylib, and C caller ABI gate
 - `selfhost/check-inputs-sufficient.sh`: the declared acquisition set rebuilds
@@ -31,8 +31,9 @@ byte for byte, and verifies its bounded Int/Bool/Text/List[Text] comparison,
 short-circuit, nested-block, loop, Text runtime, `chars`/`len`, and Text/List
 indexing profile. Stage 2 validates a deterministic semantic-frontend boundary.
 Native builds and executes static ELF64 fixtures and emits structurally
-validated PE32+ x86-64/AArch64 image checkpoints directly from Kofun-authored
-bytes. The PE checkpoint does not yet claim Windows runtime execution.
+validated PE32+ and Mach-O 64 x86-64/AArch64 image checkpoints directly from
+Kofun-authored bytes. The image checkpoints do not yet claim Windows or macOS
+host execution; macOS AArch64 ad-hoc signing also remains separate work.
 `selfhost/check-inputs-sufficient.sh` answers the question the other
 reproduction gates cannot. `declare-inputs.sh` writes what a builder must
 obtain and `check-declared-inputs.sh` refuses a declared input that is

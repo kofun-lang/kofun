@@ -341,6 +341,222 @@ fn pe32plus_entry_image(machine: Int) -> List[Int] {
     return pe32plus_image(machine, pe32plus_entry_code(machine))
 }
 
+# Mach-O 64 image writer.
+#
+# The writer follows the public structures and constants in Apple's
+# mach-o/loader.h. It owns every byte through the final page-sized image; the
+# LC_LOAD_DYLINKER path is metadata authored here, not an SDK or linker input.
+fn macho64_cpu_supported(cpu_type: Int) -> Bool {
+    # CPU_TYPE_X86_64 and CPU_TYPE_ARM64.
+    return cpu_type == 16777223 || cpu_type == 16777228
+}
+
+fn macho64_page_size(cpu_type: Int) -> Int {
+    if cpu_type == 16777223 {
+        return 4096
+    }
+    if cpu_type == 16777228 {
+        return 16384
+    }
+    return 0
+}
+
+# macho64-request-validator:start
+fn macho64_request_status(
+    cpu_type: Int,
+    code_size: Int,
+    minimum_byte: Int,
+    maximum_byte: Int
+) -> Int {
+    if cpu_type != 16777223 {
+        if cpu_type != 16777228 {
+            return 1
+        }
+    }
+    # Keep one bounded payload contract for both targets even though arm64's
+    # mapped page is larger than x86-64's.
+    if code_size <= 0 {
+        return 2
+    }
+    if code_size > 3584 {
+        return 2
+    }
+    if minimum_byte < 0 {
+        return 3
+    }
+    if maximum_byte > 255 {
+        return 3
+    }
+    return 0
+}
+# macho64-request-validator:end
+
+fn macho64_code_valid(code: List[Int]) -> Bool {
+    let mut minimum_byte = 256
+    let mut maximum_byte = -1
+    for byte in code {
+        if byte < minimum_byte {
+            minimum_byte = byte
+        }
+        if byte > maximum_byte {
+            maximum_byte = byte
+        }
+    }
+    return macho64_request_status(
+        16777223,
+        len(code),
+        minimum_byte,
+        maximum_byte,
+    ) == 0
+}
+
+fn macho64_header(cpu_type: Int) -> List[Int] {
+    if !macho64_cpu_supported(cpu_type) {
+        return []
+    }
+    let mut cpu_subtype = 0 # CPU_SUBTYPE_ARM64_ALL
+    if cpu_type == 16777223 {
+        cpu_subtype = 3 # CPU_SUBTYPE_X86_64_ALL
+    }
+    let mut header = u32_le(4277009103) # MH_MAGIC_64, 0xfeedfacf
+    header = concat(header, u32_le(cpu_type))
+    header = concat(header, u32_le(cpu_subtype))
+    header = concat(header, u32_le(2))   # MH_EXECUTE
+    header = concat(header, u32_le(5))   # five load commands
+    header = concat(header, u32_le(304)) # total load-command bytes
+    # MH_NOUNDEFS | MH_DYLDLINK | MH_TWOLEVEL | MH_PIE.
+    header = concat(header, u32_le(2097285))
+    return concat(header, u32_le(0)) # reserved
+}
+
+fn macho64_pagezero_segment() -> List[Int] {
+    let mut segment = u32_le(25) # LC_SEGMENT_64
+    segment = concat(segment, u32_le(72))
+    segment = concat(segment, [
+        95, 95, 80, 65, 71, 69, 90, 69,
+        82, 79, 0, 0, 0, 0, 0, 0,
+    ]) # __PAGEZERO
+    segment = concat(segment, u64_le(0))
+    segment = concat(segment, u64_le(4294967296))
+    segment = concat(segment, u64_le(0))
+    segment = concat(segment, u64_le(0))
+    segment = concat(segment, u32_le(0)) # maxprot
+    segment = concat(segment, u32_le(0)) # initprot
+    segment = concat(segment, u32_le(0)) # nsects
+    return concat(segment, u32_le(0))    # flags
+}
+
+fn macho64_text_segment(cpu_type: Int, code_size: Int) -> List[Int] {
+    let page_size = macho64_page_size(cpu_type)
+    if page_size == 0 || code_size <= 0 || code_size > 3584 {
+        return []
+    }
+    let mut segment = u32_le(25) # LC_SEGMENT_64
+    segment = concat(segment, u32_le(152))
+    segment = concat(segment, [
+        95, 95, 84, 69, 88, 84, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+    ]) # __TEXT
+    segment = concat(segment, u64_le(4294967296))
+    segment = concat(segment, u64_le(page_size))
+    segment = concat(segment, u64_le(0))
+    segment = concat(segment, u64_le(page_size))
+    segment = concat(segment, u32_le(5)) # VM_PROT_READ | VM_PROT_EXECUTE
+    segment = concat(segment, u32_le(5))
+    segment = concat(segment, u32_le(1)) # one section
+    segment = concat(segment, u32_le(0))
+
+    segment = concat(segment, [
+        95, 95, 116, 101, 120, 116, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+    ]) # __text
+    segment = concat(segment, [
+        95, 95, 84, 69, 88, 84, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+    ]) # __TEXT
+    segment = concat(segment, u64_le(4294967808)) # vmaddr + entry offset
+    segment = concat(segment, u64_le(code_size))
+    segment = concat(segment, u32_le(512)) # file offset
+    let mut alignment_power = 0
+    if cpu_type == 16777228 {
+        alignment_power = 2 # 4-byte AArch64 instructions
+    }
+    segment = concat(segment, u32_le(alignment_power))
+    segment = concat(segment, u32_le(0)) # reloff
+    segment = concat(segment, u32_le(0)) # nreloc
+    # S_REGULAR | S_ATTR_SOME_INSTRUCTIONS | S_ATTR_PURE_INSTRUCTIONS.
+    segment = concat(segment, u32_le(2147484672))
+    segment = concat(segment, u32_le(0))
+    segment = concat(segment, u32_le(0))
+    return concat(segment, u32_le(0))
+}
+
+fn macho64_dylinker_command() -> List[Int] {
+    let mut command = u32_le(14) # LC_LOAD_DYLINKER
+    command = concat(command, u32_le(32))
+    command = concat(command, u32_le(12)) # path offset in command
+    command = concat(command, [
+        47, 117, 115, 114, 47, 108, 105,
+        98, 47, 100, 121, 108, 100, 0,
+    ]) # /usr/lib/dyld\0
+    return pad_to(command, 32)
+}
+
+fn macho64_build_version_command() -> List[Int] {
+    let mut command = u32_le(50) # LC_BUILD_VERSION
+    command = concat(command, u32_le(24))
+    command = concat(command, u32_le(1))      # PLATFORM_MACOS
+    command = concat(command, u32_le(720896)) # macOS 11.0.0
+    command = concat(command, u32_le(720896)) # SDK 11.0.0 contract
+    return concat(command, u32_le(0))         # no tool records
+}
+
+fn macho64_main_command() -> List[Int] {
+    let mut command = u32_le(2147483688) # LC_MAIN
+    command = concat(command, u32_le(24))
+    command = concat(command, u64_le(512)) # entryoff from image start
+    return concat(command, u64_le(0))      # default stack size
+}
+
+fn macho64_image(cpu_type: Int, code: List[Int]) -> List[Int] {
+    if !macho64_cpu_supported(cpu_type) || !macho64_code_valid(code) {
+        return []
+    }
+    let mut image = macho64_header(cpu_type)
+    image = concat(image, macho64_pagezero_segment())
+    image = concat(image, macho64_text_segment(cpu_type, len(code)))
+    image = concat(image, macho64_dylinker_command())
+    image = concat(image, macho64_build_version_command())
+    image = concat(image, macho64_main_command())
+    if len(image) != 336 {
+        return []
+    }
+    image = pad_to(image, 512)
+    image = concat(image, code)
+    return pad_to(image, macho64_page_size(cpu_type))
+}
+
+fn macho64_entry_code(cpu_type: Int) -> List[Int] {
+    if cpu_type == 16777223 {
+        # macOS x86-64: exit(0), syscall class UNIX = 0x02000000.
+        # mov eax,0x02000001; xor edi,edi; syscall
+        return [184, 1, 0, 0, 2, 49, 255, 15, 5]
+    }
+    if cpu_type == 16777228 {
+        # macOS AArch64: x0=0; x16=SYS_exit; svc #0x80.
+        return [
+            0, 0, 128, 210,
+            48, 0, 128, 210,
+            1, 16, 0, 212,
+        ]
+    }
+    return []
+}
+
+fn macho64_entry_image(cpu_type: Int) -> List[Int] {
+    return macho64_image(cpu_type, macho64_entry_code(cpu_type))
+}
+
 fn elf_ident() -> List[Int] {
     return [
         127, 69, 76, 70, # ELF magic
