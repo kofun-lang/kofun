@@ -99,7 +99,8 @@ Run from a clean checkout of `main`, with the working tree clean.
    Pushing that tag runs `.github/workflows/release.yml`, which **refuses a
    tag that disagrees with `VERSION`**, runs `task verify` at the tagged
    commit rather than trusting the branch run, builds a reproducible source
-   archive with `git archive`, and attaches it with its SHA-256 to the
+   archive with `git archive`, rebuilds the six bounded native checkpoint
+   images, and attaches them with Kofun-computed SHA-256 manifests to the
    release. A `-seed` version is published as a pre-release, because the
    suffix and the flag say the same thing and must not disagree.
 
@@ -117,9 +118,13 @@ artifact an independent builder starts from, and the digest is what makes
 "the right bytes" checkable — the same question
 `bootstrap/selfhost/declare-inputs.sh` answers file by file.
 
-**It does not include binaries for any platform.** A user builds from source.
-An install path is an M4 deliverable (`docs/ROADMAP.md` §M4, "multi-platform
-release"); the compiler is Linux x86-64 only today, AArch64 evidence is
-qemu-gated, and there is no macOS or Windows support to ship. Saying so is
-deliberate: pretending an install path exists would be the same defect this
-document was written to close.
+It also includes the exact six x86-64/AArch64 Linux, Windows, and macOS images
+covered by the `native-six-host-execution` claim, plus one Kofun-computed digest
+manifest. Their names contain `native-checkpoint`: Linux prints `42`; the
+Windows and macOS images return zero with no output. They prove final-image
+encoding and matching-host execution; they are not general compiler CLIs.
+
+**It does not include a multi-platform compiler install.** That remains an M4
+deliverable (`docs/ROADMAP.md` §M4, "multi-platform release"). The distinction
+is deliberate: publishing bounded executable evidence must not imply that the
+full language or toolchain already runs on those six targets.

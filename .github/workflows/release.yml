@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   release:
-    name: Publish the tagged source archive
+    name: Publish source and native checkpoint assets
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -56,6 +56,39 @@ jobs:
       # an older commit is proven at that commit.
       - run: task verify
 
+      # These are the exact bounded images covered by the six-host claim, not
+      # general compiler CLIs. Build them again at the tag and name every asset
+      # accordingly so the release surface cannot overstate the checkpoint.
+      - name: Build the six native checkpoint assets
+        env:
+          KOFUN_GATE_WORK_NAMESPACE: release-native
+        run: |
+          set -eu
+          task native
+          version=$(cat VERSION)
+          source=build/release-native/native-check
+          output=release-assets
+          mkdir -p "$output"
+          cp "$source/core_return_42-x86_64.elf" \
+            "$output/kofun-native-checkpoint-$version-linux-x86_64.elf"
+          cp "$source/core_return_42-aarch64.elf" \
+            "$output/kofun-native-checkpoint-$version-linux-aarch64.elf"
+          cp "$source/pe32plus/x86_64-windows.pe" \
+            "$output/kofun-native-checkpoint-$version-windows-x86_64.exe"
+          cp "$source/pe32plus/aarch64-windows.pe" \
+            "$output/kofun-native-checkpoint-$version-windows-aarch64.exe"
+          cp "$source/macho64-signed/x86_64-macos-signed.macho" \
+            "$output/kofun-native-checkpoint-$version-macos-x86_64.macho"
+          cp "$source/macho64-signed/aarch64-macos-signed.macho" \
+            "$output/kofun-native-checkpoint-$version-macos-aarch64.macho"
+          manifest="$output/kofun-native-checkpoint-$version-SHA256SUMS"
+          : >"$manifest"
+          for asset in "$output"/*.elf "$output"/*.exe "$output"/*.macho; do
+            ./bin/kofun-digest "$asset" >>"$manifest"
+          done
+          test "$(wc -l <"$manifest" | tr -d ' ')" -eq 6
+          cat "$manifest"
+
       # `git archive` from the tag is reproducible: same tag, same bytes.
       # This is the acquisition artifact an independent builder starts from,
       # and the digest is what makes "the right bytes" checkable.
@@ -68,7 +101,7 @@ jobs:
           ./bin/kofun-digest "$archive" >"$archive.sha256"
           printf 'archive: %s\n' "$(cat "$archive.sha256")"
 
-      - name: Attach the archive to the release
+      - name: Attach source and native checkpoint assets to the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -81,11 +114,12 @@ jobs:
             *-seed) prerelease="--prerelease" ;;
           esac
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" "$archive" "$archive.sha256" --clobber
+            gh release upload "$GITHUB_REF_NAME" \
+              "$archive" "$archive.sha256" release-assets/* --clobber
           else
             gh release create "$GITHUB_REF_NAME" \
               --title "$GITHUB_REF_NAME" \
               --generate-notes \
               $prerelease \
-              "$archive" "$archive.sha256"
+              "$archive" "$archive.sha256" release-assets/*
           fi
