@@ -13481,9 +13481,17 @@ fn lower_body(
                 # left to leak, and the refusal is what the following slice
                 # replaces.
                 if inferred_type == "Bytes" {
-                    return "error[E2S170]: Stage 2 Bytes[65536] cannot lower possible managed Bytes alias for `" +
-                    name + "` (backend limitation) at byte " +
-                    to_text(value_start)
+                    # Through `lower_error`, not string concatenation: the C
+                    # half's helper also registers the structured diagnostic
+                    # the semantic events producer reads, and the two halves
+                    # stay one transliteration apart only if both go through
+                    # it.
+                    return lower_error(
+                        "E2S170",
+                        "Stage 2 Bytes[65536] cannot lower possible managed Bytes alias for `" +
+                        name + "` (backend limitation)",
+                        value_start
+                    )
                 }
                 let actual_type = initializer_type(
                     source,

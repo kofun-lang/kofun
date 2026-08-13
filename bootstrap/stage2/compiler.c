@@ -20202,21 +20202,27 @@ static char *lower_body(
              * yet lower. It is refused here rather than left to leak, and the
              * refusal is what the following slice replaces. */
             if (strcmp(binding_type, "Bytes") == 0) {
-                Buffer refusal;
-                buffer_init(&refusal);
+                Buffer message;
+                char *refusal;
+                buffer_init(&message);
                 buffer_format(
-                    &refusal,
-                    "error[E2S170]: Stage 2 Bytes[65536] cannot lower possible "
-                    "managed Bytes alias for `%s` (backend limitation) at byte "
-                    "%" PRId64,
-                    name,
-                    value_start
+                    &message,
+                    "Stage 2 Bytes[65536] cannot lower possible managed Bytes "
+                    "alias for `%s` (backend limitation)",
+                    name
                 );
+                /* Through lower_error, not buffer_format: it is the helper
+                 * that also calls stage2_diagnostic_set, and the semantic
+                 * events producer reads that structured record rather than
+                 * the message text. Formatting the string directly produced
+                 * the right stderr and an ETS04 capture failure. */
+                refusal = lower_error("E2S170", message.data, value_start);
+                free(message.data);
                 free(binding_type);
                 free(binding_id);
                 free(name);
                 free(emitted.data);
-                return refusal.data;
+                return refusal;
             }
             char *actual_type = initializer_type(
                 source,
