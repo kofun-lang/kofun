@@ -27,12 +27,14 @@ mkdir -p "$WORK"
 
 "$CC" -std=c11 -Wall -Wextra -Werror -pedantic \
     "$ROOT/bootstrap/stage2/imports_qualified.c" \
+    "$ROOT/bootstrap/stage2/kif_v1.c" \
     "$ROOT/bootstrap/stage2/visibility_access.c" \
     "$ROOT/unicode/kofun_unicode.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
     -o "$TOOL"
 "$CC" -std=c11 -Wall -Wextra -Werror -pedantic \
     "$ROOT/bootstrap/stage2/imports_selective.c" \
+    "$ROOT/bootstrap/stage2/kif_v1.c" \
     "$ROOT/bootstrap/stage2/visibility_access.c" \
     "$ROOT/unicode/kofun_unicode.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
@@ -241,6 +243,7 @@ expect_failure E2S65 "$FIXTURES/default_qualifier.kofun" default-qualifier \
 "$CC" -std=c11 -Wall -Wextra -Werror -pedantic \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     "$ROOT/bootstrap/stage2/imports_qualified.c" \
+    "$ROOT/bootstrap/stage2/kif_v1.c" \
     "$ROOT/bootstrap/stage2/visibility_access.c" \
     "$ROOT/unicode/kofun_unicode.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \

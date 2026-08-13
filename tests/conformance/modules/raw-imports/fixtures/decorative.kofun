@@ -1,0 +1,6 @@
+module app.main
+trusted import lib.plain
+
+fn main() -> Int {
+    return plain.identity(42)
+}

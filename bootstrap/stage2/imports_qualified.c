@@ -5,6 +5,7 @@
 #define KOFUN_MODULE_SYMBOLS_NO_MAIN
 #include "module_symbols.c"
 #include "visibility_access.h"
+#include "kif_v1.h"
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
@@ -36,6 +37,9 @@ typedef struct {
     char declared_path[MODULE_PATH_LIMIT + 1u];
     size_t first_import;
     size_t import_count;
+    /* #1215. The class as it survives `kofun_kif_write` and `kofun_kif_read`,
+     * which is the one the admission rules are allowed to consult. */
+    KofunKifModuleTrust serialized_trust;
 } ImportModule;
 
 typedef struct {
@@ -44,6 +48,15 @@ typedef struct {
     uint8_t form_tag;
     bool graph_duplicate;
     bool has_alias;
+    /*
+     * #1215. Whether the importer wrote `trusted import`, and where. The span
+     * is the `trusted` token itself, because a refusal for a decorative
+     * marker has to point at the marker rather than at the path that follows
+     * it.
+     */
+    bool trusted;
+    size_t trusted_start;
+    size_t trusted_end;
     char *path;
     char qualifier[IDENTIFIER_LIMIT + 1u];
     ComponentSpan *components;
@@ -409,6 +422,19 @@ static bool parse_source_path(
     return true;
 }
 
+/* #1215. The refusals name the ModuleId, so the identity needs a text form.
+ * `parse_identity` already exists for the inventory; this is its inverse and
+ * the same lowercase hex the inventory is written in. */
+static void format_identity(const uint8_t identity[32], char text[65]) {
+    static const char digits[] = "0123456789abcdef";
+    size_t index;
+    for (index = 0u; index < 32u; index += 1u) {
+        text[index * 2u] = digits[(identity[index] >> 4) & 0x0fu];
+        text[index * 2u + 1u] = digits[identity[index] & 0x0fu];
+    }
+    text[64] = '\0';
+}
+
 static bool parse_and_check_header(ImportResolver *resolver, size_t module_index, size_t *cursor) {
     Program *program = &resolver->program;
     Module *module = &program->modules[module_index];
@@ -435,7 +461,33 @@ static bool parse_and_check_header(ImportResolver *resolver, size_t module_index
     free(path);
     free(components);
     *cursor = current;
-    return true;
+    /*
+     * #1215. The trust line is parsed by the same function the module-symbol
+     * collector uses, from the translation unit this file includes, rather
+     * than by a second implementation here. A contextual keyword with two
+     * parsers is a keyword two readers can disagree about, and the refusals
+     * for a detached or misspelled `trust` are already written once.
+     *
+     * Before this, the resolver did not consume the line at all: it fell
+     * through to the declaration loop and a raw-foreign module was refused
+     * with `unsupported top-level declaration`, pointing at the `trust` token
+     * inside the *imported* file. That refusal was correct by accident and
+     * named neither the crossing nor the importer.
+     */
+    return parse_trust_line(program, module, cursor);
+}
+
+/*
+ * `trusted` is contextual in exactly one position: immediately before
+ * `import`. Everywhere else it is an ordinary identifier, and this function is
+ * what keeps that true — it looks without consuming, so a function named
+ * `trusted` or a local called `trusted` reaches the ordinary parsers unchanged.
+ */
+static bool peek_trusted_import(const Module *module, size_t cursor) {
+    return cursor + 1u < module->token_count &&
+        token_equals(module, &module->tokens[cursor], "trusted") &&
+        !module->tokens[cursor + 1u].line_break_before &&
+        token_equals(module, &module->tokens[cursor + 1u], "import");
 }
 
 static bool parse_import(ImportResolver *resolver, size_t module_index, size_t *cursor) {
@@ -443,7 +495,9 @@ static bool parse_import(ImportResolver *resolver, size_t module_index, size_t *
     Module *module = &program->modules[module_index];
     ImportModule *import_module = &resolver->modules[module_index];
     ImportBinding *binding;
-    size_t current = *cursor + 1u;
+    bool trusted = peek_trusted_import(module, *cursor);
+    size_t import_token = trusted ? *cursor + 1u : *cursor;
+    size_t current = import_token + 1u;
     size_t end;
     size_t qualifier_length;
     if (import_module->import_count >= IMPORTS_PER_MODULE_LIMIT) {
@@ -456,7 +510,15 @@ static bool parse_import(ImportResolver *resolver, size_t module_index, size_t *
     memset(binding, 0, sizeof(*binding));
     binding->importer_index = module_index;
     binding->form_tag = IMPORT_FORM_QUALIFIED;
-    binding->start = module->tokens[*cursor].start;
+    binding->trusted = trusted;
+    if (trusted) {
+        binding->trusted_start = module->tokens[*cursor].start;
+        binding->trusted_end = module->tokens[*cursor].end;
+    }
+    /* The binding's own span still starts at `import`, so every existing
+     * diagnostic that quotes it is byte-for-byte unchanged for an ordinary
+     * import. The marker carries its own span above. */
+    binding->start = module->tokens[import_token].start;
     if (!parse_source_path(resolver, module, &current, "as", &binding->path,
             &binding->components, &binding->component_count, &end)) return false;
     resolver->import_count += 1u;
@@ -537,13 +599,19 @@ static bool collect_module_with_imports(ImportResolver *resolver, size_t module_
     size_t cursor;
     resolver->modules[module_index].first_import = resolver->import_count;
     if (!tokenize(program, module) || !parse_and_check_header(resolver, module_index, &cursor)) return false;
-    while (cursor < module->token_count && token_equals(module, &module->tokens[cursor], "import")) {
+    while (cursor < module->token_count &&
+        (token_equals(module, &module->tokens[cursor], "import") ||
+         peek_trusted_import(module, cursor))) {
         if (!parse_import(resolver, module_index, &cursor)) return false;
     }
     while (cursor < module->token_count) {
         size_t declaration_start = module->tokens[cursor].start;
         Visibility visibility = VISIBILITY_IMPLICIT_PRIVATE;
-        if (token_equals(module, &module->tokens[cursor], "import")) {
+        if (token_equals(module, &module->tokens[cursor], "import") ||
+            peek_trusted_import(module, cursor)) {
+            /* A `trusted import` after declarations is the same ordering
+             * mistake as an ordinary one, and reporting it as an unsupported
+             * declaration would send the reader to the wrong rule. */
             set_error(program, "E2S59", "imports must precede declarations in `%s` at bytes %zu..%zu",
                 module->logical_path, module->tokens[cursor].start, module->tokens[cursor].end);
             return false;
@@ -665,6 +733,122 @@ static void compute_alias_binding_id(
     kofun_sha256_finish(&context, digest);
 }
 
+/*
+ * #1215. The admission decision reads the trust class **out of the serialized
+ * form**, not out of the parse.
+ *
+ * The criterion is that "ModuleId and serialized trust fact are
+ * authoritative", and the failure mode it exists to prevent is subtle: the
+ * source fact and the artifact's class agree in every fixture anyone has
+ * written, so a decision taken from `module->trust_raw_foreign` passes every
+ * test while proving nothing about serialization. It would diverge exactly
+ * when the writer is wrong, which is the case the check is for.
+ *
+ * So each module's class is round-tripped through `kofun_kif_write` and
+ * `kofun_kif_read` once, and `kofun_kif_trust_agrees` is asked whether the two
+ * sides agree — RFC-0012's third refusal, where neither side wins.
+ */
+static bool serialize_module_trust(ImportResolver *resolver, const char *scratch) {
+    Program *program = &resolver->program;
+    size_t index;
+    for (index = 0u; index < program->module_count; index += 1u) {
+        KofunKifInterface written;
+        KifWriteResult write_result;
+        KifReadResult read_result;
+        FILE *handle;
+        long length;
+        uint8_t *bytes;
+        size_t read_bytes;
+        bool source_raw = program->modules[index].trust_raw_foreign;
+
+        memset(&written, 0, sizeof written);
+        memcpy(written.package_id, program->modules[index].package_id, 32u);
+        memcpy(written.module_id, program->modules[index].module_id, 32u);
+        snprintf(written.edition, sizeof written.edition, "%s", "2026");
+        written.module_trust = source_raw
+            ? KOFUN_KIF_TRUST_RAW_FOREIGN
+            : KOFUN_KIF_TRUST_ORDINARY;
+
+        write_result = kofun_kif_write(&written, scratch);
+        if (write_result.status != KOFUN_KIF_OK) {
+            remove(scratch);
+            /*
+             * A class that cannot be serialized cannot be claimed.
+             *
+             * The codec refuses an identity it considers degenerate — an
+             * all-zero ModuleId among them — and this resolver's own
+             * scale fixtures number their synthetic modules from zero, so
+             * `m.m0` legitimately has one. Such a module may still be
+             * *ordinary*, because ordinary asserts nothing: there is no fact
+             * for the artifact to be authoritative about. It may not be
+             * raw-foreign, because that is an assertion, and an assertion
+             * whose serialized form does not exist cannot be the thing the
+             * admission rule consults.
+             *
+             * This is the one place the source fact is read for a decision,
+             * and it is read only to refuse.
+             */
+            if (source_raw) {
+                set_error(program, "E2S171",
+                    "module `%s` declares `trust raw-foreign` but its trust class cannot be serialized (%s); a class that cannot be serialized cannot be claimed",
+                    resolver->modules[index].declared_path,
+                    write_result.message ? write_result.message : "unknown");
+                return false;
+            }
+            resolver->modules[index].serialized_trust = KOFUN_KIF_TRUST_ORDINARY;
+            continue;
+        }
+        handle = fopen(scratch, "rb");
+        if (handle == NULL) {
+            set_error(program, "E2S171",
+                "module `%s` wrote no readable trust artifact",
+                resolver->modules[index].declared_path);
+            remove(scratch);
+            return false;
+        }
+        if (fseek(handle, 0, SEEK_END) != 0 ||
+            (length = ftell(handle)) < 0 ||
+            fseek(handle, 0, SEEK_SET) != 0) {
+            fclose(handle);
+            remove(scratch);
+            set_error(program, "E2S171",
+                "module `%s` trust artifact is not seekable",
+                resolver->modules[index].declared_path);
+            return false;
+        }
+        bytes = malloc((size_t)length > 0u ? (size_t)length : 1u);
+        if (bytes == NULL) {
+            fclose(handle);
+            remove(scratch);
+            set_error(program, "E2S171", "out of memory reading a trust artifact");
+            return false;
+        }
+        read_bytes = fread(bytes, 1u, (size_t)length, handle);
+        fclose(handle);
+        remove(scratch);
+        read_result = kofun_kif_read(bytes, read_bytes, kofun_kif_default_limits());
+        free(bytes);
+        if (read_result.status != KOFUN_KIF_OK || read_result.interface == NULL) {
+            set_error(program, "E2S171",
+                "module `%s` trust artifact does not read back: %s",
+                resolver->modules[index].declared_path,
+                read_result.message ? read_result.message : "unknown");
+            if (read_result.interface != NULL) kofun_kif_destroy(read_result.interface);
+            return false;
+        }
+        if (!kofun_kif_trust_agrees(read_result.interface, source_raw)) {
+            set_error(program, "E2S171",
+                "module `%s` source trust class contradicts its serialized trust class; neither side wins, rebuild required",
+                resolver->modules[index].declared_path);
+            kofun_kif_destroy(read_result.interface);
+            return false;
+        }
+        resolver->modules[index].serialized_trust = read_result.interface->module_trust;
+        kofun_kif_destroy(read_result.interface);
+    }
+    return true;
+}
+
 static bool resolve_imports(ImportResolver *resolver) {
     Program *program = &resolver->program;
     size_t index;
@@ -692,6 +876,36 @@ static bool resolve_imports(ImportResolver *resolver) {
             return false;
         }
         binding->target_index = target;
+        /*
+         * #1215. Admission, taken from the serialized class and the resolved
+         * ModuleId. Both refusals name the ModuleId, the display path, the
+         * form that was attempted, and the exact remedy, because a reader who
+         * is told only that a crossing is forbidden cannot tell which of the
+         * two rules they hit.
+         */
+        if (resolver->modules[target].serialized_trust == KOFUN_KIF_TRUST_RAW_FOREIGN &&
+            !binding->trusted) {
+            char module_id_text[65];
+            format_identity(program->modules[target].module_id, module_id_text);
+            set_error(program, "E2S171",
+                "ordinary import of raw-foreign module `%s` (ModuleId %s) in `%s` at bytes %zu..%zu; write `trusted import %s` to record the crossing",
+                resolver->modules[target].declared_path, module_id_text,
+                program->modules[binding->importer_index].logical_path,
+                binding->start, binding->end,
+                resolver->modules[target].declared_path);
+            return false;
+        }
+        if (resolver->modules[target].serialized_trust != KOFUN_KIF_TRUST_RAW_FOREIGN &&
+            binding->trusted) {
+            char module_id_text[65];
+            format_identity(program->modules[target].module_id, module_id_text);
+            set_error(program, "E2S172",
+                "`trusted import` of ordinary module `%s` (ModuleId %s) in `%s` at bytes %zu..%zu; remove `trusted`, the marker is only for a module whose header says `trust raw-foreign`",
+                resolver->modules[target].declared_path, module_id_text,
+                program->modules[binding->importer_index].logical_path,
+                binding->trusted_start, binding->trusted_end);
+            return false;
+        }
         for (prior = module->first_import; prior < index; prior += 1u) {
             ImportBinding *other = &resolver->imports[prior];
             if (other->form_tag == IMPORT_FORM_QUALIFIED &&
@@ -1758,6 +1972,17 @@ int main(int argc, char **argv) {
         if (!collect_module_with_imports(&resolver, index)) goto done;
     }
     compute_identities(program);
+    /* #1215. The trust classes are serialized before any admission decision
+     * reads one, and the scratch artifact is removed as soon as it is read. */
+    {
+        char scratch[4096];
+        int written = snprintf(scratch, sizeof scratch, "%s.trust.kif", argv[2]);
+        if (written < 0 || (size_t)written >= sizeof scratch) {
+            fprintf(stderr, "output path is too long for a trust artifact\n");
+            goto done;
+        }
+        if (!serialize_module_trust(&resolver, scratch)) goto done;
+    }
     if (!validate_duplicates(program) || !resolve_imports(&resolver) ||
         !validate_import_cycles(&resolver) || !resolve_qualified_bodies(&resolver) ||
         (argc == 4 && !emit_reference_c(&resolver, argv[3])) ||
