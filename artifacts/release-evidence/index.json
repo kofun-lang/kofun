@@ -837,7 +837,7 @@
     "tests/fuzz/semantic_differential.sh": "177185179f22ad295f185def9e9b311e25a8b18fea4f5ecd53576d3daa6b875b",
     "tests/http/check.sh": "f2db6a18f3e879e9dec665b4bffa51a273c8dc7dd77fbc9f77853462f13ffb4c",
     "tests/interop/bindgen-c/fuzz/corpus/partial-declaration.h": "c5dce5c70ff456a593e7fa33db772a3c2430905340c4b44e9a79f0be681e50e2",
-    "tests/lsp/performance_test.js": "b87323fa6c87d742cf6a0647aae4d47abdf5b7407e82ed2de3e85f3bc24e0c52",
+    "tests/lsp/performance_test.js": "2af36f430bd7f8bb6e97a849d55a2fe0f18e03c23e2d0a1a59f1924d74da1faa",
     "tests/ownership/affine-resource-handle/README.md": "875ffe196d066176acba03d82ef4ab4ed70afec452d21bd131392b4bc5f2dc40",
     "tests/ownership/affine-resource-handle/runtime_model.c": "30b1e68a830a46d41b369a836fd5a2a0a41638e6df518a954b7ed5c998123f57",
     "tests/security/module-interface-artifact.sh": "f84c338ae61fc66ac2e8738d209049e53ad4274f31e42e2d4dd52d60fc44ddb7",
