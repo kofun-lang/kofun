@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 98,
+  "open_issues": 95,
   "issues": [
     {
       "number": 26,
@@ -839,8 +839,8 @@
       ]
     },
     {
-      "number": 1214,
-      "title": "RFC-0012 step 2: serialize module trust in KIF 0x800A",
+      "number": 1217,
+      "title": "RFC-0012 steps 5-6: integrate bindgen raw modules and reviewed facade",
       "state_labels": [
         "ready"
       ],
@@ -848,58 +848,28 @@
       "blocked_by": [],
       "evidence_commits": [
         "8fd0b25497c1fd4c61085260a416af619beb3c3f"
-      ]
-    },
-    {
-      "number": 1215,
-      "title": "RFC-0012 step 3: enforce trusted and ordinary raw-module imports",
-      "state_labels": [
-        "blocked"
       ],
-      "state_line": "blocked",
-      "blocked_by": [
-        1214
-      ],
-      "evidence_commits": [
-        "8fd0b25497c1fd4c61085260a416af619beb3c3f"
-      ]
-    },
-    {
-      "number": 1216,
-      "title": "RFC-0012 step 4: refuse every raw-origin re-export",
-      "state_labels": [
-        "blocked"
-      ],
-      "state_line": "blocked",
-      "blocked_by": [
-        1215
-      ],
-      "evidence_commits": [
-        "8fd0b25497c1fd4c61085260a416af619beb3c3f"
-      ]
-    },
-    {
-      "number": 1217,
-      "title": "RFC-0012 steps 5-6: integrate bindgen raw modules and reviewed facade",
-      "state_labels": [
-        "blocked"
-      ],
-      "state_line": "blocked",
-      "blocked_by": [
-        1216
-      ],
-      "evidence_commits": [
-        "8fd0b25497c1fd4c61085260a416af619beb3c3f"
+      "claims": [
+        {
+          "agent_id": "claude-opus-5-b326d627",
+          "status": "active"
+        },
+        {
+          "agent_id": "claude-opus-5-b326d627",
+          "status": "released"
+        }
       ]
     },
     {
       "number": 1220,
       "title": "Scoped parallelism HIR: emit par, spawn, and join identities",
       "state_labels": [
-        "ready"
+        "blocked"
       ],
-      "state_line": "ready",
-      "blocked_by": [],
+      "state_line": "blocked",
+      "blocked_by": [
+        1382
+      ],
       "evidence_commits": [
         "1e2fc028cce21b25f9c9de68be7d578020df0f6d"
       ],
@@ -1065,6 +1035,16 @@
       "blocked_by": [],
       "evidence_commits": [
         "855ca05a6cf6a01c404585cddc48443e9177086c"
+      ],
+      "claims": [
+        {
+          "agent_id": "claude-opus-5-b326d627",
+          "status": "active"
+        },
+        {
+          "agent_id": "claude-opus-5-b326d627",
+          "status": "released"
+        }
       ]
     },
     {
@@ -1741,12 +1721,18 @@
       "number": 1315,
       "title": "Stage 2 C11: lower Managed Bytes[65536] in the alias-free carrier core",
       "state_labels": [
-        "ready"
+        "in-progress"
       ],
-      "state_line": "ready",
+      "state_line": "in-progress",
       "blocked_by": [],
       "evidence_commits": [
         "3f72c7df8f5c87a7c92a96ff62042bb6cca2745e"
+      ],
+      "claims": [
+        {
+          "agent_id": "claude-opus-5-990cdd21",
+          "status": "active"
+        }
       ]
     },
     {
@@ -1853,50 +1839,6 @@
       ]
     },
     {
-      "number": 1358,
-      "title": "Stage 2: an unused function passes check and fails at cc",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "44464500541a77b8618ecc1be22200422e3b4061"
-      ],
-      "claims": [
-        {
-          "agent_id": "claude-opus-5-b326d627",
-          "status": "active"
-        },
-        {
-          "agent_id": "claude-opus-5-b326d627",
-          "status": "pr-open"
-        }
-      ]
-    },
-    {
-      "number": 1377,
-      "title": "Mutation harnesses count a build failure as a caught mutation",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "d6247270ef04bad6d27226e080d77becd5f94bb5"
-      ],
-      "claims": [
-        {
-          "agent_id": "claude-opus-5-990cdd21",
-          "status": "active"
-        },
-        {
-          "agent_id": "claude-opus-5-990cdd21",
-          "status": "merged"
-        }
-      ]
-    },
-    {
       "number": 1379,
       "title": "Decide what verify guarantees about LSP latency: a wall-clock budget measures the machine",
       "state_labels": [
@@ -1906,6 +1848,36 @@
       "blocked_by": [],
       "evidence_commits": [
         "d6247270ef04bad6d27226e080d77becd5f94bb5"
+      ]
+    },
+    {
+      "number": 1382,
+      "title": "RFC-0013 step 4 prerequisite: the Stage 2 pair cannot reach a Kofun SHA-256",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "aa13cf515115e654ef5a94d7ad112fc556526da7"
+      ]
+    },
+    {
+      "number": 1389,
+      "title": "Kofun native image checkpoint: emit PE32+ directly for x86-64 and AArch64",
+      "state_labels": [
+        "in-progress"
+      ],
+      "state_line": "in-progress",
+      "blocked_by": [],
+      "evidence_commits": [
+        "687f267b01b0d7fd0839a093e65707245f0ef1cd"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-root-pe32plus",
+          "status": "active"
+        }
       ]
     }
   ]
