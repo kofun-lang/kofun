@@ -3319,11 +3319,16 @@ static char *type_parameter_list_error(const char *source, int64_t start) {
     return owned_text("");
 }
 
+/* `Bytes` joins the reserved set for #1315. The comparison is exact on
+ * purpose: tests/stdlib/tzdb/tzdb.kofun declares `type Bytes20`, which a
+ * prefix test would refuse for sharing five letters with a builtin it has
+ * nothing to do with. Measured before reserving: no tracked source declares
+ * `type Bytes`. */
 static bool reserved_type_name(const char *name) {
     return strcmp(name, "Int") == 0 || strcmp(name, "Bool") == 0 ||
            strcmp(name, "Float") == 0 || strcmp(name, "Unit") == 0 ||
            strcmp(name, "Text") == 0 || strcmp(name, "List") == 0 ||
-           strcmp(name, "_") == 0;
+           strcmp(name, "Bytes") == 0 || strcmp(name, "_") == 0;
 }
 
 static char *function_return_type(const char *source, const char *wanted);
@@ -8876,6 +8881,17 @@ static char *emit_primary(
             free(name);
             return length.data;
         }
+        /* #1315. The admitted owning origin lowers to the runtime helper
+         * directly rather than through `kofun_fn_`, which would name a
+         * function no emitted program declares. It takes no arguments, so
+         * there is nothing to emit between the parentheses. */
+        if (
+            open < end && token_equal(source, open, "(") &&
+            strcmp(name, "stage2_bytes_empty") == 0
+        ) {
+            free(name);
+            return owned_text("stage2_bytes_empty()");
+        }
         if (
             open < end && token_equal(source, open, "(") &&
             strcmp(name, "to_text") == 0
@@ -9728,6 +9744,12 @@ static int64_t call_arity(const char *source, int64_t open) {
  * and `text_slice`; the remaining accepted uses classify as unsupported
  * lowering, never as an unknown-function source error.
  */
+/* The builtin vocabulary lives in three parallel tables -- this one,
+ * builtin_return_type, and builtin_parameter_types -- and nothing
+ * cross-checks them. Adding a name to one and not the others fails closed
+ * (`E2S16: unknown Core function` when arity is missing), which is the good
+ * direction, but the tables have to be edited together. #1315 added
+ * `stage2_bytes_empty` to all three. */
 static int64_t builtin_arity(const char *name) {
     static const struct {
         const char *name;
@@ -9744,6 +9766,7 @@ static int64_t builtin_arity(const char *name) {
         {"len", 1},
         {"read_text", 1},
         {"replace", 3},
+        {"stage2_bytes_empty", 0},
         {"starts_with", 2},
         {"text_slice", 3},
         {"to_text", 1},
@@ -9811,6 +9834,7 @@ static const char *builtin_parameter_types(const char *name) {
         {"len", "TextOrList"},
         {"read_text", "Text"},
         {"replace", "Text|Text|Text"},
+        {"stage2_bytes_empty", ""},
         {"starts_with", "Text|Text"},
         {"text_slice", "Text|Int|Int"},
         {"to_text", "Int"},
@@ -11054,7 +11078,8 @@ static char *validate_core_calls(const char *source, const char *hir) {
                     if (
                         strcmp(name, "len") == 0 ||
                         strcmp(name, "text_slice") == 0 ||
-                        strcmp(name, "to_text") == 0
+                        strcmp(name, "to_text") == 0 ||
+                        strcmp(name, "stage2_bytes_empty") == 0
                     ) {
                         expected = builtin_expected;
                     } else {
@@ -14833,6 +14858,12 @@ static const char *builtin_return_type(const char *name) {
         {"len", "Int"},
         {"read_text", "Text"},
         {"replace", "Text"},
+        /* #1315. The admitted owning origin. `stage2_bytes_assign_zeroed` is
+         * deliberately not here: it is transactional on an existing binding
+         * and yields a status, not a new owning value, so classifying it as
+         * `Bytes` would make the ownership pass believe an assignment created
+         * storage. */
+        {"stage2_bytes_empty", "Bytes"},
         {"starts_with", "Bool"},
         {"text_slice", "Text"},
         {"to_text", "Text"},
@@ -16531,7 +16562,15 @@ static char *build_scope_hir_mode(
                         name
                     );
                 }
+                /* #1315. `owned` is the third kind and the one the cleanup
+                 * funnel keys on: backend storage this binding must reclaim,
+                 * as opposed to `gc` which the arena reclaims for the whole
+                 * run. The distinction is the reason Bytes cannot simply join
+                 * the `gc` set -- an arena cannot free in reverse lexical
+                 * order at each exit, which is what the transfer rules
+                 * need. */
                 const char *ownership =
+                    strcmp(binding_type, "Bytes") == 0 ? "owned" :
                     strcmp(binding_type, "Text") == 0 ||
                     strcmp(binding_type, "List") == 0 ||
                     strncmp(binding_type, "List[", 5) == 0 ? "gc" : "copy";
@@ -20150,6 +20189,41 @@ static char *lower_body(
                 return value;
             }
             char *binding_type = hir_binding_field(hir, binding_id, 5);
+            /* #1315, first slice. The carrier, its frozen field order, and the
+             * nine status tags are in place, but the cleanup funnel is not:
+             * every `return`, every fallthrough, and every
+             * `if (kofun_failed) return ...` guard is an exit that would have
+             * to reclaim still-live storage in reverse creation order.
+             * Binding one today would emit a `KofunBytesValue` that nothing
+             * ever frees.
+             *
+             * `backend limitation` is one of the nine REASON values this issue
+             * defines, and it is the honest one for a shape the backend cannot
+             * yet lower. It is refused here rather than left to leak, and the
+             * refusal is what the following slice replaces. */
+            if (strcmp(binding_type, "Bytes") == 0) {
+                Buffer message;
+                char *refusal;
+                buffer_init(&message);
+                buffer_format(
+                    &message,
+                    "Stage 2 Bytes[65536] cannot lower possible managed Bytes "
+                    "alias for `%s` (backend limitation)",
+                    name
+                );
+                /* Through lower_error, not buffer_format: it is the helper
+                 * that also calls stage2_diagnostic_set, and the semantic
+                 * events producer reads that structured record rather than
+                 * the message text. Formatting the string directly produced
+                 * the right stderr and an ETS04 capture failure. */
+                refusal = lower_error("E2S170", message.data, value_start);
+                free(message.data);
+                free(binding_type);
+                free(binding_id);
+                free(name);
+                free(emitted.data);
+                return refusal;
+            }
             char *actual_type = initializer_type(
                 source,
                 hir,
@@ -20212,6 +20286,8 @@ static char *lower_body(
                 c_type = "const char *";
             } else if (strcmp(binding_type, "List[Int]") == 0) {
                 c_type = "KofunIntListValue";
+            } else if (strcmp(binding_type, "Bytes") == 0) {
+                c_type = "KofunBytesValue";
             } else if (record_declaration_start(source, binding_type) >= 0) {
                 record_type_owned = record_c_type_name(binding_type);
                 c_type = record_type_owned;
@@ -25155,6 +25231,9 @@ static char *lower_c_body(const char *source, const char *hir) {
         "#include <stddef.h>\n"
         "#include <stdint.h>\n"
         "#include <stdio.h>\n"
+        /* `calloc`/`free` for the Bytes carrier (#1315). Every emitted program
+         * gets it, matching how the other bounded carriers are declared
+         * unconditionally. */
         "#include <string.h>\n"
     );
     if (fractional_values) {
@@ -25229,6 +25308,47 @@ static char *lower_c_body(const char *source, const char *hir) {
         "    size_t offset = KOFUN_LIST_INT_PAYLOAD_OFFSET +\n"
         "        (size_t)resolved * KOFUN_LIST_INT_ELEMENT_SIZE;\n"
         "    memcpy(&value, list + offset, sizeof value); return value;\n"
+        "}\n"
+    );
+    /* RFC-0004 Managed `Bytes` carrier (#1315). Field order is frozen by the
+     * issue and pinned by offset asserts rather than described in a comment:
+     * `length`, `capacity`, then the pointer. Empty is exactly {0,0,NULL},
+     * which is also what a consumed binding leaves behind -- the two are
+     * deliberately indistinguishable at runtime, so use-after-take stays
+     * compile-time E2S123 and no runtime tag is inferred from zero fields.
+     *
+     * The nine status tags are frozen in declaration order 0..8 so the
+     * bounded-mutation and Text-bridge children cannot renumber them. */
+    buffer_append(
+        &output,
+        "enum { KOFUN_BYTES_CAPACITY_LIMIT = 65536 };\n"
+        "typedef struct {\n"
+        "    uint64_t length;\n"
+        "    uint64_t capacity;\n"
+        "    unsigned char *data;\n"
+        "} KofunBytesValue;\n"
+        "#define KOFUN_BYTES_EMPTY ((KofunBytesValue){UINT64_C(0), UINT64_C(0), NULL})\n"
+        "_Static_assert(offsetof(KofunBytesValue, length) == 0, \"Stage 2 Bytes carrier length offset\");\n"
+        "_Static_assert(offsetof(KofunBytesValue, capacity) == 8, \"Stage 2 Bytes carrier capacity offset\");\n"
+        "_Static_assert(sizeof(((KofunBytesValue *)0)->data) == 8, \"Stage 2 Bytes carrier data width\");\n"
+        "_Static_assert(_Alignof(KofunBytesValue) == 8, \"Stage 2 Bytes carrier alignment\");\n"
+        "typedef struct { int64_t tag; int64_t detail; } KofunBytesStatus;\n"
+        "enum {\n"
+        "    KOFUN_BYTES_SUCCEEDED = 0,\n"
+        "    KOFUN_BYTES_NEGATIVE_LENGTH = 1,\n"
+        "    KOFUN_BYTES_RANGE_OUT_OF_BOUNDS = 2,\n"
+        "    KOFUN_BYTES_INVALID_BYTE = 3,\n"
+        "    KOFUN_BYTES_CAPACITY_EXCEEDED = 4,\n"
+        "    KOFUN_BYTES_ALLOCATION_FAILED = 5,\n"
+        "    KOFUN_BYTES_INVALID_UTF8 = 6,\n"
+        "    KOFUN_BYTES_TEXT_CONTAINS_NUL = 7,\n"
+        "    KOFUN_BYTES_TEXT_LIMIT_EXCEEDED = 8\n"
+        "};\n"
+        "static inline KofunBytesStatus kofun_bytes_status(int64_t tag, int64_t detail) {\n"
+        "    KofunBytesStatus status; status.tag = tag; status.detail = detail; return status;\n"
+        "}\n"
+        "static inline KofunBytesValue stage2_bytes_empty(void) {\n"
+        "    return KOFUN_BYTES_EMPTY;\n"
         "}\n"
     );
     buffer_append(

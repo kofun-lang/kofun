@@ -2480,9 +2480,14 @@ fn type_parameter_list_error(source: Text, start: Int) -> Text {
     return ""
 }
 
+# `Bytes` joins the reserved set for #1315. The comparison is exact on purpose:
+# `tests/stdlib/tzdb/tzdb.kofun` declares `type Bytes20`, which a prefix test
+# would refuse for sharing five letters with a builtin it has nothing to do
+# with. Measured before reserving: no tracked source declares `type Bytes`.
 fn reserved_type_name(name: Text) -> Bool {
     return name == "Int" || name == "Bool" || name == "Float" ||
-    name == "Unit" || name == "Text" || name == "List" || name == "_"
+    name == "Unit" || name == "Text" || name == "List" ||
+    name == "Bytes" || name == "_"
 }
 
 # Ownership mode is the optional first component of a parameter head.
@@ -5306,6 +5311,14 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
             }
             return "((int64_t)strlen(" + measured + "))"
         }
+        # #1315. The admitted owning origin lowers to the runtime helper
+        # directly rather than through `kofun_fn_`, which would name a
+        # function no emitted program declares. It takes no arguments, so
+        # there is nothing to emit between the parentheses.
+        if open < end && token_text(source, open) == "(" &&
+           name == "stage2_bytes_empty" {
+            return "stage2_bytes_empty()"
+        }
         # `to_text(Int)` lowers beside `len`, the other one-argument builtin
         # the ordinary Core path emits directly.
         if open < end && token_text(source, open) == "(" &&
@@ -5887,8 +5900,14 @@ fn call_arity(source: Text, open: Int) -> Int {
 # are known and arity-checked. The bounded date/time slice lowers `len(Text)`
 # and `text_slice`; the remaining accepted uses classify as unsupported
 # lowering, never as an unknown-function source error.
+# The builtin vocabulary lives in three parallel tables -- this one,
+# `builtin_return_type`, and `builtin_parameter_types` -- and nothing
+# cross-checks them. Adding a name to one and not the others fails closed
+# (`E2S16: unknown Core function` when arity is missing), which is the good
+# direction, but the tables have to be edited together. #1315 added
+# `stage2_bytes_empty` to all three.
 fn builtin_arity(name: Text) -> Int {
-    if name == "args" || name == "fail" {
+    if name == "args" || name == "fail" || name == "stage2_bytes_empty" {
         return 0
     }
     if name == "chars" || name == "is_digit" || name == "is_space" ||
@@ -5911,7 +5930,7 @@ fn builtin_arity(name: Text) -> Int {
 # `len` accepts either Text or List (its only overload); every other
 # signature is exact.
 fn builtin_parameter_types(name: Text) -> Text {
-    if name == "args" || name == "fail" {
+    if name == "args" || name == "fail" || name == "stage2_bytes_empty" {
         return ""
     }
     if name == "chars" || name == "is_digit" || name == "is_space" ||
@@ -6834,7 +6853,8 @@ fn validate_core_calls(source: Text, hir: Text) -> Text {
                         return argument_error
                     }
                     if name == "len" || name == "text_slice" ||
-                       name == "to_text" {
+                       name == "to_text" ||
+                       name == "stage2_bytes_empty" {
                         expected = builtin_expected
                     } else {
                         return "error[E2S10]: unsupported Core builtin call `" +
@@ -10816,6 +10836,13 @@ fn builtin_return_type(name: Text) -> Text {
     if name == "fail" || name == "write_text" {
         return "Void"
     }
+    # #1315. The admitted owning origin. `stage2_bytes_assign_zeroed` is not
+    # here: it is transactional on an existing binding and yields a status,
+    # not a new owning value, so classifying it as `Bytes` would make the
+    # ownership pass believe an assignment created storage.
+    if name == "stage2_bytes_empty" {
+        return "Bytes"
+    }
     return ""
 }
 
@@ -11849,6 +11876,15 @@ fn build_scope_hir_mode(
                 if binding_type == "Text" || binding_type == "List" ||
                    starts_with(binding_type, "List[") {
                     ownership = "gc"
+                }
+                # #1315. `owned` is the third kind and the one the cleanup
+                # funnel keys on: backend storage this binding must reclaim,
+                # as opposed to `gc` which the arena reclaims for the whole
+                # run. The distinction is the reason Bytes cannot simply join
+                # the `gc` set -- an arena cannot free in reverse lexical
+                # order at each exit, which is what the transfer rules need.
+                if binding_type == "Bytes" {
+                    ownership = "owned"
                 }
                 hir = hir + "binding|" + to_text(next_binding_id) + "|" +
                 scope_id + "|" + token_text(source, name) + "|" +
@@ -13431,6 +13467,32 @@ fn lower_body(
                     return initializer
                 }
                 let inferred_type = hir_binding_field(hir, binding_id, 5)
+                # #1315, first slice. The carrier, its frozen field order, and
+                # the nine status tags are in place, but the cleanup funnel is
+                # not: every `return`, every fallthrough, and every
+                # `if (kofun_failed) return ...` guard is an exit that would
+                # have to reclaim still-live storage in reverse creation
+                # order. Binding one today would emit a `KofunBytesValue` that
+                # nothing ever frees.
+                #
+                # `backend limitation` is one of the nine REASON values this
+                # issue defines, and it is the honest one for a shape the
+                # backend cannot yet lower. It is refused here rather than
+                # left to leak, and the refusal is what the following slice
+                # replaces.
+                if inferred_type == "Bytes" {
+                    # Through `lower_error`, not string concatenation: the C
+                    # half's helper also registers the structured diagnostic
+                    # the semantic events producer reads, and the two halves
+                    # stay one transliteration apart only if both go through
+                    # it.
+                    return lower_error(
+                        "E2S170",
+                        "Stage 2 Bytes[65536] cannot lower possible managed Bytes alias for `" +
+                        name + "` (backend limitation)",
+                        value_start
+                    )
+                }
                 let actual_type = initializer_type(
                     source,
                     hir,
@@ -13480,6 +13542,8 @@ fn lower_body(
                     c_type = "const char *"
                 } else if inferred_type == "List[Int]" {
                     c_type = "KofunIntListValue"
+                } else if inferred_type == "Bytes" {
+                    c_type = "KofunBytesValue"
                 } else if record_declaration_start(source, inferred_type) >= 0 {
                     c_type = record_c_type_name(inferred_type)
                 }
@@ -16241,6 +16305,44 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     "    size_t offset = KOFUN_LIST_INT_PAYLOAD_OFFSET +\n" +
     "        (size_t)resolved * KOFUN_LIST_INT_ELEMENT_SIZE;\n" +
     "    memcpy(&value, list + offset, sizeof value); return value;\n" +
+    "}\n" +
+    # RFC-0004 Managed `Bytes` carrier (#1315). Field order is frozen by the
+    # issue and pinned by offset asserts rather than described in a comment:
+    # `length`, `capacity`, then the pointer. Empty is exactly {0,0,NULL}, which
+    # is also what a consumed binding leaves behind -- the two are deliberately
+    # indistinguishable at runtime, so use-after-take stays compile-time E2S123
+    # and no runtime tag is inferred from zero fields.
+    "enum { KOFUN_BYTES_CAPACITY_LIMIT = 65536 };\n" +
+    "typedef struct {\n" +
+    "    uint64_t length;\n" +
+    "    uint64_t capacity;\n" +
+    "    unsigned char *data;\n" +
+    "} KofunBytesValue;\n" +
+    "#define KOFUN_BYTES_EMPTY ((KofunBytesValue){UINT64_C(0), UINT64_C(0), NULL})\n" +
+    "_Static_assert(offsetof(KofunBytesValue, length) == 0, \"Stage 2 Bytes carrier length offset\");\n" +
+    "_Static_assert(offsetof(KofunBytesValue, capacity) == 8, \"Stage 2 Bytes carrier capacity offset\");\n" +
+    "_Static_assert(sizeof(((KofunBytesValue *)0)->data) == 8, \"Stage 2 Bytes carrier data width\");\n" +
+    "_Static_assert(_Alignof(KofunBytesValue) == 8, \"Stage 2 Bytes carrier alignment\");\n" +
+    # The nine frozen status tags, declaration order 0..8. Frozen here so the
+    # bounded-mutation and Text-bridge children cannot renumber them; the tag
+    # values are the contract, not the spelling.
+    "typedef struct { int64_t tag; int64_t detail; } KofunBytesStatus;\n" +
+    "enum {\n" +
+    "    KOFUN_BYTES_SUCCEEDED = 0,\n" +
+    "    KOFUN_BYTES_NEGATIVE_LENGTH = 1,\n" +
+    "    KOFUN_BYTES_RANGE_OUT_OF_BOUNDS = 2,\n" +
+    "    KOFUN_BYTES_INVALID_BYTE = 3,\n" +
+    "    KOFUN_BYTES_CAPACITY_EXCEEDED = 4,\n" +
+    "    KOFUN_BYTES_ALLOCATION_FAILED = 5,\n" +
+    "    KOFUN_BYTES_INVALID_UTF8 = 6,\n" +
+    "    KOFUN_BYTES_TEXT_CONTAINS_NUL = 7,\n" +
+    "    KOFUN_BYTES_TEXT_LIMIT_EXCEEDED = 8\n" +
+    "};\n" +
+    "static inline KofunBytesStatus kofun_bytes_status(int64_t tag, int64_t detail) {\n" +
+    "    KofunBytesStatus status; status.tag = tag; status.detail = detail; return status;\n" +
+    "}\n" +
+    "static inline KofunBytesValue stage2_bytes_empty(void) {\n" +
+    "    return KOFUN_BYTES_EMPTY;\n" +
     "}\n" +
     "enum { KOFUN_TEXT_TEMPORARY_LIMIT = 4096 };\n" +
     "static char kofun_text_slots[KOFUN_TEXT_TEMPORARY_LIMIT][256];\n" +
@@ -19195,7 +19297,6 @@ fn selfhost_c11_prelude() -> Text {
     "#include <stdbool.h>\n" +
     "#include <stdint.h>\n" +
     "#include <stdio.h>\n" +
-    "#include <stdlib.h>\n" +
     "#include <string.h>\n" +
     "\n" +
     "#include \"kofun_unicode.c\"\n" +

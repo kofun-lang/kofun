@@ -328,8 +328,8 @@ do
             ;;
     esac
 done
-test "$diagnostic_cases" -eq 64 ||
-    fail "expected all 64 Stage 2 diagnostic fixtures, saw $diagnostic_cases"
+test "$diagnostic_cases" -eq 65 ||
+    fail "expected all 65 Stage 2 diagnostic fixtures, saw $diagnostic_cases"
 
 # Enumerate every checked-in Stage 2 language-error companion, including the
 # conformance, bootstrap, ownership, and diagnostic corpora.  Some companions
@@ -421,8 +421,8 @@ done <"$WORK/plain/repository-error-companions"
 # that makes a refusal executable lowers it. Both are expected edits — what
 # this number refuses is a companion silently gaining or losing its stream,
 # code, or exit status without anyone noticing.
-test "$repository_error_cases" -eq 384 ||
-    fail "expected all 384 repository error companions, saw $repository_error_cases"
+test "$repository_error_cases" -eq 385 ||
+    fail "expected all 385 repository error companions, saw $repository_error_cases"
 
 # Project-owned valid Stage 2 profiles cover functions, value control, concrete
 # enums, nested lexical scopes, and shadowing.  Producer and compiler must both
