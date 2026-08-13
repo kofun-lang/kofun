@@ -25155,6 +25155,10 @@ static char *lower_c_body(const char *source, const char *hir) {
         "#include <stddef.h>\n"
         "#include <stdint.h>\n"
         "#include <stdio.h>\n"
+        /* `calloc`/`free` for the Bytes carrier (#1315). Every emitted program
+         * gets it, matching how the other bounded carriers are declared
+         * unconditionally. */
+        "#include <stdlib.h>\n"
         "#include <string.h>\n"
     );
     if (fractional_values) {
@@ -25229,6 +25233,73 @@ static char *lower_c_body(const char *source, const char *hir) {
         "    size_t offset = KOFUN_LIST_INT_PAYLOAD_OFFSET +\n"
         "        (size_t)resolved * KOFUN_LIST_INT_ELEMENT_SIZE;\n"
         "    memcpy(&value, list + offset, sizeof value); return value;\n"
+        "}\n"
+    );
+    /* RFC-0004 Managed `Bytes` carrier (#1315). Field order is frozen by the
+     * issue and pinned by offset asserts rather than described in a comment:
+     * `length`, `capacity`, then the pointer. Empty is exactly {0,0,NULL},
+     * which is also what a consumed binding leaves behind -- the two are
+     * deliberately indistinguishable at runtime, so use-after-take stays
+     * compile-time E2S123 and no runtime tag is inferred from zero fields.
+     *
+     * The nine status tags are frozen in declaration order 0..8 so the
+     * bounded-mutation and Text-bridge children cannot renumber them. */
+    buffer_append(
+        &output,
+        "enum { KOFUN_BYTES_CAPACITY_LIMIT = 65536 };\n"
+        "typedef struct {\n"
+        "    uint64_t length;\n"
+        "    uint64_t capacity;\n"
+        "    unsigned char *data;\n"
+        "} KofunBytesValue;\n"
+        "#define KOFUN_BYTES_EMPTY ((KofunBytesValue){UINT64_C(0), UINT64_C(0), NULL})\n"
+        "_Static_assert(offsetof(KofunBytesValue, length) == 0, \"Stage 2 Bytes carrier length offset\");\n"
+        "_Static_assert(offsetof(KofunBytesValue, capacity) == 8, \"Stage 2 Bytes carrier capacity offset\");\n"
+        "_Static_assert(sizeof(((KofunBytesValue *)0)->data) == 8, \"Stage 2 Bytes carrier data width\");\n"
+        "_Static_assert(_Alignof(KofunBytesValue) == 8, \"Stage 2 Bytes carrier alignment\");\n"
+        "typedef struct { int64_t tag; int64_t detail; } KofunBytesStatus;\n"
+        "enum {\n"
+        "    KOFUN_BYTES_SUCCEEDED = 0,\n"
+        "    KOFUN_BYTES_NEGATIVE_LENGTH = 1,\n"
+        "    KOFUN_BYTES_RANGE_OUT_OF_BOUNDS = 2,\n"
+        "    KOFUN_BYTES_INVALID_BYTE = 3,\n"
+        "    KOFUN_BYTES_CAPACITY_EXCEEDED = 4,\n"
+        "    KOFUN_BYTES_ALLOCATION_FAILED = 5,\n"
+        "    KOFUN_BYTES_INVALID_UTF8 = 6,\n"
+        "    KOFUN_BYTES_TEXT_CONTAINS_NUL = 7,\n"
+        "    KOFUN_BYTES_TEXT_LIMIT_EXCEEDED = 8\n"
+        "};\n"
+        "static inline KofunBytesStatus kofun_bytes_status(int64_t tag, int64_t detail) {\n"
+        "    KofunBytesStatus status; status.tag = tag; status.detail = detail; return status;\n"
+        "}\n"
+        "static inline KofunBytesValue stage2_bytes_empty(void) {\n"
+        "    return KOFUN_BYTES_EMPTY;\n"
+        "}\n"
+        "static inline void kofun_bytes_release(KofunBytesValue *value) {\n"
+        "    if (value->data != NULL) free(value->data);\n"
+        "    value->length = UINT64_C(0); value->capacity = UINT64_C(0); value->data = NULL;\n"
+        "}\n"
+        "static bool kofun_bytes_allocation_fails;\n"
+        "static inline KofunBytesStatus stage2_bytes_assign_zeroed(KofunBytesValue *destination, int64_t length) {\n"
+        "    unsigned char *storage = NULL;\n"
+        "    if (length < 0) return kofun_bytes_status(KOFUN_BYTES_NEGATIVE_LENGTH, length);\n"
+        "    if (length > (int64_t)KOFUN_BYTES_CAPACITY_LIMIT) {\n"
+        "        return kofun_bytes_status(KOFUN_BYTES_CAPACITY_EXCEEDED, length);\n"
+        "    }\n"
+        "    if (length > 0) {\n"
+        "        if (kofun_bytes_allocation_fails) {\n"
+        "            return kofun_bytes_status(KOFUN_BYTES_ALLOCATION_FAILED, length);\n"
+        "        }\n"
+        "        storage = calloc((size_t)length, 1u);\n"
+        "        if (storage == NULL) {\n"
+        "            return kofun_bytes_status(KOFUN_BYTES_ALLOCATION_FAILED, length);\n"
+        "        }\n"
+        "    }\n"
+        "    kofun_bytes_release(destination);\n"
+        "    destination->length = (uint64_t)length;\n"
+        "    destination->capacity = (uint64_t)length;\n"
+        "    destination->data = storage;\n"
+        "    return kofun_bytes_status(KOFUN_BYTES_SUCCEEDED, INT64_C(0));\n"
         "}\n"
     );
     buffer_append(
