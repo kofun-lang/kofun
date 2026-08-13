@@ -64,7 +64,7 @@ export const GROUPS = Object.freeze([
         title: 'Modules and interfaces',
         hint: 'Stable identities, imports, visibility, KIF, layout, and invalidation.',
         tasks: [
-            'module-symbols', 'imports-qualified', 'import-aliases', 'imports-selective', 'raw-imports',
+            'module-symbols', 'imports-qualified', 'import-aliases', 'imports-selective', 'raw-imports', 'raw-re-exports',
             're-exports', 'kif-v1', 'stage2-kif-producer', 'visibility-filtering',
             'visibility-api-leaks', 'module-interface-artifact', 'incremental',
             'package-roots', 'source-file-mapping', 'namespaces', 'module-identity',

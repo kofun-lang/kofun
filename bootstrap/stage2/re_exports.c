@@ -279,6 +279,9 @@ static bool parse_public_import(
             remap_public_import_error(program);
             return false;
         }
+        /* #1216. This binding exists because of `pub import`, so the raw-origin
+         * rule owns its refusal rather than the import-admission rule. */
+        qualified->imports[dependency_index].re_export = true;
         if (qualified->imports[dependency_index].has_alias) {
             set_error(program, "E2S85",
                 "public module aliases are unsupported in `%s` at bytes %zu..%zu; hint: use `pub import a.b` without `as`",
@@ -297,6 +300,10 @@ static bool parse_public_import(
         }
         imports->selectives[selective_index].is_re_export = true;
         dependency_index = imports->selectives[selective_index].dependency_index;
+        /* #1216. Same reason as the qualified branch: a binding created by
+         * `pub from` is a re-export, so the raw-origin rule owns its refusal
+         * rather than the import-admission rule. */
+        qualified->imports[dependency_index].re_export = true;
         declaration->whole_end = imports->selectives[selective_index].whole_end;
         declaration->selective_index = selective_index;
     }
@@ -330,7 +337,14 @@ static bool collect_re_export_module(
             }
             break;
         }
-        if (token_equals(module, &module->tokens[cursor], "import")) {
+        /* #1216. A facade over a raw-foreign module has to be able to admit it
+         * before it can be refused for re-exporting it. `parse_import` already
+         * understands the marker from #1215; this loop is a second entry point
+         * into it and had to learn the same one-token lookahead, or the facade
+         * would fail at `trusted` with "unsupported re-export/declaration
+         * form" and the re-export rule would never be reached. */
+        if (token_equals(module, &module->tokens[cursor], "import") ||
+            peek_trusted_import(module, cursor)) {
             if (qualified->modules[module_index].import_count >=
                     IMPORTS_PER_MODULE_LIMIT) {
                 set_error(program, "E2S90",
@@ -931,6 +945,36 @@ static bool append_export(
         memcpy(result->chain_ids + 1u, forwarded->chain_ids,
             forwarded->chain_count * sizeof(forwarded->chain_ids[0]));
         result->chain_count += forwarded->chain_count;
+    }
+    /*
+     * #1216. RFC-0012 step 4. A facade may export what it owns; it may not
+     * re-export anything whose ultimate origin is a raw-foreign module.
+     *
+     * The class is read from the **serialized** trust fact, the same source
+     * #1215's admission uses, because the parsed fact and the artifact agree
+     * in every fixture that exists and would diverge exactly where the writer
+     * is wrong. Reading `program->modules[...].trust_raw_foreign` here would
+     * pass every case below and prove nothing about serialization.
+     *
+     * The check sits after the chain is assembled, so the origin it names is
+     * the end of the chain rather than the neighbour: a facade over a facade
+     * over a raw module is refused with the raw module's identity, which is
+     * the only identity a reader can act on.
+     */
+    if (resolver->imports.qualified.modules[target_module_index]
+            .serialized_trust == KOFUN_KIF_TRUST_RAW_FOREIGN) {
+        char origin_id_text[65];
+        format_identity(
+            program->modules[target_module_index].module_id,
+            origin_id_text);
+        set_error(program, "E2S173",
+            "public re-export `%s` in `%s` at bytes %zu..%zu resolves to raw-foreign module `%s` (ModuleId %s) through a %zu-edge chain; a facade may export only declarations it owns, so wrap it in an ordinary declaration of this module instead",
+            name, program->modules[source->exporter_index].logical_path,
+            name_start, name_end,
+            resolver->imports.qualified.modules[target_module_index]
+                .declared_path,
+            origin_id_text, result->chain_count);
+        return false;
     }
     if (!index_export(resolver, source->exporter_index, namespace_tag,
             name, resolver->export_count - 1u)) return false;
@@ -2289,6 +2333,23 @@ int main(int argc, char **argv) {
         if (!collect_re_export_module(&resolver, index)) goto done;
     }
     compute_identities(program);
+    /* #1216. Trust classes are serialized before any re-export decision reads
+     * one; the scratch artifact is removed as soon as it has been read.
+     * Based on OUTPUT_HIR rather than argv[2]: this tool's second argument is
+     * the facade's module path, not a file, so deriving a scratch path from it
+     * would write into the working directory. */
+    {
+        char trust_scratch[4096];
+        int trust_written = snprintf(trust_scratch, sizeof trust_scratch,
+            "%s.trust.kif", argv[3]);
+        if (trust_written < 0 ||
+            (size_t)trust_written >= sizeof trust_scratch) {
+            fprintf(stderr, "output path is too long for a trust artifact\n");
+            goto done;
+        }
+        if (!serialize_module_trust(&resolver.imports.qualified,
+                trust_scratch)) goto done;
+    }
     if (!validate_duplicates(program)) goto done;
     if (!resolve_imports(qualified)) {
         add_self_re_export_secondary_span(&resolver);

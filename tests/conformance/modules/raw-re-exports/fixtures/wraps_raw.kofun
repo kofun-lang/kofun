@@ -1,0 +1,7 @@
+module api.collections
+
+trusted import lib.collections
+
+pub fn wrapped(value: Int) -> Int {
+    return lib.collections.Map(value)
+}

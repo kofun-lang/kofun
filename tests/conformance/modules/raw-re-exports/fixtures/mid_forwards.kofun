@@ -1,0 +1,3 @@
+module mid.collections
+
+pub from lib.collections import Map
