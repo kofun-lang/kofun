@@ -43,6 +43,7 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | `native-int64-values` | trap | `tests/conformance/numeric/reject_slash_operator.kofun` | Values outside the representable range are refused or trapped, never wrapped. |
 | `native-integer-division` | trap | `tests/conformance/functions/division_floor_signs.kofun` | Division by zero and non-representable quotients trap with a canonical per-operator `R010` diagnostic. |
 | `native-list-int-core` | limit | `tests/conformance/capabilities.tsv` | Backends that do not lower `List` values are recorded as unsupported with a stated reason. |
+| `native-six-host-execution` | rejection | `.github/workflows/native-hosts.yml` | A wrong architecture, digest, output, exit status, signature result, missing row, duplicate target, commit, run, or attempt prevents the six-host evidence artifact from being produced or accepted. |
 | `native-text-returning-calls` | limit | `tests/conformance/capabilities.tsv` | Backends that do not lower `Text` values are recorded as unsupported with a stated reason. |
 | `native-utf8-text-core` | limit | `tests/conformance/capabilities.tsv` | Backends that do not lower `Text` values are recorded as unsupported with a stated reason. |
 | `native-x86-64-function-calls` | rejection | `tests/conformance/capabilities.tsv` | Corpora outside the Int Core profile are recorded as unsupported with a stated reason. |

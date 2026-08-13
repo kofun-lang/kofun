@@ -32,6 +32,7 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | `native-int64-values` | `sh bootstrap/native/check.sh` | Int64 magnitudes and checked expressions emit deterministic encodings on both targets. |
 | `native-integer-division` | `sh bootstrap/native/check.sh` | Floor division and remainder agree with the specification on both targets. |
 | `native-list-int-core` | `sh bootstrap/native/check.sh` | `List[Int]` programs lower and execute on both targets. |
+| `native-six-host-execution` | `sh tests/native-host-evidence/check.sh` | The committed six-row evidence has one matching architecture/runner observation per target, binds every digest to bootstrap/native/SHA256SUMS, records the expected output and exit status, and records strict Apple validation for both Mach-O images. |
 | `native-text-returning-calls` | `sh bootstrap/native/check.sh` | Text-returning calls lower and execute on both targets. |
 | `native-utf8-text-core` | `sh bootstrap/native/check.sh` | UTF-8 `Text` programs lower and execute on both targets. |
 | `native-x86-64-function-calls` | `sh tests/conformance/run.sh` | The functions corpus passes on the x86-64 native backend. |

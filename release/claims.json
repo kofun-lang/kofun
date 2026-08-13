@@ -909,7 +909,7 @@
     {
       "id": "macho64-ad-hoc-signing",
       "public_wording": "Mach-O 64 embedded ad-hoc signing",
-      "public_status": "bounded deterministic x86-64/AArch64 signed-image checkpoint; no macOS CLI/runtime, host validation/execution, notarization, or certificate claim",
+      "public_status": "bounded deterministic x86-64/AArch64 signed-image checkpoint; matching-host strict validation/execution covered separately; no notarization or certificate claim",
       "state": "checkpoint",
       "area": "native",
       "bounded_capability": "The canonical Kofun encoder directly writes the __LINKEDIT segment, LC_CODE_SIGNATURE, embedded SuperBlob, version 0x20400 CodeDirectory, and SHA-256 page hash for deterministic x86-64 and AArch64 Mach-O 64 images. Big-endian fields, SHA-256 compression and padding, bounded ASCII identifier, and every producing value are Kofun-owned; no assembler, linker, system SDK, codesign, system digest, or hand-authored foreign-language image or digest implementation participates. The current bounded execution bridge still translates the Kofun fixture through the existing C bootstrap and supplies no image or digest values; removing that bridge is outside this checkpoint.",
@@ -921,7 +921,7 @@
         "bootstrap/native/README.md",
         "docs/NATIVE_BACKEND.md"
       ],
-      "compatibility": "For supported CPU identities, bounded code and a bounded ASCII identifier, the embedded signature is byte-deterministic and hash-pinned. macOS CLI/runtime integration, matching-host signature validation or execution, notarization, certificate identity, OS authorities, full Core lowering, and universal binaries are explicitly outside this checkpoint.",
+      "compatibility": "For supported CPU identities, bounded code and a bounded ASCII identifier, the embedded signature is byte-deterministic and hash-pinned. Matching-host signature validation and execution are a separate digest-bound claim; macOS CLI/general runtime integration, notarization, certificate identity, OS authorities, full Core lowering, and universal binaries are explicitly outside this checkpoint.",
       "positive_gate": {
         "command": "task native",
         "observation": "Kofun emits both embedded ad-hoc signed images twice with identical bytes; an independent parser validates the load commands, SuperBlob, CodeDirectory, executable-segment fields, and independently recomputed page hashes, while optional file/LLVM tools identify both architectures."
@@ -948,7 +948,7 @@
     {
       "id": "macho64-image-writer",
       "public_wording": "Mach-O 64/x86-64 and AArch64 native image writer",
-      "public_status": "bounded deterministic image checkpoint with a declared libSystem runtime dependency; no macOS CLI/runtime, signing, or host-execution claim",
+      "public_status": "bounded deterministic image checkpoint with a declared libSystem runtime dependency; matching-host execution covered by the six-host evidence claim, not a macOS CLI/general runtime",
       "state": "checkpoint",
       "area": "native",
       "bounded_capability": "The canonical Kofun encoder writes complete page-sized Mach-O 64 images directly for x86-64 and AArch64: exact CPU identities, MH_EXECUTE, __PAGEZERO, one executable __TEXT,__text section, an empty LC_DYLD_INFO_ONLY contract, LC_LOAD_DYLINKER, LC_LOAD_DYLIB for the platform libSystem runtime, LC_BUILD_VERSION, LC_MAIN, and distinct return-zero entry sequences. No assembler, linker, system SDK, import library, or foreign-language image writer participates.",
@@ -960,7 +960,7 @@
         "bootstrap/native/README.md",
         "docs/NATIVE_BACKEND.md"
       ],
-      "compatibility": "For a supported CPU identity and bounded code byte list, output is byte-deterministic and hash-pinned. macOS host execution, AArch64 ad-hoc signing, OS authorities, full Core lowering, CLI target admission, and universal binaries are explicitly outside this checkpoint.",
+      "compatibility": "For a supported CPU identity and bounded code byte list, output is byte-deterministic and hash-pinned. Matching-host execution is a separate digest-bound claim; OS authorities, full Core lowering, CLI target admission, and universal binaries are explicitly outside this checkpoint.",
       "positive_gate": {
         "command": "task native",
         "observation": "Kofun emits the x86-64 and AArch64 Mach-O 64 images twice with identical bytes; the independent parser validates every load-bearing field and optional file/LLVM tools identify both exact architectures."
@@ -1204,6 +1204,46 @@
       }
     },
     {
+      "id": "native-six-host-execution",
+      "public_wording": "exact six native checkpoint images on matching hosts",
+      "public_status": "Linux, Windows, and macOS x86-64/AArch64 digest-bound execution; macOS also passes strict Apple signature validation",
+      "state": "checkpoint",
+      "area": "native",
+      "bounded_capability": "The exact six Kofun-emitted, SHA-256-pinned checkpoint images execute on matching GitHub-hosted Linux, Windows, and macOS x86-64/AArch64 runners. Linux prints 42 and exits zero; Windows and macOS produce no output and exit zero; both signed Mach-O images also pass codesign --verify --strict. The evidence is bound to commit 411e52957e9eac078330aea2dcb400a4578e46da and Actions run 31733151287.",
+      "targets": [
+        "native-aarch64",
+        "native-x86_64",
+        "native-aarch64-windows-pe32plus",
+        "native-x86_64-windows-pe32plus",
+        "native-aarch64-macos-macho64",
+        "native-x86_64-macos-macho64"
+      ],
+      "specification": [
+        ".github/workflows/native-hosts.yml",
+        "docs/NATIVE_BACKEND.md"
+      ],
+      "compatibility": "The observation is valid only for the six recorded digests at the recorded commit and run. Any image-byte change requires a new six-host run and refreshed evidence. This does not claim Windows/macOS CLI admission, general Core lowering, application signing/notarization, or completion of the all-Kofun toolchain.",
+      "positive_gate": {
+        "command": "sh tests/native-host-evidence/check.sh",
+        "observation": "The committed six-row evidence has one matching architecture/runner observation per target, binds every digest to bootstrap/native/SHA256SUMS, records the expected output and exit status, and records strict Apple validation for both Mach-O images."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": ".github/workflows/native-hosts.yml",
+        "observation": "A wrong architecture, digest, output, exit status, signature result, missing row, duplicate target, commit, run, or attempt prevents the six-host evidence artifact from being produced or accepted."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "sh tests/native-host-evidence/check.sh",
+        "prerequisites": []
+      }
+    },
+    {
       "id": "native-text-returning-calls",
       "public_wording": "x86-64/AArch64 native Text-returning calls",
       "public_status": "bounded compiler-shaped profile with parameters, locals, concatenation, forwarding, and direct calls",
@@ -1355,7 +1395,7 @@
     {
       "id": "pe32plus-image-writer",
       "public_wording": "PE32+/x86-64 and AArch64 native image writer",
-      "public_status": "bounded deterministic no-import image checkpoint; no Windows CLI/runtime or host-execution claim",
+      "public_status": "bounded deterministic no-import image checkpoint; matching-host execution covered by the six-host evidence claim, not a Windows CLI/general runtime",
       "state": "checkpoint",
       "area": "native",
       "bounded_capability": "The canonical Kofun encoder writes complete 1,024-byte PE32+ images directly for x86-64 and AArch64: DOS header and e_lfanew, PE signature, exact COFF machine identity, PE32+ optional header, one aligned executable .text section, and distinct no-import entry sequences. No assembler, linker, system SDK, import library, or foreign-language image writer participates.",
@@ -1367,7 +1407,7 @@
         "bootstrap/native/README.md",
         "docs/NATIVE_BACKEND.md"
       ],
-      "compatibility": "For a supported machine identity and bounded code byte list, output is byte-deterministic and hash-pinned. Windows host execution, OS authorities, imports, full Core lowering, and CLI target admission are explicitly outside this checkpoint.",
+      "compatibility": "For a supported machine identity and bounded code byte list, output is byte-deterministic and hash-pinned. Matching-host execution is a separate digest-bound claim; OS authorities, imports, full Core lowering, and CLI target admission are explicitly outside this checkpoint.",
       "positive_gate": {
         "command": "task native",
         "observation": "Kofun emits the x86-64 and AArch64 PE32+ images twice with identical bytes, and the independent parser validates every load-bearing DOS, COFF, optional-header, section, and entry field."

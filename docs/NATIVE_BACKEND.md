@@ -9,9 +9,11 @@ no-import; the Mach-O checkpoint declares the libSystem runtime dependency
 needed by dyld after `LC_MAIN` returns. Both write complete x86-64 and AArch64
 images directly and validate their structure/determinism. The signed Mach-O slice embeds
 `__LINKEDIT`, `LC_CODE_SIGNATURE`, and a Kofun-hashed ad-hoc CodeDirectory for
-both architectures. None of these image checkpoints yet exposes Windows/macOS
-CLI/runtime targets or host-execution, Apple-validation, notarization, or
-certificate claims.
+both architectures. The exact six hash-pinned checkpoint images execute on
+matching Linux, Windows, and macOS x86-64/AArch64 GitHub-hosted runners; the
+macOS jobs additionally require Apple's strict signature validation. This does
+not expose Windows/macOS CLI or general runtime targets and does not claim
+notarization, certificate identity, or a complete all-Kofun toolchain.
 The repository CLI exposes the supported arithmetic Core for x86-64 and
 AArch64 Linux. Both targets lower local `Int` and `List[Int]` bindings; List
 literals, length, indexing, and generated `map`/`filter`/`fold` loops with typed

@@ -4,12 +4,12 @@
   "version": "0.7.0-seed",
   "inputs": {
     "VERSION": "fbfc57368f907487df85328856740a1b792855e6c9fc4dba94739ec17b642e8c",
-    "release/claims.json": "4dd75ac1d7b8c1ec8b2c4f7823de3c82cae11ce174435d356f8f15ce7bbbb800",
+    "release/claims.json": "7e488d626d39a25910504597f1e8cd1a3f3ea6e2cad1c42938c5818f3ef9112c",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
     "bootstrap/manifest.json": "5b03d83371894faef02bbcf97e13d835ae47b5e3c0641c65fb7a9024d667e77a"
   },
   "states": {
-    "checkpoint": 39,
+    "checkpoint": 40,
     "implemented": 9,
     "design": 1,
     "open": 3
@@ -474,6 +474,23 @@
       ]
     },
     {
+      "id": "native-six-host-execution",
+      "state": "checkpoint",
+      "area": "native",
+      "targets": [
+        "native-aarch64",
+        "native-x86_64",
+        "native-aarch64-windows-pe32plus",
+        "native-x86_64-windows-pe32plus",
+        "native-aarch64-macos-macho64",
+        "native-x86_64-macos-macho64"
+      ],
+      "positive_gate": "sh tests/native-host-evidence/check.sh",
+      "negative_boundary": ".github/workflows/native-hosts.yml",
+      "reproduction": "sh tests/native-host-evidence/check.sh",
+      "prerequisites": []
+    },
+    {
       "id": "native-text-returning-calls",
       "state": "checkpoint",
       "area": "native",
@@ -755,8 +772,9 @@
     }
   ],
   "evidence_digests": {
-    "Taskfile.yml": "4a2656d215891edd374973dec1dad848f54fa7049108917bd5823d8d0a46e363",
-    "bootstrap/native/README.md": "1b7fcff702ccf3db1ca59a7e40c163b76d5b3020638356f2ab16f01dc47efb1d",
+    ".github/workflows/native-hosts.yml": "9b0155c4caf6aeb29e7d942bffc10acd12cd61b79c4d70af45ea2b10a9967daa",
+    "Taskfile.yml": "00cfdf202454c40bc71e9d1d1d2d024aa1a1616af411962cfc0f9eb28434d454",
+    "bootstrap/native/README.md": "6c470b203c3dbc327c6b601ab958c754e6f82be78c255d442307ad0c7691bc21",
     "bootstrap/native/check-macho64-signed.sh": "6fc51ddfec599ea85b8b06a5c16d68b6fdc994621cdb8ca4267e20be38141393",
     "bootstrap/native/check-macho64.sh": "d6bd52e3f6756aa607a2dc44a0117defeaaa55e64fa3f4221986da6406251e15",
     "bootstrap/native/check-pe32plus.sh": "c414d1d719092eaf1f931eb433c11c9f77207915a7359a8bb8392e2e7c07c539",
@@ -773,15 +791,15 @@
     "bootstrap/wasm/fixtures/unsupported_text.kofun": "e0a45136410ddb85e9f5b3e5c39e7903d96da39aa53aaf3078d2555b4f383864",
     "bootstrap/wasm/object_arena_check.sh": "c415a46c7b83493ce72f07cd846d895ddf0980dc0f83e36023cb57fadb5f732f",
     "docs/BUILD_SYSTEM.md": "d4a372fc97c53874cc2438f3de132289beb033ce2bf1e67518b702de796b05a8",
-    "docs/COMPILER_ARCHITECTURE.md": "4c3af9c9d2a8a672b75960a396fb026eac65a3cbb82b18ef67d9052626139798",
+    "docs/COMPILER_ARCHITECTURE.md": "bfc07394786505574419bd1a88bb33ed5553902c0127b9ceb2767b73291c3f59",
     "docs/DECIMAL.md": "bb85e7a82ed948fe60eea16b8c99a4787e74c772ebea5c606ea564a58600c659",
     "docs/DOCUMENTATION_INDEX.md": "f0e22ded32b0dfebd4e628e0c57036574c197b12889d07771539f6e29640b4d9",
     "docs/GETTING_STARTED.md": "f0e48a73e7c024d4da46668f6b16221c1f5fba5595bf56942527297c0efa4e96",
     "docs/LAW_SYSTEM.md": "b974f0ad762bec778ee76afa5d0a2176423ac96a3a583739eee55dcb8dca5043",
     "docs/LINGUIST_RECOGNITION.md": "279f9afa7157c90e41d656974c2f5020f8b6d25acbbd389ee760efbb2d6d6166",
     "docs/MEMORY_MODEL.md": "2ad150ffa325a6ac8778ce307b6d9d15584916ec116ae697a22028dc2e6c102e",
-    "docs/MVP_IMPLEMENTED.md": "50e5411308c3f5260621d6a5ebeaa1f63f84a04f692496efb1cbabe46cd4d8b2",
-    "docs/NATIVE_BACKEND.md": "ae6d4e659e9493b25392ee231724303e3813dc5ca85f9725b570437992bcaf7a",
+    "docs/MVP_IMPLEMENTED.md": "88aee423c82aec04e492021692a865b10333593fd34be6767bc5c26ac054c007",
+    "docs/NATIVE_BACKEND.md": "cc5b3680a3e250a4bcaa31170d40f5c7cf3fa3ecc74a489613a9a61bfeafd51f",
     "docs/ROADMAP.md": "01f4d69e2027aeadb6b1ae5dc00a2b00cfb945fb5a9ca22fa7e52578894afe9c",
     "docs/RUST_CRATE_SHIMS.md": "4365b064cbc9a05733710d3a609c1db2623b28cb9ed4ba0e48536e35f9d58c47",
     "docs/SECURITY.md": "630dd512b406ba9db360d75e051c2421eb6f611550bad839d197eec25ea750aa",

@@ -61,6 +61,7 @@ report a pass it did not observe.
 | `native-int64-values` | `task native` |
 | `native-integer-division` | `task native` |
 | `native-list-int-core` | `task native` |
+| `native-six-host-execution` | `sh tests/native-host-evidence/check.sh` |
 | `native-text-returning-calls` | `task native` |
 | `native-utf8-text-core` | `task native` |
 | `native-x86-64-function-calls` | `task check` |

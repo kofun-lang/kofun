@@ -1,0 +1,6 @@
+native-host-execution/v1	411e52957e9eac078330aea2dcb400a4578e46da	31733151287	1	linux-aarch64	ubuntu-24.04-arm	linux/aarch64	5546c889c37973a8ea5736cdbac8caa5e4a53372e4ab0772f7f8cb1f9d1bce48	output=42;status=0
+native-host-execution/v1	411e52957e9eac078330aea2dcb400a4578e46da	31733151287	1	linux-x86_64	ubuntu-24.04	linux/x86_64	78830fdedfaeb3a7aa52a8e78e1a670bc0e591e66bf4512d2d6845b49751ca70	output=42;status=0
+native-host-execution/v1	411e52957e9eac078330aea2dcb400a4578e46da	31733151287	1	macos-aarch64	macos-15	macos/arm64	199afa17e3b83caa75c7435fada01450ec290cbb4b4d56544a33294ae22c86bf	codesign=valid;output=empty;status=0
+native-host-execution/v1	411e52957e9eac078330aea2dcb400a4578e46da	31733151287	1	macos-x86_64	macos-15-intel	macos/x86_64	cad98d5486ef6cdee4f165dd6bf3a80e024aed3449874fb73129a41b1fc895fa	codesign=valid;output=empty;status=0
+native-host-execution/v1	411e52957e9eac078330aea2dcb400a4578e46da	31733151287	1	windows-aarch64	windows-11-arm	windows/Arm64	47eba13a0b196a76259d8a9d1dda57613e3522c7508379c1cac815ebde692603	output=empty;status=0
+native-host-execution/v1	411e52957e9eac078330aea2dcb400a4578e46da	31733151287	1	windows-x86_64	windows-2025	windows/X64	898933c42827c551b105d10ecbc6d2068cb968f523d70ff28bc4fe0b37b368a8	output=empty;status=0

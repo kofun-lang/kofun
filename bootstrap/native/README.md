@@ -91,10 +91,12 @@ identifier, embedded-hash, signature-magic, and signature-offset mutations are
 refused. When installed, `file` and LLVM additionally identify both exact
 architectures, `__LINKEDIT`, and `LC_CODE_SIGNATURE`.
 
-This is an embedded-signature image checkpoint, not macOS runtime evidence. It
-does not expose a macOS CLI target, run either image on a matching host, invoke
-Apple's signature validation, claim notarization or certificate identity, add
-OS authorities, or lower general Core to Mach-O. Those remain separate work.
+This remains a bounded image/signature checkpoint, not a macOS CLI or general
+Core runtime. The exact signed x86-64 and AArch64 checkpoint images are executed
+on matching macOS hosts and checked with Apple's strict signature validator by
+`.github/workflows/native-hosts.yml`; the pinned six-host observation is in
+`artifacts/native-host-evidence.tsv`. Notarization, certificate identity, OS
+authorities, general Core lowering, and the all-Kofun toolchain remain separate.
 
 ## AArch64 Native Core v1
 

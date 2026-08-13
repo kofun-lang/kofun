@@ -511,6 +511,11 @@ tasks:
     cmds:
       - "sh bootstrap/native/check.sh"
 
+  native-host-evidence:
+    desc: "Verify the pinned six-target matching-host observations"
+    cmds:
+      - "sh tests/native-host-evidence/check.sh"
+
   wasm:
     desc: "Build and execute the wasm32 arithmetic Core"
     cmds:
@@ -1147,6 +1152,7 @@ tasks:
             discovery \
             stage1-adapter \
             native \
+            native-host-evidence \
             wasm \
             examples \
             tour \

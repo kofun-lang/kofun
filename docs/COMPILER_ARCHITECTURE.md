@@ -159,8 +159,9 @@ The Stage 2 checkpoint lowers a bounded `Int` Core with parameters, results,
 recursion, and forward references. It does not lower its own Text/List/file-I/O
 implementation. The native checkpoint is registered for explicit Linux
 targets; its direct PE32+ and Mach-O 64 writers additionally emit bounded
-x86-64/AArch64 Windows and macOS image bytes, but those are not registered
-CLI/runtime targets and carry no host-execution claim yet. Its Int
+x86-64/AArch64 Windows and macOS image bytes. The exact six checkpoint images
+have digest-bound matching-host execution evidence, but Windows/macOS remain
+unregistered CLI/general runtime targets. Its Int
 function profile executes parameters, results, forward and
 mutual recursion, guarded returns, and checked arithmetic directly on both
 x86-64 and AArch64 from one shared parsed program; the shared x86-64/AArch64
