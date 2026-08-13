@@ -84,7 +84,8 @@ jobs:
           manifest="$output/kofun-native-checkpoint-$version-SHA256SUMS"
           : >"$manifest"
           for asset in "$output"/*.elf "$output"/*.exe "$output"/*.macho; do
-            ./bin/kofun-digest "$asset" >>"$manifest"
+            digest=$(./bin/kofun-digest "$asset" | awk '{ print $1 }')
+            printf '%s  %s\n' "$digest" "${asset##*/}" >>"$manifest"
           done
           test "$(wc -l <"$manifest" | tr -d ' ')" -eq 6
           cat "$manifest"
