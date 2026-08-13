@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 95,
+  "open_issues": 96,
   "issues": [
     {
       "number": 26,
@@ -1876,6 +1876,24 @@
       "claims": [
         {
           "agent_id": "codex-root-native-hosts-1393",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "number": 1394,
+      "title": "Release v0.8.0-seed with six native checkpoint assets",
+      "state_labels": [
+        "in-progress"
+      ],
+      "state_line": "in-progress",
+      "blocked_by": [],
+      "evidence_commits": [
+        "40181a84aa935ecff92823ffdb969c7b45085873"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-root-release-1394",
           "status": "active"
         }
       ]
