@@ -52,6 +52,16 @@ typedef enum {
     KOFUN_KIF_TYPE_NOMINAL = 2
 } KofunKifTypeTag;
 
+/* RFC-0012 envelope tag 0x800A. The source grammar spells a `trust` line only
+ * for `raw-foreign`; the implicit ordinary source state is serialized as the
+ * explicit bytes `ordinary` (RFC-0012/A01, option A). Absence is never
+ * grandfathered — it is the one downgrade the field exists to prevent — so
+ * there is no "unset" member here. */
+typedef enum {
+    KOFUN_KIF_TRUST_ORDINARY = 1,
+    KOFUN_KIF_TRUST_RAW_FOREIGN = 2
+} KofunKifModuleTrust;
+
 typedef struct {
     /* NULL plus zero length is the explicit canonical `unlabelled` marker. */
     char *bytes;
@@ -109,6 +119,11 @@ typedef struct {
     uint8_t module_id[KOFUN_KIF_ID_BYTES];
     char edition[KOFUN_KIF_MAX_EDITION_BYTES + 1u];
 
+    /* Required. A zero value is not "ordinary"; it fails validation, so a
+     * caller that forgets to set it is refused rather than silently writing
+     * the more permissive class. */
+    KofunKifModuleTrust module_trust;
+
     KofunKifFact *public_facts;
     size_t public_fact_count;
     KofunKifFact *internal_facts;
@@ -154,6 +169,16 @@ KifReadResult kofun_kif_read(
     const uint8_t *bytes,
     size_t length,
     KofunKifLimits limits
+);
+
+/* RFC-0012's third refusal. The codec cannot see the source, so the
+ * contradiction check is exported rather than folded into kofun_kif_read:
+ * `source_raw_foreign` is the module table's `trust raw-foreign` fact.
+ * Returns false when the source and the artifact disagree, which the caller
+ * must treat as rebuild-required — neither side wins. */
+bool kofun_kif_trust_agrees(
+    const KofunKifInterface *interface,
+    bool source_raw_foreign
 );
 
 void kofun_kif_destroy(KofunKifInterface *interface);

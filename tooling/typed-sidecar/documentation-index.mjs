@@ -256,11 +256,20 @@ export function parseKifVisibilityProjection(input, options = {}) {
       fail("TDI03", "KIF visibility projection is not valid JSON", "invalid-visibility-projection");
     }
     const root = exactObject(document, "$", [
-      "authoritative", "edition", "facts", "module_id", "package_id",
-      "package_internal_semantic_digest", "public_semantic_digest", "schema",
+      "authoritative", "edition", "facts", "module_id", "module_trust",
+      "package_id", "package_internal_semantic_digest",
+      "public_semantic_digest", "schema",
     ]);
     if (root.schema !== "kofun.interface-dump/v1" || root.authoritative !== false) {
       fail("TDI03", "KIF visibility projection has the wrong schema or authority marker", "invalid-visibility-projection");
+    }
+    // RFC-0012 tag 0x800A, required rather than optional. A dump without it is
+    // refused for the same reason the envelope refuses an absent 0x800A:
+    // absence is the permissive reading, and treating it as `ordinary` here
+    // would reintroduce through the diagnostic surface the downgrade the tag
+    // exists to close. The closed set is checked, not just the key's presence.
+    if (root.module_trust !== "ordinary" && root.module_trust !== "raw-foreign") {
+      fail("TDI03", "KIF visibility projection has an unknown module trust class", "invalid-visibility-projection");
     }
     requireName(root.edition, "$.edition", limits);
     requireHex(root.module_id, "$.module_id");

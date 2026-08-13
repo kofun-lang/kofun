@@ -77,6 +77,7 @@ int main(int argc, char **argv) {
         absent_type[index] = (uint8_t)(0x40u + index);
     }
     memcpy(interface.edition, "2026", 5u);
+    interface.module_trust = KOFUN_KIF_TRUST_ORDINARY;
     initialize_fact(
         &interface, &public_facts[0], KOFUN_KIF_FACT_ADT,
         KOFUN_KIF_VISIBILITY_PUBLIC, "PublicValue");

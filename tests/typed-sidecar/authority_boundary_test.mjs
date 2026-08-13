@@ -42,6 +42,7 @@ function visibilityProjection(facts, digestSeed) {
     edition: "kofun-2026",
     facts,
     module_id: MODULE_ID,
+    module_trust: "ordinary",
     package_id: PACKAGE_ID,
     package_internal_semantic_digest: digestSeed.repeat(64),
     public_semantic_digest: publicSeed.repeat(64),

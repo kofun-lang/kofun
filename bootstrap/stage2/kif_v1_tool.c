@@ -261,6 +261,14 @@ static bool build_interface(
         set_error(program, "E2S69", "edition is outside the KIF v2 bound");
         return false;
     }
+    /* RFC-0012 0x800A, taken from the parsed inventory rather than defaulted.
+     * This path does see raw-foreign modules, so the class is read from the
+     * same `Module` record that `module_symbols.c` set when it parsed the
+     * header — not from the rendered `trust=` column, which would be
+     * reconstructing authority from text. */
+    interface->module_trust = program->modules[module_index].trust_raw_foreign
+        ? KOFUN_KIF_TRUST_RAW_FOREIGN
+        : KOFUN_KIF_TRUST_ORDINARY;
     for (index = 0u; index < program->declaration_count; index += 1u) {
         Declaration *declaration = &program->declarations[index];
         if (declaration->module_index != module_index || !declaration_is_interface_fact(declaration)) {
@@ -357,12 +365,16 @@ static bool emit_dump(const KofunKifInterface *interface, const char *path) {
         "{\n  \"schema\": \"kofun.interface-dump/v1\",\n"
         "  \"authoritative\": false,\n"
         "  \"edition\": \"%s\",\n"
+        "  \"module_trust\": \"%s\",\n"
         "  \"package_id\": \"%s\",\n"
         "  \"module_id\": \"%s\",\n"
         "  \"public_semantic_digest\": \"%s\",\n"
         "  \"package_internal_semantic_digest\": \"%s\",\n"
         "  \"facts\": [\n",
-        interface->edition, package_hex, module_hex, public_hex, internal_hex);
+        interface->edition,
+        interface->module_trust == KOFUN_KIF_TRUST_RAW_FOREIGN
+            ? "raw-foreign" : "ordinary",
+        package_hex, module_hex, public_hex, internal_hex);
     for (index = 0u; index < interface->public_fact_count + interface->internal_fact_count; index += 1u) {
         const KofunKifFact *fact = index < interface->public_fact_count
             ? &interface->public_facts[index]
@@ -543,6 +555,45 @@ static int write_mode(
     if (result.status != KOFUN_KIF_OK) {
         printf("error[KIF-%s]: %s\n", kofun_kif_status_name(result.status), result.message);
         goto done;
+    }
+    /* RFC-0012's third refusal, checked against the bytes that actually
+     * reached the filesystem rather than against the interface we just built
+     * from the same record — comparing the in-memory struct to its own source
+     * would agree by construction and prove nothing. Re-reading catches a
+     * writer, codec, or commit that lost the class between the inventory and
+     * the artifact. Neither side wins: the artifact is refused, not rewritten. */
+    {
+        uint8_t *published = NULL;
+        size_t published_length = 0u;
+        KifReadResult check;
+        size_t module_index;
+        bool source_raw_foreign = false;
+        for (module_index = 0u; module_index < program.module_count; module_index += 1u) {
+            if (memcmp(program.modules[module_index].module_id, module_id,
+                    KOFUN_KIF_ID_BYTES) == 0) {
+                source_raw_foreign = program.modules[module_index].trust_raw_foreign;
+                break;
+            }
+        }
+        if (!read_kif_file(output, &published, &published_length)) {
+            set_error(&program, "E2S69", "published artifact could not be re-read");
+            goto done;
+        }
+        check = kofun_kif_read(published, published_length, kofun_kif_default_limits());
+        if (check.status != KOFUN_KIF_OK) {
+            free(published);
+            set_error(&program, "E2S69", "published artifact did not read back");
+            goto done;
+        }
+        if (!kofun_kif_trust_agrees(check.interface, source_raw_foreign)) {
+            kofun_kif_destroy(check.interface);
+            free(published);
+            set_error(&program, "E2S69",
+                "published trust class contradicts the source `trust` fact; the artifact must be rebuilt");
+            goto done;
+        }
+        kofun_kif_destroy(check.interface);
+        free(published);
     }
     if (dump_path != NULL && read_mode(output, dump_path) != 0) goto done;
     status = 0;

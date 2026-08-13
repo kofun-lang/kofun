@@ -251,6 +251,27 @@ result = parseKifVisibilityProjection(Buffer.from(JSON.stringify(wrongSchema)));
 assert.equal(result.ok, false);
 assert.equal(result.error.reason, "invalid-visibility-projection");
 
+// RFC-0012 tag 0x800A on the diagnostic surface. Both directions: a class
+// outside the closed set is refused, and an absent one is refused rather than
+// defaulting to `ordinary` — absence is the permissive reading, which is the
+// downgrade the tag exists to close.
+const unknownTrust = JSON.parse(spawnSync(reader, ["read", kif], {
+  encoding: "utf8",
+}).stdout);
+assert.equal(unknownTrust.module_trust, "ordinary");
+unknownTrust.module_trust = "raw - foreign";
+result = parseKifVisibilityProjection(Buffer.from(JSON.stringify(unknownTrust)));
+assert.equal(result.ok, false);
+assert.equal(result.error.reason, "invalid-visibility-projection");
+
+const absentTrust = JSON.parse(spawnSync(reader, ["read", kif], {
+  encoding: "utf8",
+}).stdout);
+delete absentTrust.module_trust;
+result = parseKifVisibilityProjection(Buffer.from(JSON.stringify(absentTrust)));
+assert.equal(result.ok, false);
+assert.equal(result.error.reason, "invalid-visibility-projection");
+
 const validDump = spawnSync(reader, ["read", kif]).stdout;
 const duplicateSchema = Buffer.from(validDump.toString("utf8").replace(
   "{\n", "{\n  \"schema\": \"kofun.interface-dump/v1\",\n",

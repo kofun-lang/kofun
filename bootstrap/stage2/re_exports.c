@@ -1889,6 +1889,13 @@ static bool build_facade_interface(
     size_t public_output = 0u;
     size_t internal_output = 0u;
     memset(interface, 0, sizeof(*interface));
+    /* RFC-0012 0x800A. The facade describes one module, so it carries that
+     * module's parsed class rather than a default; a facade over a raw-foreign
+     * module that serialized `ordinary` would launder the class through the
+     * re-export boundary, which is the shape #1216 exists to refuse. */
+    interface->module_trust = program->modules[module_index].trust_raw_foreign
+        ? KOFUN_KIF_TRUST_RAW_FOREIGN
+        : KOFUN_KIF_TRUST_ORDINARY;
     for (index = 0u; index < program->declaration_count; index += 1u) {
         Declaration *declaration = &program->declarations[index];
         if (declaration->module_index != module_index) continue;

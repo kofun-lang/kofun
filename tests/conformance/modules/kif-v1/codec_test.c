@@ -14,6 +14,7 @@ enum {
     TAG_INTERNAL_FACTS = 0x8007,
     TAG_PUBLIC_DIGEST = 0x8008,
     TAG_INTERNAL_DIGEST = 0x8009,
+    TAG_MODULE_TRUST = 0x800a,
     FACT_TAG_NAMESPACE = 0x8001,
     FACT_TAG_SYMBOL = 0x8002,
     FACT_TAG_KIND = 0x8003,
@@ -456,7 +457,12 @@ static void test_structural_mutations(const uint8_t *good, size_t length) {
     expect_status(copy, inserted_length, KOFUN_KIF_OK, "optional minor field");
     free(copy);
 
-    copy = insert_field(good, length, length, UINT16_C(0x800a), optional_value,
+    /* 0x800b, the first tag above the active envelope. This assertion used
+     * 0x800a until RFC-0012 made it the module-trust field; appending a tag
+     * the reader now understands would test duplicate-field handling while
+     * still reading as an unknown-required-tag test. The next required tag
+     * added has to move this number again, deliberately. */
+    copy = insert_field(good, length, length, UINT16_C(0x800b), optional_value,
         sizeof(optional_value), &inserted_length);
     expect_status(copy, inserted_length, KOFUN_KIF_UNSUPPORTED_SCHEMA,
         "unknown required field");
@@ -567,6 +573,96 @@ static void test_structural_mutations(const uint8_t *good, size_t length) {
     free(copy);
 }
 
+/* RFC-0012 tag 0x800A. Each refusal below mutates exactly one thing about an
+ * otherwise byte-valid artifact, so a rejection cannot come from some other
+ * damage introduced along the way. */
+static void test_module_trust(const uint8_t *good, size_t length, const char *work) {
+    KifReadResult result = kofun_kif_read(good, length, kofun_kif_default_limits());
+    FieldPosition field;
+    uint8_t *copy;
+    size_t shrunk;
+    uint8_t public_before[32];
+    uint8_t internal_before[32];
+
+    /* The positive direction first. Option B was rejected because an empty
+     * payload conflates with absence, so assert the literal bytes rather than
+     * only that the artifact reads. */
+    if (result.status != KOFUN_KIF_OK) fail("cannot inspect valid trust fixture");
+    if (result.interface->module_trust != KOFUN_KIF_TRUST_ORDINARY) {
+        fail("fixture module is not ordinary");
+    }
+    memcpy(public_before, result.interface->public_semantic_digest, 32u);
+    memcpy(internal_before, result.interface->package_internal_semantic_digest, 32u);
+    kofun_kif_destroy(result.interface);
+
+    if (!find_field(good, HEADER_BYTES, length - HEADER_BYTES,
+            TAG_MODULE_TRUST, &field)) {
+        fail("envelope carries no module-trust field");
+    }
+    if (field.length != sizeof("ordinary") - 1u ||
+        memcmp(good + field.value, "ordinary", field.length) != 0) {
+        fail("ordinary module did not serialize the exact bytes `ordinary`");
+    }
+
+    /* Unknown value, same length so nothing else shifts. `ordinarZ` is
+     * well-formed UTF-8 and outside the closed set, which is the case a reader
+     * that skipped unknown values would accept. */
+    copy = duplicate_bytes(good, length);
+    copy[field.value + field.length - 1u] = (uint8_t)'Z';
+    expect_status(copy, length, KOFUN_KIF_NONCANONICAL, "unknown trust class");
+    free(copy);
+
+    /* Absent. Removing the whole field keeps every remaining tag strictly
+     * increasing, so this is the pure absence case and not a framing error.
+     * RFC-0012 is explicit that absence is never grandfathered. */
+    copy = malloc(length);
+    if (copy == NULL) fail("allocation failed");
+    memcpy(copy, good, field.header - 6u);
+    memcpy(copy + field.header - 6u, good + field.value + field.length,
+        length - field.value - field.length);
+    shrunk = length - field.length - 6u;
+    store_u32(copy + 8u, (uint32_t)(shrunk - HEADER_BYTES));
+    expect_status(copy, shrunk, KOFUN_KIF_CORRUPT, "absent trust field");
+    free(copy);
+
+    /* Participation in both digests. The same interface written twice,
+     * differing in nothing but the trust class, must produce two different
+     * public digests and two different internal ones. This is what separates
+     * "the field is written" from "the field is part of the identity" — a
+     * field emitted outside both digest views would pass every assertion
+     * above and fail only this one. */
+    {
+        KifReadResult again = kofun_kif_read(good, length, kofun_kif_default_limits());
+        KifWriteResult ordinary;
+        KifWriteResult raw;
+        char path[1024];
+        if (again.status != KOFUN_KIF_OK) fail("digest fixture did not re-read");
+        snprintf(path, sizeof(path), "%s/trust-ordinary.kif", work);
+        again.interface->module_trust = KOFUN_KIF_TRUST_ORDINARY;
+        ordinary = kofun_kif_write(again.interface, path);
+        if (ordinary.status != KOFUN_KIF_OK) fail("ordinary rewrite failed");
+        snprintf(path, sizeof(path), "%s/trust-raw.kif", work);
+        again.interface->module_trust = KOFUN_KIF_TRUST_RAW_FOREIGN;
+        raw = kofun_kif_write(again.interface, path);
+        if (raw.status != KOFUN_KIF_OK) fail("raw-foreign rewrite failed");
+        if (memcmp(ordinary.public_semantic_digest,
+                raw.public_semantic_digest, 32u) == 0) {
+            fail("trust class does not participate in the public semantic digest");
+        }
+        if (memcmp(ordinary.package_internal_semantic_digest,
+                raw.package_internal_semantic_digest, 32u) == 0) {
+            fail("trust class does not participate in the internal semantic digest");
+        }
+        kofun_kif_destroy(again.interface);
+    }
+    /* Guards the two assertions above: if the writer ever produced one digest
+     * for both views, each comparison would still pass while proving half of
+     * what it claims. */
+    if (memcmp(public_before, internal_before, 32u) == 0) {
+        fail("the two semantic digests are identical, so neither distinguishes anything");
+    }
+}
+
 static void test_limits(const uint8_t *good, size_t length) {
     KifReadResult result = kofun_kif_read(good, length, kofun_kif_default_limits());
     KofunKifLimits limits = kofun_kif_default_limits();
@@ -580,9 +676,12 @@ static void test_limits(const uint8_t *good, size_t length) {
     expect_status_with_limits(good, length, limits, KOFUN_KIF_LIMIT_EXHAUSTED,
         "envelope one over configured limit");
     limits = kofun_kif_default_limits();
-    limits.max_record_fields = 9u;
+    /* Ten since RFC-0012 added 0x800A. The pair of assertions is the point:
+     * the exact count passes and one below it fails, so a field added or
+     * dropped without updating this moves one of the two. */
+    limits.max_record_fields = 10u;
     expect_status_with_limits(good, length, limits, KOFUN_KIF_OK, "exact envelope field count");
-    limits.max_record_fields = 8u;
+    limits.max_record_fields = 9u;
     expect_status_with_limits(good, length, limits, KOFUN_KIF_LIMIT_EXHAUSTED,
         "envelope field count over limit");
     limits = kofun_kif_default_limits();
@@ -714,6 +813,7 @@ static void test_export_facts(
     memcpy(facade.package_id, dependency.interface->package_id,
         KOFUN_KIF_ID_BYTES);
     memcpy(facade.edition, "edition-1", sizeof("edition-1"));
+    facade.module_trust = KOFUN_KIF_TRUST_ORDINARY;
     facade.public_facts = public_facts;
     facade.public_fact_count = 2u;
 
@@ -892,6 +992,7 @@ int main(int argc, char **argv) {
     }
     good = read_file(argv[1], &length);
     test_structural_mutations(good, length);
+    test_module_trust(good, length, argv[2]);
     test_limits(good, length);
     test_writer_failures(good, length, argv[2]);
     test_export_facts(good, length, argv[2]);
