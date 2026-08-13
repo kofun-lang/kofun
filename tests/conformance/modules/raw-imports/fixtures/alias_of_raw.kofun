@@ -1,0 +1,6 @@
+module app.main
+import lib.raw as alias
+
+fn main() -> Int {
+    return alias.identity(42)
+}

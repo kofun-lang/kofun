@@ -1,0 +1,10 @@
+module app.main
+import lib.plain
+
+fn trusted(value: Int) -> Int {
+    return plain.identity(value)
+}
+
+fn main() -> Int {
+    return trusted(42)
+}

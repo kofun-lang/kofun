@@ -1,0 +1,3 @@
+# code	adapter	channel	exit	primary-span	secondary-span	artifact
+E2S171	raw-imports	stdout	1	required	not-applicable	forbidden
+E2S172	raw-imports	stdout	1	required	not-applicable	forbidden

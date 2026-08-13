@@ -1,0 +1,6 @@
+module app.main
+import lib.raw
+
+fn main() -> Int {
+    return raw.identity(42)
+}

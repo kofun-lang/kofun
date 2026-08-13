@@ -408,6 +408,15 @@ tasks:
     cmds:
       - "sh tests/conformance/modules/import-aliases/run.sh"
 
+  # #1215. RFC-0012 step 3. Admission across a trust boundary: a `raw-foreign`
+  # module is reachable only through `trusted import`, and the marker is
+  # refused on an ordinary module so it cannot become decorative. The decision
+  # is taken from the serialized trust class and the resolved ModuleId.
+  raw-imports:
+    desc: "Verify trusted and ordinary imports of a raw-foreign module"
+    cmds:
+      - "sh tests/conformance/modules/raw-imports/run.sh"
+
   imports-selective:
     desc: "Verify selective same-package name imports"
     cmds:
@@ -1113,6 +1122,7 @@ tasks:
             imports-qualified \
             import-aliases \
             imports-selective \
+            raw-imports \
             re-exports \
             kif-v1 \
             kif-generics-codec \

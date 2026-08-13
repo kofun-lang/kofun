@@ -23,6 +23,7 @@ mkdir -p "$WORK"
 "$CC" -std=c11 -Wall -Wextra -Werror -pedantic \
     -DKOFUN_TEST_DIAGNOSTIC_FAULTS \
     "$ROOT/bootstrap/stage2/imports_selective.c" \
+    "$ROOT/bootstrap/stage2/kif_v1.c" \
     "$ROOT/bootstrap/stage2/visibility_access.c" \
     "$ROOT/unicode/kofun_unicode.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
@@ -263,6 +264,7 @@ KOFUN_GATE_WORK_NAMESPACE="${KOFUN_GATE_WORK_NAMESPACE:+$KOFUN_GATE_WORK_NAMESPA
 if command -v clang >/dev/null 2>&1; then
     clang -std=c11 -Wall -Wextra -Werror -pedantic \
         "$ROOT/bootstrap/stage2/imports_selective.c" \
+        "$ROOT/bootstrap/stage2/kif_v1.c" \
         "$ROOT/bootstrap/stage2/visibility_access.c" \
         "$ROOT/unicode/kofun_unicode.c" \
         "$ROOT/bootstrap/stage2/sha256.c" \
@@ -274,6 +276,7 @@ fi
 "$CC" -std=c11 -O1 -g -Wall -Wextra -Werror -pedantic \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     "$ROOT/bootstrap/stage2/imports_selective.c" \
+    "$ROOT/bootstrap/stage2/kif_v1.c" \
     "$ROOT/bootstrap/stage2/visibility_access.c" \
     "$ROOT/unicode/kofun_unicode.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
@@ -286,6 +289,7 @@ cmp "$WORK/positive.hir" "$WORK/sanitized.hir"
 
 if "$CC" -std=c11 -O0 -Wall -Wextra -Werror -pedantic -fanalyzer \
     "$ROOT/bootstrap/stage2/imports_selective.c" \
+    "$ROOT/bootstrap/stage2/kif_v1.c" \
     "$ROOT/bootstrap/stage2/visibility_access.c" \
     "$ROOT/unicode/kofun_unicode.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
