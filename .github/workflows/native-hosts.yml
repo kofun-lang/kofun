@@ -1,0 +1,278 @@
+name: Native matching-host evidence
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/native-hosts.yml'
+      - 'bootstrap/native/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-hosts-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  produce:
+    name: Produce the six Kofun native images
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install go-task
+        uses: arduino/setup-task@c0bc642852239c2689f73f4ea6459c29405f3c52 # v3.0.0
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Emit and validate all six images
+        env:
+          KOFUN_GATE_WORK_NAMESPACE: native-hosts
+        run: task native
+      - name: Upload exact emitted bytes
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: native-images-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+          path: |
+            build/native-hosts/native-check/core_return_42-x86_64.elf
+            build/native-hosts/native-check/core_return_42-aarch64.elf
+            build/native-hosts/native-check/pe32plus/x86_64-windows.pe
+            build/native-hosts/native-check/pe32plus/aarch64-windows.pe
+            build/native-hosts/native-check/macho64-signed/x86_64-macos-signed.macho
+            build/native-hosts/native-check/macho64-signed/aarch64-macos-signed.macho
+
+  linux:
+    name: Execute ${{ matrix.target }} on ${{ matrix.runner }}
+    needs: produce
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x86_64
+            runner: ubuntu-24.04
+            architecture: x86_64
+            image: core_return_42-x86_64.elf
+            checksum_path: core_return_42-x86_64.elf
+          - target: linux-aarch64
+            runner: ubuntu-24.04-arm
+            architecture: aarch64
+            image: core_return_42-aarch64.elf
+            checksum_path: core_return_42-aarch64.elf
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: native-images-${{ github.sha }}
+          path: native-images
+      - name: Verify architecture, digest, and execution
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          EXPECTED_ARCH: ${{ matrix.architecture }}
+          IMAGE: native-images/${{ matrix.image }}
+          CHECKSUM_PATH: ${{ matrix.checksum_path }}
+          RUNNER_LABEL: ${{ matrix.runner }}
+        run: |
+          set -eu
+          test "$(uname -s)" = Linux
+          test "$(uname -m)" = "$EXPECTED_ARCH"
+          expected=$(awk -v path="$CHECKSUM_PATH" '$2 == path { print $1 }' \
+            bootstrap/native/SHA256SUMS)
+          test -n "$expected"
+          actual=$(sha256sum "$IMAGE" | awk '{ print $1 }')
+          test "$actual" = "$expected"
+          chmod +x "$IMAGE"
+          set +e
+          output=$("$IMAGE" 2>native.stderr)
+          status=$?
+          set -e
+          test "$status" -eq 0
+          test "$output" = 42
+          test ! -s native.stderr
+          printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+            native-host-execution/v1 "$GITHUB_SHA" "$GITHUB_RUN_ID" \
+            "$GITHUB_RUN_ATTEMPT" "$TARGET" "$RUNNER_LABEL" \
+            "linux/$(uname -m)" "$actual" 'output=42;status=0' \
+            >"observation-$TARGET.tsv"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: native-observation-${{ matrix.target }}
+          path: observation-${{ matrix.target }}.tsv
+          if-no-files-found: error
+          retention-days: 7
+
+  windows:
+    name: Execute ${{ matrix.target }} on ${{ matrix.runner }}
+    needs: produce
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: windows-x86_64
+            runner: windows-2025
+            architecture: X64
+            image: pe32plus/x86_64-windows.pe
+            checksum_path: pe32plus/x86_64-windows.pe
+          - target: windows-aarch64
+            runner: windows-11-arm
+            architecture: Arm64
+            image: pe32plus/aarch64-windows.pe
+            checksum_path: pe32plus/aarch64-windows.pe
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: native-images-${{ github.sha }}
+          path: native-images
+      - name: Verify architecture, digest, and execution
+        shell: pwsh
+        env:
+          TARGET: ${{ matrix.target }}
+          EXPECTED_ARCH: ${{ matrix.architecture }}
+          IMAGE: native-images/${{ matrix.image }}
+          CHECKSUM_PATH: ${{ matrix.checksum_path }}
+          RUNNER_LABEL: ${{ matrix.runner }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $actualArch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+          if ($actualArch -ne $env:EXPECTED_ARCH) {
+            throw "runner architecture $actualArch, expected $env:EXPECTED_ARCH"
+          }
+          $line = Get-Content bootstrap/native/SHA256SUMS |
+            Where-Object { $_ -match "  $([regex]::Escape($env:CHECKSUM_PATH))$" }
+          if (@($line).Count -ne 1) { throw 'expected exactly one checksum row' }
+          $expected = ($line -split '  ')[0]
+          $actual = (Get-FileHash -Algorithm SHA256 $env:IMAGE).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "digest $actual, expected $expected" }
+          $program = Join-Path $PWD "native-$($env:TARGET).exe"
+          Copy-Item $env:IMAGE $program
+          $output = & $program 2>&1
+          $status = $LASTEXITCODE
+          if ($status -ne 0) { throw "native image exited $status" }
+          if (@($output).Count -ne 0) { throw "unexpected output: $output" }
+          $fields = @(
+            'native-host-execution/v1', $env:GITHUB_SHA, $env:GITHUB_RUN_ID,
+            $env:GITHUB_RUN_ATTEMPT, $env:TARGET, $env:RUNNER_LABEL,
+            "windows/$actualArch", $actual, 'output=empty;status=0'
+          )
+          $row = $fields -join "`t"
+          $utf8 = [System.Text.UTF8Encoding]::new($false)
+          [System.IO.File]::WriteAllText("observation-$($env:TARGET).tsv", "$row`n", $utf8)
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: native-observation-${{ matrix.target }}
+          path: observation-${{ matrix.target }}.tsv
+          if-no-files-found: error
+          retention-days: 7
+
+  macos:
+    name: Execute ${{ matrix.target }} on ${{ matrix.runner }}
+    needs: produce
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: macos-x86_64
+            runner: macos-15-intel
+            architecture: x86_64
+            image: macho64-signed/x86_64-macos-signed.macho
+            checksum_path: macho64-signed/x86_64-macos-signed.macho
+          - target: macos-aarch64
+            runner: macos-15
+            architecture: arm64
+            image: macho64-signed/aarch64-macos-signed.macho
+            checksum_path: macho64-signed/aarch64-macos-signed.macho
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: native-images-${{ github.sha }}
+          path: native-images
+      - name: Verify architecture, digest, signature, and execution
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          EXPECTED_ARCH: ${{ matrix.architecture }}
+          IMAGE: native-images/${{ matrix.image }}
+          CHECKSUM_PATH: ${{ matrix.checksum_path }}
+          RUNNER_LABEL: ${{ matrix.runner }}
+        run: |
+          set -eu
+          test "$(uname -s)" = Darwin
+          test "$(uname -m)" = "$EXPECTED_ARCH"
+          expected=$(awk -v path="$CHECKSUM_PATH" '$2 == path { print $1 }' \
+            bootstrap/native/SHA256SUMS)
+          test -n "$expected"
+          actual=$(shasum -a 256 "$IMAGE" | awk '{ print $1 }')
+          test "$actual" = "$expected"
+          chmod +x "$IMAGE"
+          codesign --verify --strict --verbose=4 "$IMAGE"
+          set +e
+          output=$("$IMAGE" 2>native.stderr)
+          status=$?
+          set -e
+          test "$status" -eq 0
+          test -z "$output"
+          test ! -s native.stderr
+          printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+            native-host-execution/v1 "$GITHUB_SHA" "$GITHUB_RUN_ID" \
+            "$GITHUB_RUN_ATTEMPT" "$TARGET" "$RUNNER_LABEL" \
+            "macos/$(uname -m)" "$actual" \
+            'codesign=valid;output=empty;status=0' \
+            >"observation-$TARGET.tsv"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: native-observation-${{ matrix.target }}
+          path: observation-${{ matrix.target }}.tsv
+          if-no-files-found: error
+          retention-days: 7
+
+  evidence:
+    name: Bind all six host observations
+    needs: [linux, windows, macos]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: native-observation-*
+          path: observations
+          merge-multiple: true
+      - name: Require the exact six-row evidence set
+        run: |
+          set -eu
+          test "$(find observations -type f -name 'observation-*.tsv' | wc -l)" -eq 6
+          LC_ALL=C sort observations/observation-*.tsv >native-host-evidence.tsv
+          awk -F '\t' -v sha="$GITHUB_SHA" -v run="$GITHUB_RUN_ID" '
+            NF != 9 { exit 1 }
+            $1 != "native-host-execution/v1" { exit 1 }
+            $2 != sha || $3 != run { exit 1 }
+            { target[$5]++ }
+            END {
+              if (NR != 6) exit 1
+              if (target["linux-x86_64"] != 1) exit 1
+              if (target["linux-aarch64"] != 1) exit 1
+              if (target["windows-x86_64"] != 1) exit 1
+              if (target["windows-aarch64"] != 1) exit 1
+              if (target["macos-x86_64"] != 1) exit 1
+              if (target["macos-aarch64"] != 1) exit 1
+            }
+          ' native-host-evidence.tsv
+          printf 'commit\t%s\nrun\t%s\nattempt\t%s\n' \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
+            >native-host-provenance.tsv
+          cat native-host-evidence.tsv
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: native-host-evidence-${{ github.sha }}
+          path: |
+            native-host-evidence.tsv
+            native-host-provenance.tsv
+          if-no-files-found: error
+          retention-days: 30
