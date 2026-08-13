@@ -4,8 +4,8 @@ This directory advances issues #14 and #33 with a Kofun-owned, Python-free
 native path. `encoder.kofun` is the canonical instruction and image
 implementation. It constructs little-endian integers, x86-64 and AArch64
 instruction bytes, target-parameterized ELF64 headers, and PE32+ headers and
-sections, and Mach-O 64 headers/load commands directly. It does not emit
-assembly or invoke a linker.
+sections, Mach-O 64 headers/load commands, big-endian code-signing records,
+and SHA-256 digests directly. It does not emit assembly or invoke a linker.
 
 ## PE32+ image checkpoint
 
@@ -52,10 +52,45 @@ inputs. When present, `file` and `llvm-readobj` additionally parse the exact
 outputs. Their hashes live in `SHA256SUMS`.
 
 This checkpoint does not expose macOS CLI targets or claim macOS-host
-execution. AArch64 ad-hoc code signing, OS authorities, general Core lowering,
-and matching host execution evidence remain separate work. The Stage 1 bridge
-exists only because List-returning user functions do not yet lower through the
-full compiler; Stage 2 parses and indexes the canonical Kofun writer.
+execution. Embedded ad-hoc signing is the separate checkpoint below; OS
+authorities, general Core lowering, and matching host execution evidence
+remain separate work. The Stage 1 bridge exists only because List-returning
+user functions do not yet lower through the full compiler; Stage 2 parses and
+indexes the canonical Kofun writer.
+
+## Mach-O ad-hoc signing checkpoint
+
+`macho64_signed_image(cpu_type, code, identifier)` extends the complete x86-64
+or AArch64 image with a read-only `__LINKEDIT` segment and
+`LC_CODE_SIGNATURE`. The embedded 160-byte SuperBlob contains one version
+`0x20400` CodeDirectory with `CS_ADHOC | CS_LINKER_SIGNED`, a bounded ASCII
+identifier, SHA-256 type 2, one hash slot for the complete 4 KiB or 16 KiB code
+page, and the executable-segment fields. `macho64_signed_entry_image` fixes the
+identifier to `kofun`; its images are 4,256 and 16,544 bytes respectively.
+
+Every producing byte is authored in Kofun. The canonical encoder includes its
+own big-endian integer encoding and SHA-256 compression/padding implementation;
+it does not call `codesign`, a linker, an SDK, a system digest, or a
+hand-authored foreign-language image writer to construct the prefix,
+CodeDirectory, or page hash. The current bounded bridge translates the Kofun
+fixture through the existing C bootstrap because the full compiler does not
+yet lower List-returning user functions; that bridge supplies no image-format
+constant, signing field, or digest operation. Removing that bootstrap boundary
+belongs to the all-Kofun toolchain work. The unsigned image functions above and
+their pinned hashes remain unchanged.
+
+`check-macho64-signed.sh` emits both signed images twice, compares the bytes,
+pins their SHA-256 hashes in `SHA256SUMS`, runs the canonical request predicate,
+and passes them to an independent structural/hash validator. The validator
+recomputes each CodeDirectory page hash and proves that header, code,
+identifier, embedded-hash, signature-magic, and signature-offset mutations are
+refused. When installed, `file` and LLVM additionally identify both exact
+architectures, `__LINKEDIT`, and `LC_CODE_SIGNATURE`.
+
+This is an embedded-signature image checkpoint, not macOS runtime evidence. It
+does not expose a macOS CLI target, run either image on a matching host, invoke
+Apple's signature validation, claim notarization or certificate identity, add
+OS authorities, or lower general Core to Mach-O. Those remain separate work.
 
 ## AArch64 Native Core v1
 
@@ -665,6 +700,8 @@ Implemented here:
 - deterministic Mach-O 64 header/segment/section/load-command encoding in
   Kofun for x86-64 and AArch64, with no imported library, SDK, assembler, or
   linker;
+- deterministic embedded Mach-O ad-hoc SuperBlob/CodeDirectory encoding and
+  SHA-256 page hashing in Kofun for x86-64 and AArch64;
 - x86-64 `mov r32, imm32` and `syscall` encoders;
 - deterministic absolute and PC-relative label/fixup resolution;
 - raw `write(1, address, length)` and `exit(status)` sequences;
@@ -717,9 +754,9 @@ Still open:
   self-compile;
 - general local bindings and statement/control-flow lowering inside
   user-defined functions;
-- conditional branches, allocator reuse/reclamation, macOS ad-hoc signing and
-  host execution, Windows runtime and host execution, CLI target admission,
-  and additional targets;
+- conditional branches, allocator reuse/reclamation, macOS signature
+  validation and host execution, Windows runtime and host execution, CLI
+  target admission, and additional targets;
 - first-class/nested collection lambdas and general collection types;
 - broader Text bindings/calls and the Stage 1 compiler port;
 - variable/location DIEs, multi-function debug information, and AArch64

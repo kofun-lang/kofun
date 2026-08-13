@@ -907,6 +907,45 @@
       }
     },
     {
+      "id": "macho64-ad-hoc-signing",
+      "public_wording": "Mach-O 64 embedded ad-hoc signing",
+      "public_status": "bounded deterministic x86-64/AArch64 signed-image checkpoint; no macOS CLI/runtime, host validation/execution, notarization, or certificate claim",
+      "state": "checkpoint",
+      "area": "native",
+      "bounded_capability": "The canonical Kofun encoder directly writes the __LINKEDIT segment, LC_CODE_SIGNATURE, embedded SuperBlob, version 0x20400 CodeDirectory, and SHA-256 page hash for deterministic x86-64 and AArch64 Mach-O 64 images. Big-endian fields, SHA-256 compression and padding, bounded ASCII identifier, and every producing value are Kofun-owned; no assembler, linker, system SDK, codesign, system digest, or hand-authored foreign-language image or digest implementation participates. The current bounded execution bridge still translates the Kofun fixture through the existing C bootstrap and supplies no image or digest values; removing that bridge is outside this checkpoint.",
+      "targets": [
+        "native-aarch64-macos-macho64",
+        "native-x86_64-macos-macho64"
+      ],
+      "specification": [
+        "bootstrap/native/README.md",
+        "docs/NATIVE_BACKEND.md"
+      ],
+      "compatibility": "For supported CPU identities, bounded code and a bounded ASCII identifier, the embedded signature is byte-deterministic and hash-pinned. macOS CLI/runtime integration, matching-host signature validation or execution, notarization, certificate identity, OS authorities, full Core lowering, and universal binaries are explicitly outside this checkpoint.",
+      "positive_gate": {
+        "command": "task native",
+        "observation": "Kofun emits both embedded ad-hoc signed images twice with identical bytes; an independent parser validates the load commands, SuperBlob, CodeDirectory, executable-segment fields, and independently recomputed page hashes, while optional file/LLVM tools identify both architectures."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": "bootstrap/native/check-macho64-signed.sh",
+        "observation": "Unknown CPUs, empty or oversized code, bytes outside 0..255, and empty, oversized, NUL-containing, non-ASCII identifiers refuse before image writing; independent mutations of signed header, code, identifier, page hash, signature magic, and signature offset fail validation."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "task native",
+        "prerequisites": [
+          "cc",
+          "node"
+        ]
+      }
+    },
+    {
       "id": "macho64-image-writer",
       "public_wording": "Mach-O 64/x86-64 and AArch64 native image writer",
       "public_status": "bounded deterministic no-import image checkpoint; no macOS CLI/runtime, signing, or host-execution claim",

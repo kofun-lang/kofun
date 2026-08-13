@@ -1,0 +1,460 @@
+# Executable Kofun bridge for the canonical Mach-O ad-hoc signer.
+#
+# check-macho64-signed.sh prepends the exact native_sha256 implementation from
+# encoder.kofun. This file reconstructs each signed prefix byte by offset,
+# absorbs every 64-byte page block in Kofun, and emits the signature. The shell
+# gate transports numeric bytes only; it never selects a header or digest.
+
+fn emit(value: Int) -> Int {
+    print(value % 256)
+    return 0
+}
+
+fn emit_u32_be(value: Int) -> Int {
+    emit(value // 16777216)
+    emit(value // 65536)
+    emit(value // 256)
+    emit(value)
+    return 0
+}
+
+fn emit_u64_be(value: Int) -> Int {
+    emit_u32_be(value // 4294967296)
+    emit_u32_be(value)
+    return 0
+}
+
+fn emit_zeros(count: Int) -> Int {
+    let mut index = 0
+    while index < count {
+        emit(0)
+        index = index + 1
+    }
+    return 0
+}
+
+fn u32_le_byte(value: Int, offset: Int) -> Int {
+    if offset == 0 {
+        return value % 256
+    }
+    if offset == 1 {
+        return (value // 256) % 256
+    }
+    if offset == 2 {
+        return (value // 65536) % 256
+    }
+    if offset == 3 {
+        return (value // 16777216) % 256
+    }
+    return 0
+}
+
+fn u64_le_byte(value: Int, offset: Int) -> Int {
+    if offset < 4 {
+        return u32_le_byte(value, offset)
+    }
+    return u32_le_byte(value // 4294967296, offset - 4)
+}
+
+fn fixed_byte(values: List[Int], offset: Int) -> Int {
+    if offset < 0 {
+        return 0
+    }
+    if offset >= len(values) {
+        return 0
+    }
+    return values[offset]
+}
+
+fn macho64_bridge_page_size(cpu_type: Int) -> Int {
+    if cpu_type == 16777223 {
+        return 4096
+    }
+    if cpu_type == 16777228 {
+        return 16384
+    }
+    return 0
+}
+
+fn macho64_bridge_code_size(cpu_type: Int) -> Int {
+    if cpu_type == 16777223 {
+        return 9
+    }
+    if cpu_type == 16777228 {
+        return 12
+    }
+    return 0
+}
+
+fn macho64_bridge_cpu_subtype(cpu_type: Int) -> Int {
+    if cpu_type == 16777223 {
+        return 3
+    }
+    return 0
+}
+
+fn macho64_signed_prefix_byte(cpu_type: Int, index: Int) -> Int {
+    let page_size = macho64_bridge_page_size(cpu_type)
+    let code_size = macho64_bridge_code_size(cpu_type)
+    if page_size == 0 {
+        return 0
+    }
+    if index < 0 {
+        return 0
+    }
+    if index >= page_size {
+        return 0
+    }
+
+    # mach_header_64, file offsets 0..31.
+    if index < 4 {
+        return u32_le_byte(4277009103, index)
+    }
+    if index < 8 {
+        return u32_le_byte(cpu_type, index - 4)
+    }
+    if index < 12 {
+        return u32_le_byte(macho64_bridge_cpu_subtype(cpu_type), index - 8)
+    }
+    if index < 16 {
+        return u32_le_byte(2, index - 12)
+    }
+    if index < 20 {
+        return u32_le_byte(7, index - 16)
+    }
+    if index < 24 {
+        return u32_le_byte(392, index - 20)
+    }
+    if index < 28 {
+        return u32_le_byte(2097285, index - 24)
+    }
+    if index < 32 {
+        return 0
+    }
+
+    # __PAGEZERO LC_SEGMENT_64, 32..103.
+    if index < 36 {
+        return u32_le_byte(25, index - 32)
+    }
+    if index < 40 {
+        return u32_le_byte(72, index - 36)
+    }
+    if index < 56 {
+        let name: List[Int] = [
+            95, 95, 80, 65, 71, 69, 90, 69,
+            82, 79, 0, 0, 0, 0, 0, 0
+        ]
+        return fixed_byte(name, index - 40)
+    }
+    if index < 64 {
+        return 0
+    }
+    if index < 72 {
+        return u64_le_byte(4294967296, index - 64)
+    }
+    if index < 104 {
+        return 0
+    }
+
+    # __TEXT plus __text, 104..255.
+    if index < 108 {
+        return u32_le_byte(25, index - 104)
+    }
+    if index < 112 {
+        return u32_le_byte(152, index - 108)
+    }
+    if index < 128 {
+        let name: List[Int] = [
+            95, 95, 84, 69, 88, 84, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0
+        ]
+        return fixed_byte(name, index - 112)
+    }
+    if index < 136 {
+        return u64_le_byte(4294967296, index - 128)
+    }
+    if index < 144 {
+        return u64_le_byte(page_size, index - 136)
+    }
+    if index < 152 {
+        return 0
+    }
+    if index < 160 {
+        return u64_le_byte(page_size, index - 152)
+    }
+    if index < 164 {
+        return u32_le_byte(5, index - 160)
+    }
+    if index < 168 {
+        return u32_le_byte(5, index - 164)
+    }
+    if index < 172 {
+        return u32_le_byte(1, index - 168)
+    }
+    if index < 176 {
+        return 0
+    }
+    if index < 192 {
+        let section: List[Int] = [
+            95, 95, 116, 101, 120, 116, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0
+        ]
+        return fixed_byte(section, index - 176)
+    }
+    if index < 208 {
+        let segment: List[Int] = [
+            95, 95, 84, 69, 88, 84, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0
+        ]
+        return fixed_byte(segment, index - 192)
+    }
+    if index < 216 {
+        return u64_le_byte(4294967808, index - 208)
+    }
+    if index < 224 {
+        return u64_le_byte(code_size, index - 216)
+    }
+    if index < 228 {
+        return u32_le_byte(512, index - 224)
+    }
+    if index < 232 {
+        if cpu_type == 16777228 {
+            return u32_le_byte(2, index - 228)
+        }
+        return 0
+    }
+    if index < 240 {
+        return 0
+    }
+    if index < 244 {
+        return u32_le_byte(2147484672, index - 240)
+    }
+    if index < 256 {
+        return 0
+    }
+
+    # __LINKEDIT, 256..327. The fixed identifier "kofun" makes the embedded
+    # signature exactly 160 bytes.
+    if index < 260 {
+        return u32_le_byte(25, index - 256)
+    }
+    if index < 264 {
+        return u32_le_byte(72, index - 260)
+    }
+    if index < 280 {
+        let name: List[Int] = [
+            95, 95, 76, 73, 78, 75, 69, 68,
+            73, 84, 0, 0, 0, 0, 0, 0
+        ]
+        return fixed_byte(name, index - 264)
+    }
+    if index < 288 {
+        return u64_le_byte(4294967296 + page_size, index - 280)
+    }
+    if index < 296 {
+        return u64_le_byte(160, index - 288)
+    }
+    if index < 304 {
+        return u64_le_byte(page_size, index - 296)
+    }
+    if index < 312 {
+        return u64_le_byte(160, index - 304)
+    }
+    if index < 316 {
+        return u32_le_byte(1, index - 312)
+    }
+    if index < 320 {
+        return u32_le_byte(1, index - 316)
+    }
+    if index < 328 {
+        return 0
+    }
+
+    # LC_LOAD_DYLINKER, 328..359.
+    if index < 332 {
+        return u32_le_byte(14, index - 328)
+    }
+    if index < 336 {
+        return u32_le_byte(32, index - 332)
+    }
+    if index < 340 {
+        return u32_le_byte(12, index - 336)
+    }
+    if index < 354 {
+        let path: List[Int] = [
+            47, 117, 115, 114, 47, 108, 105,
+            98, 47, 100, 121, 108, 100, 0
+        ]
+        return fixed_byte(path, index - 340)
+    }
+    if index < 360 {
+        return 0
+    }
+
+    # LC_BUILD_VERSION, LC_MAIN, LC_CODE_SIGNATURE.
+    if index < 364 {
+        return u32_le_byte(50, index - 360)
+    }
+    if index < 368 {
+        return u32_le_byte(24, index - 364)
+    }
+    if index < 372 {
+        return u32_le_byte(1, index - 368)
+    }
+    if index < 376 {
+        return u32_le_byte(720896, index - 372)
+    }
+    if index < 380 {
+        return u32_le_byte(720896, index - 376)
+    }
+    if index < 384 {
+        return 0
+    }
+    if index < 388 {
+        return u32_le_byte(2147483688, index - 384)
+    }
+    if index < 392 {
+        return u32_le_byte(24, index - 388)
+    }
+    if index < 400 {
+        return u64_le_byte(512, index - 392)
+    }
+    if index < 408 {
+        return 0
+    }
+    if index < 412 {
+        return u32_le_byte(29, index - 408)
+    }
+    if index < 416 {
+        return u32_le_byte(16, index - 412)
+    }
+    if index < 420 {
+        return u32_le_byte(page_size, index - 416)
+    }
+    if index < 424 {
+        return u32_le_byte(160, index - 420)
+    }
+    if index < 512 {
+        return 0
+    }
+
+    if cpu_type == 16777223 {
+        let code: List[Int] = [184, 1, 0, 0, 2, 49, 255, 15, 5]
+        return fixed_byte(code, index - 512)
+    }
+    let code: List[Int] = [
+        0, 0, 128, 210,
+        48, 0, 128, 210,
+        1, 16, 0, 212
+    ]
+    return fixed_byte(code, index - 512)
+}
+
+fn macho64_page_block(cpu_type: Int, block_index: Int) -> List[Int] {
+    let mut block: List[Int] = [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    ]
+    let base = block_index * 64
+    let mut offset = 0
+    while offset < 64 {
+        block[offset] = macho64_signed_prefix_byte(cpu_type, base + offset)
+        offset = offset + 1
+    }
+    return block
+}
+
+fn macho64_padding_block(cpu_type: Int) -> List[Int] {
+    let page_size = macho64_bridge_page_size(cpu_type)
+    let mut block: List[Int] = [
+        128, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    ]
+    let bits = page_size * 8
+    block[60] = bits // 16777216
+    block[61] = (bits // 65536) % 256
+    block[62] = (bits // 256) % 256
+    block[63] = bits % 256
+    return block
+}
+
+fn macho64_page_digest(cpu_type: Int) -> List[Int] {
+    let page_size = macho64_bridge_page_size(cpu_type)
+    let mut state = native_sha256_initial_state()
+    let mut block = 0
+    while block < page_size // 64 {
+        state = native_sha256_absorb(
+            state,
+            macho64_page_block(cpu_type, block)
+        )
+        block = block + 1
+    }
+    return native_sha256_absorb(state, macho64_padding_block(cpu_type))
+}
+
+fn emit_signed_macho64(cpu_type: Int) -> Int {
+    let page_size = macho64_bridge_page_size(cpu_type)
+    let mut index = 0
+    while index < page_size {
+        emit(macho64_signed_prefix_byte(cpu_type, index))
+        index = index + 1
+    }
+
+    # CS_SuperBlob and one BlobIndex, all big-endian.
+    emit_u32_be(4208856256)
+    emit_u32_be(160)
+    emit_u32_be(1)
+    emit_u32_be(0)
+    emit_u32_be(20)
+
+    # CS_CodeDirectory v0x20400.
+    emit_u32_be(4208856066)
+    emit_u32_be(140)
+    emit_u32_be(132096)
+    emit_u32_be(131074)
+    emit_u32_be(108)
+    emit_u32_be(88)
+    emit_u32_be(0)
+    emit_u32_be(1)
+    emit_u32_be(page_size)
+    emit(32)
+    emit(2)
+    emit(0)
+    if cpu_type == 16777223 {
+        emit(12)
+    } else {
+        emit(14)
+    }
+    emit_u32_be(0)
+    emit_u32_be(0)
+    emit_u32_be(0)
+    emit_u32_be(0)
+    emit_u64_be(0)
+    emit_u64_be(0)
+    emit_u64_be(page_size)
+    emit_u64_be(1)
+    emit(107)
+    emit(111)
+    emit(102)
+    emit(117)
+    emit(110)
+    emit_zeros(15)
+
+    let digest = macho64_page_digest(cpu_type)
+    let mut word = 0
+    while word < 8 {
+        emit_u32_be(digest[word])
+        word = word + 1
+    }
+    return 0
+}
+
+fn main() {
+    emit_signed_macho64(16777223)
+    print(999)
+    emit_signed_macho64(16777228)
+}

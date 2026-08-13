@@ -43,11 +43,17 @@ assert_grep "encoder.ir" '^function|pe32plus_image|2|' "$WORK/encoder.ir"
 assert_grep "encoder.ir" '^function|pe32plus_entry_image|1|' "$WORK/encoder.ir"
 assert_grep "encoder.ir" '^function|macho64_image|2|' "$WORK/encoder.ir"
 assert_grep "encoder.ir" '^function|macho64_entry_image|1|' "$WORK/encoder.ir"
+assert_grep "encoder.ir" '^function|native_sha256_absorb|2|' "$WORK/encoder.ir"
+assert_grep "encoder.ir" '^function|macho64_ad_hoc_signature|3|' "$WORK/encoder.ir"
+assert_grep "encoder.ir" '^function|macho64_signed_image|3|' "$WORK/encoder.ir"
+assert_grep "encoder.ir" '^function|macho64_signed_entry_image|1|' "$WORK/encoder.ir"
 
 KOFUN_NATIVE_PE32PLUS_WORK="$WORK/pe32plus" \
     sh "$NATIVE/check-pe32plus.sh"
 KOFUN_NATIVE_MACHO64_WORK="$WORK/macho64" \
     sh "$NATIVE/check-macho64.sh"
+KOFUN_NATIVE_MACHO64_SIGNED_WORK="$WORK/macho64-signed" \
+    sh "$NATIVE/check-macho64-signed.sh"
 
 expand_fixture() (
     fixture=$1

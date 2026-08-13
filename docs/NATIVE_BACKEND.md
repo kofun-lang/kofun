@@ -3,10 +3,14 @@
 `bootstrap/native/encoder.kofun` implements the direct-native checkpoint:
 little-endian encoding, ELF64, PE32+, and Mach-O 64 image headers, ELF
 program/section headers, separate RX/RW segments, immediate moves, Linux
-syscalls, and generic DWARF v4 metadata. The PE32+ and Mach-O checkpoints write
-complete no-import x86-64 and AArch64 images directly and validate their
-structure/determinism. They do not yet expose Windows/macOS CLI/runtime targets
-or host-execution claims; macOS AArch64 ad-hoc signing remains separate work.
+syscalls, generic DWARF v4 metadata, and the big-endian CodeDirectory/SHA-256
+records used by the Mach-O ad-hoc-signing checkpoint. The PE32+ and Mach-O
+checkpoints write complete no-import x86-64 and AArch64 images directly and
+validate their structure/determinism. The signed Mach-O slice embeds
+`__LINKEDIT`, `LC_CODE_SIGNATURE`, and a Kofun-hashed ad-hoc CodeDirectory for
+both architectures. None of these image checkpoints yet exposes Windows/macOS
+CLI/runtime targets or host-execution, Apple-validation, notarization, or
+certificate claims.
 The repository CLI exposes the supported arithmetic Core for x86-64 and
 AArch64 Linux. Both targets lower local `Int` and `List[Int]` bindings; List
 literals, length, indexing, and generated `map`/`filter`/`fold` loops with typed

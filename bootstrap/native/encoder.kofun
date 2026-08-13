@@ -33,6 +33,30 @@ fn u64_le(value: Int) -> List[Int] {
     ]
 }
 
+# native-signing-big-endian:start
+fn u32_be(value: Int) -> List[Int] {
+    return [
+        (value // 16777216) % 256,
+        (value // 65536) % 256,
+        (value // 256) % 256,
+        value % 256,
+    ]
+}
+
+fn u64_be(value: Int) -> List[Int] {
+    return [
+        (value // 72057594037927936) % 256,
+        (value // 281474976710656) % 256,
+        (value // 1099511627776) % 256,
+        (value // 4294967296) % 256,
+        (value // 16777216) % 256,
+        (value // 65536) % 256,
+        (value // 256) % 256,
+        value % 256,
+    ]
+}
+# native-signing-big-endian:end
+
 fn patch_u32_le(
     image: List[Int],
     field_offset: Int,
@@ -156,6 +180,192 @@ fn pad_to(image: List[Int], size: Int) -> List[Int] {
     }
     return padded
 }
+
+# native-signing-sha256:start
+# SHA-256 used by the Mach-O ad-hoc CodeDirectory writer. This is the same
+# Kofun algorithm gated by tests/stdlib/kofun-digest-model, specialised here
+# to an already-complete byte list so the signer has no foreign digest edge.
+fn native_sha256_initial_state() -> List[Int] {
+    let state: List[Int] = [
+        1779033703, 3144134277, 1013904242, 2773480762,
+        1359893119, 2600822924, 528734635, 1541459225
+    ]
+    return state
+}
+
+fn native_sha256_round_constants() -> List[Int] {
+    let constants: List[Int] = [
+        1116352408, 1899447441, 3049323471, 3921009573,
+        961987163, 1508970993, 2453635748, 2870763221,
+        3624381080, 310598401, 607225278, 1426881987,
+        1925078388, 2162078206, 2614888103, 3248222580,
+        3835390401, 4022224774, 264347078, 604807628,
+        770255983, 1249150122, 1555081692, 1996064986,
+        2554220882, 2821834349, 2952996808, 3210313671,
+        3336571891, 3584528711, 113926993, 338241895,
+        666307205, 773529912, 1294757372, 1396182291,
+        1695183700, 1986661051, 2177026350, 2456956037,
+        2730485921, 2820302411, 3259730800, 3345764771,
+        3516065817, 3600352804, 4094571909, 275423344,
+        430227734, 506948616, 659060556, 883997877,
+        958139571, 1322822218, 1537002063, 1747873779,
+        1955562222, 2024104815, 2227730452, 2361852424,
+        2428436474, 2756734187, 3204031479, 3329325298
+    ]
+    return constants
+}
+
+fn native_sha256_big_sigma0(word: Int) -> Int {
+    return word.rotr(2, 32).xor(word.rotr(13, 32)).xor(word.rotr(22, 32))
+}
+
+fn native_sha256_big_sigma1(word: Int) -> Int {
+    return word.rotr(6, 32).xor(word.rotr(11, 32)).xor(word.rotr(25, 32))
+}
+
+fn native_sha256_small_sigma0(word: Int) -> Int {
+    return word.rotr(7, 32).xor(word.rotr(18, 32)).xor(word.shr(3))
+}
+
+fn native_sha256_small_sigma1(word: Int) -> Int {
+    return word.rotr(17, 32).xor(word.rotr(19, 32)).xor(word.shr(10))
+}
+
+fn native_sha256_choose(x: Int, y: Int, z: Int) -> Int {
+    return x.and(y).xor(x.not().and(z))
+}
+
+fn native_sha256_majority(x: Int, y: Int, z: Int) -> Int {
+    return x.and(y).xor(x.and(z)).xor(y.and(z))
+}
+
+fn native_sha256_schedule(block: List[Int]) -> List[Int] {
+    let mut words: List[Int] = [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    ]
+    let mut index = 0
+    while index < 16 {
+        let offset = index * 4
+        words[index] = block[offset].shl(24)
+            .or(block[offset + 1].shl(16))
+            .or(block[offset + 2].shl(8))
+            .or(block[offset + 3])
+        index = index + 1
+    }
+    while index < 64 {
+        words[index] = words[index - 16]
+            .wrapping_add(native_sha256_small_sigma0(words[index - 15]), 32)
+            .wrapping_add(words[index - 7], 32)
+            .wrapping_add(native_sha256_small_sigma1(words[index - 2]), 32)
+        index = index + 1
+    }
+    return words
+}
+
+fn native_sha256_absorb(
+    state: List[Int],
+    block: List[Int]
+) -> List[Int] {
+    let words = native_sha256_schedule(block)
+    let constants = native_sha256_round_constants()
+    let mut a = state[0]
+    let mut b = state[1]
+    let mut c = state[2]
+    let mut d = state[3]
+    let mut e = state[4]
+    let mut f = state[5]
+    let mut g = state[6]
+    let mut h = state[7]
+    let mut round = 0
+    while round < 64 {
+        let first = h
+            .wrapping_add(native_sha256_big_sigma1(e), 32)
+            .wrapping_add(native_sha256_choose(e, f, g), 32)
+            .wrapping_add(constants[round], 32)
+            .wrapping_add(words[round], 32)
+        let second = native_sha256_big_sigma0(a)
+            .wrapping_add(native_sha256_majority(a, b, c), 32)
+        h = g
+        g = f
+        f = e
+        e = d.wrapping_add(first, 32)
+        d = c
+        c = b
+        b = a
+        a = first.wrapping_add(second, 32)
+        round = round + 1
+    }
+    let mut next: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0]
+    next[0] = state[0].wrapping_add(a, 32)
+    next[1] = state[1].wrapping_add(b, 32)
+    next[2] = state[2].wrapping_add(c, 32)
+    next[3] = state[3].wrapping_add(d, 32)
+    next[4] = state[4].wrapping_add(e, 32)
+    next[5] = state[5].wrapping_add(f, 32)
+    next[6] = state[6].wrapping_add(g, 32)
+    next[7] = state[7].wrapping_add(h, 32)
+    return next
+}
+# native-signing-sha256-core:end
+
+fn native_sha256_block(
+    image: List[Int],
+    image_length: Int,
+    block_index: Int
+) -> List[Int] {
+    let mut block: List[Int] = [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ]
+    let base = block_index * 64
+    let mut offset = 0
+    while offset < 64 {
+        let absolute = base + offset
+        if absolute < image_length {
+            block[offset] = image[absolute]
+        } else if absolute == image_length {
+            block[offset] = 128
+        } else {
+            let padded_length = ((image_length + 72) // 64) * 64
+            if absolute >= padded_length - 8 {
+                let place = padded_length - 1 - absolute
+                block[offset] = image_length.shl(3).shr(place * 8).and(255)
+            }
+        }
+        offset = offset + 1
+    }
+    return block
+}
+
+fn native_sha256(image: List[Int]) -> List[Int] {
+    let image_length = len(image)
+    let block_count = (image_length + 72) // 64
+    let mut state = native_sha256_initial_state()
+    let mut block = 0
+    while block < block_count {
+        state = native_sha256_absorb(
+            state,
+            native_sha256_block(image, image_length, block)
+        )
+        block = block + 1
+    }
+    return state
+}
+
+fn native_sha256_bytes(image: List[Int]) -> List[Int] {
+    let state = native_sha256(image)
+    let mut digest: List[Int] = []
+    for word in state {
+        digest = concat(digest, u32_be(word))
+    }
+    return digest
+}
+# native-signing-sha256:end
 
 # PE32+ image writer.
 #
@@ -555,6 +765,289 @@ fn macho64_entry_code(cpu_type: Int) -> List[Int] {
 
 fn macho64_entry_image(cpu_type: Int) -> List[Int] {
     return macho64_image(cpu_type, macho64_entry_code(cpu_type))
+}
+
+# Embedded ad-hoc signing is a second image contract. The unsigned #1390
+# functions above remain byte-stable; callers opt into this complete prefix,
+# __LINKEDIT segment, LC_CODE_SIGNATURE, and CodeDirectory explicitly.
+# macho64-signing-request-validator:start
+fn macho64_signing_request_status(
+    cpu_type: Int,
+    code_size: Int,
+    minimum_code_byte: Int,
+    maximum_code_byte: Int,
+    identifier_size: Int,
+    minimum_identifier_byte: Int,
+    maximum_identifier_byte: Int
+) -> Int {
+    if cpu_type != 16777223 {
+        if cpu_type != 16777228 {
+            return 1
+        }
+    }
+    if code_size <= 0 {
+        return 2
+    }
+    if code_size > 3584 {
+        return 2
+    }
+    if minimum_code_byte < 0 {
+        return 3
+    }
+    if maximum_code_byte > 255 {
+        return 3
+    }
+    if identifier_size <= 0 {
+        return 4
+    }
+    if identifier_size > 63 {
+        return 4
+    }
+    if minimum_identifier_byte <= 0 {
+        return 5
+    }
+    if maximum_identifier_byte > 127 {
+        return 5
+    }
+    return 0
+}
+# macho64-signing-request-validator:end
+
+fn macho64_identifier_valid(identifier: List[Int]) -> Bool {
+    let mut minimum_byte = 128
+    let mut maximum_byte = 0
+    for byte in identifier {
+        if byte < minimum_byte {
+            minimum_byte = byte
+        }
+        if byte > maximum_byte {
+            maximum_byte = byte
+        }
+    }
+    return macho64_signing_request_status(
+        16777223,
+        1,
+        0,
+        0,
+        len(identifier),
+        minimum_byte,
+        maximum_byte,
+    ) == 0
+}
+
+fn macho64_code_directory_hash_offset(identifier_size: Int) -> Int {
+    # The SuperBlob header/index is 20 bytes and the v0x20400 CodeDirectory is
+    # 88 bytes. Match the kernel/LLD convention by aligning the absolute hash
+    # table to 16 bytes, not the CodeDirectory-relative offset.
+    return (((20 + 88 + identifier_size + 1 + 15) // 16) * 16) - 20
+}
+
+fn macho64_signature_size(identifier_size: Int) -> Int {
+    return 20 + macho64_code_directory_hash_offset(identifier_size) + 32
+}
+
+fn macho64_signed_header(cpu_type: Int) -> List[Int] {
+    if !macho64_cpu_supported(cpu_type) {
+        let empty: List[Int] = []
+        return empty
+    }
+    let mut cpu_subtype = 0
+    if cpu_type == 16777223 {
+        cpu_subtype = 3
+    }
+    let mut header = u32_le(4277009103) # MH_MAGIC_64
+    header = concat(header, u32_le(cpu_type))
+    header = concat(header, u32_le(cpu_subtype))
+    header = concat(header, u32_le(2))   # MH_EXECUTE
+    header = concat(header, u32_le(7))   # seven load commands
+    header = concat(header, u32_le(392)) # total load-command bytes
+    header = concat(header, u32_le(2097285))
+    return concat(header, u32_le(0))
+}
+
+fn macho64_linkedit_segment(
+    cpu_type: Int,
+    signature_size: Int
+) -> List[Int] {
+    let page_size = macho64_page_size(cpu_type)
+    if page_size == 0 || signature_size <= 0 {
+        let empty: List[Int] = []
+        return empty
+    }
+    let mut segment = u32_le(25) # LC_SEGMENT_64
+    segment = concat(segment, u32_le(72))
+    segment = concat(segment, [
+        95, 95, 76, 73, 78, 75, 69, 68,
+        73, 84, 0, 0, 0, 0, 0, 0,
+    ]) # __LINKEDIT
+    segment = concat(segment, u64_le(4294967296 + page_size))
+    segment = concat(segment, u64_le(signature_size))
+    segment = concat(segment, u64_le(page_size))
+    segment = concat(segment, u64_le(signature_size))
+    segment = concat(segment, u32_le(1)) # VM_PROT_READ
+    segment = concat(segment, u32_le(1))
+    segment = concat(segment, u32_le(0))
+    return concat(segment, u32_le(0))
+}
+
+fn macho64_code_signature_command(
+    cpu_type: Int,
+    signature_size: Int
+) -> List[Int] {
+    let page_size = macho64_page_size(cpu_type)
+    if page_size == 0 || signature_size <= 0 {
+        let empty: List[Int] = []
+        return empty
+    }
+    let mut command = u32_le(29) # LC_CODE_SIGNATURE
+    command = concat(command, u32_le(16))
+    command = concat(command, u32_le(page_size))
+    return concat(command, u32_le(signature_size))
+}
+
+fn macho64_signed_prefix(
+    cpu_type: Int,
+    code: List[Int],
+    identifier: List[Int]
+) -> List[Int] {
+    let mut minimum_code_byte = 256
+    let mut maximum_code_byte = -1
+    for byte in code {
+        if byte < minimum_code_byte {
+            minimum_code_byte = byte
+        }
+        if byte > maximum_code_byte {
+            maximum_code_byte = byte
+        }
+    }
+    let mut minimum_identifier_byte = 128
+    let mut maximum_identifier_byte = 0
+    for byte in identifier {
+        if byte < minimum_identifier_byte {
+            minimum_identifier_byte = byte
+        }
+        if byte > maximum_identifier_byte {
+            maximum_identifier_byte = byte
+        }
+    }
+    if macho64_signing_request_status(
+        cpu_type,
+        len(code),
+        minimum_code_byte,
+        maximum_code_byte,
+        len(identifier),
+        minimum_identifier_byte,
+        maximum_identifier_byte,
+    ) != 0 {
+        let empty: List[Int] = []
+        return empty
+    }
+    let signature_size = macho64_signature_size(len(identifier))
+    let mut image = macho64_signed_header(cpu_type)
+    image = concat(image, macho64_pagezero_segment())
+    image = concat(image, macho64_text_segment(cpu_type, len(code)))
+    image = concat(
+        image,
+        macho64_linkedit_segment(cpu_type, signature_size),
+    )
+    image = concat(image, macho64_dylinker_command())
+    image = concat(image, macho64_build_version_command())
+    image = concat(image, macho64_main_command())
+    image = concat(
+        image,
+        macho64_code_signature_command(cpu_type, signature_size),
+    )
+    if len(image) != 424 {
+        let empty: List[Int] = []
+        return empty
+    }
+    image = pad_to(image, 512)
+    image = concat(image, code)
+    return pad_to(image, macho64_page_size(cpu_type))
+}
+
+fn macho64_ad_hoc_signature(
+    cpu_type: Int,
+    prefix: List[Int],
+    identifier: List[Int]
+) -> List[Int] {
+    let page_size = macho64_page_size(cpu_type)
+    if page_size == 0 || len(prefix) != page_size ||
+       !macho64_identifier_valid(identifier) {
+        let empty: List[Int] = []
+        return empty
+    }
+    let hash_offset = macho64_code_directory_hash_offset(len(identifier))
+    let signature_size = 20 + hash_offset + 32
+    let mut signature = u32_be(4208856256) # CSMAGIC_EMBEDDED_SIGNATURE
+    signature = concat(signature, u32_be(signature_size))
+    signature = concat(signature, u32_be(1))  # one BlobIndex
+    signature = concat(signature, u32_be(0))  # CSSLOT_CODEDIRECTORY
+    signature = concat(signature, u32_be(20)) # CodeDirectory offset
+
+    signature = concat(signature, u32_be(4208856066)) # CSMAGIC_CODEDIRECTORY
+    signature = concat(signature, u32_be(hash_offset + 32))
+    signature = concat(signature, u32_be(132096)) # CS_SUPPORTSEXECSEG
+    # CS_ADHOC | CS_LINKER_SIGNED.
+    signature = concat(signature, u32_be(131074))
+    signature = concat(signature, u32_be(hash_offset))
+    signature = concat(signature, u32_be(88)) # identifier after fixed fields
+    signature = concat(signature, u32_be(0))  # no special slots
+    signature = concat(signature, u32_be(1))  # one code page
+    signature = concat(signature, u32_be(page_size))
+    signature = concat(signature, [32, 2, 0]) # SHA-256, non-platform
+    if cpu_type == 16777223 {
+        signature = concat(signature, [12]) # log2(4096)
+    } else {
+        signature = concat(signature, [14]) # log2(16384)
+    }
+    signature = concat(signature, u32_be(0)) # spare2
+    signature = concat(signature, u32_be(0)) # scatterOffset
+    signature = concat(signature, u32_be(0)) # teamOffset
+    signature = concat(signature, u32_be(0)) # spare3
+    signature = concat(signature, u64_be(0)) # codeLimit64
+    signature = concat(signature, u64_be(0)) # execSegBase
+    signature = concat(signature, u64_be(page_size))
+    signature = concat(signature, u64_be(1)) # CS_EXECSEG_MAIN_BINARY
+    signature = concat(signature, identifier)
+    signature = pad_to(signature, 20 + hash_offset)
+    signature = concat(signature, native_sha256_bytes(prefix))
+    if len(signature) != signature_size {
+        let empty: List[Int] = []
+        return empty
+    }
+    return signature
+}
+
+fn macho64_signed_image(
+    cpu_type: Int,
+    code: List[Int],
+    identifier: List[Int]
+) -> List[Int] {
+    let prefix = macho64_signed_prefix(cpu_type, code, identifier)
+    if len(prefix) == 0 {
+        let empty: List[Int] = []
+        return empty
+    }
+    let signature = macho64_ad_hoc_signature(
+        cpu_type,
+        prefix,
+        identifier,
+    )
+    if len(signature) == 0 {
+        let empty: List[Int] = []
+        return empty
+    }
+    return concat(prefix, signature)
+}
+
+fn macho64_signed_entry_image(cpu_type: Int) -> List[Int] {
+    let identifier: List[Int] = [107, 111, 102, 117, 110] # kofun\0 padded
+    return macho64_signed_image(
+        cpu_type,
+        macho64_entry_code(cpu_type),
+        identifier,
+    )
 }
 
 fn elf_ident() -> List[Int] {

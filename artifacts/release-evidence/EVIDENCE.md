@@ -24,6 +24,7 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | `elf64-image-writer` | `sh bootstrap/native/check.sh` | A static ELF64 image is written and executes. |
 | `enum-matching` | `sh tests/conformance/syntax/issues_35_47/run.sh` | Payload-free and one-`Int`-payload enum matches lower and execute with exhaustiveness enforced; the fixtures read real payloads across local bindings, direct arguments, returns, guarded arms, and a re-matched binding catch-all. |
 | `http-framework` | `sh tests/http/check.sh` | The bounded HTTP/1.1 server accepts and answers gated requests. |
+| `macho64-ad-hoc-signing` | `task native` | Kofun emits both embedded ad-hoc signed images twice with identical bytes; an independent parser validates the load commands, SuperBlob, CodeDirectory, executable-segment fields, and independently recomputed page hashes, while optional file/LLVM tools identify both architectures. |
 | `macho64-image-writer` | `task native` | Kofun emits the x86-64 and AArch64 Mach-O 64 images twice with identical bytes; the independent parser validates every load-bearing field and optional file/LLVM tools identify both exact architectures. |
 | `module-aliases` | `sh tests/conformance/modules/import-aliases/run.sh` | Same-package aliases resolve while preserving target identity. |
 | `native-aarch64-function-calls` | `sh bootstrap/native/check.sh` | AArch64 images are emitted and, with qemu present, execute to the expected values. |

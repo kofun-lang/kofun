@@ -4,12 +4,12 @@
   "version": "0.7.0-seed",
   "inputs": {
     "VERSION": "fbfc57368f907487df85328856740a1b792855e6c9fc4dba94739ec17b642e8c",
-    "release/claims.json": "c707839622d790aed328bb649070b9a99a0c288caf7b43d8707374b18e104356",
+    "release/claims.json": "1562193d3c4316945c9b418b879686600cc7438ea994b2e55f13f0540d18db55",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
     "bootstrap/manifest.json": "5b03d83371894faef02bbcf97e13d835ae47b5e3c0641c65fb7a9024d667e77a"
   },
   "states": {
-    "checkpoint": 38,
+    "checkpoint": 39,
     "implemented": 9,
     "design": 1,
     "open": 3
@@ -358,6 +358,22 @@
       "reproduction": "task http",
       "prerequisites": [
         "cc"
+      ]
+    },
+    {
+      "id": "macho64-ad-hoc-signing",
+      "state": "checkpoint",
+      "area": "native",
+      "targets": [
+        "native-aarch64-macos-macho64",
+        "native-x86_64-macos-macho64"
+      ],
+      "positive_gate": "task native",
+      "negative_boundary": "bootstrap/native/check-macho64-signed.sh",
+      "reproduction": "task native",
+      "prerequisites": [
+        "cc",
+        "node"
       ]
     },
     {
@@ -740,10 +756,11 @@
   ],
   "evidence_digests": {
     "Taskfile.yml": "4a2656d215891edd374973dec1dad848f54fa7049108917bd5823d8d0a46e363",
-    "bootstrap/native/README.md": "9679de1375993c40c5ca0b97fac3567c7aade4f1a02b4919859a4d24bf8c0247",
+    "bootstrap/native/README.md": "ceb9e7634c524f4afd21e60e420a24a854c6c4e2b1ac377c0c41ea3928aa9dd6",
+    "bootstrap/native/check-macho64-signed.sh": "6fc51ddfec599ea85b8b06a5c16d68b6fdc994621cdb8ca4267e20be38141393",
     "bootstrap/native/check-macho64.sh": "d6bd52e3f6756aa607a2dc44a0117defeaaa55e64fa3f4221986da6406251e15",
     "bootstrap/native/check-pe32plus.sh": "c414d1d719092eaf1f931eb433c11c9f77207915a7359a8bb8392e2e7c07c539",
-    "bootstrap/native/check.sh": "0cb9ec2dd80a3a78ab7163bf54c3715f534a580e89a114e5fcfa5183aa5d06f2",
+    "bootstrap/native/check.sh": "2c689a02d580da986b45cf9081933cc6a2f9021e5225ce98c3a577b037f1a736",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/check-diverse-double-compilation-refusals.sh": "55fc39166070b9bc612fca6898086938b1a8ca122b1c1fb8e928f1a5d4cde572",
     "bootstrap/selfhost/driver/corpus_builtin_rejects.tsv": "b1fa0b26247581aef797a81880554a94233a34109215530641706d76777087d4",
@@ -763,8 +780,8 @@
     "docs/LAW_SYSTEM.md": "b974f0ad762bec778ee76afa5d0a2176423ac96a3a583739eee55dcb8dca5043",
     "docs/LINGUIST_RECOGNITION.md": "279f9afa7157c90e41d656974c2f5020f8b6d25acbbd389ee760efbb2d6d6166",
     "docs/MEMORY_MODEL.md": "2ad150ffa325a6ac8778ce307b6d9d15584916ec116ae697a22028dc2e6c102e",
-    "docs/MVP_IMPLEMENTED.md": "8996f7c65ee40c8cd4f1bcea01f3b9f0f4dc325c5682a773bb919470b671ee25",
-    "docs/NATIVE_BACKEND.md": "a6681e811f10dd3dfd851de3f9ac6d9e618327171672b5a653d1915b2e70b3a4",
+    "docs/MVP_IMPLEMENTED.md": "5d357210cac8971978c546fe283001981da8f67fda0c74362285a129bb4f1ad4",
+    "docs/NATIVE_BACKEND.md": "776478647193b3243e9ed59d38d9ef34c9b2ea7ae65f5d5a73632d7f89fc643b",
     "docs/ROADMAP.md": "01f4d69e2027aeadb6b1ae5dc00a2b00cfb945fb5a9ca22fa7e52578894afe9c",
     "docs/RUST_CRATE_SHIMS.md": "4365b064cbc9a05733710d3a609c1db2623b28cb9ed4ba0e48536e35f9d58c47",
     "docs/SECURITY.md": "630dd512b406ba9db360d75e051c2421eb6f611550bad839d197eec25ea750aa",
