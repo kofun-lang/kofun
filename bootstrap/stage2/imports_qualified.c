@@ -57,6 +57,14 @@ typedef struct {
     bool trusted;
     size_t trusted_start;
     size_t trusted_end;
+    /*
+     * #1216. Set by the re-export layer on a binding it created for a `pub
+     * import` / `pub from` form. Such a binding is not an ordinary import and
+     * the import-admission rules do not decide it: re-exporting a raw-foreign
+     * declaration is refused on its own terms, and telling the author to write
+     * `trusted import` would be advice that leads to a second refusal.
+     */
+    bool re_export;
     char *path;
     char qualifier[IDENTIFIER_LIMIT + 1u];
     ComponentSpan *components;
@@ -884,7 +892,7 @@ static bool resolve_imports(ImportResolver *resolver) {
          * two rules they hit.
          */
         if (resolver->modules[target].serialized_trust == KOFUN_KIF_TRUST_RAW_FOREIGN &&
-            !binding->trusted) {
+            !binding->trusted && !binding->re_export) {
             char module_id_text[65];
             format_identity(program->modules[target].module_id, module_id_text);
             set_error(program, "E2S171",

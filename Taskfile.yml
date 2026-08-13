@@ -412,6 +412,14 @@ tasks:
   # module is reachable only through `trusted import`, and the marker is
   # refused on an ordinary module so it cannot become decorative. The decision
   # is taken from the serialized trust class and the resolved ModuleId.
+  # #1216. RFC-0012 step 4. A facade may export what it owns; it may not pass a
+  # raw-foreign origin on. Transitive by induction: every link is checked where
+  # it is written, so a chain ending in raw is refused at its first link.
+  raw-re-exports:
+    desc: "Verify every re-export of a raw-foreign origin is refused"
+    cmds:
+      - "sh tests/conformance/modules/raw-re-exports/run.sh"
+
   raw-imports:
     desc: "Verify trusted and ordinary imports of a raw-foreign module"
     cmds:
@@ -1123,6 +1131,7 @@ tasks:
             import-aliases \
             imports-selective \
             raw-imports \
+            raw-re-exports \
             re-exports \
             kif-v1 \
             kif-generics-codec \

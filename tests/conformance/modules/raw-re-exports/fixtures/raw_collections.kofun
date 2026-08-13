@@ -1,0 +1,30 @@
+module lib.collections
+trust raw-foreign
+
+pub fn Map(value: Int) -> Int {
+    return value
+}
+
+pub type Map =
+    | Empty
+    | Present(value: Int)
+
+pub fn Set(value: Int) -> Int {
+    return value
+}
+
+private fn hidden(value: Int) -> Int {
+    return value
+}
+
+internal fn internal_only(value: Int) -> Int {
+    return value
+}
+
+pub fn Leaky(value: Secret) -> Int {
+    return 0
+}
+
+private type Secret =
+    | Concealed
+    | Revealed(value: Int)

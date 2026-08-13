@@ -15,8 +15,9 @@ native	tests/diagnostics/native/run.sh	verify	tests/diagnostics/reports/native.t
 optional-construction	tests/conformance/optional-construction/run.sh	verify	tests/diagnostics/reports/optional-construction.tsv
 optional-narrowing	tests/conformance/optional-narrowing/run.sh	verify	tests/diagnostics/reports/optional-narrowing.tsv
 raw-imports	tests/conformance/modules/raw-imports/run.sh	verify	tests/diagnostics/reports/raw-imports.tsv
-records	tests/conformance/records/run.sh	verify	tests/diagnostics/reports/records.tsv
+raw-re-exports	tests/conformance/modules/raw-re-exports/run.sh	verify	tests/diagnostics/reports/raw-re-exports.tsv
 re-exports	tests/conformance/modules/re-exports/run.sh	verify	tests/diagnostics/reports/re-exports.tsv
+records	tests/conformance/records/run.sh	verify	tests/diagnostics/reports/records.tsv
 runtime	tests/diagnostics/runtime/run.sh	verify	tests/diagnostics/reports/runtime.tsv
 selfhost-a1	tests/diagnostics/selfhost-a1/run.sh	verify	tests/diagnostics/reports/selfhost-a1.tsv
 stage2	tests/diagnostics/stage2/run.sh	tests/diagnostics/stage2/bless.sh	tests/diagnostics/reports/stage2.tsv
