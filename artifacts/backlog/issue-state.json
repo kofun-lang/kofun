@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 95,
+  "open_issues": 94,
   "issues": [
     {
       "number": 26,
@@ -1860,24 +1860,6 @@
       "blocked_by": [],
       "evidence_commits": [
         "aa13cf515115e654ef5a94d7ad112fc556526da7"
-      ]
-    },
-    {
-      "number": 1389,
-      "title": "Kofun native image checkpoint: emit PE32+ directly for x86-64 and AArch64",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "687f267b01b0d7fd0839a093e65707245f0ef1cd"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-root-pe32plus",
-          "status": "active"
-        }
       ]
     }
   ]
