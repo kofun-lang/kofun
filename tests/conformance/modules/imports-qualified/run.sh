@@ -31,6 +31,7 @@ mkdir -p "$WORK"
 "$CC" -std=c11 -Wall -Wextra -Werror -pedantic \
     -DKOFUN_TEST_DIAGNOSTIC_FAULTS \
     "$ROOT/bootstrap/stage2/imports_qualified.c" \
+    "$ROOT/bootstrap/stage2/kif_v1.c" \
     "$ROOT/bootstrap/stage2/visibility_access.c" \
     "$ROOT/unicode/kofun_unicode.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \

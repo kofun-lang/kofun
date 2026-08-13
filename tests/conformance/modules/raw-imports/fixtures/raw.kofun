@@ -1,0 +1,6 @@
+module lib.raw
+trust raw-foreign
+
+internal fn identity(value: Int) -> Int {
+    return value
+}
