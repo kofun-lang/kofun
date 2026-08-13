@@ -4,12 +4,12 @@
   "version": "0.6.0-seed",
   "inputs": {
     "VERSION": "2e9928b8e53c388b1c3bbabb243204f81673c3179adb46379c4d3cbaf71991bb",
-    "release/claims.json": "b45786266dcff77a847d5a3a1f7c49f086a17d4e86c65396f1981b0ac7360e0f",
+    "release/claims.json": "c707839622d790aed328bb649070b9a99a0c288caf7b43d8707374b18e104356",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
     "bootstrap/manifest.json": "5b03d83371894faef02bbcf97e13d835ae47b5e3c0641c65fb7a9024d667e77a"
   },
   "states": {
-    "checkpoint": 36,
+    "checkpoint": 38,
     "implemented": 9,
     "design": 1,
     "open": 3
@@ -361,6 +361,23 @@
       ]
     },
     {
+      "id": "macho64-image-writer",
+      "state": "checkpoint",
+      "area": "native",
+      "targets": [
+        "native-aarch64-macos-macho64",
+        "native-x86_64-macos-macho64"
+      ],
+      "positive_gate": "task native",
+      "negative_boundary": "bootstrap/native/check-macho64.sh",
+      "reproduction": "task native",
+      "prerequisites": [
+        "cc",
+        "node",
+        "readelf"
+      ]
+    },
+    {
       "id": "module-aliases",
       "state": "checkpoint",
       "area": "frontend",
@@ -496,6 +513,23 @@
       "prerequisites": [
         "cc",
         "node"
+      ]
+    },
+    {
+      "id": "pe32plus-image-writer",
+      "state": "checkpoint",
+      "area": "native",
+      "targets": [
+        "native-aarch64-windows-pe32plus",
+        "native-x86_64-windows-pe32plus"
+      ],
+      "positive_gate": "task native",
+      "negative_boundary": "bootstrap/native/check-pe32plus.sh",
+      "reproduction": "task native",
+      "prerequisites": [
+        "cc",
+        "node",
+        "readelf"
       ]
     },
     {
@@ -706,6 +740,9 @@
   ],
   "evidence_digests": {
     "Taskfile.yml": "4a2656d215891edd374973dec1dad848f54fa7049108917bd5823d8d0a46e363",
+    "bootstrap/native/README.md": "9679de1375993c40c5ca0b97fac3567c7aade4f1a02b4919859a4d24bf8c0247",
+    "bootstrap/native/check-macho64.sh": "d6bd52e3f6756aa607a2dc44a0117defeaaa55e64fa3f4221986da6406251e15",
+    "bootstrap/native/check-pe32plus.sh": "c414d1d719092eaf1f931eb433c11c9f77207915a7359a8bb8392e2e7c07c539",
     "bootstrap/native/check.sh": "0cb9ec2dd80a3a78ab7163bf54c3715f534a580e89a114e5fcfa5183aa5d06f2",
     "bootstrap/native/fixtures/function_all_traps_pressure.kofun": "8ecd1a2a6956db3812210a60b2f027bee406777db14b2faea3fc7008c280528a",
     "bootstrap/selfhost/check-diverse-double-compilation-refusals.sh": "55fc39166070b9bc612fca6898086938b1a8ca122b1c1fb8e928f1a5d4cde572",
@@ -726,7 +763,7 @@
     "docs/LAW_SYSTEM.md": "b974f0ad762bec778ee76afa5d0a2176423ac96a3a583739eee55dcb8dca5043",
     "docs/LINGUIST_RECOGNITION.md": "279f9afa7157c90e41d656974c2f5020f8b6d25acbbd389ee760efbb2d6d6166",
     "docs/MEMORY_MODEL.md": "2ad150ffa325a6ac8778ce307b6d9d15584916ec116ae697a22028dc2e6c102e",
-    "docs/MVP_IMPLEMENTED.md": "704cd29efad6e2d0008d7aca204671ae857bad0eda2ea363eebffb5cc0ec3071",
+    "docs/MVP_IMPLEMENTED.md": "8996f7c65ee40c8cd4f1bcea01f3b9f0f4dc325c5682a773bb919470b671ee25",
     "docs/NATIVE_BACKEND.md": "a6681e811f10dd3dfd851de3f9ac6d9e618327171672b5a653d1915b2e70b3a4",
     "docs/ROADMAP.md": "01f4d69e2027aeadb6b1ae5dc00a2b00cfb945fb5a9ca22fa7e52578894afe9c",
     "docs/RUST_CRATE_SHIMS.md": "4365b064cbc9a05733710d3a609c1db2623b28cb9ed4ba0e48536e35f9d58c47",

@@ -17,12 +17,12 @@ report a pass it did not observe.
 | Prerequisite | Claims that need it |
 |---|---|
 | `cargo` | `rust-crate-shim` |
-| `cc` | `affine-resource-handle`, `bindgen-c-stage1`, `bounded-tzdb-producer`, `c-abi-profile`, `c11-function-calls`, `c11-list-int-values`, `compiled-visibility-interfaces`, `compiler-seed`, `decimal-arithmetic-v1`, `deterministic-fuzzing`, `diverse-double-compilation`, `documentation-index`, `enum-matching`, `http-framework`, `nominal-records`, `reproducible-bootstrap`, `self-recompile`, `stage2-core-lowering` |
+| `cc` | `affine-resource-handle`, `bindgen-c-stage1`, `bounded-tzdb-producer`, `c-abi-profile`, `c11-function-calls`, `c11-list-int-values`, `compiled-visibility-interfaces`, `compiler-seed`, `decimal-arithmetic-v1`, `deterministic-fuzzing`, `diverse-double-compilation`, `documentation-index`, `enum-matching`, `http-framework`, `macho64-image-writer`, `nominal-records`, `pe32plus-image-writer`, `reproducible-bootstrap`, `self-recompile`, `stage2-core-lowering` |
 | `clang` | `bindgen-c-stage1`, `diverse-double-compilation` |
 | `gcc` | `diverse-double-compilation` |
-| `node` | `bindgen-c-stage1`, `compiled-visibility-interfaces`, `documentation-index`, `nominal-records`, `stage2-typed-sidecar`, `stdio-language-server`, `wasm32-arithmetic-core`, `wasm32-hostabi1-object-arena` |
+| `node` | `bindgen-c-stage1`, `compiled-visibility-interfaces`, `documentation-index`, `macho64-image-writer`, `nominal-records`, `pe32plus-image-writer`, `stage2-typed-sidecar`, `stdio-language-server`, `wasm32-arithmetic-core`, `wasm32-hostabi1-object-arena` |
 | `qemu-aarch64` | `native-aarch64-function-calls`, `native-list-int-core`, `native-text-returning-calls`, `native-utf8-text-core`, `selfhost-native-corpus` |
-| `readelf` | `bindgen-c-stage1` |
+| `readelf` | `bindgen-c-stage1`, `macho64-image-writer`, `pe32plus-image-writer` |
 | `sha256sum` | `bindgen-c-stage1`, `compiler-seed`, `reproducible-bootstrap` |
 
 ## Per-claim reproduction
@@ -53,6 +53,7 @@ report a pass it did not observe.
 | `general-ownership-checking` | `task stage2` |
 | `general-parser-type-checker` | `task stage2` |
 | `http-framework` | `task http` |
+| `macho64-image-writer` | `task native` |
 | `module-aliases` | `task import-aliases` |
 | `native-aarch64-function-calls` | `task native` |
 | `native-constant-stack-returns` | `task native` |
@@ -63,6 +64,7 @@ report a pass it did not observe.
 | `native-utf8-text-core` | `task native` |
 | `native-x86-64-function-calls` | `task check` |
 | `nominal-records` | `task records` |
+| `pe32plus-image-writer` | `task native` |
 | `public-re-exports` | `task re-exports` |
 | `reproducible-bootstrap` | `task bootstrap` |
 | `rust-crate-shim` | `task rust-shim` |

@@ -35,6 +35,7 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | `elf64-image-writer` | limit | `tests/conformance/capabilities.tsv` | Corpora outside the lowered profiles are recorded as unsupported with a stated reason. |
 | `enum-matching` | rejection | `tests/conformance/syntax/issues_35_47/enum_payload_unsupported_field.kofun` | Enum shapes outside the slice — a non-`Int` payload, more than one payload field, or a payload arity the pattern does not match — are refused rather than silently accepted. |
 | `http-framework` | limit | `tests/http/check.sh` | Requests beyond the bounded state machine are refused rather than buffered without limit. |
+| `macho64-image-writer` | rejection | `bootstrap/native/check-macho64.sh` | Unknown CPUs, empty or oversized code, and bytes outside 0..255 refuse before image writing; magic, CPU, command-size, section-offset, and entry-offset mutations fail structural validation. |
 | `module-aliases` | rejection | `tests/conformance/capabilities.tsv` | Public, per-name and external aliases are outside the profile and are refused. |
 | `native-aarch64-function-calls` | skip | `bootstrap/native/check.sh` | Without `qemu-aarch64` the execution branch is reported as skipped, never as passed. |
 | `native-constant-stack-returns` | limit | `bootstrap/native/fixtures/function_all_traps_pressure.kofun` | Calls outside return position remain ordinary calls and are bounded by the stack limit. |
@@ -45,6 +46,7 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | `native-utf8-text-core` | limit | `tests/conformance/capabilities.tsv` | Backends that do not lower `Text` values are recorded as unsupported with a stated reason. |
 | `native-x86-64-function-calls` | rejection | `tests/conformance/capabilities.tsv` | Corpora outside the Int Core profile are recorded as unsupported with a stated reason. |
 | `nominal-records` | rejection | `tests/conformance/records/stage2_unsupported_field.kofun` | The production Stage 2 C11 path refuses a field type outside its Int/Bool/Text/List[Int] slice before emitting an artifact. |
+| `pe32plus-image-writer` | rejection | `bootstrap/native/check-pe32plus.sh` | Unknown machines, empty or oversized code, and bytes outside 0..255 refuse before image writing; magic, machine, entry, and alignment mutations fail structural validation. |
 | `public-re-exports` | limit | `tests/conformance/modules/re-exports/run.sh` | Chains and counts beyond the stated bounds are refused rather than truncated. |
 | `reproducible-bootstrap` | limit | `bootstrap/stage1/SHA256SUMS` | A digest mismatch fails the gate instead of accepting the regenerated artifact. |
 | `rust-crate-shim` | skip | `examples/rust-shim/check.sh` | Without Cargo the gate reports a skip rather than a pass. |

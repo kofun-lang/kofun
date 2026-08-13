@@ -21,7 +21,11 @@
     "host-c",
     "linux-x86_64",
     "native-aarch64",
+    "native-aarch64-macos-macho64",
+    "native-aarch64-windows-pe32plus",
     "native-x86_64",
+    "native-x86_64-macos-macho64",
+    "native-x86_64-windows-pe32plus",
     "repository",
     "selfhost",
     "stage1",
@@ -903,6 +907,46 @@
       }
     },
     {
+      "id": "macho64-image-writer",
+      "public_wording": "Mach-O 64/x86-64 and AArch64 native image writer",
+      "public_status": "bounded deterministic no-import image checkpoint; no macOS CLI/runtime, signing, or host-execution claim",
+      "state": "checkpoint",
+      "area": "native",
+      "bounded_capability": "The canonical Kofun encoder writes complete page-sized Mach-O 64 images directly for x86-64 and AArch64: exact CPU identities, MH_EXECUTE, __PAGEZERO, one executable __TEXT,__text section, LC_LOAD_DYLINKER, LC_BUILD_VERSION, LC_MAIN, and distinct raw exit entry sequences. No assembler, linker, system SDK, imported library, or foreign-language image writer participates.",
+      "targets": [
+        "native-aarch64-macos-macho64",
+        "native-x86_64-macos-macho64"
+      ],
+      "specification": [
+        "bootstrap/native/README.md",
+        "docs/NATIVE_BACKEND.md"
+      ],
+      "compatibility": "For a supported CPU identity and bounded code byte list, output is byte-deterministic and hash-pinned. macOS host execution, AArch64 ad-hoc signing, OS authorities, full Core lowering, CLI target admission, and universal binaries are explicitly outside this checkpoint.",
+      "positive_gate": {
+        "command": "task native",
+        "observation": "Kofun emits the x86-64 and AArch64 Mach-O 64 images twice with identical bytes; the independent parser validates every load-bearing field and optional file/LLVM tools identify both exact architectures."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": "bootstrap/native/check-macho64.sh",
+        "observation": "Unknown CPUs, empty or oversized code, and bytes outside 0..255 refuse before image writing; magic, CPU, command-size, section-offset, and entry-offset mutations fail structural validation."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "task native",
+        "prerequisites": [
+          "cc",
+          "node",
+          "readelf"
+        ]
+      }
+    },
+    {
       "id": "module-aliases",
       "public_wording": "qualified module aliases",
       "public_status": "bounded same-package `import a.b as local`; local-only `AliasBindingId` preserves target identity, with no public/per-name/external aliases or `bin/kofun` routing",
@@ -1266,6 +1310,46 @@
         "prerequisites": [
           "cc",
           "node"
+        ]
+      }
+    },
+    {
+      "id": "pe32plus-image-writer",
+      "public_wording": "PE32+/x86-64 and AArch64 native image writer",
+      "public_status": "bounded deterministic no-import image checkpoint; no Windows CLI/runtime or host-execution claim",
+      "state": "checkpoint",
+      "area": "native",
+      "bounded_capability": "The canonical Kofun encoder writes complete 1,024-byte PE32+ images directly for x86-64 and AArch64: DOS header and e_lfanew, PE signature, exact COFF machine identity, PE32+ optional header, one aligned executable .text section, and distinct no-import entry sequences. No assembler, linker, system SDK, import library, or foreign-language image writer participates.",
+      "targets": [
+        "native-aarch64-windows-pe32plus",
+        "native-x86_64-windows-pe32plus"
+      ],
+      "specification": [
+        "bootstrap/native/README.md",
+        "docs/NATIVE_BACKEND.md"
+      ],
+      "compatibility": "For a supported machine identity and bounded code byte list, output is byte-deterministic and hash-pinned. Windows host execution, OS authorities, imports, full Core lowering, and CLI target admission are explicitly outside this checkpoint.",
+      "positive_gate": {
+        "command": "task native",
+        "observation": "Kofun emits the x86-64 and AArch64 PE32+ images twice with identical bytes, and the independent parser validates every load-bearing DOS, COFF, optional-header, section, and entry field."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": "bootstrap/native/check-pe32plus.sh",
+        "observation": "Unknown machines, empty or oversized code, and bytes outside 0..255 refuse before image writing; magic, machine, entry, and alignment mutations fail structural validation."
+      },
+      "safety": {
+        "classification": "none"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "task native",
+        "prerequisites": [
+          "cc",
+          "node",
+          "readelf"
         ]
       }
     },

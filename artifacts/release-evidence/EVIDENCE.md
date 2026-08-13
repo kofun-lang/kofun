@@ -24,6 +24,7 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | `elf64-image-writer` | `sh bootstrap/native/check.sh` | A static ELF64 image is written and executes. |
 | `enum-matching` | `sh tests/conformance/syntax/issues_35_47/run.sh` | Payload-free and one-`Int`-payload enum matches lower and execute with exhaustiveness enforced; the fixtures read real payloads across local bindings, direct arguments, returns, guarded arms, and a re-matched binding catch-all. |
 | `http-framework` | `sh tests/http/check.sh` | The bounded HTTP/1.1 server accepts and answers gated requests. |
+| `macho64-image-writer` | `task native` | Kofun emits the x86-64 and AArch64 Mach-O 64 images twice with identical bytes; the independent parser validates every load-bearing field and optional file/LLVM tools identify both exact architectures. |
 | `module-aliases` | `sh tests/conformance/modules/import-aliases/run.sh` | Same-package aliases resolve while preserving target identity. |
 | `native-aarch64-function-calls` | `sh bootstrap/native/check.sh` | AArch64 images are emitted and, with qemu present, execute to the expected values. |
 | `native-constant-stack-returns` | `sh bootstrap/native/check.sh` | Three million recursive steps complete under a lowered stack limit. |
@@ -34,6 +35,7 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | `native-utf8-text-core` | `sh bootstrap/native/check.sh` | UTF-8 `Text` programs lower and execute on both targets. |
 | `native-x86-64-function-calls` | `sh tests/conformance/run.sh` | The functions corpus passes on the x86-64 native backend. |
 | `nominal-records` | `task records` | The retained scanner fixture gates the full typed contract; the Stage 2 record fixture executes construction in both label orders, field reads, value arguments/results, AggregateLayout assertions, and the existing argument/refusal boundary. The additive aggregate-bridge dependency executes a mixed Text/List[Int]/Int report twice under strict C11, checks production emitted-C member reads and exact UTF-8 runtime bytes, independently matches every AggregateLayout offset and the record size, and requires exact no-C refusals for capacity 65, List[Text], and a named nested record/list path plus four capability mutations. Its separate complete sidecar check proves nominal, function, resolved base-reference, and concrete-type facts without claiming selector or field-use facts. |
+| `pe32plus-image-writer` | `task native` | Kofun emits the x86-64 and AArch64 PE32+ images twice with identical bytes, and the independent parser validates every load-bearing DOS, COFF, optional-header, section, and entry field. |
 | `public-re-exports` | `sh tests/conformance/modules/re-exports/run.sh` | Re-export chains resolve within the stated bounds and preserve binding identity. |
 | `reproducible-bootstrap` | `sh bootstrap/stage1/check.sh` | Regeneration reproduces the checked-in Stage 1 artifact and its digest. |
 | `rust-crate-shim` | `sh examples/rust-shim/check.sh` | The vendored crate builds and answers through the C ABI shim. |

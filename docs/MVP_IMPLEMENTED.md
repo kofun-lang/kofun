@@ -36,6 +36,8 @@
 | bounded affine resource-handle protocol | bounded Stage 2/C11 checkpoint | `task affine-resource-handle` | `affine-resource-handle` |
 | general ownership and law checking | open | no active general pass | `general-ownership-checking` |
 | ELF64/x86-64 native image writer | checkpoint implemented | `bootstrap/native/check.sh` | `elf64-image-writer` |
+| Mach-O 64/x86-64 and AArch64 native image writer | bounded deterministic no-import image checkpoint; no macOS CLI/runtime, signing, or host-execution claim | `bootstrap/native/check.sh`, `bootstrap/native/check-macho64.sh` | `macho64-image-writer` |
+| PE32+/x86-64 and AArch64 native image writer | bounded deterministic no-import image checkpoint; no Windows CLI/runtime or host-execution claim | `bootstrap/native/check.sh`, `bootstrap/native/check-pe32plus.sh` | `pe32plus-image-writer` |
 | wasm32 Int64 arithmetic Core + lazy browser host | executable checkpoint | `bootstrap/wasm/check.sh`, `tests/conformance/numeric`, `examples/wasm-browser` | `wasm32-arithmetic-core` |
 | wasm32 host ABI v1 bounded object arena | executable checkpoint | `task wasm-object-arena` | `wasm32-hostabi1-object-arena` |
 | x86-64/AArch64 List[Int] Core | checkpoint implemented; AArch64 executes under qemu | `bootstrap/native/check.sh`, `tests/conformance/list` | `native-list-int-core` |
