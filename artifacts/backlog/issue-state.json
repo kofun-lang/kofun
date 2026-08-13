@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 94,
+  "open_issues": 95,
   "issues": [
     {
       "number": 26,
@@ -1860,6 +1860,24 @@
       "blocked_by": [],
       "evidence_commits": [
         "aa13cf515115e654ef5a94d7ad112fc556526da7"
+      ]
+    },
+    {
+      "number": 1390,
+      "title": "Kofun native image checkpoint: emit Mach-O 64 directly for x86-64 and AArch64",
+      "state_labels": [
+        "in-progress"
+      ],
+      "state_line": "in-progress",
+      "blocked_by": [],
+      "evidence_commits": [
+        "5ded0aeeff4ac01cf87e010018ba95874705dc85"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-root-macho64",
+          "status": "active"
+        }
       ]
     }
   ]
