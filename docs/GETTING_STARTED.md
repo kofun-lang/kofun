@@ -31,7 +31,6 @@ The common compiler path needs:
 | POSIX shell | launcher and repository gates | `sh --version` or `sh -c 'echo ok'` |
 | C11 compiler | builds the checked compiler seeds | `cc --version` |
 | Task (go-task) | named verification gates | `task --version` |
-| `sha256sum` | bootstrap and vendored-source integrity | `sha256sum --version` |
 | Node.js 24 | browser tour, typed-sidecar tools, and wasm32 execution | `node --version` |
 | npm | locked Tree-sitter dependencies | `npm --version` |
 | Git | source control and some reproducibility checks | `git --version` |

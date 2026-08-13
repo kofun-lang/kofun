@@ -21,7 +21,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { validateAgainstSchema } from '../lib/json-schema.mjs'
-import { taskfileTasks } from '../lib/taskfile.mjs'
+import { taskfileTasks, taskfileCommands } from '../lib/taskfile.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const SCHEMA_PATH = 'spec/release-claim.schema.json'
@@ -154,6 +154,163 @@ function checkCommand(report, subject, field, value, tracked, targets) {
         'write it as `task <name>` or `sh <tracked-script>` so the checker can resolve it')
 }
 
+// Every script a reproduction command can reach, as one string.
+//
+// The pack publishes each claim's `prerequisites` as an external dependency a
+// reader is told to install. Nothing used to check that list against the
+// commands it describes, so #1213 could migrate every call site off GNU
+// `sha256sum` and leave three claims still demanding it -- a declared fact with
+// a publisher and no reader. Reachability is followed transitively because a
+// task names a check script and the real invocation is usually a level or two
+// below that.
+const SCRIPT_REFERENCE = /[A-Za-z0-9_@./-]+\.(?:sh|mjs|js)\b/g
+const ROOT_VARIABLE = /^(?:PWD|ROOT|REPO_ROOT|SCRIPT_DIR)\//
+// A script can dispatch by glob instead of by name: `for adapter in
+// "$BACKENDS"/*.sh` names no adapter, so following explicit references alone
+// concludes that `task decimal-arithmetic` never runs a C compiler when five
+// backend adapters do.
+//
+// Resolving the glob's variable is deliberate rather than sweeping every
+// directory the text mentions. The sweep was tried first and pulled 1,152 files
+// and 15 MB into the reachable set for `task bootstrap`, which runs one script:
+// at that size almost any tool name appears somewhere and the rule stops being
+// able to fail.
+const SHELL_ASSIGNMENT = /^\s*([A-Za-z_][A-Za-z0-9_]*)=(.+)$/gm
+const SCRIPT_GLOB = /"?\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?"?\/\*\.(?:sh|mjs|js)/g
+
+// The repo-relative directory a shell assignment's value points at, if any.
+// Handles the `${VAR-"$ROOT/path"}` default spelling these scripts use.
+function assignedDirectory(value) {
+    const path = /\$\{?(?:PWD|ROOT|REPO_ROOT|SCRIPT_DIR)\}?\/([A-Za-z0-9_@.\/-]+)/.exec(value)
+    return path ? path[1].replace(/["'}].*$/, '') : null
+}
+
+// Claims share reproduction commands -- `task native` backs three of them --
+// and the walk reads a few hundred files, so without this the same traversal
+// runs once per claim and the gate takes a minute instead of a second.
+const reachableCache = new Map()
+
+function reachableScriptText(command, taskCommands) {
+    const cached = reachableCache.get(command)
+    if (cached !== undefined) return cached
+    const text = computeReachableScriptText(command, taskCommands)
+    reachableCache.set(command, text)
+    return text
+}
+
+function computeReachableScriptText(command, taskCommands) {
+    const seeds = []
+    const visitedTasks = new Set()
+    const addTask = (name) => {
+        if (visitedTasks.has(name)) return
+        visitedTasks.add(name)
+        const entry = taskCommands.get(name)
+        if (entry === undefined) return
+        for (const dependency of entry.deps) addTask(dependency)
+        seeds.push(...entry.cmds)
+    }
+    const task = /^task ([A-Za-z][A-Za-z0-9_-]*)$/.exec(command)
+    if (task) addTask(task[1])
+    else seeds.push(command)
+
+    const seen = new Set()
+    const pending = []
+    const collected = []
+    const consider = (reference) => {
+        // Strip the shell spellings a script uses to reach its own root. `$` is
+        // not part of a path match, so `"$ROOT/tests/x.sh"` arrives here as
+        // `ROOT/tests/x.sh` and the variable name comes off by name rather than
+        // by its sigil.
+        const relative = reference.replace(ROOT_VARIABLE, '').replace(/^\.\//, '')
+        if (relative === '' || relative.startsWith('/') || relative.includes('$')) return
+        if (seen.has(relative)) return
+        seen.add(relative)
+        pending.push(relative)
+    }
+    const enqueue = (text) => {
+        collected.push(text)
+        // Directory-valued variables the script sets, so a reference written as
+        // `"$NATIVE/check-pe32plus.sh"` resolves. `bootstrap/native/check.sh`
+        // reaches every one of its sub-gates that way and names none of them
+        // literally, so without this the walk stops at the first file.
+        const assignments = new Map()
+        for (const [, name, value] of text.matchAll(SHELL_ASSIGNMENT)) {
+            const directory = assignedDirectory(value)
+            if (directory !== null && !assignments.has(name)) assignments.set(name, directory)
+        }
+        for (const reference of text.match(SCRIPT_REFERENCE) ?? []) {
+            const prefixed = /^([A-Za-z_][A-Za-z0-9_]*)\/(.+)$/.exec(reference)
+            if (prefixed && assignments.has(prefixed[1])) {
+                consider(`${assignments.get(prefixed[1])}/${prefixed[2]}`)
+                continue
+            }
+            consider(reference)
+        }
+        // Resolve `"$VAR"/*.sh` against the same assignments, and enqueue that
+        // directory for one level of expansion.
+        for (const [, name] of text.matchAll(SCRIPT_GLOB)) {
+            const directory = assignments.get(name)
+            if (directory !== undefined) consider(directory)
+        }
+    }
+    for (const seed of seeds) enqueue(seed)
+    while (pending.length > 0) {
+        const relative = pending.shift()
+        const absolute = join(ROOT, relative)
+        let stats
+        try {
+            stats = statSync(absolute)
+        } catch {
+            continue
+        }
+        if (stats.isDirectory()) {
+            // One level only. A directory named by a script is a plausible
+            // dispatch target; its whole subtree is not.
+            let entries
+            try {
+                entries = readdirSync(absolute)
+            } catch {
+                continue
+            }
+            for (const entry of entries) {
+                if (/\.(?:sh|mjs|js)$/.test(entry)) consider(`${relative}/${entry}`)
+            }
+            continue
+        }
+        if (!stats.isFile()) continue
+        try {
+            enqueue(readFileSync(absolute, 'utf8'))
+        } catch {
+            continue
+        }
+    }
+    return collected.join('\n')
+}
+
+// A declared prerequisite must appear in something the command can actually
+// run. This is deliberately a static reachability check rather than a sandboxed
+// execution: it is cheap enough to run on every claim, and it catches the drift
+// that matters -- a dependency that was removed from the scripts and left in
+// the manifest.
+function checkPrerequisites(report, subject, claim, taskCommands) {
+    const prerequisites = claim.reproduction.prerequisites ?? []
+    if (prerequisites.length === 0) return
+    const text = reachableScriptText(claim.reproduction.command, taskCommands)
+    for (const prerequisite of prerequisites) {
+        // A plain word boundary, so `${CC:-cc}` counts as naming `cc`. Treating
+        // `-` as a word character instead would miss exactly the shell default
+        // spelling these scripts use to reach their tools.
+        const pattern = new RegExp(`\\b${
+            prerequisite.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        }\\b`)
+        if (!pattern.test(text)) {
+            report.fail(subject,
+                `declares the external prerequisite \`${prerequisite}\`, which no script reachable from \`${claim.reproduction.command}\` names`,
+                `drop the prerequisite if the command no longer needs it, or name the tool in the script that uses it`)
+        }
+    }
+}
+
 // Reads the bootstrap gate statuses this manifest joins against. A missing or
 // malformed file is reported once, as a manifest-level failure, rather than
 // once per claim that names a key from it.
@@ -187,6 +344,7 @@ function validateManifest(manifest, schema, manifestPath = MANIFEST_PATH) {
 
     const tracked = trackedFiles()
     const targets = taskfileTasks(ROOT)
+    const taskCommands = taskfileCommands(ROOT)
     const bootstrapGates = bootstrapGateStatuses(report)
     const areas = new Set(manifest.areas)
     const declaredTargets = new Set(manifest.targets)
@@ -306,6 +464,7 @@ function validateManifest(manifest, schema, manifestPath = MANIFEST_PATH) {
 
         checkCommand(report, subject, 'reproduction command',
             claim.reproduction.command, tracked, targets)
+        checkPrerequisites(report, subject, claim, taskCommands)
 
         // The join itself. `executable` above is already the claim's answer to
         // "does it work?"; each named gate must give the same answer.
