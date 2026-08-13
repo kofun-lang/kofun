@@ -637,8 +637,8 @@ fn macho64_header(cpu_type: Int) -> List[Int] {
     header = concat(header, u32_le(cpu_type))
     header = concat(header, u32_le(cpu_subtype))
     header = concat(header, u32_le(2))   # MH_EXECUTE
-    header = concat(header, u32_le(6))   # six load commands
-    header = concat(header, u32_le(360)) # total load-command bytes
+    header = concat(header, u32_le(7))   # seven load commands
+    header = concat(header, u32_le(408)) # total load-command bytes
     # MH_NOUNDEFS | MH_DYLDLINK | MH_TWOLEVEL | MH_PIE.
     header = concat(header, u32_le(2097285))
     return concat(header, u32_le(0)) # reserved
@@ -663,7 +663,7 @@ fn macho64_pagezero_segment() -> List[Int] {
 
 fn macho64_text_segment(cpu_type: Int, code_size: Int) -> List[Int] {
     let page_size = macho64_page_size(cpu_type)
-    if page_size == 0 || code_size <= 0 || code_size > 3584 {
+    if page_size == 0 || code_size <= 0 || code_size > page_size - 1024 {
         return []
     }
     let mut segment = u32_le(25) # LC_SEGMENT_64
@@ -689,9 +689,9 @@ fn macho64_text_segment(cpu_type: Int, code_size: Int) -> List[Int] {
         95, 95, 84, 69, 88, 84, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0,
     ]) # __TEXT
-    segment = concat(segment, u64_le(4294967808)) # vmaddr + entry offset
+    segment = concat(segment, u64_le(4294968320)) # vmaddr + entry offset
     segment = concat(segment, u64_le(code_size))
-    segment = concat(segment, u32_le(512)) # file offset
+    segment = concat(segment, u32_le(1024)) # file offset
     let mut alignment_power = 0
     if cpu_type == 16777228 {
         alignment_power = 2 # 4-byte AArch64 instructions
@@ -715,6 +715,15 @@ fn macho64_dylinker_command() -> List[Int] {
         98, 47, 100, 121, 108, 100, 0,
     ]) # /usr/lib/dyld\0
     return pad_to(command, 32)
+}
+
+fn macho64_dyld_info_command() -> List[Int] {
+    let mut command = u32_le(2147483682) # LC_DYLD_INFO_ONLY
+    command = concat(command, u32_le(48))
+    # This bounded image has no rebases, binds, lazy binds, weak binds, or
+    # exports. Presence of the standard command tells dyld not to enter its
+    # classic-relocation fallback; every range is intentionally empty.
+    return pad_to(command, 48)
 }
 
 fn macho64_libsystem_command() -> List[Int] {
@@ -745,7 +754,7 @@ fn macho64_build_version_command() -> List[Int] {
 fn macho64_main_command() -> List[Int] {
     let mut command = u32_le(2147483688) # LC_MAIN
     command = concat(command, u32_le(24))
-    command = concat(command, u64_le(512)) # entryoff from image start
+    command = concat(command, u64_le(1024)) # entryoff from image start
     return concat(command, u64_le(0))      # default stack size
 }
 
@@ -756,14 +765,15 @@ fn macho64_image(cpu_type: Int, code: List[Int]) -> List[Int] {
     let mut image = macho64_header(cpu_type)
     image = concat(image, macho64_pagezero_segment())
     image = concat(image, macho64_text_segment(cpu_type, len(code)))
+    image = concat(image, macho64_dyld_info_command())
     image = concat(image, macho64_dylinker_command())
     image = concat(image, macho64_libsystem_command())
     image = concat(image, macho64_build_version_command())
     image = concat(image, macho64_main_command())
-    if len(image) != 392 {
+    if len(image) != 440 {
         return []
     }
-    image = pad_to(image, 512)
+    image = pad_to(image, 1024)
     image = concat(image, code)
     return pad_to(image, macho64_page_size(cpu_type))
 }
@@ -879,8 +889,8 @@ fn macho64_signed_header(cpu_type: Int) -> List[Int] {
     header = concat(header, u32_le(cpu_type))
     header = concat(header, u32_le(cpu_subtype))
     header = concat(header, u32_le(2))   # MH_EXECUTE
-    header = concat(header, u32_le(8))   # eight load commands
-    header = concat(header, u32_le(448)) # total load-command bytes
+    header = concat(header, u32_le(9))   # nine load commands
+    header = concat(header, u32_le(496)) # total load-command bytes
     header = concat(header, u32_le(2097285))
     return concat(header, u32_le(0))
 }
@@ -970,6 +980,7 @@ fn macho64_signed_prefix(
         image,
         macho64_linkedit_segment(cpu_type, signature_size),
     )
+    image = concat(image, macho64_dyld_info_command())
     image = concat(image, macho64_dylinker_command())
     image = concat(image, macho64_libsystem_command())
     image = concat(image, macho64_build_version_command())
@@ -978,11 +989,11 @@ fn macho64_signed_prefix(
         image,
         macho64_code_signature_command(cpu_type, signature_size),
     )
-    if len(image) != 480 {
+    if len(image) != 528 {
         let empty: List[Int] = []
         return empty
     }
-    image = pad_to(image, 512)
+    image = pad_to(image, 1024)
     image = concat(image, code)
     return pad_to(image, macho64_page_size(cpu_type))
 }

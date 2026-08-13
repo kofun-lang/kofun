@@ -120,10 +120,10 @@ fn macho64_signed_prefix_byte(cpu_type: Int, index: Int) -> Int {
         return u32_le_byte(2, index - 12)
     }
     if index < 20 {
-        return u32_le_byte(8, index - 16)
+        return u32_le_byte(9, index - 16)
     }
     if index < 24 {
-        return u32_le_byte(448, index - 20)
+        return u32_le_byte(496, index - 20)
     }
     if index < 28 {
         return u32_le_byte(2097285, index - 24)
@@ -209,13 +209,13 @@ fn macho64_signed_prefix_byte(cpu_type: Int, index: Int) -> Int {
         return fixed_byte(segment, index - 192)
     }
     if index < 216 {
-        return u64_le_byte(4294967808, index - 208)
+        return u64_le_byte(4294968320, index - 208)
     }
     if index < 224 {
         return u64_le_byte(code_size, index - 216)
     }
     if index < 228 {
-        return u32_le_byte(512, index - 224)
+        return u32_le_byte(1024, index - 224)
     }
     if index < 232 {
         if cpu_type == 16777228 {
@@ -270,115 +270,126 @@ fn macho64_signed_prefix_byte(cpu_type: Int, index: Int) -> Int {
         return 0
     }
 
-    # LC_LOAD_DYLINKER, 328..359.
+    # Empty LC_DYLD_INFO_ONLY, 328..375.
     if index < 332 {
-        return u32_le_byte(14, index - 328)
+        return u32_le_byte(2147483682, index - 328)
     }
     if index < 336 {
-        return u32_le_byte(32, index - 332)
+        return u32_le_byte(48, index - 332)
     }
-    if index < 340 {
-        return u32_le_byte(12, index - 336)
+    if index < 376 {
+        return 0
     }
-    if index < 354 {
+
+    # LC_LOAD_DYLINKER, 376..407.
+    if index < 380 {
+        return u32_le_byte(14, index - 376)
+    }
+    if index < 384 {
+        return u32_le_byte(32, index - 380)
+    }
+    if index < 388 {
+        return u32_le_byte(12, index - 384)
+    }
+    if index < 402 {
         let path: List[Int] = [
             47, 117, 115, 114, 47, 108, 105,
             98, 47, 100, 121, 108, 100, 0
         ]
-        return fixed_byte(path, index - 340)
+        return fixed_byte(path, index - 388)
     }
-    if index < 360 {
+    if index < 408 {
         return 0
     }
 
-    # LC_LOAD_DYLIB /usr/lib/libSystem.B.dylib, 360..415.
-    if index < 364 {
-        return u32_le_byte(12, index - 360)
+    # LC_LOAD_DYLIB /usr/lib/libSystem.B.dylib, 408..463.
+    if index < 412 {
+        return u32_le_byte(12, index - 408)
     }
-    if index < 368 {
-        return u32_le_byte(56, index - 364)
+    if index < 416 {
+        return u32_le_byte(56, index - 412)
     }
-    if index < 372 {
-        return u32_le_byte(24, index - 368)
+    if index < 420 {
+        return u32_le_byte(24, index - 416)
     }
-    if index < 376 {
-        return u32_le_byte(2, index - 372)
+    if index < 424 {
+        return u32_le_byte(2, index - 420)
     }
-    if index < 380 {
-        return u32_le_byte(65536, index - 376)
+    if index < 428 {
+        return u32_le_byte(65536, index - 424)
     }
-    if index < 384 {
-        return u32_le_byte(65536, index - 380)
+    if index < 432 {
+        return u32_le_byte(65536, index - 428)
     }
-    if index < 411 {
+    if index < 459 {
         let path: List[Int] = [
             47, 117, 115, 114, 47, 108, 105, 98,
             47, 108, 105, 98, 83, 121, 115, 116,
             101, 109, 46, 66, 46, 100, 121, 108,
             105, 98, 0
         ]
-        return fixed_byte(path, index - 384)
-    }
-    if index < 416 {
-        return 0
-    }
-
-    # LC_BUILD_VERSION, LC_MAIN, LC_CODE_SIGNATURE.
-    if index < 420 {
-        return u32_le_byte(50, index - 416)
-    }
-    if index < 424 {
-        return u32_le_byte(24, index - 420)
-    }
-    if index < 428 {
-        return u32_le_byte(1, index - 424)
-    }
-    if index < 432 {
-        return u32_le_byte(720896, index - 428)
-    }
-    if index < 436 {
-        return u32_le_byte(720896, index - 432)
-    }
-    if index < 440 {
-        return 0
-    }
-    if index < 444 {
-        return u32_le_byte(2147483688, index - 440)
-    }
-    if index < 448 {
-        return u32_le_byte(24, index - 444)
-    }
-    if index < 456 {
-        return u64_le_byte(512, index - 448)
+        return fixed_byte(path, index - 432)
     }
     if index < 464 {
         return 0
     }
+
+    # LC_BUILD_VERSION, LC_MAIN, LC_CODE_SIGNATURE.
     if index < 468 {
-        return u32_le_byte(29, index - 464)
+        return u32_le_byte(50, index - 464)
     }
     if index < 472 {
-        return u32_le_byte(16, index - 468)
+        return u32_le_byte(24, index - 468)
     }
     if index < 476 {
-        return u32_le_byte(page_size, index - 472)
+        return u32_le_byte(1, index - 472)
     }
     if index < 480 {
-        return u32_le_byte(160, index - 476)
+        return u32_le_byte(720896, index - 476)
+    }
+    if index < 484 {
+        return u32_le_byte(720896, index - 480)
+    }
+    if index < 488 {
+        return 0
+    }
+    if index < 492 {
+        return u32_le_byte(2147483688, index - 488)
+    }
+    if index < 496 {
+        return u32_le_byte(24, index - 492)
+    }
+    if index < 504 {
+        return u64_le_byte(1024, index - 496)
     }
     if index < 512 {
+        return 0
+    }
+    if index < 516 {
+        return u32_le_byte(29, index - 512)
+    }
+    if index < 520 {
+        return u32_le_byte(16, index - 516)
+    }
+    if index < 524 {
+        return u32_le_byte(page_size, index - 520)
+    }
+    if index < 528 {
+        return u32_le_byte(160, index - 524)
+    }
+    if index < 1024 {
         return 0
     }
 
     if cpu_type == 16777223 {
         let code: List[Int] = [49, 192, 195]
-        return fixed_byte(code, index - 512)
+        return fixed_byte(code, index - 1024)
     }
     let code: List[Int] = [
         0, 0, 128, 82,
         192, 3, 95, 214
     ]
-    return fixed_byte(code, index - 512)
+    return fixed_byte(code, index - 1024)
 }
 
 fn macho64_page_block(cpu_type: Int, block_index: Int) -> List[Int] {

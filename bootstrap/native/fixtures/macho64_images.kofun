@@ -91,9 +91,9 @@ fn emit_text(cpu_type: Int, page_size: Int, code_size: Int) -> Int {
     emit(88)
     emit(84)
     emit_zeros(10)
-    emit_u64(4294967808)
+    emit_u64(4294968320)
     emit_u64(code_size)
-    emit_u32(512)
+    emit_u32(1024)
     if cpu_type == 16777223 {
         emit_u32(0)
     } else {
@@ -109,6 +109,10 @@ fn emit_text(cpu_type: Int, page_size: Int, code_size: Int) -> Int {
 }
 
 fn emit_commands() -> Int {
+    emit_u32(2147483682)
+    emit_u32(48)
+    emit_zeros(40)
+
     emit_u32(14)
     emit_u32(32)
     emit_u32(12)
@@ -172,7 +176,7 @@ fn emit_commands() -> Int {
 
     emit_u32(2147483688)
     emit_u32(24)
-    emit_u64(512)
+    emit_u64(1024)
     emit_u64(0)
     return 0
 }
@@ -191,14 +195,14 @@ fn emit_macho64(cpu_type: Int) -> Int {
     emit_u32(cpu_type)
     emit_u32(cpu_subtype)
     emit_u32(2)
-    emit_u32(6)
-    emit_u32(360)
+    emit_u32(7)
+    emit_u32(408)
     emit_u32(2097285)
     emit_u32(0)
     emit_pagezero()
     emit_text(cpu_type, page_size, code_size)
     emit_commands()
-    emit_zeros(120)
+    emit_zeros(584)
 
     if cpu_type == 16777223 {
         emit(49)
@@ -214,7 +218,7 @@ fn emit_macho64(cpu_type: Int) -> Int {
         emit(95)
         emit(214)
     }
-    emit_zeros(page_size - 512 - code_size)
+    emit_zeros(page_size - 1024 - code_size)
     return 0
 }
 

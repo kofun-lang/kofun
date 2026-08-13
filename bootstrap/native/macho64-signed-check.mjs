@@ -67,8 +67,8 @@ function validate(bytes, profile) {
   expect(u32le(bytes, 4) === profile.cpuType, `${profile.name}: CPU type`);
   expect(u32le(bytes, 8) === profile.cpuSubtype, `${profile.name}: CPU subtype`);
   expect(u32le(bytes, 12) === 2, `${profile.name}: MH_EXECUTE`);
-  expect(u32le(bytes, 16) === 8, `${profile.name}: load-command count`);
-  expect(u32le(bytes, 20) === 448, `${profile.name}: load-command bytes`);
+  expect(u32le(bytes, 16) === 9, `${profile.name}: load-command count`);
+  expect(u32le(bytes, 20) === 496, `${profile.name}: load-command bytes`);
   expect(u32le(bytes, 24) === 0x200085, `${profile.name}: Mach flags`);
   expect(u32le(bytes, 28) === 0, `${profile.name}: reserved header field`);
 
@@ -96,9 +96,9 @@ function validate(bytes, profile) {
   const section = 176;
   expect(fixedName(bytes, section) === "__text", `${profile.name}: section name`);
   expect(fixedName(bytes, section + 16) === "__TEXT", `${profile.name}: section segment`);
-  expect(u64le(bytes, section + 32) === 0x100000200n, `${profile.name}: section address`);
+  expect(u64le(bytes, section + 32) === 0x100000400n, `${profile.name}: section address`);
   expect(u64le(bytes, section + 40) === BigInt(profile.code.length), `${profile.name}: section size`);
-  expect(u32le(bytes, section + 48) === 512, `${profile.name}: section offset`);
+  expect(u32le(bytes, section + 48) === 1024, `${profile.name}: section offset`);
   expect(u32le(bytes, section + 52) === profile.alignment, `${profile.name}: section alignment`);
   expect(u32le(bytes, section + 64) === 0x80000400, `${profile.name}: section flags`);
 
@@ -117,7 +117,12 @@ function validate(bytes, profile) {
   expect(u32le(bytes, linkedit + 60) === 1, `${profile.name}: linkedit protection`);
   expect(u32le(bytes, linkedit + 64) === 0, `${profile.name}: linkedit sections`);
 
-  const dylinker = 328;
+  const dyldInfo = 328;
+  expect(u32le(bytes, dyldInfo) === 0x80000022, `${profile.name}: LC_DYLD_INFO_ONLY`);
+  expect(u32le(bytes, dyldInfo + 4) === 48, `${profile.name}: dyld info size`);
+  expect(bytes.subarray(dyldInfo + 8, dyldInfo + 48).every((byte) => byte === 0), `${profile.name}: empty dyld info`);
+
+  const dylinker = 376;
   expect(u32le(bytes, dylinker) === 0x0e, `${profile.name}: LC_LOAD_DYLINKER`);
   expect(u32le(bytes, dylinker + 4) === 32, `${profile.name}: dylinker size`);
   expect(u32le(bytes, dylinker + 8) === 12, `${profile.name}: dylinker path offset`);
@@ -126,7 +131,7 @@ function validate(bytes, profile) {
     `${profile.name}: dylinker path`,
   );
 
-  const libsystem = 360;
+  const libsystem = 408;
   expect(u32le(bytes, libsystem) === 0x0c, `${profile.name}: LC_LOAD_DYLIB`);
   expect(u32le(bytes, libsystem + 4) === 56, `${profile.name}: dylib command size`);
   expect(u32le(bytes, libsystem + 8) === 24, `${profile.name}: dylib path offset`);
@@ -135,7 +140,7 @@ function validate(bytes, profile) {
     `${profile.name}: libSystem path`,
   );
 
-  const version = 416;
+  const version = 464;
   expect(u32le(bytes, version) === 0x32, `${profile.name}: LC_BUILD_VERSION`);
   expect(u32le(bytes, version + 4) === 24, `${profile.name}: version size`);
   expect(u32le(bytes, version + 8) === 1, `${profile.name}: macOS platform`);
@@ -143,32 +148,32 @@ function validate(bytes, profile) {
   expect(u32le(bytes, version + 16) === 0x0b0000, `${profile.name}: SDK`);
   expect(u32le(bytes, version + 20) === 0, `${profile.name}: tool count`);
 
-  const main = 440;
+  const main = 488;
   expect(u32le(bytes, main) === 0x80000028, `${profile.name}: LC_MAIN`);
   expect(u32le(bytes, main + 4) === 24, `${profile.name}: main size`);
-  expect(u64le(bytes, main + 8) === 512n, `${profile.name}: entry offset`);
+  expect(u64le(bytes, main + 8) === 1024n, `${profile.name}: entry offset`);
   expect(u64le(bytes, main + 16) === 0n, `${profile.name}: stack size`);
 
-  const codeSignature = 464;
+  const codeSignature = 512;
   expect(u32le(bytes, codeSignature) === 0x1d, `${profile.name}: LC_CODE_SIGNATURE`);
   expect(u32le(bytes, codeSignature + 4) === 16, `${profile.name}: signature command size`);
   expect(u32le(bytes, codeSignature + 8) === profile.pageSize, `${profile.name}: signature offset`);
   expect(u32le(bytes, codeSignature + 12) === 160, `${profile.name}: signature size`);
 
   let commandOffset = 32;
-  for (let index = 0; index < 8; index += 1) {
+  for (let index = 0; index < 9; index += 1) {
     const commandSize = u32le(bytes, commandOffset + 4);
     expect(commandSize >= 8 && commandSize % 8 === 0, `${profile.name}: aligned command ${index}`);
     commandOffset += commandSize;
   }
-  expect(commandOffset === 480, `${profile.name}: command traversal end`);
-  expect(bytes.subarray(480, 512).every((byte) => byte === 0), `${profile.name}: header padding`);
+  expect(commandOffset === 528, `${profile.name}: command traversal end`);
+  expect(bytes.subarray(528, 1024).every((byte) => byte === 0), `${profile.name}: header padding`);
   expect(
-    bytes.subarray(512, 512 + profile.code.length).equals(profile.code),
+    bytes.subarray(1024, 1024 + profile.code.length).equals(profile.code),
     `${profile.name}: entry code`,
   );
   expect(
-    bytes.subarray(512 + profile.code.length, profile.pageSize).every((byte) => byte === 0),
+    bytes.subarray(1024 + profile.code.length, profile.pageSize).every((byte) => byte === 0),
     `${profile.name}: signed page padding`,
   );
 
@@ -239,10 +244,10 @@ for (let index = 0; index < profiles.length; index += 1) {
   const profile = profiles[index];
   const { directory, signature } = validate(bytes, profile);
   mutationMustFail(bytes, profile, "magic", (image) => image.writeUInt32LE(0, 0));
-  mutationMustFail(bytes, profile, "signature offset", (image) => image.writeUInt32LE(0, 416));
+  mutationMustFail(bytes, profile, "signature offset", (image) => image.writeUInt32LE(0, 520));
   mutationMustFail(bytes, profile, "SuperBlob magic", (image) => image.writeUInt32BE(0, signature));
   mutationMustFail(bytes, profile, "CodeDirectory length", (image) => image.writeUInt32BE(0, directory + 4));
-  mutationMustFail(bytes, profile, "signed code", (image) => { image[512] ^= 1; });
+  mutationMustFail(bytes, profile, "signed code", (image) => { image[1024] ^= 1; });
   mutationMustFail(bytes, profile, "embedded hash", (image) => { image[directory + 108] ^= 1; });
 }
 

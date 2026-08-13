@@ -54,8 +54,8 @@ function validate(bytes, profile) {
   expect(u32(bytes, 4) === profile.cpuType, `${profile.name}: CPU type`);
   expect(u32(bytes, 8) === profile.cpuSubtype, `${profile.name}: CPU subtype`);
   expect(u32(bytes, 12) === 2, `${profile.name}: MH_EXECUTE`);
-  expect(u32(bytes, 16) === 6, `${profile.name}: load-command count`);
-  expect(u32(bytes, 20) === 360, `${profile.name}: load-command bytes`);
+  expect(u32(bytes, 16) === 7, `${profile.name}: load-command count`);
+  expect(u32(bytes, 20) === 408, `${profile.name}: load-command bytes`);
   expect(u32(bytes, 24) === 0x200085, `${profile.name}: Mach header flags`);
   expect(u32(bytes, 28) === 0, `${profile.name}: reserved header field`);
 
@@ -86,10 +86,10 @@ function validate(bytes, profile) {
   const section = text + 72;
   expect(fixedName(bytes, section) === "__text", `${profile.name}: section name`);
   expect(fixedName(bytes, section + 16) === "__TEXT", `${profile.name}: section segment`);
-  expect(u64(bytes, section + 32) === 0x100000200n, `${profile.name}: section address`);
+  expect(u64(bytes, section + 32) === 0x100000400n, `${profile.name}: section address`);
   expect(u64(bytes, section + 40) === BigInt(profile.code.length), `${profile.name}: section size`);
   const sectionOffset = u32(bytes, section + 48);
-  expect(sectionOffset === 512, `${profile.name}: section offset`);
+  expect(sectionOffset === 1024, `${profile.name}: section offset`);
   expect(u32(bytes, section + 52) === profile.alignment, `${profile.name}: section alignment`);
   expect(u32(bytes, section + 56) === 0, `${profile.name}: relocation offset`);
   expect(u32(bytes, section + 60) === 0, `${profile.name}: relocation count`);
@@ -98,7 +98,12 @@ function validate(bytes, profile) {
   expect(u32(bytes, section + 72) === 0, `${profile.name}: section reserved2`);
   expect(u32(bytes, section + 76) === 0, `${profile.name}: section reserved3`);
 
-  const dylinker = 256;
+  const dyldInfo = 256;
+  expect(u32(bytes, dyldInfo) === 0x80000022, `${profile.name}: LC_DYLD_INFO_ONLY`);
+  expect(u32(bytes, dyldInfo + 4) === 48, `${profile.name}: dyld info command size`);
+  expect(bytes.subarray(dyldInfo + 8, dyldInfo + 48).every((byte) => byte === 0), `${profile.name}: empty dyld info`);
+
+  const dylinker = 304;
   expect(u32(bytes, dylinker) === 0x0e, `${profile.name}: LC_LOAD_DYLINKER`);
   expect(u32(bytes, dylinker + 4) === 32, `${profile.name}: dylinker command size`);
   expect(u32(bytes, dylinker + 8) === 12, `${profile.name}: dylinker path offset`);
@@ -108,7 +113,7 @@ function validate(bytes, profile) {
   );
   expect(bytes.subarray(dylinker + 26, dylinker + 32).every((byte) => byte === 0), `${profile.name}: dylinker padding`);
 
-  const libsystem = 288;
+  const libsystem = 336;
   expect(u32(bytes, libsystem) === 0x0c, `${profile.name}: LC_LOAD_DYLIB`);
   expect(u32(bytes, libsystem + 4) === 56, `${profile.name}: dylib command size`);
   expect(u32(bytes, libsystem + 8) === 24, `${profile.name}: dylib path offset`);
@@ -118,7 +123,7 @@ function validate(bytes, profile) {
   );
   expect(bytes.subarray(libsystem + 51, libsystem + 56).every((byte) => byte === 0), `${profile.name}: dylib padding`);
 
-  const version = 344;
+  const version = 392;
   expect(u32(bytes, version) === 0x32, `${profile.name}: LC_BUILD_VERSION`);
   expect(u32(bytes, version + 4) === 24, `${profile.name}: version command size`);
   expect(u32(bytes, version + 8) === 1, `${profile.name}: macOS platform`);
@@ -126,20 +131,20 @@ function validate(bytes, profile) {
   expect(u32(bytes, version + 16) === 0x0b0000, `${profile.name}: SDK contract`);
   expect(u32(bytes, version + 20) === 0, `${profile.name}: tool count`);
 
-  const main = 368;
+  const main = 416;
   expect(u32(bytes, main) === 0x80000028, `${profile.name}: LC_MAIN`);
   expect(u32(bytes, main + 4) === 24, `${profile.name}: main command size`);
   const entryOffset = u64(bytes, main + 8);
-  expect(entryOffset === 512n, `${profile.name}: entry offset`);
+  expect(entryOffset === 1024n, `${profile.name}: entry offset`);
   expect(u64(bytes, main + 16) === 0n, `${profile.name}: stack size`);
 
   let commandOffset = 32;
-  for (let index = 0; index < 6; index += 1) {
+  for (let index = 0; index < 7; index += 1) {
     const commandSize = u32(bytes, commandOffset + 4);
     expect(commandSize >= 8 && commandSize % 8 === 0, `${profile.name}: aligned command ${index}`);
     commandOffset += commandSize;
   }
-  expect(commandOffset === 392, `${profile.name}: command traversal end`);
+  expect(commandOffset === 440, `${profile.name}: command traversal end`);
   expect(Number(entryOffset) === sectionOffset, `${profile.name}: entry is not section start`);
   expect(
     bytes.subarray(sectionOffset, sectionOffset + profile.code.length).equals(profile.code),
@@ -174,8 +179,8 @@ for (let index = 0; index < profiles.length; index += 1) {
   mutationMustFail(bytes, profile, "magic", (image) => image.writeUInt32LE(0, 0));
   mutationMustFail(bytes, profile, "CPU", (image) => image.writeUInt32LE(0, 4));
   mutationMustFail(bytes, profile, "command size", (image) => image.writeUInt32LE(70, 36));
-  mutationMustFail(bytes, profile, "section offset", (image) => image.writeUInt32LE(1024, 224));
-  mutationMustFail(bytes, profile, "entry offset", (image) => image.writeBigUInt64LE(1024n, 376));
+  mutationMustFail(bytes, profile, "section offset", (image) => image.writeUInt32LE(512, 224));
+  mutationMustFail(bytes, profile, "entry offset", (image) => image.writeBigUInt64LE(512n, 424));
 }
 
 console.log("PASS: Mach-O 64 headers, CPUs, commands, entry code, layout, and mutations");

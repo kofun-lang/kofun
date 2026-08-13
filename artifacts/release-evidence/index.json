@@ -4,7 +4,7 @@
   "version": "0.7.0-seed",
   "inputs": {
     "VERSION": "fbfc57368f907487df85328856740a1b792855e6c9fc4dba94739ec17b642e8c",
-    "release/claims.json": "ea3055de912d3595323d2471d698504302e6eb6280acee9a6025351e20bd0cc4",
+    "release/claims.json": "4dd75ac1d7b8c1ec8b2c4f7823de3c82cae11ce174435d356f8f15ce7bbbb800",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
     "bootstrap/manifest.json": "5b03d83371894faef02bbcf97e13d835ae47b5e3c0641c65fb7a9024d667e77a"
   },
@@ -756,7 +756,7 @@
   ],
   "evidence_digests": {
     "Taskfile.yml": "4a2656d215891edd374973dec1dad848f54fa7049108917bd5823d8d0a46e363",
-    "bootstrap/native/README.md": "3a67b0bface583e236bc2228028fab700c47b00b01f3f143701c57ef3f850e00",
+    "bootstrap/native/README.md": "1b7fcff702ccf3db1ca59a7e40c163b76d5b3020638356f2ab16f01dc47efb1d",
     "bootstrap/native/check-macho64-signed.sh": "6fc51ddfec599ea85b8b06a5c16d68b6fdc994621cdb8ca4267e20be38141393",
     "bootstrap/native/check-macho64.sh": "d6bd52e3f6756aa607a2dc44a0117defeaaa55e64fa3f4221986da6406251e15",
     "bootstrap/native/check-pe32plus.sh": "c414d1d719092eaf1f931eb433c11c9f77207915a7359a8bb8392e2e7c07c539",

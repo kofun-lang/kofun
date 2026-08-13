@@ -951,7 +951,7 @@
       "public_status": "bounded deterministic image checkpoint with a declared libSystem runtime dependency; no macOS CLI/runtime, signing, or host-execution claim",
       "state": "checkpoint",
       "area": "native",
-      "bounded_capability": "The canonical Kofun encoder writes complete page-sized Mach-O 64 images directly for x86-64 and AArch64: exact CPU identities, MH_EXECUTE, __PAGEZERO, one executable __TEXT,__text section, LC_LOAD_DYLINKER, LC_LOAD_DYLIB for the platform libSystem runtime, LC_BUILD_VERSION, LC_MAIN, and distinct return-zero entry sequences. No assembler, linker, system SDK, import library, or foreign-language image writer participates.",
+      "bounded_capability": "The canonical Kofun encoder writes complete page-sized Mach-O 64 images directly for x86-64 and AArch64: exact CPU identities, MH_EXECUTE, __PAGEZERO, one executable __TEXT,__text section, an empty LC_DYLD_INFO_ONLY contract, LC_LOAD_DYLINKER, LC_LOAD_DYLIB for the platform libSystem runtime, LC_BUILD_VERSION, LC_MAIN, and distinct return-zero entry sequences. No assembler, linker, system SDK, import library, or foreign-language image writer participates.",
       "targets": [
         "native-aarch64-macos-macho64",
         "native-x86_64-macos-macho64"
