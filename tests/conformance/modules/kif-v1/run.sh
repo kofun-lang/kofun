@@ -92,6 +92,33 @@ write_inventory demo/api.kofun "$CASES/fixtures/interface.kofun" "$WORK/interfac
 cmp "$WORK/interface.kif" "$WORK/repeated.kif" || fail 'repeated writer bytes differ'
 cmp "$WORK/interface.json" "$WORK/repeated.json" || fail 'repeated dump differs'
 
+# RFC-0012 tag 0x800A. Until this fixture existed, no gate wrote a KIF for a
+# raw-foreign module, so every trust assertion in the suite was made against
+# `ordinary` and the two branches were indistinguishable. The pair below is the
+# point: the same declarations, differing only by the source `trust` line.
+grep -q '"module_trust": "ordinary"' "$WORK/interface.json" ||
+    fail 'an ordinary module did not serialize the bytes `ordinary`'
+
+write_inventory demo/api.kofun "$CASES/fixtures/interface_raw_foreign.kofun" \
+    "$WORK/raw-foreign.inventory"
+"$TOOL" write "$WORK/raw-foreign.inventory" "$MODULE_ID" edition-1 \
+    "$WORK/raw-foreign.kif" "$WORK/raw-foreign.json" ||
+    fail 'a raw-foreign module was refused by the writer'
+grep -q '"module_trust": "raw-foreign"' "$WORK/raw-foreign.json" ||
+    fail 'a `trust raw-foreign` module did not reach the artifact as raw-foreign'
+
+# The trust class is part of the identity, not decoration. Two modules with
+# identical declarations must not share a semantic digest, and the artifacts
+# must not be byte-identical.
+cmp -s "$WORK/interface.kif" "$WORK/raw-foreign.kif" &&
+    fail 'ordinary and raw-foreign artifacts are byte-identical'
+for field in public_semantic_digest package_internal_semantic_digest; do
+    ordinary_digest=$(grep "\"$field\"" "$WORK/interface.json")
+    raw_digest=$(grep "\"$field\"" "$WORK/raw-foreign.json")
+    [ "$ordinary_digest" != "$raw_digest" ] ||
+        fail "trust class does not participate in $field"
+done
+
 write_inventory remapped/location.kofun "$CASES/fixtures/interface.kofun" \
     "$WORK/remapped.inventory"
 "$TOOL" write "$WORK/remapped.inventory" "$MODULE_ID" edition-1 \

@@ -1967,7 +1967,12 @@ KifWriteResult kofun_kif_write(
         result.package_internal_semantic_digest);
     if (status != KOFUN_KIF_OK) goto done;
     self_read = kofun_kif_read(envelope.bytes, envelope.length, kofun_kif_default_limits());
+    /* The trust class joins the digests in the publication self-check. A class
+     * that does not survive its own encode/decode must not reach the
+     * filesystem, and checking it here is what makes "rejects before
+     * publication" true of the class rather than only of the facts. */
     if (self_read.status != KOFUN_KIF_OK || self_read.interface == NULL ||
+        self_read.interface->module_trust != interface->module_trust ||
         !constant_time_equal(self_read.interface->public_semantic_digest,
             result.public_semantic_digest, 32u) ||
         !constant_time_equal(self_read.interface->package_internal_semantic_digest,

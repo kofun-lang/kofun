@@ -1,0 +1,30 @@
+module demo.api
+trust raw-foreign
+
+pub fn exported(value: Int) -> Int {
+    return hidden(value)
+}
+
+internal fn sibling(value: Int) -> Int {
+    return value
+}
+
+private fn hidden(value: Int) -> Int {
+    return value
+}
+
+fn implicit_private() -> Int {
+    return 0
+}
+
+pub type MaybeInt =
+    | None
+    | Some(value: Int)
+
+internal type InternalChoice =
+    | Left
+    | Right(value: Int)
+
+private type HiddenChoice =
+    | Invisible
+    | Secret(value: Int)
