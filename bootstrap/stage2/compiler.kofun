@@ -12438,7 +12438,9 @@ fn lower_enum_match(
     match_start: Int,
     enum_type: Text,
     is_main: Bool,
-    function_open: Int
+    function_open: Int,
+    bytes_cleanup: Text,
+    bytes_comma: Text
 ) -> Text {
     let value_start = skip_trivia(source, token_end(source, match_start))
     let value_name = token_text(source, value_start)
@@ -12598,7 +12600,9 @@ fn lower_enum_match(
             arm_open,
             is_main,
             false,
-            function_open
+            function_open,
+            bytes_cleanup,
+            bytes_comma
         )
         if starts_with(arm_body, "error[") {
             return arm_body
@@ -13070,7 +13074,9 @@ fn lower_body(
     open: Int,
     is_main: Bool,
     append_default: Bool,
-    function_open: Int
+    function_open: Int,
+    inherited_cleanup: Text,
+    inherited_comma: Text
 ) -> Text {
     let mut emitted = ""
     if open == function_open {
@@ -13128,8 +13134,18 @@ fn lower_body(
     # so every `if (kofun_failed) return <failure_result>;` the emitters below
     # produce becomes a reclaiming exit without any of them changing.
     let failure_base = failure_result
-    let mut bytes_cleanup = ""
-    let mut bytes_comma = ""
+    # #1315. A nested block inherits the owners live where it opens. Restarting
+    # these at "" was a leak with a passing gate: `lower_body` recurses for an
+    # `if`/`else`/`while` body and for a match arm, and a `return` inside one
+    # emitted no release at all, because the inner call could not see the
+    # owners the outer one had declared. The gate did not catch it because its
+    # fixture had no conditional exit -- the assertion was structural and
+    # correct, and the data could not distinguish.
+    let mut bytes_cleanup = inherited_cleanup
+    let mut bytes_comma = inherited_comma
+    if bytes_comma != "" {
+        failure_result = "(" + bytes_comma + failure_base + ")"
+    }
     while cursor < len(source) && token_text(source, cursor) != "}" {
         if returned {
             return "error[E2S14]: statement follows `return` at byte " +
@@ -13767,7 +13783,9 @@ fn lower_body(
                     branch_open,
                     is_main,
                     false,
-                    function_open
+                    function_open,
+                    bytes_cleanup,
+                    bytes_comma
                 )
                 if starts_with(branch_body, "error[") {
                     return branch_body
@@ -13829,7 +13847,9 @@ fn lower_body(
                             else_open,
                             is_main,
                             false,
-                            function_open
+                            function_open,
+                            bytes_cleanup,
+                            bytes_comma
                         )
                         if starts_with(else_body, "error[") {
                             return else_body
@@ -13877,7 +13897,9 @@ fn lower_body(
                 body_open,
                 is_main,
                 false,
-                function_open
+                function_open,
+                bytes_cleanup,
+                bytes_comma
             )
             if starts_with(loop_body, "error[") {
                 return loop_body
@@ -13958,7 +13980,9 @@ fn lower_body(
                     match_start,
                     enum_type,
                     is_main,
-                    function_open
+                    function_open,
+                    bytes_cleanup,
+                    bytes_comma
                 )
                 if starts_with(match_body, "error[") {
                     return match_body
@@ -14064,7 +14088,9 @@ fn lower_body(
                     arm_open,
                     is_main,
                     false,
-                    function_open
+                    function_open,
+                    bytes_cleanup,
+                    bytes_comma
                 )
                 if starts_with(arm_body, "error[") {
                     return arm_body
@@ -16290,7 +16316,7 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
             return "error[E2S15]: Core function `" + name +
             "` requires Int or concrete enum parameters and return"
         }
-        let body = lower_body(source, hir, open, is_main, true, open)
+        let body = lower_body(source, hir, open, is_main, true, open, "", "")
         if starts_with(body, "error[") {
             return body
         }

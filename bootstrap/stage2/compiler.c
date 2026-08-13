@@ -17589,7 +17589,9 @@ static char *lower_body(
     int64_t open,
     bool is_main,
     bool append_default,
-    int64_t function_open
+    int64_t function_open,
+    const char *inherited_cleanup,
+    const char *inherited_comma
 );
 
 static char *lower_enum_match_error(
@@ -17612,7 +17614,9 @@ static char *lower_enum_match(
     int64_t match_start,
     const char *enum_type,
     bool is_main,
-    int64_t function_open
+    int64_t function_open,
+    const char *bytes_cleanup,
+    const char *bytes_comma
 ) {
     int64_t length = source_length(source);
     int64_t value_start = skip_trivia(
@@ -17916,7 +17920,9 @@ static char *lower_enum_match(
             arm_open,
             is_main,
             false,
-            function_open
+            function_open,
+            bytes_cleanup,
+            bytes_comma
         );
         if (strncmp(arm_body, "error[", 6) == 0) {
             free(pattern);
@@ -19427,7 +19433,9 @@ static char *lower_body(
     int64_t open,
     bool is_main,
     bool append_default,
-    int64_t function_open
+    int64_t function_open,
+    const char *inherited_cleanup,
+    const char *inherited_comma
 ) {
     int64_t length = source_length(source);
     Buffer emitted;
@@ -19511,8 +19519,44 @@ static char *lower_body(
      * `lower_body` returns from many places and a heap local here is a leak
      * waiting for one missed exit. Overflow refuses rather than truncates. */
     const char *failure_base = failure_result;
-    char bytes_cleanup[2048] = "";
-    char bytes_comma[2048] = "";
+    /* #1315. A nested block inherits the owners live where it opens. Starting
+     * these empty was a leak with a passing gate: `lower_body` recurses for an
+     * `if`/`else`/`while` body and for a match arm, and a `return` inside one
+     * emitted no release, because the inner call could not see the owners the
+     * outer one had declared. The gate did not catch it because its fixture
+     * had no conditional exit -- the assertion was structural and correct, and
+     * the data could not distinguish. */
+    char bytes_cleanup[2048];
+    char bytes_comma[2048];
+    char inherited_failure[2560];
+    /* The inherited strings come from a parent frame whose buffers are the
+     * same size and whose own guard already refused overflow, so this can only
+     * fail if that invariant is broken. It is checked rather than assumed, and
+     * it reports the same code as the growth guard below because it is the
+     * same limit. */
+    if (strlen(inherited_cleanup) >= sizeof bytes_cleanup ||
+        strlen(inherited_comma) >= sizeof bytes_comma) {
+        free(emitted.data);
+        return lower_error(
+            "E2S170",
+            "Stage 2 Bytes[65536] cannot lower possible managed "
+            "Bytes alias for this body (backend limitation)",
+            open);
+    }
+    memcpy(bytes_cleanup, inherited_cleanup, strlen(inherited_cleanup) + 1u);
+    memcpy(bytes_comma, inherited_comma, strlen(inherited_comma) + 1u);
+    if (bytes_comma[0] != '\0') {
+        if (snprintf(inherited_failure, sizeof inherited_failure, "(%s%s)",
+                bytes_comma, failure_base) >= (int)sizeof inherited_failure) {
+            free(emitted.data);
+            return lower_error(
+                "E2S170",
+                "Stage 2 Bytes[65536] cannot lower possible managed "
+                "Bytes alias for this body (backend limitation)",
+                open);
+        }
+        failure_result = inherited_failure;
+    }
     char failure_with_release[2560] = "";
     while (cursor < length && !token_equal(source, cursor, "}")) {
         if (returned) {
@@ -20674,7 +20718,9 @@ static char *lower_body(
                     branch_open,
                     is_main,
                     false,
-                    function_open
+                    function_open,
+                    bytes_cleanup,
+                    bytes_comma
                 );
                 if (strncmp(branch_body, "error[", 6) == 0) {
                     free(emitted.data);
@@ -20760,7 +20806,9 @@ static char *lower_body(
                             else_open,
                             is_main,
                             false,
-                            function_open
+                            function_open,
+                            bytes_cleanup,
+                            bytes_comma
                         );
                         if (strncmp(else_body, "error[", 6) == 0) {
                             free(emitted.data);
@@ -20846,7 +20894,9 @@ static char *lower_body(
                 body_open,
                 is_main,
                 false,
-                function_open
+                function_open,
+                bytes_cleanup,
+                bytes_comma
             );
             if (strncmp(loop_body, "error[", 6) == 0) {
                 free(emitted.data);
@@ -20974,7 +21024,9 @@ static char *lower_body(
                     match_start,
                     enum_type,
                     is_main,
-                    function_open
+                    function_open,
+                    bytes_cleanup,
+                    bytes_comma
                 );
                 free(enum_type);
                 free(enum_binding);
@@ -21184,7 +21236,9 @@ static char *lower_body(
                     arm_open,
                     is_main,
                     false,
-                    function_open
+                    function_open,
+                    bytes_cleanup,
+                    bytes_comma
                 );
                 if (strncmp(arm_body, "error[", 6) == 0) {
                     free(dispatch.data);
@@ -21586,9 +21640,15 @@ static char *lower_body(
                         bytes_cleanup
                     );
                 } else {
-                    buffer_append(
+                    /* #1315. This branch dropped `bytes_cleanup` while
+                     * `compiler.kofun` emitted it on both sides, so every
+                     * non-`main` function owning Bytes leaked at its value
+                     * return. The pair had diverged and nothing caught it: the
+                     * only owning fixture was `main`. */
+                    buffer_format(
                         &emitted,
-                        "        return kofun_result;\n"
+                        "%s        return kofun_result;\n",
+                        bytes_cleanup
                     );
                 }
                 buffer_append(&emitted, "    }\n");
@@ -21630,9 +21690,15 @@ static char *lower_body(
                         bytes_cleanup
                     );
                 } else {
-                    buffer_append(
+                    /* #1315. This branch dropped `bytes_cleanup` while
+                     * `compiler.kofun` emitted it on both sides, so every
+                     * non-`main` function owning Bytes leaked at its value
+                     * return. The pair had diverged and nothing caught it: the
+                     * only owning fixture was `main`. */
+                    buffer_format(
                         &emitted,
-                        "        return kofun_result;\n"
+                        "%s        return kofun_result;\n",
+                        bytes_cleanup
                     );
                 }
                 buffer_append(&emitted, "    }\n");
@@ -25249,7 +25315,7 @@ static char *lower_c_body(const char *source, const char *hir) {
             free(bodies.data);
             return error.data;
         }
-        char *body = lower_body(source, hir, open, is_main, true, open);
+        char *body = lower_body(source, hir, open, is_main, true, open, "", "");
         if (strncmp(body, "error[", 6) == 0) {
             free(parameters);
             free(name);

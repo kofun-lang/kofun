@@ -62,6 +62,66 @@ grep 'return ' "$WORK/main.c" | while IFS= read -r line; do
     done
 done
 
+# ------------------------------------------------ exits below the top level
+#
+# #1315. The straight-line fixture above cannot distinguish a correct emitter
+# from one that reclaims only at statement-level returns in `main`. Two real
+# defects hid behind exactly that gap and both are fixtures now:
+#
+#   1. `lower_body` recurses for an `if`/`else`/`while` body and for a match
+#      arm, and restarted the funnel empty, so a `return` inside one released
+#      nothing.
+#   2. `compiler.c` dropped `bytes_cleanup` on the non-`main` value return
+#      while `compiler.kofun` emitted it on both sides -- the pair had
+#      diverged, and `bin/kofun` runs the C half.
+#
+# Neither is visible without an owning function that is not `main` and whose
+# exits are not all at the top level. The assertions are the same ones; only
+# the data is new.
+"$ROOT/bin/kofun" build "$CASES/branching_owner.kofun" \
+    -o "$WORK/branching.bin" --emit-c "$WORK/branching.c" >/dev/null 2>&1 ||
+    fail "the branching owner did not build"
+"$WORK/branching.bin" >"$WORK/branching.stdout" ||
+    fail "the branching owner did not run"
+cmp "$CASES/branching_owner.stdout" "$WORK/branching.stdout" ||
+    fail "the branching owner printed the wrong value"
+
+sed -n '/^static int64_t kofun_fn_classify(int64_t k_b0) {$/,/^}$/p' \
+    "$WORK/branching.c" >"$WORK/classify.c"
+grep -q 'KofunBytesValue k_b' "$WORK/classify.c" ||
+    fail "classify declares no Bytes carrier; the fixture no longer owns storage"
+
+branch_returns=$(grep -c 'return ' "$WORK/classify.c")
+test "$branch_returns" -gt 4 ||
+    fail "expected several exits in classify, found $branch_returns"
+branch_reclaiming=$(grep 'return ' "$WORK/classify.c" |
+    grep -c 'kofun_bytes_release' || true)
+test "$branch_reclaiming" -eq "$branch_returns" ||
+    fail "$branch_reclaiming of $branch_returns exits in a non-main owning function reclaim; every exit must"
+
+# The composition case: `if` -> enum match arm -> `while` -> `return`, three
+# nested inheritances of the funnel rather than one. `lower_enum_match` recurses
+# into `lower_body` for an arm body, so the arm is a fourth recursion site and
+# the only one the fixtures above do not reach. Measured correct before this
+# fixture existed, so this is a regression guard and is labelled as one.
+"$ROOT/bin/kofun" build "$CASES/nested_match_owner.kofun" \
+    -o "$WORK/nested.bin" --emit-c "$WORK/nested.c" >/dev/null 2>&1 ||
+    fail "the nested match owner did not build"
+"$WORK/nested.bin" >"$WORK/nested.stdout" ||
+    fail "the nested match owner did not run"
+cmp "$CASES/nested_match_owner.stdout" "$WORK/nested.stdout" ||
+    fail "the nested match owner printed the wrong value"
+
+sed -n '/^static int64_t kofun_fn_classify/,/^}$/p' "$WORK/nested.c" \
+    >"$WORK/nested_classify.c"
+nested_returns=$(grep -c 'return ' "$WORK/nested_classify.c")
+test "$nested_returns" -gt 8 ||
+    fail "expected many exits in the nested owner, found $nested_returns"
+nested_reclaiming=$(grep 'return ' "$WORK/nested_classify.c" |
+    grep -c 'kofun_bytes_release' || true)
+test "$nested_reclaiming" -eq "$nested_returns" ||
+    fail "$nested_reclaiming of $nested_returns exits three levels deep reclaim; every exit must"
+
 # A source that owns nothing must be untouched by any of this: no allocator, no
 # carrier, no reclamation. That is what keeps the funnel from taxing every
 # program, and what tests/conformance/call-arguments/run.sh refuses.
@@ -75,5 +135,5 @@ then
 fi
 
 printf '%s\n' \
-    'PASS: every exit of an owning function reclaims in reverse creation order' \
+    'PASS: every exit of an owning function reclaims in reverse creation order, including exits inside nested blocks and in functions other than main' \
     'PASS: a program that owns no storage carries no carrier, allocator, or reclamation'
