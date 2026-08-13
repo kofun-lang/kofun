@@ -24754,6 +24754,45 @@ static char *emit_int_bit_c_runtime(void) {
 }
 
 
+/*
+ * #1358. Every generated function is `static`, so one the program never calls
+ * is a `-Werror=unused-function` failure at `cc` -- for a program `check`
+ * accepted, in a file the author did not write.
+ *
+ * The emitter already answers this for its own runtime helpers: `main` opens
+ * with `(void)kofun_add;` and friends, because those are declared `static` and
+ * may go uncalled.  A user function gets the same `static` and did not get the
+ * same line, which is the whole of the defect.
+ *
+ * A reference rather than external linkage: dropping `static` would make every
+ * generated symbol global to fix a warning, which is a linking change for a
+ * diagnostic problem.
+ */
+static char *emit_function_references(const char *source) {
+    Buffer references;
+    buffer_init(&references);
+    int64_t cursor = next_function_start(source, 0);
+    int64_t length = source_length(source);
+    while (cursor < length) {
+        char *name = function_name(source, cursor);
+        if (strcmp(name, "main") != 0) {
+            /*
+             * The same spelling the prototype uses.  A Kofun identifier may be
+             * non-ASCII and `c_identifier_name` escapes it to `k_uXXXX`; a
+             * reference written from the raw name names a symbol that was
+             * never declared, which `tests/unicode/stage2_identifiers.kofun`
+             * catches and nothing else does.
+             */
+            char *symbol = c_identifier_name(name);
+            buffer_format(&references, "    (void)kofun_fn_%s;\n", symbol);
+            free(symbol);
+        }
+        free(name);
+        cursor = next_function_start(source, function_end(source, cursor));
+    }
+    return references.data;
+}
+
 static char *lower_c_body(const char *source, const char *hir) {
     int64_t length = source_length(source);
     char *identity_check = validate_struct_identity(source);
@@ -25056,6 +25095,11 @@ static char *lower_c_body(const char *source, const char *hir) {
                 "    (void)kofun_bit_rotr;\n"
                 "    (void)kofun_bit_wrapping_add;\n"
             );
+            {
+                char *references = emit_function_references(source);
+                buffer_append(&bodies, references);
+                free(references);
+            }
             if (fractional_values) {
                 buffer_append(
                     &bodies,

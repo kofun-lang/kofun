@@ -15935,6 +15935,31 @@ fn validate_move_uses(source: Text, hir: Text) -> Text {
     return "ok"
 }
 
+# #1358. Every generated function is `static`, so one the program never calls
+# is a `-Werror=unused-function` failure at `cc` -- for a program `check`
+# accepted, in a file the author did not write.
+#
+# The emitter already answers this for its own runtime helpers: `main` opens
+# with `(void)kofun_add;` and friends, because those are declared `static` and
+# may go uncalled. A user function gets the same `static` and did not get the
+# same line, which is the whole of the defect. This gives it one.
+#
+# A reference rather than external linkage: dropping `static` would make every
+# generated symbol global to fix a warning, which is a linking change for a
+# diagnostic problem.
+fn emit_function_references(source: Text) -> Text {
+    let mut references = ""
+    let mut cursor = next_function_start(source, 0)
+    while cursor < len(source) {
+        let name = function_name(source, cursor)
+        if name != "main" {
+            references = references + "    (void)kofun_fn_" + name + ";\n"
+        }
+        cursor = next_function_start(source, function_end(source, cursor))
+    }
+    return references
+}
+
 fn lower_c_body(source: Text, hir: Text) -> Text {
     let identity_check = validate_struct_identity(source)
     if len(identity_check) > 0 {
@@ -16121,6 +16146,7 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
             "    (void)kofun_bit_shr;\n" +
             "    (void)kofun_bit_rotr;\n" +
             "    (void)kofun_bit_wrapping_add;\n" +
+            emit_function_references(source) +
             decimal_cleanup + body + "}\n"
         } else {
             bodies = bodies + "static " + c_result + " kofun_fn_" + name +
