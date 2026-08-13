@@ -99,9 +99,22 @@ function cpuDelta(pid, before) {
 // diagnostic p95 -- a 2.4x spread, and every one of them 3x to 8x over the
 // 100 ms budget this replaces. The CPU number moved by 5%.
 //
-// CPU time is load-independent. It is NOT machine-independent, and that limits
-// how tight these can be. The same six quantities measured on CI, which is the
-// environment that actually gates merges:
+// CPU time is NEARLY load-independent, not perfectly. Measured on this host
+// across the whole range, diagnostic p95:
+//
+//   load  4.16   85.81 ms CPU    55.59 ms wall
+//   load 17.85   94.39 ms CPU   332.34 ms wall
+//   load 26.27   98.85 ms CPU   795.28 ms wall
+//   load 31.07   96.18 ms CPU   639.63 ms wall
+//
+// CPU rises about 1.15x from a quiet box to a load of 31 -- cache pressure and
+// context switches are real work and get counted. Wall clock over the same
+// range moves 14x. So the claim this change rests on is "1.15x instead of 14x",
+// not "immune", and a budget still needs headroom for the busy case.
+//
+// It is also NOT machine-independent, which is what limits how tight these can
+// be. The same six quantities measured on CI, the environment that gates
+// merges:
 //
 //   quantity              this host       CI    budget   headroom on CI
 //   diagnostic p95            94-99    71.56       130            1.8x
