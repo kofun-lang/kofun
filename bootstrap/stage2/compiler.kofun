@@ -2480,9 +2480,14 @@ fn type_parameter_list_error(source: Text, start: Int) -> Text {
     return ""
 }
 
+# `Bytes` joins the reserved set for #1315. The comparison is exact on purpose:
+# `tests/stdlib/tzdb/tzdb.kofun` declares `type Bytes20`, which a prefix test
+# would refuse for sharing five letters with a builtin it has nothing to do
+# with. Measured before reserving: no tracked source declares `type Bytes`.
 fn reserved_type_name(name: Text) -> Bool {
     return name == "Int" || name == "Bool" || name == "Float" ||
-    name == "Unit" || name == "Text" || name == "List" || name == "_"
+    name == "Unit" || name == "Text" || name == "List" ||
+    name == "Bytes" || name == "_"
 }
 
 # Ownership mode is the optional first component of a parameter head.

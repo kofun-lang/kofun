@@ -3319,11 +3319,16 @@ static char *type_parameter_list_error(const char *source, int64_t start) {
     return owned_text("");
 }
 
+/* `Bytes` joins the reserved set for #1315. The comparison is exact on
+ * purpose: tests/stdlib/tzdb/tzdb.kofun declares `type Bytes20`, which a
+ * prefix test would refuse for sharing five letters with a builtin it has
+ * nothing to do with. Measured before reserving: no tracked source declares
+ * `type Bytes`. */
 static bool reserved_type_name(const char *name) {
     return strcmp(name, "Int") == 0 || strcmp(name, "Bool") == 0 ||
            strcmp(name, "Float") == 0 || strcmp(name, "Unit") == 0 ||
            strcmp(name, "Text") == 0 || strcmp(name, "List") == 0 ||
-           strcmp(name, "_") == 0;
+           strcmp(name, "Bytes") == 0 || strcmp(name, "_") == 0;
 }
 
 static char *function_return_type(const char *source, const char *wanted);
