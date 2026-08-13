@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 95,
+  "open_issues": 96,
   "issues": [
     {
       "number": 26,
@@ -1876,6 +1876,24 @@
       "claims": [
         {
           "agent_id": "codex-root-release-070",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "number": 1392,
+      "title": "Kofun Mach-O checkpoint: emit deterministic ad-hoc code signatures",
+      "state_labels": [
+        "in-progress"
+      ],
+      "state_line": "in-progress",
+      "blocked_by": [],
+      "evidence_commits": [
+        "2d425329e34e86a1963e1fc686330b6f3b9c9354"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-root-macho-sign-1392",
           "status": "active"
         }
       ]
