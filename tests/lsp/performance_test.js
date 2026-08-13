@@ -457,6 +457,18 @@ async function main() {
   // unchanged assertion across seven observations, and did not order by load,
   // so it was measuring the host. These are anchored on the environment that
   // actually gates merges.
+  // Every budget is evaluated and ALL violations are reported together, rather
+  // than throwing on the first.
+  //
+  // Two reasons, and the second is why it is written this way rather than as a
+  // convenience. A run that is over on four budgets should say so once, not
+  // over four pushes. And a fail-fast loop makes the later assertions
+  // unprovable: a mutation that trips `diagnostic p95` exits before
+  // `hover p95` is ever evaluated, so five of these six would have shipped as
+  // assertions nobody had shown could fail. Collecting first means one mutation
+  // that inflates every measured path demonstrates all six at once, which is
+  // how they were proved.
+  const violations = []
   for (const [name, measured, budget] of [
     ['diagnostic p95', metrics.summary.diagnosticP95CpuMs, DIAGNOSTIC_P95_CPU_MS],
     ['diagnostic max', metrics.summary.diagnosticMaxCpuMs, DIAGNOSTIC_MAX_CPU_MS],
@@ -465,11 +477,14 @@ async function main() {
     ['cold completion p95', metrics.summary.completionColdP95CpuMs, COMPLETION_COLD_P95_CPU_MS],
     ['warm completion p95', metrics.summary.completionWarmP95CpuMs, COMPLETION_WARM_P95_CPU_MS]
   ]) {
-    assert.ok(measured <= budget,
-      `LSP performance budget: ${name} ${measured.toFixed(2)}ms of CPU ` +
-      `exceeds ${budget}ms (wall clock for this run is in ${output}; ` +
-      'wall clock is recorded evidence and is not asserted)');
+    if (!(measured <= budget)) {
+      violations.push(`${name} ${measured.toFixed(2)}ms of CPU exceeds ${budget}ms`)
+    }
   }
+  assert.ok(violations.length === 0,
+    `LSP performance budget: ${violations.join('; ')} ` +
+    `(wall clock for this run is in ${output}; ` +
+    'wall clock is recorded evidence and is not asserted)');
   if (metrics.summary.residentGrowthRatio !== null) {
     assert.ok(metrics.summary.residentGrowthRatio < 0.10,
       `resident growth ${(metrics.summary.residentGrowthRatio * 100).toFixed(2)}% is not below 10%`);
