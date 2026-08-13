@@ -147,8 +147,8 @@ bootstrap/stage2/compiler.kofun
   -> bounded multi-function Int Core C11 lowering
 
 bootstrap/native/encoder.kofun
-  -> ELF64 headers + x86-64 instruction bytes
-  -> static Linux executable
+  -> ELF64 or PE32+ headers + x86-64/AArch64 instruction bytes
+  -> static Linux executable or bounded Windows image checkpoint
 
 bootstrap/wasm/compiler.c
   -> bounded arithmetic Core parser + direct WebAssembly module bytes
@@ -158,7 +158,9 @@ bootstrap/wasm/compiler.c
 The Stage 2 checkpoint lowers a bounded `Int` Core with parameters, results,
 recursion, and forward references. It does not lower its own Text/List/file-I/O
 implementation. The native checkpoint is registered for explicit Linux
-targets. Its Int function profile executes parameters, results, forward and
+targets; its direct PE32+ writer additionally emits bounded x86-64/AArch64
+Windows image bytes but is not a registered CLI/runtime target yet. Its Int
+function profile executes parameters, results, forward and
 mutual recursion, guarded returns, and checked arithmetic directly on both
 x86-64 and AArch64 from one shared parsed program; the shared x86-64/AArch64
 scalar, List, and Text profiles remain separate

@@ -3,8 +3,32 @@
 This directory advances issues #14 and #33 with a Kofun-owned, Python-free
 native path. `encoder.kofun` is the canonical instruction and image
 implementation. It constructs little-endian integers, x86-64 and AArch64
-instruction bytes, target-parameterized ELF64 headers, and two `PT_LOAD`
-program headers directly. It does not emit assembly or invoke a linker.
+instruction bytes, target-parameterized ELF64 headers, and PE32+ headers and
+sections directly. It does not emit assembly or invoke a linker.
+
+## PE32+ image checkpoint
+
+`pe32plus_image(machine, code)` is the first Windows image-writing slice of
+RFC-0018/A01. It accepts bounded already-lowered bytes and returns one complete
+PE32+ image: DOS header and `e_lfanew`, PE signature, COFF machine identity,
+the 240-byte PE32+ optional header, and one file/section-aligned executable
+`.text` section. `pe32plus_entry_image` pins distinct no-import entry sequences
+for `IMAGE_FILE_MACHINE_AMD64` and `IMAGE_FILE_MACHINE_ARM64`.
+
+The writer is Kofun and requires no assembler, linker, system SDK, or import
+library. `check-pe32plus.sh` produces both 1,024-byte images twice through a
+Kofun Stage 1 bridge, validates every load-bearing field with an independent
+parser, proves magic/machine/entry/alignment mutations fail, and executes the
+canonical request predicate for unknown-machine, empty, oversized, and
+out-of-range-byte refusals. Their hashes live in `SHA256SUMS` beside the ELF
+fixtures.
+
+This does not expose a Windows CLI target or claim Windows runtime support or
+host execution. Imports, OS authorities, general Core lowering, and matching
+Windows-host execution evidence are separate checkpoints. The narrow bridge
+exists for the same reason as the ELF bridges below: the current full compiler
+does not yet lower List-returning user functions, while Stage 2 still parses
+and indexes the canonical writer itself.
 
 ## AArch64 Native Core v1
 
@@ -609,6 +633,8 @@ linker participates.
 Implemented here:
 
 - deterministic ELF64 and program-header byte encoding in Kofun;
+- deterministic PE32+ DOS/COFF/optional/section-header byte encoding in Kofun
+  for x86-64 and AArch64, with no imports, SDK, assembler, or linker;
 - x86-64 `mov r32, imm32` and `syscall` encoders;
 - deterministic absolute and PC-relative label/fixup resolution;
 - raw `write(1, address, length)` and `exit(status)` sequences;
@@ -661,7 +687,8 @@ Still open:
   self-compile;
 - general local bindings and statement/control-flow lowering inside
   user-defined functions;
-- conditional branches, allocator reuse/reclamation, Mach-O, and additional targets;
+- conditional branches, allocator reuse/reclamation, Mach-O, Windows runtime
+  and CLI target admission, and additional targets;
 - first-class/nested collection lambdas and general collection types;
 - broader Text bindings/calls and the Stage 1 compiler port;
 - variable/location DIEs, multi-function debug information, and AArch64

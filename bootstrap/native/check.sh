@@ -39,6 +39,11 @@ assert_grep "encoder.ir" \
     '^function|dwarf_debug_strings_for|1|' "$WORK/encoder.ir"
 assert_grep "encoder.ir" '^function|dwarf_debug_info_for|8|' "$WORK/encoder.ir"
 assert_grep "encoder.ir" '^function|dwarf_debug_line_for|6|' "$WORK/encoder.ir"
+assert_grep "encoder.ir" '^function|pe32plus_image|2|' "$WORK/encoder.ir"
+assert_grep "encoder.ir" '^function|pe32plus_entry_image|1|' "$WORK/encoder.ir"
+
+KOFUN_NATIVE_PE32PLUS_WORK="$WORK/pe32plus" \
+    sh "$NATIVE/check-pe32plus.sh"
 
 expand_fixture() (
     fixture=$1

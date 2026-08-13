@@ -1,8 +1,11 @@
 # Native backend
 
 `bootstrap/native/encoder.kofun` implements the direct-native checkpoint:
-little-endian encoding, ELF64 and program/section headers, separate RX/RW
-segments, immediate moves, Linux syscalls, and generic DWARF v4 metadata.
+little-endian encoding, ELF64 and PE32+ image headers, ELF program/section
+headers, separate RX/RW segments, immediate moves, Linux syscalls, and generic
+DWARF v4 metadata. The PE32+ checkpoint writes complete no-import x86-64 and
+AArch64 images directly and validates their structure/determinism, but does not
+yet expose a Windows CLI/runtime target or Windows-host execution claim.
 The repository CLI exposes the supported arithmetic Core for x86-64 and
 AArch64 Linux. Both targets lower local `Int` and `List[Int]` bindings; List
 literals, length, indexing, and generated `map`/`filter`/`fold` loops with typed

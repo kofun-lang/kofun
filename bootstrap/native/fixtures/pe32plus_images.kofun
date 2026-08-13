@@ -1,0 +1,137 @@
+# Executable Stage 1 bridge for the canonical PE32+ image writer.
+#
+# The canonical List[Int] API lives in encoder.kofun. The current full compiler
+# refuses List-returning user functions, so this bounded bridge emits the same
+# fields as scalar bytes. check-pe32plus.sh independently parses the result and
+# keeps the canonical function names/body present in Stage 2 IR.
+
+fn emit(value: Int) -> Int {
+    print(value % 256)
+    return 0
+}
+
+fn emit_u16(value: Int) -> Int {
+    emit(value)
+    emit(value // 256)
+    return 0
+}
+
+fn emit_u32(value: Int) -> Int {
+    emit(value)
+    emit(value // 256)
+    emit(value // 65536)
+    emit(value // 16777216)
+    return 0
+}
+
+fn emit_u64(value: Int) -> Int {
+    emit_u32(value)
+    emit_u32(value // 4294967296)
+    return 0
+}
+
+fn emit_zeros(count: Int) -> Int {
+    if count <= 0 {
+        return 0
+    }
+    emit(0)
+    return emit_zeros(count - 1)
+}
+
+fn emit_pe32plus(machine: Int) -> Int {
+    emit(77)
+    emit(90)
+    emit_zeros(58)
+    emit_u32(128)
+    emit_zeros(64)
+
+    emit(80)
+    emit(69)
+    emit(0)
+    emit(0)
+    emit_u16(machine)
+    emit_u16(1)
+    emit_u32(0)
+    emit_u32(0)
+    emit_u32(0)
+    emit_u16(240)
+    emit_u16(35)
+
+    emit_u16(523)
+    emit(0)
+    emit(0)
+    emit_u32(512)
+    emit_u32(0)
+    emit_u32(0)
+    emit_u32(4096)
+    emit_u32(4096)
+    emit_u64(5368709120)
+    emit_u32(4096)
+    emit_u32(512)
+    emit_u16(6)
+    emit_u16(0)
+    emit_u16(0)
+    emit_u16(0)
+    emit_u16(6)
+    emit_u16(0)
+    emit_u32(0)
+    emit_u32(8192)
+    emit_u32(512)
+    emit_u32(0)
+    emit_u16(3)
+    emit_u16(256)
+    emit_u64(1048576)
+    emit_u64(4096)
+    emit_u64(1048576)
+    emit_u64(4096)
+    emit_u32(0)
+    emit_u32(16)
+    emit_zeros(128)
+
+    emit(46)
+    emit(116)
+    emit(101)
+    emit(120)
+    emit(116)
+    emit(0)
+    emit(0)
+    emit(0)
+    if machine == 34404 {
+        emit_u32(3)
+    } else {
+        emit_u32(8)
+    }
+    emit_u32(4096)
+    emit_u32(512)
+    emit_u32(512)
+    emit_u32(0)
+    emit_u32(0)
+    emit_u16(0)
+    emit_u16(0)
+    emit_u32(1610612768)
+    emit_zeros(80)
+
+    if machine == 34404 {
+        emit(49)
+        emit(192)
+        emit(195)
+        emit_zeros(509)
+    } else {
+        emit(0)
+        emit(0)
+        emit(128)
+        emit(82)
+        emit(192)
+        emit(3)
+        emit(95)
+        emit(214)
+        emit_zeros(504)
+    }
+    return 0
+}
+
+fn main() {
+    emit_pe32plus(34404)
+    print(999)
+    emit_pe32plus(43620)
+}

@@ -157,6 +157,190 @@ fn pad_to(image: List[Int], size: Int) -> List[Int] {
     return padded
 }
 
+# PE32+ image writer.
+#
+# The PE32+ writer is a Kofun byte encoder, not an object-file handoff. Its
+# input is already-lowered machine code and its output is the complete image
+# consumed by the Windows loader. The one-section checkpoint deliberately has
+# no imports, relocations, SDK records, or linker-owned fields.
+fn pe32plus_machine_supported(machine: Int) -> Bool {
+    # IMAGE_FILE_MACHINE_AMD64 and IMAGE_FILE_MACHINE_ARM64.
+    return machine == 34404 || machine == 43620
+}
+
+# pe32plus-request-validator:start
+fn pe32plus_request_status(
+    machine: Int,
+    code_size: Int,
+    minimum_byte: Int,
+    maximum_byte: Int
+) -> Int {
+    if machine != 34404 {
+        if machine != 43620 {
+            return 1
+        }
+    }
+    if code_size <= 0 {
+        return 2
+    }
+    if code_size > 512 {
+        return 2
+    }
+    if minimum_byte < 0 {
+        return 3
+    }
+    if maximum_byte > 255 {
+        return 3
+    }
+    return 0
+}
+# pe32plus-request-validator:end
+
+fn pe32plus_request_valid(
+    machine: Int,
+    code_size: Int,
+    minimum_byte: Int,
+    maximum_byte: Int,
+) -> Bool {
+    return pe32plus_request_status(
+        machine,
+        code_size,
+        minimum_byte,
+        maximum_byte,
+    ) == 0
+}
+
+fn pe32plus_code_valid(code: List[Int]) -> Bool {
+    # One file-aligned .text block is the bounded checkpoint. Later Windows
+    # runtime slices may add data/import sections without weakening this limit.
+    let mut minimum_byte = 256
+    let mut maximum_byte = -1
+    for byte in code {
+        if byte < minimum_byte {
+            minimum_byte = byte
+        }
+        if byte > maximum_byte {
+            maximum_byte = byte
+        }
+    }
+    # Machine validity is checked by pe32plus_image; use a supported identity
+    # here so this predicate has one implementation for all byte/size limits.
+    return pe32plus_request_valid(
+        34404,
+        len(code),
+        minimum_byte,
+        maximum_byte,
+    )
+}
+
+fn pe32plus_dos_header() -> List[Int] {
+    let mut header = [77, 90] # MZ
+    while len(header) < 60 {
+        header = concat(header, [0])
+    }
+    # IMAGE_DOS_HEADER.e_lfanew points at the PE signature at file offset 128.
+    header = concat(header, u32_le(128))
+    return pad_to(header, 128)
+}
+
+fn pe32plus_coff_header(machine: Int) -> List[Int] {
+    if !pe32plus_machine_supported(machine) {
+        return []
+    }
+    let mut header = u16_le(machine)
+    header = concat(header, u16_le(1))   # NumberOfSections
+    header = concat(header, u32_le(0))   # TimeDateStamp: reproducible
+    header = concat(header, u32_le(0))   # PointerToSymbolTable
+    header = concat(header, u32_le(0))   # NumberOfSymbols
+    header = concat(header, u16_le(240)) # SizeOfOptionalHeader, PE32+
+    # RELOCS_STRIPPED | EXECUTABLE_IMAGE | LARGE_ADDRESS_AWARE.
+    return concat(header, u16_le(35))
+}
+
+fn pe32plus_optional_header() -> List[Int] {
+    let mut header = u16_le(523) # PE32+ magic 0x20b
+    header = concat(header, [0, 0])      # linker version: not linker-produced
+    header = concat(header, u32_le(512)) # SizeOfCode
+    header = concat(header, u32_le(0))   # SizeOfInitializedData
+    header = concat(header, u32_le(0))   # SizeOfUninitializedData
+    header = concat(header, u32_le(4096)) # AddressOfEntryPoint
+    header = concat(header, u32_le(4096)) # BaseOfCode
+    header = concat(header, u64_le(5368709120)) # ImageBase 0x140000000
+    header = concat(header, u32_le(4096)) # SectionAlignment
+    header = concat(header, u32_le(512))  # FileAlignment
+    header = concat(header, u16_le(6))    # MajorOperatingSystemVersion
+    header = concat(header, u16_le(0))
+    header = concat(header, u16_le(0))    # image version
+    header = concat(header, u16_le(0))
+    header = concat(header, u16_le(6))    # MajorSubsystemVersion
+    header = concat(header, u16_le(0))
+    header = concat(header, u32_le(0))    # Win32VersionValue
+    header = concat(header, u32_le(8192)) # SizeOfImage
+    header = concat(header, u32_le(512))  # SizeOfHeaders
+    header = concat(header, u32_le(0))    # CheckSum
+    header = concat(header, u16_le(3))    # IMAGE_SUBSYSTEM_WINDOWS_CUI
+    header = concat(header, u16_le(256))  # IMAGE_DLLCHARACTERISTICS_NX_COMPAT
+    header = concat(header, u64_le(1048576)) # SizeOfStackReserve
+    header = concat(header, u64_le(4096))    # SizeOfStackCommit
+    header = concat(header, u64_le(1048576)) # SizeOfHeapReserve
+    header = concat(header, u64_le(4096))    # SizeOfHeapCommit
+    header = concat(header, u32_le(0))    # LoaderFlags
+    header = concat(header, u32_le(16))   # NumberOfRvaAndSizes
+    # Sixteen absent data-directory pairs. No import or relocation metadata is
+    # smuggled in from an SDK/import library.
+    return pad_to(header, 240)
+}
+
+fn pe32plus_text_section(code_size: Int) -> List[Int] {
+    if code_size <= 0 || code_size > 512 {
+        return []
+    }
+    let mut section = [46, 116, 101, 120, 116, 0, 0, 0] # .text
+    section = concat(section, u32_le(code_size)) # VirtualSize
+    section = concat(section, u32_le(4096))      # VirtualAddress
+    section = concat(section, u32_le(512))       # SizeOfRawData
+    section = concat(section, u32_le(512))       # PointerToRawData
+    section = concat(section, u32_le(0))         # PointerToRelocations
+    section = concat(section, u32_le(0))         # PointerToLinenumbers
+    section = concat(section, u16_le(0))         # NumberOfRelocations
+    section = concat(section, u16_le(0))         # NumberOfLinenumbers
+    # CNT_CODE | MEM_EXECUTE | MEM_READ.
+    return concat(section, u32_le(1610612768))
+}
+
+fn pe32plus_image(machine: Int, code: List[Int]) -> List[Int] {
+    if !pe32plus_machine_supported(machine) || !pe32plus_code_valid(code) {
+        return []
+    }
+    let mut image = pe32plus_dos_header()
+    image = concat(image, [80, 69, 0, 0]) # PE\0\0
+    image = concat(image, pe32plus_coff_header(machine))
+    image = concat(image, pe32plus_optional_header())
+    image = concat(image, pe32plus_text_section(len(code)))
+    if len(image) != 432 {
+        return []
+    }
+    image = pad_to(image, 512)
+    image = concat(image, code)
+    return pad_to(image, 1024)
+}
+
+fn pe32plus_entry_code(machine: Int) -> List[Int] {
+    if machine == 34404 {
+        # xor eax, eax; ret
+        return [49, 192, 195]
+    }
+    if machine == 43620 {
+        # mov w0, #0; ret
+        return [0, 0, 128, 82, 192, 3, 95, 214]
+    }
+    return []
+}
+
+fn pe32plus_entry_image(machine: Int) -> List[Int] {
+    return pe32plus_image(machine, pe32plus_entry_code(machine))
+}
+
 fn elf_ident() -> List[Int] {
     return [
         127, 69, 76, 70, # ELF magic
