@@ -25,11 +25,18 @@ fail_class() {
     fail "row $fail_row class $fail_evidence_class: $*"
 }
 
-# Optional phase completion gates. The default invocation validates the
-# manifest itself and stays green while evidence is still planned; a phase
-# gate fails until every cell owned by that phase carries checked-in
-# evidence. `--phase frontend` is the #619 completion gate for the typed
-# HIR contract in bootstrap/selfhost/hir-v1.md.
+# Optional phase selectors. Each phase block below runs when no phase is named
+# *or* when its own phase is, so the default invocation runs all three and
+# `--phase X` narrows to one. That means the default is **not** the lenient
+# mode this comment used to describe: it fails on a planned cell exactly as a
+# phase gate does, with the same diagnostic. Measured on #1432 by setting one
+# frontend cell back to `planned:#619` — bare and `--phase frontend` both
+# refused with `1 of 46 frontend cells still await #619 evidence`.
+#
+# The narrowing is still useful when running this by hand against one phase's
+# evidence. It is not a separate gate, which is why #1432 removed the three
+# `selfhost-frontend`/`selfhost-c11`/`selfhost-c11-control` tasks: they invoked
+# this script with a selector and asserted nothing `selfhost-profile` does not.
 phase=
 while test "$#" -gt 0; do
     case $1 in
