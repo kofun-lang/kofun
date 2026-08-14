@@ -403,6 +403,15 @@ tasks:
   # computed those identities before it, which is why every conformance harness
   # writes `1111…` placeholders; the gate checks them against the specification's
   # own reference vector and runs a two-module program to a result.
+  # #1422. `extern "C" fn` on the path a user runs: resolve, emit a prototype
+  # the linker satisfies, link a real library, run. The trust half is gated by
+  # `raw-imports`; this one exists because evidence collected under a
+  # conformance harness is evidence about a different program.
+  extern-c:
+    desc: "Link and run an extern \"C\" module program through bin/kofun"
+    cmds:
+      - "sh tests/modules/extern-c/check.sh"
+
   module-inventory:
     desc: "Check inventory identities against the specification and resolve a two-module program"
     cmds:
@@ -1187,6 +1196,7 @@ tasks:
             adt-usefulness-v2 \
             enum-match-value \
             module-constants \
+            extern-c \
             module-inventory \
             module-symbols \
             imports-qualified \

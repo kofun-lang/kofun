@@ -1,0 +1,6 @@
+module app.main
+trusted import lib.raw
+
+fn main() -> Int {
+    return raw.kofun_double(21)
+}

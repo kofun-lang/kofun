@@ -643,7 +643,45 @@ static bool collect_module_with_imports(ImportResolver *resolver, size_t module_
                 return false;
             }
         }
-        if (token_equals(module, &module->tokens[cursor], "fn")) {
+        if (token_equals(module, &module->tokens[cursor], "extern")) {
+            /* #1422. `extern "C" fn` — the ABI string is required and only "C"
+             * is admitted, so a future ABI is a refusal here rather than
+             * something that silently lowers as C. */
+            if (cursor + 2u >= module->token_count ||
+                module->tokens[cursor + 1u].kind != TOKEN_STRING ||
+                !token_equals(module, &module->tokens[cursor + 1u], "\"C\"")) {
+                set_error(program, "E2S50",
+                    "`extern` requires the ABI string \"C\" in `%s` at bytes %zu..%zu",
+                    module->logical_path, module->tokens[cursor].start,
+                    module->tokens[cursor].end);
+                return false;
+            }
+            if (!token_equals(module, &module->tokens[cursor + 2u], "fn")) {
+                set_error(program, "E2S50",
+                    "`extern \"C\"` introduces a function in `%s` at bytes %zu..%zu",
+                    module->logical_path, module->tokens[cursor + 2u].start,
+                    module->tokens[cursor + 2u].end);
+                return false;
+            }
+            /* #1422. A module that declares a C entry point *is* raw-foreign,
+             * and it has to say so. Inferring the class from the presence of
+             * `extern "C"` would make the trust boundary a consequence of a
+             * declaration rather than a statement an author is accountable for,
+             * and an author who removes the last `extern "C"` would silently
+             * change their module's class. Measured before this guard existed:
+             * an ordinary `import` of such a module was admitted, which is the
+             * whole boundary RFC-0012 exists to hold. */
+            if (!module->trust_raw_foreign) {
+                set_error(program, "E2S174",
+                    "`extern \"C\" fn` requires `trust raw-foreign` in `%s` at bytes %zu..%zu; hint: declare the class the module is asking its importers to accept",
+                    module->logical_path, module->tokens[cursor].start,
+                    module->tokens[cursor + 2u].end);
+                return false;
+            }
+            cursor += 2u;
+            if (!parse_function_form(program, module_index, declaration_start,
+                    visibility, true, &cursor)) return false;
+        } else if (token_equals(module, &module->tokens[cursor], "fn")) {
             if (!parse_function(program, module_index, declaration_start, visibility, &cursor)) return false;
         } else if (token_equals(module, &module->tokens[cursor], "type")) {
             if (!parse_adt(program, module_index, declaration_start, visibility, &cursor)) return false;
@@ -1592,10 +1630,16 @@ static bool emit_qualified_hir(ImportResolver *resolver, const char *path) {
         bytes_to_hex(program->modules[target->module_index].module_id, 32u, module_hex);
         bytes_to_hex(target->namespace_id, 32u, namespace_hex);
         bytes_to_hex(target->symbol_id, 32u, symbol_hex);
+        /* #1422. Whether a symbol is defined here or resolved by the linker is
+         * a property of the program, so the artifact states it rather than
+         * leaving every consumer to infer it from the emitted C. The driver
+         * reads this field to refuse an unlinked build by name instead of
+         * letting `ld` report a symbol the author never wrote. */
         fprintf(output,
-            "target|module=%s|namespace=%s|symbol=%s|kind=function|name=%s|visibility=%s|signature=fn(%zu:Int)->Int\n",
+            "target|module=%s|namespace=%s|symbol=%s|kind=function|name=%s|visibility=%s|linkage=%s|signature=fn(%zu:Int)->Int\n",
             module_hex, namespace_hex, symbol_hex, target->name,
-            visibility_name(target->visibility), arity);
+            visibility_name(target->visibility),
+            target->is_external ? "external" : "defined", arity);
     }
     for (index = 0u; index < resolver->use_count; index += 1u) {
         QualifiedUse *use = &resolver->uses[use_order[index]];
@@ -1641,6 +1685,13 @@ static bool emit_qualified_hir(ImportResolver *resolver, const char *path) {
 
 static void emit_c_symbol(FILE *output, const Declaration *declaration) {
     char symbol_hex[65];
+    /* #1422. An external function is named by the linker, not by us. Emitting
+     * the hashed symbol would produce a prototype nothing defines and a call
+     * nothing resolves, so the source name is the identity here. */
+    if (declaration->is_external) {
+        fputs(declaration->name, output);
+        return;
+    }
     bytes_to_hex(declaration->symbol_id, 32u, symbol_hex);
     fprintf(output, "kofun_s_%s", symbol_hex);
 }
@@ -1841,7 +1892,7 @@ static bool emit_c_function_signature(
         set_error(&resolver->program, "E2S68", "reference-lowering signature invariant failed");
         return false;
     }
-    fputs("static int64_t ", output);
+    fputs(declaration->is_external ? "int64_t " : "static int64_t ", output);
     emit_c_symbol(output, declaration);
     fputc('(', output);
     if (arity == 0u) fputs("void", output);
@@ -1907,6 +1958,9 @@ static bool emit_reference_c(ImportResolver *resolver, const char *path) {
         Declaration *declaration = &program->declarations[functions[index]];
         Module *module = &program->modules[declaration->module_index];
         size_t cursor = declaration->body_token_start;
+        /* #1422. The prototype above is the whole of an external declaration;
+         * its definition is in the library the caller links. */
+        if (declaration->is_external) continue;
         if (!emit_c_function_signature(resolver, output, functions[index])) goto failed;
         fputs(" {\n    return ", output);
         if (cursor >= declaration->body_token_end ||

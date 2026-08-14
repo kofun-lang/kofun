@@ -95,6 +95,12 @@ typedef struct {
     size_t constructor_index;
     size_t body_token_start;
     size_t body_token_end;
+    /* #1422. `extern "C" fn` declares a signature whose body is in a linked C
+     * library. It stays DECLARATION_FUNCTION — it is callable and it has a
+     * signature — and this flag is what the reference emitter reads to write a
+     * prototype with the source name instead of a definition with the hashed
+     * one. `body_token_start == body_token_end` for such a declaration. */
+    bool is_external;
 } Declaration;
 
 typedef struct {
@@ -767,11 +773,12 @@ static bool skip_module_header(Program *program, Module *module, size_t *cursor)
     return parse_trust_line(program, module, cursor);
 }
 
-static bool parse_function(
+static bool parse_function_form(
     Program *program,
     size_t module_index,
     size_t declaration_start,
     Visibility visibility,
+    bool external,
     size_t *cursor
 ) {
     Module *module = &program->modules[module_index];
@@ -849,6 +856,31 @@ static bool parse_function(
         return false;
     }
     current += 1;
+    if (external) {
+        /* #1422. The signature ends at the return type: the body is in a C
+         * library. A `{` here is the author writing a definition where only a
+         * declaration can be honoured, and saying so is more useful than
+         * accepting the body and silently ignoring it. */
+        if (current < module->token_count &&
+            punctuation_equals(module, &module->tokens[current], '{')) {
+            set_error(program, "E2S52",
+                "`extern \"C\" fn` declares a signature and cannot carry a body in `%s` at bytes %zu..%zu",
+                module->logical_path, module->tokens[current].start,
+                module->tokens[current].end);
+            return false;
+        }
+        if (!add_declaration(
+                program, module_index, DECLARATION_FUNCTION, visibility,
+                &module->tokens[name_index], declaration_start,
+                module->tokens[current - 1u].end, declaration_start,
+                module->tokens[current - 1u].end, &declaration_index
+            )) return false;
+        program->declarations[declaration_index].body_token_start = 0u;
+        program->declarations[declaration_index].body_token_end = 0u;
+        program->declarations[declaration_index].is_external = true;
+        *cursor = current;
+        return true;
+    }
     if (current >= module->token_count || !punctuation_equals(module, &module->tokens[current], '{')) {
         set_error(program, "E2S52", "function body is missing in `%s` at bytes %zu..%zu",
             module->logical_path, module->tokens[name_index].start, module->tokens[name_index].end);
@@ -864,8 +896,20 @@ static bool parse_function(
         )) return false;
     program->declarations[declaration_index].body_token_start = body_open + 1u;
     program->declarations[declaration_index].body_token_end = body_close;
+    program->declarations[declaration_index].is_external = false;
     *cursor = body_close + 1u;
     return true;
+}
+
+static bool parse_function(
+    Program *program,
+    size_t module_index,
+    size_t declaration_start,
+    Visibility visibility,
+    size_t *cursor
+) {
+    return parse_function_form(
+        program, module_index, declaration_start, visibility, false, cursor);
 }
 
 static bool parse_adt(

@@ -821,8 +821,20 @@ emit_c_modules() (
         exit "$resolve_status"
     fi
     test -s "$work/program.c" || exit 1
+
+    # #1422. A program with an `extern "C"` declaration needs a library at link
+    # time. The resolved HIR says which symbols the linker owns, so the refusal
+    # names the declaration the author wrote instead of leaving `ld` to report a
+    # mangled symbol they never typed. Read from the artifact rather than
+    # grepped from the source: a comment mentioning `extern "C"` is not a
+    # declaration, and the HIR cannot be wrong about what it emitted.
+    if grep -q '|linkage=external|' "$work/program.hir"; then
+        printf '%s\n' "external" > "$work/needs-library"
+    fi
+
     mkdir -p "$(dirname "$output")"
     cp "$work/program.c" "$output"
+    test ! -f "$work/needs-library" || cp "$work/needs-library" "$output.needs-library"
     printf '%s\n' "$output"
 )
 
@@ -883,8 +895,35 @@ emit_c_abi() (
     mv "$temporary" "$2"
 )
 
+# $4, when present, is a newline-separated list of libraries to link, already
+# canonicalized by `canonical_link_library`. #1422: a module declaring
+# `extern "C" fn` produces a prototype the linker has to satisfy, so the
+# ordinary build path needs the same `--link-library` the `--c-abi` path has.
 build_file() (
     emit_c "$1" "$3" >/dev/null
+    if test -f "$3.needs-library" && test -z "${4:-}"; then
+        rm -f "$3.needs-library"
+        printf '%s\n' \
+            "kofun: this program declares \`extern \"C\" fn\`, whose definition is in a C library" >&2
+        printf '%s\n' \
+            "note: pass --link-library FILE so the linker can resolve it" >&2
+        exit 2
+    fi
+    rm -f "$3.needs-library"
+    if test -n "${4:-}"; then
+        # Word splitting is the point: each line is one already-validated path.
+        old_ifs=$IFS
+        IFS='
+'
+        set -- "$1" "$2" "$3" $4
+        IFS=$old_ifs
+        output=$2
+        emitted=$3
+        shift 3
+        "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+            -I"$ROOT/bootstrap/stage2" "$emitted" "$@" -o "$output"
+        return
+    fi
     "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
         -I"$ROOT/bootstrap/stage2" "$3" -o "$2"
 )
@@ -1273,9 +1312,13 @@ $2"
                     "kofun: --c-abi requires explicit --backend c" >&2
                 exit 2
             }
-        elif test -n "$link_libraries"; then
+        elif test -n "$link_libraries" && test -z "$(module_header_path "$input")"; then
+            # #1422. A module-headed program may declare `extern "C" fn`, whose
+            # prototype the linker has to satisfy, so `--link-library` is
+            # meaningful there without `--c-abi`. A single file still has no way
+            # to declare one, so the refusal stands for that shape.
             printf '%s\n' \
-                "kofun: --link-library requires --backend c --c-abi" >&2
+                "kofun: --link-library requires --backend c --c-abi, or a module program" >&2
             exit 2
         fi
         if test -n "$package_names" && ! "$c_abi"; then
@@ -1357,7 +1400,7 @@ $2"
                 "$input" "$output" "$emitted" "$link_libraries" \
                 "$package_names" "$offline"
         else
-            build_file "$input" "$output" "$emitted"
+            build_file "$input" "$output" "$emitted" "$link_libraries"
         fi
         printf '%s\n' "$output"
         ;;
