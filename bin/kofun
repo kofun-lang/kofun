@@ -20,6 +20,9 @@ STAGE2_SEED_C="$ROOT/bootstrap/stage2/compiler.c"
 STAGE2_DECIMAL_C="$ROOT/bootstrap/stage2/decimal_v1.c"
 STAGE2_DECIMAL_H="$ROOT/bootstrap/stage2/decimal_v1.h"
 STAGE2_COMPILER="$STAGE2_BUILD_DIR/kofun-stage2"
+MODULE_RESOLVER_BUILD_DIR=${KOFUN_MODULE_RESOLVER_BUILD_DIR:-"$ROOT/build/module-resolver"}
+MODULE_RESOLVER_SEED_C="$ROOT/bootstrap/stage2/imports_qualified.c"
+MODULE_RESOLVER="$MODULE_RESOLVER_BUILD_DIR/kofun-module-resolver"
 
 # A supplied semantic-object bundle is runner/session state, not a persistent
 # compiler cache.  `task verify` supplies both build directories inside its
@@ -705,50 +708,131 @@ check_with_typed_sidecar() (
     exit "$exit_status"
 )
 
-# Byte offset of a leading `module` declaration, or nothing. Leading blank and
-# comment lines are skipped; the first line that is neither decides, because a
-# `module` declaration is only a module header when it is the first thing the
-# file says. LC_ALL=C so awk's `length` counts bytes, which is the unit the
-# offset is reported in.
-module_header_offset() {
+# The declared module path, or nothing. Leading blank and comment lines are
+# skipped and the first line that is neither decides, because `module` is a
+# header only when it is the first thing the file says.
+module_header_path() {
     LC_ALL=C awk '
         {
             stripped = $0
             sub(/^[ \t]+/, "", stripped)
             if (stripped != "" && substr(stripped, 1, 1) != "#") {
-                if (stripped ~ /^module([ \t]|$)/) {
-                    print bytes + (length($0) - length(stripped))
+                if (stripped ~ /^module[ \t]/) {
+                    sub(/^module[ \t]+/, "", stripped)
+                    sub(/[ \t]+$/, "", stripped)
+                    print stripped
                 }
                 exit
             }
-            bytes += length($0) + 1
         }
     ' "$1"
 }
 
-# A module-headed file is well-formed Kofun that this path cannot resolve.
-# Handing it to the parser produces `E2S02 expected top-level fn, type, or let
-# at byte 0`, which tells the author their file is malformed when it is merely
-# unsupported.
+# The package root, derived by subtracting the declared module path from the
+# file's own path — `module app.main` in `<root>/app/main.kofun` leaves
+# `<root>`. This is `spec/modules/source-file-mapping.md`'s correspondence read
+# backwards, and it is deliberately the only rule: a root guessed from the
+# working directory would make the same sources compile differently depending on
+# where the compiler was invoked, and FileId includes the logical path.
 #
-# This lives on the single-file compile path rather than in `require_source`
-# deliberately. `require_source` answers "is this a source file at all", and it
-# is shared by every mode; the resolver this driver does not yet reach will make
-# some path accept exactly these files. A guard in the shared predicate would
-# have to be unpicked then. A guard here is simply no longer reached.
-refuse_module_header() {
-    offset=$(module_header_offset "$1")
-    test -n "$offset" || return 0
-    printf '%s\n' \
-        "error[EDRV001]: \`module\` is not resolved on this path at byte $offset" >&2
-    printf '%s\n' \
-        "note: the file is well-formed; this command compiles a single file and does not resolve a module inventory" >&2
-    exit 2
+# Prints nothing when the file's path does not match its declaration, which the
+# caller reports rather than guessing around.
+module_package_root() {
+    mpr_file=$1
+    mpr_module=$2
+    mpr_expected=$(printf '%s' "$mpr_module" | tr '.' '/').kofun
+    case $mpr_file in
+        */"$mpr_expected") printf '%s' "${mpr_file%/"$mpr_expected"}" ;;
+        *) return 0 ;;
+    esac
 }
+
+ensure_module_resolver() {
+    mkdir -p "$MODULE_RESOLVER_BUILD_DIR"
+    if [ ! -x "$MODULE_RESOLVER" ] ||
+       [ "$MODULE_RESOLVER_SEED_C" -nt "$MODULE_RESOLVER" ]
+    then
+        "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+            -I"$ROOT/bootstrap/stage2" \
+            "$MODULE_RESOLVER_SEED_C" \
+            "$ROOT/bootstrap/stage2/kif_v1.c" \
+            "$ROOT/bootstrap/stage2/visibility_access.c" \
+            "$UNICODE_C" \
+            "$ROOT/bootstrap/stage2/sha256.c" \
+            -o "$MODULE_RESOLVER"
+    fi
+}
+
+# Resolve a module-headed program to C. Every `*.kofun` under the package root
+# is offered to the resolver, which is what makes `import lib.math` find
+# `lib/math.kofun` without the author listing it.
+emit_c_modules() (
+    entry=$1
+    output=$2
+    module_path=$3
+
+    package_root=$(module_package_root "$entry" "$module_path")
+    if test -z "$package_root"; then
+        printf '%s\n' \
+            "error[EDRV002]: \`$entry\` declares module \`$module_path\`, which does not match its path" >&2
+        printf '%s\n' \
+            "note: a module declared \`a.b\` must live at \`a/b.kofun\` within its package root" >&2
+        exit 2
+    fi
+
+    ensure_module_resolver
+    work=$(mktemp -d "${TMPDIR:-/tmp}/kofun-modules.XXXXXX")
+    trap 'rm -rf "$work"' 0 1 2 15
+
+    # `find` output is ordered by the filesystem; the inventory is sorted so the
+    # same tree produces the same bytes on every host.
+    find "$package_root" -type f -name '*.kofun' -print |
+        LC_ALL=C sort >"$work/files"
+    test -s "$work/files" || {
+        printf '%s\n' "kofun: no .kofun sources under $package_root" >&2
+        exit 2
+    }
+
+    # The package name is the root directory's own name. v1 reads no manifest,
+    # and the name participates in every identity, so this is stated rather than
+    # silently defaulted: moving a package changes its identities.
+    package_name=$(basename -- "$package_root")
+
+    set +e
+    # shellcheck disable=SC2046
+    sh "$ROOT/bootstrap/stage2/module-inventory.sh" \
+        "$package_name" "$package_root" $(cat "$work/files") \
+        >"$work/inventory" 2>"$work/inventory.err"
+    inventory_status=$?
+    set -e
+    if test "$inventory_status" -ne 0; then
+        test ! -s "$work/inventory.err" || cat "$work/inventory.err" >&2
+        exit "$inventory_status"
+    fi
+
+    set +e
+    "$MODULE_RESOLVER" "$work/inventory" "$work/program.hir" "$work/program.c" \
+        >"$work/resolve.stdout" 2>"$work/resolve.stderr"
+    resolve_status=$?
+    set -e
+    if test "$resolve_status" -ne 0; then
+        test ! -s "$work/resolve.stdout" || cat "$work/resolve.stdout" >&2
+        test ! -s "$work/resolve.stderr" || cat "$work/resolve.stderr" >&2
+        exit "$resolve_status"
+    fi
+    test -s "$work/program.c" || exit 1
+    mkdir -p "$(dirname "$output")"
+    cp "$work/program.c" "$output"
+    printf '%s\n' "$output"
+)
 
 emit_c() (
     require_source "$1"
-    refuse_module_header "$1"
+    module_path=$(module_header_path "$1")
+    if test -n "$module_path"; then
+        emit_c_modules "$1" "$2" "$module_path"
+        exit $?
+    fi
     temporary="$2.tmp.$$.c"
     stage1_stdout="$2.stage1.stdout.$$"
     stage1_stderr="$2.stage1.stderr.$$"
