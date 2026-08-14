@@ -1201,6 +1201,95 @@ static size_t function_arity(const Program *program, const Declaration *declarat
     return SIZE_MAX;
 }
 
+/*
+ * #1443. C scalar spellings for an `extern "C"` declaration.
+ *
+ * The reference emitter lowers ordinary Kofun functions to `int64_t`, which is
+ * right for symbols it defines. For a symbol the *linker* provides, the width
+ * has to be the one the C library actually compiled — a `CInt` parameter
+ * emitted as `int64_t` links successfully and misreads the argument, which is
+ * the failure mode that shows up at some argument values and not others.
+ *
+ * Scalars only. `CStr` and `repr(C)` aggregates are refused by name rather than
+ * guessed at: a pointer emitted as an integer is the same silent-width mistake
+ * one level worse.
+ */
+typedef struct {
+    const char *kofun;
+    const char *c;
+} CScalarType;
+
+static const CScalarType C_SCALAR_TYPES[] = {
+    { "Int", "int64_t" },
+    { "CChar", "char" },
+    { "CSChar", "signed char" },
+    { "CUChar", "unsigned char" },
+    { "CShort", "short" },
+    { "CUShort", "unsigned short" },
+    { "CInt", "int" },
+    { "CUInt", "unsigned int" },
+    { "CLong", "long" },
+    { "CULong", "unsigned long" },
+    { "CLongLong", "long long" },
+    { "CULongLong", "unsigned long long" },
+};
+
+static const char *c_scalar_spelling(const char *name, size_t length) {
+    size_t index;
+    for (index = 0u; index < sizeof C_SCALAR_TYPES / sizeof C_SCALAR_TYPES[0]; index += 1u) {
+        const char *kofun = C_SCALAR_TYPES[index].kofun;
+        if (strlen(kofun) == length && memcmp(kofun, name, length) == 0) {
+            return C_SCALAR_TYPES[index].c;
+        }
+    }
+    return NULL;
+}
+
+/*
+ * The declared type of parameter `index`, or of the result when `index` is
+ * SIZE_MAX, as a span into the module source. Walks the same tokens
+ * `function_arity` does, so the two cannot disagree about where the signature
+ * is.
+ */
+static bool declared_type_span(
+    const Program *program,
+    const Declaration *declaration,
+    size_t index,
+    const char **text,
+    size_t *length
+) {
+    const Module *module = &program->modules[declaration->module_index];
+    size_t cursor;
+    for (cursor = 0u; cursor < module->token_count; cursor += 1u) {
+        size_t open;
+        size_t close;
+        size_t type_index;
+        if (module->tokens[cursor].start != declaration->name_start) continue;
+        open = cursor + 1u;
+        if (open >= module->token_count ||
+            !punctuation_equals(module, &module->tokens[open], '(')) return false;
+        for (close = open + 1u; close < module->token_count; close += 1u) {
+            if (punctuation_equals(module, &module->tokens[close], ')')) break;
+        }
+        if (close == module->token_count) return false;
+        if (index == SIZE_MAX) {
+            /* `) -> Type`: the arrow, then the result type. */
+            if (close + 2u >= module->token_count ||
+                module->tokens[close + 1u].kind != TOKEN_ARROW) return false;
+            type_index = close + 2u;
+        } else {
+            /* `name : Type` triples separated by commas. */
+            type_index = open + 1u + index * 4u + 2u;
+            if (type_index >= close) return false;
+        }
+        if (module->tokens[type_index].kind != TOKEN_IDENTIFIER) return false;
+        *text = module->source + module->tokens[type_index].start;
+        *length = module->tokens[type_index].end - module->tokens[type_index].start;
+        return true;
+    }
+    return false;
+}
+
 static bool validate_int_function_signature(Program *program, const Declaration *declaration) {
     const Module *module = &program->modules[declaration->module_index];
     size_t name = SIZE_MAX;
@@ -1229,9 +1318,18 @@ static bool validate_int_function_signature(Program *program, const Declaration 
     cursor = open + 1u;
     while (cursor < close) {
         Token *type = &module->tokens[cursor + 2u];
-        if (!token_equals(module, type, "Int")) {
+        /* #1443. An `extern "C"` declaration describes a C symbol, so it may
+         * name a C scalar. A function this module defines still may not: its
+         * body is lowered to int64_t and a wider surface would be a promise the
+         * lowering does not keep. */
+        bool admitted = declaration->is_external
+            ? c_scalar_spelling(module->source + type->start, type->end - type->start) != NULL
+            : token_equals(module, type, "Int");
+        if (!admitted) {
             set_error(program, "E2S65",
-                "function `%s` in `%s` has unsupported parameter type `%.*s` at bytes %zu..%zu; hint: use `Int` parameters and return type in the qualified-call slice",
+                declaration->is_external
+                    ? "`extern \"C\" fn %s` in `%s` has parameter type `%.*s`, which is not a C scalar this slice lowers, at bytes %zu..%zu; hint: CStr and repr(C) aggregates are a later slice"
+                    : "function `%s` in `%s` has unsupported parameter type `%.*s` at bytes %zu..%zu; hint: use `Int` parameters and return type in the qualified-call slice",
                 declaration->name, module->logical_path,
                 (int)(type->end - type->start), module->source + type->start,
                 type->start, type->end);
@@ -1240,14 +1338,21 @@ static bool validate_int_function_signature(Program *program, const Declaration 
         cursor += 3u;
         if (cursor < close) cursor += 1u;
     }
-    if (!token_equals(module, &module->tokens[close + 2u], "Int")) {
+    {
         Token *type = &module->tokens[close + 2u];
-        set_error(program, "E2S65",
-            "function `%s` in `%s` has unsupported return type `%.*s` at bytes %zu..%zu; hint: use `Int` parameters and return type in the qualified-call slice",
-            declaration->name, module->logical_path,
-            (int)(type->end - type->start), module->source + type->start,
-            type->start, type->end);
-        return false;
+        bool admitted = declaration->is_external
+            ? c_scalar_spelling(module->source + type->start, type->end - type->start) != NULL
+            : token_equals(module, type, "Int");
+        if (!admitted) {
+            set_error(program, "E2S65",
+                declaration->is_external
+                    ? "`extern \"C\" fn %s` in `%s` has result type `%.*s`, which is not a C scalar this slice lowers, at bytes %zu..%zu; hint: CStr and repr(C) aggregates are a later slice"
+                    : "function `%s` in `%s` has unsupported return type `%.*s` at bytes %zu..%zu; hint: use `Int` parameters and return type in the qualified-call slice",
+                declaration->name, module->logical_path,
+                (int)(type->end - type->start), module->source + type->start,
+                type->start, type->end);
+            return false;
+        }
     }
     return true;
 }
@@ -1892,12 +1997,68 @@ static bool emit_c_function_signature(
         set_error(&resolver->program, "E2S68", "reference-lowering signature invariant failed");
         return false;
     }
-    fputs(declaration->is_external ? "int64_t " : "static int64_t ", output);
+    /*
+     * #1443. An external declaration is lowered with the C spellings its
+     * library was compiled against; a function this module defines keeps
+     * `int64_t`, which is what its own body is lowered to.
+     */
+    if (declaration->is_external) {
+        const char *text;
+        size_t length;
+        const char *spelling;
+        if (!declared_type_span(&resolver->program, declaration, SIZE_MAX, &text, &length)) {
+            set_error(&resolver->program, "E2S68", "reference-lowering signature invariant failed");
+            return false;
+        }
+        spelling = c_scalar_spelling(text, length);
+        if (spelling == NULL) {
+            /*
+             * Unreachable while `validate_int_function_signature` runs first,
+             * and deliberately kept: this is the emitter refusing to invent a
+             * spelling it does not have. Measured — disabling the signature
+             * check alone still refuses here, and only disabling both lets a
+             * `CStr` through, which is what the gate's two-code assertion
+             * pins. It is not registered in tests/diagnostics/registry.tsv
+             * because no fixture can produce it, and registering a code whose
+             * observation cannot exist would be a row the registry could never
+             * satisfy.
+             */
+            set_error(&resolver->program, "E2S175",
+                "`extern \"C\" fn` result type `%.*s` is not a C scalar this slice lowers in `%s` at bytes %zu..%zu",
+                (int)length, text,
+                resolver->program.modules[declaration->module_index].logical_path,
+                declaration->start, declaration->end);
+            return false;
+        }
+        fprintf(output, "%s ", spelling);
+    } else {
+        fputs("static int64_t ", output);
+    }
     emit_c_symbol(output, declaration);
     fputc('(', output);
     if (arity == 0u) fputs("void", output);
     for (parameter = 0u; parameter < arity; parameter += 1u) {
         if (parameter != 0u) fputs(", ", output);
+        if (declaration->is_external) {
+            const char *text;
+            size_t length;
+            const char *spelling;
+            if (!declared_type_span(&resolver->program, declaration, parameter, &text, &length)) {
+                set_error(&resolver->program, "E2S68", "reference-lowering signature invariant failed");
+                return false;
+            }
+            spelling = c_scalar_spelling(text, length);
+            if (spelling == NULL) {
+                set_error(&resolver->program, "E2S175",
+                    "`extern \"C\" fn` parameter type `%.*s` is not a C scalar this slice lowers in `%s` at bytes %zu..%zu",
+                    (int)length, text,
+                    resolver->program.modules[declaration->module_index].logical_path,
+                    declaration->start, declaration->end);
+                return false;
+            }
+            fprintf(output, "%s k_p%zu", spelling, parameter);
+            continue;
+        }
         fprintf(output, "int64_t k_p%zu", parameter);
     }
     fputc(')', output);
