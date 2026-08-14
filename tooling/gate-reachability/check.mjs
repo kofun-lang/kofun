@@ -77,6 +77,34 @@ for (let i = verifyStart + 1; i < lines.length; i += 1) {
   }
 }
 const verifyBlock = lines.slice(verifyStart, verifyEnd).join("\n");
+/*
+ * #1441. The verify list accepted `selfhost-b6-policy` twice — two branches
+ * added a line at the same anchor and the rebase kept both. `tooling/
+ * task-help.mjs` refuses exactly that mistake one file over, with `task appears
+ * in two help groups`; this list had no such guard, so the identical resolution
+ * error landed silently here instead of failing there.
+ *
+ * Measured rather than assumed: `verify-runner.sh` passes the names to
+ * `task --parallel`, and running it with a name twice executes the gate twice.
+ * go-task does not dedupe and the task carried no `run: once`.
+ */
+const verifyNames = [...verifyBlock.matchAll(/^\s{10,}([a-z][a-z0-9-]+)\s*\\?$/gm)]
+  .map((m) => m[1]);
+const seenInVerify = new Set();
+const duplicated = new Set();
+for (const name of verifyNames) {
+  if (seenInVerify.has(name)) duplicated.add(name);
+  seenInVerify.add(name);
+}
+if (duplicated.size !== 0) {
+  process.stderr.write(
+    `FAIL: gate reachability: the verify list names ${[...duplicated].join(", ")} more than once; ` +
+      "go-task runs a duplicated name twice, so the gate is paid for twice and the list " +
+      "no longer says what runs\n",
+  );
+  process.exit(1);
+}
+
 const reachable = new Map();
 const note = (name, how) => {
   if (defined.has(name) && !reachable.has(name)) reachable.set(name, how);
@@ -98,10 +126,35 @@ for (const m of taskfile.matchAll(/deps:\s*\[([^\]]*)\]/g)) {
 }
 
 /* 4. Any executable script. */
+/*
+ * Comments are stripped before matching. #1428 wrote `task kif-module-trust-profile`
+ * inside a comment explaining why that task used to check nothing, and this
+ * reader counted the sentence as a caller — reporting the gate as reachable
+ * because its own documentation mentioned it.
+ *
+ * That is the false-positive shape a rule with a near-miss has to be tested
+ * against, and it cost a green here before it was noticed. Line comments and
+ * block comments only; a `task foo` inside a string literal is still counted,
+ * because a script building a command in a string genuinely runs it.
+ *
+ * Measured, because "still counted" is a claim: stripping strings too changes
+ * no verdict today, since `git grep -nE '"[^"]*\btask [a-z-]+'` over `*.sh` and
+ * `*.mjs` finds no caller building one. So that half is unprotected by any
+ * current fixture and is written here as intent rather than as something the
+ * suite would catch. A future caller of that shape is the case to add a test
+ * with.
+ */
+function withoutComments(body) {
+  return body
+    .replace(/\/\*[^]*?\*\//g, " ")
+    .replace(/^\s*#.*$/gm, " ")
+    .replace(/^\s*\/\/.*$/gm, " ");
+}
+
 for (const file of walk(ROOT)) {
   let body;
   try {
-    body = read(file);
+    body = withoutComments(read(file));
   } catch {
     continue;
   }
