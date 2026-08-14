@@ -1,0 +1,16 @@
+# diagnostic-mode: compile
+# expect-code: E2S17
+# expect-span: byte 483
+# #1411 follow-up. The sentinel guard must not swallow a real mismatch: the
+# guard reads `written >= 0` before comparing, so a genuine wrong count still
+# reports its true value. That was measured when the guards landed and pinned
+# by nothing, which is the difference between a property that holds and a
+# property that is protected.
+fn g(a: Int) -> Int {
+    return a
+}
+
+fn main() -> Int {
+    print(to_text(g()))
+    return 0
+}

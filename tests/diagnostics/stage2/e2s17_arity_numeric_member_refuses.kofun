@@ -1,0 +1,10 @@
+# diagnostic-mode: compile
+# expect-code: E2S17
+# expect-span: byte 236
+# #1411 follow-up. The numeric-member arity check still refuses a real
+# mismatch.
+fn main() -> Int {
+    let d: Decimal = Decimal.from_int(1)
+    let r: Decimal = Decimal.round(d, 1)
+    return 0
+}
