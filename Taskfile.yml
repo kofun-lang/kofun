@@ -792,6 +792,15 @@ tasks:
   # #1294. The host matrix is a policy plus a manifest plus an offline
   # validator. It decides which two maintained hosts execute the profile; it
   # installs nothing and runs no module, which is a later child of #26.
+  # #1281. The ten ADT match v2 decisions as an executable profile. Most of
+  # them read as obviously right and have two plausible implementations, so
+  # the model exists to make each one a thing a mutation can break. No
+  # compiler change; #1282 and the later children implement against it.
+  adt-match-v2-contract:
+    desc: "Check the ADT match v2 profile against its pure model"
+    cmds:
+      - "sh spec/adt-match-v2/check.sh"
+
   wasi-host-matrix-policy:
     desc: "Validate the pinned wasm32-wasi-command1 host matrix and its refusals"
     cmds:
@@ -1258,6 +1267,7 @@ tasks:
             wasm-host-abi \
             wasm-host-profile \
             wasi-command-profile \
+            adt-match-v2-contract \
             wasi-host-matrix-policy \
             wasi-command-projection-contract \
             atomic-write-authority-contract \
