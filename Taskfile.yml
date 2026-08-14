@@ -746,6 +746,14 @@ tasks:
     cmds:
       - "sh spec/wasm-host-profile-v1/check.sh"
 
+  # #1294. The host matrix is a policy plus a manifest plus an offline
+  # validator. It decides which two maintained hosts execute the profile; it
+  # installs nothing and runs no module, which is a later child of #26.
+  wasi-host-matrix-policy:
+    desc: "Validate the pinned wasm32-wasi-command1 host matrix and its refusals"
+    cmds:
+      - "sh spec/wasi-host-matrix-v1/check.sh"
+
   wasi-command-profile:
     desc: "Verify the reserved WASI command capability profile and reference host"
     cmds:

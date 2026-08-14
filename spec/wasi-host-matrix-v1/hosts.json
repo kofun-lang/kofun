@@ -1,0 +1,72 @@
+{
+  "schema": "kofun.wasi-host-matrix/v1",
+  "target": "wasm32-wasi-command1",
+  "pinned_on": "2026-08-15",
+  "required_lane": "linux-x86_64",
+  "retirement_trigger": "Either pinned host deprecating or dropping wasi_snapshot_preview1 support in the release stream tracked here freezes pin bumps until a revised matrix policy is accepted.",
+  "hosts": [
+    {
+      "id": "pure-oracle",
+      "role": "differential-oracle",
+      "implementation": "kofun-in-tree",
+      "version": "spec/wasi-command-profile-v1",
+      "required": true,
+      "evidence_kind": "differential-oracle",
+      "notes": "The #1098 reference host. It is the oracle every maintained host is compared against and is never one of the two maintained hosts.",
+      "artifacts": [],
+      "security_claim": "none"
+    },
+    {
+      "id": "node",
+      "role": "maintained-host",
+      "implementation": "v8-node",
+      "version": "24.19.0",
+      "required": true,
+      "evidence_kind": "compatibility-only",
+      "notes": "Node's own documentation marks its WASI integration experimental and states its capability properties are not a secure sandbox, so evidence from it is compatibility evidence and nothing more.",
+      "artifacts": [
+        {
+          "platform": "linux-x86_64",
+          "url": "https://nodejs.org/dist/v24.19.0/node-v24.19.0-linux-x64.tar.xz",
+          "sha256": "14b342e71204f811bde6153be8e04b62aef63c236fef92b55f9c83154b409647"
+        },
+        {
+          "platform": "linux-aarch64",
+          "url": "https://nodejs.org/dist/v24.19.0/node-v24.19.0-linux-arm64.tar.xz",
+          "sha256": "01443c1e1a29e531ccad5a46fefa6df490d2189c49f7955904aecdbb0fe86fdc"
+        }
+      ],
+      "security_claim": "none"
+    },
+    {
+      "id": "wasmtime",
+      "role": "maintained-host",
+      "implementation": "cranelift-wasmtime",
+      "version": "47.0.3",
+      "required": true,
+      "evidence_kind": "compatibility-only",
+      "notes": "Wasmtime maintains a p1 layer for wasi_snapshot_preview1 core modules. Passing it is compatibility evidence; it establishes no sandbox claim here.",
+      "artifacts": [
+        {
+          "platform": "linux-x86_64",
+          "url": "https://github.com/bytecodealliance/wasmtime/releases/download/v47.0.3/wasmtime-v47.0.3-x86_64-linux.tar.xz",
+          "sha256": "ca1fc56d1afc40c8782e96c297fd182a0da162f9a8f52a1e7b094e1dd648e178"
+        },
+        {
+          "platform": "linux-aarch64",
+          "url": "https://github.com/bytecodealliance/wasmtime/releases/download/v47.0.3/wasmtime-v47.0.3-aarch64-linux.tar.xz",
+          "sha256": "497b518db00ae585f04390758eaa99ad555bee50612dce7d102602778fb46ff0"
+        }
+      ],
+      "security_claim": "none"
+    }
+  ],
+  "compared_observations": [
+    "stdout",
+    "stderr-guest",
+    "exit-status",
+    "trap-class",
+    "manifest-refusal",
+    "artifact-digest"
+  ]
+}
