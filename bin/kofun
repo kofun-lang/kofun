@@ -705,8 +705,50 @@ check_with_typed_sidecar() (
     exit "$exit_status"
 )
 
+# Byte offset of a leading `module` declaration, or nothing. Leading blank and
+# comment lines are skipped; the first line that is neither decides, because a
+# `module` declaration is only a module header when it is the first thing the
+# file says. LC_ALL=C so awk's `length` counts bytes, which is the unit the
+# offset is reported in.
+module_header_offset() {
+    LC_ALL=C awk '
+        {
+            stripped = $0
+            sub(/^[ \t]+/, "", stripped)
+            if (stripped != "" && substr(stripped, 1, 1) != "#") {
+                if (stripped ~ /^module([ \t]|$)/) {
+                    print bytes + (length($0) - length(stripped))
+                }
+                exit
+            }
+            bytes += length($0) + 1
+        }
+    ' "$1"
+}
+
+# A module-headed file is well-formed Kofun that this path cannot resolve.
+# Handing it to the parser produces `E2S02 expected top-level fn, type, or let
+# at byte 0`, which tells the author their file is malformed when it is merely
+# unsupported.
+#
+# This lives on the single-file compile path rather than in `require_source`
+# deliberately. `require_source` answers "is this a source file at all", and it
+# is shared by every mode; the resolver this driver does not yet reach will make
+# some path accept exactly these files. A guard in the shared predicate would
+# have to be unpicked then. A guard here is simply no longer reached.
+refuse_module_header() {
+    offset=$(module_header_offset "$1")
+    test -n "$offset" || return 0
+    printf '%s\n' \
+        "error[EDRV001]: \`module\` is not resolved on this path at byte $offset" >&2
+    printf '%s\n' \
+        "note: the file is well-formed; this command compiles a single file and does not resolve a module inventory" >&2
+    exit 2
+}
+
 emit_c() (
     require_source "$1"
+    refuse_module_header "$1"
     temporary="$2.tmp.$$.c"
     stage1_stdout="$2.stage1.stdout.$$"
     stage1_stderr="$2.stage1.stderr.$$"
