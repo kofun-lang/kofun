@@ -31,11 +31,19 @@ table and the label list are one fact rather than two:
 | `deferred` | Valid work outside the active milestone | the milestone it belongs to becomes active |
 | `in-progress` | Actively implemented by an assignee or linked PR | the work merges, or the claim is released |
 
-Measured 2026-08-10 across 27 open issues: `blocked` 12, `needs-detail` 11,
-`needs-decision` 2, `ready` 1, `deferred` 0, `in-progress` 0. The count is dated
-for the reason the `planning` paragraph below gives — an enumeration with no date
-reads as current forever — and the invariant, not the count, is the rule: every
-open issue carries exactly one of these six.
+Measured 2026-08-14 on `origin/main@5c5cf42404b0dbeea36a4de0fb457c4479e8bf68` across 108 open issues: `blocked` 83,
+`ready` 20, `in-progress` 4, `deferred` 1, `needs-detail` 0, `needs-decision` 0.
+The count is dated for the reason the `planning` paragraph below gives — an
+enumeration with no date reads as current forever — and the invariant, not the
+count, is the rule: every open issue carries exactly one of these six.
+
+`needs-detail` and `needs-decision` reaching zero members does **not** retire
+them. A state with no current members is a state nothing is currently in, and
+the next issue filed without a checkable premise belongs in the first one on the
+day it is filed. The 2026-08-10 census recorded 27 open issues with `blocked` 12,
+`needs-detail` 11, `needs-decision` 2, `ready` 1 — kept here because the shape of
+the change is the useful part: the backlog quadrupled while the two states that
+mean "not yet startable for want of refinement" emptied.
 
 **`blocked` is a label like the other five.** This document used to say it had
 none, and listed only the first four states. Both were wrong in the direction
@@ -114,11 +122,19 @@ umbrella or generated catalogue — never directly implementation-ready — and 
 umbrella still has a state, because "this is an umbrella" and "this is waiting
 on something" are different facts.
 
-Measured 2026-08-07: all eleven open `planning` issues carry a state, and they
-do not share one — [#26](https://github.com/kofun-lang/kofun/issues/26) and #32
-are `blocked`, #532 is `deferred`, #276 is `needs-decision`, and the rest are
-`needs-detail`. The spread is the point: `planning` says nothing about whether
-the umbrella is waiting, so it cannot substitute for a state.
+Measured 2026-08-14 on `origin/main@5c5cf42404b0dbeea36a4de0fb457c4479e8bf68`: all fourteen open `planning` issues
+carry a state, 13 `blocked` and one `in-progress`
+([#1205](https://github.com/kofun-lang/kofun/issues/1205)). The 2026-08-07 census
+found eleven, spread across four states —
+[#26](https://github.com/kofun-lang/kofun/issues/26) and #32 `blocked`, #532
+`deferred`, #276 `needs-decision`, the rest `needs-detail`.
+
+The spread narrowed and the point survives it. `planning` still says nothing
+about whether the umbrella is waiting: two states is fewer than four, but an
+issue that is `planning` and `in-progress` and an issue that is `planning` and
+`blocked` are in opposite situations, and only the state distinguishes them. A
+narrower spread is evidence that the backlog converged, not that the marker
+acquired a meaning it never had.
 
 That sentence carries a date because the version before it did not. It listed
 nine issues as `planning` + `blocked`, and by the time anyone read it six of
@@ -319,6 +335,26 @@ that was not recorded. What it held on the day it landed:
 | `unstamped-ready` | 4 | `ready` before rule 2 existed |
 | `unverifiable-stamp` | 1 | [#738](https://github.com/kofun-lang/kofun/issues/738) names a commit that is on no branch, so its measurement cannot be re-run |
 
+**The ledger now holds zero rows.** Measured 2026-08-14 on
+`origin/main@5c5cf42404b0dbeea36a4de0fb457c4479e8bf68`:
+
+```sh
+grep -v '^#' tests/backlog/debt.tsv | grep -c .
+# 0
+```
+
+Every row above, and every row added after, was retired one at a time by fixing
+the issue it named. Recording that here is not bookkeeping: the ledger's own
+header says *"a listed row that no longer applies is an improvement that was not
+recorded"*, and the ledger has no way to say that about itself. A reader who
+found the tables below without this paragraph would reasonably conclude the
+backlog carries seventeen unresolved cases and five standing exemptions. It
+carries none.
+
+An empty ledger does **not** retire the kinds. They are the vocabulary the gate
+uses to record the next drift, and deleting a kind because nothing is currently
+in it is how the following week's drift becomes unrecordable.
+
 That table is the ledger as it landed and is left alone. The kinds added since
 each pair a drift with an exemption, because an exemption folded into the drift
 ledger is indistinguishable from drift and would be "fixed" by someone
@@ -348,6 +384,21 @@ Before them the same lines said `51 State lines name a state` when it was 51 of
 claims` over an empty set. None of those was wrong; each was unreadable. A
 reader could not tell a rule that held from a rule that had never reached
 anything, which is the failure this whole gate exists to remove.
+
+Those three are kept as they were first written, because the contrast is what
+they teach. Measured 2026-08-14 on `origin/main@5c5cf42404b0dbeea36a4de0fb457c4479e8bf68`, the same three lines
+now read:
+
+```
+PASS: 108 of 108 open issues carry a State line the gate reads
+PASS: 83 of 83 blocked issues name their blockers where the gate reads them
+PASS: 4 of 4 in-progress issues carry a live claim
+```
+
+Each denominator moved because the backlog grew and its drift was fixed, not
+because a rule narrowed its reach. The numerators catching up to them is the
+outcome the reach-reporting form was added to make visible — and a reader can
+now tell that from the line alone, which was the whole argument.
 
 Two of the three were hiding real drift.
 [#314](https://github.com/kofun-lang/kofun/issues/314) says in its own body that

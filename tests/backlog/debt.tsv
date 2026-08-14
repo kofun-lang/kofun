@@ -5,6 +5,17 @@
 # tests/assertions/budget.tsv does: an unlisted problem is new drift, and a
 # listed row that no longer applies is an improvement that was not recorded.
 #
+# This file currently holds ZERO rows. Measured 2026-08-14 on
+# origin/main@5c5cf42404b0dbeea36a4de0fb457c4479e8bf68 with
+# `grep -v '^#' tests/backlog/debt.tsv | grep -c .`. Every row it has ever held
+# was retired by fixing the issue it named. The rule above records that per row
+# and cannot record it for the file, so it is written here; docs/ISSUE_READINESS.md
+# carries the same statement where a reader of the tables will meet it.
+#
+# The kind definitions below stay. A kind with no current rows is the vocabulary
+# for recording the next drift, and deleting one because nothing is in it is how
+# next week's drift becomes unrecordable.
+#
 # kind                 issue  detail                 title
 #
 # state-disagreement   the state label and the body's `State:` line disagree.
