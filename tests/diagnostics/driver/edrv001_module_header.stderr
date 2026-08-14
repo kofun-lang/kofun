@@ -1,0 +1,2 @@
+error[EDRV001]: `module` is not resolved on this path at byte 0
+note: the file is well-formed; this command compiles a single file and does not resolve a module inventory

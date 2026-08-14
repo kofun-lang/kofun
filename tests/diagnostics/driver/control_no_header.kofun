@@ -1,0 +1,7 @@
+fn module_count() -> Int {
+    0
+}
+
+fn main() -> Int {
+    module_count()
+}

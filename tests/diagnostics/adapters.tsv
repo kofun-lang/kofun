@@ -4,6 +4,7 @@ adt-exhaustiveness	tests/conformance/adt-exhaustiveness/run.sh	verify	tests/diag
 affine-resource-handle	tests/ownership/affine-resource-handle/check.sh	verify	tests/diagnostics/reports/affine-resource-handle.tsv
 c-abi	tests/diagnostics/c-abi/run.sh	verify	tests/diagnostics/reports/c-abi.tsv
 const-generics	tests/conformance/const-generics/run.sh	verify	tests/diagnostics/reports/const-generics.tsv
+driver	tests/diagnostics/driver/run.sh	verify	tests/diagnostics/reports/driver.tsv
 generics	tests/conformance/generics/run.sh	verify	tests/diagnostics/reports/generics.tsv
 hm-levels	tests/conformance/inference/hm-levels/run.sh	verify	tests/diagnostics/reports/hm-levels.tsv
 imports	tests/conformance/modules/imports-selective/run.sh	verify	tests/diagnostics/reports/imports.tsv

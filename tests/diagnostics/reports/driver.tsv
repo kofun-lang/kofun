@@ -1,0 +1,2 @@
+# code	adapter	channel	exit	primary-span	secondary-span	artifact
+EDRV001	driver	stderr	2	required	not-applicable	forbidden
