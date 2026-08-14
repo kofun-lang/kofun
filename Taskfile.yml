@@ -964,6 +964,11 @@ tasks:
     cmds:
       - "sh spec/syntax/call-arguments/check.sh"
 
+  authority-type-carrier:
+    desc: "Verify the three RFC-0002 authority types are opaque, affine, and unforgeable"
+    cmds:
+      - "sh tests/conformance/authority-carrier/run.sh"
+
   bytes-carrier:
     desc: "Verify Bytes[65536] owners are reclaimed at every exit in reverse order"
     cmds:
@@ -1188,6 +1193,7 @@ tasks:
             record-values \
             text-escapes \
             unused-function \
+            authority-type-carrier \
             bytes-carrier \
             while-list-int \
             else-if-chain \

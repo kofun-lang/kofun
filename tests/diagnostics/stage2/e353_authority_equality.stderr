@@ -1,0 +1,1 @@
+error[E353]: RootAuthority is an Owned authority and has no equality; compare the capability you derived from it instead at byte 123

@@ -1,0 +1,8 @@
+fn twice(n: Int) -> Int {
+    return n + n
+}
+
+fn main() -> Int {
+    print(to_text(twice(21)))
+    return 0
+}
