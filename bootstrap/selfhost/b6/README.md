@@ -12,7 +12,14 @@ sh bootstrap/selfhost/check-reproduction-report.sh REPORT
 sh bootstrap/selfhost/check-reproduction-report.sh REPORT --against-checkout
 
 task selfhost-b6-report
+task selfhost-b6-policy
 ```
+
+`POLICY.md` beside this file answers the question this packet deliberately does
+not: what makes a builder independent, and what closes B6. `selfhost-b6-policy`
+is its mechanical half — it refuses reports that do not qualify as
+attestations, including the `report.tsv` in this directory, which is a valid
+report produced by the repository checking itself.
 
 ## What is new here, and what is not
 

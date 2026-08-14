@@ -25,6 +25,7 @@ export const GROUPS = Object.freeze([
             'selfhost-driver-diagnostics', 'selfhost-generations',
             'selfhost-fixed-point', 'selfhost-diverse-double-compilation',
             'selfhost-declared-inputs', 'selfhost-b6-report',
+            'selfhost-b6-policy',
             'selfhost-frontend', 'selfhost-c11', 'selfhost-c11-control',
             'selfhost-native', 'stage1-adapter', 'stage2', 'stage2-events',
             'native', 'native-host-evidence', 'wasm',
