@@ -1,0 +1,2 @@
+error[EDRV002]: `tests/diagnostics/driver/edrv002_module_path_mismatch.kofun` declares module `app.main`, which does not match its path
+note: a module declared `a.b` must live at `a/b.kofun` within its package root

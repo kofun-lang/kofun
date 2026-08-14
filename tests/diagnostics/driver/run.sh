@@ -27,8 +27,11 @@ ASSERT_CONTEXT='diagnostics driver'
 rm -rf "$WORK"
 mkdir -p "$WORK"
 
-FIXTURE="$SUITE/edrv001_module_header.kofun"
-CONTROL="$SUITE/control_no_header.kofun"
+# Relative to ROOT, and every invocation runs from ROOT: the diagnostic quotes
+# the path it was given, so an absolute one would put this machine's
+# directory layout into the golden.
+FIXTURE=tests/diagnostics/driver/edrv002_module_path_mismatch.kofun
+CONTROL=tests/diagnostics/driver/control_no_header.kofun
 
 # Every mode below funnels through the driver's single-file compile path, which
 # is where the guard lives. Naming them one at a time rather than trusting that
@@ -38,11 +41,11 @@ for mode in check build run emit-c; do
     set +e
     case $mode in
         emit-c)
-            "$ROOT/bin/kofun" emit-c "$FIXTURE" "$WORK/$mode.c" \
+            (cd "$ROOT" && bin/kofun emit-c "$FIXTURE" "$WORK/$mode.c") \
                 >"$WORK/$mode.stdout" 2>"$WORK/$mode.stderr"
             ;;
         *)
-            "$ROOT/bin/kofun" "$mode" "$FIXTURE" \
+            (cd "$ROOT" && bin/kofun "$mode" "$FIXTURE") \
                 >"$WORK/$mode.stdout" 2>"$WORK/$mode.stderr"
             ;;
     esac
@@ -50,7 +53,7 @@ for mode in check build run emit-c; do
     set -e
     assert_num "$mode status" "$status" -eq 2
     assert_file_empty "$mode.stdout" "$WORK/$mode.stdout"
-    cmp "$SUITE/edrv001_module_header.stderr" "$WORK/$mode.stderr"
+    cmp "$SUITE/edrv002_module_path_mismatch.stderr" "$WORK/$mode.stderr"
 done
 
 assert_absent "emit-c artifact" "$WORK/emit-c.c"
@@ -59,17 +62,17 @@ assert_absent "emit-c artifact" "$WORK/emit-c.c"
 # with `module`, so a guard matching the word rather than the leading
 # declaration would refuse it.
 set +e
-"$ROOT/bin/kofun" emit-c "$CONTROL" "$WORK/control.c" \
+(cd "$ROOT" && bin/kofun emit-c "$CONTROL" "$WORK/control.c") \
     >"$WORK/control.stdout" 2>"$WORK/control.stderr"
 control_status=$?
 set -e
 
 assert_num "control is not refused by the driver" "$control_status" -ne 2
-if grep -q 'EDRV001' "$WORK/control.stderr"; then
+if grep -q 'EDRV00' "$WORK/control.stderr"; then
     printf '%s\n' \
-        "FAIL: the control file without a module header was refused as one" >&2
+        "FAIL: the control file without a module header was refused by the driver" >&2
     exit 1
 fi
 
 printf '%s\n' \
-    "PASS: EDRV001 refuses a module-headed file in 4 modes, and a header-less file is untouched"
+    "PASS: EDRV002 refuses a module whose path contradicts its declaration in 4 modes, and a header-less file is untouched"

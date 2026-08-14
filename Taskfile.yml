@@ -403,6 +403,15 @@ tasks:
     cmds:
       - "sh tests/module-constants/check.sh"
 
+  # #1421. The producer for the inventory `imports_qualified` consumes. Nothing
+  # computed those identities before it, which is why every conformance harness
+  # writes `1111…` placeholders; the gate checks them against the specification's
+  # own reference vector and runs a two-module program to a result.
+  module-inventory:
+    desc: "Check inventory identities against the specification and resolve a two-module program"
+    cmds:
+      - "sh tests/modules/inventory/check.sh"
+
   module-symbols:
     desc: "Verify stable top-level declaration collection"
     cmds:
@@ -1173,6 +1182,7 @@ tasks:
             adt-usefulness-v2 \
             enum-match-value \
             module-constants \
+            module-inventory \
             module-symbols \
             imports-qualified \
             import-aliases \
