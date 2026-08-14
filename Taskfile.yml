@@ -746,6 +746,15 @@ tasks:
     cmds:
       - "sh spec/wasm-host-profile-v1/check.sh"
 
+  # #1317. The AtomicWriteAuthority contract as a pure model: no compiler
+  # carrier, no runtime authority, no syscall. It exists before the
+  # implementation so the reservation and one-shot rules can be mutated and
+  # argued while changing them is still cheap.
+  atomic-write-authority-contract:
+    desc: "Check the AtomicWriteAuthority v1 profile against its pure state and reservation model"
+    cmds:
+      - "sh spec/atomic-write-authority-v1/check.sh"
+
   # #1294. The host matrix is a policy plus a manifest plus an offline
   # validator. It decides which two maintained hosts execute the profile; it
   # installs nothing and runs no module, which is a later child of #26.
