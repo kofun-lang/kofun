@@ -1,0 +1,35 @@
+# Gates that nothing runs, and why each is tolerated.
+#
+# `node tooling/gate-reachability/check.mjs` fails in BOTH directions: a gate
+# that becomes unreachable must be added here with a reason, and a listed gate
+# that something runs now must be removed. The second direction is what makes
+# this file shrink rather than accumulate.
+#
+# Regenerate the candidate list with `--count`. Do not paste its output in
+# wholesale: every row needs a reason someone checked, and "REASON REQUIRED"
+# is refused.
+#
+# Two different problems live here and the reasons distinguish them. A task
+# whose *check* runs by another route is naming debt. A task whose check runs
+# nowhere is a gate that protects nothing, which is what #1424 is about.
+#
+# task	reason
+clean	Manual by design: destructive, and running it inside a gate would delete the artifacts other gates are reading.
+default	Manual by design: the bare `task` alias for `help`, deliberately description-free so `task --list` does not show it twice.
+graphify-setup	Manual by design: installs tooling and writes outside the repository.
+graphify-update	Manual by design: regenerates the knowledge graph, which is not evidence any gate reads.
+lsp	Naming debt, not a hole: `roadmap` runs `spec/roadmap-31-34/verify-current-gates.sh`, which runs `sh tests/lsp/check.sh` at line 111. The check runs on every verify; only this task name is unreachable.
+discovery-sanitizer-reuse	Naming debt, not a hole: `discovery` runs `tests/conformance/discovery/run.sh`, which runs this task's exact script at line 339. The check runs on every verify.
+selfhost-frontend	Nothing runs it. `check-profile.sh --phase frontend` appears only in Taskfile.yml; `selfhost-profile` runs `frontend/check-frontend.sh`, a different script. #619's 46-cell evidence is gated by a task nobody invokes.
+selfhost-c11	Nothing runs it. `check-profile.sh --phase c11-text` appears only in Taskfile.yml; `selfhost-profile` runs `c11/check-c11.sh`, a different script. #620's Text-slice C11 evidence is gated by a task nobody invokes.
+selfhost-c11-control	Nothing runs it. `check-profile.sh --phase c11-control` appears only in Taskfile.yml, and no other caller passes that phase. #621's control/List C11 evidence is gated by a task nobody invokes.
+kif-module-trust-profile	The task is unreachable, and worse, being run would not help: its script runs on every verify via `native-toolchain-contract all` and the profile argument reaches only the PASS label, so the RFC-0012 raw-binding boundary #1421 and #1422 name as their regression surface is checked by nothing. A reader who runs this task sees its own name in a green line. Measured on #1424.
+kif-generics-profile	The task is unreachable, and that is the smaller half. Its script runs on every verify via `native-toolchain-contract all`, but the profile argument reaches only the PASS label — every profile produces byte-identical output — so nothing checks the thing this task is named after. Measured on #1424.
+generics-execution-profile	The task is unreachable, and that is the smaller half. Its script runs on every verify via `native-toolchain-contract all`, but the profile argument reaches only the PASS label — every profile produces byte-identical output — so nothing checks the thing this task is named after. Measured on #1424.
+generic-proof-kernel-profile	The task is unreachable, and that is the smaller half. Its script runs on every verify via `native-toolchain-contract all`, but the profile argument reaches only the PASS label — every profile produces byte-identical output — so nothing checks the thing this task is named after. Measured on #1424.
+fixed-decimal-profile	The task is unreachable, and that is the smaller half. Its script runs on every verify via `native-toolchain-contract all`, but the profile argument reaches only the PASS label — every profile produces byte-identical output — so nothing checks the thing this task is named after. Measured on #1424.
+decimal-backend-profiles	The task is unreachable, and that is the smaller half. Its script runs on every verify via `native-toolchain-contract all`, but the profile argument reaches only the PASS label — every profile produces byte-identical output — so nothing checks the thing this task is named after. Measured on #1424.
+directory-authority-contract	The task is unreachable, and that is the smaller half. Its script runs on every verify via `native-toolchain-contract all`, but the profile argument reaches only the PASS label — every profile produces byte-identical output — so nothing checks the thing this task is named after. Measured on #1424.
+environment-authority-compiler-contract	The task is unreachable, and that is the smaller half. Its script runs on every verify via `native-toolchain-contract all`, but the profile argument reaches only the PASS label — every profile produces byte-identical output — so nothing checks the thing this task is named after. Measured on #1424.
+host-process-authority-contract	The task is unreachable, and that is the smaller half. Its script runs on every verify via `native-toolchain-contract all`, but the profile argument reaches only the PASS label — every profile produces byte-identical output — so nothing checks the thing this task is named after. Measured on #1424.
+http-carrier-profile	The task is unreachable, and that is the smaller half. Its script runs on every verify via `native-toolchain-contract all`, but the profile argument reaches only the PASS label — every profile produces byte-identical output — so nothing checks the thing this task is named after. Measured on #1424.
