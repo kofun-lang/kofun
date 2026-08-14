@@ -77,6 +77,34 @@ for (let i = verifyStart + 1; i < lines.length; i += 1) {
   }
 }
 const verifyBlock = lines.slice(verifyStart, verifyEnd).join("\n");
+/*
+ * #1441. The verify list accepted `selfhost-b6-policy` twice — two branches
+ * added a line at the same anchor and the rebase kept both. `tooling/
+ * task-help.mjs` refuses exactly that mistake one file over, with `task appears
+ * in two help groups`; this list had no such guard, so the identical resolution
+ * error landed silently here instead of failing there.
+ *
+ * Measured rather than assumed: `verify-runner.sh` passes the names to
+ * `task --parallel`, and running it with a name twice executes the gate twice.
+ * go-task does not dedupe and the task carried no `run: once`.
+ */
+const verifyNames = [...verifyBlock.matchAll(/^\s{10,}([a-z][a-z0-9-]+)\s*\\?$/gm)]
+  .map((m) => m[1]);
+const seenInVerify = new Set();
+const duplicated = new Set();
+for (const name of verifyNames) {
+  if (seenInVerify.has(name)) duplicated.add(name);
+  seenInVerify.add(name);
+}
+if (duplicated.size !== 0) {
+  process.stderr.write(
+    `FAIL: gate reachability: the verify list names ${[...duplicated].join(", ")} more than once; ` +
+      "go-task runs a duplicated name twice, so the gate is paid for twice and the list " +
+      "no longer says what runs\n",
+  );
+  process.exit(1);
+}
+
 const reachable = new Map();
 const note = (name, how) => {
   if (defined.has(name) && !reachable.has(name)) reachable.set(name, how);
