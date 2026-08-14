@@ -57,6 +57,34 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: task backlog-refresh
 
+  # `task native-host-evidence` also runs inside `task verify`, where it checks
+  # everything about the six observations except where they came from: the
+  # verify checkout is shallow and has no token, so the evidence commit cannot
+  # be resolved and the workflow run cannot be looked up. The gate says so on
+  # stderr rather than passing quietly.
+  #
+  # This lane is the one that can actually resolve them, so it is the one that
+  # enforces the binding. Unlike the live-backlog lane it runs on pull requests
+  # too, because nothing here depends on state that other people change: the
+  # evidence artifact is committed, and the workflow run it names either exists
+  # on that commit or does not.
+  native-host-binding:
+    name: Native host evidence binding
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Install go-task
+        uses: arduino/setup-task@c0bc642852239c2689f73f4ea6459c29405f3c52 # v3.0.0
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Resolve the evidence commit and workflow run
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: task native-host-evidence
+
   # The structural lane above (`task release-claims`, inside `task verify`) only
   # reads the repository. This lane proves the stronger property: a checkout
   # that has installed nothing regenerates the committed evidence pack byte for
