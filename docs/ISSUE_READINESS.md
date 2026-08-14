@@ -340,12 +340,16 @@ on `origin/main@d72c3da65c0c77b74ec5b7b542de2c5725bdf6cc`:
 
 ```sh
 grep -v '^#' tests/backlog/debt.tsv | grep -c .
-# 3
+# 1
 ```
 
-All three are `inert-claim`, and all three are comments that were already there:
-#1431 added a rule that can see a defect no rule could see before, and the rows
-appeared the moment it could. **A ledger at zero because every rule is satisfied
+It is `inert-claim` on #847, a comment that was already there: #1431 added a
+rule that can see a defect no rule could see before, and the row appeared the
+moment it could. Two more appeared with it and lasted hours — their author read
+the rule, rewrote both comments **in place**, and the ledger refused the rows as
+"no longer applies". Rewriting in place rather than reposting is what retires a
+row: the extractor reads every comment, so a canonical repost leaves the
+unreadable one standing and the ledger keeps naming it. **A ledger at zero because every rule is satisfied
 and a ledger at zero because no rule can see the defect look identical from
 here.** The zero was worth recording and was never the goal.
 

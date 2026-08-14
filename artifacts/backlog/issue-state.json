@@ -997,10 +997,11 @@
         {
           "agent_id": "claude-opus-5-b326d627",
           "status": "active"
+        },
+        {
+          "agent_id": "claude-opus-5-b326d627",
+          "status": "active"
         }
-      ],
-      "inert_claims": [
-        "agent-claim:v1"
       ]
     },
     {
@@ -1723,10 +1724,11 @@
         {
           "agent_id": "claude-opus-5-b326d627",
           "status": "released"
+        },
+        {
+          "agent_id": "claude-opus-5-b326d627",
+          "status": "released"
         }
-      ],
-      "inert_claims": [
-        "agent-claim:v1"
       ]
     },
     {
@@ -2064,6 +2066,10 @@
         {
           "agent_id": "claude-1431-backlog-claim-holes-20260815",
           "status": "active"
+        },
+        {
+          "agent_id": "claude-1431-backlog-claim-holes-20260815",
+          "status": "pr-open"
         }
       ]
     }
