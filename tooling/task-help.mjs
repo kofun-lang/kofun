@@ -81,7 +81,7 @@ export const GROUPS = Object.freeze([
         title: 'Tooling and developer UX',
         hint: 'Discovery, sidecars, editors, frameworks, packages, and evidence adapters.',
         tasks: [
-            'task-help', 'discovery', 'discovery-sanitizer-reuse',
+            'task-help', 'gate-reachability', 'discovery', 'discovery-sanitizer-reuse',
             'cli-framework', 'tui-framework', 'build-system',
             'verify-object-reuse', 'packages', 'typed-sidecar-spec', 'typed-sidecar-codec',
             'typed-sidecar-captures', 'typed-sidecar-projector', 'upgrade-patch', 'documentation-index', 'ownership-view',
