@@ -1,0 +1,3 @@
+module lib.raw
+
+pub extern "C" fn kofun_double(value: Int) -> Int

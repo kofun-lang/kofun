@@ -193,5 +193,27 @@ mutation decorative-refusal \
     decorative E2S172 \
     "$CASES/decorative.kofun" lib.plain "$CASES/plain.kofun"
 
+# #1422. `extern "C" fn` declares a C entry point, so the module carrying one is
+# raw-foreign and has to say so. Without this refusal the boundary is bypassable
+# by construction: a module could expose C without ever claiming the class, and
+# an ordinary `import` would admit it. Measured before the guard existed — that
+# program built and ran.
+refuses \
+    extern_without_trust E2S174 \
+    "$CASES/extern_caller.kofun" lib.raw "$CASES/extern_without_trust.kofun"
+
+# And the declared form still resolves, so the refusal is about the missing
+# class rather than about `extern "C"` itself.
+accepts \
+    extern_raw \
+    "$CASES/extern_caller.kofun" lib.raw "$CASES/extern_raw.kofun"
+
+# Removing the class requirement must fail this suite, or the guard above is a
+# comment rather than a rule.
+mutation extern-trust-requirement \
+    's|if (!module->trust_raw_foreign) {|if (false) {|' \
+    extern_without_trust E2S174 \
+    "$CASES/extern_caller.kofun" lib.raw "$CASES/extern_without_trust.kofun"
+
 printf '%s\n' \
-    'PASS: a raw-foreign module is reachable only through `trusted import`, the marker is refused on an ordinary module, the decision is taken from the serialized trust class and the resolved ModuleId, and no refusal publishes an artifact'
+    'PASS: a raw-foreign module is reachable only through `trusted import`, the marker is refused on an ordinary module, the decision is taken from the serialized trust class and the resolved ModuleId, and no refusal publishes an artifact, and `extern "C" fn` requires the class it asks importers to accept'
