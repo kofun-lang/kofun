@@ -1,0 +1,168 @@
+[
+  {
+    "name": "issue on ext4 succeeds",
+    "result": {
+      "outcome": "Issued",
+      "authority": 1
+    }
+  },
+  {
+    "name": "refuse nfs before reserving",
+    "result": {
+      "outcome": "UnsupportedFilesystem",
+      "detail": "nfs",
+      "reservationHolder": null
+    }
+  },
+  {
+    "name": "refuse fuse before reserving",
+    "result": {
+      "outcome": "UnsupportedFilesystem",
+      "detail": "fuse",
+      "reservationHolder": null
+    }
+  },
+  {
+    "name": "refuse overlayfs before reserving",
+    "result": {
+      "outcome": "UnsupportedFilesystem",
+      "detail": "overlayfs",
+      "reservationHolder": null
+    }
+  },
+  {
+    "name": "two targets in one directory contend",
+    "result": {
+      "first": "Issued",
+      "second": "ReservationBusy"
+    }
+  },
+  {
+    "name": "two cooperating processes contend",
+    "result": {
+      "outcome": "ReservationBusy",
+      "detail": "EWOULDBLOCK"
+    }
+  },
+  {
+    "name": "release frees the namespace",
+    "result": {
+      "declined": "Declined",
+      "second": "Issued"
+    }
+  },
+  {
+    "name": "use after take is refused",
+    "result": {
+      "outcome": "UseAfterTake",
+      "detail": "use-after-take"
+    }
+  },
+  {
+    "name": "cleanup failure after a committed rename stays committed",
+    "result": {
+      "outcome": "CleanupFailed",
+      "detail": "EIO",
+      "committed": true
+    }
+  },
+  {
+    "name": "rename failure is not committed",
+    "result": {
+      "outcome": "RenameFailed",
+      "detail": "EIO",
+      "committed": false
+    }
+  },
+  {
+    "name": "process death frees the reservation",
+    "result": {
+      "outcome": "Issued",
+      "authority": 2
+    }
+  },
+  {
+    "name": "a stray reserved name without provenance refuses",
+    "result": {
+      "outcome": "EnrollmentConflict",
+      "detail": "reserved-name-without-provenance"
+    }
+  },
+  {
+    "name": "a stray reserved name with provenance is recovered",
+    "result": {
+      "outcome": "Issued",
+      "authority": 1
+    }
+  },
+  {
+    "name": "129 consecutive EINTR is an interrupted issuance",
+    "result": {
+      "outcome": "InterruptedIssuance",
+      "detail": "EINTR x129"
+    }
+  },
+  {
+    "name": "128 consecutive EINTR still issues",
+    "result": {
+      "outcome": "Issued",
+      "authority": 1
+    }
+  },
+  {
+    "name": "refuse basename: empty",
+    "result": {
+      "outcome": "InvalidTargetName",
+      "detail": "empty"
+    }
+  },
+  {
+    "name": "refuse basename: dot",
+    "result": {
+      "outcome": "InvalidTargetName",
+      "detail": "dot"
+    }
+  },
+  {
+    "name": "refuse basename: dotdot",
+    "result": {
+      "outcome": "InvalidTargetName",
+      "detail": "dot"
+    }
+  },
+  {
+    "name": "refuse basename: slash",
+    "result": {
+      "outcome": "InvalidTargetName",
+      "detail": "slash"
+    }
+  },
+  {
+    "name": "refuse basename: nul",
+    "result": {
+      "outcome": "InvalidTargetName",
+      "detail": "nul"
+    }
+  },
+  {
+    "name": "refuse basename: reserved",
+    "result": {
+      "outcome": "InvalidTargetName",
+      "detail": "reserved"
+    }
+  },
+  {
+    "name": "refuse basename: tooLong",
+    "result": {
+      "outcome": "InvalidTargetName",
+      "detail": "too-long"
+    }
+  },
+  {
+    "name": "255 bytes is accepted",
+    "result": {
+      "outcome": "Issued",
+      "authority": 1
+    }
+  }
+]
