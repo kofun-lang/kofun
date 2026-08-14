@@ -1,0 +1,9 @@
+# diagnostic-mode: compile
+# expect-code: E2S17
+# expect-span: byte 199
+# #1411 follow-up. The numeric-conversion arity check still refuses a real
+# mismatch.
+fn main() -> Int {
+    let d: Decimal = Decimal.from_int(1, 2)
+    return 0
+}
