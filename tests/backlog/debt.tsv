@@ -7,17 +7,24 @@
 #
 # This file held ZERO rows from 2026-08-14 until #1431 added a rule that could
 # see a defect nothing had been able to see. Measured 2026-08-15 on
-# origin/main@d72c3da65c0c77b74ec5b7b542de2c5725bdf6cc with
-# `grep -v '^#' tests/backlog/debt.tsv | grep -c .`: three rows, all
-# `inert-claim`, all pre-existing comments the new rule made visible rather than
-# anything the change introduced.
+# origin/main@051a97124c758a4cc5c6c2170eeabb7fe5f78374 with
+# `grep -v '^#' tests/backlog/debt.tsv | grep -c .`: two rows.
+#
+# `inert-claim` on #847 is a pre-existing comment #1431's rule made visible; two
+# others appeared with it and lasted hours, until their author rewrote the
+# comments in place and the ledger refused the rows.
+#
+# `capability-blocker` on #1291 is different in kind: its remaining blocker is a
+# person willing to run the reproduction packet, and a capability is not an
+# issue. #1291 named #1290 only because there was nowhere else to say so, which
+# is what kept #1290 open after its work had landed.
 #
 # The zero was worth recording and it was never the goal. A ledger at zero
 # because every rule is satisfied and a ledger at zero because no rule can see
 # the defect look identical from here, which is exactly what #1431 found. Every
-# row this file has ever held was retired by fixing the issue it named, and
-# these three are owed the same. docs/ISSUE_READINESS.md carries the same
-# statement where a reader of the tables will meet it.
+# row this file has ever held was retired by fixing the issue it named.
+# docs/ISSUE_READINESS.md carries the same statement where a reader of the
+# tables will meet it.
 #
 # The kind definitions below stay. A kind with no current rows is the vocabulary
 # for recording the next drift, and deleting one because nothing is in it is how
@@ -122,3 +129,4 @@
 #                     is worse than none: its author believes the signal is
 #                     published.
 inert-claim	847	agent-claim:v1
+capability-blocker	1291	-

@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 105,
+  "open_issues": 101,
   "issues": [
     {
       "number": 26,
@@ -838,15 +838,14 @@
       "number": 1217,
       "title": "RFC-0012 steps 5-6: integrate bindgen raw modules and reviewed facade",
       "state_labels": [
-        "blocked"
+        "ready"
       ],
-      "state_line": "blocked",
-      "blocked_by": [
-        1422
-      ],
+      "state_line": "ready",
+      "blocked_by": [],
       "evidence_commits": [
         "5c5cf42404b0dbeea36a4de0fb457c4479e8bf68",
-        "8fd0b25497c1fd4c61085260a416af619beb3c3f"
+        "8fd0b25497c1fd4c61085260a416af619beb3c3f",
+        "d72c3da65c0c77b74ec5b7b542de2c5725bdf6cc"
       ],
       "claims": [
         {
@@ -982,40 +981,21 @@
       ]
     },
     {
-      "number": 1242,
-      "title": "Stage 2 authority carrier: opaque nominal types and direct affine bindings",
+      "number": 1243,
+      "title": "Stage 2 authority kind: propagate Owned through shipped composites",
       "state_labels": [
         "in-progress"
       ],
       "state_line": "in-progress",
       "blocked_by": [],
       "evidence_commits": [
-        "5c5cf42404b0dbeea36a4de0fb457c4479e8bf68",
         "855ca05a6cf6a01c404585cddc48443e9177086c"
       ],
       "claims": [
         {
           "agent_id": "claude-opus-5-b326d627",
           "status": "active"
-        },
-        {
-          "agent_id": "claude-opus-5-b326d627",
-          "status": "active"
         }
-      ]
-    },
-    {
-      "number": 1243,
-      "title": "Stage 2 authority kind: propagate Owned through shipped composites",
-      "state_labels": [
-        "blocked"
-      ],
-      "state_line": "blocked",
-      "blocked_by": [
-        1242
-      ],
-      "evidence_commits": [
-        "855ca05a6cf6a01c404585cddc48443e9177086c"
       ]
     },
     {
@@ -1483,42 +1463,13 @@
       ]
     },
     {
-      "number": 1290,
-      "title": "Decide B6 operational independence, attestation authority, and freshness policy",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "dc7b49bf2404b44fa7a8f3916c0b0f1e3bd0ab03",
-        "e83eeb45329fb00d2387d570b5180bceb570d394"
-      ],
-      "claims": [
-        {
-          "agent_id": "claude-1290-b6-independence-policy-20260815",
-          "status": "active"
-        },
-        {
-          "agent_id": "claude-1290-b6-independence-policy-20260815",
-          "status": "pr-open"
-        },
-        {
-          "agent_id": "claude-1290-b6-independence-policy-20260815",
-          "status": "released"
-        }
-      ]
-    },
-    {
       "number": 1291,
       "title": "B6: obtain and validate one policy-compliant independent clean-builder attestation",
       "state_labels": [
         "blocked"
       ],
       "state_line": "blocked",
-      "blocked_by": [
-        1290
-      ],
+      "blocked_by": [],
       "evidence_commits": [
         "dc7b49bf2404b44fa7a8f3916c0b0f1e3bd0ab03"
       ]
@@ -1541,13 +1492,27 @@
       "number": 1296,
       "title": "[WASI command] Activate the target selector and fail-closed module shell",
       "state_labels": [
-        "ready"
+        "in-progress"
       ],
-      "state_line": "ready",
+      "state_line": "in-progress",
       "blocked_by": [],
       "evidence_commits": [
         "82f9b93c0e8760d242e085b0fc582f42aa423b03",
         "dc7b49bf2404b44fa7a8f3916c0b0f1e3bd0ab03"
+      ],
+      "claims": [
+        {
+          "agent_id": "claude-1296-wasi-command-target-20260815",
+          "status": "active"
+        },
+        {
+          "agent_id": "claude-1296-wasi-command-target-20260815",
+          "status": "active"
+        },
+        {
+          "agent_id": "claude-1296-wasi-command-target-20260815",
+          "status": "active"
+        }
       ]
     },
     {
@@ -2006,28 +1971,6 @@
       ]
     },
     {
-      "number": 1422,
-      "title": "Driver: lower extern \"C\" fn and honour --link-library on the driver path",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "1a38d94b01b39cef0c06dec6db2808d131cea276"
-      ],
-      "claims": [
-        {
-          "agent_id": "claude-1422-driver-extern-c-20260815",
-          "status": "active"
-        },
-        {
-          "agent_id": "claude-1422-driver-extern-c-20260815",
-          "status": "pr-open"
-        }
-      ]
-    },
-    {
       "number": 1424,
       "title": "Two mutation-proven gates have never run, and nothing would notice a third",
       "state_labels": [
@@ -2049,28 +1992,6 @@
       "blocked_by": [],
       "evidence_commits": [
         "82f9b93c0e8760d242e085b0fc582f42aa423b03"
-      ]
-    },
-    {
-      "number": 1431,
-      "title": "A ready issue with a live claim, and a claim that parses as nothing, are both invisible",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "5832bf659a2c7c40627045da60582e8973bc86a7"
-      ],
-      "claims": [
-        {
-          "agent_id": "claude-1431-backlog-claim-holes-20260815",
-          "status": "active"
-        },
-        {
-          "agent_id": "claude-1431-backlog-claim-holes-20260815",
-          "status": "pr-open"
-        }
       ]
     }
   ]
