@@ -28,8 +28,9 @@ export const GROUPS = Object.freeze([
             'selfhost-frontend', 'selfhost-c11', 'selfhost-c11-control',
             'selfhost-native', 'stage1-adapter', 'stage2', 'stage2-events',
             'native', 'native-host-evidence', 'wasm',
-            'wasm-host-abi', 'wasm-host-profile', 'atomic-write-authority-contract',
-            'wasi-command-profile', 'wasi-host-matrix-policy',
+            'wasm-host-abi', 'wasm-host-profile', 'wasi-command-profile',
+            'wasi-host-matrix-policy', 'atomic-write-authority-contract',
+            'wasi-command-projection-contract',
             'native-toolchain-contract',
             'wasm-object-arena',
             'wasm-list-v1', 'c-abi', 'bindgen-c'
