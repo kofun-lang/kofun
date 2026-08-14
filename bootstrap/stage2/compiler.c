@@ -9408,7 +9408,16 @@ static char *emit_product(
     int64_t start,
     int64_t end
 ) {
+    /* #1409. The scanner refuses by returning -1 and this emitter consumed it
+     * as a byte offset: `skip_trivia(source, -1)` reads before the buffer, and
+     * `operator_start` never advances past `end`, so the compiler spun instead
+     * of refusing. `product_end` already guards exactly this; the emitter
+     * beside it did not, and the asymmetry was the defect. */
     int64_t cursor = unary_end(source, start);
+    if (cursor < 0) {
+        return lower_error(
+            "E2S12", "invalid Int expression", skip_trivia(source, start));
+    }
     char *emitted = emit_unary(source, hir, start, cursor);
     int64_t function_open = enclosing_function_open(source, start);
     const char *type = numeric_primary_type(
@@ -9425,6 +9434,12 @@ static char *emit_product(
             token_end(source, operator_start)
         );
         int64_t right_end = unary_end(source, right_start);
+        if (right_end < 0) {
+            free(operator_text);
+            free(emitted);
+            return lower_error(
+                "E2S12", "invalid Int expression", right_start);
+        }
         char *right = emit_unary(source, hir, right_start, right_end);
         /* Combining a rejected operand hid it: `kofun_add(error[...], x)` no
          * longer starts with `error[`, so every caller above this loop saw a
@@ -9483,7 +9498,12 @@ static char *emit_arithmetic_expression(
     int64_t start,
     int64_t end
 ) {
+    /* #1409, the same asymmetry one level up. */
     int64_t cursor = product_end(source, start);
+    if (cursor < 0) {
+        return lower_error(
+            "E2S12", "invalid Int expression", skip_trivia(source, start));
+    }
     char *emitted = emit_product(source, hir, start, cursor);
     int64_t function_open = enclosing_function_open(source, start);
     const char *type = numeric_primary_type(
@@ -9506,6 +9526,12 @@ static char *emit_arithmetic_expression(
             token_end(source, operator_start)
         );
         int64_t right_end = product_end(source, right_start);
+        if (right_end < 0) {
+            free(operator_text);
+            free(emitted);
+            return lower_error(
+                "E2S12", "invalid Int expression", right_start);
+        }
         char *right = emit_product(source, hir, right_start, right_end);
         bool right_is_text = text_operand(
             source,

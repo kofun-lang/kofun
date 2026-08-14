@@ -5638,7 +5638,16 @@ fn emit_unary(source: Text, hir: Text, start: Int, end: Int) -> Text {
 }
 
 fn emit_product(source: Text, hir: Text, start: Int, end: Int) -> Text {
+    # #1409. The scanner refuses by returning -1 and the emitter used to consume
+    # that as a byte offset: `skip_trivia(source, -1)` reads before the buffer,
+    # and `operator_start` never advances past `end`, so the compiler spun
+    # instead of refusing. `product_end` already guards exactly this; the
+    # emitter beside it did not, and the asymmetry was the defect.
     let mut cursor = unary_end(source, start)
+    if cursor < 0 {
+        return "error[E2S12]: invalid Int expression at byte " +
+        to_text(skip_trivia(source, start))
+    }
     let mut emitted = emit_unary(source, hir, start, cursor)
     let value_type = numeric_primary_type(
         source,
@@ -5654,6 +5663,10 @@ fn emit_product(source: Text, hir: Text, start: Int, end: Int) -> Text {
             token_end(source, operator_start)
         )
         let right_end = unary_end(source, right_start)
+        if right_end < 0 {
+            return "error[E2S12]: invalid Int expression at byte " +
+            to_text(right_start)
+        }
         let right = emit_unary(source, hir, right_start, right_end)
         # Combining a rejected operand hid it: `kofun_add(error[...], x)` no
         # longer starts with `error[`, so every caller above this loop saw a
@@ -5699,7 +5712,13 @@ fn emit_arithmetic_expression(
     start: Int,
     end: Int
 ) -> Text {
+    # #1409, same asymmetry one level up: `product_end` refuses with -1 and this
+    # emitter consumed it as an offset.
     let mut cursor = product_end(source, start)
+    if cursor < 0 {
+        return "error[E2S12]: invalid Int expression at byte " +
+        to_text(skip_trivia(source, start))
+    }
     let mut emitted = emit_product(source, hir, start, cursor)
     let value_type = numeric_primary_type(
         source,
@@ -5721,6 +5740,10 @@ fn emit_arithmetic_expression(
             token_end(source, operator_start)
         )
         let right_end = product_end(source, right_start)
+        if right_end < 0 {
+            return "error[E2S12]: invalid Int expression at byte " +
+            to_text(right_start)
+        }
         let right = emit_product(source, hir, right_start, right_end)
         let right_is_text = text_operand(
             source,
