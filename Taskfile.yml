@@ -1140,6 +1140,7 @@ tasks:
             selfhost-declared-inputs \
             selfhost-b6-report \
             selfhost-b6-policy \
+            selfhost-b6-policy \
             selfhost-native \
             stage2 \
             stage2-events \
