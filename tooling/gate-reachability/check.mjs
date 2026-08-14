@@ -98,10 +98,35 @@ for (const m of taskfile.matchAll(/deps:\s*\[([^\]]*)\]/g)) {
 }
 
 /* 4. Any executable script. */
+/*
+ * Comments are stripped before matching. #1428 wrote `task kif-module-trust-profile`
+ * inside a comment explaining why that task used to check nothing, and this
+ * reader counted the sentence as a caller — reporting the gate as reachable
+ * because its own documentation mentioned it.
+ *
+ * That is the false-positive shape a rule with a near-miss has to be tested
+ * against, and it cost a green here before it was noticed. Line comments and
+ * block comments only; a `task foo` inside a string literal is still counted,
+ * because a script building a command in a string genuinely runs it.
+ *
+ * Measured, because "still counted" is a claim: stripping strings too changes
+ * no verdict today, since `git grep -nE '"[^"]*\btask [a-z-]+'` over `*.sh` and
+ * `*.mjs` finds no caller building one. So that half is unprotected by any
+ * current fixture and is written here as intent rather than as something the
+ * suite would catch. A future caller of that shape is the case to add a test
+ * with.
+ */
+function withoutComments(body) {
+  return body
+    .replace(/\/\*[^]*?\*\//g, " ")
+    .replace(/^\s*#.*$/gm, " ")
+    .replace(/^\s*\/\/.*$/gm, " ");
+}
+
 for (const file of walk(ROOT)) {
   let body;
   try {
-    body = read(file);
+    body = withoutComments(read(file));
   } catch {
     continue;
   }
