@@ -1,0 +1,14 @@
+# diagnostic-mode: compile
+# expect-code: E2S12
+# expect-span: byte 430
+# #1411. `call_arity` refuses an unparsable argument list with -1, and
+# validate_core_calls consumed it as a count -- the author was told their call
+# had minus one arguments. The four sites are independent: removing one
+# guard regresses only its own reproduction, so each needs its own fixture.
+fn g(a: Int) -> Int {
+    return a
+}
+
+fn main() {
+    print(g(1 == 1))
+}
