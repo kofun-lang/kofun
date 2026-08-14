@@ -1,0 +1,1 @@
+FAIL: backlog: #212 has a comment beginning `agent-claim:v1` that parses to no claim, so its author published nothing the gate can read; rewrite it in the canonical `### agent-claim:v1` form with `- ` keys as docs/ISSUE_READINESS.md defines, or record it in tests/backlog/debt.tsv as `inert-claim`

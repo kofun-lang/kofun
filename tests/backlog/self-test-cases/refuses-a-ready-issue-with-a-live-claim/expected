@@ -1,0 +1,1 @@
+FAIL: backlog: #210 is ready but agent-one still holds a live claim, so it is advertised as free and owned at the same time; post a claim with status `released` or `merged`, or record it in tests/backlog/debt.tsv as `stale-ready-claim`

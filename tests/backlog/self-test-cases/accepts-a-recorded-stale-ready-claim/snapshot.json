@@ -1,0 +1,33 @@
+{
+  "schema": "kofun.backlog-issue-state/v1",
+  "repository": "kofun-lang/kofun",
+  "state_labels": [
+    "ready",
+    "blocked",
+    "needs-detail",
+    "needs-decision",
+    "deferred",
+    "in-progress"
+  ],
+  "open_issues": 1,
+  "issues": [
+    {
+      "number": 211,
+      "title": "advertised as free while owned, recorded",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "5c5cf42404b0dbeea36a4de0fb457c4479e8bf68"
+      ],
+      "claims": [
+        {
+          "agent_id": "agent-one",
+          "status": "active"
+        }
+      ]
+    }
+  ]
+}
