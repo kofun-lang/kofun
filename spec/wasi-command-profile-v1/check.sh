@@ -29,21 +29,28 @@ cmp "$HERE/vectors/canonical.json" "$WORK/vectors.first.json"
 node "$HERE/model.mjs" compare "$HERE/vectors/canonical.json" >"$WORK/compare.stdout"
 assert_grep 'the canonical-vector comparison' -Fq 'is canonical' "$WORK/compare.stdout"
 
-# The decision reserves a target; it does not enable one. Until a separate
-# backend issue lands, the user-facing command must keep failing atomically.
+# #1296's first slice enabled this target for programs that reach no host
+# operation, so "reserved and unsupported" stopped being true. What replaces it
+# is the boundary that *is* true: a program performing a host operation is
+# refused, atomically, because the projection this profile describes is not
+# implemented for it yet.
+#
+# The assertion moved rather than being deleted. A gate whose subject is
+# implemented and whose assertion is removed leaves nothing saying where the
+# implementation stops.
 set +e
 "$ROOT/bin/kofun" build "$ROOT/examples/wasm_arithmetic.kofun" \
     --target "$TARGET" -o "$WORK/refused.wasm" \
     >"$WORK/refused.stdout" 2>"$WORK/refused.stderr"
 status=$?
 set -e
-assert_num "the reserved target status" "$status" -eq 2
-assert_absent 'the reserved target artifact' "$WORK/refused.wasm"
-assert_file_empty 'the reserved target stdout' "$WORK/refused.stdout"
-assert_grep 'the reserved target refusal' \
-    -Fxq "kofun: unsupported target: $TARGET" "$WORK/refused.stderr"
+assert_num 'the unimplemented-operation status' "$status" -ne 0
+assert_absent 'the unimplemented-operation artifact' "$WORK/refused.wasm"
+assert_file_empty 'the unimplemented-operation stdout' "$WORK/refused.stdout"
+assert_grep 'the unimplemented-operation refusal names the boundary' \
+    -Fq 'no host operations in this slice' "$WORK/refused.stderr"
 
 printf '%s\n' \
     'PASS: canonical profile vectors are deterministic and byte-identical' \
     'PASS: the reference model refusal matrix and Node engine fixture pass' \
-    "PASS: $TARGET remains reserved, unsupported, and artifact-free"
+    "PASS: $TARGET refuses a host operation atomically and leaves no artifact"

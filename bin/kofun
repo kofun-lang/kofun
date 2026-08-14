@@ -85,7 +85,8 @@ usage:
               [--backend c --c-abi [--link-library FILE|--package NAME]...]
               [--offline]
               [--framework cli]
-              [--target x86_64-linux|aarch64-linux|wasm32|wasm32-hostabi1] [-g]
+              [--target x86_64-linux|aarch64-linux|wasm32|wasm32-hostabi1]
+              [--target wasm32-wasi-command1 [--wasi-manifest FILE]] [-g]
   kofun build [TARGET...] [FROST_OPTIONS]  # with ./kofun.toml
   kofun package lock
   kofun package fetch [--offline]
@@ -1019,6 +1020,16 @@ build_wasm_file() (
     trap 'rm -f "$temporary"' 0 1 2 15
     if test "$3" = hostabi1; then
         "$WASM_COMPILER" --hostabi1 "$1" "$temporary"
+    elif test "$3" = wasi-command1; then
+        # $4, when present, is the manifest's SHA-256. It binds into the module
+        # so the artifact says which grants it was built against — a module and
+        # a manifest that were never checked together are the pair a reader
+        # cannot otherwise tell from a matching one.
+        if test -n "${4:-}"; then
+            "$WASM_COMPILER" --wasi-command1 "$1" "$temporary" "$4"
+        else
+            "$WASM_COMPILER" --wasi-command1 "$1" "$temporary"
+        fi
     else
         "$WASM_COMPILER" "$1" "$temporary"
     fi
@@ -1196,6 +1207,7 @@ case ${1-} in
         ;;
     build)
         shift
+        wasi_manifest=
         case ${1-} in
             *.kofun) ;;
             *)
@@ -1255,6 +1267,16 @@ case ${1-} in
                     }
                     framework=cli
                     shift 2
+                    ;;
+                --wasi-manifest)
+                    test "$#" -ge 2 || { usage >&2; exit 2; }
+                    test -f "$2" || {
+                        printf '%s\n' "kofun: manifest not found: $2" >&2
+                        exit 2
+                    }
+                    wasi_manifest=$2
+                    shift 2
+                    continue
                     ;;
                 --link-library)
                     test "$#" -ge 2 || { usage >&2; exit 2; }
@@ -1373,6 +1395,26 @@ $2"
                     ;;
                 wasm32-hostabi1)
                     build_wasm_file "$input" "$output" hostabi1
+                    ;;
+                wasm32-wasi-command1)
+                    # #1296. The manifest is validated before anything is
+                    # emitted: a refusal must leave no artifact, and a module
+                    # written first and deleted after is a file some other step
+                    # can read in between.
+                    if test -n "$wasi_manifest"; then
+                        command -v node >/dev/null 2>&1 || {
+                            printf '%s\n' \
+                                "kofun: --wasi-manifest requires node" >&2
+                            exit 2
+                        }
+                        node "$ROOT/tooling/wasi-command/validate-manifest.mjs" \
+                            "$wasi_manifest" >/dev/null || exit 1
+                    fi
+                    manifest_digest=
+                    if test -n "$wasi_manifest"; then
+                        manifest_digest=$("$ROOT/bin/kofun-digest" "$wasi_manifest" | awk '{ print $1 }')
+                    fi
+                    build_wasm_file "$input" "$output" wasi-command1 "$manifest_digest"
                     ;;
                 x86_64-linux|aarch64-linux)
                     build_native_file "$input" "$output" "$target" "$debug"

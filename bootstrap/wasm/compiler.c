@@ -2222,6 +2222,124 @@ static Buffer emit_profile_module(void) {
     return module;
 }
 
+/*
+ * The wasm32-wasi-command1 shape, for a program that reaches no host operation.
+ *
+ * #1293's projection contract fixes what this must and must not contain, and
+ * the "grants without reachable operations emit nothing" property is the whole
+ * of this slice: a command module whose program performs no checked operation
+ * imports **nothing**, not even from `wasi_snapshot_preview1`. An import
+ * emitted "just in case" is the defect that contract exists to refuse, because
+ * it makes the module's declared surface wider than its behaviour.
+ *
+ * What Preview 1 requires of a command is the rest: one exported linear memory,
+ * no imported memory, and `_start` with no parameters and no result. `main` is
+ * deliberately not exported — a command is entered through `_start`, and
+ * exporting both would leave a host free to pick.
+ */
+#define KOFUN_WASI_COMMAND_PROFILE_VERSION 1
+
+static Buffer emit_wasi_command_module(
+    const Parser *parser,
+    const char *manifest_digest
+) {
+    (void)parser;
+    Buffer module = {0};
+    static const uint8_t header[] = {
+        0x00, 0x61, 0x73, 0x6d,
+        0x01, 0x00, 0x00, 0x00
+    };
+    bytes(&module, header, sizeof(header));
+
+    /* t0: () -> (). The only signature a command entry point may have. */
+    Buffer types = {0};
+    uleb(&types, 1);
+    byte(&types, 0x60);
+    uleb(&types, 0);
+    uleb(&types, 0);
+    section(&module, 1, &types);
+
+    /* No import section at all. Emitting an empty one would be legal and would
+     * still say "this module imports", which is the thing being refused. */
+
+    Buffer functions = {0};
+    uleb(&functions, 1);
+    uleb(&functions, 0);
+    section(&module, 3, &functions);
+
+    Buffer memory = {0};
+    uleb(&memory, 1);
+    byte(&memory, 0x01); /* min and max both present: this slice never grows. */
+    uleb(&memory, 1);
+    uleb(&memory, 1);
+    section(&module, 5, &memory);
+
+    /* #1098's validator requires an immutable i32 global carrying the profile
+     * version, exported under `kofun_wasi_command_version`. Measured rather
+     * than assumed: the first version of this emitter produced memory and
+     * `_start` only, and `validateModule` refused it with
+     * `missing-export: memory, kofun_wasi_command_version, and _start are
+     * required`. The contract is executable, so it was cheaper to run it than
+     * to read it. */
+    Buffer globals = {0};
+    uleb(&globals, 1);
+    byte(&globals, 0x7f); /* i32 */
+    byte(&globals, 0x00); /* immutable */
+    byte(&globals, OP_I32_CONST);
+    sleb(&globals, KOFUN_WASI_COMMAND_PROFILE_VERSION);
+    byte(&globals, OP_END);
+    section(&module, 6, &globals);
+
+    Buffer exports = {0};
+    uleb(&exports, 3);
+    wasm_string(&exports, "memory");
+    byte(&exports, 0x02);
+    uleb(&exports, 0);
+    wasm_string(&exports, "kofun_wasi_command_version");
+    byte(&exports, 0x03);
+    uleb(&exports, 0);
+    wasm_string(&exports, "_start");
+    byte(&exports, 0x00);
+    uleb(&exports, 0);
+    section(&module, 7, &exports);
+
+    Buffer code = {0};
+    uleb(&code, 1);
+    Buffer start = {0};
+    uleb(&start, 0);
+    byte(&start, OP_END);
+    uleb(&code, start.length);
+    bytes(&code, start.data, start.length);
+    section(&module, 10, &code);
+
+    /* The profile says the manifest's SHA-256 binds into the artifact and does
+     * not fix an encoding, so #1296 chose one: a custom section carrying the
+     * profile revision and the digest.
+     *
+     * Custom rather than a global, because this is metadata a reader of the
+     * file needs and a running module never does — a global would make it
+     * addressable from guest code, which nobody asked for. Last, so that a
+     * section growing in a later revision cannot move anything a reader already
+     * computed an offset for. */
+    Buffer identity = {0};
+    if (manifest_digest != NULL) {
+        wasm_string(&identity, "kofun.wasi-command1");
+        uleb(&identity, KOFUN_WASI_COMMAND_PROFILE_VERSION);
+        wasm_string(&identity, manifest_digest);
+        section(&module, 0, &identity);
+    }
+
+    free(types.data);
+    free(functions.data);
+    free(memory.data);
+    free(globals.data);
+    free(exports.data);
+    free(start.data);
+    free(code.data);
+    free(identity.data);
+    return module;
+}
+
 static bool write_module(const char *path, const Buffer *module) {
     FILE *file = fopen(path, "wb");
     if (file == NULL) {
@@ -2241,20 +2359,62 @@ static bool write_module(const char *path, const Buffer *module) {
 
 int main(int argc, char **argv) {
     bool profile = argc == 4 && strcmp(argv[1], "--hostabi1") == 0;
-    if ((!profile && argc != 3) || (profile && argc != 4)) {
+    bool wasi_command = argc >= 4 && strcmp(argv[1], "--wasi-command1") == 0;
+    const char *wasi_manifest_digest =
+        (wasi_command && argc == 5) ? argv[4] : NULL;
+    bool flagged = profile || wasi_command;
+    if ((!flagged && argc != 3) ||
+        (profile && argc != 4) ||
+        (wasi_command && argc != 4 && argc != 5)) {
         fprintf(
             stderr,
             "usage: kofun-wasm-core [--hostabi1] INPUT.kofun OUTPUT.wasm\n"
+            "       kofun-wasm-core --wasi-command1 INPUT.kofun OUTPUT.wasm [MANIFEST_SHA256]\n"
         );
         return 2;
     }
 
-    const char *input = argv[profile ? 2 : 1];
-    const char *output = argv[profile ? 3 : 2];
+    const char *input = argv[flagged ? 2 : 1];
+    const char *output = argv[flagged ? 3 : 2];
 
     size_t length = 0;
     char *source = read_source(input, &length);
     if (source == NULL) return 1;
+    if (wasi_command) {
+        /* #1296. `require_print` is false here on purpose: a command that
+         * performs no host operation is the shape #1293's contract calls
+         * "grants without reachable operations emit nothing", and refusing it
+         * for lack of a print would make the minimal command unreachable. */
+        Parser *command_parser = allocate(sizeof(*command_parser));
+        memset(command_parser, 0, sizeof(*command_parser));
+        command_parser->source = source;
+        command_parser->length = length;
+        if (!parse_program(command_parser, false)) {
+            fprintf(stderr, "kofun wasm32: line %zu: %s\n",
+                    command_parser->error_line,
+                    command_parser->error == NULL
+                        ? "invalid wasm32-wasi-command1 source"
+                        : command_parser->error);
+            free(command_parser);
+            free(source);
+            return 1;
+        }
+        if (command_parser->print_count != 0) {
+            fprintf(stderr, "kofun wasm32: line 1: %s\n",
+                    "wasm32-wasi-command1 has no host operations in this slice; "
+                    "remove the print, or use --target wasm32");
+            free(command_parser);
+            free(source);
+            return 1;
+        }
+        Buffer command_module =
+            emit_wasi_command_module(command_parser, wasi_manifest_digest);
+        bool command_written = write_module(output, &command_module);
+        free(command_module.data);
+        free(command_parser);
+        free(source);
+        return command_written ? 0 : 1;
+    }
     if (profile && profile_source_uses_list(source, length)) {
         ListProfileParser *list_parser = allocate(sizeof(*list_parser));
         memset(list_parser, 0, sizeof(*list_parser));
