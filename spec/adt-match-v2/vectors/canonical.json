@@ -1,0 +1,72 @@
+[
+  {
+    "name": "exhaustive over three constructors",
+    "result": {
+      "resultType": "Int",
+      "coveredConstructors": [
+        "Failed",
+        "Ready",
+        "Waiting"
+      ],
+      "catchAll": false,
+      "guardedArms": 0,
+      "patternNodes": 5
+    }
+  },
+  {
+    "name": "a missing constructor is non-exhaustive",
+    "refusal": {
+      "code": "NonExhaustive",
+      "detail": "Waiting, Failed"
+    }
+  },
+  {
+    "name": "a guarded arm does not cover",
+    "refusal": {
+      "code": "NonExhaustive",
+      "detail": "Ready"
+    }
+  },
+  {
+    "name": "or-alternatives binding different names refuse",
+    "refusal": {
+      "code": "OrAlternativeBindingMismatch",
+      "detail": "alternative 1 binds `q:Int:Failed:read`, alternative 0 binds `p:Point:Ready:read`"
+    }
+  },
+  {
+    "name": "a result join mismatch refuses",
+    "refusal": {
+      "code": "ResultJoinMismatch",
+      "detail": "Int vs Text"
+    }
+  },
+  {
+    "name": "two payload TypeRefs refuse",
+    "refusal": {
+      "code": "MultiplePayloads",
+      "detail": "`Both` declares 2 payload TypeRefs; use one nominal record"
+    }
+  },
+  {
+    "name": "a field-level take refuses",
+    "refusal": {
+      "code": "FieldLevelTake",
+      "detail": "`p` at `Ready.Inner` is a field-level take"
+    }
+  },
+  {
+    "name": "a redundant arm refuses",
+    "refusal": {
+      "code": "RedundantArm",
+      "detail": "Ready"
+    }
+  },
+  {
+    "name": "too many or-alternatives exhausts the budget",
+    "refusal": {
+      "code": "BudgetExhausted",
+      "detail": "9 or-alternatives exceeds 8"
+    }
+  }
+]
