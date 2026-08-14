@@ -112,9 +112,14 @@ Writing it surfaced things that were not written down anywhere:
   row's real blocker. Since #1190 the pipeline is recognized first and the row
   stops there instead; the generic parameter type is still unsupported, and now
   nothing in the corpus exercises that message.
-- **The worst diagnostic in the corpus is row 5's**: `Core function
-  'accumulate' expects 3 arguments, got -1`, an argument count that cannot
-  exist.
+- **The worst diagnostic in the corpus is row 2's**, and it is the only
+  remaining 0. Row 5 held that place with `Core function 'accumulate' expects 3
+  arguments, got -1` -- an argument count that cannot exist -- until #1411
+  refused the sentinel that produced it; row 5 now scores 1. What is left at 0
+  is row 2's, which is not a Kofun diagnostic at all: deleting a binding
+  annotation produces `error: invalid initializer / KofunEnumValue
+  kofun_match_value = k_b11;` from the host C compiler, against generated code
+  the author never wrote.
 - **`|>` has no executable form on either backend, but Stage 2 now says so.**
   This corpus recorded the original complaint: `readings |> filter` failed the
   native backend with "expected Int expression in native Core function", and

@@ -353,8 +353,16 @@ expect_refused() {
     printf 'usability corpus: %s still refused: %s: PASS\n' "$stem" "$reason"
 }
 
+# #1411 moved this row's refusal. It used to score `E2S17: Core function
+# `accumulate` expects 3 arguments, got -1` -- an arity computed from an
+# argument list the parser had already failed on, reported as a count. The
+# corpus called it the worst diagnostic it contained. `call_arity`'s -1 is now
+# refused before it can be printed, and the expression checker names the
+# argument instead. The row is still refused, and still for the same underlying
+# reason: a function-typed parameter cannot be declared. What changed is that
+# the message no longer asserts something impossible.
 expect_refused 05_higher_order \
-    'error[E2S17]: Core function `accumulate` expects 3 arguments, got -1'
+    'error[E2S12]: invalid Int expression at byte 1211'
 expect_refused 06_monad_laws \
     'error[E2S02]: expected top-level `fn`, `type`, or `let`'
 # #1190 moved this row's refusal, and the move is the point. It used to stop at

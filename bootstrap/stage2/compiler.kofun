@@ -6859,7 +6859,12 @@ fn validate_core_calls(source: Text, hir: Text) -> Text {
                         name + "` at byte " + to_text(cursor)
                     }
                     let builtin_actual = call_arity(source, open)
-                    if builtin_actual != builtin_expected {
+                    # #1411. `call_arity` refuses an unparsable argument list by
+                    # returning -1, and printing that as a count tells the author
+                    # their call has minus one arguments. The argument itself is
+                    # what is wrong; leaving it to the expression checker below
+                    # produces the diagnostic they can act on.
+                    if builtin_actual >= 0 && builtin_actual != builtin_expected {
                         return "error[E2S17]: Core function `" + name +
                         "` expects " + to_text(builtin_expected) +
                         " arguments, got " + to_text(builtin_actual) +
@@ -6888,11 +6893,16 @@ fn validate_core_calls(source: Text, hir: Text) -> Text {
                 # its subject is one of the call's arguments. Counting only what
                 # is written between them is what made every pipeline report
                 # `expects N, got N-1` before #1190.
-                let mut actual = call_arity(source, open)
+                let written = call_arity(source, open)
+                let mut actual = written
                 if call_is_pipeline_target(source, cursor) {
                     actual = actual + 1
                 }
-                if actual != expected {
+                # #1411. The guard reads `written`, not `actual`: on a pipeline
+                # the increment above turns the -1 sentinel into 0, so a guard
+                # placed after it would report `got 0` -- still wrong, and no
+                # longer obviously wrong.
+                if written >= 0 && actual != expected {
                     return "error[E2S17]: Core function `" + name +
                     "` expects " + to_text(expected) + " arguments, got " +
                     to_text(actual) + " at byte " + to_text(cursor)
@@ -15441,7 +15451,8 @@ fn validate_numeric_conversions(source: Text, hir: Text) -> Text {
                     let expected_arity = numeric_member_expected_arity(
                         conversion
                     )
-                    if actual != expected_arity {
+                    # #1411, same sentinel.
+                    if actual >= 0 && actual != expected_arity {
                         return "error[E2S17]: Core function `" + conversion +
                         "` expects " + to_text(expected_arity) +
                         " arguments, got " + to_text(actual) +

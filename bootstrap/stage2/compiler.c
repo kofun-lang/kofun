@@ -11065,7 +11065,13 @@ static char *validate_core_calls(const char *source, const char *hir) {
                         return error.data;
                     }
                     int64_t builtin_actual = call_arity(source, open);
-                    if (builtin_actual != builtin_expected) {
+                    /* #1411. `call_arity` refuses an unparsable argument list by
+                     * returning -1, and printing that as a count tells the
+                     * author their call has minus one arguments. The argument
+                     * itself is what is wrong; leaving it to the expression
+                     * checker produces the diagnostic they can act on. */
+                    if (builtin_actual >= 0 &&
+                        builtin_actual != builtin_expected) {
                         Buffer error;
                         buffer_init(&error);
                         buffer_format(
@@ -11130,13 +11136,18 @@ static char *validate_core_calls(const char *source, const char *hir) {
                         return error.data;
                     }
                 }
-                int64_t actual = call_arity(source, open);
+                int64_t written = call_arity(source, open);
+                int64_t actual = written;
                 /* A pipeline supplies slot 0 from outside the parentheses, so
                  * its subject is one of the call's arguments. Counting only
                  * what is written between them is what made every pipeline
                  * report `expects N, got N-1` before #1190. */
                 if (pipeline_subject_for_call(source, cursor) >= 0) ++actual;
-                if (actual != expected) {
+                /* #1411. The guard reads `written`, not `actual`: on a pipeline
+                 * the increment above turns the -1 sentinel into 0, so a guard
+                 * placed after it would report `got 0` -- still wrong, and no
+                 * longer obviously wrong. */
+                if (written >= 0 && actual != expected) {
                     Buffer error;
                     buffer_init(&error);
                     buffer_format(
@@ -23348,7 +23359,8 @@ static char *validate_numeric_conversions(
                             token_end(source, member)
                         );
                         int64_t actual = call_arity(source, open);
-                        if (actual != 1) {
+                        /* #1411, same sentinel. */
+                        if (actual >= 0 && actual != 1) {
                             buffer_format(
                                 &message,
                                 "error[E2S17]: Core function `%s` expects 1 "
@@ -23448,7 +23460,8 @@ static char *validate_decimal_slice5_members(
                     int64_t expected_arity =
                         numeric_member_expected_arity(member);
                     int64_t actual_arity = call_arity(source, open);
-                    if (actual_arity != expected_arity) {
+                    /* #1411, same sentinel. */
+                    if (actual_arity >= 0 && actual_arity != expected_arity) {
                         Buffer message;
                         buffer_init(&message);
                         buffer_format(
