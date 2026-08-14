@@ -803,6 +803,16 @@ tasks:
     cmds:
       - "sh spec/wasi-host-matrix-v1/check.sh"
 
+  # #1296. The wasm32-wasi-command1 minimal command shape: exported memory,
+  # `_start`, and — the load-bearing part — no import section at all, because
+  # #1293's contract says a program reaching no checked operation emits none.
+  # The gate decodes the binary, runs it on a Preview 1 host, and validates it
+  # with #1098's own validator rather than my reading of the profile.
+  wasi-command-backend-shell:
+    desc: "Verify the wasm32-wasi-command1 command module shape, and run it on a Preview 1 host"
+    cmds:
+      - "sh tests/wasm/wasi-command/check.sh"
+
   wasi-command-profile:
     desc: "Verify the reserved WASI command capability profile and reference host"
     cmds:
@@ -1271,6 +1281,7 @@ tasks:
             wasm-host-abi \
             wasm-host-profile \
             wasi-command-profile \
+            wasi-command-backend-shell \
             adt-match-v2-contract \
             wasi-host-matrix-policy \
             wasi-command-projection-contract \
