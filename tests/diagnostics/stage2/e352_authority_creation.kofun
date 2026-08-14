@@ -1,0 +1,7 @@
+# diagnostic-mode: compile
+# expect-code: E352
+# expect-span: byte 120
+fn main() -> Int {
+    let root: RootAuthority = 0
+    return 0
+}

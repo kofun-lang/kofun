@@ -3369,6 +3369,35 @@ static bool ownership_mode_token(const char *source, int64_t cursor) {
 }
 
 /*
+ * The three RFC-0002 authority types, selected by #1241 and recorded in
+ * `spec/native-toolchain-v1/contract.json` under that issue's entry. They are
+ * opaque nominal types: no declaration in source introduces them and no source
+ * construct produces a value of one, so `record_declaration_start` will never
+ * find them and they need their own recognizer.
+ *
+ * The name set lives in exactly one function on each half of the pair so that
+ * the carrier, the refusals, and the arity of the set cannot drift apart. A
+ * gate asserts the count, because three names spelled out at four call sites
+ * is how a fourth authority type gets added to three of them.
+ */
+static bool authority_type_name(const char *name) {
+    return strcmp(name, "RootAuthority") == 0 ||
+           strcmp(name, "EnvironmentAuthority") == 0 ||
+           strcmp(name, "EnvironmentKey") == 0;
+}
+
+/*
+ * Root and Environment authority are Owned: unforgeable, non-Copy, and moved
+ * by a whole-binding transfer. `EnvironmentKey` is deliberately unrestricted
+ * and copyable — it names a variable, it does not carry the right to read one,
+ * so making it affine would cost every caller a clone and buy nothing.
+ */
+static bool authority_type_is_owned(const char *name) {
+    return strcmp(name, "RootAuthority") == 0 ||
+           strcmp(name, "EnvironmentAuthority") == 0;
+}
+
+/*
  * A word in a parameter head, which is an identifier *or* a keyword.
  *
  * The keyword half is not a nicety. `token_kind` returns "keyword" for the 16
@@ -11373,6 +11402,61 @@ static char *core_parameters(
             free(parameter_type);
         }
         free(binding_id);
+        /* #1242. An authority parameter is a *recognized* type with no carrier
+         * ABI yet, which is a different answer from E2S15's "that is not a
+         * type". #1241 chose `refuse-before-authority-carrier-abi` for `build`
+         * and `run` while `check` may still emit typed facts, and this message
+         * is the existing way to say exactly that: it is already in
+         * `unsupported_lowering_error`, so `compile_file` returns 3 rather than
+         * 1, the sidecar is written, and only codegen is withheld. The
+         * precedent is `List[Int]` under an ownership mode, one branch above. */
+        {
+            char *authority_name = token_copy(source, type_cursor);
+            if (authority_type_name(authority_name)) {
+                Buffer message;
+                buffer_init(&message);
+                const char *code = "E2S10";
+                int64_t at = type_cursor;
+                /* #1242. An Owned authority arrives by whole-binding transfer
+                 * or by borrow; a parameter head with no ownership mode is a
+                 * copy in, and copying an unforgeable value is the forgery
+                 * this type exists to prevent. #1241's entrypoint is
+                 * `fn main(take root: RootAuthority) -> Int` for exactly this
+                 * reason. `EnvironmentKey` is not Owned and takes any mode,
+                 * including none.
+                 *
+                 * Checked before the carrier refusal because it is true
+                 * whatever the ABI turns out to be: #1241's precedence puts
+                 * E351-E355 ahead of the codegen answer, and a program refused
+                 * for the missing ABI would otherwise be silently fixed by
+                 * adding it. */
+                if (authority_type_is_owned(authority_name) &&
+                    !ownership_mode_token(source, cursor)) {
+                    code = "E353";
+                    at = cursor;
+                    buffer_format(
+                        &message,
+                        "%s is an Owned authority and cannot be copied into a "
+                        "parameter; use `read`, `edit`, or `take`",
+                        authority_name
+                    );
+                } else {
+                    buffer_format(
+                        &message,
+                        "unsupported Core parameter type %s",
+                        authority_name
+                    );
+                }
+                char *error = lower_error(code, message.data, at);
+                free(message.data);
+                free(authority_name);
+                free(declarator);
+                free(name);
+                free(emitted.data);
+                return error;
+            }
+            free(authority_name);
+        }
         if (type_end < 0) {
             free(declarator);
             free(name);
@@ -19711,6 +19795,9 @@ static char *lower_body(
             char *binding_id = hir_definition_id_at(hir, cursor);
             char *enum_type = NULL;
             char *record_type = NULL;
+            /* #1242. Held like `enum_type`/`record_type` so the refusal can be
+             * reported at the initializer rather than at the annotation. */
+            char *authority_type = NULL;
             bool optional_int = false;
             bool list_int = false;
             cursor = skip_trivia(source, token_end(source, cursor));
@@ -19778,6 +19865,16 @@ static char *lower_body(
                         record_declaration_start(source, declared_type) >= 0
                     ) {
                         record_type = declared_type;
+                    } else if (authority_type_name(declared_type)) {
+                        /* #1242. Excluded from E2S32 and answered at the
+                         * initializer instead. `unknown supported aggregate
+                         * type` is the answer for a name that is not a type;
+                         * these are types, and the reason the binding is
+                         * refused is that no source construct produces one.
+                         * Reporting at the annotation would also put the span
+                         * on the part that is correct — the author may write
+                         * the annotation, they may not write a value for it. */
+                        authority_type = declared_type;
                     } else {
                         Buffer message;
                         buffer_init(&message);
@@ -19811,6 +19908,7 @@ static char *lower_body(
                 }
             }
             if (cursor >= length || !token_equal(source, cursor, "=")) {
+                free(authority_type);
                 free(record_type);
                 free(enum_type);
                 free(binding_id);
@@ -19819,6 +19917,32 @@ static char *lower_body(
                 return lower_error("E2S11", "expected `=`", cursor);
             }
             int64_t value_start = skip_trivia(source, token_end(source, cursor));
+            /* #1242. There is no route from safe source to an authority value.
+             * Root authority is created once by the runtime and handed to the
+             * entrypoint; nothing else makes one, and no literal, record
+             * construction, cast, or decode may be read as making one either.
+             * The span is the initializer, because that is the creation being
+             * attempted — the annotation itself is a legitimate thing to
+             * write. */
+            if (authority_type != NULL) {
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(
+                    &message,
+                    "no source construct creates a value of type %s; it is "
+                    "produced by the runtime and received as a parameter",
+                    authority_type
+                );
+                char *error = lower_error("E352", message.data, value_start);
+                free(message.data);
+                free(authority_type);
+                free(record_type);
+                free(enum_type);
+                free(binding_id);
+                free(name);
+                free(emitted.data);
+                return error;
+            }
             if (optional_int) {
                 /*
                  * #924: the four initializer forms this slice constructs, and
@@ -25677,6 +25801,130 @@ static bool ends_with(const char *value, const char *suffix) {
            strcmp(value + value_length - suffix_length, suffix) == 0;
 }
 
+/*
+ * #1242. Authority misuse, checked before lowering so it wins over the carrier
+ * answer. #1241 puts E351-E355 ahead of the codegen result, and the order is
+ * load-bearing rather than cosmetic: a program refused only for the missing
+ * carrier ABI would appear to be fixed the day the ABI lands, when what is
+ * wrong with it is the copy.
+ *
+ * The front end already accepts these parameters — `build_scope_hir` succeeds
+ * and it is `lower_c` that refuses — so the bindings exist to be checked here.
+ * Measured before writing this: without the pass, `let r2 = root` and
+ * `root == root` both report the carrier refusal, because the parameter is
+ * refused before the body is read.
+ */
+static char *authority_binding_misuse(
+    const char *source,
+    int64_t body_start,
+    int64_t body_end,
+    const char *binding,
+    const char *authority
+) {
+    int64_t cursor = skip_trivia(source, body_start);
+    char *previous = owned_text("");
+    while (cursor < body_end) {
+        char *text = token_copy(source, cursor);
+        if (strcmp(text, binding) == 0 &&
+            strcmp(token_kind(source, cursor), "identifier") == 0) {
+            int64_t after = skip_trivia(source, token_end(source, cursor));
+            char *following = after < body_end
+                ? token_copy(source, after)
+                : owned_text("");
+            /* `==` and `!=` are one token, so this cannot collide with `=`. */
+            bool compared = strcmp(following, "==") == 0 ||
+                            strcmp(following, "!=") == 0 ||
+                            strcmp(previous, "==") == 0 ||
+                            strcmp(previous, "!=") == 0;
+            bool copied = strcmp(previous, "=") == 0;
+            free(following);
+            if (compared || copied) {
+                Buffer message;
+                buffer_init(&message);
+                if (compared) {
+                    buffer_format(
+                        &message,
+                        "%s is an Owned authority and has no equality; compare "
+                        "the capability you derived from it instead",
+                        authority
+                    );
+                } else {
+                    buffer_format(
+                        &message,
+                        "%s is an Owned authority and cannot be copied; pass "
+                        "it with `take`, or borrow it with `read` or `edit`",
+                        authority
+                    );
+                }
+                char *error = lower_error("E353", message.data, cursor);
+                free(message.data);
+                free(text);
+                free(previous);
+                return error;
+            }
+        }
+        free(previous);
+        previous = text;
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    free(previous);
+    return owned_text("ok");
+}
+
+static char *validate_authority_uses(const char *source) {
+    int64_t function_start = next_function_start(source, 0);
+    int64_t length = (int64_t)strlen(source);
+    while (function_start < length) {
+        int64_t function_close = function_end(source, function_start);
+        int64_t parameters = parameter_open(source, function_start);
+        if (function_close < 0 || parameters < 0) return owned_text("ok");
+        int64_t parameters_close =
+            balanced_end(source, parameters, "(", ")");
+        if (parameters_close < 0) return owned_text("ok");
+        /* A parameter head is `[mode] name : Type`, so an authority type token
+         * preceded by `:` and an identifier names an authority binding.
+         * Walking the region for that shape avoids a second parameter parser
+         * that could disagree with `core_parameters` about where a parameter
+         * ends. */
+        int64_t cursor = skip_trivia(source, token_end(source, parameters));
+        char *previous_text = owned_text("");
+        char *previous_name = owned_text("");
+        while (cursor < parameters_close) {
+            char *text = token_copy(source, cursor);
+            if (authority_type_name(text) &&
+                strcmp(previous_text, ":") == 0 &&
+                strcmp(previous_name, "") != 0) {
+                char *misuse = authority_binding_misuse(
+                    source,
+                    parameters_close,
+                    function_close,
+                    previous_name,
+                    text
+                );
+                if (strcmp(misuse, "ok") != 0) {
+                    free(text);
+                    free(previous_text);
+                    free(previous_name);
+                    return misuse;
+                }
+                free(misuse);
+            }
+            if (strcmp(token_kind(source, cursor), "identifier") == 0 &&
+                strcmp(previous_text, ":") != 0) {
+                free(previous_name);
+                previous_name = owned_text(text);
+            }
+            free(previous_text);
+            previous_text = text;
+            cursor = skip_trivia(source, token_end(source, cursor));
+        }
+        free(previous_text);
+        free(previous_name);
+        function_start = next_function_start(source, function_close);
+    }
+    return owned_text("ok");
+}
+
 static bool unsupported_lowering_error(const char *diagnostic) {
     return strncmp(
                diagnostic,
@@ -25783,6 +26031,21 @@ static bool stage2_compile_outcome(
     free(result->parse_prefix_ir);
     result->parse_prefix_ir = NULL;
     result->parse_committed = true;
+
+    /* #1242. The same check as in `compile_file`, and it has to be in both.
+     * This function is the second compile pipeline in this file: it is behind
+     * `#ifdef KOFUN_STAGE2_AUTHORITY_API`, which `semantic_producer.c` defines,
+     * so it is the path the typed sidecar takes while the CLI takes
+     * `compile_file`. A validator wired into one of them means `kofun check`
+     * and `kofun check --emit-typed-sidecar` disagree about the same program.
+     * `compiler.kofun` has one pipeline and no counterpart to this. */
+    char *authority_check = validate_authority_uses(source);
+    if (strncmp(authority_check, "error[", 6) == 0) {
+        result->diagnostic = authority_check;
+        result->exit_class = 1u;
+        goto done;
+    }
+    free(authority_check);
 
     pattern_check = validate_executable_patterns(source);
     if (strncmp(pattern_check, "error[", 6) == 0) {
@@ -25978,6 +26241,23 @@ static int compile_file(
     write_file(ir_output, ir);
     write_file(tokens_output, tokens);
     if (ends_with(output, ".c")) {
+        /* #1242. Before the pattern check, because an authority misuse is a
+         * fact about the program and the pattern check is a fact about this
+         * lowering slice; #1241 orders E351-E355 ahead of the codegen answer.
+         *
+         * Wired here and not into `stage2_compile_outcome`, which sits behind
+         * `#ifdef KOFUN_STAGE2_AUTHORITY_API` and is not compiled by default —
+         * a call added there builds clean and never runs. */
+        char *authority_check = validate_authority_uses(source);
+        if (strncmp(authority_check, "error[", 6) == 0) {
+            puts(authority_check);
+            free(authority_check);
+            free(ir);
+            free(tokens);
+            free(source);
+            return 1;
+        }
+        free(authority_check);
         char *pattern_check = validate_executable_patterns(source);
         if (strncmp(pattern_check, "error[", 6) == 0) {
             int status = unsupported_lowering_error(pattern_check) ? 3 : 1;
