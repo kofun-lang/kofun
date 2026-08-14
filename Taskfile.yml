@@ -746,6 +746,14 @@ tasks:
     cmds:
       - "sh spec/wasm-host-profile-v1/check.sh"
 
+  # #1293. #1098 froze the host-facing side and deliberately left the source
+  # side unstated. This is that side as a pure model: which checked operation
+  # reaches which import, and how a program's imports are derived. No compiler
+  # change and no runtime.
+  wasi-command-projection-contract:
+    desc: "Check the wasm32-wasi-command1 source/runtime projection against its pure model"
+    cmds:
+      - "sh spec/wasi-command-projection-v1/check.sh"
   # #1317. The AtomicWriteAuthority contract as a pure model: no compiler
   # carrier, no runtime authority, no syscall. It exists before the
   # implementation so the reservation and one-shot rules can be mutated and
@@ -754,7 +762,6 @@ tasks:
     desc: "Check the AtomicWriteAuthority v1 profile against its pure state and reservation model"
     cmds:
       - "sh spec/atomic-write-authority-v1/check.sh"
-
   # #1294. The host matrix is a policy plus a manifest plus an offline
   # validator. It decides which two maintained hosts execute the profile; it
   # installs nothing and runs no module, which is a later child of #26.

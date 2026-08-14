@@ -1,0 +1,199 @@
+[
+  {
+    "name": "no operations, all grants: nothing is emitted",
+    "result": {
+      "module": "wasi_snapshot_preview1",
+      "imports": [],
+      "usedCapabilities": [],
+      "grantedButUnused": [
+        "arguments",
+        "environment",
+        "stdin",
+        "stdout",
+        "stderr",
+        "monotonic-clock",
+        "random",
+        "preopen-read",
+        "exit"
+      ],
+      "memoryPages": 16
+    }
+  },
+  {
+    "name": "stdout only",
+    "result": {
+      "module": "wasi_snapshot_preview1",
+      "imports": [
+        "fd_write"
+      ],
+      "usedCapabilities": [
+        "stdout"
+      ],
+      "grantedButUnused": [
+        "arguments",
+        "environment",
+        "stdin",
+        "stderr",
+        "monotonic-clock",
+        "random",
+        "preopen-read",
+        "exit"
+      ],
+      "memoryPages": 16
+    }
+  },
+  {
+    "name": "every operation",
+    "result": {
+      "module": "wasi_snapshot_preview1",
+      "imports": [
+        "args_get",
+        "args_sizes_get",
+        "clock_time_get",
+        "environ_get",
+        "environ_sizes_get",
+        "fd_close",
+        "fd_prestat_dir_name",
+        "fd_prestat_get",
+        "fd_read",
+        "fd_write",
+        "path_open",
+        "proc_exit",
+        "random_get"
+      ],
+      "usedCapabilities": [
+        "arguments",
+        "environment",
+        "exit",
+        "monotonic-clock",
+        "preopen-read",
+        "random",
+        "stderr",
+        "stdin",
+        "stdout"
+      ],
+      "grantedButUnused": [],
+      "memoryPages": 16
+    }
+  },
+  {
+    "name": "missing grant refuses: CommandContext.arguments",
+    "refusal": {
+      "code": "MissingGrant",
+      "detail": "CommandContext.arguments needs `arguments`"
+    }
+  },
+  {
+    "name": "missing grant refuses: CommandContext.environment",
+    "refusal": {
+      "code": "MissingGrant",
+      "detail": "CommandContext.environment needs `environment`"
+    }
+  },
+  {
+    "name": "missing grant refuses: Stdin.read",
+    "refusal": {
+      "code": "MissingGrant",
+      "detail": "Stdin.read needs `stdin`"
+    }
+  },
+  {
+    "name": "missing grant refuses: Stdout.write",
+    "refusal": {
+      "code": "MissingGrant",
+      "detail": "Stdout.write needs `stdout`"
+    }
+  },
+  {
+    "name": "missing grant refuses: Stderr.write",
+    "refusal": {
+      "code": "MissingGrant",
+      "detail": "Stderr.write needs `stderr`"
+    }
+  },
+  {
+    "name": "missing grant refuses: MonotonicClock.now",
+    "refusal": {
+      "code": "MissingGrant",
+      "detail": "MonotonicClock.now needs `monotonic-clock`"
+    }
+  },
+  {
+    "name": "missing grant refuses: Random.fill",
+    "refusal": {
+      "code": "MissingGrant",
+      "detail": "Random.fill needs `random`"
+    }
+  },
+  {
+    "name": "missing grant refuses: Preopen.open",
+    "refusal": {
+      "code": "MissingGrant",
+      "detail": "Preopen.open needs `preopen-read`"
+    }
+  },
+  {
+    "name": "missing grant refuses: Preopen.read",
+    "refusal": {
+      "code": "MissingGrant",
+      "detail": "Preopen.read needs `preopen-read`"
+    }
+  },
+  {
+    "name": "missing grant refuses: Exit.exit",
+    "refusal": {
+      "code": "MissingGrant",
+      "detail": "Exit.exit needs `exit`"
+    }
+  },
+  {
+    "name": "unknown capability key in the manifest",
+    "refusal": {
+      "code": "UnknownCapabilityKey",
+      "detail": "telepathy"
+    }
+  },
+  {
+    "name": "absent capability key",
+    "refusal": {
+      "code": "IncompleteManifest",
+      "detail": "capability `random` is absent or not a Boolean"
+    }
+  },
+  {
+    "name": "zero memory pages",
+    "refusal": {
+      "code": "InvalidMemoryCeiling",
+      "detail": "0"
+    }
+  },
+  {
+    "name": "unknown operation",
+    "refusal": {
+      "code": "UnknownOperation",
+      "detail": "Filesystem.unlink"
+    }
+  },
+  {
+    "name": "exit status 0",
+    "result": 0
+  },
+  {
+    "name": "exit status 255",
+    "result": 255
+  },
+  {
+    "name": "exit status 256 refuses",
+    "refusal": {
+      "code": "ExitStatusOutOfRange",
+      "detail": "256"
+    }
+  },
+  {
+    "name": "exit status -1 refuses",
+    "refusal": {
+      "code": "ExitStatusOutOfRange",
+      "detail": "-1"
+    }
+  }
+]
