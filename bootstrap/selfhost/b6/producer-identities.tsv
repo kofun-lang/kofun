@@ -1,0 +1,31 @@
+# Producer-side identities for B6. One row per identity or identity pattern
+# that CANNOT be the independent builder, whatever it calls itself.
+#
+# bootstrap/selfhost/b6/POLICY.md section 1 is the prose; this file is the
+# same fact in the form the gate reads, so the two cannot drift. Adding a row
+# narrows who may attest; removing one widens it, and is a policy change that
+# belongs in a pull request with a reason.
+#
+# `kind` is how the row is matched against a report's `builder|identity`:
+#
+#   exact     the identity string equals this value, case-insensitively
+#   substring the identity string contains this value, case-insensitively
+#
+# `substring` exists because agent identities are generated and none of them
+# can be enumerated in advance — `claude-1290-b6-independence-policy-20260815`
+# is not a string anybody could have written down before it existed. What is
+# stable is the prefix its generator uses.
+#
+# This file refuses a *claimed* producer identity. A producer who types a
+# different name is not caught here and is not meant to be: POLICY.md section 3
+# makes that a human review step, because no file can authenticate its author.
+#
+# kind	value	why
+exact	kofun repository self-check	the packet's own self-check identity; the committed report.tsv uses it
+exact	hjosugi	the producer account
+substring	hjosugi	any identity naming the producer account
+substring	kofun-lang	the project organization
+substring	claude-	an agent session operated by the producer
+substring	codex-	an agent session operated by the producer
+substring	github-actions	this repository's own CI identity
+substring	self-check	any identity describing itself as a self-check

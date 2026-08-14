@@ -183,6 +183,16 @@ tasks:
     cmds:
       - "sh bootstrap/selfhost/check-b6-report.sh"
 
+  # #1290. `selfhost-b6-report` answers "is this report well-formed"; this one
+  # answers "does it qualify as a B6 attestation", which is a different
+  # question with a different answer for the same file. The packet's own
+  # report.tsv is valid and is refused here, and that refusal is the gate's
+  # standing negative rather than a fixture that can rot.
+  selfhost-b6-policy:
+    desc: "Check the B6 independence policy and refuse reports that do not qualify as attestations"
+    cmds:
+      - "sh bootstrap/selfhost/check-b6-policy.sh"
+
   # RFC-0001 stage 1. The canonical contract and its bounded Stage 2
   # projection, pinned against each other. The seed grants no capability;
   # the gate refuses one appearing.
@@ -1129,6 +1139,7 @@ tasks:
             selfhost-diverse-double-compilation \
             selfhost-declared-inputs \
             selfhost-b6-report \
+            selfhost-b6-policy \
             selfhost-native \
             stage2 \
             stage2-events \
