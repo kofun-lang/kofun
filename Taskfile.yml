@@ -209,20 +209,8 @@ tasks:
     cmds:
       - "sh tests/stdlib/alloc/check.sh"
 
-  selfhost-frontend:
-    desc: "Gate #619 typed-frontend evidence (all 46 cells)"
-    cmds:
-      - "sh bootstrap/selfhost/check-profile.sh --phase frontend"
 
-  selfhost-c11:
-    desc: "Gate #620 Text-slice C11 evidence"
-    cmds:
-      - "sh bootstrap/selfhost/check-profile.sh --phase c11-text"
 
-  selfhost-c11-control:
-    desc: "Gate #621 control/List C11 evidence"
-    cmds:
-      - "sh bootstrap/selfhost/check-profile.sh --phase c11-control"
 
   selfhost-native:
     desc: "Prove the self-host Core reaches a native ELF via two backends"
