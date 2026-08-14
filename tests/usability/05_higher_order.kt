@@ -15,10 +15,14 @@
 // prettily" — a function-typed parameter cannot be declared at all, on any
 // frontend, and the diagnostic does not say so. It says
 //
-//     error[E2S17]: Core function `accumulate` expects 3 arguments, got -1
+//     error[E2S12]: invalid Int expression at byte 1211
 //
-// which reports an arity it computed from a parameter list it failed to
-// parse. That is the worst diagnostic in this corpus.
+// which points at the call and says the argument is not a valid expression.
+// Until #1411 it said `error[E2S17]: Core function `accumulate` expects 3
+// arguments, got -1` -- an arity computed from a parameter list it had failed
+// to parse, reported as a count. That was the worst diagnostic in this corpus.
+// The message still does not say that a function-typed argument is a known
+// unimplemented form, which is why the row scores 1 and not more.
 //
 // Two Kotlin spellings are shown below because #624 warns against "multiple
 // overlapping spellings" and #625's decision is precisely whether to adopt

@@ -180,7 +180,7 @@ source to 3,523 lines; its M7 score and measured `b11, d1, c3` remain unchanged.
 | 2 | parser Result x3 | 1 [2] | 0 [3] | 1 [b47, d6, c13] | 3 [0] | 0 | n/a | 2 |
 | 3 | read/edit/take | 1 [2] | 3 [0] | 3 [b17, d1, c4] | 3 [0] | 2 | n/a | 3 |
 | 4 | ADT + record + match | 2 [1] | 0 [6] | 3 [b38, d2, c6] | 3 [0] | 2 | n/a | 3 |
-| 5 | higher-order callback | n/a | n/a | n/a | n/a | 0 | n/a | n/a |
+| 5 | higher-order callback | n/a | n/a | n/a | n/a | 1 | n/a | n/a |
 | 6 | Monad + laws | n/a | n/a | n/a | n/a | 1 | n/a | n/a |
 | 7 | frozen self-host S | 3 [0] | 3 [0] | 3 [b11, d1, c3] | 3 [0] | 3 | n/a | 3 |
 | 8 | cancellable stream | n/a | n/a | n/a | n/a | 2 | n/a | n/a |
@@ -214,8 +214,12 @@ against source that no toolchain accepts would be scoring a wish.
   fails in the C backend.
 - **4.M1 = 2**, its one surprise: a constructor application needs an explicit
   type annotation, a function call returning the same type does not.
-- **5.M5 = 0.** `Core function 'accumulate' expects 3 arguments, got -1`
-  reports an argument count that cannot exist.
+- **5.M5 = 1.** Was 0, when the row scored `Core function 'accumulate'
+  expects 3 arguments, got -1` -- an argument count that cannot exist. Since
+  #1411 the -1 sentinel is refused before it reaches a message and the row
+  scores `invalid Int expression at byte 1211`, which names the location. Held
+  to 1 for the same reason as 6.M5: it does not say that a function-typed
+  argument is a known, accepted, unimplemented form.
 - **6.M5 = 1.** `expected top-level 'fn' or 'type'` names the location and
   does not say that `law` is a known, accepted, unimplemented form.
 - **8.M5 = 2.** Was 1, when the row scored `malformed parameter head at byte
