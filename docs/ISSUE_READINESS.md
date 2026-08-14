@@ -335,13 +335,19 @@ that was not recorded. What it held on the day it landed:
 | `unstamped-ready` | 4 | `ready` before rule 2 existed |
 | `unverifiable-stamp` | 1 | [#738](https://github.com/kofun-lang/kofun/issues/738) names a commit that is on no branch, so its measurement cannot be re-run |
 
-**The ledger now holds zero rows.** Measured 2026-08-14 on
-`origin/main@5c5cf42404b0dbeea36a4de0fb457c4479e8bf68`:
+**The ledger held zero rows from 2026-08-14 until #1431.** Measured 2026-08-15
+on `origin/main@d72c3da65c0c77b74ec5b7b542de2c5725bdf6cc`:
 
 ```sh
 grep -v '^#' tests/backlog/debt.tsv | grep -c .
-# 0
+# 3
 ```
+
+All three are `inert-claim`, and all three are comments that were already there:
+#1431 added a rule that can see a defect no rule could see before, and the rows
+appeared the moment it could. **A ledger at zero because every rule is satisfied
+and a ledger at zero because no rule can see the defect look identical from
+here.** The zero was worth recording and was never the goal.
 
 Every row above, and every row added after, was retired one at a time by fixing
 the issue it named. Recording that here is not bookkeeping: the ledger's own
@@ -367,6 +373,8 @@ inventing the missing value:
 | `unnamed-blocker` | a `blocked` issue whose blocker is stated in prose, so `blockedBy()` reads an empty list and the closed-blocker rule skips it | its body gains a `Blocked by: #N` line, after which the issue stops reaching that branch and the row fails as unused |
 | `capability-blocker` | a `blocked` issue waiting on something no issue number can express — an unowned capability, an unratified RFC, a predecessor nobody has filed. It arrives two ways: with no `Blocked by:` line, or **with a correct one that names a non-issue**, since `blockedBy()` reads issue numbers and returns empty either way | the thing it waits on becomes an issue it can name |
 | `unclaimed-progress` | an `in-progress` issue with no live claim, so nothing records who owns work the label says is underway | its owner posts a canonical claim; nobody else may, because a third-party claim is a false ownership signal |
+| `stale-ready-claim` | a `ready` issue whose owner still holds a live claim, so it is advertised as free and owned at once | its owner posts `released` or `merged`; nobody else may, for the same reason |
+| `inert-claim` | a comment whose first line is the claim marker and which parses to no claim, so its author published nothing the gate reads | its author rewrites it in the canonical form; the ledger row is a placeholder, not a resolution |
 
 ## Coverage, not only hits
 

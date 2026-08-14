@@ -71,6 +71,8 @@ const OWNED_KINDS = new Set([
     'unnamed-blocker',
     'capability-blocker',
     'unclaimed-progress',
+    'stale-ready-claim',
+    'inert-claim',
 ])
 const KNOWN_KINDS = new Set([...OWNED_KINDS, 'unverifiable-stamp'])
 
@@ -124,6 +126,8 @@ let liveClaims = 0
 let inProgressCount = 0
 let claimedProgress = 0
 let unclaimedProgress = 0
+let staleReadyClaims = 0
+let inertClaims = 0
 
 const claimVocabulary = new Set(CLAIM_STATUSES)
 
@@ -158,6 +162,25 @@ for (const issue of issues) {
     if ((issue.issue_state ?? 'open') === 'closed' && liveAgents.length > 0) {
         failures.push(`${where} is closed but still has live claims: ${liveAgents.join(', ')}`)
     }
+    // An inert claim is a claim its author believes they published. The
+    // extractor records the ones whose first non-blank line is the marker and
+    // which parse to nothing — that combination cannot be a comment about
+    // claiming, only a failed claim. It is checked before the closed-issue
+    // `continue` because a closed issue's inert claim misled someone too.
+    for (const marker of issue.inert_claims ?? []) {
+        if (owedDebt('inert-claim', issue.number, marker)) {
+            inertClaims += 1
+            continue
+        }
+        failures.push(
+            `${where} has a comment beginning \`${marker}\` that parses to no claim, ` +
+                'so its author published nothing the gate can read; rewrite it in the ' +
+                'canonical `### agent-claim:v1` form with `- ` keys as ' +
+                'docs/ISSUE_READINESS.md defines, or record it in ' +
+                'tests/backlog/debt.tsv as `inert-claim`',
+        )
+    }
+
     if ((issue.issue_state ?? 'open') === 'closed') continue
 
     // 1. At most one state. Two state labels is not a stricter claim, it is an
@@ -313,6 +336,30 @@ for (const issue of issues) {
                     'post a `### agent-claim:v1` comment in the canonical form ' +
                     'docs/ISSUE_READINESS.md defines, or record it in tests/backlog/debt.tsv ' +
                     'as `unclaimed-progress`',
+            )
+        }
+    }
+
+    // 5b. `ready` and owned is a contradiction the rules above cannot see.
+    //     The claim rules walk `in-progress` and `closed`; the ready rules read
+    //     blockers and stamps and never look at claims. So an issue advertised
+    //     as free while an agent still holds it passes everything.
+    //
+    //     Measured on #1315 (2026-08-15): released to `ready` because it gates
+    //     fourteen dependents, while an earlier canonical `active` block stayed
+    //     live because the release comment was written in a form the extractor
+    //     does not read. Nothing failed. Its mirror — `in-progress` with no
+    //     claim — failed within the minute, and the louder of the two was
+    //     already the one being caught.
+    if (label === 'ready' && liveAgents.length > 0) {
+        if (owedDebt('stale-ready-claim', issue.number, liveAgents.join(', '))) {
+            staleReadyClaims += 1
+        } else {
+            failures.push(
+                `${where} is ready but ${liveAgents.join(', ')} still holds a live claim, ` +
+                    'so it is advertised as free and owned at the same time; post a claim ' +
+                    'with status `released` or `merged`, or record it in ' +
+                    'tests/backlog/debt.tsv as `stale-ready-claim`',
             )
         }
     }

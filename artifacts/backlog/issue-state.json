@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 96,
+  "open_issues": 105,
   "issues": [
     {
       "number": 26,
@@ -78,7 +78,6 @@
       "state_line": "blocked",
       "blocked_by": [
         1281,
-        1282,
         1283,
         1284,
         1285,
@@ -132,16 +131,12 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1265,
-        1266,
-        1267,
         1268,
         1269,
         1270,
         1271,
         1272,
         1273,
-        1274,
         1275,
         1276,
         1277,
@@ -195,7 +190,6 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1289,
         1290,
         1291,
         1292
@@ -230,8 +224,6 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1256,
-        1257,
         1258,
         1260,
         1261,
@@ -313,8 +305,10 @@
       "state_line": "blocked",
       "blocked_by": [
         725,
-        1254,
-        1255
+        1402,
+        1403,
+        1404,
+        1405
       ],
       "evidence_commits": [
         "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
@@ -350,7 +344,6 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1249,
         1250,
         1251,
         1252,
@@ -398,10 +391,7 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1310,
-        1311,
         1312,
-        1313,
         1320
       ],
       "evidence_commits": [
@@ -425,18 +415,27 @@
           "agent_id": "codex-design-847-bench-report-20260811",
           "status": "released"
         }
+      ],
+      "inert_claims": [
+        "agent-claim:v1"
       ]
     },
     {
       "number": 882,
       "title": "[Umbrella] Complete call-arguments v1 fixed-slot lowering across pipelines and backends",
       "state_labels": [
-        "needs-detail"
+        "blocked"
       ],
-      "state_line": "needs-detail",
-      "blocked_by": [],
+      "state_line": "blocked",
+      "blocked_by": [
+        1396,
+        1397,
+        1398,
+        1399
+      ],
       "evidence_commits": [
-        "833cc752923b910225108e7a0fe115632e45a25e"
+        "833cc752923b910225108e7a0fe115632e45a25e",
+        "fa8fd2d7ae48493ce870ef4c2a8928c81aa6e329"
       ],
       "claims": [
         {
@@ -568,15 +567,11 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1211,
-        1212,
-        1214,
-        1215,
-        1216,
         1217
       ],
       "evidence_commits": [
         "112b4d24fd4063c37e5530e90c50c4d5dfa3cf09",
+        "30f18e4d85dcd23232c46f73fb0d20fac301815e",
         "8fd0b25497c1fd4c61085260a416af619beb3c3f"
       ],
       "claims": [
@@ -611,6 +606,7 @@
         274
       ],
       "evidence_commits": [
+        "30f18e4d85dcd23232c46f73fb0d20fac301815e",
         "fd680a7e630ad85e51940062601728c4c1a1f6d2"
       ]
     },
@@ -622,12 +618,10 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1219,
         1220,
         1221,
         1222,
         1223,
-        1224,
         1225
       ],
       "evidence_commits": [
@@ -722,7 +716,6 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1241,
         1242,
         1243,
         1244,
@@ -768,7 +761,8 @@
         1193
       ],
       "evidence_commits": [
-        "1c27baa804f825b93c031648c1c627f477236316"
+        "1c27baa804f825b93c031648c1c627f477236316",
+        "fa8fd2d7ae48493ce870ef4c2a8928c81aa6e329"
       ]
     },
     {
@@ -782,7 +776,8 @@
         1193
       ],
       "evidence_commits": [
-        "3f72c7df8f5c87a7c92a96ff62042bb6cca2745e"
+        "3f72c7df8f5c87a7c92a96ff62042bb6cca2745e",
+        "fa8fd2d7ae48493ce870ef4c2a8928c81aa6e329"
       ]
     },
     {
@@ -797,7 +792,8 @@
         1339
       ],
       "evidence_commits": [
-        "50f79e38c1b273a5870905b693b1e9b3267c7a37"
+        "50f79e38c1b273a5870905b693b1e9b3267c7a37",
+        "ad2a0c0f13af96bed3ed77f10447d05e0c67ad8f"
       ],
       "claims": [
         {
@@ -842,11 +838,14 @@
       "number": 1217,
       "title": "RFC-0012 steps 5-6: integrate bindgen raw modules and reviewed facade",
       "state_labels": [
-        "ready"
+        "blocked"
       ],
-      "state_line": "ready",
-      "blocked_by": [],
+      "state_line": "blocked",
+      "blocked_by": [
+        1422
+      ],
       "evidence_commits": [
+        "5c5cf42404b0dbeea36a4de0fb457c4479e8bf68",
         "8fd0b25497c1fd4c61085260a416af619beb3c3f"
       ],
       "claims": [
@@ -934,8 +933,7 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1223,
-        1224
+        1223
       ],
       "evidence_commits": [
         "037b78cc5456b294e4daf1a15f2555fccb3296ae"
@@ -949,8 +947,7 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1193,
-        1231
+        1193
       ],
       "evidence_commits": [
         "0e9cbcbc06bafe9d4cea9d0fafebf5f2c9d03560"
@@ -978,8 +975,7 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1193,
-        1234
+        1193
       ],
       "evidence_commits": [
         "0e9cbcbc06bafe9d4cea9d0fafebf5f2c9d03560"
@@ -989,12 +985,22 @@
       "number": 1242,
       "title": "Stage 2 authority carrier: opaque nominal types and direct affine bindings",
       "state_labels": [
-        "ready"
+        "in-progress"
       ],
-      "state_line": "ready",
+      "state_line": "in-progress",
       "blocked_by": [],
       "evidence_commits": [
+        "5c5cf42404b0dbeea36a4de0fb457c4479e8bf68",
         "855ca05a6cf6a01c404585cddc48443e9177086c"
+      ],
+      "claims": [
+        {
+          "agent_id": "claude-opus-5-b326d627",
+          "status": "active"
+        }
+      ],
+      "inert_claims": [
+        "agent-claim:v1"
       ]
     },
     {
@@ -1034,6 +1040,7 @@
       "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
+        "5c5cf42404b0dbeea36a4de0fb457c4479e8bf68",
         "855ca05a6cf6a01c404585cddc48443e9177086c"
       ],
       "claims": [
@@ -1073,7 +1080,8 @@
         1249
       ],
       "evidence_commits": [
-        "28e1e6213533446fc646fe6a035dd24ff3ab420b"
+        "28e1e6213533446fc646fe6a035dd24ff3ab420b",
+        "5c5cf42404b0dbeea36a4de0fb457c4479e8bf68"
       ]
     },
     {
@@ -1084,7 +1092,6 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1249,
         1250
       ],
       "evidence_commits": [
@@ -1099,7 +1106,6 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1249,
         1250
       ],
       "evidence_commits": [
@@ -1130,7 +1136,6 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1256,
         1322
       ],
       "evidence_commits": [
@@ -1145,7 +1150,6 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1256,
         1269,
         1270,
         1271
@@ -1162,7 +1166,6 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1257,
         1258
       ],
       "evidence_commits": [
@@ -1177,7 +1180,6 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1257,
         1258
       ],
       "evidence_commits": [
@@ -1223,6 +1225,7 @@
       "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
+        "5c5cf42404b0dbeea36a4de0fb457c4479e8bf68",
         "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
       ]
     },
@@ -1264,6 +1267,7 @@
       "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
+        "5c5cf42404b0dbeea36a4de0fb457c4479e8bf68",
         "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
       ]
     },
@@ -1275,7 +1279,6 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1265,
         1271
       ],
       "evidence_commits": [
@@ -1349,7 +1352,6 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1267,
         1272,
         1275
       ],
@@ -1391,18 +1393,6 @@
       ]
     },
     {
-      "number": 1281,
-      "title": "Decide ADT match v2: payload products, ownership, result joins, and bounded pattern matrix",
-      "state_labels": [
-        "needs-decision"
-      ],
-      "state_line": "needs-decision",
-      "blocked_by": [],
-      "evidence_commits": [
-        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
-      ]
-    },
-    {
       "number": 1283,
       "title": "ADT match v2: resolve nested/or patterns and binding paths into production HIR",
       "state_labels": [
@@ -1425,7 +1415,6 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1282,
         1283
       ],
       "evidence_commits": [
@@ -1496,12 +1485,27 @@
       "number": 1290,
       "title": "Decide B6 operational independence, attestation authority, and freshness policy",
       "state_labels": [
-        "needs-decision"
+        "ready"
       ],
-      "state_line": "needs-decision",
+      "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
-        "dc7b49bf2404b44fa7a8f3916c0b0f1e3bd0ab03"
+        "dc7b49bf2404b44fa7a8f3916c0b0f1e3bd0ab03",
+        "e83eeb45329fb00d2387d570b5180bceb570d394"
+      ],
+      "claims": [
+        {
+          "agent_id": "claude-1290-b6-independence-policy-20260815",
+          "status": "active"
+        },
+        {
+          "agent_id": "claude-1290-b6-independence-policy-20260815",
+          "status": "pr-open"
+        },
+        {
+          "agent_id": "claude-1290-b6-independence-policy-20260815",
+          "status": "released"
+        }
       ]
     },
     {
@@ -1512,7 +1516,6 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1289,
         1290
       ],
       "evidence_commits": [
@@ -1534,40 +1537,15 @@
       ]
     },
     {
-      "number": 1293,
-      "title": "[Decision] Freeze the Kofun source/runtime projection for wasm32-wasi-command1",
-      "state_labels": [
-        "needs-decision"
-      ],
-      "state_line": "needs-decision",
-      "blocked_by": [],
-      "evidence_commits": [
-        "dc7b49bf2404b44fa7a8f3916c0b0f1e3bd0ab03"
-      ]
-    },
-    {
-      "number": 1294,
-      "title": "[Decision] Pin the maintained host matrix for wasm32-wasi-command1",
-      "state_labels": [
-        "needs-decision"
-      ],
-      "state_line": "needs-decision",
-      "blocked_by": [],
-      "evidence_commits": [
-        "dc7b49bf2404b44fa7a8f3916c0b0f1e3bd0ab03"
-      ]
-    },
-    {
       "number": 1296,
       "title": "[WASI command] Activate the target selector and fail-closed module shell",
       "state_labels": [
-        "blocked"
+        "ready"
       ],
-      "state_line": "blocked",
-      "blocked_by": [
-        1293
-      ],
+      "state_line": "ready",
+      "blocked_by": [],
       "evidence_commits": [
+        "82f9b93c0e8760d242e085b0fc582f42aa423b03",
         "dc7b49bf2404b44fa7a8f3916c0b0f1e3bd0ab03"
       ]
     },
@@ -1645,7 +1623,6 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1234,
         1242,
         1245,
         1293,
@@ -1709,8 +1686,6 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1310,
-        1311,
         1322
       ],
       "evidence_commits": [
@@ -1721,9 +1696,9 @@
       "number": 1315,
       "title": "Stage 2 C11: lower Managed Bytes[65536] in the alias-free carrier core",
       "state_labels": [
-        "in-progress"
+        "ready"
       ],
-      "state_line": "in-progress",
+      "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
         "3f72c7df8f5c87a7c92a96ff62042bb6cca2745e"
@@ -1732,7 +1707,26 @@
         {
           "agent_id": "claude-opus-5-990cdd21",
           "status": "active"
+        },
+        {
+          "agent_id": "claude-opus-5-990cdd21",
+          "status": "released"
+        },
+        {
+          "agent_id": "claude-opus-5-b326d627",
+          "status": "active"
+        },
+        {
+          "agent_id": "claude-opus-5-b326d627",
+          "status": "active"
+        },
+        {
+          "agent_id": "claude-opus-5-b326d627",
+          "status": "released"
         }
+      ],
+      "inert_claims": [
+        "agent-claim:v1"
       ]
     },
     {
@@ -1751,18 +1745,6 @@
       ]
     },
     {
-      "number": 1317,
-      "title": "Atomic replacement: decide AtomicWriteAuthority, local-filesystem attestation, and namespace reservation",
-      "state_labels": [
-        "needs-decision"
-      ],
-      "state_line": "needs-decision",
-      "blocked_by": [],
-      "evidence_commits": [
-        "3f72c7df8f5c87a7c92a96ff62042bb6cca2745e"
-      ]
-    },
-    {
       "number": 1320,
       "title": "Benchmark report v1: certify the bounded model, codec, and comparison capability",
       "state_labels": [
@@ -1770,9 +1752,7 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1311,
-        1312,
-        1313
+        1312
       ],
       "evidence_commits": [
         "3f72c7df8f5c87a7c92a96ff62042bb6cca2745e"
@@ -1839,18 +1819,6 @@
       ]
     },
     {
-      "number": 1379,
-      "title": "Decide what verify guarantees about LSP latency: a wall-clock budget measures the machine",
-      "state_labels": [
-        "needs-decision"
-      ],
-      "state_line": "needs-decision",
-      "blocked_by": [],
-      "evidence_commits": [
-        "d6247270ef04bad6d27226e080d77becd5f94bb5"
-      ]
-    },
-    {
       "number": 1382,
       "title": "RFC-0013 step 4 prerequisite: the Stage 2 pair cannot reach a Kofun SHA-256",
       "state_labels": [
@@ -1894,6 +1862,207 @@
       "claims": [
         {
           "agent_id": "codex-root-release-1394",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "number": 1396,
+      "title": "Call-arguments v1: recognize and lower pipeline chains on C11 Stage 2",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "fa8fd2d7ae48493ce870ef4c2a8928c81aa6e329"
+      ]
+    },
+    {
+      "number": 1397,
+      "title": "Call-arguments v1: attach the trailing lambda to a pipeline target on C11 Stage 2",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "fa8fd2d7ae48493ce870ef4c2a8928c81aa6e329"
+      ]
+    },
+    {
+      "number": 1398,
+      "title": "Call-arguments v1: admit the block-bodied trailing lambda on C11 Stage 2",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "fa8fd2d7ae48493ce870ef4c2a8928c81aa6e329"
+      ]
+    },
+    {
+      "number": 1399,
+      "title": "Call-arguments v1: labelled calls inside lifted lambda bodies",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "5c5cf42404b0dbeea36a4de0fb457c4479e8bf68"
+      ]
+    },
+    {
+      "number": 1401,
+      "title": "Nothing measures where compiler.kofun and compiler.c may disagree",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1408
+      ],
+      "evidence_commits": [
+        "fa8fd2d7ae48493ce870ef4c2a8928c81aa6e329"
+      ]
+    },
+    {
+      "number": 1402,
+      "title": "RFC-0015 step 3a: common Decimal numeric IR, owned-descriptor ABI, and differential harness",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1253
+      ],
+      "evidence_commits": [
+        "fa8fd2d7ae48493ce870ef4c2a8928c81aa6e329"
+      ]
+    },
+    {
+      "number": 1403,
+      "title": "RFC-0015 step 3b: direct-native Decimal v1 on x86_64 and AArch64 through the common numeric IR",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1402
+      ],
+      "evidence_commits": [
+        "fa8fd2d7ae48493ce870ef4c2a8928c81aa6e329"
+      ]
+    },
+    {
+      "number": 1404,
+      "title": "RFC-0015 step 4: wasm32-hostabi1 Decimal adapter over the bounded arena",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1402
+      ],
+      "evidence_commits": [
+        "fa8fd2d7ae48493ce870ef4c2a8928c81aa6e329"
+      ]
+    },
+    {
+      "number": 1405,
+      "title": "RFC-0015 step 5: promote plain Decimal, Float, and Fixed capability rows separately",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1403,
+        1404
+      ],
+      "evidence_commits": [
+        "fa8fd2d7ae48493ce870ef4c2a8928c81aa6e329"
+      ]
+    },
+    {
+      "number": 1408,
+      "title": "Stage 2 pair: measure and ledger the undefended branches of compiler.c",
+      "state_labels": [
+        "in-progress"
+      ],
+      "state_line": "in-progress",
+      "blocked_by": [],
+      "evidence_commits": [
+        "30f18e4d85dcd23232c46f73fb0d20fac301815e"
+      ],
+      "claims": [
+        {
+          "agent_id": "claude-1408-undefended-branch-ledger-20260814",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "number": 1422,
+      "title": "Driver: lower extern \"C\" fn and honour --link-library on the driver path",
+      "state_labels": [
+        "in-progress"
+      ],
+      "state_line": "in-progress",
+      "blocked_by": [],
+      "evidence_commits": [
+        "1a38d94b01b39cef0c06dec6db2808d131cea276"
+      ],
+      "claims": [
+        {
+          "agent_id": "claude-1422-driver-extern-c-20260815",
+          "status": "active"
+        },
+        {
+          "agent_id": "claude-1422-driver-extern-c-20260815",
+          "status": "pr-open"
+        }
+      ]
+    },
+    {
+      "number": 1424,
+      "title": "Two mutation-proven gates have never run, and nothing would notice a third",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "82f9b93c0e8760d242e085b0fc582f42aa423b03"
+      ]
+    },
+    {
+      "number": 1428,
+      "title": "Eleven native-toolchain profiles run the same check and print different names",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "82f9b93c0e8760d242e085b0fc582f42aa423b03"
+      ]
+    },
+    {
+      "number": 1431,
+      "title": "A ready issue with a live claim, and a claim that parses as nothing, are both invisible",
+      "state_labels": [
+        "in-progress"
+      ],
+      "state_line": "in-progress",
+      "blocked_by": [],
+      "evidence_commits": [
+        "5832bf659a2c7c40627045da60582e8973bc86a7"
+      ],
+      "claims": [
+        {
+          "agent_id": "claude-1431-backlog-claim-holes-20260815",
           "status": "active"
         }
       ]

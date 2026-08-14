@@ -87,6 +87,35 @@ export function evidenceCommits(body) {
 // load-bearing keys are exact list items. Fenced examples and HTML comments are
 // removed before matching so documentation and invisible legacy claims cannot
 // acquire ownership by accident.
+/*
+ * Comments that were meant as claims and are not.
+ *
+ * `claimEvents` returns nothing for a comment whose marker lacks the `### `
+ * heading or whose keys lack the `- ` list form, and nothing is exactly what it
+ * returns for a comment that never mentioned claiming — so the parser cannot
+ * tell "malformed" from "absent". The comment can: if its **first non-blank
+ * line** is the marker in any spelling and it yields no event, it was meant as
+ * a claim and failed to be one.
+ *
+ * Anchoring on the first line is what keeps this from firing on prose about the
+ * format. Measured over 105 open issues on 2026-08-15: three hits (#1315,
+ * #1242, #847), no false positives, including on comments that quote the
+ * canonical form while discussing it.
+ */
+const CLAIM_MARKER = /^#{0,3}\s*agent-claim:v1\s*$/i
+
+export function inertClaimComments(comments) {
+    const inert = []
+    for (const comment of comments ?? []) {
+        const body = comment.body ?? ''
+        const first = body.split('\n').find((line) => line.trim() !== '') ?? ''
+        if (!CLAIM_MARKER.test(first.trim())) continue
+        if (claimEvents([comment]).length > 0) continue
+        inert.push(first.trim())
+    }
+    return inert
+}
+
 export function claimEvents(comments) {
     const events = []
     for (const comment of comments ?? []) {
@@ -130,6 +159,8 @@ export function snapshotIssue(issue) {
     }
     const claims = claimEvents(issue.claim_comments)
     if (claims.length > 0) row.claims = claims
+    const inert = inertClaimComments(issue.claim_comments)
+    if (inert.length > 0) row.inert_claims = inert
     if (issue.state === 'closed') row.issue_state = 'closed'
     return row
 }

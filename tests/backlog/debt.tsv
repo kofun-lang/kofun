@@ -5,12 +5,19 @@
 # tests/assertions/budget.tsv does: an unlisted problem is new drift, and a
 # listed row that no longer applies is an improvement that was not recorded.
 #
-# This file currently holds ZERO rows. Measured 2026-08-14 on
-# origin/main@5c5cf42404b0dbeea36a4de0fb457c4479e8bf68 with
-# `grep -v '^#' tests/backlog/debt.tsv | grep -c .`. Every row it has ever held
-# was retired by fixing the issue it named. The rule above records that per row
-# and cannot record it for the file, so it is written here; docs/ISSUE_READINESS.md
-# carries the same statement where a reader of the tables will meet it.
+# This file held ZERO rows from 2026-08-14 until #1431 added a rule that could
+# see a defect nothing had been able to see. Measured 2026-08-15 on
+# origin/main@d72c3da65c0c77b74ec5b7b542de2c5725bdf6cc with
+# `grep -v '^#' tests/backlog/debt.tsv | grep -c .`: three rows, all
+# `inert-claim`, all pre-existing comments the new rule made visible rather than
+# anything the change introduced.
+#
+# The zero was worth recording and it was never the goal. A ledger at zero
+# because every rule is satisfied and a ledger at zero because no rule can see
+# the defect look identical from here, which is exactly what #1431 found. Every
+# row this file has ever held was retired by fixing the issue it named, and
+# these three are owed the same. docs/ISSUE_READINESS.md carries the same
+# statement where a reader of the tables will meet it.
 #
 # The kind definitions below stay. A kind with no current rows is the vocabulary
 # for recording the next drift, and deleting one because nothing is in it is how
@@ -114,3 +121,6 @@
 #                     comments on #645 extract to zero events. An inert claim
 #                     is worse than none: its author believes the signal is
 #                     published.
+inert-claim	847	agent-claim:v1
+inert-claim	1242	agent-claim:v1
+inert-claim	1315	agent-claim:v1
