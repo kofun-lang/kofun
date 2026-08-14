@@ -1,0 +1,15 @@
+# diagnostic-mode: compile
+# expect-code: E2S12
+# expect-span: byte 494
+# #1409. A Bool literal in a call-argument position. The scanner refuses it by
+# returning -1; before this fixture existed the emitter consumed that as a byte
+# offset, read before the start of the source buffer, and then spun forever
+# rather than refusing. The refusal must be the same one the same literal gets
+# outside a call, at the argument's own byte.
+fn g(a: Int) -> Int {
+    return a
+}
+
+fn main() {
+    print(g(true))
+}
