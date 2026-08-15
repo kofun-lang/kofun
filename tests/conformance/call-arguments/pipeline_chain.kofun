@@ -1,9 +1,26 @@
-fn twice(base: Int) -> Int {
-    return base * 2
+# The chain is left-associated — `(a |> f(x)) |> g(y)` — and each stage is one
+# direct call whose subject binds slot 0 and evaluates first. The markers make
+# that order observable rather than asserted: `1` is the first stage's subject,
+# `2` its explicit argument, `3` the second stage's explicit argument, and the
+# second stage's subject is the first stage's result, which is why no marker
+# appears for it.
+fn observe(marker: Int, value: Int) -> Int {
+    print(marker)
+    return value
+}
+
+fn combine(
+    as_first left: Int,
+    as_second right: Int
+) -> Int {
+    return left * 10 + right
 }
 
 fn main() -> Int {
-    let start = 1
-    print(start |> twice() |> twice())
+    print(
+        observe(1, 1)
+            |> combine(as_second: observe(2, 2))
+            |> combine(as_second: observe(3, 3))
+    )
     return 0
 }

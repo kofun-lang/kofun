@@ -2919,14 +2919,10 @@ fn validate_pipeline_shapes(source: Text) -> Text {
                     scan
                 )
             }
-            let after = skip_trivia(source, call_end)
-            if after < len(source) && token_text(source, after) == "|>" {
-                return pipeline_refusal(
-                    "a pipeline chain is specified by call-arguments v1 but " +
-                    "not recognized",
-                    scan
-                )
-            }
+            # #1396 recognizes the chain. Nothing is checked here for it:
+            # this loop visits every `|>` in the source, so each stage reaches
+            # the two refusals above on its own, and `a |> f(x) |> g` still
+            # names the bare callee rather than the chain.
             if trailing_lambda_open(source, call_end) >= 0 {
                 return pipeline_refusal(
                     "a pipeline with a trailing lambda is specified by " +
@@ -4110,6 +4106,65 @@ fn pipeline_call_end(source: Text, pipe: Int) -> Int {
     return balanced_end(source, open, "(", ")")
 }
 
+# The end of the expression that the `|>` at `pipe` consumes, or -1 when no
+# chain starting at `subject` reaches exactly that pipe.
+#
+# A chained stage's subject is itself a pipeline, so asking
+# `coalescing_expression_end` alone answers for the first stage only and gives
+# the wrong bound for every stage after it. Asking `expression_end` alone is no
+# better: from the head of a chain it consumes every stage and overshoots. The
+# question is where the chain stands when it arrives at this particular pipe.
+fn pipeline_subject_end(source: Text, subject: Int, pipe: Int) -> Int {
+    let mut bound = coalescing_expression_end(source, subject)
+    while bound >= 0 {
+        let next = skip_trivia(source, bound)
+        if next == pipe {
+            return bound
+        }
+        if next >= pipe || token_text(source, next) != "|>" {
+            return -1
+        }
+        let call_end = pipeline_call_end(source, next)
+        if call_end < 0 {
+            return -1
+        }
+        bound = call_end
+    }
+    return -1
+}
+
+# The `|>` of the final stage of the chain written between `start` and `end`,
+# or -1 when that span is not a pipeline.
+#
+# The chain associates left, so the call the whole expression *is* — the one
+# whose value it has, and whose result type it therefore carries — is the last
+# stage, not the first.
+fn pipeline_last_pipe(source: Text, start: Int, end: Int) -> Int {
+    let subject_end = coalescing_expression_end(source, start)
+    if subject_end < 0 {
+        return -1
+    }
+    let mut pipe = skip_trivia(source, subject_end)
+    if pipe >= end || token_text(source, pipe) != "|>" {
+        return -1
+    }
+    let mut scanning = true
+    while scanning {
+        let stage_end = pipeline_call_end(source, pipe)
+        if stage_end < 0 || stage_end > end {
+            scanning = false
+        } else {
+            let next = skip_trivia(source, stage_end)
+            if next >= end || token_text(source, next) != "|>" {
+                scanning = false
+            } else {
+                pipe = next
+            }
+        }
+    }
+    return pipe
+}
+
 # `|>` is the lowest-precedence boundary in the expression grammar, so the
 # whole pipeline is one expression rather than two unrelated ones separated by
 # an operator.
@@ -4121,19 +4176,28 @@ fn pipeline_call_end(source: Text, pipe: Int) -> Int {
 # `validate_pipeline_shapes` can name each one instead of a truncated span
 # turning it into a parse failure that blames a later token.
 fn expression_end(source: Text, start: Int) -> Int {
-    let subject_end = coalescing_expression_end(source, start)
+    let mut subject_end = coalescing_expression_end(source, start)
     if subject_end < 0 {
         return -1
     }
-    let pipe = skip_trivia(source, subject_end)
-    if pipe >= len(source) || token_text(source, pipe) != "|>" {
-        return subject_end
+    # The chain associates left, so each recognized stage becomes the subject
+    # of the next and the loop is the whole of #1396's recognition: one stage
+    # is the same walk stopped after one turn.
+    let mut scanning = true
+    while scanning {
+        let pipe = skip_trivia(source, subject_end)
+        if pipe >= len(source) || token_text(source, pipe) != "|>" {
+            scanning = false
+        } else {
+            let call_end = pipeline_call_end(source, pipe)
+            if call_end < 0 {
+                scanning = false
+            } else {
+                subject_end = call_end
+            }
+        }
     }
-    let call_end = pipeline_call_end(source, pipe)
-    if call_end < 0 {
-        return subject_end
-    }
-    return call_end
+    return subject_end
 }
 
 # Strip only parentheses that enclose the complete left expression. A caller
@@ -6036,8 +6100,11 @@ fn emit_expression(source: Text, hir: Text, start: Int, end: Int) -> Text {
     # pipeline was a production.
     let subject_end = coalescing_expression_end(source, start)
     if subject_end >= 0 {
-        let pipe = skip_trivia(source, subject_end)
-        if pipe < end && token_text(source, pipe) == "|>" {
+        let first_pipe = skip_trivia(source, subject_end)
+        if first_pipe < end && token_text(source, first_pipe) == "|>" {
+            # Dispatching the first stage here would emit `f` with the whole
+            # chain's bound and silently drop `g` (#1396).
+            let pipe = pipeline_last_pipe(source, start, end)
             let callee_at = skip_trivia(source, token_end(source, pipe))
             let call_open = skip_trivia(source, token_end(source, callee_at))
             let piped_name = token_text(source, callee_at)
@@ -6518,8 +6585,7 @@ fn call_binding_failure(
 fn pipeline_subject_start(source: Text, body_open: Int, pipe: Int) -> Int {
     let mut candidate = skip_trivia(source, token_end(source, body_open))
     while candidate < pipe {
-        let bound = coalescing_expression_end(source, candidate)
-        if bound >= 0 && skip_trivia(source, bound) == pipe {
+        if pipeline_subject_end(source, candidate, pipe) >= 0 {
             return candidate
         }
         candidate = skip_trivia(source, token_end(source, candidate))
@@ -7018,7 +7084,11 @@ fn validate_pipeline_calls(source: Text) -> Text {
                     # which assigns slot 0 from the subject before anything in
                     # the parentheses. A carrier this slice cannot lower was
                     # already refused by the carrier-matrix check above.
-                    return "ok"
+                    #
+                    # The walk continues rather than returning (#1396). While a
+                    # program could hold only one pipeline the two were the
+                    # same thing; a chain makes them different, and returning
+                    # here left every stage after the first unchecked.
                 }
                 cursor = skip_trivia(source, token_end(source, cursor))
             }

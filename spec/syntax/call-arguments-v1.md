@@ -21,7 +21,14 @@ explicit argument once in source order, stores every value in a fixed slot, and
 invokes only after all slots are assigned. #1190, #1226, #1227, and #1228 are
 landed and gated by `task call-arguments`.
 
-Bare pipeline targets, pipeline chains, pipelines with trailing lambdas,
+The chain is that production iterated. `a |> f(x) |> g(y)` associates left, so
+each stage is one direct call whose subject is the result of the stage before
+it; every stage counts, checks, and moves its subject into slot 0 exactly as a
+single stage does, and the C11 lowering nests stage N-1 inside stage N's slot-0
+assignment rather than introducing a second temporary family. #1396 is landed
+and gated by the same task.
+
+Bare pipeline targets, pipelines with trailing lambdas,
 block-bodied trailing lambdas, labelled calls inside lifted lambdas,
 and lexical/member/indirect targets remain at their existing `E2S158` or
 earlier named refusal boundaries. Direct-native and Wasm behavior is measured
