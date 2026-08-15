@@ -171,9 +171,22 @@ if test "${2:-}" = "--tree"; then
         printf 'FAIL: tree-side mutation was ACCEPTED; the gate misses a new\n' >&2
         printf '      unreachable branch, which is the thing it exists to catch.\n' >&2
         fail=$((fail + 1))
-    else
-        printf 'ok   %-28s refused a real unreachable branch\n' "tree-side-mutation"
+    # The refusal must name `sl_emit_expr`, for the reason `expect_refusal`
+    # exists: a ledger measured against the wrong base disagrees with the tree
+    # in dozens of places, so the gate would refuse this run whether or not it
+    # ever saw the probe. Requiring the subject is what separates "the gate
+    # refused" from "the gate saw the branch I added".
+    elif grep -q 'sl_emit_expr' "$WORK/out.tree"; then
+        printf 'ok   %-28s refused a real unreachable branch, naming sl_emit_expr\n' \
+            "tree-side-mutation"
         pass=$((pass + 1))
+    else
+        printf 'FAIL: tree-side mutation was refused, but not for the probe: the\n' >&2
+        printf '      refusal never names sl_emit_expr, so this run is evidence\n' >&2
+        printf '      that the ledger disagrees with the tree, not that the gate\n' >&2
+        printf '      caught the added branch.\n' >&2
+        sed 's/^/      /' "$WORK/out.tree" >&2
+        fail=$((fail + 1))
     fi
 fi
 

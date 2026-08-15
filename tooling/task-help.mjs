@@ -27,6 +27,7 @@ export const GROUPS = Object.freeze([
             'selfhost-declared-inputs', 'selfhost-b6-report',
             'selfhost-b6-policy',
             'selfhost-native', 'stage1-adapter', 'stage2', 'stage2-events', 'sha256-pair',
+            'stage2-pair-coverage',
             'native', 'native-host-evidence', 'wasm',
             'wasm-host-abi', 'wasm-host-profile', 'wasi-command-profile',
             'wasi-host-matrix-policy', 'atomic-write-authority-contract',
@@ -106,7 +107,7 @@ export const GROUPS = Object.freeze([
         title: 'Repository and release',
         hint: 'Repository policy, claim/evidence joins, decisions, generated evidence, and cleanup.',
         tasks: [
-            'repository-check', 'assertions', 'pair-coverage', 'audited-claim', 'digest',
+            'repository-check', 'assertions', 'audited-claim', 'digest',
             'tests-kofun',
             'example-law-evidence',
             'backlog', 'backlog-refresh',

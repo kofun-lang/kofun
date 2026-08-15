@@ -1155,7 +1155,7 @@ tasks:
   # -O0 and drives the pinned corpus and the gate set; the measured cost is in
   # the ledger header. Adding that to a 24-minute `verify` buys a slower gate
   # for a number that moves when someone edits the compiler, not every commit.
-  pair-coverage:
+  stage2-pair-coverage:
     desc: "Hold the Stage 2 pair's undefended-branch ledger exact in both directions"
     cmds:
       - "sh tests/pair-coverage/check.sh"
