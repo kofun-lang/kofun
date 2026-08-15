@@ -50,7 +50,7 @@ gates instead of being implied covered here.
 | `native_answer.kofun` | runs | `native_answer.expected` |
 | `null_and_else_if.kofun` | illustrative | `E2S12` |
 | `ownership.kofun` | runs | `ownership.expected` |
-| `pipeline.kofun` | illustrative | `E2S158` |
+| `pipeline.kofun` | illustrative | `E2S16` |
 | `project/src/bench.kofun` | runs | `project/src/bench.expected` |
 | `project/src/main.kofun` | owned | `spec/package-roots/check.sh` |
 | `proven_optional_bool_monad.kofun` | illustrative | `E2S02` |
@@ -103,7 +103,7 @@ Stage 2 Core path states for itself:
 |---|---|
 | `broken_list_monad.kofun`, `lawful_list_monad.kofun`, `proven_optional_bool_monad.kofun` | `law` declarations (DD-035) are not a Stage 2 Core top-level form |
 | `null_and_else_if.kofun` | `Int?` construction and `??` coalescing lower to Core; the Text-valued `return if ... else if ...` remains outside Stage 2 value-return lowering and stops at `E2S12` |
-| `pipeline.kofun` | `\|>` is accepted design (DD-011) and #1190 made it a recognized production; a chain of stages is not, and `map`, `filter`, and `sum` are not Core functions either |
+| `pipeline.kofun` | `\|>` is accepted design (DD-011); #1190 made one stage a recognized production and #1396 the chain, so this example now stops on the part that is genuinely absent: `map`, `filter`, and `sum` are not Core functions |
 | `science.kofun` | `linspace` and the numeric surface it uses are not Core functions |
 
 `ownership.kofun` is deliberately narrower than that open general pass. It
