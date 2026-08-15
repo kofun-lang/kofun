@@ -1,0 +1,10 @@
+# diagnostic-mode: compile
+# expect-code: E2S175
+# expect-span: byte 83
+fn identity[T](value: T) -> T {
+    return value
+}
+
+fn main() -> Int {
+    return 0
+}

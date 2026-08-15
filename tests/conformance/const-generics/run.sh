@@ -64,9 +64,19 @@ cmp "$CASES/positive.ir" "$WORK/positive.first.ir" ||
 # with no parameter, a declaration used before it is written, and an
 # instantiation in a field. The product path refuses this whole source, and
 # that boundary is measured below rather than assumed.
+#
+# The `|| fail` is not decoration. This is the one invocation in this file
+# whose status was left to `set -e`, and `set -e` prints nothing: a regression
+# here exited 1 with zero bytes of output. Measured while checking whether
+# declaration order is gated — a frontend built to require types before code
+# leaves `cases/positive.kofun` byte-identical and is caught only here, and
+# "caught" meant a silent exit rather than a named failure.
 "$WORK/kofun-const-generics-frontend" "$CASES/frontend_surface.kofun" \
     "$WORK/frontend_surface.ir" "$WORK/frontend_surface.tokens" \
-    >"$WORK/frontend_surface.stdout" 2>"$WORK/frontend_surface.stderr"
+    >"$WORK/frontend_surface.stdout" 2>"$WORK/frontend_surface.stderr" || {
+    cat "$WORK/frontend_surface.stdout" "$WORK/frontend_surface.stderr" >&2
+    fail 'the frontend surface source was refused'
+}
 test ! -s "$WORK/frontend_surface.stdout" ||
     fail 'frontend surface run wrote stdout'
 test ! -s "$WORK/frontend_surface.stderr" ||

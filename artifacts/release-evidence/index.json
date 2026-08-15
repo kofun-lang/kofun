@@ -6,7 +6,7 @@
     "VERSION": "b11eb28b848c294c76fa43c1de9fa0053803485c7710b385b1e3585757fa3073",
     "release/claims.json": "25259f42ac8d1ce52c86d4b06debecf226fb334a6d1ab9f9adfcecf485b7d292",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
-    "bootstrap/manifest.json": "dd706da6464d54dc75c6339b6ba36899ca98342eac6308bb37b14bc031ebeaf6"
+    "bootstrap/manifest.json": "585a8a32c59057e9d7161162c7fbb480206513a15a9dd1a1ec51dd37aff42afe"
   },
   "states": {
     "checkpoint": 40,
@@ -788,7 +788,7 @@
     "bootstrap/wasm/fixtures/unsupported_text.kofun": "e0a45136410ddb85e9f5b3e5c39e7903d96da39aa53aaf3078d2555b4f383864",
     "bootstrap/wasm/object_arena_check.sh": "c415a46c7b83493ce72f07cd846d895ddf0980dc0f83e36023cb57fadb5f732f",
     "docs/BUILD_SYSTEM.md": "d4a372fc97c53874cc2438f3de132289beb033ce2bf1e67518b702de796b05a8",
-    "docs/COMPILER_ARCHITECTURE.md": "bfc07394786505574419bd1a88bb33ed5553902c0127b9ceb2767b73291c3f59",
+    "docs/COMPILER_ARCHITECTURE.md": "1e3ce4c825607ccd577b4c8554d6091c244f5273ecc5bc54c992105f63cb383e",
     "docs/DECIMAL.md": "bb85e7a82ed948fe60eea16b8c99a4787e74c772ebea5c606ea564a58600c659",
     "docs/DOCUMENTATION_INDEX.md": "f0e22ded32b0dfebd4e628e0c57036574c197b12889d07771539f6e29640b4d9",
     "docs/GETTING_STARTED.md": "cbbe5d0df1a008c9ca2194792e5619527d8701bedf7fd6b6b777e27169008f0c",
@@ -829,7 +829,7 @@
     "tests/conformance/records/stage2_unsupported_field.kofun": "3a2a267549694c0ccf71e682b37992d94ff5b0a59b1b6438726b5384d3c46e82",
     "tests/conformance/syntax/issues_35_47/enum_payload_unsupported_field.kofun": "e1b4ce6cda998dac0a955ed016c8eb2f81a9effaed91b823011572cf68f6c59e",
     "tests/diagnostics/README.md": "0c915028a977e49a363c31304fec0e0e4635f0c814cb0cce5cfd4cabca6ff70e",
-    "tests/diagnostics/registry.tsv": "969c0b9e8fa92a83e61224e76dde50e56831258536d977042fb614df6585ff5e",
+    "tests/diagnostics/registry.tsv": "2fae8c77c2c4f316e18c053ce7c25d984a7e20dac3f718f157232ca763548982",
     "tests/diagnostics/stage2/e2s10_unsupported_statement.kofun": "664c4d3b0d4bcd9265fee34b3ae60d8bf0eb58c9ce5c2b504579c1249aa16f2d",
     "tests/diagnostics/visibility-api-leaks.sh": "5c65b941bec961bc7b814e3979170af630df34fa8812d0fa650639e159ea755a",
     "tests/docs/documentation_index_test.mjs": "1195ff0fb6486bd046e1b70a8d364838a51ae06b47749206f851de54ac8d4c44",

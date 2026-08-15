@@ -1676,6 +1676,30 @@ fn parameter_open(source: Text, start: Int) -> Int {
     return after_name
 }
 
+# The `[` opening a type parameter list on a function, or -1.
+#
+# `fn identity[T](value: T)` gets no further than its name today:
+# `parameter_open` wants `(`, finds `[`, and returns -1, so every generic
+# function lands on `E2S03: malformed function` — a message a stray brace also
+# produces, spanning the `fn` rather than the binder. #1268 records that as a
+# boundary that is unnamed rather than refused, and says in as many words that
+# the existing wording is not a contract to preserve.
+#
+# Naming it is all this does. Admitting the binder is the port that follows,
+# and when that lands the caller narrows to the constructs still unsupported
+# rather than deleting the refusal.
+fn generic_binder_open(source: Text, start: Int) -> Int {
+    let after_fn = skip_trivia(source, token_end(source, start))
+    if after_fn >= len(source) || token_kind(source, after_fn) != "identifier" {
+        return -1
+    }
+    let after_name = skip_trivia(source, token_end(source, after_fn))
+    if after_name >= len(source) || token_text(source, after_name) != "[" {
+        return -1
+    }
+    return after_name
+}
+
 fn parameter_count(source: Text, start: Int) -> Int {
     let open = parameter_open(source, start)
     if open < 0 {
@@ -3098,6 +3122,12 @@ fn parse_program(source: Text) -> Text {
             let arity = parameter_count(source, function_start)
             let end = function_end(source, function_start)
             if len(name) == 0 || arity < 0 || end < 0 {
+                let binder = generic_binder_open(source, function_start)
+                if binder >= 0 {
+                    return "error[E2S175]: type parameters on a function " +
+                    "are unsupported; `" + name +
+                    "` opens a type parameter list at byte " + to_text(binder)
+                }
                 return "error[E2S03]: malformed function at byte " +
                 to_text(function_start)
             }

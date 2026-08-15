@@ -2347,6 +2347,33 @@ static int64_t parameter_open(const char *source, int64_t start) {
     return after_name;
 }
 
+/*
+ * The `[` opening a type parameter list on a function, or -1.
+ *
+ * `fn identity[T](value: T)` gets no further than its name today:
+ * `parameter_open` wants `(`, finds `[`, and returns -1, so every generic
+ * function lands on `E2S03: malformed function` — a message a stray brace also
+ * produces, spanning the `fn` rather than the binder. #1268 records that as a
+ * boundary that is unnamed rather than refused, and says in as many words that
+ * the existing wording is not a contract to preserve.
+ *
+ * Naming it is all this does. Admitting the binder is the port that follows,
+ * and when that lands the caller narrows to the constructs still unsupported
+ * rather than deleting the refusal.
+ */
+static int64_t generic_binder_open(const char *source, int64_t start) {
+    int64_t length = source_length(source);
+    int64_t after_fn = skip_trivia(source, token_end(source, start));
+    int64_t after_name;
+    if (
+        after_fn >= length ||
+        strcmp(token_kind(source, after_fn), "identifier") != 0
+    ) return -1;
+    after_name = skip_trivia(source, token_end(source, after_fn));
+    if (after_name >= length || !token_equal(source, after_name, "[")) return -1;
+    return after_name;
+}
+
 static int64_t parameter_count(const char *source, int64_t start) {
     int64_t open = parameter_open(source, start);
     if (open < 0) return -1;
@@ -4437,11 +4464,32 @@ static char *parse_program(const char *source) {
             int64_t arity = parameter_count(source, function_start);
             int64_t end = function_end(source, function_start);
             if (name[0] == '\0' || arity < 0 || end < 0) {
-                free(name);
+                int64_t binder = generic_binder_open(source, function_start);
                 free(declared_types.data);
                 free(declared_constructors.data);
                 ir.length = 0;
                 ir.data[0] = '\0';
+                if (binder >= 0) {
+                    int64_t binder_end = balanced_end(source, binder, "[", "]");
+                    buffer_format(
+                        &ir,
+                        "error[E2S175]: type parameters on a function are "
+                        "unsupported; `%s` opens a type parameter list "
+                        "at byte %" PRId64,
+                        name,
+                        binder
+                    );
+                    stage2_diagnostic_set(
+                        "E2S175",
+                        binder,
+                        binder_end < 0 ? token_end(source, binder) : binder_end,
+                        true,
+                        ir.data
+                    );
+                    free(name);
+                    return ir.data;
+                }
+                free(name);
                 buffer_format(
                     &ir,
                     "error[E2S03]: malformed function at byte %" PRId64,
