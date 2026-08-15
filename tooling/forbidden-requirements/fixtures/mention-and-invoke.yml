@@ -1,0 +1,16 @@
+# A fixture, not a workflow. See `mention-and-invoke.sh` for what this
+# directory is. This file is never run by anything.
+#
+# A comment naming task, which counts for nothing: task verify
+name: fixture
+jobs:
+  build:
+    steps:
+      # The one invocation in this file. `- run: task verify` is how every CI
+      # lane in this repository calls the runner, and a shell-shaped rule sees
+      # no operator on this line at all — the first census reported the CI
+      # workflow as invoking nothing.
+      - run: task verify
+      - name: names the task runner in prose and runs none of it
+        run: |
+          echo "task verify is what CI runs"
