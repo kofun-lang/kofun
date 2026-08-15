@@ -232,7 +232,31 @@ async function main() {
   const decodeP95Ms = percentile(decodeMilliseconds, 0.95);
   const hoverP95Ms = percentile(hoverMilliseconds, 0.95);
   const definitionP95Ms = percentile(definitionMilliseconds, 0.95);
-  assert.ok(decodeP95Ms < 75, `decode/index p95 ${decodeP95Ms.toFixed(2)}ms`);
+  /*
+   * decode/index is RECORDED, not asserted at its typical cost (#1471).
+   *
+   * It was `< 75`, and `tooling/machine-dependent/ledger.tsv` records four
+   * observations of it in one day: 9.93, 16.77, 80.70, 92.14 ms. An 8x spread,
+   * two failures, both inside `task verify` and neither reproducible when the
+   * gate runs alone. A threshold that is meaningful at 9.93 and passing at
+   * 92.14 does not exist, so asserting one decided how busy the machine was.
+   *
+   * The clock is not the variable, which is why this is not fixed by measuring
+   * CPU time instead: `hover p95 < 2` three lines below reads the same clock
+   * with 66x headroom and has never failed, and `DIAGNOSTIC_MAX_CPU_MS` in
+   * tests/lsp/performance_test.js reads a CPU clock and failed anyway at
+   * 148.91 against 145. Classify by margin, not by clock.
+   *
+   * 750 ms is a backstop, an order of magnitude above the worst observation,
+   * so a decoder that regresses in its algorithm still fails while a decoder
+   * competing for cache does not. The number itself continues to be written to
+   * RESULTS and printed below on every run.
+   */
+  const DECODE_P95_REGRESSION_MS = 750;
+  assert.ok(decodeP95Ms < DECODE_P95_REGRESSION_MS,
+    `decode/index p95 ${decodeP95Ms.toFixed(2)}ms exceeds the ${DECODE_P95_REGRESSION_MS}ms ` +
+    'regression backstop — this is an order of magnitude over the recorded range, ' +
+    'so it is a decoder regression rather than a busy machine');
   assert.ok(hoverP95Ms < 2, `hover p95 ${hoverP95Ms.toFixed(2)}ms`);
   assert.ok(definitionP95Ms < 2, `definition p95 ${definitionP95Ms.toFixed(2)}ms`);
 
@@ -266,8 +290,9 @@ async function main() {
   await shutdownSemanticAnalysis();
   process.stdout.write(
     `PASS: semantic adapter guards/status/disclosure/UTF/cancellation; ` +
-    `decode p95=${decodeP95Ms.toFixed(2)}ms, hover p95=${hoverP95Ms.toFixed(3)}ms, ` +
-    `definition p95=${definitionP95Ms.toFixed(3)}ms, ` +
+    `decode p95=${decodeP95Ms.toFixed(2)}ms (recorded, backstop ${DECODE_P95_REGRESSION_MS}ms), ` +
+    `hover p95=${hoverP95Ms.toFixed(3)}ms (asserted <2ms), ` +
+    `definition p95=${definitionP95Ms.toFixed(3)}ms (asserted <2ms), ` +
     `100-doc RSS=${rssGrowthBytes ?? "n/a"} bytes\n`,
   );
 }
