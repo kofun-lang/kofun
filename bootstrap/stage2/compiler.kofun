@@ -21558,6 +21558,363 @@ fn selfhost_compile_file(
     return 0
 }
 
+# ---------------------------------------------------------------- SHA-256
+#
+# RFC-0013 step 4 prerequisite (#1382). Every identity this compiler assigns —
+# ModuleId, FileId, SymbolId — is a SHA-256 preimage, and until these functions
+# landed the digest was computed by `bootstrap/stage2/sha256.c`, so a compiler
+# specified to assign its own identities could not reach the operation that
+# defines them.
+#
+# These nineteen functions are the bodies of
+# `tests/stdlib/kofun-digest-model/sha256.kofun`, which is gated on every verify
+# against the NIST vectors and against `bootstrap/stage2/sha256.c`. They are
+# inlined rather than imported because Stage 2 has no import: `E2S02` refuses
+# any top-level form but `fn`, `type`, and `let`, so a bounded include form is a
+# language surface change and a decision issue of its own. The cost of that
+# choice is that the digest now exists in three places, and
+# `tests/stage2/sha256-pair/check.sh` is what keeps the three from drifting.
+#
+# Every word stays a non-negative value below 2**32, which is what makes `shr`
+# — arithmetic in RFC-0013 — agree with the logical shift the specification
+# calls for.
+
+fn sha256_initial_state() -> List[Int] {
+    # Bound before returning: this lowering refuses a `List[Int]` literal in
+    # return position (`E2S157`), so the binding is required rather than style.
+    let iv: List[Int] = [
+        1779033703, 3144134277, 1013904242, 2773480762,
+        1359893119, 2600822924, 528734635, 1541459225
+    ]
+    return iv
+}
+
+fn sha256_round_constants() -> List[Int] {
+    let constants: List[Int] = [
+        1116352408, 1899447441, 3049323471, 3921009573,
+        961987163, 1508970993, 2453635748, 2870763221,
+        3624381080, 310598401, 607225278, 1426881987,
+        1925078388, 2162078206, 2614888103, 3248222580,
+        3835390401, 4022224774, 264347078, 604807628,
+        770255983, 1249150122, 1555081692, 1996064986,
+        2554220882, 2821834349, 2952996808, 3210313671,
+        3336571891, 3584528711, 113926993, 338241895,
+        666307205, 773529912, 1294757372, 1396182291,
+        1695183700, 1986661051, 2177026350, 2456956037,
+        2730485921, 2820302411, 3259730800, 3345764771,
+        3516065817, 3600352804, 4094571909, 275423344,
+        430227734, 506948616, 659060556, 883997877,
+        958139571, 1322822218, 1537002063, 1747873779,
+        1955562222, 2024104815, 2227730452, 2361852424,
+        2428436474, 2756734187, 3204031479, 3329325298
+    ]
+    return constants
+}
+
+# FIPS 180-4 section 4.1.2.
+fn sha256_big_sigma0(word: Int) -> Int {
+    return word.rotr(2, 32).xor(word.rotr(13, 32)).xor(word.rotr(22, 32))
+}
+
+fn sha256_big_sigma1(word: Int) -> Int {
+    return word.rotr(6, 32).xor(word.rotr(11, 32)).xor(word.rotr(25, 32))
+}
+
+fn sha256_small_sigma0(word: Int) -> Int {
+    return word.rotr(7, 32).xor(word.rotr(18, 32)).xor(word.shr(3))
+}
+
+fn sha256_small_sigma1(word: Int) -> Int {
+    return word.rotr(17, 32).xor(word.rotr(19, 32)).xor(word.shr(10))
+}
+
+fn sha256_choose(x: Int, y: Int, z: Int) -> Int {
+    return x.and(y).xor(x.not().and(z))
+}
+
+fn sha256_majority(x: Int, y: Int, z: Int) -> Int {
+    return x.and(y).xor(x.and(z)).xor(y.and(z))
+}
+
+# The 64-word message schedule of one 64-byte block. The first sixteen words are
+# the block read big-endian; the rest are derived.
+fn sha256_schedule(block: List[Int]) -> List[Int] {
+    let mut w: List[Int] = [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    ]
+    let mut index = 0
+    while index < 16 {
+        let at = index * 4
+        w[index] = block[at].shl(24)
+            .or(block[at + 1].shl(16))
+            .or(block[at + 2].shl(8))
+            .or(block[at + 3])
+        index = index + 1
+    }
+    while index < 64 {
+        let s0 = sha256_small_sigma0(w[index - 15])
+        let s1 = sha256_small_sigma1(w[index - 2])
+        w[index] = w[index - 16]
+            .wrapping_add(s0, 32)
+            .wrapping_add(w[index - 7], 32)
+            .wrapping_add(s1, 32)
+        index = index + 1
+    }
+    return w
+}
+
+# One block absorbed into the state. FIPS 180-4 section 6.2.2.
+fn sha256_absorb(state: List[Int], block: List[Int]) -> List[Int] {
+    let w = sha256_schedule(block)
+    let k = sha256_round_constants()
+    let mut a = state[0]
+    let mut b = state[1]
+    let mut c = state[2]
+    let mut d = state[3]
+    let mut e = state[4]
+    let mut f = state[5]
+    let mut g = state[6]
+    let mut h = state[7]
+    let mut round = 0
+    while round < 64 {
+        let temp1 = h
+            .wrapping_add(sha256_big_sigma1(e), 32)
+            .wrapping_add(sha256_choose(e, f, g), 32)
+            .wrapping_add(k[round], 32)
+            .wrapping_add(w[round], 32)
+        let temp2 = sha256_big_sigma0(a)
+            .wrapping_add(sha256_majority(a, b, c), 32)
+        h = g
+        g = f
+        f = e
+        e = d.wrapping_add(temp1, 32)
+        d = c
+        c = b
+        b = a
+        a = temp1.wrapping_add(temp2, 32)
+        round = round + 1
+    }
+    let mut next: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0]
+    next[0] = state[0].wrapping_add(a, 32)
+    next[1] = state[1].wrapping_add(b, 32)
+    next[2] = state[2].wrapping_add(c, 32)
+    next[3] = state[3].wrapping_add(d, 32)
+    next[4] = state[4].wrapping_add(e, 32)
+    next[5] = state[5].wrapping_add(f, 32)
+    next[6] = state[6].wrapping_add(g, 32)
+    next[7] = state[7].wrapping_add(h, 32)
+    return next
+}
+
+# FIPS 180-4 section 5.1.1. The padded stream is the message, then one `0x80`
+# byte, then zeros, then the message length in bits as eight big-endian bytes,
+# padded to a multiple of 64.
+#
+# This is written as "the byte at absolute position `index` of the padded
+# stream" rather than as a buffer, because a `List[Int]` holds 64 elements and
+# the padded stream is longer than the message by construction. The caller
+# assembles one block at a time.
+fn sha256_padded_length(length: Int) -> Int {
+    let with_marker_and_count = length + 9
+    let remainder = with_marker_and_count % 64
+    if remainder == 0 {
+        return with_marker_and_count
+    }
+    return with_marker_and_count + 64 - remainder
+}
+
+fn sha256_block_count(length: Int) -> Int {
+    return sha256_padded_length(length) // 64
+}
+
+# The message is carried in **two** lists, and that is the one shape here that
+# is neither SHA-256's nor a convenience.
+#
+# A `List[Int]` holds exactly 64 elements, and the vectors this model must
+# reproduce include FIPS 180-4 B.3, a 112-byte message. So a message is a first
+# list and a second, and `second` is empty whenever the message fits in one.
+# The split point is `len(first)` rather than the constant 64, because the
+# zero-length message is carried as a one-element list whose length is 0 and
+# the accessor must not assume the two agree.
+
+fn sha256_message_byte(first: List[Int], second: List[Int], index: Int) -> Int {
+    if index < len(first) {
+        return first[index]
+    }
+    return second[index - len(first)]
+}
+
+# FIPS 180-4 section 5.1.1. The padded stream is the message, then one `0x80`
+# byte, then zeros, then the message length in bits as eight big-endian bytes,
+# padded to a multiple of 64.
+#
+# This is written as "the byte at absolute position `index` of the padded
+# stream" rather than as a buffer, because the padded stream is longer than the
+# message by construction and no list could hold it. The caller assembles one
+# block at a time.
+
+fn sha256_padded_byte(
+    first: List[Int],
+    second: List[Int],
+    length: Int,
+    index: Int
+) -> Int {
+    if index < length {
+        return sha256_message_byte(first, second, index)
+    }
+    if index == length {
+        return 128
+    }
+    let padded = sha256_padded_length(length)
+    if index < padded - 8 {
+        return 0
+    }
+    # The last eight bytes are the bit length, most significant byte first.
+    let place = padded - 1 - index
+    return length.shl(3).shr(place * 8).and(255)
+}
+
+fn sha256_block_at(
+    first: List[Int],
+    second: List[Int],
+    length: Int,
+    block: Int
+) -> List[Int] {
+    let mut bytes: List[Int] = [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    ]
+    let base = block * 64
+    let mut offset = 0
+    while offset < 64 {
+        bytes[offset] = sha256_padded_byte(first, second, length, base + offset)
+        offset = offset + 1
+    }
+    return bytes
+}
+
+# The digest of a message given as two lists and a byte length. Every block of
+# the padded stream is absorbed in turn; nothing longer than one block is ever
+# held.
+
+fn sha256_of_message(first: List[Int], second: List[Int], length: Int) -> List[Int] {
+    let mut state = sha256_initial_state()
+    let blocks = sha256_block_count(length)
+    let mut block = 0
+    while block < blocks {
+        state = sha256_absorb(state, sha256_block_at(first, second, length, block))
+        block = block + 1
+    }
+    return state
+}
+
+fn sha256_nibble_text(value: Int) -> Text {
+    if value == 0 { return "0" }
+    if value == 1 { return "1" }
+    if value == 2 { return "2" }
+    if value == 3 { return "3" }
+    if value == 4 { return "4" }
+    if value == 5 { return "5" }
+    if value == 6 { return "6" }
+    if value == 7 { return "7" }
+    if value == 8 { return "8" }
+    if value == 9 { return "9" }
+    if value == 10 { return "a" }
+    if value == 11 { return "b" }
+    if value == 12 { return "c" }
+    if value == 13 { return "d" }
+    if value == 14 { return "e" }
+    return "f"
+}
+
+# A mutable `Text` binding is refused (`E2S144`), so the hex is built by
+# concatenation rather than accumulated in a loop. One word at a time keeps
+# each expression to eight terms.
+
+fn sha256_hex_word(value: Int) -> Text {
+    return sha256_nibble_text(value.shr(28).and(15)) +
+        sha256_nibble_text(value.shr(24).and(15)) +
+        sha256_nibble_text(value.shr(20).and(15)) +
+        sha256_nibble_text(value.shr(16).and(15)) +
+        sha256_nibble_text(value.shr(12).and(15)) +
+        sha256_nibble_text(value.shr(8).and(15)) +
+        sha256_nibble_text(value.shr(4).and(15)) +
+        sha256_nibble_text(value.and(15))
+}
+
+fn sha256_hex(state: List[Int]) -> Text {
+    return sha256_hex_word(state[0]) + sha256_hex_word(state[1]) +
+        sha256_hex_word(state[2]) + sha256_hex_word(state[3]) +
+        sha256_hex_word(state[4]) + sha256_hex_word(state[5]) +
+        sha256_hex_word(state[6]) + sha256_hex_word(state[7])
+}
+
+# One corpus entry: its name, its bytes, and its digest on one line, so a
+# failure says which message moved rather than only that a digest did.
+
+# The four published NIST vectors, digested by the functions above and printed
+# as `name hex`. `tests/stage2/sha256-pair/check.sh` runs this and compares each
+# line against `bin/kofun-digest` over the same bytes, so the Kofun digest and
+# the C oracle cannot drift apart without the gate failing.
+#
+# A message is carried as two lists because a `List[Int]` holds exactly 64
+# elements (`E2S157` at 65) and a SHA-256 block is 64 bytes. `second` is empty
+# for every message that fits in one block.
+
+fn sha256_print(name: Text, first: List[Int], second: List[Int], length: Int) -> Int {
+    let state: List[Int] = sha256_of_message(first, second, length)
+    print(name + " " + sha256_hex(state))
+    return 1
+}
+
+fn sha256_selftest() -> Int {
+    let mut printed = 0
+
+    let empty_first: List[Int] = [
+        0
+    ]
+    let empty_second: List[Int] = []
+    printed = printed + sha256_print("empty", empty_first, empty_second, 0)
+
+    let abc_first: List[Int] = [
+        97, 98, 99
+    ]
+    let abc_second: List[Int] = []
+    printed = printed + sha256_print("abc", abc_first, abc_second, 3)
+
+    let nist448_first: List[Int] = [
+        97, 98, 99, 100, 98, 99, 100, 101, 99, 100, 101, 102, 100, 101, 102, 103,
+        101, 102, 103, 104, 102, 103, 104, 105, 103, 104, 105, 106, 104, 105, 106, 107,
+        105, 106, 107, 108, 106, 107, 108, 109, 107, 108, 109, 110, 108, 109, 110, 111,
+        109, 110, 111, 112, 110, 111, 112, 113
+    ]
+    let nist448_second: List[Int] = []
+    printed = printed + sha256_print("nist448", nist448_first, nist448_second, 56)
+
+    let nist896_first: List[Int] = [
+        97, 98, 99, 100, 101, 102, 103, 104, 98, 99, 100, 101, 102, 103, 104, 105,
+        99, 100, 101, 102, 103, 104, 105, 106, 100, 101, 102, 103, 104, 105, 106, 107,
+        101, 102, 103, 104, 105, 106, 107, 108, 102, 103, 104, 105, 106, 107, 108, 109,
+        103, 104, 105, 106, 107, 108, 109, 110, 104, 105, 106, 107, 108, 109, 110, 111
+    ]
+    let nist896_second: List[Int] = [
+        105, 106, 107, 108, 109, 110, 111, 112, 106, 107, 108, 109, 110, 111, 112, 113,
+        107, 108, 109, 110, 111, 112, 113, 114, 108, 109, 110, 111, 112, 113, 114, 115,
+        109, 110, 111, 112, 113, 114, 115, 116, 110, 111, 112, 113, 114, 115, 116, 117
+    ]
+    printed = printed + sha256_print("nist896", nist896_first, nist896_second, 112)
+
+    if printed != 4 {
+        return 1
+    }
+    return 0
+}
+
 fn main() -> Int {
     let arguments = args()
     if len(arguments) == 5 && arguments[0] == "--compile-outcome" {
@@ -21567,6 +21924,9 @@ fn main() -> Int {
             arguments[3],
             arguments[4]
         )
+    }
+    if len(arguments) == 1 && arguments[0] == "--sha256-selftest" {
+        return sha256_selftest()
     }
     if len(arguments) == 2 && arguments[0] == "--check-ownership" {
         if !check_ownership_file(arguments[1]) {

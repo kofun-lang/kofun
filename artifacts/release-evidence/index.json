@@ -6,7 +6,7 @@
     "VERSION": "b11eb28b848c294c76fa43c1de9fa0053803485c7710b385b1e3585757fa3073",
     "release/claims.json": "0e3805b2bf6e81c82d5e9797f85100e8cfb2997ab93e082b952f0828fa1313ad",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
-    "bootstrap/manifest.json": "5e5b900f7843de692908007b4a81a45712924492e7df7fa4afb89321b4df5db4"
+    "bootstrap/manifest.json": "4a8452db6f0fa00d0bc868e0815314087abc30b7bc2c02d319397309f8773e7a"
   },
   "states": {
     "checkpoint": 40,
@@ -770,7 +770,7 @@
   ],
   "evidence_digests": {
     ".github/workflows/native-hosts.yml": "9b0155c4caf6aeb29e7d942bffc10acd12cd61b79c4d70af45ea2b10a9967daa",
-    "Taskfile.yml": "2842d07de511b09accd39c0ff028be8ecdc9e906d4b90dce34ce2c231d0c211d",
+    "Taskfile.yml": "8e0f3288b835caf7e7071d48cdb03a1da4d336b7d876d814438f83c299d4a2dd",
     "bootstrap/native/README.md": "6c470b203c3dbc327c6b601ab958c754e6f82be78c255d442307ad0c7691bc21",
     "bootstrap/native/check-macho64-signed.sh": "6fc51ddfec599ea85b8b06a5c16d68b6fdc994621cdb8ca4267e20be38141393",
     "bootstrap/native/check-macho64.sh": "d6bd52e3f6756aa607a2dc44a0117defeaaa55e64fa3f4221986da6406251e15",
