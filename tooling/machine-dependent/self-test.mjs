@@ -27,7 +27,7 @@
 
 import assert from 'node:assert/strict'
 
-import { detect, toMilliseconds, unitOf } from './detect.mjs'
+import { detect, strippingIsSound, toMilliseconds, unitOf } from './detect.mjs'
 import {
     COLUMNS, evaluate, marginOf, parseLedger, readCeiling, summarize,
 } from './check.mjs'
@@ -64,6 +64,19 @@ check('a line comment containing a block-comment opener does not hide the code b
     assert.equal(budgets.length, 1, 'the budget below the comment must still be found')
     assert.equal(budgets[0].bound, '145ms')
     assert.deepEqual(budgets[0].lines, [3], 'line numbers must survive stripping')
+})
+
+check('a stripper that deletes across lines is refused before its count is believed', () => {
+    /*
+     * The control on the step that runs before the search. The shipped bug
+     * collapsed a multi-line comment into one space; any preprocessing that can
+     * delete the answer reports an empty result, which reads as a clean tree.
+     */
+    assert.equal(strippingIsSound('probe.js', 'a\nb\nc', 'a\nb\nc'), null)
+    assert.match(
+        strippingIsSound('probe.js', 'a\nb\nc', 'a c'),
+        /changed the line count from 3 to 1/,
+    )
 })
 
 check('a name that merely contains a unit is not a duration', () => {

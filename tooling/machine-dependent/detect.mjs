@@ -55,10 +55,10 @@ export const FILE_SET = "FILES=\"$(git ls-files '*.sh' '*.mjs' '*.js')\""
  * Line numbers survive too, which the collapsing version destroyed.
  *
  * Known limit, stated rather than left to be discovered: a line- or
- * block-comment opener inside a
- * string or template literal is still read as a comment. Stripping can only
- * lose matches, never invent them, so the error direction is a missed bound --
- * which is why `--count` reports what stripping removed.
+ * block-comment opener inside a string or template literal is still read as a
+ * comment. Stripping can only lose matches, never invent them, so the error
+ * direction is a missed bound -- and `strippingIsSound` below is the control
+ * that refuses the runaway case rather than trusting that sentence.
  */
 export function withoutComments(path, body) {
     if (!(path.endsWith('.mjs') || path.endsWith('.js'))) {
@@ -251,10 +251,53 @@ export const DETECTORS = [
  * an unrelated insertion is a ledger people stop reading. This is the key
  * `tooling/forbidden-requirements/census.tsv` uses for the same reason.
  */
+/*
+ * The positive control on the step that runs BEFORE the search.
+ *
+ * Any preprocessing can delete the answer, and its failure mode is an empty
+ * result — which is indistinguishable from a clean tree. That is how the first
+ * version of this file reported zero of six CPU budgets and raised no error.
+ * Saying "stripping can only lose matches" in a comment does not check
+ * anything; this does.
+ *
+ * The invariant is that stripping preserves the line count. The collapsing
+ * regex violated exactly that -- it replaced a multi-line comment with a single
+ * space, so 395 lines became one -- and it is checkable without knowing
+ * anything about comments.
+ *
+ * The stronger invariant I tried first, "a line carrying no comment marker
+ * survives byte for byte", does not hold and cannot be made to hold cheaply: a
+ * continuation line inside a block comment carries no marker of its own and is
+ * correctly blanked, and deciding which lines those are means parsing comments
+ * -- the very thing under test. A control that reimplements its subject shares
+ * its bugs. That half lives in the self-test instead, as a fixture whose budget
+ * sits below a line comment containing an opener: a positive control, pointed
+ * at a case known to contain the thing, required to find it.
+ *
+ * Cheap enough to run on every file every time, which is the point: a control
+ * you have to remember to run is one nobody runs.
+ */
+export function strippingIsSound(path, body, stripped) {
+    const before = body.split('\n').length
+    const after = stripped.split('\n').length
+    if (before !== after) {
+        return `${path}: comment stripping changed the line count from ` +
+            `${before} to ${after}, so it deleted across lines`
+    }
+    return null
+}
+
 export function detect(files) {
     const found = new Map()
     for (const [path, body] of files) {
         const stripped = withoutComments(path, body)
+        const unsound = strippingIsSound(path, body, stripped)
+        if (unsound !== null) {
+            throw new Error(
+                `machine-dependent: ${unsound}. A search whose input was deleted ` +
+                'reports an empty result, which reads exactly like a clean tree',
+            )
+        }
         for (const detector of DETECTORS) {
             for (const hit of detector.match(stripped, path)) {
                 const key = `${detector.site}\t${path}\t${hit.bound}`
