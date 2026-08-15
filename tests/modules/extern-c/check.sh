@@ -97,5 +97,60 @@ assert_grep "the refusal names the missing class" \
         -F "requires \`trust raw-foreign\`" "$WORK/bad.stdout"
 assert_absent "no binary from a refused build" "$WORK/bad-program"
 
+# #1443. A C scalar lowers to its C spelling, not to int64_t.
+#
+# The assertion is on the emitted *text* rather than on the program's result: a
+# `CInt` parameter emitted as `int64_t` links successfully and reads the wrong
+# width, which for small arguments produces the right answer. A value-based test
+# passes on 21 and fails on nothing a fixture would think to try.
+mkdir -p "$WORK/ctypes/app" "$WORK/ctypes/sys"
+printf 'module sys.libm\ntrust raw-foreign\n\npub extern "C" fn kofun_cdouble(value: CInt) -> CInt\n' \
+    >"$WORK/ctypes/sys/libm.kofun"
+printf 'module app.main\ntrusted import sys.libm\n\nfn main() -> Int {\n    return libm.kofun_cdouble(21)\n}\n' \
+    >"$WORK/ctypes/app/main.kofun"
+printf '#include <stdint.h>\nint kofun_cdouble(int value) { return value * 2; }\n' >"$WORK/ctypes/lib.c"
+"$CC" -std=c11 -O2 -c "$WORK/ctypes/lib.c" -o "$WORK/ctypes/lib.o"
+ar rcs "$WORK/ctypes/libct.a" "$WORK/ctypes/lib.o"
+
+"$ROOT/bin/kofun" emit-c "$WORK/ctypes/app/main.kofun" "$WORK/ctypes/emitted.c" >/dev/null
+assert_grep "a CInt parameter lowers to int" \
+    -Fx "int kofun_cdouble(int k_p0);" "$WORK/ctypes/emitted.c"
+if grep -q "int64_t kofun_cdouble" "$WORK/ctypes/emitted.c"; then
+    printf '%s\n' \
+        "FAIL: extern c: a CInt declaration was lowered to int64_t; the width is wrong and links anyway" >&2
+    exit 1
+fi
+
+"$ROOT/bin/kofun" build "$WORK/ctypes/app/main.kofun" --backend c \
+    --link-library "$WORK/ctypes/libct.a" -o "$WORK/ctypes/program" >/dev/null
+set +e
+"$WORK/ctypes/program"
+ctypes_status=$?
+set -e
+assert_num "the CInt program links against int(int) and runs" "$ctypes_status" -eq 42
+
+# A type this slice does not lower is refused by name, and leaves nothing.
+mkdir -p "$WORK/cstr/app" "$WORK/cstr/sys"
+printf 'module sys.libs\ntrust raw-foreign\n\npub extern "C" fn kofun_puts(message: CStr) -> CInt\n' \
+    >"$WORK/cstr/sys/libs.kofun"
+printf 'module app.main\ntrusted import sys.libs\n\nfn main() -> Int {\n    return 0\n}\n' \
+    >"$WORK/cstr/app/main.kofun"
+set +e
+"$ROOT/bin/kofun" build "$WORK/cstr/app/main.kofun" --backend c \
+    --link-library "$WORK/ctypes/libct.a" -o "$WORK/cstr/program" \
+    >"$WORK/cstr.stdout" 2>"$WORK/cstr.stderr"
+cstr_status=$?
+set -e
+assert_num "an unlowered C type is refused" "$cstr_status" -ne 0
+assert_grep "the refusal names the type" -F "CStr" "$WORK/cstr.stderr"
+# Two independent refusals guard this, and the gate says which it saw. The
+# signature check (E2S65) runs first; the emitter (E2S175) is the backstop that
+# cannot be reached past. Disabling the first alone still refuses, via the
+# second — measured — so an assertion naming only one code would report a
+# working guard when one of the two had been removed.
+assert_grep "the refusal comes from one of the two guards" \
+    -E "error\[(E2S65|E2S175)\]" "$WORK/cstr.stderr"
+assert_absent "no artifact from a refused build" "$WORK/cstr/program"
+
 printf '%s\n' \
-    "PASS: an extern \"C\" module links and runs through bin/kofun, an unlinked build is refused by name, and the raw-foreign class is not optional"
+    "PASS: an extern \"C\" module links and runs through bin/kofun, an unlinked build is refused by name, the raw-foreign class is not optional, and a C scalar lowers to its C spelling"
