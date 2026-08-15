@@ -590,6 +590,16 @@ assert_grep "stage1.ir" \
     "^function-count|$stage1_functions\$" "$temporary/stage1.ir"
 
 round_trip stage2 "$stage2/compiler.kofun"
+# One function record per declaration in the canonical Stage 2 source, derived
+# for the same reason the Stage 1 count two blocks up is derived: a
+# hand-maintained number strands the moment someone splits a helper. Stage 2 is
+# the subject that most needs it and was the only one of the three without it —
+# `fixture.ir` and `stage1.ir` both assert a count, and the compiler itself did
+# not, so a function that stopped being emitted would have been caught only if
+# it happened to be one of the nine named below.
+stage2_functions=$(grep -c '^fn ' "$stage2/compiler.kofun")
+assert_grep "stage2.ir" \
+    "^function-count|$stage2_functions\$" "$temporary/stage2.ir"
 assert_grep "stage2.ir" '^function|lex|1|' "$temporary/stage2.ir"
 assert_grep "stage2.ir" '^function|parse_program|1|' "$temporary/stage2.ir"
 assert_grep "stage2.ir" \
