@@ -1,0 +1,13 @@
+# The same boundary written the other way: inside the parentheses rather than
+# after them. The trailing position is the whole of what #1398 admits, so this
+# is refused by position and not by anything about the body.
+fn apply(value: Int, action: Int -> Int) -> Int {
+    return action(value)
+}
+
+fn main() -> Int {
+    print(apply(1, fn(x: Int) {
+        return x
+    }))
+    return 0
+}

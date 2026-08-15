@@ -1,9 +1,13 @@
+# The block body #1398 admits, written to be the same lifted function the
+# expression body produces. `apply(1) fn(x) => x` and this program observe the
+# same value; a block body that lowered to something else would print a
+# different one.
 fn apply(value: Int, action: Int -> Int) -> Int {
     return action(value)
 }
 
 fn main() -> Int {
-    print(apply(1) fn(x) {
+    print(apply(1) fn(x: Int) {
         return x
     })
     return 0

@@ -138,9 +138,9 @@ builder cannot resolve, so without an earlier refusal it reports
 `E2S35 unknown lexical binding` about a binding the author never meant to
 reference.
 
-Bare pipeline targets, member pipeline targets, block-bodied trailing
-lambdas, labelled calls inside lifted lambdas, and lexical/indirect targets
-remain unsupported at their existing E2S158 or
+Bare pipeline targets, member pipeline targets, labelled calls inside lifted
+lambdas, block-bodied lambdas outside the trailing position, and
+lexical/indirect targets remain unsupported at their existing E2S158 or
 earlier named refusal boundaries and remain owned by #882. The one-stage direct
 top-level Stage 2/C11 pipeline no longer belongs to that unsupported set: #1226
 binds its subject to slot zero, #1227 checks it, and #1228 lowers it. Neither

@@ -1,0 +1,16 @@
+# #1398 recognizes the block body in the trailing position and only there. A
+# `let` initializer is refused by name rather than by whichever misparse the
+# span happens to produce: before this the reader was told `value` was an
+# unknown lexical binding, which is the lambda's own parameter and a symbol
+# they did not write.
+fn apply(value: Int, action: Int -> Int) -> Int {
+    return action(value)
+}
+
+fn main() -> Int {
+    let double = fn(value: Int) {
+        return value * 2
+    }
+    print(double(21))
+    return 0
+}

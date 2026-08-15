@@ -1,13 +1,14 @@
-# A block-body lambda. `spec/syntax/call-arguments-v1.md` states it as accepted
-# design; Stage 2 parses no such form, and `spec/grammar.ebnf` does not derive
-# it. This fixture pins that boundary so the three surfaces cannot drift apart
+# A block-body lambda in a `let` initializer. #1398 admits the block body in
+# the trailing position — after a call's `)` — and `spec/grammar.ebnf` derives
+# exactly that as `trailing_block_lambda`. This spelling is not that position,
+# and this fixture pins the boundary so the three surfaces cannot drift apart
 # again unnoticed.
 #
-# It also records that the refusal is not a refusal. The parameter list is not
-# recognised as one, so `value` never binds and the diagnostic names it as an
-# unknown lexical binding rather than saying a block body is unsupported. When
-# an implementation gives this shape a named refusal, or accepts it, this
-# fixture must change — which is the point of pinning it.
+# It used to record that the refusal was not a refusal: the parameter list was
+# not recognised, so `value` never bound and the diagnostic named it as an
+# unknown lexical binding — a symbol the author did not write. #1398 replaced
+# that with a named position refusal, which is the change this comment asked
+# for.
 
 fn main() -> Int {
     let double = fn(value) {

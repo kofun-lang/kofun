@@ -31,9 +31,15 @@ gated by the same task.
 A trailing lambda may be written on a pipeline target: the lambda attaches to the call and the pipeline rewrite applies to the result, so the subject binds slot 0, the parenthesised arguments bind theirs in source order, and the lambda binds the final functional slot as a lifted address. #1397 is landed and gated by the
 same task.
 
-Bare pipeline targets, block-bodied trailing lambdas, labelled calls inside
-lifted lambdas, and lexical/member/indirect targets remain at their existing
-`E2S158` or
+A trailing lambda may take a block body:
+it is lifted exactly as the expression body is, and its statements are lowered by the walk that lowers a named function body,
+so `return` is an ordinary return and a local binding lives in the block scope of the lambda itself.
+The block body is recognized in the trailing position and only there. #1398 is landed and gated by the same
+task.
+
+Bare pipeline targets, labelled calls inside lifted lambdas, block-bodied
+lambdas outside the trailing position, and lexical/member/indirect targets
+remain at their existing `E2S158` or
 earlier named refusal boundaries. Direct-native and Wasm behavior is measured
 by the same corpus: the labelled Int call executes on both and is compared
 against the C11 golden, and every other shape stops at one named source-located

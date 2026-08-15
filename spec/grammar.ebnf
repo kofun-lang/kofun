@@ -158,23 +158,27 @@ if_expr          = "if", expression, block,
    and refuses any use that would let one escape its block. *)
 par_expr         = "par", "|", identifier, "|", block ;
 
-(* All three lambda spellings are intentional. The bare form is a lambda in
+(* All four lambda spellings are intentional. The bare form is a lambda in
    expression position; at a match-arm boundary, the same IDENT "=>" prefix
    belongs to the arm pattern instead. The two shorthand forms have expression
    bodies only. See #943. *)
 lambda           = canonical_lambda
+                 | trailing_block_lambda
                  | parenthesized_lambda
                  | bare_lambda ;
-(* A block body for the canonical form is planned and is NOT derived here,
-   because this grammar states what Stage 2 accepts (#943). Measured on
-   `bin/kofun check`: `fn(x) { return x + 1 }` and `fn(x: Int) { ... }` both
-   fail, and neither fails by name — the parameter list is not recognised as
-   one, so the parameter never binds and `E2S35` reports an unknown lexical
-   binding for a symbol the author did not write. The accepted design contract
-   for the block body is `spec/syntax/call-arguments-v1.md`; the current
-   boundary is pinned by `unsupported_block_lambda` in
-   `tests/conformance/syntax/issues_35_47/run.sh`. *)
+(* #1398 admits the block body, and only where a trailing lambda is written —
+   after a call's `)`. This grammar states what Stage 2 accepts (#943), so the
+   position is part of the production rather than a note beside it: the same
+   spelling in a `let` initializer or inside the parentheses is refused, now by
+   name rather than by misparse. Measured on `bin/kofun check`:
+   `let d = fn(v: Int) { return v }` reports
+   `E2S158: a block-bodied lambda is recognized only in the trailing position`.
+   The accepted design contract is `spec/syntax/call-arguments-v1.md`; the
+   position boundary is pinned by `unsupported_block_lambda` in
+   `tests/conformance/syntax/issues_35_47/run.sh` and by
+   `block_lambda_let_position` in the call-arguments gate. *)
 canonical_lambda = "fn", "(", parameters, ")", "=>", expression ;
+trailing_block_lambda = "fn", "(", parameters, ")", block ;
 parenthesized_lambda = "(", parameters, ")", "=>", expression ;
 bare_lambda      = identifier, "=>", expression ;
 

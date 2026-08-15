@@ -694,16 +694,19 @@ expect_stage2_lowers "$CASES/lowered_while.kofun"
 # that one checks a JavaScript model and never runs the compiler, which is
 # exactly why the disagreement survived.
 #
-# The exact diagnostic is asserted, not just that some `E2S` code fires,
-# because the current one is wrong in an informative way: the parameter list is
-# not recognised, so `value` never binds and the reader is told about a symbol
-# they did not write. A named refusal would change this line, and it should.
+# The named refusal this line asked for landed with #1398, and the boundary it
+# pins moved with it: the block body is accepted in the trailing position, so
+# what is refused here is the *position*, not the body. The diagnostic is
+# asserted exactly, as before, because the value of this fixture is that the
+# three surfaces — compiler, grammar, and this gate — cannot drift apart
+# unnoticed. `spec/grammar.ebnf` derives `trailing_block_lambda` and says the
+# same thing about the position.
 expect_stage2_unsupported "$CASES/unsupported_block_lambda.kofun"
-grep -Fq 'error[E2S35]: unknown lexical binding `value`' \
+grep -Fq 'error[E2S158]: a block-bodied lambda is recognized only in the trailing position' \
     "$WORK/unsupported_block_lambda.stdout" ||
-    fail 'unsupported_block_lambda: the pinned misparse diagnostic changed; if a named block-body refusal landed, update this assertion and spec/grammar.ebnf together'
+    fail 'unsupported_block_lambda: the pinned block-lambda position refusal changed; update this assertion and spec/grammar.ebnf together'
 printf '%s\n' \
-    'PASS unsupported: block-body lambda is refused, by misparse, and pinned'
+    'PASS unsupported: a block-body lambda outside the trailing position is refused by name, and pinned'
 
 set +e
 "$WORK/kofun-stage2" \

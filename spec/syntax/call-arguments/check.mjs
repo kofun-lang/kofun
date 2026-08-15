@@ -157,7 +157,8 @@ const requiredRunTruth = [
   "the chain is that one production iterated, left-associated, with every stage checked and lowered as a stage whose subject is the result of the stage before it, and no second temporary family",
   "a binding whose initializer is a pipeline carries the declared result of the last stage and is checked against the slot it is later piped into",
   "A trailing lambda may be written on a pipeline target: the lambda attaches to the call and the pipeline rewrite applies to the result, so the subject binds slot 0, the parenthesised arguments bind theirs in source order, and the lambda binds the final functional slot as a lifted address.",
-  "#882 retains bare/member pipeline forms, block-bodied trailing calls, labelled calls in lifted lambdas, and lexical/indirect targets",
+  "A trailing lambda may take a block body: it is lifted exactly as the expression body is, and its statements are lowered by the walk that lowers a named function body, so `return` is an ordinary return and a local binding lives in the block scope of the lambda itself. The block body is recognized in the trailing position and only there.",
+  "#882 retains bare/member pipeline forms, block-bodied lambdas outside the trailing position, labelled calls in lifted lambdas, and lexical/indirect targets",
   "the labelled Int call executes on direct-native and wasm32 against the same golden as C11",
   "each stop at one named source-located boundary per backend",
 ];
@@ -196,6 +197,11 @@ function assertPipelineDocumentation({ expressions, spec, readme, run }) {
     // a boundary that no longer exists.
     "pipelines with trailing lambdas",
     "member pipeline targets, pipelines with trailing",
+    // #1398 landed. The block body is recognized in the trailing position, so
+    // a document listing it among the retained refusals sends a reader looking
+    // for a boundary that moved to the position instead.
+    "block-bodied trailing lambdas",
+    "block-bodied trailing calls",
   ]) assert.ok(!pipelineDocs.includes(stale), `stale pipeline status: ${stale}`);
   for (const current of [
     "The subject binds declaration/ABI slot zero",
@@ -204,6 +210,7 @@ function assertPipelineDocumentation({ expressions, spec, readme, run }) {
     "#1192 landed the direct-native and Wasm differential",
     "#1396 is landed and gated by the same task",
     "#1397 is landed and gated by the same task",
+    "#1398 is landed and gated by the same task",
   ]) assert.ok(pipelineDocs.includes(current), `missing pipeline status: ${current}`);
 
   // Each document states the measured backend result in its own right. The
@@ -228,6 +235,9 @@ function assertPipelineDocumentation({ expressions, spec, readme, run }) {
   const chainBoundary = "A pipeline chain is that production iterated: it associates left, every stage binds, counts, checks and moves its own subject into slot 0, and the C11 lowering nests each stage inside the next subject rather than adding a second temporary family.";
   /* #1397, in the specification only: the gate README describes the composed
    * shape through its three fixtures rather than restating the rule. */
+  const blockBoundary = "A trailing lambda may take a block body: it is lifted exactly as the expression body is, and its statements are lowered by the walk that lowers a named function body, so `return` is an ordinary return and a local binding lives in the block scope of the lambda itself. The block body is recognized in the trailing position and only there.";
+  assert.ok(normalizedSpec.includes(blockBoundary),
+    "call-arguments specification missing block trailing-lambda status");
   const trailingBoundary = "A trailing lambda may be written on a pipeline target: the lambda attaches to the call and the pipeline rewrite applies to the result, so the subject binds slot 0, the parenthesised arguments bind theirs in source order, and the lambda binds the final functional slot as a lifted address.";
   assert.ok(normalizedSpec.includes(trailingBoundary),
     "call-arguments specification missing pipeline trailing-lambda status");

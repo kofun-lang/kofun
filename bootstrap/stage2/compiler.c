@@ -3765,6 +3765,28 @@ static int64_t trailing_lambda_slot(
     return parameter_count_value - 1;
 }
 
+static char *block_lambda_position_refusal(
+    const char *source,
+    int64_t cursor
+) {
+    Buffer error;
+    buffer_init(&error);
+    buffer_format(
+        &error,
+        "error[E2S158]: a block-bodied lambda is recognized only in the "
+        "trailing position at byte %" PRId64,
+        cursor
+    );
+    stage2_diagnostic_set(
+        "E2S158",
+        cursor,
+        token_end(source, cursor),
+        true,
+        error.data
+    );
+    return error.data;
+}
+
 static char *trailing_lambda_refusal(const char *source, int64_t cursor) {
     Buffer error;
     buffer_init(&error);
@@ -3802,7 +3824,39 @@ static char *validate_trailing_lambda_surface(const char *source) {
      * spelling in tests/conformance/syntax/issues_35_47.
      */
     int64_t cursor = skip_trivia(source, 0);
+    int64_t previous = -1;
     while (cursor < length) {
+        /*
+         * #1398 admits the block body in the trailing position and only
+         * there. Elsewhere it was refused by accident — a `let` initializer
+         * reported `E2S35 unknown lexical binding` about the lambda's own
+         * parameter, a symbol the author did not write — and spanning the
+         * block turned that accident into a different one. Naming the
+         * position is what keeps the boundary a refusal the author can act on
+         * rather than whichever misparse the span happens to produce.
+         */
+        if (token_equal(source, cursor, "fn") && previous >= 0 &&
+            !token_equal(source, previous, ")"))
+        {
+            int64_t lambda_open = skip_trivia(
+                source,
+                token_end(source, cursor)
+            );
+            if (lambda_open < length && token_equal(source, lambda_open, "(")) {
+                int64_t lambda_close =
+                    balanced_end(source, lambda_open, "(", ")");
+                int64_t lambda_body = lambda_close < 0
+                    ? -1
+                    : skip_trivia(source, lambda_close);
+                if (
+                    lambda_body >= 0 &&
+                    lambda_body < length &&
+                    token_equal(source, lambda_body, "{")
+                ) {
+                    return block_lambda_position_refusal(source, cursor);
+                }
+            }
+        }
         if (token_equal(source, cursor, ")")) {
             int64_t parameters = trailing_lambda_open(
                 source,
@@ -3810,11 +3864,16 @@ static char *validate_trailing_lambda_surface(const char *source) {
             );
             if (parameters >= 0) {
                 int64_t close = balanced_end(source, parameters, "(", ")");
-                int64_t arrow = close < 0 ? -1 : skip_trivia(source, close);
+                int64_t body = close < 0 ? -1 : skip_trivia(source, close);
+                /* #1398 admits the block body. What stays refused is a
+                 * trailing `fn (...)` followed by neither — the shape that
+                 * would otherwise be misread as the start of the next
+                 * declaration, which is what this refusal was written for. */
                 if (
-                    arrow < 0 ||
-                    arrow >= length ||
-                    !token_equal(source, arrow, "=>")
+                    body < 0 ||
+                    body >= length ||
+                    (!token_equal(source, body, "=>") &&
+                     !token_equal(source, body, "{"))
                 ) {
                     return trailing_lambda_refusal(
                         source,
@@ -3823,6 +3882,7 @@ static char *validate_trailing_lambda_surface(const char *source) {
                 }
             }
         }
+        previous = cursor;
         cursor = skip_trivia(source, token_end(source, cursor));
     }
 
@@ -13847,11 +13907,29 @@ static int64_t parent_block_open(
 ) {
     int64_t cursor = function_open;
     int64_t parent = -1;
+    int64_t previous = -1;
     while (cursor < child_open) {
         if (token_equal(source, cursor, "{")) {
             int64_t candidate_end = balanced_end(source, cursor, "{", "}");
             if (candidate_end > child_open) parent = cursor;
+        } else if (token_equal(source, cursor, "(")) {
+            /*
+             * A lambda's parameter scope is keyed on its `(`, not on a brace,
+             * so this walk could not see it and a block written as a lambda
+             * body was parented to the enclosing function instead (#1398).
+             * The lambda's own parameters were then not in scope inside its
+             * body, and a binding declared there resolved against a chain the
+             * body is not on -- reported as `E2S35 outside its lexical scope`
+             * about a binding written three lines above its use.
+             *
+             * Guarded by the `(` test so the span walk runs on parenthesised
+             * tokens only: it is the expensive one here, and every other token
+             * is answered by the brace test above.
+             */
+            int64_t lambda_end = lambda_parameters_end(source, previous, cursor);
+            if (lambda_end > child_open) parent = cursor;
         }
+        previous = cursor;
         cursor = skip_trivia(source, token_end(source, cursor));
     }
     return parent;
@@ -14108,7 +14186,18 @@ static int64_t lambda_parameters_end(
     int64_t close = balanced_end(source, open, "(", ")");
     if (close < 0) return -1;
     int64_t arrow = skip_trivia(source, close);
-    if (arrow >= length || !token_equal(source, arrow, "=>")) return -1;
+    if (arrow >= length) return -1;
+    /*
+     * The block body (#1398). It spans by its braces rather than by an
+     * expression, and everything that reads this span — scope building, the
+     * lift walk, the capture check — then covers the block without learning
+     * about it. The bare `x => e` form above has no block spelling, so this
+     * is the only place a body can be one.
+     */
+    if (token_equal(source, arrow, "{")) {
+        return balanced_end(source, arrow, "{", "}");
+    }
+    if (!token_equal(source, arrow, "=>")) return -1;
     return expression_end(
         source,
         skip_trivia(source, token_end(source, arrow))
@@ -15109,7 +15198,21 @@ static char *lambda_captures(
              * no `int64_t` to pass, and the call reaches its lifted function
              * by name. Counting it would emit a parameter for a C variable
              * that a lambda binding never declares. */
-            if (strcmp(binding_scope, scope_id) != 0 &&
+            /*
+             * A binding declared inside the lambda's own body is not a
+             * capture (#1398): a block body may declare locals, and they live
+             * in the block scope rather than in the parameter scope this id
+             * names. Comparing scope ids alone called every one of them a
+             * capture and refused the program with `E2S96`, which is about
+             * reading an *enclosing* binding.
+             */
+            char *binding_declaration = hir_binding_field(hir, binding_id, 8);
+            int64_t declared_at = decimal_value(binding_declaration);
+            free(binding_declaration);
+            bool declared_inside =
+                declared_at > lambda_open && declared_at < body_end;
+            if (!declared_inside &&
+                strcmp(binding_scope, scope_id) != 0 &&
                 lambda_binding_open(source, hir, binding_id) < 0) {
                 /* A body may read the same capture more than once; the
                  * parameter list must name it once. */
@@ -17570,6 +17673,26 @@ static char *build_scope_hir_mode(
                         function_open,
                         cursor
                     );
+                    if (scope_open >= 0) {
+                        /*
+                         * A block-bodied lambda has a block scope *inside* its
+                         * parameter scope (#1398), and a binding declared
+                         * there lives in the block. Resolving the use in the
+                         * parameter scope searches from the parent of the
+                         * scope that holds it, so it is not found and the read
+                         * is reported as outside its lexical scope -- about a
+                         * binding written three lines above it. The innermost
+                         * enclosing scope owns the use; for an
+                         * expression-bodied lambda that is the parameter scope
+                         * itself and nothing moves.
+                         */
+                        int64_t inner = parent_block_open(
+                            source,
+                            function_open,
+                            cursor
+                        );
+                        if (inner > scope_open) scope_open = inner;
+                    }
                     if (scope_open < 0) {
                         scope_open = match_guard_scope_open(
                             source,
@@ -22960,9 +23083,33 @@ static char *emit_lifted_argument_lambdas(
             }
             const char *c_parameters =
                 signature.length == 0 ? "void" : signature.data;
-            int64_t arrow = skip_trivia(source, parameters_close);
-            int64_t body_start = skip_trivia(source, token_end(source, arrow));
-            char *value = emit_expression(source, hir, body_start, close);
+            int64_t body_token = skip_trivia(source, parameters_close);
+            /*
+             * A block body is lowered by the same walk that lowers a named
+             * function's body (#1398), with the lambda's own `{` as both the
+             * block and the enclosing function: its statements are ordinary
+             * statements, its `return` is an ordinary return, and reusing
+             * `lower_body` is what keeps them so. Writing a second statement
+             * lowerer for lambdas is how the two would drift.
+             */
+            bool block_body = token_equal(source, body_token, "{");
+            char *value = block_body
+                ? lower_body(
+                    source,
+                    hir,
+                    body_token,
+                    false,
+                    true,
+                    body_token,
+                    "",
+                    ""
+                )
+                : emit_expression(
+                    source,
+                    hir,
+                    skip_trivia(source, token_end(source, body_token)),
+                    close
+                );
             if (strncmp(value, "error[", 6) == 0) {
                 free(signature.data);
                 return value;
@@ -22974,19 +23121,29 @@ static char *emit_lifted_argument_lambdas(
                 name,
                 c_parameters
             );
-            buffer_format(
-                bodies,
-                "static int64_t %s(%s) {\n"
-                "    {\n"
-                "        int64_t kofun_result = %s;\n"
-                "        if (kofun_failed) return 0;\n"
-                "        return kofun_result;\n"
-                "    }\n"
-                "}\n",
-                name,
-                c_parameters,
-                value
-            );
+            if (block_body) {
+                buffer_format(
+                    bodies,
+                    "static int64_t %s(%s) {\n%s}\n",
+                    name,
+                    c_parameters,
+                    value
+                );
+            } else {
+                buffer_format(
+                    bodies,
+                    "static int64_t %s(%s) {\n"
+                    "    {\n"
+                    "        int64_t kofun_result = %s;\n"
+                    "        if (kofun_failed) return 0;\n"
+                    "        return kofun_result;\n"
+                    "    }\n"
+                    "}\n",
+                    name,
+                    c_parameters,
+                    value
+                );
+            }
             free(name);
             free(value);
             free(signature.data);

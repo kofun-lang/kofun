@@ -274,15 +274,30 @@ unsupported_case "$cases/shadowed_callable.kofun" \
 unsupported_case "$cases/lifted_lambda_call.kofun" \
     'error[E2S158]: labelled-call ABI lowering is owned by #882; fixed-slot checked HIR is available at byte 140' \
     'labelled call inside a lifted lambda'
-# The two remaining E2S158 shapes are different boundaries, so they are
-# asserted separately rather than through one pattern. The case above is about
-# where a labelled call may appear; this one is about what a trailing lambda's
-# body may be. #1191 admitted the expression body and held this one, so a
-# slice that later admits the block body must move this assertion and leave
-# the lifted-lambda wording untouched.
-unsupported_case "$cases/trailing_lambda_block.kofun" \
-    'error[E2S158]: a trailing lambda with a block body is specified by call-arguments v1 but not implemented at byte 116' \
-    'trailing lambda with a block body'
+# The case above is about where a labelled call may appear. This one was about
+# what a trailing lambda's body may be, and #1398 moved it: the block body
+# executes, and the assertion above is left untouched, which is exactly what
+# the held comment asked of whoever landed this.
+#
+#   trailing_lambda_block             the same lifted function the expression
+#                                     body produces, observed by the same value
+#   trailing_lambda_block_statements  what a block body is for: a local, a
+#                                     nested block, and an early return
+executes_case trailing_lambda_block 'trailing lambda with a block body'
+executes_case trailing_lambda_block_statements \
+    'block body with a local, a nested block, and an early return'
+
+# The boundary moved from "block body" to "what the body may contain", so the
+# position is now the boundary and it is named rather than misparsed. Before
+# #1398 a block-bodied lambda outside the trailing position reported
+# `E2S35 unknown lexical binding` about the lambda's own parameter — a symbol
+# the author did not write.
+unsupported_case "$cases/block_lambda_let_position.kofun" \
+    'error[E2S158]: a block-bodied lambda is recognized only in the trailing position at byte 440' \
+    'block-bodied lambda in a let initializer'
+unsupported_case "$cases/block_lambda_argument_position.kofun" \
+    'error[E2S158]: a block-bodied lambda is recognized only in the trailing position at byte 334' \
+    'block-bodied lambda in ordinary argument position'
 
 # #1190 recognizes `subject |> callee(arguments)` as one production and fails
 # closed before slot binding. What it buys is the diagnostic: before it, every
@@ -667,4 +682,4 @@ refuses_on source_order_wide wasm32 \
     'the enum and record carriers'
 
 printf '%s\n' \
-    'PASS: labelled calls bind fixed HIR slots and the Int/Text/List[Int]/Optional/enum/record C11 slice evaluates once in source order; take slots move once and refuse double transfer as E2S123; the expression-bodied trailing lambda binds the final parameter as a lifted address; the direct-call pipeline is one production whose spans are published, whose subject binds slot 0 ahead of the explicit arguments and is then counted, type-checked, and moved once into a take slot, and whose C11 lowering evaluates the subject first and exactly once before the explicit arguments; the chain is that one production iterated, left-associated, with every stage checked and lowered as a stage whose subject is the result of the stage before it, and no second temporary family; a binding whose initializer is a pipeline carries the declared result of the last stage and is checked against the slot it is later piped into; A trailing lambda may be written on a pipeline target: the lambda attaches to the call and the pipeline rewrite applies to the result, so the subject binds slot 0, the parenthesised arguments bind theirs in source order, and the lambda binds the final functional slot as a lifted address. #882 retains bare/member pipeline forms, block-bodied trailing calls, labelled calls in lifted lambdas, and lexical/indirect targets; the labelled Int call executes on direct-native and wasm32 against the same golden as C11, carrying no label into either artifact, and the pipeline, trailing lambda, Optional, Text/List[Int], and enum/record shapes each stop at one named source-located boundary per backend'
+    'PASS: labelled calls bind fixed HIR slots and the Int/Text/List[Int]/Optional/enum/record C11 slice evaluates once in source order; take slots move once and refuse double transfer as E2S123; the expression-bodied trailing lambda binds the final parameter as a lifted address; the direct-call pipeline is one production whose spans are published, whose subject binds slot 0 ahead of the explicit arguments and is then counted, type-checked, and moved once into a take slot, and whose C11 lowering evaluates the subject first and exactly once before the explicit arguments; the chain is that one production iterated, left-associated, with every stage checked and lowered as a stage whose subject is the result of the stage before it, and no second temporary family; a binding whose initializer is a pipeline carries the declared result of the last stage and is checked against the slot it is later piped into; A trailing lambda may be written on a pipeline target: the lambda attaches to the call and the pipeline rewrite applies to the result, so the subject binds slot 0, the parenthesised arguments bind theirs in source order, and the lambda binds the final functional slot as a lifted address. A trailing lambda may take a block body: it is lifted exactly as the expression body is, and its statements are lowered by the walk that lowers a named function body, so `return` is an ordinary return and a local binding lives in the block scope of the lambda itself. The block body is recognized in the trailing position and only there. #882 retains bare/member pipeline forms, block-bodied lambdas outside the trailing position, labelled calls in lifted lambdas, and lexical/indirect targets; the labelled Int call executes on direct-native and wasm32 against the same golden as C11, carrying no label into either artifact, and the pipeline, trailing lambda, Optional, Text/List[Int], and enum/record shapes each stop at one named source-located boundary per backend'
