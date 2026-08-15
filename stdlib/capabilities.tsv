@@ -33,6 +33,10 @@ random-core	portable	implemented	task stdlib	deterministic core; the Linux entro
 syscall-file-round-trip	adapter	implemented	task stdlib	Linux x86-64 open/write/lseek/read/close round-trip with errno evidence; no directory listing, process spawn, or environment authority
 process-spawn	adapter	planned	#1232	authorized exact-argv spawn and wait; process_exit and declared syscall signatures are not spawn evidence
 directory-listing	adapter	planned	#1235	authorized deterministic Linux x86-64 listing; file open and stat are not directory-enumeration evidence
+directory-create	adapter	planned	#1480	authorized mkdir beneath an open directory handle; symlinks refuse before follow, no ambient cwd, no dot-dot component
+directory-remove	adapter	planned	#1480	authorized rmdir and unlink; recursive removal is a bounded composition at depth 64, never an unbounded walk
+file-copy	adapter	planned	#1480	authorized copy beneath an open directory handle; read-plus-write over existing primitives unless a syscall path is justified
+file-rename	adapter	planned	#1480	authorized rename within one authority; cross-device rename is a typed error, not a copy-then-delete fallback
 environment-authority	adapter	planned	#1193 #1194	RFC-0002 compiler enforcement and bounded runtime provider; no ambient environment read or write is implemented
 cli-parsing	module	implemented	task cli-framework	bounded direct-static native CLI with generated help; closed #25
 http-server	module	implemented	task http	bounded first-party HTTP/API framework; closed #24, not evidence of a client

@@ -202,6 +202,10 @@ collections-associative
 syscall-file-round-trip
 process-spawn
 directory-listing
+directory-create
+directory-remove
+file-copy
+file-rename
 environment-authority
 cli-parsing
 http-server

@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 114,
+  "open_issues": 113,
   "issues": [
     {
       "number": 26,
@@ -1021,33 +1021,6 @@
       ]
     },
     {
-      "number": 1245,
-      "title": "Stage 2 explicit pure boundary over inferred pure/io summaries",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "5c5cf42404b0dbeea36a4de0fb457c4479e8bf68",
-        "855ca05a6cf6a01c404585cddc48443e9177086c"
-      ],
-      "claims": [
-        {
-          "agent_id": "claude-opus-5-b326d627",
-          "status": "active"
-        },
-        {
-          "agent_id": "claude-opus-5-b326d627",
-          "status": "released"
-        },
-        {
-          "agent_id": "claude-opus-5-b326d627",
-          "status": "active"
-        }
-      ]
-    },
-    {
       "number": 1246,
       "title": "Stage 2 environment authority: root transfer, attenuation facts, and E350-E356 integration",
       "state_labels": [
@@ -2000,13 +1973,19 @@
       "number": 1449,
       "title": "verify: compile the four repeated -O0 -fanalyzer object identities once",
       "state_labels": [
-        "ready"
+        "in-progress"
       ],
-      "state_line": "ready",
+      "state_line": "in-progress",
       "blocked_by": [],
       "evidence_commits": [
         "9e3b85328a710b3a2335e2dee8d72b3ac6fb71e1",
         "ad2a0c0f13af96bed3ed77f10447d05e0c67ad8f"
+      ],
+      "claims": [
+        {
+          "agent_id": "claude-1449-analyzer-object-reuse-20260815",
+          "status": "active"
+        }
       ]
     },
     {
@@ -2030,24 +2009,6 @@
         "21e89ecb8807606712c902481a6b39f82a190c79",
         "9e3b85328a710b3a2335e2dee8d72b3ac6fb71e1",
         "a98cb13eabc7b5c48a948d381928a460670e3d67"
-      ]
-    },
-    {
-      "number": 1454,
-      "title": "stdlib capabilities: nine planned/deferred rows cite closed issues",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "9e3b85328a710b3a2335e2dee8d72b3ac6fb71e1"
-      ],
-      "claims": [
-        {
-          "agent_id": "claude-1454-capability-liveness-20260815",
-          "status": "active"
-        }
       ]
     },
     {
@@ -2134,12 +2095,18 @@
       "number": 1462,
       "title": "stdlib capabilities: no row covers directory create, remove, copy, or rename",
       "state_labels": [
-        "ready"
+        "in-progress"
       ],
-      "state_line": "ready",
+      "state_line": "in-progress",
       "blocked_by": [],
       "evidence_commits": [
         "8639360a82fa2b4d1f9821a180e9d5d04adcf645"
+      ],
+      "claims": [
+        {
+          "agent_id": "claude-1462-filesystem-rows-20260815",
+          "status": "active"
+        }
       ]
     },
     {
@@ -2195,18 +2162,6 @@
       ]
     },
     {
-      "number": 1472,
-      "title": "Ledger the gates whose verdict depends on the machine, not the tree",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "21e89ecb8807606712c902481a6b39f82a190c79"
-      ]
-    },
-    {
       "number": 1475,
       "title": "Standard library: buffered-io, secure-randomness, and compression-archive are planned against nothing",
       "state_labels": [
@@ -2216,6 +2171,32 @@
       "blocked_by": [],
       "evidence_commits": [
         "a98cb13eabc7b5c48a948d381928a460670e3d67"
+      ]
+    },
+    {
+      "number": 1479,
+      "title": "typed-sidecar v1 is frozen with no amendment path, and every route to a new fact passes through it",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": [
+        "28369b70ac5c2adf42bc5968e29b85d9c7a59a25"
+      ]
+    },
+    {
+      "number": 1480,
+      "title": "linux_x86_64 filesystem: implement authorized create, remove, copy, and rename",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1193
+      ],
+      "evidence_commits": [
+        "60ee6b1d7ae878ace0f222ef22490b7cdd2cc8d4"
       ]
     }
   ]
