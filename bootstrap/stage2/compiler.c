@@ -14154,6 +14154,49 @@ static bool match_arm_pattern_start(const char *source, int64_t target) {
     return false;
 }
 
+/*
+ * Whether the `(` at `open` is the parameter list of a canonical `fn` lambda —
+ * the only spelling `spec/grammar.ebnf` gives a block body, as
+ * `trailing_block_lambda = "fn", "(", parameters, ")", block`.
+ *
+ * Asked of the source rather than of a `previous` argument because half of
+ * `lambda_parameters_end`'s callers pass -1: they hold a `(` they already know
+ * is a lambda and have no previous token to give. Requiring `fn` only from the
+ * callers that can prove it would leave the others spanning `if (a == b) { }`
+ * as a lambda, which is the misparse this whole test exists to prevent.
+ *
+ * The walk is backwards over whitespace only, so it cannot use `skip_trivia`.
+ * A `#` earlier on the same line means the `fn` is inside a comment; the check
+ * then answers no, which refuses a valid lambda rather than accepting an
+ * invalid span. That direction is deliberate.
+ */
+static bool lambda_fn_keyword_before(const char *source, int64_t open) {
+    int64_t at = open;
+    while (at > 0) {
+        char space = source[at - 1];
+        if (space == ' ' || space == '\t' || space == '\n' || space == '\r') {
+            --at;
+            continue;
+        }
+        break;
+    }
+    if (at < 2) return false;
+    if (source[at - 1] != 'n' || source[at - 2] != 'f') return false;
+    if (at >= 3) {
+        char before = source[at - 3];
+        bool continues_identifier = before == '_' ||
+            (before >= '0' && before <= '9') ||
+            (before >= 'a' && before <= 'z') ||
+            (before >= 'A' && before <= 'Z');
+        if (continues_identifier) return false;
+    }
+    for (int64_t scan = at - 2; scan > 0; --scan) {
+        if (source[scan - 1] == '\n') break;
+        if (source[scan - 1] == '#') return false;
+    }
+    return true;
+}
+
 static int64_t lambda_parameters_end(
     const char *source,
     int64_t previous,
@@ -14201,8 +14244,7 @@ static int64_t lambda_parameters_end(
      */
     if (
         token_equal(source, arrow, "{") &&
-        previous >= 0 &&
-        token_equal(source, previous, "fn")
+        lambda_fn_keyword_before(source, open)
     ) {
         return balanced_end(source, arrow, "{", "}");
     }

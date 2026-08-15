@@ -10396,6 +10396,51 @@ fn match_arm_pattern_start(source: Text, target: Int) -> Bool {
     return false
 }
 
+# Whether the `(` at `open` is the parameter list of a canonical `fn` lambda —
+# the only spelling `spec/grammar.ebnf` gives a block body, as
+# `trailing_block_lambda = "fn", "(", parameters, ")", block`.
+#
+# Asked of the source rather than of a `previous` argument because half of
+# `lambda_parameters_end`'s callers pass -1: they hold a `(` they already know
+# is a lambda and have no previous token to give. Requiring `fn` only from the
+# callers that can prove it would leave the others spanning `if (a == b) { }`
+# as a lambda, which is the misparse this test exists to prevent.
+#
+# The walk is backwards over whitespace only, so it cannot use `skip_trivia`.
+# A `#` earlier on the same line means the `fn` is inside a comment; the check
+# then answers no, which refuses a valid lambda rather than accepting an
+# invalid span. That direction is deliberate.
+fn lambda_fn_keyword_before(source: Text, open: Int) -> Bool {
+    let symbols = chars(source)
+    let mut at = open
+    while at > 0 && is_space(symbols[at - 1]) {
+        at = at - 1
+    }
+    if at < 2 {
+        return false
+    }
+    if symbols[at - 1] != "n" || symbols[at - 2] != "f" {
+        return false
+    }
+    if at >= 3 {
+        let before = symbols[at - 3]
+        if identifier_continue(before) {
+            return false
+        }
+    }
+    let mut scan = at - 2
+    while scan > 0 {
+        if symbols[scan - 1] == "\n" {
+            return true
+        }
+        if symbols[scan - 1] == "#" {
+            return false
+        }
+        scan = scan - 1
+    }
+    return true
+}
+
 fn lambda_parameters_end(source: Text, previous: Int, open: Int) -> Int {
     if token_text(source, open) != "(" {
         # The bare single-parameter form `x => e` decided in #547. It is a
@@ -10441,8 +10486,8 @@ fn lambda_parameters_end(source: Text, previous: Int, open: Int) -> Int {
     # `E2S47 duplicate binding` on a `let` it declares once. The shorthand
     # `(x) => e` form has expression bodies only, so requiring `fn` costs it
     # nothing.
-    if token_text(source, arrow) == "{" && previous >= 0 &&
-       token_text(source, previous) == "fn" {
+    if token_text(source, arrow) == "{" &&
+       lambda_fn_keyword_before(source, open) {
         return balanced_end(source, arrow, "{", "}")
     }
     if token_text(source, arrow) != "=>" {
