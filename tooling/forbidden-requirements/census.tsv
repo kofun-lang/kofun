@@ -300,6 +300,7 @@ node	invoke	4	required-today	required	tests/typed-sidecar/stage2-projector.sh
 node	invoke	6	required-today	required	tests/wasm-list-v1/check.sh
 node	invoke	4	required-today	required	tests/wasm-text-v1/check.sh
 node	invoke	8	required-today	required	tests/wasm/wasi-command/check.sh
+node	invoke	6	required-today	required	tooling/compile-census/check.sh
 node	invoke	6	required-today	required	tooling/machine-dependent/check.sh
 node	source	1	required-today	required	bootstrap/native/macho64-check.mjs
 node	source	1	required-today	required	bootstrap/native/macho64-signed-check.mjs
@@ -424,6 +425,9 @@ node	source	1	required-today	required	tests/wasm/wasi-command/inspect.mjs
 node	source	1	required-today	required	tests/wasm/wasi-command/run.mjs
 node	source	1	required-today	required	tests/wasm/wasi-command/validate.mjs
 node	source	1	required-today	required	tooling/bindgen-c/bindgen-c.mjs
+node	source	1	required-today	required	tooling/compile-census/census.mjs
+node	source	1	required-today	required	tooling/compile-census/check.mjs
+node	source	1	required-today	required	tooling/compile-census/self-test.mjs
 node	source	1	required-today	required	tooling/forbidden-requirements/check.mjs
 node	source	1	required-today	required	tooling/forbidden-requirements/detect.mjs
 node	source	1	required-today	required	tooling/forbidden-requirements/reach.mjs
@@ -709,6 +713,7 @@ shell-build-driver	source	1	required-today	required	tests/usability/check.sh
 shell-build-driver	source	1	required-today	required	tests/wasm-list-v1/check.sh
 shell-build-driver	source	1	required-today	required	tests/wasm-text-v1/check.sh
 shell-build-driver	source	1	required-today	required	tests/wasm/wasi-command/check.sh
+shell-build-driver	source	1	required-today	required	tooling/compile-census/check.sh
 shell-build-driver	source	1	required-today	required	tooling/kotest/run.sh
 shell-build-driver	source	1	required-today	required	tooling/lsp/build-semantic-bundle.sh
 shell-build-driver	source	1	required-today	required	tooling/lsp/kofun-lsp
@@ -718,7 +723,7 @@ go-task	invoke	4	required-today	required	.github/workflows/ci.yml
 go-task	invoke	1	required-today	required	.github/workflows/fuzz.yml
 go-task	invoke	1	required-today	required	.github/workflows/native-hosts.yml
 go-task	invoke	2	required-today	required	.github/workflows/release.yml
-go-task	invoke	4	required-today	required	bootstrap/stage2/verify-runner.sh
+go-task	invoke	5	required-today	required	bootstrap/stage2/verify-runner.sh
 go-task	invoke	1	required-today	required	tests/release/check-claims.sh
 go-task	invoke	2	required-today	required	tests/tooling/task-help/check.sh
 go-task	invoke	1	required-today	required	tooling/task-help.mjs

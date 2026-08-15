@@ -25,7 +25,26 @@ case $verify_run in
         ;;
 esac
 
+# Copy the completed census out before the run directory goes, when a caller
+# asks for it. #1205's final measurement had to be reconstructed from a comment
+# because the only copy of its evidence was deleted at exit; a measurement
+# whose input cannot be produced again is a reading, not a method (#1485).
+#
+# In the cleanup rather than after the last task, so a run that fails still
+# leaves the census that explains it.
+archive_verify_census() {
+    if test -n "${KOFUN_VERIFY_CENSUS_ARCHIVE:-}" &&
+       test -n "${KOFUN_VERIFY_CC_LOG:-}" &&
+       test -f "${KOFUN_VERIFY_CC_LOG:-}"
+    then
+        cp "$KOFUN_VERIFY_CC_LOG" "$KOFUN_VERIFY_CENSUS_ARCHIVE" 2>/dev/null ||
+            printf '%s\n' \
+                "verify runner: cannot archive the census to $KOFUN_VERIFY_CENSUS_ARCHIVE" >&2
+    fi
+}
+
 cleanup_verify_run() {
+    archive_verify_census
     if test -n "${verify_run:-}"; then
         kofun_stage2_owned_tree_remove "$verify_run" 2>/dev/null || true
     fi
@@ -50,6 +69,7 @@ export KOFUN_VERIFY_REAL_CC
 kofun_stage2_semantic_compiler_identity "$verify_root" || exit 2
 KOFUN_VERIFY_REAL_CC_PATH=$KOFUN_STAGE2_SEMANTIC_COMPILER_PATH
 KOFUN_VERIFY_REAL_CC_SHA256=$KOFUN_STAGE2_SEMANTIC_COMPILER_SHA256
+verify_started_ns=$(date +%s%N)
 KOFUN_VERIFY_CC_LOG=$verify_run/semantic-compile-census.tsv
 CC=$verify_cc_wrapper
 export KOFUN_VERIFY_REAL_CC KOFUN_VERIFY_REAL_CC_PATH \
@@ -108,3 +128,15 @@ KOFUN_VERIFY_OBJECT_REUSE_WORK=$verify_run/verify-object-reuse
 KOFUN_VERIFY_OBJECT_REUSE_CENSUS_LOG=$KOFUN_VERIFY_CC_LOG
 export KOFUN_VERIFY_OBJECT_REUSE_WORK KOFUN_VERIFY_OBJECT_REUSE_CENSUS_LOG
 task verify-object-reuse
+
+# #1485. The standing form of #1205's last measurement: same completed census,
+# read for how much of it is work already done. It runs last for the same
+# reason the gate above does — every instrumented consumer must have appended
+# its rows — and it reports the suite wall it was measured against so the share
+# is never quoted without its conditions.
+KOFUN_COMPILE_CENSUS_LOG=$KOFUN_VERIFY_CC_LOG
+KOFUN_COMPILE_CENSUS_SUITE_WALL_NS=$((
+    $(date +%s%N) - verify_started_ns
+))
+export KOFUN_COMPILE_CENSUS_LOG KOFUN_COMPILE_CENSUS_SUITE_WALL_NS
+task compile-census
