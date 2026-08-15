@@ -820,8 +820,21 @@ tasks:
 
   native-toolchain-contract:
     desc: "Verify the Kofun-only native toolchain and all accepted decision profiles"
+    # The contract states an end state and this check proves the contract still
+    # says so. On its own that reads as progress toward a target nobody is
+    # measuring (#1451), so the census of what the tree actually requires runs
+    # with it and the two are reported together. `run: once` on the census means
+    # naming it here and in `verify` still runs it exactly once.
+    deps: [forbidden-requirements-census]
     cmds:
       - "sh spec/native-toolchain-v1/check.sh all"
+
+  forbidden-requirements-census:
+    desc: "Census every forbidden core build requirement in use, failing in both directions"
+    run: once
+    cmds:
+      - "node tooling/forbidden-requirements/self-test.mjs"
+      - "node tooling/forbidden-requirements/check.mjs"
 
   kif-module-trust-profile:
     desc: "Verify explicit ordinary/raw-foreign KIF module-trust bytes"
@@ -1287,6 +1300,7 @@ tasks:
             atomic-write-authority-contract \
             gate-reachability \
             native-toolchain-contract \
+            forbidden-requirements-census \
             wasm-object-arena \
             wasm-list-v1 \
             typed-sidecar-spec \
