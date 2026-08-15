@@ -336,9 +336,63 @@ unsupported_case "$cases/pipeline_bare_target.kofun" \
 unsupported_case "$cases/pipeline_member_target.kofun" \
     'error[E2S158]: a pipeline target must be a top-level function, not a member call at byte 84' \
     'pipeline with a member target'
-unsupported_case "$cases/pipeline_chain.kofun" \
-    'error[E2S158]: a pipeline chain is specified by call-arguments v1 but not recognized at byte 105' \
-    'pipeline chain'
+# #1396 admits the chain. It was a refusal fixture through #1190, #1226,
+# #1227 and #1228; converting rather than deleting it keeps the record that
+# the boundary moved, and it now protects the behaviour its refusal described.
+#
+#   pipeline_chain      - two stages, labelled rest: the markers make the
+#                         per-stage order observable. `1` is the first stage's
+#                         subject and `2` its argument; `3` is the second
+#                         stage's argument, and the second stage's subject is
+#                         the first stage's result, so it has no marker of its
+#                         own. A chain that re-evaluated an earlier stage would
+#                         print a marker twice.
+#   pipeline_chain_deep - three stages and a positional rest, so the subject
+#                         takes slot 0 at every depth and each argument starts
+#                         at slot 1.
+executes_case pipeline_chain 'left-associated pipeline chain'
+executes_case pipeline_chain_deep 'three-stage pipeline chain'
+
+# Every stage keys its temporaries off its own call-start byte, which is what
+# lets the chain reuse the one family instead of naming a second one. Counting
+# the keys is how a chain-only namespace would show up here.
+chain_key_count=$(sed -n \
+    's/.*int64_t kofun_call_arg_\([0-9][0-9]*\)_0 = INT64_C(0);.*/\1/p' \
+    "$temporary/pipeline_chain.c" | sort -u | wc -l | tr -d ' ')
+test "$chain_key_count" -eq 2 ||
+    fail 'two-stage chain did not reserve exactly two keyed call sites'
+deep_key_count=$(sed -n \
+    's/.*int64_t kofun_call_arg_\([0-9][0-9]*\)_0 = INT64_C(0);.*/\1/p' \
+    "$temporary/pipeline_chain_deep.c" | sort -u | wc -l | tr -d ' ')
+test "$deep_key_count" -eq 3 ||
+    fail 'three-stage chain did not reserve exactly three keyed call sites'
+
+# The structural claim the goldens cannot make: stage one's whole call sits
+# *inside* stage two's slot-0 assignment, and stage two's own argument is
+# assigned after it. That is what makes the chain evaluate left to right
+# without a chain-only emitter — an implementation that flattened the stages
+# would still print the same numbers.
+chain_inner=$(sed -n \
+    's/.*int64_t kofun_call_arg_\([0-9][0-9]*\)_0 = INT64_C(0);.*/\1/p' \
+    "$temporary/pipeline_chain.c" | sed -n 1p)
+chain_outer=$(sed -n \
+    's/.*int64_t kofun_call_arg_\([0-9][0-9]*\)_0 = INT64_C(0);.*/\1/p' \
+    "$temporary/pipeline_chain.c" | sed -n 2p)
+test -n "$chain_inner" && test -n "$chain_outer" ||
+    fail 'chain reserved no keyed temporaries'
+tr -d '\n' <"$temporary/pipeline_chain.c" |
+    grep -E "kofun_call_arg_${chain_outer}_0 = \(\(kofun_call_arg_${chain_inner}_0 = .*kofun_fn_combine\(kofun_call_arg_${chain_inner}_0, kofun_call_arg_${chain_inner}_1\)\).*kofun_call_arg_${chain_outer}_1 = .*kofun_fn_combine\(kofun_call_arg_${chain_outer}_0, kofun_call_arg_${chain_outer}_1\)" \
+    >/dev/null ||
+    fail 'chain C did not nest the earlier stage inside the later subject'
+no_runtime_dispatch "$temporary/pipeline_chain.c" \
+    'as_first|as_second' 'pipeline chain C'
+no_runtime_dispatch "$temporary/pipeline_chain_deep.c" \
+    'as_first|as_second' 'deep pipeline chain C'
+for chain_emitted in pipeline_chain pipeline_chain_deep; do
+    if grep -F '|>' "$temporary/$chain_emitted.c" >/dev/null; then
+        fail "$chain_emitted C retained the pipe operator"
+    fi
+done
 unsupported_case "$cases/pipeline_trailing_lambda.kofun" \
     'error[E2S158]: a pipeline with a trailing lambda is specified by call-arguments v1 but not recognized at byte 131' \
     'pipeline with a trailing lambda'
@@ -565,4 +619,4 @@ refuses_on source_order_wide wasm32 \
     'the enum and record carriers'
 
 printf '%s\n' \
-    'PASS: labelled calls bind fixed HIR slots and the Int/Text/List[Int]/Optional/enum/record C11 slice evaluates once in source order; take slots move once and refuse double transfer as E2S123; the expression-bodied trailing lambda binds the final parameter as a lifted address; the direct-call pipeline is one production whose spans are published, whose subject binds slot 0 ahead of the explicit arguments and is then counted, type-checked, and moved once into a take slot, and whose C11 lowering evaluates the subject first and exactly once before the explicit arguments; #882 retains bare/member/chain/trailing-lambda pipeline forms, block-bodied trailing calls, labelled calls in lifted lambdas, and lexical/indirect targets; the labelled Int call executes on direct-native and wasm32 against the same golden as C11, carrying no label into either artifact, and the pipeline, trailing lambda, Optional, Text/List[Int], and enum/record shapes each stop at one named source-located boundary per backend'
+    'PASS: labelled calls bind fixed HIR slots and the Int/Text/List[Int]/Optional/enum/record C11 slice evaluates once in source order; take slots move once and refuse double transfer as E2S123; the expression-bodied trailing lambda binds the final parameter as a lifted address; the direct-call pipeline is one production whose spans are published, whose subject binds slot 0 ahead of the explicit arguments and is then counted, type-checked, and moved once into a take slot, and whose C11 lowering evaluates the subject first and exactly once before the explicit arguments; the chain is that one production iterated, left-associated, with every stage checked and lowered as a stage whose subject is the result of the stage before it, and no second temporary family; #882 retains bare/member/trailing-lambda pipeline forms, block-bodied trailing calls, labelled calls in lifted lambdas, and lexical/indirect targets; the labelled Int call executes on direct-native and wasm32 against the same golden as C11, carrying no label into either artifact, and the pipeline, trailing lambda, Optional, Text/List[Int], and enum/record shapes each stop at one named source-located boundary per backend'

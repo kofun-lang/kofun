@@ -154,7 +154,8 @@ const pipelineTruth = {
 };
 const requiredRunTruth = [
   "whose C11 lowering evaluates the subject first and exactly once before the explicit arguments",
-  "#882 retains bare/member/chain/trailing-lambda pipeline forms, block-bodied trailing calls, labelled calls in lifted lambdas, and lexical/indirect targets",
+  "the chain is that one production iterated, left-associated, with every stage checked and lowered as a stage whose subject is the result of the stage before it, and no second temporary family",
+  "#882 retains bare/member/trailing-lambda pipeline forms, block-bodied trailing calls, labelled calls in lifted lambdas, and lexical/indirect targets",
   "the labelled Int call executes on direct-native and wasm32 against the same golden as C11",
   "each stop at one named source-located boundary per backend",
 ];
@@ -183,12 +184,18 @@ function assertPipelineDocumentation({ expressions, spec, readme, run }) {
     // corpus already runs.
     "Direct-native/Wasm pipeline behavior is unclaimed and uncovered",
     "#1192 is the sole remaining direct-backend blocker",
+    // #1396 landed. The chain is a recognized production, so a document still
+    // listing it among the retained refusals sends a reader looking for a
+    // boundary that no longer exists.
+    "pipeline chains, pipelines with trailing lambdas",
+    "member pipeline targets, pipeline chains",
   ]) assert.ok(!pipelineDocs.includes(stale), `stale pipeline status: ${stale}`);
   for (const current of [
     "The subject binds declaration/ABI slot zero",
     "#1190, #1226, #1227, and #1228 are landed",
     "#1226 binds its subject to slot zero, #1227 checks it, and #1228 lowers it",
     "#1192 landed the direct-native and Wasm differential",
+    "#1396 is landed and gated by the same task",
   ]) assert.ok(pipelineDocs.includes(current), `missing pipeline status: ${current}`);
 
   // Each document states the measured backend result in its own right. The
@@ -205,6 +212,17 @@ function assertPipelineDocumentation({ expressions, spec, readme, run }) {
   ]) {
     assert.ok(text.includes(nativeBoundary), `${owner} missing native/Wasm boundary`);
     assert.ok(!nativeOverclaim.test(text), `${owner} assigns E2S158 to native/Wasm`);
+  }
+
+  // #1396. Asserted per document for the same reason as the sentence above: a
+  // reader arrives at exactly one of them, and a chain is the shape most
+  // likely to be assumed unsupported by someone who read only the other.
+  const chainBoundary = "A pipeline chain is that production iterated: it associates left, every stage binds, counts, checks and moves its own subject into slot 0, and the C11 lowering nests each stage inside the next subject rather than adding a second temporary family.";
+  for (const [owner, text] of [
+    ["call-arguments specification", normalizedSpec],
+    ["gate README", normalizedReadme],
+  ]) {
+    assert.ok(text.includes(chainBoundary), `${owner} missing chain status`);
   }
   assert.ok(!normalizedRun.includes("#882 retains pipeline lowering"),
     "stale call-arguments PASS: #882 retains pipeline lowering");

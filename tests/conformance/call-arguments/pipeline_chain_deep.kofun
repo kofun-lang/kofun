@@ -1,0 +1,23 @@
+# Three stages, and a positional rest rather than a labelled one: the subject
+# takes slot 0 at every depth, so each explicit argument starts at slot 1 and
+# the digits accumulate left to right. A chain that bound the subject at the
+# wrong depth, or re-evaluated an earlier stage, would print a different
+# number rather than merely a different order.
+fn observe(marker: Int, value: Int) -> Int {
+    print(marker)
+    return value
+}
+
+fn step(carried: Int, added: Int) -> Int {
+    return carried * 10 + added
+}
+
+fn main() -> Int {
+    print(
+        observe(1, 1)
+            |> step(observe(2, 2))
+            |> step(observe(3, 3))
+            |> step(observe(4, 4))
+    )
+    return 0
+}

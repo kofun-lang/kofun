@@ -3894,15 +3894,10 @@ static char *validate_pipeline_shapes(const char *source) {
                     cursor
                 );
             }
-            int64_t after = skip_trivia(source, call_end);
-            if (after < length && token_equal(source, after, "|>")) {
-                return pipeline_refusal(
-                    source,
-                    "a pipeline chain is specified by call-arguments v1 but "
-                    "not recognized",
-                    cursor
-                );
-            }
+            /* #1396 recognizes the chain. Nothing is checked here for it:
+             * this loop visits every `|>` in the source, so each stage reaches
+             * the two refusals above on its own, and `a |> f(x) |> g` still
+             * names the bare callee rather than the chain. */
             if (trailing_lambda_open(source, call_end) >= 0) {
                 return pipeline_refusal(
                     source,
@@ -7068,6 +7063,61 @@ static int64_t pipeline_call_end(const char *source, int64_t pipe) {
 }
 
 /*
+ * The end of the expression that the `|>` at `pipe` consumes, or -1 when no
+ * chain starting at `subject` reaches exactly that pipe.
+ *
+ * A chained stage's subject is itself a pipeline, so asking
+ * `coalescing_expression_end` alone answers for the first stage only and
+ * returns the wrong bound for every stage after it. Asking `expression_end`
+ * alone is no better: from the head of a chain it consumes every stage and
+ * overshoots. The question is neither of those — it is where the chain stands
+ * when it arrives at this particular pipe — so the walk stops there.
+ */
+static int64_t pipeline_subject_end(
+    const char *source,
+    int64_t subject,
+    int64_t pipe
+) {
+    int64_t bound = coalescing_expression_end(source, subject);
+    while (bound >= 0) {
+        int64_t next = skip_trivia(source, bound);
+        if (next == pipe) return bound;
+        if (next >= pipe || !token_equal(source, next, "|>")) return -1;
+        int64_t call_end = pipeline_call_end(source, next);
+        if (call_end < 0) return -1;
+        bound = call_end;
+    }
+    return -1;
+}
+
+/*
+ * The `|>` of the final stage of the chain written between `start` and `end`,
+ * or -1 when that span is not a pipeline.
+ *
+ * The chain associates left, so the call the whole expression *is* — the one
+ * whose value it has, and whose result type it therefore carries — is the last
+ * stage, not the first (#1396).
+ */
+static int64_t pipeline_last_pipe(
+    const char *source,
+    int64_t start,
+    int64_t end
+) {
+    int64_t subject_end = coalescing_expression_end(source, start);
+    if (subject_end < 0) return -1;
+    int64_t pipe = skip_trivia(source, subject_end);
+    if (pipe >= end || !token_equal(source, pipe, "|>")) return -1;
+    for (;;) {
+        int64_t stage_end = pipeline_call_end(source, pipe);
+        if (stage_end < 0 || stage_end > end) break;
+        int64_t next = skip_trivia(source, stage_end);
+        if (next >= end || !token_equal(source, next, "|>")) break;
+        pipe = next;
+    }
+    return pipe;
+}
+
+/*
  * `|>` is the lowest-precedence boundary in the expression grammar, so the
  * whole pipeline is one expression rather than two unrelated ones separated by
  * an operator.
@@ -7083,10 +7133,18 @@ static int64_t expression_end(const char *source, int64_t start) {
     int64_t length = source_length(source);
     int64_t subject_end = coalescing_expression_end(source, start);
     if (subject_end < 0) return -1;
-    int64_t pipe = skip_trivia(source, subject_end);
-    if (pipe >= length || !token_equal(source, pipe, "|>")) return subject_end;
-    int64_t call_end = pipeline_call_end(source, pipe);
-    return call_end < 0 ? subject_end : call_end;
+    /* The chain associates left, so each recognized stage becomes the subject
+     * of the next and the loop is the whole of #1396's recognition: one stage
+     * is the same walk stopped after one turn. */
+    for (;;) {
+        int64_t pipe = skip_trivia(source, subject_end);
+        if (pipe >= length || !token_equal(source, pipe, "|>")) {
+            return subject_end;
+        }
+        int64_t call_end = pipeline_call_end(source, pipe);
+        if (call_end < 0) return subject_end;
+        subject_end = call_end;
+    }
 }
 
 /* Strip only parentheses enclosing the complete left expression. Returning
@@ -7811,6 +7869,10 @@ static int64_t pipeline_subject_for_call(
     const char *source,
     int64_t call_start
 );
+static int64_t pipeline_pipe_for_call(
+    const char *source,
+    int64_t call_start
+);
 
 static bool fixed_slot_call_shape(
     const char *source,
@@ -8044,11 +8106,20 @@ static char *emit_fixed_slot_call(
      */
     int64_t pipeline_subject = pipeline_subject_for_call(source, call_start);
     if (pipeline_subject >= 0 && parameter_count_value > 0) {
+        /* For a chained stage the subject is every earlier stage, and emitting
+         * it recurses here for stage N-1. That recursion is what makes the
+         * chain evaluate left to right with no chain-only emitter: stage N-1's
+         * whole call lands inside stage N's slot-0 assignment, which this
+         * function already writes before any explicit argument. */
         char *value = emit_argument(
             source,
             hir,
             pipeline_subject,
-            coalescing_expression_end(source, pipeline_subject),
+            pipeline_subject_end(
+                source,
+                pipeline_subject,
+                pipeline_pipe_for_call(source, call_start)
+            ),
             callee,
             0
         );
@@ -9934,6 +10005,9 @@ static char *emit_expression(
             ? -1
             : skip_trivia(source, subject_end);
         if (pipe >= 0 && pipe < end && token_equal(source, pipe, "|>")) {
+            /* Dispatching the first stage here would emit `f` with the whole
+             * chain's bound and silently drop `g` (#1396). */
+            pipe = pipeline_last_pipe(source, start, end);
             int64_t callee = skip_trivia(source, token_end(source, pipe));
             int64_t call_open = skip_trivia(source, token_end(source, callee));
             char *name = token_copy(source, callee);
@@ -10539,7 +10613,7 @@ static int64_t pipeline_subject_start(
  * body and matches on the callee offset, which is exactly the identity the
  * recognizer used.
  */
-static int64_t pipeline_subject_for_call(
+static int64_t pipeline_pipe_for_call(
     const char *source,
     int64_t call_start
 ) {
@@ -10550,13 +10624,22 @@ static int64_t pipeline_subject_for_call(
     while (cursor < call_start) {
         if (token_equal(source, cursor, "|>")) {
             int64_t callee = skip_trivia(source, token_end(source, cursor));
-            if (callee == call_start) {
-                return pipeline_subject_start(source, body_open, cursor);
-            }
+            if (callee == call_start) return cursor;
         }
         cursor = skip_trivia(source, token_end(source, cursor));
     }
     return -1;
+}
+
+static int64_t pipeline_subject_for_call(
+    const char *source,
+    int64_t call_start
+) {
+    int64_t pipe = pipeline_pipe_for_call(source, call_start);
+    if (pipe < 0) return -1;
+    int64_t body_open = enclosing_function_open(source, call_start);
+    if (body_open < 0) return -1;
+    return pipeline_subject_start(source, body_open, pipe);
 }
 
 static char *validate_declared_call_arguments(
@@ -11022,8 +11105,9 @@ static int64_t pipeline_subject_start(
 ) {
     int64_t candidate = skip_trivia(source, token_end(source, body_open));
     while (candidate < pipe) {
-        int64_t bound = coalescing_expression_end(source, candidate);
-        if (bound >= 0 && skip_trivia(source, bound) == pipe) return candidate;
+        if (pipeline_subject_end(source, candidate, pipe) >= 0) {
+            return candidate;
+        }
         candidate = skip_trivia(source, token_end(source, candidate));
     }
     return -1;
@@ -11054,6 +11138,7 @@ static char *validate_pipeline_checked(
     const char *hir,
     const char *callee,
     int64_t subject,
+    int64_t subject_end,
     int64_t call_start,
     int64_t open
 ) {
@@ -11108,12 +11193,35 @@ static char *validate_pipeline_checked(
                 call_start
             );
         }
-        char *actual = initializer_type(
-            source,
-            hir,
-            enclosing_function_open(source, subject),
-            subject
-        );
+        /*
+         * An intermediate result piped onward is the next stage's subject, and
+         * its type is the stage that produced it — the declared result of that
+         * stage's callee (#1396). `initializer_type` cannot answer for a
+         * pipeline: it classifies the expression as written, and a pipeline
+         * written as a subject is not one of the shapes it knows, so it
+         * returns nothing and the slot-0 check below silently passes. Every
+         * stage after the first would then go unchecked against slot 0.
+         */
+        int64_t subject_pipe = subject_end < 0
+            ? -1
+            : pipeline_last_pipe(source, subject, subject_end);
+        char *actual;
+        if (subject_pipe >= 0) {
+            int64_t subject_callee = skip_trivia(
+                source,
+                token_end(source, subject_pipe)
+            );
+            char *subject_name = token_copy(source, subject_callee);
+            actual = function_return_type(source, subject_name);
+            free(subject_name);
+        } else {
+            actual = initializer_type(
+                source,
+                hir,
+                enclosing_function_open(source, subject),
+                subject
+            );
+        }
         if (
             actual[0] != '\0' &&
             strcmp(actual, carrier) != 0
@@ -11179,10 +11287,13 @@ static char *validate_pipeline_calls(const char *source, const char *hir) {
                     /* The subject's own end, not the pipe's offset. They differ
                      * by the trivia between them, and a field that silently
                      * repeats another one is worth nothing to the binder in
-                     * #1226 that has to read these spans. */
+                     * #1226 that has to read these spans. For a chained stage
+                     * the subject is the whole preceding chain, so this is the
+                     * walk's bound at this pipe rather than the first stage's
+                     * coalescing end (#1396). */
                     int64_t subject_end = subject < 0
                         ? -1
-                        : coalescing_expression_end(source, subject);
+                        : pipeline_subject_end(source, subject, cursor);
                     /* The spans this slice owes its successors: every part the
                      * binder has to address, in source order. `close` is the
                      * call's `)` itself, so a reader can bound the argument
@@ -11230,6 +11341,7 @@ static char *validate_pipeline_calls(const char *source, const char *hir) {
                         hir,
                         name,
                         subject,
+                        subject_end,
                         callee,
                         open
                     );
@@ -11240,8 +11352,14 @@ static char *validate_pipeline_calls(const char *source, const char *hir) {
                      * here: the call reaches the shared fixed-slot emitter,
                      * which assigns slot 0 from the subject before anything in
                      * the parentheses. A carrier this slice cannot lower was
-                     * already refused by the carrier-matrix check above. */
-                    return owned_text("ok");
+                     * already refused by the carrier-matrix check above.
+                     *
+                     * The walk continues rather than returning (#1396). While a
+                     * program could hold only one pipeline the two were the
+                     * same thing; a chain makes them different, and returning
+                     * here left every stage after the first unchecked against
+                     * slot 0 and unpublished — the arity and take checks too,
+                     * not only the type one that found it. */
                 }
                 cursor = skip_trivia(source, token_end(source, cursor));
             }
