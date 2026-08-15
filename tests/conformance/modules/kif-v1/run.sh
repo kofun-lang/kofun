@@ -33,6 +33,10 @@ command -v "$CC" >/dev/null 2>&1 || fail 'a C11 compiler is required'
 rm -rf "$WORK"
 mkdir -p "$WORK"
 kofun_stage2_semantic_common_inputs "$ROOT"
+# #1449. The four common sources this gate's analyzer arm links are
+# analysed once per verify run and reused; unset the bundle and they are
+# compiled from source here, which keeps this gate standalone.
+kofun_stage2_analyzer_common_inputs "$ROOT"
 
 compile_tool() {
     compiler=$1
@@ -414,12 +418,13 @@ ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
 UBSAN_OPTIONS=halt_on_error=1 \
     "$WORK/codec-test-sanitized" "$WORK/interface.kif" "$WORK"
 
-if "$CC" -std=c11 -O0 -Wall -Wextra -Werror -pedantic -fanalyzer \
+if KOFUN_STAGE2_COMMON_LINK_ID=kif-v1/analyzed \
+    "$CC" -std=c11 -O0 -Wall -Wextra -Werror -pedantic -fanalyzer \
     -I"$ROOT/bootstrap/stage2" \
     "$ROOT/bootstrap/stage2/kif_v1_tool.c" \
-    "$ROOT/bootstrap/stage2/kif_v1.c" \
-    "$ROOT/unicode/kofun_unicode.c" \
-    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$KOFUN_STAGE2_ANALYZER_KIF_V1_INPUT" \
+    "$KOFUN_STAGE2_ANALYZER_UNICODE_INPUT" \
+    "$KOFUN_STAGE2_ANALYZER_SHA256_INPUT" \
     -o "$WORK/kofun-kif-v1-analyzed" >/dev/null 2>&1
 then
     printf '%s\n' 'PASS: GCC analyzer accepts the KIF writer, reader, and adapter'

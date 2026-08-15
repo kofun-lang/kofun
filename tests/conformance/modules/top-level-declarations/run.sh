@@ -7,6 +7,11 @@ export LC_ALL
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../../.." && pwd)
 CASES="$ROOT/tests/conformance/modules/top-level-declarations"
 CC=${CC:-cc}
+. "$ROOT/bootstrap/stage2/semantic-objects.sh"
+# #1449. The four common sources this gate's analyzer arm links are
+# analysed once per verify run and reused; unset the bundle and they are
+# compiled from source here, which keeps this gate standalone.
+kofun_stage2_analyzer_common_inputs "$ROOT"
 WORK=${KOFUN_MODULE_SYMBOLS_WORK:-"$ROOT/build/module-symbols"}
 PACKAGE_ID=1111111111111111111111111111111111111111111111111111111111111111
 ALPHA_MODULE=2222222222222222222222222222222222222222222222222222222222222222
@@ -492,11 +497,12 @@ UBSAN_OPTIONS=halt_on_error=1 \
 cmp "$WORK/positive.out" "$WORK/sanitized.out" ||
     fail 'sanitized build changed canonical output'
 
-if "$CC" -std=c11 -O0 -Wall -Wextra -Werror -pedantic -fanalyzer \
+if KOFUN_STAGE2_COMMON_LINK_ID=top-level-declarations/analyzed \
+    "$CC" -std=c11 -O0 -Wall -Wextra -Werror -pedantic -fanalyzer \
     -I"$ROOT/bootstrap/stage2" \
-    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$KOFUN_STAGE2_ANALYZER_SHA256_INPUT" \
     "$ROOT/bootstrap/stage2/module_symbols.c" \
-    "$ROOT/unicode/kofun_unicode.c" \
+    "$KOFUN_STAGE2_ANALYZER_UNICODE_INPUT" \
     -o "$WORK/kofun-module-symbols-analyzed" >/dev/null 2>&1
 then
     printf '%s\n' 'PASS: GCC analyzer accepts the declaration collector'

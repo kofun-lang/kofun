@@ -123,6 +123,33 @@ while IFS= read -r consumer; do
         -Fq 'kofun_stage2_semantic_common_inputs "$ROOT"' "$ROOT/$consumer"
 done
 
+# The `-O0 -fanalyzer` consumers (#1449). Three of them also link the O2
+# members and appear above; two reach the bundle only through the analysed
+# selector, so a list derived from the O2 consumers would not see them, and
+# their site identities would never be compared against the wrapper's table.
+analyzer_consumers='tests/conformance/modules/kif-v1/run.sh
+tests/conformance/incremental/run.sh
+tests/conformance/modules/imports-selective/run.sh
+tests/conformance/modules/re-exports/run.sh
+tests/conformance/modules/top-level-declarations/run.sh'
+printf '%s\n' "$analyzer_consumers" |
+while IFS= read -r analyzer_consumer; do
+    assert_grep "$analyzer_consumer sources the common selector" \
+        -Fq 'bootstrap/stage2/semantic-objects.sh' "$ROOT/$analyzer_consumer"
+    assert_grep "$analyzer_consumer selects the closed analysed inputs" \
+        -Fq 'kofun_stage2_analyzer_common_inputs "$ROOT"' \
+        "$ROOT/$analyzer_consumer"
+done
+for analyzer_role_var in \
+    KOFUN_STAGE2_ANALYZER_KIF_V1_INPUT \
+    KOFUN_STAGE2_ANALYZER_UNICODE_INPUT \
+    KOFUN_STAGE2_ANALYZER_SHA256_INPUT \
+    KOFUN_STAGE2_ANALYZER_VISIBILITY_INPUT
+do
+    assert_grep "analysed selector assigns $analyzer_role_var" \
+        -Fq "$analyzer_role_var=" "$ROOT/bootstrap/stage2/semantic-objects.sh"
+done
+
 expected_common_sites=$WORK/common-sites.expected
 actual_common_sites=$WORK/common-sites.actual
 printf '%s\n' \
@@ -132,25 +159,31 @@ printf '%s\n' \
     documentation-index/reader \
     fuzz-visibility-artifacts/reader \
     fuzz-visibility-artifacts/resolver \
+    imports-selective/analyzed \
+    incremental/analyzed \
     incremental/graph \
     incremental/reader \
+    kif-v1/analyzed \
     kif-v1/codec-test \
     kif-v1/tool \
+    re-exports/analyzed \
     re-exports/export-binding-reference \
     re-exports/reader \
     re-exports/resolver \
     stage2-kif-producer/producer \
     stage2-kif-producer/reader \
+    top-level-declarations/analyzed \
     visibility-filtering/producer \
     visibility-filtering/reader >"$expected_common_sites"
-printf '%s\n' "$common_consumers" |
+printf '%s\n%s\n' "$common_consumers" "$analyzer_consumers" |
+LC_ALL=C sort -u |
 while IFS= read -r consumer; do
     sed -n 's/.*KOFUN_STAGE2_COMMON_LINK_ID=\([^ \\]*\).*/\1/p' \
         "$ROOT/$consumer"
 done | LC_ALL=C sort >"$actual_common_sites"
 cmp "$expected_common_sites" "$actual_common_sites"
 assert_num 'closed common site identity count' \
-    "$(wc -l <"$actual_common_sites" | tr -d ' ')" -eq 17
+    "$(wc -l <"$actual_common_sites" | tr -d ' ')" -eq 22
 
 for common_role_var in \
     KOFUN_STAGE2_COMMON_KIF_V1_INPUT \
@@ -186,16 +219,22 @@ assert_common_source_occurrences() {
             -eq "$expected_occurrences"
     done
 }
-assert_common_source_occurrences tests/conformance/modules/kif-v1/run.sh 3 \
+# Each of these three dropped by exactly one when #1449 moved the `-O0
+# -fanalyzer` arm onto the shared bundle: the arm was the one remaining site in
+# each gate that named these sources literally under that profile. The counts
+# are lowered deliberately here, in the same commit, so the reduction is
+# recorded rather than absorbed -- and so a later change that re-splits the
+# family fails instead of silently costing the analyses back.
+assert_common_source_occurrences tests/conformance/modules/kif-v1/run.sh 2 \
     bootstrap/stage2/kif_v1.c \
     unicode/kofun_unicode.c \
     bootstrap/stage2/sha256.c
-assert_common_source_occurrences tests/conformance/incremental/run.sh 2 \
+assert_common_source_occurrences tests/conformance/incremental/run.sh 1 \
     bootstrap/stage2/kif_v1.c \
     unicode/kofun_unicode.c \
     bootstrap/stage2/sha256.c \
     bootstrap/stage2/visibility_access.c
-assert_common_source_occurrences tests/conformance/modules/re-exports/run.sh 4 \
+assert_common_source_occurrences tests/conformance/modules/re-exports/run.sh 3 \
     bootstrap/stage2/kif_v1.c \
     unicode/kofun_unicode.c \
     bootstrap/stage2/sha256.c \
@@ -244,6 +283,12 @@ assert_grep 'bundle publishes canonical provenance' \
     "$ROOT/bootstrap/stage2/semantic-objects.sh"
 assert_num 'bundle builder compiles exactly four common O2 roles' \
     "$(grep -Ec -- '-o "\$kofun_semantic_build_tmp/(kif-v1-common-o2|kofun-unicode-common-o2|sha256-common-o2|visibility-access-common-o2)\.o"' \
+        "$ROOT/bootstrap/stage2/semantic-objects.sh")" -eq 4
+# The `-O0 -fanalyzer` family (#1449). Counted separately from the O2 family
+# rather than folded into one total, so a bundle that dropped an analyzer role
+# and gained an O2 one could not keep the number right.
+assert_num 'bundle builder compiles exactly four common analyzer roles' \
+    "$(grep -Ec -- '-o "\$kofun_semantic_build_tmp/(kif-v1-common-analyzer|kofun-unicode-common-analyzer|sha256-common-analyzer|visibility-access-common-analyzer)\.o"' \
         "$ROOT/bootstrap/stage2/semantic-objects.sh")" -eq 4
 assert_grep 'KIF identity names its complete non-object source closure' \
     -Fq 'kofun_stage2_semantic_kif_source_paths' \
@@ -428,7 +473,9 @@ record_dependency_closure() {
         dependency_source=${dependency_spec#*:}
         case $dependency_profile in
             producer-main|semantic-events|sha256|common-kif-v1-o2|\
-common-unicode-o2|common-sha256-o2|common-visibility-o2)
+common-unicode-o2|common-sha256-o2|common-visibility-o2|\
+common-kif-v1-analyzer|common-unicode-analyzer|\
+common-sha256-analyzer|common-visibility-analyzer)
                 dependency_define=
                 ;;
             producer-library|kif)
@@ -521,7 +568,11 @@ sha256:bootstrap/stage2/sha256.c
 common-kif-v1-o2:bootstrap/stage2/kif_v1.c
 common-unicode-o2:unicode/kofun_unicode.c
 common-sha256-o2:bootstrap/stage2/sha256.c
-common-visibility-o2:bootstrap/stage2/visibility_access.c'
+common-visibility-o2:bootstrap/stage2/visibility_access.c
+common-kif-v1-analyzer:bootstrap/stage2/kif_v1.c
+common-unicode-analyzer:unicode/kofun_unicode.c
+common-sha256-analyzer:bootstrap/stage2/sha256.c
+common-visibility-analyzer:bootstrap/stage2/visibility_access.c'
 printf '%s\n' "$semantic_role_sources" |
 while IFS= read -r semantic_role_spec; do
     semantic_role=${semantic_role_spec%%:*}
@@ -540,7 +591,11 @@ for common_macro_role in \
     common-kif-v1-o2 \
     common-unicode-o2 \
     common-sha256-o2 \
-    common-visibility-o2
+    common-visibility-o2 \
+    common-kif-v1-analyzer \
+    common-unicode-analyzer \
+    common-sha256-analyzer \
+    common-visibility-analyzer
 do
     kofun_stage2_semantic_role_input_paths "$common_macro_role" |
     while IFS= read -r common_macro_input; do
@@ -649,6 +704,30 @@ census_count() {
                 selected = 1
             if (classifier == "common-compile" &&
                 field["common_class"] ~ /^common-compile-/) selected = 1
+            if (classifier == "common-compile-o2" &&
+                field["common_class"] ~ /^common-compile-/ &&
+                field["common_class"] !~ /-analyzer$/) selected = 1
+            if (classifier == "common-compile-analyzer" &&
+                field["common_class"] ~ /^common-compile-.*-analyzer$/)
+                selected = 1
+            if (classifier == "common-compile-kif-v1-analyzer" &&
+                field["common_class"] == "common-compile-kif-v1-analyzer")
+                selected = 1
+            if (classifier == "common-compile-unicode-analyzer" &&
+                field["common_class"] == "common-compile-unicode-analyzer")
+                selected = 1
+            if (classifier == "common-compile-sha256-analyzer" &&
+                field["common_class"] == "common-compile-sha256-analyzer")
+                selected = 1
+            if (classifier == "common-compile-visibility-analyzer" &&
+                field["common_class"] == "common-compile-visibility-analyzer")
+                selected = 1
+            if (classifier == "common-analyzer-object-link" &&
+                field["common_class"] == "common-analyzer-object-link")
+                selected = 1
+            if (classifier == "common-analyzer-source-link" &&
+                field["common_class"] == "common-analyzer-source-link")
+                selected = 1
             if (classifier == "common-compile-kif-v1" &&
                 field["common_class"] == "common-compile-kif-v1") selected = 1
             if (classifier == "common-compile-unicode" &&
@@ -679,7 +758,8 @@ census_count() {
 }
 
 census_site_count() {
-    awk -F '\t' -v wanted_site="$2" '
+    awk -F '\t' -v wanted_site="$2" \
+        -v wanted_class="${3:-common-object-link}" '
         {
             delete field
             for (column = 2; column <= NF; column++) {
@@ -687,7 +767,7 @@ census_site_count() {
                 field[pair[1]] = pair[2]
             }
             if (field["site"] == wanted_site &&
-                field["common_class"] == "common-object-link") count++
+                field["common_class"] == wanted_class) count++
         }
         END { print count + 0 }
     ' "$1"
@@ -723,6 +803,17 @@ common_census_error_count() {
             expected["re-exports/export-binding-reference"] = \
                 scope == "aggregate" ? 2 : 1
             expected_links = scope == "aggregate" ? 24 : 19
+            # The analysed sites (#1449), kept in their own map so that an
+            # analysed link landing on an O2 site -- or the reverse -- is an
+            # unknown site rather than a satisfied expectation.
+            expected_analyzed["kif-v1/analyzed"] = \
+                scope == "aggregate" ? 3 : 2
+            expected_analyzed["re-exports/analyzed"] = \
+                scope == "aggregate" ? 2 : 1
+            expected_analyzed["incremental/analyzed"] = 1
+            expected_analyzed["imports-selective/analyzed"] = 1
+            expected_analyzed["top-level-declarations/analyzed"] = 1
+            expected_analyzed_links = scope == "aggregate" ? 8 : 6
         }
         {
             delete field
@@ -735,6 +826,18 @@ common_census_error_count() {
                 links++
                 observed[field["site"]]++
                 if (!(field["site"] in expected)) errors++
+            } else if (common == "common-analyzer-object-link") {
+                analyzed_links++
+                observed_analyzed[field["site"]]++
+                if (!(field["site"] in expected_analyzed)) errors++
+            } else if (common == "common-compile-kif-v1-analyzer") {
+                compile_kif_analyzer++
+            } else if (common == "common-compile-unicode-analyzer") {
+                compile_unicode_analyzer++
+            } else if (common == "common-compile-sha256-analyzer") {
+                compile_sha_analyzer++
+            } else if (common == "common-compile-visibility-analyzer") {
+                compile_visibility_analyzer++
             } else if (common == "common-compile-kif-v1") {
                 compile_kif++
             } else if (common == "common-compile-unicode") {
@@ -744,6 +847,7 @@ common_census_error_count() {
             } else if (common == "common-compile-visibility") {
                 compile_visibility++
             } else if (common == "common-source-link" ||
+                       common == "common-analyzer-source-link" ||
                        common == "unexpected-common-compile" ||
                        common == "unexpected-common-link" ||
                        common == "unexpected-common-object" ||
@@ -753,6 +857,7 @@ common_census_error_count() {
                 errors++
             }
             selected = common == "common-object-link" ||
+                common == "common-analyzer-object-link" ||
                 common ~ /^common-compile-/
             if (selected && (field["status"] != 0 ||
                 field["compiler_identity"] != "valid" ||
@@ -767,12 +872,20 @@ common_census_error_count() {
         }
         END {
             if (links != expected_links) errors++
+            if (analyzed_links != expected_analyzed_links) errors++
             if (compile_kif != 1) errors++
             if (compile_unicode != 1) errors++
             if (compile_sha != 1) errors++
             if (compile_visibility != 1) errors++
+            if (compile_kif_analyzer != 1) errors++
+            if (compile_unicode_analyzer != 1) errors++
+            if (compile_sha_analyzer != 1) errors++
+            if (compile_visibility_analyzer != 1) errors++
             for (site in expected)
                 if (observed[site] != expected[site]) errors++
+            for (site in expected_analyzed)
+                if (observed_analyzed[site] != expected_analyzed[site])
+                    errors++
             print errors + 0
         }
     ' "$1"
@@ -795,6 +908,12 @@ census_wall_ns() {
                 field["common_class"] == "common-object-link") selected = 1
             if (classifier == "common-source-link" &&
                 field["common_class"] == "common-source-link") selected = 1
+            if (classifier == "common-analyzer-object-link" &&
+                field["common_class"] == "common-analyzer-object-link")
+                selected = 1
+            if (classifier == "common-analyzer-source-link" &&
+                field["common_class"] == "common-analyzer-source-link")
+                selected = 1
             if (selected) total += field["wall_ns"]
         }
         END { printf "%.0f\n", total + 0 }
@@ -852,8 +971,10 @@ assert_standard_bundle_census() {
         "$(census_count "$census_log" events-standard)" -eq 1
     assert_num 'standard SHA-256 compilation count' \
         "$(census_count "$census_log" sha-standard)" -eq 1
+    assert_num 'common compilation count across both variants' \
+        "$(census_count "$census_log" common-compile)" -eq 8
     assert_num 'common O2 compilation count' \
-        "$(census_count "$census_log" common-compile)" -eq 4
+        "$(census_count "$census_log" common-compile-o2)" -eq 4
     assert_num 'common KIF O2 compilation count' \
         "$(census_count "$census_log" common-compile-kif-v1)" -eq 1
     assert_num 'common Unicode O2 compilation count' \
@@ -862,6 +983,20 @@ assert_standard_bundle_census() {
         "$(census_count "$census_log" common-compile-sha256)" -eq 1
     assert_num 'common visibility O2 compilation count' \
         "$(census_count "$census_log" common-compile-visibility)" -eq 1
+    # Each analysed source is compiled once for the whole run (#1449). The
+    # per-role counts are asserted alongside the total because a total of
+    # four is also what compiling one source four times would produce.
+    assert_num 'common analysed compilation count' \
+        "$(census_count "$census_log" common-compile-analyzer)" -eq 4
+    assert_num 'common KIF analysed compilation count' \
+        "$(census_count "$census_log" common-compile-kif-v1-analyzer)" -eq 1
+    assert_num 'common Unicode analysed compilation count' \
+        "$(census_count "$census_log" common-compile-unicode-analyzer)" -eq 1
+    assert_num 'common SHA-256 analysed compilation count' \
+        "$(census_count "$census_log" common-compile-sha256-analyzer)" -eq 1
+    assert_num 'common visibility analysed compilation count' \
+        "$(census_count "$census_log" common-compile-visibility-analyzer)" \
+        -eq 1
 }
 
 if test "${KOFUN_STAGE2_SEMANTIC_OBJECT_DIR+x}" = x; then
@@ -904,6 +1039,10 @@ if test "${KOFUN_STAGE2_SEMANTIC_OBJECT_DIR+x}" = x; then
         "$(census_count "$build_log" common-object-link)" -eq 24
     assert_num 'full verify exact-family common source links' \
         "$(census_count "$build_log" common-source-link)" -eq 0
+    assert_num 'full verify selected analysed object-link executions' \
+        "$(census_count "$build_log" common-analyzer-object-link)" -eq 8
+    assert_num 'full verify exact-family analysed source links' \
+        "$(census_count "$build_log" common-analyzer-source-link)" -eq 0
     assert_num 'full verify mixed, malformed, or unknown common rows' \
         "$(census_count "$build_log" unexpected-common)" -eq 0
     assert_num 'full verify selected common compiler failures' \
@@ -921,15 +1060,38 @@ if test "${KOFUN_STAGE2_SEMANTIC_OBJECT_DIR+x}" = x; then
             }
             END { for (site in seen) count++; print count + 0 }
         ' "$build_log")" -eq 17
+    assert_num 'full verify distinct analysed common site identities' \
+        "$(awk -F '\t' '
+            {
+                delete field
+                for (column = 2; column <= NF; column++) {
+                    split($column, pair, "=")
+                    field[pair[1]] = pair[2]
+                }
+                if (field["common_class"] == "common-analyzer-object-link")
+                    seen[field["site"]] = 1
+            }
+            END { for (site in seen) count++; print count + 0 }
+        ' "$build_log")" -eq 5
     while IFS= read -r expected_site; do
+        # An analysed site is counted in its own class; counting it in the O2
+        # class would report zero for every one of them and read as a passing
+        # `-eq 0` if the expectation were ever written that way.
+        expected_site_class=common-object-link
+        case $expected_site in
+            */analyzed) expected_site_class=common-analyzer-object-link ;;
+        esac
         case $expected_site in
             kif-v1/tool|kif-v1/codec-test) expected_site_count=3 ;;
+            kif-v1/analyzed) expected_site_count=3 ;;
             re-exports/resolver|re-exports/reader|\
             re-exports/export-binding-reference) expected_site_count=2 ;;
+            re-exports/analyzed) expected_site_count=2 ;;
             *) expected_site_count=1 ;;
         esac
         assert_num "full verify $expected_site multiplicity" \
-            "$(census_site_count "$build_log" "$expected_site")" \
+            "$(census_site_count "$build_log" "$expected_site" \
+                "$expected_site_class")" \
             -eq "$expected_site_count"
     done <"$expected_common_sites"
     assert_num 'full verify selected rows bind complete argv' \
@@ -1008,21 +1170,30 @@ for synthetic_compile_class in \
     common-compile-kif-v1 \
     common-compile-unicode \
     common-compile-sha256 \
-    common-compile-visibility
+    common-compile-visibility \
+    common-compile-kif-v1-analyzer \
+    common-compile-unicode-analyzer \
+    common-compile-sha256-analyzer \
+    common-compile-visibility-analyzer
 do
     printf 'cc\tcommon_class=%s\tsite=none\tcompiler_path_hex=%s\tcompiler_sha256=%s\tcompiler_identity=valid\tstatus=0\targc=1\targv_hex=00\twall_ns=1\n' \
         "$synthetic_compile_class" "$expected_common_cc_path_hex" \
         "$expected_common_cc_sha256" >>"$synthetic_common_census"
 done
 while IFS= read -r synthetic_site; do
+    synthetic_class=common-object-link
     case $synthetic_site in
-        kif-v1/tool|kif-v1/codec-test) synthetic_count=2 ;;
+        */analyzed) synthetic_class=common-analyzer-object-link ;;
+    esac
+    case $synthetic_site in
+        kif-v1/tool|kif-v1/codec-test|kif-v1/analyzed) synthetic_count=2 ;;
         *) synthetic_count=1 ;;
     esac
     synthetic_index=0
     while test "$synthetic_index" -lt "$synthetic_count"; do
-        printf 'cc\tcommon_class=common-object-link\tsite=%s\tcompiler_path_hex=%s\tcompiler_sha256=%s\tcompiler_identity=valid\tstatus=0\targc=1\targv_hex=00\twall_ns=1\n' \
-            "$synthetic_site" "$expected_common_cc_path_hex" \
+        printf 'cc\tcommon_class=%s\tsite=%s\tcompiler_path_hex=%s\tcompiler_sha256=%s\tcompiler_identity=valid\tstatus=0\targc=1\targv_hex=00\twall_ns=1\n' \
+            "$synthetic_class" "$synthetic_site" \
+            "$expected_common_cc_path_hex" \
             "$expected_common_cc_sha256" >>"$synthetic_common_census"
         synthetic_index=$((synthetic_index + 1))
     done
@@ -1032,18 +1203,26 @@ assert_num 'synthetic closed common census baseline' \
 
 # Aggregate verify runs the re-exports gate both as its own owner task and as
 # the diagnostic registry adapter.  Re-exports also executes its nested KIF
-# prerequisite, so the second owner execution contributes these exact five
-# rows without adding a new call-site identity.
+# prerequisite, so the second owner execution contributes these exact seven
+# rows without adding a new call-site identity -- five O2 links and the two
+# analysed links those same two gates carry (#1449).
 synthetic_aggregate_census=$WORK/common-census.aggregate.tsv
 cp "$synthetic_common_census" "$synthetic_aggregate_census"
 for synthetic_aggregate_site in \
     kif-v1/tool \
     kif-v1/codec-test \
+    kif-v1/analyzed \
     re-exports/resolver \
     re-exports/reader \
-    re-exports/export-binding-reference
+    re-exports/export-binding-reference \
+    re-exports/analyzed
 do
-    awk -F '\t' -v wanted_site="$synthetic_aggregate_site" '
+    synthetic_aggregate_class=common-object-link
+    case $synthetic_aggregate_site in
+        */analyzed) synthetic_aggregate_class=common-analyzer-object-link ;;
+    esac
+    awk -F '\t' -v wanted_site="$synthetic_aggregate_site" \
+        -v wanted_class="$synthetic_aggregate_class" '
         {
             delete field
             for (column = 2; column <= NF; column++) {
@@ -1051,7 +1230,7 @@ do
                 field[pair[1]] = pair[2]
             }
             if (field["site"] == wanted_site &&
-                field["common_class"] == "common-object-link") {
+                field["common_class"] == wanted_class) {
                 print
                 found = 1
                 exit
@@ -1075,53 +1254,89 @@ assert_num 'aggregate census rejects one missing diagnostic-adapter link' \
     "$(common_census_error_count \
         "$WORK/common-census.aggregate-missing.tsv" aggregate)" -gt 0
 
-for census_mutation in missing duplicate unknown source mixed failed argv \
-    compiler wall missing-wall
-do
-    census_mutant=$WORK/common-census.$census_mutation.tsv
-    case $census_mutation in
-        missing)
-            sed '5d' "$synthetic_common_census" >"$census_mutant"
+# The row each mutation edits is located by its class, not by a line number.
+# Adding the four analysed compile rows above pushed the first link row from
+# line 5 to line 9, and the `unknown` mutation went on rewriting `site=` on a
+# compile row -- where the model does not read it -- so a mutation that no
+# longer reached a link still reported a rejection for every other case and
+# only this one turned green.
+census_first_line() {
+    awk -F '\t' -v wanted="common_class=$2" '
+        $2 == wanted { print NR; exit }
+    ' "$1"
+}
+
+# Both link families, so neither one is covered only by the other's rows.
+for census_family in o2 analyzed; do
+    case $census_family in
+        o2)
+            census_object_class=common-object-link
+            census_source_class=common-source-link
             ;;
-        duplicate)
-            cp "$synthetic_common_census" "$census_mutant"
-            sed -n '5p' "$synthetic_common_census" >>"$census_mutant"
-            ;;
-        unknown)
-            sed '5s/site=[^\t]*/site=unknown\/site/' \
-                "$synthetic_common_census" >"$census_mutant"
-            ;;
-        source)
-            sed '5s/common-object-link/common-source-link/' \
-                "$synthetic_common_census" >"$census_mutant"
-            ;;
-        mixed)
-            sed '5s/common-object-link/mixed-common-source-object/' \
-                "$synthetic_common_census" >"$census_mutant"
-            ;;
-        failed)
-            sed '5s/status=0/status=1/' \
-                "$synthetic_common_census" >"$census_mutant"
-            ;;
-        argv)
-            sed '5s/argv_hex=00/argv_hex=not-hex/' \
-                "$synthetic_common_census" >"$census_mutant"
-            ;;
-        compiler)
-            sed "5s/compiler_sha256=$expected_common_cc_sha256/compiler_sha256=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff/" \
-                "$synthetic_common_census" >"$census_mutant"
-            ;;
-        wall)
-            sed '5s/wall_ns=1/wall_ns=not-a-duration/' \
-                "$synthetic_common_census" >"$census_mutant"
-            ;;
-        missing-wall)
-            sed '5s/\twall_ns=1//' \
-                "$synthetic_common_census" >"$census_mutant"
+        analyzed)
+            census_object_class=common-analyzer-object-link
+            census_source_class=common-analyzer-source-link
             ;;
     esac
-    assert_num "$census_mutation common census mutation is rejected" \
-        "$(common_census_error_count "$census_mutant" owners)" -gt 0
+    census_target=$(
+        census_first_line "$synthetic_common_census" "$census_object_class"
+    )
+    test -n "$census_target" ||
+        assert_fail "no $census_object_class row to mutate"
+    for census_mutation in missing duplicate unknown source mixed failed argv \
+        compiler wall missing-wall
+    do
+        census_mutant=$WORK/common-census.$census_family.$census_mutation.tsv
+        case $census_mutation in
+            missing)
+                sed "${census_target}d" \
+                    "$synthetic_common_census" >"$census_mutant"
+                ;;
+            duplicate)
+                cp "$synthetic_common_census" "$census_mutant"
+                sed -n "${census_target}p" \
+                    "$synthetic_common_census" >>"$census_mutant"
+                ;;
+            unknown)
+                sed "${census_target}s|site=[^\t]*|site=unknown/site|" \
+                    "$synthetic_common_census" >"$census_mutant"
+                ;;
+            source)
+                sed "${census_target}s/$census_object_class/$census_source_class/" \
+                    "$synthetic_common_census" >"$census_mutant"
+                ;;
+            mixed)
+                sed "${census_target}s/$census_object_class/mixed-common-source-object/" \
+                    "$synthetic_common_census" >"$census_mutant"
+                ;;
+            failed)
+                sed "${census_target}s/status=0/status=1/" \
+                    "$synthetic_common_census" >"$census_mutant"
+                ;;
+            argv)
+                sed "${census_target}s/argv_hex=00/argv_hex=not-hex/" \
+                    "$synthetic_common_census" >"$census_mutant"
+                ;;
+            compiler)
+                sed "${census_target}s/compiler_sha256=$expected_common_cc_sha256/compiler_sha256=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff/" \
+                    "$synthetic_common_census" >"$census_mutant"
+                ;;
+            wall)
+                sed "${census_target}s/wall_ns=1/wall_ns=not-a-duration/" \
+                    "$synthetic_common_census" >"$census_mutant"
+                ;;
+            missing-wall)
+                sed "${census_target}s/\twall_ns=1//" \
+                    "$synthetic_common_census" >"$census_mutant"
+                ;;
+        esac
+        cmp -s "$synthetic_common_census" "$census_mutant" &&
+            assert_fail \
+                "$census_family $census_mutation mutation changed nothing"
+        assert_num \
+            "$census_family $census_mutation common census mutation is rejected" \
+            "$(common_census_error_count "$census_mutant" owners)" -gt 0
+    done
 done
 
 # The low-level publication helper owns unpredictable temporaries, rejects a
@@ -1654,10 +1869,15 @@ assert_grep 'owned cleanup preserves victim bytes' \
     -Fxq sentinel "$cleanup_victim/sentinel"
 chmod 0755 "$cleanup_victim"
 
+# The four `-common-analyzer.o` members are #1449's `-O0 -fanalyzer` family.
+# Naming each one here rather than only counting them is what makes a missing
+# member a named failure instead of an arithmetic one.
 for member in semantic-producer-main.o semantic-producer-library.o \
     semantic-events.o sha256.o kif-v1-common-o2.o \
     kofun-unicode-common-o2.o sha256-common-o2.o \
-    visibility-access-common-o2.o complete-v2 manifest-v2.tsv
+    visibility-access-common-o2.o kif-v1-common-analyzer.o \
+    kofun-unicode-common-analyzer.o sha256-common-analyzer.o \
+    visibility-access-common-analyzer.o complete-v2 manifest-v2.tsv
 do
     assert_regular_file "published $member" "$bundle/$member"
     assert_mode "published $member mode" "$bundle/$member" -r--r--r--
@@ -1665,35 +1885,39 @@ done
 assert_mode 'published bundle directory mode' "$bundle" dr-xr-xr-x
 assert_num 'published semantic v2 closed member count' \
     "$(find "$bundle" -mindepth 1 -maxdepth 1 -print | wc -l | tr -d ' ')" \
-    -eq 10
+    -eq 14
 assert_num 'semantic v2 manifest schema row count' \
     "$(awk -F '\t' '$1 == "schema" { n++ } END { print n + 0 }' \
         "$bundle/manifest-v2.tsv")" -eq 1
 assert_num 'semantic v2 manifest trust row count' \
     "$(awk -F '\t' '$1 == "trust" { n++ } END { print n + 0 }' \
         "$bundle/manifest-v2.tsv")" -eq 1
+# 8 -> 12 profiles, 48 -> 62 inputs, 8 -> 12 members: #1449's four
+# `-O0 -fanalyzer` roles. Each carries its own normalized argv, its own source
+# and header closure, and its own member digest, so the family is provenanced
+# exactly like the `-O2` one rather than riding on it.
 assert_num 'semantic v2 manifest profile row count' \
     "$(awk -F '\t' '$1 == "profile" { n++ } END { print n + 0 }' \
-        "$bundle/manifest-v2.tsv")" -eq 8
+        "$bundle/manifest-v2.tsv")" -eq 12
 assert_num 'semantic v2 manifest input row count' \
     "$(awk -F '\t' '$1 == "input" { n++ } END { print n + 0 }' \
-        "$bundle/manifest-v2.tsv")" -eq 48
+        "$bundle/manifest-v2.tsv")" -eq 62
 assert_num 'semantic v2 manifest member row count' \
     "$(awk -F '\t' '$1 == "member" { n++ } END { print n + 0 }' \
-        "$bundle/manifest-v2.tsv")" -eq 8
+        "$bundle/manifest-v2.tsv")" -eq 12
 assert_num 'semantic v2 manifest marker row count' \
     "$(awk -F '\t' '$1 == "marker" { n++ } END { print n + 0 }' \
         "$bundle/manifest-v2.tsv")" -eq 1
 assert_num 'semantic v2 canonical manifest row count' \
-    "$(wc -l <"$bundle/manifest-v2.tsv" | tr -d ' ')" -eq 69
+    "$(wc -l <"$bundle/manifest-v2.tsv" | tr -d ' ')" -eq 91
 awk 'BEGIN {
     print "schema"
     print "trust"
     print "compiler-path"
     print "compiler-sha256"
-    for (i = 0; i < 8; i++) print "profile"
-    for (i = 0; i < 48; i++) print "input"
-    for (i = 0; i < 8; i++) print "member"
+    for (i = 0; i < 12; i++) print "profile"
+    for (i = 0; i < 62; i++) print "input"
+    for (i = 0; i < 12; i++) print "member"
     print "marker"
 }' >"$WORK/manifest-keys.expected"
 cut -f1 "$bundle/manifest-v2.tsv" >"$WORK/manifest-keys.actual"
@@ -1719,6 +1943,10 @@ printf '%s\n' \
     'common-unicode-o2	-std=c11|-O2|-Wall|-Wextra|-Werror|-pedantic|-Ibootstrap/stage2|-c|unicode/kofun_unicode.c|-o|kofun-unicode-common-o2.o' \
     'common-sha256-o2	-std=c11|-O2|-Wall|-Wextra|-Werror|-pedantic|-Ibootstrap/stage2|-c|bootstrap/stage2/sha256.c|-o|sha256-common-o2.o' \
     'common-visibility-o2	-std=c11|-O2|-Wall|-Wextra|-Werror|-pedantic|-Ibootstrap/stage2|-c|bootstrap/stage2/visibility_access.c|-o|visibility-access-common-o2.o' \
+    'common-kif-v1-analyzer	-std=c11|-O0|-Wall|-Wextra|-Werror|-pedantic|-fanalyzer|-Ibootstrap/stage2|-c|bootstrap/stage2/kif_v1.c|-o|kif-v1-common-analyzer.o' \
+    'common-unicode-analyzer	-std=c11|-O0|-Wall|-Wextra|-Werror|-pedantic|-fanalyzer|-Ibootstrap/stage2|-c|unicode/kofun_unicode.c|-o|kofun-unicode-common-analyzer.o' \
+    'common-sha256-analyzer	-std=c11|-O0|-Wall|-Wextra|-Werror|-pedantic|-fanalyzer|-Ibootstrap/stage2|-c|bootstrap/stage2/sha256.c|-o|sha256-common-analyzer.o' \
+    'common-visibility-analyzer	-std=c11|-O0|-Wall|-Wextra|-Werror|-pedantic|-fanalyzer|-Ibootstrap/stage2|-c|bootstrap/stage2/visibility_access.c|-o|visibility-access-common-analyzer.o' \
     >"$WORK/manifest-profiles.expected"
 awk -F '\t' '$1 == "profile" { print $2 "\t" $3 }' \
     "$bundle/manifest-v2.tsv" >"$WORK/manifest-profiles.actual"
@@ -1732,6 +1960,10 @@ printf '%s\n' \
     'common-unicode-o2	kofun-unicode-common-o2.o	unicode/kofun_unicode.c	common-unicode-o2' \
     'common-sha256-o2	sha256-common-o2.o	bootstrap/stage2/sha256.c	common-sha256-o2' \
     'common-visibility-o2	visibility-access-common-o2.o	bootstrap/stage2/visibility_access.c	common-visibility-o2' \
+    'common-kif-v1-analyzer	kif-v1-common-analyzer.o	bootstrap/stage2/kif_v1.c	common-kif-v1-analyzer' \
+    'common-unicode-analyzer	kofun-unicode-common-analyzer.o	unicode/kofun_unicode.c	common-unicode-analyzer' \
+    'common-sha256-analyzer	sha256-common-analyzer.o	bootstrap/stage2/sha256.c	common-sha256-analyzer' \
+    'common-visibility-analyzer	visibility-access-common-analyzer.o	bootstrap/stage2/visibility_access.c	common-visibility-analyzer' \
     >"$WORK/manifest-members.expected"
 awk -F '\t' '$1 == "member" {
     print $2 "\t" $3 "\t" $4 "\t" $7
@@ -1943,6 +2175,20 @@ assert_num 'complete KIF owner standalone source-link count' \
     "$(census_count "$common_kif_source_log" common-source-link)" -eq 2
 assert_num 'complete KIF owner shared object-link count' \
     "$(census_count "$common_kif_object_log" common-object-link)" -eq 2
+# The analysed arm, in both selector states (#1449). Asserted in both
+# directions: without the bundle it must still compile its own sources, or
+# the standalone path has silently stopped analysing anything.
+assert_num 'complete KIF owner standalone analysed source-link count' \
+    "$(census_count "$common_kif_source_log" common-analyzer-source-link)" \
+    -eq 1
+assert_num 'complete KIF owner shared analysed object-link count' \
+    "$(census_count "$common_kif_object_log" common-analyzer-object-link)" \
+    -eq 1
+assert_num 'complete KIF owner has no analysed link in the wrong state' \
+    "$((
+        $(census_count "$common_kif_source_log" common-analyzer-object-link) +
+        $(census_count "$common_kif_object_log" common-analyzer-source-link)
+    ))" -eq 0
 assert_num 'complete KIF owner has no malformed common rows' \
     "$((
         $(census_count "$common_kif_source_log" unexpected-common) +
@@ -2024,7 +2270,7 @@ printf '%s\n' unexpected >"$extra_member/unexpected.o"
 chmod 0444 "$extra_member/unexpected.o"
 seal_bundle "$extra_member"
 expect_refusal extra-member "$extra_member" \
-    'object bundle must contain exactly ten members, found 11'
+    'object bundle must contain exactly fourteen members, found 15'
 
 legacy_v1=$WORK/legacy-v1-bundle
 copy_bundle "$legacy_v1"
