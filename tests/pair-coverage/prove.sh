@@ -133,7 +133,8 @@ policy_case() {
         "$results" "$expected" >"$WORK/out.$label" 2>&1
     then got=accept; else got=refuse; fi
     if test "$got" = "$want"; then
-        printf 'ok   %-28s %sed, as it must\n' "$label" "$want"
+        test "$want" = accept && verb=accepted || verb=refused
+        printf 'ok   %-28s %s, as it must\n' "$label" "$verb"
         pass=$((pass + 1))
     else
         printf 'FAIL: %s: wanted %s, got %s:\n' "$label" "$want" "$got" >&2
