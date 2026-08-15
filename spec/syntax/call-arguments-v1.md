@@ -21,12 +21,12 @@ explicit argument once in source order, stores every value in a fixed slot, and
 invokes only after all slots are assigned. #1190, #1226, #1227, and #1228 are
 landed and gated by `task call-arguments`.
 
-The chain is that production iterated. `a |> f(x) |> g(y)` associates left, so
-each stage is one direct call whose subject is the result of the stage before
-it; every stage counts, checks, and moves its subject into slot 0 exactly as a
-single stage does, and the C11 lowering nests stage N-1 inside stage N's slot-0
-assignment rather than introducing a second temporary family. #1396 is landed
-and gated by the same task.
+A pipeline chain is that production iterated: it associates left, every stage
+binds, counts, checks and moves its own subject into slot 0, and the C11
+lowering nests each stage inside the next subject rather than adding a second
+temporary family. `a |> f(x) |> g(y)` is `(a |> f(x)) |> g(y)`, so a stage's
+subject is the declared result of the stage before it. #1396 is landed and
+gated by the same task.
 
 Bare pipeline targets, pipelines with trailing lambdas,
 block-bodied trailing lambdas, labelled calls inside lifted lambdas,

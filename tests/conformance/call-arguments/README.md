@@ -144,9 +144,11 @@ and lexical/indirect targets remain unsupported at their existing E2S158 or
 earlier named refusal boundaries and remain owned by #882. The one-stage direct
 top-level Stage 2/C11 pipeline no longer belongs to that unsupported set: #1226
 binds its subject to slot zero, #1227 checks it, and #1228 lowers it. Neither
-does the chain: #1396 recognizes it as that production iterated, and a stage
-carrying a shape from the list above still stops at that shape's own boundary
-rather than at a chain one.
+does the chain. A pipeline chain is that production iterated: it associates
+left, every stage binds, counts, checks and moves its own subject into slot 0,
+and the C11 lowering nests each stage inside the next subject rather than
+adding a second temporary family. A stage carrying a shape from the list above
+still stops at that shape's own boundary rather than at a chain one.
 
 Direct-native and Wasm behavior is measured by the same corpus: the labelled
 Int call executes on both and is compared against the C11 golden, and every
