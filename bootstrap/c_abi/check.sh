@@ -141,14 +141,22 @@ assert_grep "kofun.c" \
     'extern long rust_stack_sum(long one, long two, long three, long four, long five, long six, long seven, long eight);' \
     "$WORK/kofun.c"
 
+# The last PASS below is exactly what this `readelf` reads, so the claim and
+# its evidence travel together (#1496). Without `readelf` the gate used to skip
+# the check and print the claim anyway — a line asserting dynamic linkage on a
+# host where nothing had looked. The `ar` gate forty lines above already prints
+# a `SKIP` when it degrades; this is the same shape.
 if command -v readelf >/dev/null 2>&1; then
     readelf -d "$WORK/kofun-caller" >"$WORK/dynamic.txt"
     assert_grep "dynamic.txt" \
         -q 'NEEDED.*libkofun_issue21.so' "$WORK/dynamic.txt"
+    dynamic_linkage="PASS: the C ABI output is a dynamically linked executable"
+else
+    dynamic_linkage="SKIP: dynamic linkage of the C ABI output (readelf unavailable)"
 fi
 
 printf '%s\n' \
     "PASS: Kofun called Rust extern \"C\" functions from a cdylib" \
     "PASS: 24-byte repr(C) hidden-sret pass/return matches the C caller" \
     "PASS: an eight-argument foreign call exercises SysV stack arguments" \
-    "PASS: the C ABI output is a dynamically linked executable"
+    "$dynamic_linkage"

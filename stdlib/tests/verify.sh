@@ -10,6 +10,17 @@ fail() {
     exit 1
 }
 
+# This gate requires `readelf`, and says so here rather than discovering it in
+# the middle (#1496). It used to look optional: the ELF-shape assertions below
+# were wrapped in `if command -v readelf`, silently checking less without it.
+# That conditional could never have been taken — `set/tests/verify.sh`, run
+# from this file sixty lines earlier, invokes `readelf` unguarded and fails
+# with `command not found` before the conditional is reached. Optional in one
+# place and required in another is the same fact written twice, and only one
+# of them was true.
+command -v readelf >/dev/null 2>&1 ||
+    fail 'readelf is required: the ELF shape of the native fixtures is what this gate checks'
+
 if find "$stdlib_dir" -type f \( -name '*.py' -o -name '*.kf' \) |
     grep -q .
 then
@@ -207,18 +218,16 @@ done <"$tmp_dir/file_roundtrip.packed"
     "$repo_dir/bin/kofun-digest" -c "$stdlib_dir/tests/SHA256SUMS"
 ) >/dev/null
 
-if command -v readelf >/dev/null 2>&1
-then
-    readelf -h "$native_image" >"$tmp_dir/elf-header.txt"
-    readelf -l "$native_image" >"$tmp_dir/program-headers.txt"
-    grep -Eq 'Class:[[:space:]]+ELF64' "$tmp_dir/elf-header.txt" ||
-        fail 'native fixture is not ELF64'
-    grep -Eq 'Machine:[[:space:]]+Advanced Micro Devices X86-64' \
-        "$tmp_dir/elf-header.txt" ||
-        fail 'native fixture is not x86-64'
-    [ "$(grep -c 'LOAD' "$tmp_dir/program-headers.txt")" -eq 2 ] ||
-        fail 'native fixture does not have separate RX and RW load segments'
-fi
+# Unconditional: the requirement is declared at the top of this file (#1496).
+readelf -h "$native_image" >"$tmp_dir/elf-header.txt"
+readelf -l "$native_image" >"$tmp_dir/program-headers.txt"
+grep -Eq 'Class:[[:space:]]+ELF64' "$tmp_dir/elf-header.txt" ||
+    fail 'native fixture is not ELF64'
+grep -Eq 'Machine:[[:space:]]+Advanced Micro Devices X86-64' \
+    "$tmp_dir/elf-header.txt" ||
+    fail 'native fixture is not x86-64'
+[ "$(grep -c 'LOAD' "$tmp_dir/program-headers.txt")" -eq 2 ] ||
+    fail 'native fixture does not have separate RX and RW load segments'
 
 [ ! -e "$fixture_file" ] ||
     fail 'native fixture path unexpectedly exists before execution'

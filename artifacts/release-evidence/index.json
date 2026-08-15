@@ -770,7 +770,7 @@
   ],
   "evidence_digests": {
     ".github/workflows/native-hosts.yml": "9b0155c4caf6aeb29e7d942bffc10acd12cd61b79c4d70af45ea2b10a9967daa",
-    "Taskfile.yml": "8eea91136fe91a4f949e74bc2ca87562e7e2cc34943df218769de5e140820ca2",
+    "Taskfile.yml": "2842d07de511b09accd39c0ff028be8ecdc9e906d4b90dce34ce2c231d0c211d",
     "bootstrap/native/README.md": "6c470b203c3dbc327c6b601ab958c754e6f82be78c255d442307ad0c7691bc21",
     "bootstrap/native/check-macho64-signed.sh": "6fc51ddfec599ea85b8b06a5c16d68b6fdc994621cdb8ca4267e20be38141393",
     "bootstrap/native/check-macho64.sh": "d6bd52e3f6756aa607a2dc44a0117defeaaa55e64fa3f4221986da6406251e15",
@@ -817,7 +817,7 @@
     "spec/wasm-host-abi-v1.md": "b49538b8b8bbdd29c36faa7b8bcd07e34c1dc14fb86cb654f1dbe6c93f25beaf",
     "spec/wasm-host-profile-v1.md": "162c197b85ca283e72dfa8009b0615be6454366da0e93c34f26dae95f4a533b6",
     "stdlib/decimal/README.md": "ae6ac8ebf59826e12b85593a55018bd2bc47ade82c6655bf3d98a2ddae19a1f5",
-    "stdlib/tests/verify.sh": "81128c0f6b2b3126c54164270120dfb73c12e2d8283e56011ac8bdf047a4ecb3",
+    "stdlib/tests/verify.sh": "c435dca7a945f1691621cdb90c4423f0c96e3866636d9ff0439a9c47f798b126",
     "tests/cli.sh": "6ca726adc3cb5fa4437d34665603b6556a63d01d26db1141a93af3388c5240f9",
     "tests/cli_stage2_outcomes.sh": "9f84a95495afab023a1572b37a2508a4ee02a3a89881df14b887c209a628a9a7",
     "tests/conformance/aggregate-bridge/README.md": "aec3624a10648a59d18723bf7429422ff017cec17995402653e403f065ec0f0a",
