@@ -186,6 +186,27 @@ echo "building instrumented compiler.c with: $COVERAGE_CC $COVERAGE_FLAGS" >&2
 # already honours, so no gate script is modified. SEQUENTIAL because concurrent
 # gcda writers corrupt the merge, and a corrupt profile understates coverage --
 # which here invents undefended branches.
+#
+# THE SERIAL LOOP IS THIS LEDGER'S WHOLE COST PROBLEM, AND IT IS NOT INHERENT.
+# This phase is `verify`'s own driver set run one at a time; CI runs the same
+# set through `task --parallel` in 24 minutes. The serialisation buys profile
+# integrity, not correctness of the drivers, and the toolchains already ship the
+# mechanism that would buy both:
+#
+#   gcc    GCOV_PREFIX per worker gives each driver its own .gcda tree;
+#          `gcov-tool merge dirA dirB -o dirC` combines them afterwards.
+#   clang  LLVM_PROFILE_FILE with a %p pattern already writes one raw file per
+#          process, and `llvm-profdata merge` is the normal way to combine them
+#          -- so this half may not need serialising at all, which is measurable
+#          rather than a matter of opinion.
+#
+# Both tools are present on this machine. Doing it is out of #1408's scope and
+# needs its own evidence -- a parallel run and a serial run over the same tree
+# must produce the same ledger, and nothing short of that comparison should be
+# believed. But it is the concrete answer to "a both-directions ledger is
+# unmaintainable when compiler.c takes 51 commits a week", and that answer
+# belongs next to the line that causes the problem rather than in a comment
+# thread.
 KOFUN_STAGE2_COMPILER="$WORK/stage2-cov"
 export KOFUN_STAGE2_COMPILER
 phase_start=$(date +%s)
