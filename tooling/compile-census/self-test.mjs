@@ -27,8 +27,8 @@
 import assert from 'node:assert/strict'
 
 import {
-    codegenKey, decodeArgv, isCompile, isSource, relativize, repeatedWork,
-    summarize, verbatimKey,
+    codegenKey, decodeArgv, isCompile, isEphemeral, isSource, relativize,
+    repeatedWork, sawLauncherResolver, summarize, verbatimKey,
 } from './census.mjs'
 import {
     COLUMNS, candidateLedger, evaluate, ledgerKey, parseLedger, readCeiling,
@@ -134,6 +134,59 @@ check('a pure link is not counted as compilation', () => {
     assert.equal(summary.codegen.repeatedCount, 0, 'the repeated link is not repeated compilation')
 })
 
+check('a run-scoped source is not a family', () => {
+    /* A `mktemp` mutant and an unpacked `.sufficient.<pid>` tree carry a fresh
+     * path every run, so each is its own family by construction. A ledger row
+     * naming one would be stale the moment it was written. */
+    const mutant = ['cc', '-c', '/tmp/kofun-raw-imports.9kCJuV/mutant.c']
+    const unpacked = ['cc', '-O2', 'build/selfhost-inputs/.sufficient.550781/tree/sha256.c']
+    const tracked = ['cc', '-O2', '-c', 'bootstrap/stage2/sha256.c']
+    assert.equal(isEphemeral(mutant), true)
+    assert.equal(isEphemeral(unpacked), true)
+    assert.equal(isEphemeral(tracked), false)
+    const summary = summarize([
+        { argv_hex: hex(mutant), wall_ns: '1', status: '0', output: 'kofun-module-resolver' },
+        { argv_hex: hex(mutant), wall_ns: '1', status: '0' },
+        { argv_hex: hex(tracked), wall_ns: '1', status: '0' },
+    ])
+    assert.equal(summary.ephemeral, 2)
+    assert.equal(summary.compiles, 1)
+    assert.equal(summary.codegen.repeatedCount, 0,
+        'the repeated mutant is not repeated work — the path is new each run')
+})
+
+check('a warm launcher cache is detected and skips the assertion, not silently', () => {
+    /*
+     * `bin/kofun` reuses `kofun-module-resolver` from `build/` across runs, so
+     * a warm tree is missing that compile. Measured on one tree: 61 repeats
+     * warm, 62 clean. Asserting anyway would tell every second local run to
+     * lower a ceiling that is right.
+     */
+    const tracked = ['cc', '-O2', '-c', 'bootstrap/stage2/sha256.c']
+    const warmRows = [
+        { argv_hex: hex(tracked), wall_ns: '1', status: '0', output: 'a.o' },
+        { argv_hex: hex(tracked), wall_ns: '1', status: '0', output: 'b.o' },
+    ]
+    assert.equal(sawLauncherResolver(warmRows), false)
+    const warm = summarize(warmRows)
+    assert.equal(warm.warmLauncherCache, true)
+    const skipped = evaluate(warm, [], 99)
+    assert.equal(skipped.length, 1)
+    assert.match(skipped[0], /^SKIP: /)
+    assert.match(skipped[0], /warm `build\/`/)
+    assert.match(skipped[0], /kofun-module-resolver/,
+        'the skip names the artifact, so the reader can check it rather than trust it')
+
+    /* And the same numbers on a clean census do assert. */
+    const cleanRows = [
+        ...warmRows,
+        { argv_hex: hex(['cc', '-O2', 'x.c']), wall_ns: '1', status: '0', output: 'kofun-module-resolver' },
+    ]
+    const clean = summarize(cleanRows)
+    assert.equal(clean.warmLauncherCache, false)
+    assert.equal(evaluate(clean, [], 99).some((p) => /lower it/.test(p)), true)
+})
+
 check('a header or table is a source, a bare word is not', () => {
     assert.equal(isSource('unicode/kofun_unicode_tables.inc'), true)
     assert.equal(isSource('bootstrap/stage2/sha256.h'), true)
@@ -179,10 +232,24 @@ const asFields = (line) => {
     return fields
 }
 
-const oneRepeat = () => summarize([
+/*
+ * Every rule fixture below carries the launcher-resolver compile, because a
+ * census without it is a warm-`build/` census and the checker refuses to
+ * assert on one. Leaving it out made all six rule cases exercise the skip
+ * instead of the rule they were written for — and they went on passing,
+ * because a skip returns no problems either.
+ */
+const launcherRow = {
+    ...asFields(row(['cc', '-O2', 'bootstrap/stage2/imports_qualified.c'])),
+    output: 'kofun-module-resolver',
+}
+
+const cleanCensus = (...lines) => summarize([...lines.map(asFields), launcherRow])
+
+const oneRepeat = () => cleanCensus(
     row(['cc', '-std=c11', '-O2', '-c', 'src/x.c', '-o', 'a.o']),
     row(['cc', '-std=c11', '-O2', '-c', 'src/x.c', '-o', 'b.o']),
-].map(asFields))
+)
 
 const honestLedgerRow = ledgerRow({
     count: '2',
@@ -246,6 +313,7 @@ check('an unreasoned row is refused', () => {
 check('a failed compile in the census is refused', () => {
     const failed = summarize([
         { argv_hex: hex(['cc', '-O2', '-c', 'src/x.c']), wall_ns: '1', status: '1' },
+        launcherRow,
     ])
     const problems = evaluate(failed, [], 0)
     assert.equal(problems.some((p) => /non-zero status/.test(p)), true)

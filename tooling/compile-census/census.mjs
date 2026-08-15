@@ -151,6 +151,38 @@ export function isCompile(argv, root = '') {
     return codegenKey(argv, root).split('|')[2] !== ''
 }
 
+/*
+ * A compile of sources that exist for this run only.
+ *
+ * Two shapes reach the census: mutants written under `mktemp -d`, and trees
+ * unpacked into `build/…/.sufficient.<pid>/`. Both carry a fresh path every
+ * run, so each is its own family by construction and can never be repeated
+ * work. Left in, they would inflate the distinct count with noise and — the
+ * part that matters — a ledger row naming one would be stale the moment it was
+ * written.
+ */
+export function isEphemeral(argv, root = '') {
+    const sources = codegenKey(argv, root).split('|')[2]
+    if (!sources) return false
+    return sources.split(' ').some(
+        (source) => source.startsWith('/') || source.startsWith('build/'),
+    )
+}
+
+/*
+ * `bin/kofun` builds `kofun-module-resolver` into `build/module-resolver` and
+ * reuses it across runs, so a census taken with a warm `build/` is missing that
+ * compile. CI starts clean and always has it; a developer running verify twice
+ * does not.
+ *
+ * Detecting it from the census is exact — the compile is either in the log or
+ * it is not — and it is the difference between a gate that explains itself and
+ * one that tells every local run to lower a ceiling that is correct.
+ */
+export function sawLauncherResolver(rows) {
+    return rows.some((row) => row.output === 'kofun-module-resolver')
+}
+
 export function parseRow(line) {
     if (!line.startsWith('cc\t')) return null
     const row = {}
@@ -177,6 +209,7 @@ export function repeatedWork(rows, keyOf, root = '') {
         const argv = decodeArgv(row.argv_hex)
         if (!argv) continue
         if (!isCompile(argv, root)) continue
+        if (isEphemeral(argv, root)) continue
         const key = keyOf(argv, root)
         const wall = Number.parseInt(row.wall_ns ?? '0', 10)
         const group = groups.get(key) ?? { count: 0, wallNs: 0, firstWallNs: 0 }
@@ -199,12 +232,14 @@ export function summarize(rows, root = '') {
     const profiles = new Set()
     let compiles = 0
     let links = 0
+    let ephemeral = 0
     let wallNs = 0
     for (const row of rows) {
         const argv = decodeArgv(row.argv_hex)
         if (!argv) continue
         if (isCompile(argv, root)) {
-            compiles += 1
+            if (isEphemeral(argv, root)) ephemeral += 1
+            else compiles += 1
             profiles.add(codegenKey(argv, root).split('|')[0])
         } else {
             links += 1
@@ -216,6 +251,8 @@ export function summarize(rows, root = '') {
         invocations: rows.length,
         compiles,
         links,
+        ephemeral,
+        warmLauncherCache: !sawLauncherResolver(rows),
         failures,
         flagProfiles: profiles.size,
         wallNs,

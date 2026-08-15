@@ -84,6 +84,23 @@ export function ledgerKey(row) {
 export function evaluate(summary, ledger, ceiling) {
     const problems = []
     const repeated = summary.codegen.repeatedCount
+    /*
+     * A warm `build/` under-reports, and by a known amount: `bin/kofun` reuses
+     * `kofun-module-resolver` across runs, so its compile is missing and the
+     * family it belongs to is short. Asserting anyway would tell every second
+     * local run to lower a ceiling that is right, which is how a control
+     * teaches people to edit it rather than read it. CI starts clean, so the
+     * assertion still has somewhere it always runs.
+     */
+    if (summary.warmLauncherCache) {
+        return [
+            'SKIP: this census was taken with a warm `build/` — no compile of ' +
+            '`kofun-module-resolver` is in it, so `bin/kofun` reused the one ' +
+            `from an earlier run. ${repeated} repeats measured against a ` +
+            `ceiling of ${ceiling}; the assertion is skipped rather than ` +
+            'failed. Remove `build/` to measure, as CI does on every run.',
+        ]
+    }
     if (ceiling !== null && repeated > ceiling) {
         problems.push(
             `${repeated} repeated compiles under the codegen key, over the ` +
@@ -151,8 +168,9 @@ export function report(summary, suiteWallNs) {
     const ms = (ns) => (ns / 1e6).toFixed(1)
     const lines = [
         `MEASURE: compile census ${summary.invocations} invocations, ` +
-        `${summary.compiles} compiles, ${summary.links} pure links, ` +
-        `${summary.failures} failed, ${summary.flagProfiles} codegen profiles`,
+        `${summary.compiles} compiles, ${summary.ephemeral} of run-scoped ` +
+        `sources, ${summary.links} pure links, ${summary.failures} failed, ` +
+        `${summary.flagProfiles} codegen profiles`,
         `MEASURE: compile census codegen key ${summary.codegen.distinct} ` +
         `distinct, ${summary.codegen.repeatedCount} repeated, ` +
         `${ms(summary.codegen.repeatedWallNs)} ms repeated compiler wall`,
@@ -290,6 +308,16 @@ function main() {
     )
     for (const line of report(summary, suiteWallNs)) {
         process.stdout.write(`${line}\n`)
+    }
+    /* The warm-cache case is one entry and it is not a failure. It is
+     * returned through the same channel so a caller cannot act on the numbers
+     * without seeing it. */
+    if (problems.length === 1 && problems[0].startsWith('SKIP:')) {
+        process.stdout.write(`${problems[0].slice(6)}\n`)
+        process.stdout.write(
+            'SKIP: compile census: the ceiling is asserted on a clean tree\n',
+        )
+        return
     }
     if (problems.length) {
         for (const problem of problems) {
