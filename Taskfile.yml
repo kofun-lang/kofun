@@ -841,6 +841,15 @@ tasks:
       - "node tooling/forbidden-requirements/self-test.mjs"
       - "node tooling/forbidden-requirements/check.mjs"
 
+  # #1472. The sibling census, for a different property: not what the build
+  # requires, but which of its bounds can change their answer because the box
+  # is busy. Both fail in both directions, and both report the number that
+  # matters rather than the total.
+  machine-dependent-bounds:
+    desc: "Ledger every bound whose verdict can depend on the machine, failing in both directions"
+    cmds:
+      - "sh tooling/machine-dependent/check.sh"
+
   kif-module-trust-profile:
     desc: "Verify explicit ordinary/raw-foreign KIF module-trust bytes"
     cmds:
@@ -1307,6 +1316,7 @@ tasks:
             gate-reachability \
             native-toolchain-contract \
             forbidden-requirements-census \
+            machine-dependent-bounds \
             wasm-object-arena \
             wasm-list-v1 \
             typed-sidecar-spec \

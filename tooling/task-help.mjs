@@ -31,7 +31,7 @@ export const GROUPS = Object.freeze([
             'wasm-host-abi', 'wasm-host-profile', 'wasi-command-profile',
             'wasi-host-matrix-policy', 'atomic-write-authority-contract',
             'wasi-command-projection-contract', 'wasi-command-backend-shell', 'adt-match-v2-contract',
-            'native-toolchain-contract', 'forbidden-requirements-census',
+            'native-toolchain-contract', 'forbidden-requirements-census', 'machine-dependent-bounds',
             'wasm-object-arena',
             'wasm-list-v1', 'c-abi', 'bindgen-c'
         ]
