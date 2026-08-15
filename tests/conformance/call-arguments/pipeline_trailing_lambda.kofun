@@ -1,9 +1,19 @@
-fn apply(value: Int, action: Int -> Int) -> Int {
-    return action(value)
+# The composition #1397 admits: the lambda attaches to the call, then the
+# pipeline rewrite applies. The markers make the specified order observable
+# rather than asserted — `1` is the subject, `2` is the explicit argument, and
+# `22` is the callee reading slot 0 and slot 1 and then applying the lambda, so
+# the subject was assigned first, the argument second, and the call ran only
+# after both.
+fn observe(marker: Int, value: Int) -> Int {
+    print(marker)
+    return value
+}
+
+fn fold(seed: Int, into base: Int, action: Int -> Int) -> Int {
+    return action(seed + base)
 }
 
 fn main() -> Int {
-    let start = 1
-    print(start |> apply() fn(x: Int) => x + 1)
+    print(observe(1, 1) |> fold(into: observe(2, 10)) fn(x: Int) => x * 2)
     return 0
 }

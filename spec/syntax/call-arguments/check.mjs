@@ -156,7 +156,8 @@ const requiredRunTruth = [
   "whose C11 lowering evaluates the subject first and exactly once before the explicit arguments",
   "the chain is that one production iterated, left-associated, with every stage checked and lowered as a stage whose subject is the result of the stage before it, and no second temporary family",
   "a binding whose initializer is a pipeline carries the declared result of the last stage and is checked against the slot it is later piped into",
-  "#882 retains bare/member/trailing-lambda pipeline forms, block-bodied trailing calls, labelled calls in lifted lambdas, and lexical/indirect targets",
+  "A trailing lambda may be written on a pipeline target: the lambda attaches to the call and the pipeline rewrite applies to the result, so the subject binds slot 0, the parenthesised arguments bind theirs in source order, and the lambda binds the final functional slot as a lifted address.",
+  "#882 retains bare/member pipeline forms, block-bodied trailing calls, labelled calls in lifted lambdas, and lexical/indirect targets",
   "the labelled Int call executes on direct-native and wasm32 against the same golden as C11",
   "each stop at one named source-located boundary per backend",
 ];
@@ -190,6 +191,11 @@ function assertPipelineDocumentation({ expressions, spec, readme, run }) {
     // boundary that no longer exists.
     "pipeline chains, pipelines with trailing lambdas",
     "member pipeline targets, pipeline chains",
+    // #1397 landed. The composition is a recognized shape, so a document
+    // still listing it among the retained refusals sends a reader looking for
+    // a boundary that no longer exists.
+    "pipelines with trailing lambdas",
+    "member pipeline targets, pipelines with trailing",
   ]) assert.ok(!pipelineDocs.includes(stale), `stale pipeline status: ${stale}`);
   for (const current of [
     "The subject binds declaration/ABI slot zero",
@@ -197,6 +203,7 @@ function assertPipelineDocumentation({ expressions, spec, readme, run }) {
     "#1226 binds its subject to slot zero, #1227 checks it, and #1228 lowers it",
     "#1192 landed the direct-native and Wasm differential",
     "#1396 is landed and gated by the same task",
+    "#1397 is landed and gated by the same task",
   ]) assert.ok(pipelineDocs.includes(current), `missing pipeline status: ${current}`);
 
   // Each document states the measured backend result in its own right. The
@@ -219,6 +226,11 @@ function assertPipelineDocumentation({ expressions, spec, readme, run }) {
   // reader arrives at exactly one of them, and a chain is the shape most
   // likely to be assumed unsupported by someone who read only the other.
   const chainBoundary = "A pipeline chain is that production iterated: it associates left, every stage binds, counts, checks and moves its own subject into slot 0, and the C11 lowering nests each stage inside the next subject rather than adding a second temporary family.";
+  /* #1397, in the specification only: the gate README describes the composed
+   * shape through its three fixtures rather than restating the rule. */
+  const trailingBoundary = "A trailing lambda may be written on a pipeline target: the lambda attaches to the call and the pipeline rewrite applies to the result, so the subject binds slot 0, the parenthesised arguments bind theirs in source order, and the lambda binds the final functional slot as a lifted address.";
+  assert.ok(normalizedSpec.includes(trailingBoundary),
+    "call-arguments specification missing pipeline trailing-lambda status");
   for (const [owner, text] of [
     ["call-arguments specification", normalizedSpec],
     ["gate README", normalizedReadme],

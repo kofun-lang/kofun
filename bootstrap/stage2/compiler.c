@@ -3894,18 +3894,10 @@ static char *validate_pipeline_shapes(const char *source) {
                     cursor
                 );
             }
-            /* #1396 recognizes the chain. Nothing is checked here for it:
-             * this loop visits every `|>` in the source, so each stage reaches
-             * the two refusals above on its own, and `a |> f(x) |> g` still
-             * names the bare callee rather than the chain. */
-            if (trailing_lambda_open(source, call_end) >= 0) {
-                return pipeline_refusal(
-                    source,
-                    "a pipeline with a trailing lambda is specified by "
-                    "call-arguments v1 but not recognized",
-                    cursor
-                );
-            }
+            /* #1396 recognizes the chain and #1397 the trailing lambda.
+             * Nothing is checked here for either: this loop visits every `|>`
+             * in the source, so each stage reaches the two refusals above on
+             * its own, and `a |> f(x) |> g` still names the bare callee. */
         }
         cursor = skip_trivia(source, token_end(source, cursor));
     }
@@ -7059,7 +7051,17 @@ static int64_t pipeline_call_end(const char *source, int64_t pipe) {
     if (strcmp(token_kind(source, callee), "identifier") != 0) return -1;
     int64_t open = skip_trivia(source, token_end(source, callee));
     if (open >= length || !token_equal(source, open, "(")) return -1;
-    return balanced_end(source, open, "(", ")");
+    int64_t close = balanced_end(source, open, "(", ")");
+    if (close < 0) return -1;
+    /*
+     * A trailing lambda is part of the call it attaches to, so the stage ends
+     * after it (#1397). Stopping at `)` would leave `fn (` to be read as the
+     * start of the next expression, and in a chain it would put the lambda
+     * between one stage and the next `|>`.
+     */
+    int64_t lambda = trailing_lambda_open(source, close);
+    if (lambda < 0) return close;
+    return lambda_parameters_end(source, -1, lambda);
 }
 
 /*

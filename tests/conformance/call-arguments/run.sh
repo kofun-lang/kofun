@@ -393,9 +393,44 @@ for chain_emitted in pipeline_chain pipeline_chain_deep; do
         fail "$chain_emitted C retained the pipe operator"
     fi
 done
-unsupported_case "$cases/pipeline_trailing_lambda.kofun" \
-    'error[E2S158]: a pipeline with a trailing lambda is specified by call-arguments v1 but not recognized at byte 131' \
-    'pipeline with a trailing lambda'
+# #1397 admits the composition: the lambda attaches to the call, then the
+# pipeline rewrite applies. The three fixtures cover what could each be wrong
+# on its own:
+#
+#   pipeline_trailing_lambda       - the specified order, made observable
+#   pipeline_take_trailing_lambda  - a `take` subject and a lambda in one call
+#   pipeline_chain_trailing_lambda - a chain stage carrying a lambda, which
+#                                    #1396 and #1397 each held for the other
+executes_case pipeline_trailing_lambda 'pipeline with a trailing lambda'
+executes_case pipeline_take_trailing_lambda 'take subject with a trailing lambda'
+executes_case pipeline_chain_trailing_lambda 'chain stage with a trailing lambda'
+
+# The structural claim the goldens cannot make. The subject and the explicit
+# argument are assigned into the one keyed family, in that order, and the
+# lambda reaches the ABI vector as a lifted address rather than through a
+# carrier of its own — a lambda that took a slot would leave that carrier
+# unassigned at the call.
+trailing_pipeline_key=$(call_site_key "$temporary/pipeline_trailing_lambda.c")
+test -n "$trailing_pipeline_key" ||
+    fail 'pipeline with a trailing lambda reserved no keyed temporary'
+tr -d '\n' <"$temporary/pipeline_trailing_lambda.c" |
+    grep -E "kofun_call_arg_${trailing_pipeline_key}_0 = .*kofun_call_arg_${trailing_pipeline_key}_1 = .*kofun_fn_fold\(kofun_call_arg_${trailing_pipeline_key}_0, kofun_call_arg_${trailing_pipeline_key}_1, kofun_lambda_at[0-9]+\)" \
+    >/dev/null ||
+    fail 'pipeline C did not assign subject then argument and pass the lambda by address'
+if grep -E "kofun_call_arg_${trailing_pipeline_key}_2" \
+    "$temporary/pipeline_trailing_lambda.c" >/dev/null
+then
+    fail 'the trailing lambda reserved a carrier it never assigns'
+fi
+no_runtime_dispatch "$temporary/pipeline_trailing_lambda.c" \
+    'into|action' 'pipeline trailing lambda C'
+for trailing_emitted in pipeline_trailing_lambda pipeline_take_trailing_lambda \
+    pipeline_chain_trailing_lambda
+do
+    if grep -F '|>' "$temporary/$trailing_emitted.c" >/dev/null; then
+        fail "$trailing_emitted C retained the pipe operator"
+    fi
+done
 
 # #1226 binds the subject to slot 0 before any explicit argument is read. Both
 # halves of that are asserted, because either alone would pass while the call
@@ -632,4 +667,4 @@ refuses_on source_order_wide wasm32 \
     'the enum and record carriers'
 
 printf '%s\n' \
-    'PASS: labelled calls bind fixed HIR slots and the Int/Text/List[Int]/Optional/enum/record C11 slice evaluates once in source order; take slots move once and refuse double transfer as E2S123; the expression-bodied trailing lambda binds the final parameter as a lifted address; the direct-call pipeline is one production whose spans are published, whose subject binds slot 0 ahead of the explicit arguments and is then counted, type-checked, and moved once into a take slot, and whose C11 lowering evaluates the subject first and exactly once before the explicit arguments; the chain is that one production iterated, left-associated, with every stage checked and lowered as a stage whose subject is the result of the stage before it, and no second temporary family; a binding whose initializer is a pipeline carries the declared result of the last stage and is checked against the slot it is later piped into; #882 retains bare/member/trailing-lambda pipeline forms, block-bodied trailing calls, labelled calls in lifted lambdas, and lexical/indirect targets; the labelled Int call executes on direct-native and wasm32 against the same golden as C11, carrying no label into either artifact, and the pipeline, trailing lambda, Optional, Text/List[Int], and enum/record shapes each stop at one named source-located boundary per backend'
+    'PASS: labelled calls bind fixed HIR slots and the Int/Text/List[Int]/Optional/enum/record C11 slice evaluates once in source order; take slots move once and refuse double transfer as E2S123; the expression-bodied trailing lambda binds the final parameter as a lifted address; the direct-call pipeline is one production whose spans are published, whose subject binds slot 0 ahead of the explicit arguments and is then counted, type-checked, and moved once into a take slot, and whose C11 lowering evaluates the subject first and exactly once before the explicit arguments; the chain is that one production iterated, left-associated, with every stage checked and lowered as a stage whose subject is the result of the stage before it, and no second temporary family; a binding whose initializer is a pipeline carries the declared result of the last stage and is checked against the slot it is later piped into; A trailing lambda may be written on a pipeline target: the lambda attaches to the call and the pipeline rewrite applies to the result, so the subject binds slot 0, the parenthesised arguments bind theirs in source order, and the lambda binds the final functional slot as a lifted address. #882 retains bare/member pipeline forms, block-bodied trailing calls, labelled calls in lifted lambdas, and lexical/indirect targets; the labelled Int call executes on direct-native and wasm32 against the same golden as C11, carrying no label into either artifact, and the pipeline, trailing lambda, Optional, Text/List[Int], and enum/record shapes each stop at one named source-located boundary per backend'
