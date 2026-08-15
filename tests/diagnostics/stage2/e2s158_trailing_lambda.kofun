@@ -1,26 +1,29 @@
 # diagnostic-mode: compile
 # expect-code: E2S158
-# expect-span: byte 887
-# The block-bodied trailing lambda of `spec/syntax/call-arguments-v1.md`
-# (#880). The expression body is lowered by #1191; the block body is accepted
-# design and not current capability, because Stage 2 parses no block-body
-# lambda in any spelling.
+# expect-span: byte 1067
+# A block-bodied lambda outside the trailing position (#1398). The trailing
+# position is admitted — `spec/grammar.ebnf` derives `trailing_block_lambda`
+# and the call-arguments gate executes it — and this spelling is not that
+# position.
 #
-# The span is the `fn` that opens the lambda, not the call it attaches to,
-# because that is the token the author would rewrite to make the program
-# compile today.
+# The span is the `fn` that opens the lambda, not the binding it initializes,
+# because that is the token the author would move to make the program compile
+# today.
 #
-# Refusing by name matters more here than for a shape nobody can write: a
-# block body makes `lambda_parameters_end` span to -1, so without this the
-# trailing lambda is re-read as the start of the next declaration and the
-# author is blamed for a token they did not get wrong.
+# Refusing by name matters more here than for a shape nobody can write. Before
+# #1398 this shape made `lambda_parameters_end` span to -1 and the parameter
+# never bound, so the author was told `value` was an unknown lexical binding —
+# the parameter of their own lambda, a symbol they did not write. Spanning the
+# block body fixed the span and would have moved that accident to a different
+# token rather than removing it; naming the position is what removes it.
 fn apply(value: Int, action: Int -> Int) -> Int {
     return action(value)
 }
 
 fn main() -> Int {
-    print(apply(1) fn(x) {
-        return x
-    })
+    let double = fn(value: Int) {
+        return value * 2
+    }
+    print(apply(1) fn(x: Int) => double(x))
     return 0
 }
