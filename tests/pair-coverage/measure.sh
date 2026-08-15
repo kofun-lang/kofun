@@ -234,20 +234,56 @@ export KOFUN_STAGE2_COMPILER
 KOFUN_SEMANTIC_TIMEOUT=${KOFUN_SEMANTIC_TIMEOUT:-120}
 KOFUN_VISIBILITY_FUZZ_TIMEOUT=${KOFUN_VISIBILITY_FUZZ_TIMEOUT:-300}
 export KOFUN_SEMANTIC_TIMEOUT KOFUN_VISIBILITY_FUZZ_TIMEOUT
+
+# Attempts per driver before its failure is treated as real. See the retry
+# comment in the loop below for why retrying is sound here and does not soften
+# the failure policy.
+DRIVER_ATTEMPTS=${KOFUN_PAIR_COVERAGE_ATTEMPTS:-3}
 phase_start=$(date +%s)
 : >"$WORK/driver-results.tsv"
+: >"$WORK/driver-retries.tsv"
 while IFS= read -r driver; do
     test -n "$driver" || continue
-    # `</dev/null` is load-bearing: a gate that reads standard input otherwise
-    # consumes the rest of THIS loop's input and the loop ends early, exiting 0.
-    # `cli-framework` did exactly that, silently running 76 of 138 drivers.
-    if ( cd "$ROOT" && task "$driver" ) >"$WORK/log.$driver" 2>&1 </dev/null
-    then
-        printf '%s\tok\n' "$driver" >>"$WORK/driver-results.tsv"
-    else
-        printf '%s\texit=%s\n' "$driver" "$?" >>"$WORK/driver-results.tsv"
-    fi
+    # RETRY, because the coverage profile ACCUMULATES. A driver that fails on a
+    # busy machine and succeeds on a second attempt has contributed its full
+    # path, and gcda counters are a union across runs of the same binary, so the
+    # retry costs minutes where discarding the run costs hours. Measured on this
+    # branch: `roadmap` runs an LSP budget asserting 145ms of CPU for a
+    # diagnostic, and a probe under load 20 measured 148.91ms -- 2.7% over, on a
+    # machine whose load came from a build in an unrelated repository.
+    #
+    # This does not weaken the failure policy, it sharpens what the policy is
+    # asked to judge. A deterministic failure -- `discovery` under the
+    # instrumented-compiler hook -- fails every attempt and still needs a
+    # recorded reason. A load failure passes on a retry. The machine makes the
+    # distinction rather than my guess about which kind it was.
+    attempt=1
+    while :; do
+        # `</dev/null` is load-bearing: a gate that reads standard input
+        # otherwise consumes the rest of THIS loop's input and the loop ends
+        # early, exiting 0. `cli-framework` did exactly that, silently running
+        # 76 of 138 drivers.
+        rc=0
+        ( cd "$ROOT" && task "$driver" ) >"$WORK/log.$driver" 2>&1 </dev/null || rc=$?
+        test "$rc" -eq 0 && { code=ok; break; }
+        code="exit=$rc"
+        test "$attempt" -ge "$DRIVER_ATTEMPTS" && break
+        cp "$WORK/log.$driver" "$WORK/log.$driver.attempt$attempt"
+        printf '%s\t%s\tattempt %s\n' "$driver" "$code" "$attempt" \
+            >>"$WORK/driver-retries.tsv"
+        attempt=$((attempt + 1))
+        sleep 10
+    done
+    printf '%s\t%s\n' "$driver" "$code" >>"$WORK/driver-results.tsv"
 done <"$WORK/pinned-drivers.txt"
+
+# Retries are recorded rather than silent: a run that needed several is evidence
+# about the machine, and the ledger's cost line means less without it.
+if test -s "$WORK/driver-retries.tsv"; then
+    printf 'measure.sh: %s driver attempt(s) failed and were retried:\n' \
+        "$(grep -c . "$WORK/driver-retries.tsv")" >&2
+    sed 's/^/    /' "$WORK/driver-retries.tsv" >&2
+fi
 declared=$(grep -c . "$WORK/pinned-drivers.txt")
 attempted=$(grep -c . "$WORK/driver-results.tsv")
 test "$declared" -eq "$attempted" || {
