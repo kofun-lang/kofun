@@ -10431,12 +10431,18 @@ fn lambda_parameters_end(source: Text, previous: Int, open: Int) -> Int {
     if arrow >= len(source) {
         return -1
     }
-    # The block body (#1398). It spans by its braces rather than by an
-    # expression, and everything that reads this span — scope building, the
-    # lift walk, the capture check — then covers the block without learning
-    # about it. The bare `x => e` form above has no block spelling, so this is
-    # the only place a body can be one.
-    if token_text(source, arrow) == "{" {
+    # The block body (#1398), and only for the canonical `fn (...)` spelling —
+    # which is what `spec/grammar.ebnf` derives as `trailing_block_lambda`.
+    #
+    # The `fn` test is load-bearing rather than decorative. Without it every
+    # parenthesised group followed by a brace is a lambda: `if (a == b) { }`
+    # spans as one, its condition becomes a parameter list, and the bindings
+    # read there are redeclared — `bootstrap/stage1/compiler.kofun` reported
+    # `E2S47 duplicate binding` on a `let` it declares once. The shorthand
+    # `(x) => e` form has expression bodies only, so requiring `fn` costs it
+    # nothing.
+    if token_text(source, arrow) == "{" && previous >= 0 &&
+       token_text(source, previous) == "fn" {
         return balanced_end(source, arrow, "{", "}")
     }
     if token_text(source, arrow) != "=>" {
