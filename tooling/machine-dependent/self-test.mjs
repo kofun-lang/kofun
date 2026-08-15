@@ -28,7 +28,9 @@
 import assert from 'node:assert/strict'
 
 import { detect, toMilliseconds, unitOf } from './detect.mjs'
-import { COLUMNS, evaluate, marginOf, parseLedger, summarize } from './check.mjs'
+import {
+    COLUMNS, evaluate, marginOf, parseLedger, readCeiling, summarize,
+} from './check.mjs'
 
 let checks = 0
 function check(name, fn) {
@@ -205,6 +207,45 @@ check('an unreasoned row is refused', () => {
 })
 
 /*
+ * The unmeasured ceiling. `unmeasured` is the one class that is a legitimate
+ * answer rather than a mistake, so no other rule here can catch a row that
+ * arrives in it — which would make it the place wrong answers go, one level up
+ * from the failure #1472 is about. Bounded in both directions, like
+ * `tooling/forbidden-requirements`'s `unknown-ceiling`.
+ */
+const unmeasuredRow = (file) => row({
+    site: 'duration-budget',
+    file,
+    count: '1',
+    bound: '2ms',
+    class: 'unmeasured',
+    reason: 'nobody has measured this one',
+})
+
+check('more unmeasured rows than declared is refused', () => {
+    const ledger = ledgerOf(unmeasuredRow('a.js'), unmeasuredRow('b.js'))
+    const problems = evaluate(new Map(), ledger, 1)
+    assert.equal(problems.some((p) => /2 rows are `unmeasured`.*ceiling of 1/.test(p)), true)
+})
+
+check('fewer unmeasured rows than declared is refused — the improvement must be recorded', () => {
+    const ledger = ledgerOf(unmeasuredRow('a.js'))
+    const problems = evaluate(new Map(), ledger, 3)
+    assert.equal(problems.some((p) => /only 1 rows are `unmeasured`.*lower it/.test(p)), true)
+})
+
+check('a ledger declaring no ceiling is refused', () => {
+    let complaint = null
+    const value = readCeiling('# site\tfile\n', (message) => { complaint = message })
+    assert.equal(value, null)
+    assert.match(complaint, /declares no `# unmeasured-ceiling/)
+})
+
+check('the declared ceiling is read from the ledger text', () => {
+    assert.equal(readCeiling('# unmeasured-ceiling: 5\n'), 5)
+})
+
+/*
  * The must-not-fire direction. Every rule above reports a problem; a checker
  * that reported one for a correct ledger would be useless in the other
  * direction, and none of the cases above can tell the difference.
@@ -260,11 +301,18 @@ check('the summary names the findings, not just the total', () => {
             reason: 'guards a non-terminating loop',
         }),
     )
-    const lines = summarize(ledger)
+    const lines = summarize(ledger, 0)
     assert.match(lines[0], /3 bounds recorded/)
     assert.match(lines[1], /1 of 2 verdicts/)
     assert.match(lines[1], /thin\.js 145ms/)
     assert.doesNotMatch(lines[1], /roomy\.js/)
+    assert.match(lines[2], /0 of 0 allowed/)
+})
+
+check('a summary with no verdicts says so rather than reading as good news', () => {
+    const lines = summarize(ledgerOf(unmeasuredRow('only.js')), 1)
+    assert.match(lines[1], /no rows are classified `verdict`/)
+    assert.doesNotMatch(lines[1], /^PASS: 0 of 0 verdicts/)
 })
 
 process.stdout.write(

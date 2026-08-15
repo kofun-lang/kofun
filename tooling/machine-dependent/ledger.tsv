@@ -37,6 +37,20 @@
 #           a load-sensitive quantity says nothing about its range, and one
 #           taken on a quiet box says least of all.
 #
+# THE UNMEASURED CEILING, checked in both directions.
+#
+# `unmeasured` is the honest answer and it is not the safe one, so it is
+# bounded the way tooling/forbidden-requirements bounds `unknown` (#1474):
+# over fails as a verdict-shaped bound arriving unmeasured, under fails as a
+# measurement somebody took and did not record. Without it this class is where
+# wrong answers go, which is the failure #1472 was filed about one level up.
+#
+# Two of the five are load-sensitive on their face and worth measuring first:
+# tests/lsp/protocol_test.js at 1000ms, and tests/fuzz/grammar.sh at 2s — whose
+# sibling tests/fuzz/semantic_runner.sh at 10s has already killed a verify.
+#
+# unmeasured-ceiling: 5
+#
 # site	file	count	bound	observed	class	evidence	reason
 duration-budget	bootstrap/selfhost/check-compiler-driver.sh	1	120s	-	unmeasured	-	selfhost_timeout_seconds, overridable by KOFUN_SELFHOST_TIMEOUT. Bounds a full A1 self-compile of the canonical S source. That compile is the most expensive single step in the tree and nothing records its duration, so 120s cannot be called generous on the evidence available.
 duration-budget	bootstrap/selfhost/generations-lib.sh	1	120s	-	unmeasured	-	The same default in the shared generation library, bounding each derived generation.

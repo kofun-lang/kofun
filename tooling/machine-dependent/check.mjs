@@ -95,6 +95,33 @@ export function marginOf(row) {
     return bound / observed.milliseconds
 }
 
+/*
+ * A declared bound on the one class that means "nobody knows".
+ *
+ * Every other rule here catches a row that is *wrong*. None of them catches a
+ * row that is honestly unclassifiable, because `unmeasured` is a legitimate
+ * answer and a new row is the ordinary flow — so a verdict-shaped bound with
+ * no measurement would arrive looking like every other addition while the
+ * headline got quietly less true. That is the failure #1472 was filed about,
+ * one level up, committed by the ledger meant to prevent it.
+ *
+ * Bounded in both directions the way `tooling/forbidden-requirements`'s
+ * `unknown-ceiling` (#1474) and `tests/assertions/budget.tsv` are: over is
+ * drift, under is an improvement nobody recorded. Measuring one of these and
+ * leaving the ceiling alone is exactly the reverse-direction rot this ledger
+ * exists to refuse.
+ */
+export function readCeiling(text, onError = die) {
+    const match = /^#\s*unmeasured-ceiling:\s*(\d+)\s*$/m.exec(text)
+    if (match === null) {
+        onError('ledger.tsv declares no `# unmeasured-ceiling: N`, so the one class ' +
+            'that means "nobody knows the range" has no bound and a new unmeasured ' +
+            'bound would arrive as an ordinary row')
+        return null
+    }
+    return Number(match[1])
+}
+
 export function parseLedger(text, onError = die) {
     const rows = new Map()
     for (const [index, line] of text.split('\n').entries()) {
@@ -118,8 +145,24 @@ export function parseLedger(text, onError = die) {
  * synthetic ledgers instead of the repository. A checker whose rules only run
  * against the real tree can only be tested by breaking the real tree.
  */
-export function evaluate(found, ledger) {
+export function evaluate(found, ledger, ceiling = null) {
     const problems = []
+
+    const unmeasured = [...ledger.values()].filter((row) => row.class === 'unmeasured')
+    if (ceiling !== null && unmeasured.length > ceiling) {
+        problems.push(
+            `${unmeasured.length} rows are \`unmeasured\` and ledger.tsv declares a ` +
+            `ceiling of ${ceiling}. A verdict-shaped bound nobody has measured may not ` +
+            'arrive as an ordinary row: measure it and record the observation with its ' +
+            'load, or raise the ceiling deliberately, in the same commit, with the reason',
+        )
+    }
+    if (ceiling !== null && unmeasured.length < ceiling) {
+        problems.push(
+            `only ${unmeasured.length} rows are \`unmeasured\` and ledger.tsv still ` +
+            `declares a ceiling of ${ceiling}; lower it so the measurement is recorded`,
+        )
+    }
 
     for (const [key, site] of found) {
         const row = ledger.get(key)
@@ -184,7 +227,7 @@ export function evaluate(found, ledger) {
  * six findings are different facts, and a summary that says only "30 rows"
  * reports the wrong one.
  */
-export function summarize(ledger) {
+export function summarize(ledger, ceiling = null) {
     const byClass = new Map(CLASSES.map((name) => [name, 0]))
     for (const row of ledger.values()) byClass.set(row.class, (byClass.get(row.class) ?? 0) + 1)
     const verdicts = [...ledger.values()].filter((row) => row.class === 'verdict')
@@ -192,14 +235,25 @@ export function summarize(ledger) {
         const margin = marginOf(row)
         return margin !== null && margin < THIN_MARGIN
     })
+    /*
+     * "0 thin verdicts" is a good headline and an ambiguous one: it reads the
+     * same whether every verdict has margin or whether there are no verdicts
+     * left because they were all classified `unmeasured`. Naming the
+     * denominator, and saying so outright when it is zero, keeps the two apart.
+     */
+    const thinLine = verdicts.length === 0
+        ? 'PASS: no rows are classified `verdict`, so no headroom was computed — ' +
+          'check the unmeasured count below before reading that as good news'
+        : `PASS: ${thin.length} of ${verdicts.length} verdicts have less than ` +
+          `${THIN_MARGIN}x headroom over their worst recorded observation` +
+          (thin.length === 0 ? '' : `: ${thin.map((row) => `${row.file} ${row.bound}`).join(', ')}`)
     return [
         `PASS: ${ledger.size} bounds recorded — ` +
         CLASSES.map((name) => `${byClass.get(name)} ${name}`).join(', '),
-        `PASS: ${thin.length} of ${verdicts.length} verdicts have less than ` +
-        `${THIN_MARGIN}x headroom over their worst recorded observation` +
-        (thin.length === 0 ? '' : `: ${thin.map((row) => `${row.file} ${row.bound}`).join(', ')}`),
-        `PASS: ${byClass.get('unmeasured')} verdict-shaped bounds have no recorded ` +
-        'range, so whether each is a backstop or a threshold without margin is unknown',
+        thinLine,
+        `PASS: ${byClass.get('unmeasured')}${ceiling === null ? '' : ` of ${ceiling} allowed`} ` +
+        'verdict-shaped bounds have no recorded range, so whether each is a backstop ' +
+        'or a threshold without margin is unknown',
     ]
 }
 
@@ -256,15 +310,17 @@ function main() {
         return
     }
 
-    const ledger = parseLedger(readFileSync(LEDGER, 'utf8'))
-    const problems = evaluate(found, ledger)
+    const ledgerText = readFileSync(LEDGER, 'utf8')
+    const ledger = parseLedger(ledgerText)
+    const ceiling = readCeiling(ledgerText)
+    const problems = evaluate(found, ledger, ceiling)
     if (problems.length > 0) {
         for (const problem of problems) {
             process.stderr.write(`FAIL: machine-dependent: ${problem}\n`)
         }
         process.exit(1)
     }
-    for (const line of summarize(ledger)) process.stdout.write(`${line}\n`)
+    for (const line of summarize(ledger, ceiling)) process.stdout.write(`${line}\n`)
 }
 
 if (process.argv[1] !== undefined &&
