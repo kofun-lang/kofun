@@ -92,7 +92,7 @@ for (const [name, requirement, kind, expected, why] of FIXTURE_CASES) {
 const censusPaths = new Set(
     readFileSync(CENSUS, 'utf8').split('\n')
         .filter((l) => l !== '' && !l.startsWith('#'))
-        .map((l) => l.split('\t')[4]),
+        .map((l) => l.split('\t')[5]),
 )
 for (const name of ['mention-and-invoke.sh', 'mention-and-invoke.mjs', 'mention-and-invoke.yml']) {
     const path = `tooling/forbidden-requirements/fixtures/${name}`
@@ -109,19 +109,45 @@ const censusRows = readFileSync(CENSUS, 'utf8').split('\n')
     .filter((l) => l !== '' && !l.startsWith('#'))
     .map((l) => l.split('\t'))
 const patternSource = 'tooling/forbidden-requirements/detect.mjs'
-const patternInvokes = censusRows.filter((f) => f[4] === patternSource && f[1] === 'invoke')
+const patternSources = [patternSource, 'tooling/forbidden-requirements/reach.mjs']
+const patternInvokes = censusRows.filter((f) => f[5] === patternSource && f[1] === 'invoke')
 if (patternInvokes.length !== 0) {
     fail(`${patternSource} has ${patternInvokes.length} invoke row(s); it spells the patterns ` +
         'out as string literals and runs nothing, so counting them reports the vocabulary as a finding')
 }
-if (!censusRows.some((f) => f[4] === patternSource && f[0] === 'node' && f[1] === 'source')) {
+if (!censusRows.some((f) => f[5] === patternSource && f[0] === 'node' && f[1] === 'source')) {
     fail(`${patternSource} has no \`node source\` row; the invoke exemption has widened into ` +
         'the whole file, and the census no longer counts its own instrument')
 }
-for (const name of ['check.mjs', 'self-test.mjs']) {
+for (const name of ['check.mjs', 'self-test.mjs', 'reach.mjs']) {
     const path = `tooling/forbidden-requirements/${name}`
-    if (!censusRows.some((f) => f[4] === path && f[0] === 'node' && f[1] === 'source')) {
+    if (!censusRows.some((f) => f[5] === path && f[0] === 'node' && f[1] === 'source')) {
         fail(`${path} is missing from the census; the exemption has widened to the directory`)
+    }
+}
+
+/*
+ * The derived column, pinned to two facts about the tree rather than only to
+ * its own consistency. A checker that agreed with whatever it computed would
+ * pass with every value inverted.
+ *
+ * `bin/kofun` invokes `cc` with no availability guard and `repository-check`
+ * runs it. `scripts/graphify.sh` invokes `python` and its only two callers,
+ * `graphify-setup` and `graphify-update`, are both recorded in
+ * `tooling/gate-reachability/unreachable.tsv` as manual by design.
+ */
+const needOfRow = (requirement, path) => {
+    const row = censusRows.find((f) => f[0] === requirement && f[5] === path && f[1] === 'invoke')
+    return row === undefined ? '(no row)' : row[4]
+}
+for (const [requirement, path, expected, why] of [
+    ['cc', 'bin/kofun', 'required', 'unguarded, and `repository-check` runs it'],
+    ['python', 'scripts/graphify.sh', 'off-path', 'both its tasks are recorded unreachable'],
+]) {
+    const actual = needOfRow(requirement, path)
+    if (actual !== expected) {
+        fail(`${path}: \`${requirement}\` is recorded as \`${actual}\`, expected ` +
+            `\`${expected}\` — ${why}`)
     }
 }
 
@@ -164,7 +190,7 @@ const CASES = victim === undefined ? [] : [
     {
         name: 'a ledger row whose use is gone',
         why: 'the #1395 direction: the removal happened and the record did not follow',
-        ledger: `${original.trimEnd()}\ncc\tinvoke\t1\trequired-today\ttooling/forbidden-requirements/no-such-file.sh\n`,
+        ledger: `${original.trimEnd()}\ncc\tinvoke\t1\trequired-today\trequired\ttooling/forbidden-requirements/no-such-file.sh\n`,
         expect: 'and it is not there now',
     },
     {
@@ -178,6 +204,30 @@ const CASES = victim === undefined ? [] : [
         why: 'absent and clean must not look the same',
         ledger: original.split('\n').filter((l) => !l.startsWith('zig\t')).join('\n'),
         expect: 'has no row in census.tsv',
+    },
+    {
+        name: "a required use moved into `optional`",
+        why: 'the need column is derived, so this is the case that stops it becoming a suppression list',
+        ledger: original.replace(
+            /^(cc\tinvoke\t\d+\trequired-today\t)required(\tbin\/kofun)$/m,
+            '$1optional$2',
+        ),
+        expect: 'The need column is derived',
+    },
+    {
+        name: 'an off-path use claimed as required',
+        why: 'the derivation has to fail in both directions or it only ratchets one way',
+        ledger: original.replace(
+            /^(python\tinvoke\t\d+\trequired-today\t)off-path(\tscripts\/graphify\.sh)$/m,
+            '$1required$2',
+        ),
+        expect: 'The need column is derived',
+    },
+    {
+        name: 'a need value outside the vocabulary',
+        why: 'four values, closed, or the column means whatever the last author thought',
+        ledger: original.replace(/\trequired\tbin\/kofun$/m, '\tprobably\tbin/kofun'),
+        expect: 'is not one of',
     },
     {
         name: 'an unknown class',
