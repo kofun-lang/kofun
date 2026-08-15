@@ -1,0 +1,20 @@
+# The composition #1396 and #1397 each held for the other. A chain stage may
+# carry a trailing lambda: `twice` runs as an ordinary stage, its result is the
+# subject of `apply`, and `apply` takes its final slot from the lambda.
+#
+# The stage boundary is what this proves. A `pipeline_call_end` that stopped at
+# `)` would leave `fn (` between one stage and the next, and the chain would
+# either mis-span or refuse.
+fn twice(base: Int) -> Int {
+    return base * 2
+}
+
+fn apply(value: Int, action: Int -> Int) -> Int {
+    return action(value)
+}
+
+fn main() -> Int {
+    let start = 3
+    print(start |> twice() |> apply() fn(x: Int) => x + 1)
+    return 0
+}

@@ -28,9 +28,12 @@ temporary family. `a |> f(x) |> g(y)` is `(a |> f(x)) |> g(y)`, so a stage's
 subject is the declared result of the stage before it. #1396 is landed and
 gated by the same task.
 
-Bare pipeline targets, pipelines with trailing lambdas,
-block-bodied trailing lambdas, labelled calls inside lifted lambdas,
-and lexical/member/indirect targets remain at their existing `E2S158` or
+A trailing lambda may be written on a pipeline target: the lambda attaches to the call and the pipeline rewrite applies to the result, so the subject binds slot 0, the parenthesised arguments bind theirs in source order, and the lambda binds the final functional slot as a lifted address. #1397 is landed and gated by the
+same task.
+
+Bare pipeline targets, block-bodied trailing lambdas, labelled calls inside
+lifted lambdas, and lexical/member/indirect targets remain at their existing
+`E2S158` or
 earlier named refusal boundaries. Direct-native and Wasm behavior is measured
 by the same corpus: the labelled Int call executes on both and is compared
 against the C11 golden, and every other shape stops at one named source-located

@@ -2919,17 +2919,10 @@ fn validate_pipeline_shapes(source: Text) -> Text {
                     scan
                 )
             }
-            # #1396 recognizes the chain. Nothing is checked here for it:
-            # this loop visits every `|>` in the source, so each stage reaches
-            # the two refusals above on its own, and `a |> f(x) |> g` still
-            # names the bare callee rather than the chain.
-            if trailing_lambda_open(source, call_end) >= 0 {
-                return pipeline_refusal(
-                    "a pipeline with a trailing lambda is specified by " +
-                    "call-arguments v1 but not recognized",
-                    scan
-                )
-            }
+            # #1396 recognizes the chain and #1397 the trailing lambda.
+            # Nothing is checked here for either: this loop visits every `|>`
+            # in the source, so each stage reaches the two refusals above on
+            # its own, and `a |> f(x) |> g` still names the bare callee.
         }
         scan = skip_trivia(source, token_end(source, scan))
     }
@@ -4103,7 +4096,19 @@ fn pipeline_call_end(source: Text, pipe: Int) -> Int {
     if open >= len(source) || token_text(source, open) != "(" {
         return -1
     }
-    return balanced_end(source, open, "(", ")")
+    let close = balanced_end(source, open, "(", ")")
+    if close < 0 {
+        return -1
+    }
+    # A trailing lambda is part of the call it attaches to, so the stage ends
+    # after it (#1397). Stopping at `)` would leave `fn (` to be read as the
+    # start of the next expression, and in a chain it would put the lambda
+    # between one stage and the next `|>`.
+    let lambda = trailing_lambda_open(source, close)
+    if lambda < 0 {
+        return close
+    }
+    return lambda_parameters_end(source, -1, lambda)
 }
 
 # The end of the expression that the `|>` at `pipe` consumes, or -1 when no

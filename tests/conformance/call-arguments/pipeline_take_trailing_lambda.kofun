@@ -1,0 +1,12 @@
+# A `take` subject and a trailing lambda in one call. The subject moves into
+# slot 0 exactly once — RFC-0010 — while the final slot is bound by a lambda
+# the call site never names, and neither mechanism disturbs the other.
+fn consume(take owned: Text, action: Int -> Int) -> Int {
+    return action(len(owned))
+}
+
+fn main() -> Int {
+    let word = "abcd"
+    print(word |> consume() fn(x: Int) => x + 1)
+    return 0
+}
