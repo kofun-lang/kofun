@@ -30741,6 +30741,202 @@ static int emit_scope_hir_file(const char *input, const char *output) {
     return 0;
 }
 
+
+/*
+ * SHA-256, transliterated from the nineteen `sha256_*` functions in
+ * `compiler.kofun` (RFC-0013 step 4 prerequisite, #1382).
+ *
+ * Written out rather than `#include "sha256.c"`, which was the first attempt and
+ * which the linker refused: five gates compile `compiler.c` and link `sha256.c`
+ * as a separate translation unit, so the include produced multiple definitions
+ * of `kofun_sha256_init` and its siblings. `bootstrap/stage2/semantic-objects.sh`
+ * is one of them.
+ *
+ * Writing it out is also what makes the differential mean something. If this
+ * half called `sha256.c`, then "the C half agrees with the oracle" would be
+ * comparing one copy of the code against itself. These are independent
+ * implementations of one specification, and `tests/stage2/sha256-pair/check.sh`
+ * compares all three.
+ *
+ * The decomposition mirrors the Kofun side function for function, so a reader
+ * checking the pair can put them side by side.
+ */
+static uint32_t pair_sha256_rotr(uint32_t value, unsigned count) {
+    return (value >> count) | (value << (32 - count));
+}
+
+static uint32_t pair_sha256_big_sigma0(uint32_t value) {
+    return pair_sha256_rotr(value, 2) ^ pair_sha256_rotr(value, 13)
+        ^ pair_sha256_rotr(value, 22);
+}
+
+static uint32_t pair_sha256_big_sigma1(uint32_t value) {
+    return pair_sha256_rotr(value, 6) ^ pair_sha256_rotr(value, 11)
+        ^ pair_sha256_rotr(value, 25);
+}
+
+static uint32_t pair_sha256_small_sigma0(uint32_t value) {
+    return pair_sha256_rotr(value, 7) ^ pair_sha256_rotr(value, 18) ^ (value >> 3);
+}
+
+static uint32_t pair_sha256_small_sigma1(uint32_t value) {
+    return pair_sha256_rotr(value, 17) ^ pair_sha256_rotr(value, 19) ^ (value >> 10);
+}
+
+static uint32_t pair_sha256_choose(uint32_t e, uint32_t f, uint32_t g) {
+    return (e & f) ^ (~e & g);
+}
+
+static uint32_t pair_sha256_majority(uint32_t a, uint32_t b, uint32_t c) {
+    return (a & b) ^ (a & c) ^ (b & c);
+}
+
+static const uint32_t PAIR_SHA256_CONSTANTS[64] = {
+    0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u,
+    0x3956c25bu, 0x59f111f1u, 0x923f82a4u, 0xab1c5ed5u,
+    0xd807aa98u, 0x12835b01u, 0x243185beu, 0x550c7dc3u,
+    0x72be5d74u, 0x80deb1feu, 0x9bdc06a7u, 0xc19bf174u,
+    0xe49b69c1u, 0xefbe4786u, 0x0fc19dc6u, 0x240ca1ccu,
+    0x2de92c6fu, 0x4a7484aau, 0x5cb0a9dcu, 0x76f988dau,
+    0x983e5152u, 0xa831c66du, 0xb00327c8u, 0xbf597fc7u,
+    0xc6e00bf3u, 0xd5a79147u, 0x06ca6351u, 0x14292967u,
+    0x27b70a85u, 0x2e1b2138u, 0x4d2c6dfcu, 0x53380d13u,
+    0x650a7354u, 0x766a0abbu, 0x81c2c92eu, 0x92722c85u,
+    0xa2bfe8a1u, 0xa81a664bu, 0xc24b8b70u, 0xc76c51a3u,
+    0xd192e819u, 0xd6990624u, 0xf40e3585u, 0x106aa070u,
+    0x19a4c116u, 0x1e376c08u, 0x2748774cu, 0x34b0bcb5u,
+    0x391c0cb3u, 0x4ed8aa4au, 0x5b9cca4fu, 0x682e6ff3u,
+    0x748f82eeu, 0x78a5636fu, 0x84c87814u, 0x8cc70208u,
+    0x90befffau, 0xa4506cebu, 0xbef9a3f7u, 0xc67178f2u,
+};
+
+static void pair_sha256_absorb(uint32_t state[8], const uint8_t block[64]) {
+    uint32_t schedule[64];
+    uint32_t working[8];
+
+    for (size_t index = 0; index < 16; index += 1) {
+        schedule[index] = ((uint32_t)block[index * 4] << 24)
+            | ((uint32_t)block[index * 4 + 1] << 16)
+            | ((uint32_t)block[index * 4 + 2] << 8)
+            | (uint32_t)block[index * 4 + 3];
+    }
+    for (size_t index = 16; index < 64; index += 1) {
+        schedule[index] = pair_sha256_small_sigma1(schedule[index - 2])
+            + schedule[index - 7]
+            + pair_sha256_small_sigma0(schedule[index - 15])
+            + schedule[index - 16];
+    }
+
+    for (size_t index = 0; index < 8; index += 1) {
+        working[index] = state[index];
+    }
+    for (size_t round = 0; round < 64; round += 1) {
+        uint32_t first = working[7]
+            + pair_sha256_big_sigma1(working[4])
+            + pair_sha256_choose(working[4], working[5], working[6])
+            + PAIR_SHA256_CONSTANTS[round]
+            + schedule[round];
+        uint32_t second = pair_sha256_big_sigma0(working[0])
+            + pair_sha256_majority(working[0], working[1], working[2]);
+        working[7] = working[6];
+        working[6] = working[5];
+        working[5] = working[4];
+        working[4] = working[3] + first;
+        working[3] = working[2];
+        working[2] = working[1];
+        working[1] = working[0];
+        working[0] = first + second;
+    }
+    for (size_t index = 0; index < 8; index += 1) {
+        state[index] += working[index];
+    }
+}
+
+/*
+ * The Kofun side carries a message as two 64-element lists because that is
+ * what a `List[Int]` holds. Here the message is a byte pointer, which is C's
+ * own idiom for the same bytes; the gate is what proves they are the same.
+ */
+static void pair_sha256_of_message(
+    const uint8_t *message,
+    size_t length,
+    uint32_t state[8]
+) {
+    static const uint32_t initial[8] = {
+        0x6a09e667u, 0xbb67ae85u, 0x3c6ef372u, 0xa54ff53au,
+        0x510e527fu, 0x9b05688cu, 0x1f83d9abu, 0x5be0cd19u,
+    };
+    uint8_t block[64];
+    size_t padded = length + 1;
+    size_t cursor = 0;
+
+    for (size_t index = 0; index < 8; index += 1) {
+        state[index] = initial[index];
+    }
+    while (padded % 64 != 56) {
+        padded += 1;
+    }
+    padded += 8;
+
+    while (cursor < padded) {
+        for (size_t index = 0; index < 64; index += 1) {
+            size_t at = cursor + index;
+            if (at < length) {
+                block[index] = message[at];
+            } else if (at == length) {
+                block[index] = 0x80u;
+            } else if (at + 8 < padded) {
+                block[index] = 0u;
+            } else {
+                unsigned shift = (unsigned)((padded - 1 - at) * 8);
+                block[index] = (uint8_t)(((uint64_t)length * 8u) >> shift);
+            }
+        }
+        pair_sha256_absorb(state, block);
+        cursor += 64;
+    }
+}
+
+/*
+ * The four published NIST vectors, printed as `name hex`. The Kofun half
+ * constructs the same messages as byte lists and prints the same lines;
+ * `tests/stage2/sha256-pair/check.sh` runs both halves and compares them
+ * against each other and against `bin/kofun-digest`.
+ *
+ * The messages are spelled as strings here and as byte lists in
+ * `compiler.kofun` because that is each language's own idiom for the same
+ * bytes. The gate is what proves they are the same bytes.
+ */
+static int sha256_selftest(void) {
+    static const struct {
+        const char *name;
+        const char *message;
+    } vectors[] = {
+        { "empty", "" },
+        { "abc", "abc" },
+        { "nist448", "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq" },
+        { "nist896",
+          "abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmn"
+          "hijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu" },
+    };
+
+    for (size_t index = 0; index < sizeof vectors / sizeof vectors[0]; index += 1) {
+        uint32_t state[8];
+        char hex[65];
+
+        pair_sha256_of_message(
+            (const uint8_t *)vectors[index].message,
+            strlen(vectors[index].message),
+            state
+        );
+        for (size_t word = 0; word < 8; word += 1) {
+            snprintf(hex + word * 8, 9, "%08x", state[word]);
+        }
+        printf("%s %s\n", vectors[index].name, hex);
+    }
+    return 0;
+}
+
 int main(int argc, char **argv) {
     if (argc == 6 && strcmp(argv[1], "--compile-outcome") == 0) {
         return compile_file(argv[2], argv[3], argv[4], argv[5]);
@@ -30763,6 +30959,9 @@ int main(int argc, char **argv) {
     if (argc == 5 && strcmp(argv[1], "--selfhost-compile") == 0) {
         return selfhost_compile_file(argv[2], argv[3], argv[4]);
     }
+    if (argc == 2 && strcmp(argv[1], "--sha256-selftest") == 0) {
+        return sha256_selftest();
+    }
     if (argc != 5) {
         fputs(
             "usage: kofun-stage2 INPUT.kofun OUTPUT.kofun OUTPUT.ir OUTPUT.tokens\n"
@@ -30772,7 +30971,8 @@ int main(int argc, char **argv) {
             "       kofun-stage2 --emit-scope-hir INPUT.kofun OUTPUT.scope-hir\n"
             "       kofun-stage2 --emit-selfhost-hir INPUT.kofun OUTPUT.hir SOURCE-SHA256\n"
             "       kofun-stage2 --lower-selfhost-c11 INPUT.hir OUTPUT.c\n"
-            "       kofun-stage2 --selfhost-compile INPUT.kofun OUTPUT.c SOURCE-SHA256\n",
+            "       kofun-stage2 --selfhost-compile INPUT.kofun OUTPUT.c SOURCE-SHA256\n"
+            "       kofun-stage2 --sha256-selftest\n",
             stdout
         );
         return 2;

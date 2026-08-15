@@ -679,6 +679,15 @@ tasks:
     cmds:
       - "sh tests/stdlib/kofun-digest-model/check.sh"
 
+  # The model above proves a Kofun SHA-256 exists. This proves the compiler
+  # can reach one: the digest now lives in both halves of the Stage 2 pair
+  # and in `sha256.c`, and three copies are safe only while something
+  # compares them.
+  sha256-pair:
+    desc: "Verify both halves of the Stage 2 pair digest identically to the C oracle"
+    cmds:
+      - "sh tests/stage2/sha256-pair/check.sh"
+
   benchmark-report-comparison:
     desc: "Verify deterministic threshold comparison, rounding, and precedence"
     cmds:
@@ -1306,6 +1315,7 @@ tasks:
             benchmark-report-model \
             benchmark-report-comparison \
             kofun-digest-model \
+            sha256-pair \
             move-assertion \
             usability-corpus \
             capabilities \

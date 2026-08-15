@@ -191,6 +191,7 @@ cc	invoke	1	required-today	required	tests/security/module-interface-artifact.sh
 cc	invoke	8	required-today	required	tests/stage2/list-int-signatures/run.sh
 cc	invoke	8	required-today	required	tests/stage2/list-int-values/run.sh
 cc	invoke	4	required-today	required	tests/stage2/record-values/run.sh
+cc	invoke	1	required-today	required	tests/stage2/sha256-pair/check.sh
 cc	invoke	4	required-today	required	tests/stage2/text-escapes/run.sh
 cc	invoke	4	required-today	required	tests/stage2/unused-function/run.sh
 cc	invoke	5	required-today	required	tests/stdlib/benchmark-report-model/check.sh
@@ -684,6 +685,7 @@ shell-build-driver	source	1	required-today	required	tests/stage2/list-int-signat
 shell-build-driver	source	1	required-today	required	tests/stage2/list-int-values/run.sh
 shell-build-driver	source	1	required-today	required	tests/stage2/optional-pair/run.sh
 shell-build-driver	source	1	required-today	required	tests/stage2/record-values/run.sh
+shell-build-driver	source	1	required-today	required	tests/stage2/sha256-pair/check.sh
 shell-build-driver	source	1	required-today	required	tests/stage2/text-escapes/run.sh
 shell-build-driver	source	1	required-today	required	tests/stage2/unused-function/run.sh
 shell-build-driver	source	1	required-today	required	tests/stage2/while-list-int/run.sh
