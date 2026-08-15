@@ -39,6 +39,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { DETECTORS, FILE_SET, dialectOf, withoutComments } from './detect.mjs'
+import { NEEDS, needOf, reachability } from './reach.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(HERE, '..', '..')
@@ -72,7 +73,10 @@ const EXCLUDED = 'tooling/forbidden-requirements/fixtures/'
  * because an exemption that quietly widened to cover the whole directory would
  * look identical in the output.
  */
-const PATTERN_SOURCE = 'tooling/forbidden-requirements/detect.mjs'
+const PATTERN_SOURCE = new Set([
+    'tooling/forbidden-requirements/detect.mjs',
+    'tooling/forbidden-requirements/reach.mjs',
+])
 
 const CLASSES = new Set(['required-today', 'removable'])
 
@@ -122,9 +126,11 @@ function universe() {
     return files.sort((a, b) => (a.path < b.path ? -1 : 1))
 }
 
-/* One row per (requirement, kind, path), with the number of occurrences. */
+/* One row per (requirement, kind, path), with the number of occurrences and
+ * the derived answer to "must an independent builder obtain this?" (#1459). */
 function detect(files) {
     const rows = new Map()
+    const { where } = reachability(ROOT, files)
     const key = (r, k, p) => `${r}\t${k}\t${p}`
     for (const { path, body } of files) {
         const stripped = withoutComments(path, body)
@@ -133,7 +139,7 @@ function detect(files) {
             let count = 0
             if (detector.kind === 'source') {
                 if (detector.selects(path, body)) count = 1
-            } else if (path !== PATTERN_SOURCE) {
+            } else if (!PATTERN_SOURCE.has(path)) {
                 count = detector.match(stripped, dialect).length
             }
             if (count === 0) continue
@@ -142,6 +148,9 @@ function detect(files) {
                 kind: detector.kind,
                 count,
                 path,
+                need: needOf({
+                    path, body, requirement: detector.requirement, kind: detector.kind,
+                }, where),
             })
         }
     }
@@ -150,7 +159,8 @@ function detect(files) {
 
 /* ---------------------------------------------------------------- the ledger */
 
-function readLedger() {
+function readLedger(quiet = false) {
+    const complain = quiet ? () => {} : fail
     const rows = new Map()
     const raw = readFileSync(LEDGER, 'utf8')
     let lineNumber = 0
@@ -159,14 +169,14 @@ function readLedger() {
         const trimmed = line.trim()
         if (trimmed === '' || trimmed.startsWith('#')) continue
         const fields = line.split('\t')
-        if (fields.length !== 5) {
-            fail(`census.tsv line ${lineNumber} has ${fields.length} fields, expected 5 ` +
-                '(requirement, kind, count, class, path)')
+        if (fields.length !== 6) {
+            complain(`census.tsv line ${lineNumber} has ${fields.length} fields, expected 6 ` +
+                '(requirement, kind, count, class, need, path)')
             continue
         }
-        const [requirement, kind, count, klass, path] = fields.map((f) => f.trim())
+        const [requirement, kind, count, klass, need, path] = fields.map((f) => f.trim())
         rows.set(`${requirement}\t${kind}\t${path}`, {
-            requirement, kind, count: Number(count), class: klass, path, lineNumber,
+            requirement, kind, count: Number(count), class: klass, need, path, lineNumber,
         })
     }
     return rows
@@ -214,7 +224,7 @@ const found = detect(files)
 if (process.argv.includes('--count')) {
     const previous = (() => {
         try {
-            return readLedger()
+            return readLedger(true)
         } catch {
             return new Map()
         }
@@ -225,13 +235,15 @@ if (process.argv.includes('--count')) {
             .filter((r) => r.requirement === requirement)
             .sort((a, b) => (a.kind + a.path < b.kind + b.path ? -1 : 1))
         if (mine.length === 0) {
-            lines.push(`${requirement}\t-\t0\t-\t-`)
+            lines.push(`${requirement}\t-\t0\t-\t-\t-`)
             continue
         }
         for (const row of mine) {
             const kept = previous.get(`${row.requirement}\t${row.kind}\t${row.path}`)
             const klass = kept && CLASSES.has(kept.class) ? kept.class : 'required-today'
-            lines.push(`${row.requirement}\t${row.kind}\t${row.count}\t${klass}\t${row.path}`)
+            lines.push(
+                `${row.requirement}\t${row.kind}\t${row.count}\t${klass}\t${row.need}\t${row.path}`,
+            )
         }
     }
     process.stdout.write(`${lines.join('\n')}\n`)
@@ -276,9 +288,9 @@ for (const row of ledger.values()) {
         continue
     }
     if (row.kind === '-') {
-        if (row.count !== 0 || row.path !== '-' || row.class !== '-') {
+        if (row.count !== 0 || row.path !== '-' || row.class !== '-' || row.need !== '-') {
             fail(`census.tsv line ${row.lineNumber}: a zero row must read ` +
-                `\`${row.requirement}\t-\t0\t-\t-\``)
+                `\`${row.requirement}\t-\t0\t-\t-\t-\``)
         }
         continue
     }
@@ -289,6 +301,10 @@ for (const row of ledger.values()) {
     if (!CLASSES.has(row.class)) {
         fail(`census.tsv line ${row.lineNumber}: class \`${row.class}\` is not ` +
             `${[...CLASSES].join(' or ')}`)
+    }
+    if (!NEEDS.has(row.need)) {
+        fail(`census.tsv line ${row.lineNumber}: need \`${row.need}\` is not one of ` +
+            `${[...NEEDS].join(', ')}`)
     }
 }
 
@@ -304,6 +320,17 @@ for (const [key, row] of found) {
     if (recorded.count !== row.count) {
         fail(`${row.path} uses \`${row.requirement}\` ${row.count} time(s); census.tsv ` +
             `line ${recorded.lineNumber} records ${recorded.count}`)
+    }
+    /*
+     * `need` is derived, so a hand-edited value is not a preference — it is a
+     * claim the tree contradicts. This is what keeps the column from becoming a
+     * suppression list: `bin/kofun`'s cc rows cannot be moved to `optional`,
+     * because its invocations are unguarded and this recomputes that.
+     */
+    if (recorded.need !== row.need) {
+        fail(`${row.path}: \`${row.requirement}\` is \`${row.need}\`; census.tsv line ` +
+            `${recorded.lineNumber} records \`${recorded.need}\`. The need column is ` +
+            'derived from task reachability and the availability guards — edit the tree, not the row')
     }
 }
 
@@ -334,6 +361,27 @@ process.stdout.write(
 process.stdout.write(
     `PASS: ${removable.length} of ${uses.length} recorded uses are classified removable today; ` +
     `${uses.length - removable.length} are required\n`)
+
+/*
+ * The number B6 and B7 are stated in terms of. A count of uses is not what an
+ * independent builder must obtain, and the two differ in both directions —
+ * `scripts/graphify.sh` invokes `python` six times and no gate runs it, while
+ * `examples/rust-shim/check.sh` exits 1 without `cargo` and is in the verify
+ * list. Every value is printed even at zero: a category that disappears when
+ * empty cannot be seen to have grown (#1459).
+ */
+const byNeed = (value) => uses.filter((r) => r.need === value)
+const onPath = byNeed('required')
+process.stdout.write(
+    `PASS: ${onPath.length} of ${uses.length} uses are on the path \`task verify\` runs and ` +
+    'cannot be skipped — this is what an independent builder must obtain\n')
+for (const value of ['optional', 'off-path', 'unknown']) {
+    const rows = byNeed(value)
+    process.stdout.write(
+        `      ${value.padEnd(26)} ${rows.length}` +
+        (rows.length === 0 ? '' : ` (${[...new Set(rows.map((r) => r.requirement))].join(', ')})`) +
+        '\n')
+}
 
 /* The distance itself, per requirement, so the contract and the gap to it are
  * reported together rather than one of them alone reading as the other. */
