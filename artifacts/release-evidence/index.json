@@ -823,7 +823,7 @@
     "tests/conformance/aggregate-bridge/README.md": "aec3624a10648a59d18723bf7429422ff017cec17995402653e403f065ec0f0a",
     "tests/conformance/capabilities.tsv": "7dca885522b8fd775dea20b0622d62fb774d8c8df0b8c71672f379894cdc2eab",
     "tests/conformance/functions/division_floor_signs.kofun": "6bfd48679ebcf604305c78271b80e803866a64d8e9c8f732f5b1884d4d0d67b0",
-    "tests/conformance/modules/re-exports/run.sh": "1da6763ce0862591c974a7a92acc1490477f8c3c6daa5ca2f66b2ffef957607b",
+    "tests/conformance/modules/re-exports/run.sh": "c7fcf06c0d2bad456a1a2620efd2ca98fde9664c598efcb117203c330999200f",
     "tests/conformance/numeric/reject_slash_operator.kofun": "49a14dbd0392e6920a681168af44018182f78175a921592283631c9942045c24",
     "tests/conformance/records/partial_move.kofun": "7d418d3ab0531f864cbd61256cbdeaeb46f7a65b213d62bf776229ddcfa67b85",
     "tests/conformance/records/stage2_unsupported_field.kofun": "3a2a267549694c0ccf71e682b37992d94ff5b0a59b1b6438726b5384d3c46e82",
