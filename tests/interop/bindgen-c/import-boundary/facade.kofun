@@ -1,0 +1,20 @@
+# The reviewed facade (#1217, RFC-0012 step 6).
+#
+# Hand-written, and that is the design rather than an omission: `kofun
+# bindgen-c` generates raw bindings and nothing else, because the review this
+# module represents — pointer ownership, lifetime, thread affinity, error
+# conventions — is the part a generator cannot do. Automatic facade generation
+# is explicitly out of scope for #1217.
+#
+# `trusted import` is the crossing, written once, here. Every consumer imports
+# this module ordinarily and never names `ffi.kbscale` at all.
+module lib.facade
+trusted import ffi.kbscale
+
+# Reviewed: `kbscale_double` reads its argument and returns a value. It borrows
+# nothing, allocates nothing, and has no error convention, so the safe wrapper
+# is the identity. A binding that owned memory would need more here, which is
+# the whole reason this file is written rather than generated.
+pub fn doubled(value: Int) -> Int {
+    return kbscale.kbscale_double(value)
+}

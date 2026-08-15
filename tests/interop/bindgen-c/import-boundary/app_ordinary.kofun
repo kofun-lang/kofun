@@ -1,0 +1,9 @@
+# Reaching the raw module with an ordinary import: the crossing is not written
+# down, so it is refused (E2S171). Also used against a renamed copy, where the
+# only thing that has changed is the filename.
+module app.main
+import ffi.kbscale
+
+fn main() -> Int {
+    return kbscale.kbscale_double(21)
+}

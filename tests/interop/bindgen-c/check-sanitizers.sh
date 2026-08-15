@@ -115,7 +115,15 @@ assert_grep 'the fixture library carries no AddressSanitizer instrumentation' \
 report="$WORK/gen/kbfix.bindgen.json"
 assert_regular_file 'generated audit report' "$report"
 
-cat "$WORK/gen/kbfix.raw.kofun" "$CASES/driver.kofun" >"$WORK/program.kofun"
+# The single-file `--c-abi` profile has no modules and no visibility keywords,
+# so the module framing #1217 added is removed before this build, exactly as
+# `check.sh` does. This gate is about what happens at the boundary under ASan
+# and UBSan; the framing is what `import-boundary/run.sh` builds and runs.
+sed -e '/^module kbfix$/d' -e '/^trust raw-foreign$/d' \
+    -e 's/^pub extern "C" fn /extern "C" fn /' "$WORK/gen/kbfix.raw.kofun" \
+    >"$WORK/module-declarations.kofun"
+cat "$WORK/module-declarations.kofun" "$CASES/driver.kofun" \
+    >"$WORK/program.kofun"
 
 # `kofun build` emits C and links it in one operation. The link is not
 # optional, so it must use the same sanitizer runtime as the instrumented

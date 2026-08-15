@@ -33,7 +33,7 @@ export const GROUPS = Object.freeze([
             'wasi-command-projection-contract', 'wasi-command-backend-shell', 'adt-match-v2-contract',
             'native-toolchain-contract', 'forbidden-requirements-census', 'machine-dependent-bounds',
             'wasm-object-arena',
-            'wasm-list-v1', 'c-abi', 'bindgen-c'
+            'wasm-list-v1', 'c-abi', 'bindgen-c', 'bindgen-c-import-boundary'
         ]
     },
     {

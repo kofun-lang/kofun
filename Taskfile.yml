@@ -570,6 +570,11 @@ tasks:
     cmds:
       - "sh tests/interop/bindgen-c/check.sh"
 
+  bindgen-c-import-boundary:
+    desc: "Verify generated raw bindings are reachable only through a reviewed facade"
+    cmds:
+      - "sh tests/interop/bindgen-c/import-boundary/run.sh"
+
   rust-shim:
     desc: "Verify the vendored Rust crate shim offline"
     cmds:
@@ -1273,6 +1278,7 @@ tasks:
             tour \
             c-abi \
             bindgen-c \
+            bindgen-c-import-boundary \
             rust-shim \
             http \
             http-client-model \

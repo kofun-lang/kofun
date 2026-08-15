@@ -181,6 +181,7 @@ cc	invoke	1	required-today	optional	tests/http/check.sh
 cc	invoke	2	required-today	required	tests/interfaces/visibility-filtering.sh
 cc	invoke	6	required-today	required	tests/interop/bindgen-c/check-sanitizers.sh
 cc	invoke	4	required-today	required	tests/interop/bindgen-c/check.sh
+cc	invoke	1	required-today	required	tests/interop/bindgen-c/import-boundary/run.sh
 cc	invoke	2	required-today	required	tests/module-constants/check.sh
 cc	invoke	2	required-today	required	tests/modules/extern-c/check.sh
 cc	invoke	2	required-today	required	tests/modules/inventory/check.sh
@@ -278,6 +279,7 @@ node	invoke	2	required-today	required	tests/interfaces/visibility-filtering.sh
 node	invoke	2	required-today	required	tests/interop/bindgen-c/check-fuzz.sh
 node	invoke	1	required-today	required	tests/interop/bindgen-c/check-sanitizers.sh
 node	invoke	7	required-today	required	tests/interop/bindgen-c/check.sh
+node	invoke	2	required-today	required	tests/interop/bindgen-c/import-boundary/run.sh
 node	invoke	14	required-today	required	tests/lsp/check.sh
 node	invoke	5	required-today	required	tests/lsp/visibility.sh
 node	invoke	9	required-today	required	tests/release/check-claims.sh
@@ -660,6 +662,7 @@ shell-build-driver	source	1	required-today	required	tests/interop/bindgen-c/chec
 shell-build-driver	source	1	required-today	required	tests/interop/bindgen-c/check-sanitizers.sh
 shell-build-driver	source	1	required-today	required	tests/interop/bindgen-c/check.sh
 shell-build-driver	source	1	required-today	unknown	tests/interop/bindgen-c/fuzz/hanging-clang.sh
+shell-build-driver	source	1	required-today	required	tests/interop/bindgen-c/import-boundary/run.sh
 shell-build-driver	source	1	required-today	required	tests/kofun/check.sh
 shell-build-driver	source	1	required-today	required	tests/lsp/check.sh
 shell-build-driver	source	1	required-today	required	tests/lsp/visibility.sh

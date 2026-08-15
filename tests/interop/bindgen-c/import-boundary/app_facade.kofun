@@ -1,0 +1,8 @@
+# The ordinary consumer. It imports the reviewed facade and never names the
+# raw module, which is what the boundary is for.
+module app.main
+import lib.facade
+
+fn main() -> Int {
+    return facade.doubled(21)
+}
