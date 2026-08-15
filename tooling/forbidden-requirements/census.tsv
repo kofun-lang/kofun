@@ -102,7 +102,7 @@ cc	invoke	1	required-today	required	bootstrap/stage2/build.sh
 cc	invoke	14	required-today	required	bootstrap/stage2/check.sh
 cc	invoke	1	required-today	required	bootstrap/stage2/fuzz-sanitizer-cc-wrapper.sh
 cc	invoke	2	required-today	required	bootstrap/stage2/fuzz-sanitizer-object.sh
-cc	invoke	8	required-today	required	bootstrap/stage2/semantic-objects.sh
+cc	invoke	12	required-today	required	bootstrap/stage2/semantic-objects.sh
 cc	invoke	1	required-today	required	bootstrap/stage2/verify-cc-wrapper.sh
 cc	invoke	2	required-today	required	bootstrap/wasm/check.sh
 cc	invoke	3	required-today	required	bootstrap/wasm/object_arena_check.sh

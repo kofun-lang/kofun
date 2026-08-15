@@ -51,6 +51,10 @@ command -v "$CC" >/dev/null 2>&1 || fail 'a C11 compiler is required'
 rm -rf "$WORK"
 mkdir -p "$WORK"
 kofun_stage2_semantic_common_inputs "$ROOT"
+# #1449. The four common sources this gate's analyzer arm links are
+# analysed once per verify run and reused; unset the bundle and they are
+# compiled from source here, which keeps this gate standalone.
+kofun_stage2_analyzer_common_inputs "$ROOT"
 
 build_tool() {
     compiler=$1
@@ -722,13 +726,14 @@ cmp "$WORK/cache/manifest" "$WORK/cache-sanitized/manifest" ||
     fail 'the sanitized build produced a different persisted graph'
 expect_set "$WORK/sanitized-warm.report" "$ALL_REUSED" 'sanitized warm run'
 
-if "$CC" -std=c11 -O0 -Wall -Wextra -Werror -pedantic -fanalyzer \
+if KOFUN_STAGE2_COMMON_LINK_ID=incremental/analyzed \
+    "$CC" -std=c11 -O0 -Wall -Wextra -Werror -pedantic -fanalyzer \
     -I"$ROOT/bootstrap/stage2" \
     "$ROOT/bootstrap/stage2/incremental_graph.c" \
-    "$ROOT/bootstrap/stage2/kif_v1.c" \
-    "$ROOT/bootstrap/stage2/visibility_access.c" \
-    "$ROOT/unicode/kofun_unicode.c" \
-    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$KOFUN_STAGE2_ANALYZER_KIF_V1_INPUT" \
+    "$KOFUN_STAGE2_ANALYZER_VISIBILITY_INPUT" \
+    "$KOFUN_STAGE2_ANALYZER_UNICODE_INPUT" \
+    "$KOFUN_STAGE2_ANALYZER_SHA256_INPUT" \
     -o "$WORK/incremental-analyzed" >/dev/null 2>&1
 then
     printf '%s\n' 'PASS: GCC analyzer accepts the incremental graph'

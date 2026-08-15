@@ -224,7 +224,11 @@ kofun_stage2_semantic_roles() {
         common-kif-v1-o2 \
         common-unicode-o2 \
         common-sha256-o2 \
-        common-visibility-o2
+        common-visibility-o2 \
+        common-kif-v1-analyzer \
+        common-unicode-analyzer \
+        common-sha256-analyzer \
+        common-visibility-analyzer
 }
 
 # kofun_stage2_semantic_role_input_paths ROLE
@@ -258,19 +262,19 @@ kofun_stage2_semantic_role_input_paths() {
                 bootstrap/stage2/sha256.h \
                 vendor/utf8proc/utf8proc.h
             ;;
-        sha256|common-sha256-o2)
+        sha256|common-sha256-o2|common-sha256-analyzer)
             printf '%s\n' \
                 bootstrap/stage2/sha256.c \
                 bootstrap/stage2/sha256.h
             ;;
-        common-kif-v1-o2)
+        common-kif-v1-o2|common-kif-v1-analyzer)
             printf '%s\n' \
                 bootstrap/stage2/kif_v1.c \
                 bootstrap/stage2/kif_v1.h \
                 bootstrap/stage2/sha256.h \
                 unicode/kofun_unicode.h
             ;;
-        common-unicode-o2)
+        common-unicode-o2|common-unicode-analyzer)
             printf '%s\n' \
                 unicode/kofun_unicode.c \
                 unicode/kofun_unicode.h \
@@ -279,7 +283,7 @@ kofun_stage2_semantic_role_input_paths() {
                 vendor/utf8proc/utf8proc.h \
                 vendor/utf8proc/utf8proc_data.c
             ;;
-        common-visibility-o2)
+        common-visibility-o2|common-visibility-analyzer)
             printf '%s\n' \
                 bootstrap/stage2/visibility_access.c \
                 bootstrap/stage2/visibility_access.h
@@ -346,6 +350,14 @@ kofun_stage2_semantic_manifest_write() {
         '-std=c11|-O2|-Wall|-Wextra|-Werror|-pedantic|-Ibootstrap/stage2|-c|bootstrap/stage2/sha256.c|-o|sha256-common-o2.o'
     printf '%s\t%s\t%s\n' profile common-visibility-o2 \
         '-std=c11|-O2|-Wall|-Wextra|-Werror|-pedantic|-Ibootstrap/stage2|-c|bootstrap/stage2/visibility_access.c|-o|visibility-access-common-o2.o'
+    printf '%s\t%s\t%s\n' profile common-kif-v1-analyzer \
+        '-std=c11|-O0|-Wall|-Wextra|-Werror|-pedantic|-fanalyzer|-Ibootstrap/stage2|-c|bootstrap/stage2/kif_v1.c|-o|kif-v1-common-analyzer.o'
+    printf '%s\t%s\t%s\n' profile common-unicode-analyzer \
+        '-std=c11|-O0|-Wall|-Wextra|-Werror|-pedantic|-fanalyzer|-Ibootstrap/stage2|-c|unicode/kofun_unicode.c|-o|kofun-unicode-common-analyzer.o'
+    printf '%s\t%s\t%s\n' profile common-sha256-analyzer \
+        '-std=c11|-O0|-Wall|-Wextra|-Werror|-pedantic|-fanalyzer|-Ibootstrap/stage2|-c|bootstrap/stage2/sha256.c|-o|sha256-common-analyzer.o'
+    printf '%s\t%s\t%s\n' profile common-visibility-analyzer \
+        '-std=c11|-O0|-Wall|-Wextra|-Werror|-pedantic|-fanalyzer|-Ibootstrap/stage2|-c|bootstrap/stage2/visibility_access.c|-o|visibility-access-common-analyzer.o'
 
     for kofun_semantic_input_role in $(kofun_stage2_semantic_roles); do
         kofun_stage2_semantic_role_input_paths "$kofun_semantic_input_role" |
@@ -370,7 +382,11 @@ kofun_stage2_semantic_manifest_write() {
         'common-kif-v1-o2|kif-v1-common-o2.o|bootstrap/stage2/kif_v1.c' \
         'common-unicode-o2|kofun-unicode-common-o2.o|unicode/kofun_unicode.c' \
         'common-sha256-o2|sha256-common-o2.o|bootstrap/stage2/sha256.c' \
-        'common-visibility-o2|visibility-access-common-o2.o|bootstrap/stage2/visibility_access.c'
+        'common-visibility-o2|visibility-access-common-o2.o|bootstrap/stage2/visibility_access.c' \
+        'common-kif-v1-analyzer|kif-v1-common-analyzer.o|bootstrap/stage2/kif_v1.c' \
+        'common-unicode-analyzer|kofun-unicode-common-analyzer.o|unicode/kofun_unicode.c' \
+        'common-sha256-analyzer|sha256-common-analyzer.o|bootstrap/stage2/sha256.c' \
+        'common-visibility-analyzer|visibility-access-common-analyzer.o|bootstrap/stage2/visibility_access.c'
     do
         kofun_semantic_old_ifs=$IFS
         IFS='|'
@@ -612,9 +628,13 @@ kofun_stage2_semantic_objects_validate() {
     done
     kofun_semantic_object_count=$(find "$kofun_semantic_object_dir" \
         -mindepth 1 -maxdepth 1 -print | wc -l | tr -d ' ') || return 1
-    test "$kofun_semantic_object_count" -eq 10 || {
+    # Ten members became fourteen when #1449 added the `-O0 -fanalyzer` family:
+    # eight objects, the marker, the manifest, and the four analyzer objects.
+    # The count is declared rather than derived so a member arriving or leaving
+    # is a failure, not a silent change in what a consumer links.
+    test "$kofun_semantic_object_count" -eq 14 || {
         kofun_stage2_semantic_object_fail \
-            "object bundle must contain exactly ten members, found $kofun_semantic_object_count"
+            "object bundle must contain exactly fourteen members, found $kofun_semantic_object_count"
         return 1
     }
     kofun_semantic_expected_marker_output=$(
@@ -762,6 +782,51 @@ kofun_stage2_semantic_common_inputs() {
     KOFUN_STAGE2_COMMON_VISIBILITY_INPUT="$kofun_semantic_common_root/bootstrap/stage2/visibility_access.c"
 }
 
+# kofun_stage2_analyzer_common_inputs ROOT
+#
+# The same four common sources under `-O0 -fanalyzer` (#1449). Six gates each
+# ran a whole-program analyzer compile over their own source plus these, and
+# the run's own compiler census counted the repeats: `kofun_unicode.c` and
+# `sha256.c` analysed 7 times each, `kif_v1.c` 6, `visibility_access.c` 4 --
+# 20 redundant analyses of a source whose result cannot differ between them.
+#
+# Sharing is sound because `-fanalyzer` is per translation unit: a TU analysed
+# alone receives exactly the analysis it received beside its neighbours, and
+# `-Werror` means a diagnostic in one of these fails the bundle build instead
+# of the gate that happened to reach it first.
+#
+# One consuming gate, `tests/conformance/modules/imports-selective/run.sh`,
+# omits the `-Ibootstrap/stage2` the others pass. Changing analyzer flags is
+# out of scope for #1449, so sharing had to be justified rather than
+# normalised: all four objects are byte-identical compiled with and without
+# that flag, because these translation units resolve the same header closure
+# either way. The closure is what `role_input_paths` declares and the manifest
+# digests, so a header arriving that does depend on it fails the bundle rather
+# than silently changing an object.
+#
+# Set mode validates the complete v2 bundle before exposing any member; unset
+# mode leaves every owning gate standalone and source-built, which is what
+# keeps each one independently runnable.
+kofun_stage2_analyzer_common_inputs() {
+    kofun_analyzer_common_root=$1
+
+    if test "${KOFUN_STAGE2_SEMANTIC_OBJECT_DIR+x}" = x; then
+        kofun_stage2_semantic_objects_validate \
+            "$kofun_analyzer_common_root" \
+            "$KOFUN_STAGE2_SEMANTIC_OBJECT_DIR" || return 1
+        KOFUN_STAGE2_ANALYZER_KIF_V1_INPUT="$KOFUN_STAGE2_SEMANTIC_OBJECT_DIR/kif-v1-common-analyzer.o"
+        KOFUN_STAGE2_ANALYZER_UNICODE_INPUT="$KOFUN_STAGE2_SEMANTIC_OBJECT_DIR/kofun-unicode-common-analyzer.o"
+        KOFUN_STAGE2_ANALYZER_SHA256_INPUT="$KOFUN_STAGE2_SEMANTIC_OBJECT_DIR/sha256-common-analyzer.o"
+        KOFUN_STAGE2_ANALYZER_VISIBILITY_INPUT="$KOFUN_STAGE2_SEMANTIC_OBJECT_DIR/visibility-access-common-analyzer.o"
+        return 0
+    fi
+
+    KOFUN_STAGE2_ANALYZER_KIF_V1_INPUT="$kofun_analyzer_common_root/bootstrap/stage2/kif_v1.c"
+    KOFUN_STAGE2_ANALYZER_UNICODE_INPUT="$kofun_analyzer_common_root/unicode/kofun_unicode.c"
+    KOFUN_STAGE2_ANALYZER_SHA256_INPUT="$kofun_analyzer_common_root/bootstrap/stage2/sha256.c"
+    KOFUN_STAGE2_ANALYZER_VISIBILITY_INPUT="$kofun_analyzer_common_root/bootstrap/stage2/visibility_access.c"
+}
+
 # kofun_stage2_semantic_objects_build ROOT OBJECT_DIR
 #
 # Builds in a sibling temporary directory.  chmod completes the immutable
@@ -842,6 +907,31 @@ kofun_stage2_semantic_objects_build() {
             -I"$kofun_semantic_build_root/bootstrap/stage2" \
             -c "$kofun_semantic_build_root/bootstrap/stage2/visibility_access.c" \
             -o "$kofun_semantic_build_tmp/visibility-access-common-o2.o"
+        # #1449. The `-O0 -fanalyzer` family. Six gates each ran a
+        # whole-program analyzer compile over their own source plus these four,
+        # so the run's own census counted 20 redundant analyzer compiles of
+        # shared sources. `-fanalyzer` is per translation unit, so analysing a
+        # TU alone is the same analysis it received alongside others.
+        "$kofun_semantic_build_cc" \
+            -std=c11 -O0 -Wall -Wextra -Werror -pedantic -fanalyzer \
+            -I"$kofun_semantic_build_root/bootstrap/stage2" \
+            -c "$kofun_semantic_build_root/bootstrap/stage2/kif_v1.c" \
+            -o "$kofun_semantic_build_tmp/kif-v1-common-analyzer.o"
+        "$kofun_semantic_build_cc" \
+            -std=c11 -O0 -Wall -Wextra -Werror -pedantic -fanalyzer \
+            -I"$kofun_semantic_build_root/bootstrap/stage2" \
+            -c "$kofun_semantic_build_root/unicode/kofun_unicode.c" \
+            -o "$kofun_semantic_build_tmp/kofun-unicode-common-analyzer.o"
+        "$kofun_semantic_build_cc" \
+            -std=c11 -O0 -Wall -Wextra -Werror -pedantic -fanalyzer \
+            -I"$kofun_semantic_build_root/bootstrap/stage2" \
+            -c "$kofun_semantic_build_root/bootstrap/stage2/sha256.c" \
+            -o "$kofun_semantic_build_tmp/sha256-common-analyzer.o"
+        "$kofun_semantic_build_cc" \
+            -std=c11 -O0 -Wall -Wextra -Werror -pedantic -fanalyzer \
+            -I"$kofun_semantic_build_root/bootstrap/stage2" \
+            -c "$kofun_semantic_build_root/bootstrap/stage2/visibility_access.c" \
+            -o "$kofun_semantic_build_tmp/visibility-access-common-analyzer.o"
         printf '%s\n' 'kofun.stage2-semantic-objects/v2' \
             >"$kofun_semantic_build_tmp/complete-v2"
         kofun_stage2_semantic_manifest_write \

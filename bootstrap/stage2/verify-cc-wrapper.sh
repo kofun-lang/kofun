@@ -44,6 +44,20 @@ common_sha_object=0
 common_sha_object_count=0
 common_visibility_object=0
 common_visibility_object_count=0
+# #1449. The analyzer members get their own counters rather than sharing the
+# O2 ones. Sharing would make the two variants interchangeable to every rule
+# below, and an analyzer arm that linked the O2 object would then be
+# indistinguishable from one that linked the analysed object -- which is the
+# one failure the analyzer arm exists to rule out, since `-fanalyzer` is a
+# compile-time diagnostic that a prebuilt O2 object never carried.
+common_kif_analyzer_object=0
+common_kif_analyzer_object_count=0
+common_unicode_analyzer_object=0
+common_unicode_analyzer_object_count=0
+common_sha_analyzer_object=0
+common_sha_analyzer_object_count=0
+common_visibility_analyzer_object=0
+common_visibility_analyzer_object_count=0
 optimization=none
 optimization_count=0
 library=0
@@ -153,6 +167,31 @@ for argument in "$@"; do
             common_visibility_object=1
             common_visibility_object_count=$((common_visibility_object_count + 1))
             ;;
+        # #1449. The `-O0 -fanalyzer` members of the same bundle. They must be
+        # recognised here or the passthrough below stops observing exactly the
+        # invocations whose count this census exists to report: a gate linking
+        # them touches no other tracked input, so every counter would be zero
+        # and the reuse would read as absent rather than as achieved.
+        */kif-v1-common-analyzer.o)
+            common_kif_analyzer_object=1
+            common_kif_analyzer_object_count=$((
+                common_kif_analyzer_object_count + 1))
+            ;;
+        */kofun-unicode-common-analyzer.o)
+            common_unicode_analyzer_object=1
+            common_unicode_analyzer_object_count=$((
+                common_unicode_analyzer_object_count + 1))
+            ;;
+        */sha256-common-analyzer.o)
+            common_sha_analyzer_object=1
+            common_sha_analyzer_object_count=$((
+                common_sha_analyzer_object_count + 1))
+            ;;
+        */visibility-access-common-analyzer.o)
+            common_visibility_analyzer_object=1
+            common_visibility_analyzer_object_count=$((
+                common_visibility_analyzer_object_count + 1))
+            ;;
         */bootstrap/stage2/kif_v1_tool.c)
             primary=kif-v1-tool
             primary_count=$((primary_count + 1))
@@ -175,6 +214,15 @@ for argument in "$@"; do
             ;;
         */bootstrap/stage2/re_exports.c)
             primary=re-exports
+            primary_count=$((primary_count + 1))
+            ;;
+        # Primaries reached only through an analysed site (#1449).
+        */bootstrap/stage2/imports_selective.c)
+            primary=imports-selective
+            primary_count=$((primary_count + 1))
+            ;;
+        */bootstrap/stage2/module_symbols.c)
+            primary=module-symbols
             primary_count=$((primary_count + 1))
             ;;
         */tests/conformance/modules/re-exports/export_binding_reference.c)
@@ -259,8 +307,12 @@ esac
 
 common_source_count=$((common_kif_source_count + common_unicode_source_count +
     sha_source_count + common_visibility_source_count))
+common_analyzer_object_count=$((common_kif_analyzer_object_count +
+    common_unicode_analyzer_object_count + common_sha_analyzer_object_count +
+    common_visibility_analyzer_object_count))
 common_object_count=$((common_kif_object_count + common_unicode_object_count +
-    common_sha_object_count + common_visibility_object_count))
+    common_sha_object_count + common_visibility_object_count +
+    common_analyzer_object_count))
 
 # A selected common link is a closed call-site contract, not a basename
 # heuristic.  Each identity fixes its role set, primary translation unit,
@@ -275,6 +327,16 @@ expected_output=none
 expected_library=0
 expected_diagnostic_faults=0
 expected_semantic_library=0
+# 0 for a linked O2 site, 1 for an `-O0 -fanalyzer` site (#1449). The field
+# selects which member variant the site may consume, so the two can never
+# satisfy each other's contract.
+expected_analyzer=0
+# Every site but one passes exactly one `-I`. The selective-import analyzer
+# arm passes none, and its members are still substitutable because the shared
+# sources compile to the same bytes with and without it -- which is why the
+# count is a declared field here rather than a constant the odd site would
+# have been quietly edited to satisfy.
+expected_include=1
 case $common_site in
     kif-v1/tool)
         site_known=1
@@ -292,6 +354,56 @@ case $common_site in
         expected_sha=1
         expected_primary=kif-v1-codec-test
         expected_output=codec-test
+        ;;
+    # The `-O0 -fanalyzer` arms (#1449). Each one is the same closed contract
+    # as its O2 sibling: role set, primary translation unit, output name.
+    kif-v1/analyzed)
+        site_known=1
+        expected_analyzer=1
+        expected_kif=1
+        expected_unicode=1
+        expected_sha=1
+        expected_primary=kif-v1-tool
+        expected_output=kofun-kif-v1-analyzed
+        ;;
+    incremental/analyzed)
+        site_known=1
+        expected_analyzer=1
+        expected_kif=1
+        expected_unicode=1
+        expected_sha=1
+        expected_visibility=1
+        expected_primary=incremental-graph
+        expected_output=incremental-analyzed
+        ;;
+    imports-selective/analyzed)
+        site_known=1
+        expected_analyzer=1
+        expected_include=0
+        expected_kif=1
+        expected_unicode=1
+        expected_sha=1
+        expected_visibility=1
+        expected_primary=imports-selective
+        expected_output=imports-selective-analyzed
+        ;;
+    re-exports/analyzed)
+        site_known=1
+        expected_analyzer=1
+        expected_kif=1
+        expected_unicode=1
+        expected_sha=1
+        expected_visibility=1
+        expected_primary=re-exports
+        expected_output=re-exports-analyzed
+        ;;
+    top-level-declarations/analyzed)
+        site_known=1
+        expected_analyzer=1
+        expected_unicode=1
+        expected_sha=1
+        expected_primary=module-symbols
+        expected_output=kofun-module-symbols-analyzed
         ;;
     artifact-qualification/kif-tool)
         site_known=1
@@ -465,7 +577,9 @@ compiler_identity=not-required
 common_identity_required=0
 case $output_name in
     kif-v1-common-o2.o|kofun-unicode-common-o2.o|sha256-common-o2.o|\
-visibility-access-common-o2.o)
+visibility-access-common-o2.o|kif-v1-common-analyzer.o|\
+kofun-unicode-common-analyzer.o|sha256-common-analyzer.o|\
+visibility-access-common-analyzer.o)
         common_identity_required=1
         ;;
 esac
@@ -564,11 +678,13 @@ then
     strict_common_compile=1
 fi
 
-strict_common_link=0
-if test "$site_known" -eq 1 &&
-   test "$compiler_identity" = valid &&
-   test "$language_c11_count" -eq 1 &&
-   test "$optimization" = O2 &&
+# The same contract at `-O0 -fanalyzer` (#1449). Written out rather than
+# parameterised over the O2 form because the two differ in exactly the two
+# fields that decide whether the object carries analysis, and a shared
+# predicate would let a mistake in either one satisfy the other.
+strict_common_analyzer_compile=0
+if test "$language_c11_count" -eq 1 &&
+   test "$optimization" = O0 &&
    test "$optimization_count" -eq 1 &&
    test "$debug_count" -eq 0 &&
    test "$wall_count" -eq 1 &&
@@ -576,12 +692,57 @@ if test "$site_known" -eq 1 &&
    test "$werror_count" -eq 1 &&
    test "$pedantic_count" -eq 1 &&
    test "$include_count" -eq 1 &&
+   test "$compile_only_count" -eq 1 &&
+   test "$output_count" -eq 1 &&
+   test "$expect_output" -eq 0 &&
+   test "$profile_extra" -eq 0 &&
+   test "$sanitizer" -eq 0 &&
+   test "$analyzer" -eq 1 &&
+   test "$pic" -eq 0 &&
+   test "$primary_count" -eq 0 &&
+   test "$library_count" -eq 0 &&
+   test "$diagnostic_faults_count" -eq 0 &&
+   test "$work_limit_count" -eq 0 &&
+   test "$common_object_count" -eq 0 &&
+   test "$main_object_count" -eq 0 &&
+   test "$library_object_count" -eq 0 &&
+   test "$events_object_count" -eq 0 &&
+   test "$semantic_sha_object_count" -eq 0 &&
+   test "$producer_source_count" -eq 0 &&
+   test "$events_source_count" -eq 0 &&
+   test "$compiler_identity" = valid
+then
+    strict_common_analyzer_compile=1
+fi
+
+# A linked site is O2 unless it declared itself analysed, in which case the
+# optimisation level and the analyzer flag both invert. Nothing else about the
+# contract moves.
+common_link_optimization=O2
+common_link_analyzer=0
+if test "$expected_analyzer" -eq 1; then
+    common_link_optimization=O0
+    common_link_analyzer=1
+fi
+
+strict_common_link=0
+if test "$site_known" -eq 1 &&
+   test "$compiler_identity" = valid &&
+   test "$language_c11_count" -eq 1 &&
+   test "$optimization" = "$common_link_optimization" &&
+   test "$optimization_count" -eq 1 &&
+   test "$debug_count" -eq 0 &&
+   test "$wall_count" -eq 1 &&
+   test "$wextra_count" -eq 1 &&
+   test "$werror_count" -eq 1 &&
+   test "$pedantic_count" -eq 1 &&
+   test "$include_count" -eq "$expected_include" &&
    test "$compile_only_count" -eq 0 &&
    test "$output_count" -eq 1 &&
    test "$expect_output" -eq 0 &&
    test "$profile_extra" -eq 0 &&
    test "$sanitizer" -eq 0 &&
-   test "$analyzer" -eq 0 &&
+   test "$analyzer" -eq "$common_link_analyzer" &&
    test "$pic" -eq 0 &&
    test "$primary_count" -eq 1 &&
    test "$primary" = "$expected_primary" &&
@@ -610,10 +771,35 @@ then
 fi
 
 object_roles_match=0
-if test "$common_kif_object_count" -eq "$expected_kif" &&
+if test "$expected_analyzer" -eq 1; then
+    # An analysed site must consume the analysed members and nothing else.
+    # The O2 counts are pinned at zero here, and the analysed counts are
+    # pinned at zero below, so linking the wrong variant fails the site
+    # rather than passing as the other one.
+    if test "$common_kif_analyzer_object_count" -eq "$expected_kif" &&
+       test "$common_unicode_analyzer_object_count" -eq "$expected_unicode" &&
+       test "$common_sha_analyzer_object_count" -eq "$expected_sha" &&
+       test "$common_visibility_analyzer_object_count" -eq \
+           "$expected_visibility" &&
+       test "$common_kif_object_count" -eq 0 &&
+       test "$common_unicode_object_count" -eq 0 &&
+       test "$common_sha_object_count" -eq 0 &&
+       test "$common_visibility_object_count" -eq 0 &&
+       test "$common_source_count" -eq 0 &&
+       test "$producer_source_count" -eq 0 &&
+       test "$events_source_count" -eq 0 &&
+       test "$main_object_count" -eq 0 &&
+       test "$library_object_count" -eq 0 &&
+       test "$events_object_count" -eq 0 &&
+       test "$semantic_sha_object_count" -eq 0
+    then
+        object_roles_match=1
+    fi
+elif test "$common_kif_object_count" -eq "$expected_kif" &&
    test "$common_unicode_object_count" -eq "$expected_unicode" &&
    test "$common_sha_object_count" -eq "$expected_sha" &&
    test "$common_visibility_object_count" -eq "$expected_visibility" &&
+   test "$common_analyzer_object_count" -eq 0 &&
    test "$common_source_count" -eq 0 &&
    test "$producer_source_count" -eq 0 &&
    test "$events_source_count" -eq 0 &&
@@ -636,11 +822,19 @@ elif test "$common_site" != none; then
     if test "$strict_common_link" -eq 1 &&
        test "$source_roles_match" -eq 1
     then
-        common_class=common-source-link
+        if test "$expected_analyzer" -eq 1; then
+            common_class=common-analyzer-source-link
+        else
+            common_class=common-source-link
+        fi
     elif test "$strict_common_link" -eq 1 &&
          test "$object_roles_match" -eq 1
     then
-        common_class=common-object-link
+        if test "$expected_analyzer" -eq 1; then
+            common_class=common-analyzer-object-link
+        else
+            common_class=common-object-link
+        fi
     elif test "$common_source_count" -gt 0 &&
          test "$common_object_count" -gt 0
     then
@@ -667,6 +861,28 @@ then
          test "$output_name" = visibility-access-common-o2.o
     then
         common_class=common-compile-visibility
+    else
+        common_class=unexpected-common-compile
+    fi
+elif test "$strict_common_analyzer_compile" -eq 1 &&
+     test "$common_source_count" -eq 1
+then
+    if test "$common_kif_source_count" -eq 1 &&
+       test "$output_name" = kif-v1-common-analyzer.o
+    then
+        common_class=common-compile-kif-v1-analyzer
+    elif test "$common_unicode_source_count" -eq 1 &&
+         test "$output_name" = kofun-unicode-common-analyzer.o
+    then
+        common_class=common-compile-unicode-analyzer
+    elif test "$sha_source_count" -eq 1 &&
+         test "$output_name" = sha256-common-analyzer.o
+    then
+        common_class=common-compile-sha256-analyzer
+    elif test "$common_visibility_source_count" -eq 1 &&
+         test "$output_name" = visibility-access-common-analyzer.o
+    then
+        common_class=common-compile-visibility-analyzer
     else
         common_class=unexpected-common-compile
     fi

@@ -34,13 +34,14 @@ run_re_export_analyzer() {
     re_exports_analyzer_stderr="$re_exports_analyzer_output.stderr"
     rm -f -- "$re_exports_analyzer_output" \
         "$re_exports_analyzer_stdout" "$re_exports_analyzer_stderr"
-    if "$CC" -std=c11 -O0 -Wall -Wextra -Werror -pedantic -fanalyzer \
+    if KOFUN_STAGE2_COMMON_LINK_ID=re-exports/analyzed \
+        "$CC" -std=c11 -O0 -Wall -Wextra -Werror -pedantic -fanalyzer \
         -I"$ROOT/bootstrap/stage2" \
         "$ROOT/bootstrap/stage2/re_exports.c" \
-        "$ROOT/bootstrap/stage2/kif_v1.c" \
-        "$ROOT/bootstrap/stage2/visibility_access.c" \
-        "$ROOT/unicode/kofun_unicode.c" \
-        "$ROOT/bootstrap/stage2/sha256.c" \
+        "$KOFUN_STAGE2_ANALYZER_KIF_V1_INPUT" \
+        "$KOFUN_STAGE2_ANALYZER_VISIBILITY_INPUT" \
+        "$KOFUN_STAGE2_ANALYZER_UNICODE_INPUT" \
+        "$KOFUN_STAGE2_ANALYZER_SHA256_INPUT" \
         -o "$re_exports_analyzer_output" \
         >"$re_exports_analyzer_stdout" 2>"$re_exports_analyzer_stderr"
     then
@@ -71,6 +72,10 @@ esac
 rm -rf "$WORK"
 mkdir -p "$WORK"
 kofun_stage2_semantic_common_inputs "$ROOT"
+# #1449. The four common sources this gate's analyzer arm links are
+# analysed once per verify run and reused; unset the bundle and they are
+# compiled from source here, which keeps this gate standalone.
+kofun_stage2_analyzer_common_inputs "$ROOT"
 
 KOFUN_STAGE2_COMMON_LINK_ID=re-exports/resolver \
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
@@ -1257,6 +1262,12 @@ assert_grep "forced re-export analyzer created a partial regular output" \
     "$re_exports_analyzer_fake_partial"
 # Keep the runtime strings below exact while splitting directory and filename
 # tokens so this golden fixture is not counted as a static compile site.
+#
+# The four common inputs are named through the #1449 accessor rather than
+# written out, because this fixture's whole claim is that the forced path
+# receives *the production argv*. Spelling the sources here would pin one mode
+# and pass by accident in the other: with the object bundle published these are
+# prebuilt `.o` members, and without it they are the `.c` sources.
 {
     printf '%s\n' \
         -std=c11 \
@@ -1268,10 +1279,10 @@ assert_grep "forced re-export analyzer created a partial regular output" \
         -fanalyzer \
         "-I$ROOT/bootstrap/stage2" \
         "$ROOT/bootstrap/stage2/re_exports.c" \
-        "$ROOT/bootstrap/stage2"/kif_v1.c \
-        "$ROOT/bootstrap/stage2"/visibility_access.c \
-        "$ROOT/unicode"/kofun_unicode.c \
-        "$ROOT/bootstrap/stage2"/sha256.c \
+        "$KOFUN_STAGE2_ANALYZER_KIF_V1_INPUT" \
+        "$KOFUN_STAGE2_ANALYZER_VISIBILITY_INPUT" \
+        "$KOFUN_STAGE2_ANALYZER_UNICODE_INPUT" \
+        "$KOFUN_STAGE2_ANALYZER_SHA256_INPUT" \
         -o \
         "$re_exports_analyzer_mutation_output"
 } >"$re_exports_analyzer_expected_argv"

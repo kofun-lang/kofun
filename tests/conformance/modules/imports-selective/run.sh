@@ -7,6 +7,11 @@ export LC_ALL
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../../.." && pwd)
 CASES="$ROOT/tests/conformance/modules/imports-selective"
 CC=${CC:-cc}
+. "$ROOT/bootstrap/stage2/semantic-objects.sh"
+# #1449. The four common sources this gate's analyzer arm links are
+# analysed once per verify run and reused; unset the bundle and they are
+# compiled from source here, which keeps this gate standalone.
+kofun_stage2_analyzer_common_inputs "$ROOT"
 WORK=${KOFUN_IMPORTS_SELECTIVE_WORK:-"$ROOT/build/${KOFUN_GATE_WORK_NAMESPACE:+$KOFUN_GATE_WORK_NAMESPACE/}imports-selective"}
 TOOL="$WORK/imports-selective"
 PACKAGE_ID=1111111111111111111111111111111111111111111111111111111111111111
@@ -287,12 +292,13 @@ UBSAN_OPTIONS=halt_on_error=1 \
     "$WORK/positive.inventory" "$WORK/sanitized.hir"
 cmp "$WORK/positive.hir" "$WORK/sanitized.hir"
 
-if "$CC" -std=c11 -O0 -Wall -Wextra -Werror -pedantic -fanalyzer \
+if KOFUN_STAGE2_COMMON_LINK_ID=imports-selective/analyzed \
+    "$CC" -std=c11 -O0 -Wall -Wextra -Werror -pedantic -fanalyzer \
     "$ROOT/bootstrap/stage2/imports_selective.c" \
-    "$ROOT/bootstrap/stage2/kif_v1.c" \
-    "$ROOT/bootstrap/stage2/visibility_access.c" \
-    "$ROOT/unicode/kofun_unicode.c" \
-    "$ROOT/bootstrap/stage2/sha256.c" \
+    "$KOFUN_STAGE2_ANALYZER_KIF_V1_INPUT" \
+    "$KOFUN_STAGE2_ANALYZER_VISIBILITY_INPUT" \
+    "$KOFUN_STAGE2_ANALYZER_UNICODE_INPUT" \
+    "$KOFUN_STAGE2_ANALYZER_SHA256_INPUT" \
     -o "$WORK/imports-selective-analyzed" >/dev/null 2>&1
 then
     printf '%s\n' 'PASS: GCC analyzer accepts the selective-import resolver'
