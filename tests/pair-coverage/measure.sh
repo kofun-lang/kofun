@@ -238,7 +238,7 @@ export KOFUN_SEMANTIC_TIMEOUT KOFUN_VISIBILITY_FUZZ_TIMEOUT
 # Attempts per driver before its failure is treated as real. See the retry
 # comment in the loop below for why retrying is sound here and does not soften
 # the failure policy.
-DRIVER_ATTEMPTS=${KOFUN_PAIR_COVERAGE_ATTEMPTS:-3}
+DRIVER_ATTEMPTS=${KOFUN_PAIR_COVERAGE_ATTEMPTS:-4}
 phase_start=$(date +%s)
 : >"$WORK/driver-results.tsv"
 : >"$WORK/driver-retries.tsv"
@@ -271,8 +271,19 @@ while IFS= read -r driver; do
         cp "$WORK/log.$driver" "$WORK/log.$driver.attempt$attempt"
         printf '%s\t%s\tattempt %s\n' "$driver" "$code" "$attempt" \
             >>"$WORK/driver-retries.tsv"
+        # STAGED BACKOFF, because the quantity being waited out moves on the
+        # scale of minutes, not seconds. Retrying three times ten seconds apart
+        # samples one load condition three times; the machine's load has swung
+        # between 3 and 33 today on a timescale of minutes. Each retry should
+        # see a genuinely different machine or it is not a retry, it is a
+        # repetition -- the same reason a single sample of a load-sensitive
+        # quantity tells you where it can be and not where it ranges.
+        case $attempt in
+            1) sleep 10 ;;
+            2) sleep 60 ;;
+            *) sleep 180 ;;
+        esac
         attempt=$((attempt + 1))
-        sleep 10
     done
     printf '%s\t%s\n' "$driver" "$code" >>"$WORK/driver-results.tsv"
 done <"$WORK/pinned-drivers.txt"
