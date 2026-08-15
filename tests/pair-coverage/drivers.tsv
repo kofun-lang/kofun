@@ -53,6 +53,7 @@ enum-match-value
 example-law-evidence
 examples
 extern-c
+forbidden-requirements-census
 fuzz
 gate-reachability
 generics

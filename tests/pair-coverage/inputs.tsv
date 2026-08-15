@@ -1014,6 +1014,7 @@ tests/diagnostics/stage2/e2s166_internal_name_as_label.kofun
 tests/diagnostics/stage2/e2s167_trailing_lambda_already_supplied.kofun
 tests/diagnostics/stage2/e2s16_unknown_function.kofun
 tests/diagnostics/stage2/e2s170_bytes_backend_limitation.kofun
+tests/diagnostics/stage2/e2s175_generic_function_binder.kofun
 tests/diagnostics/stage2/e2s17_arity_conversion_refuses.kofun
 tests/diagnostics/stage2/e2s17_arity_core_call_refuses.kofun
 tests/diagnostics/stage2/e2s17_arity_numeric_member_refuses.kofun
