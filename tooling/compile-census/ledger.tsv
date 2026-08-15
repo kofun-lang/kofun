@@ -1,0 +1,70 @@
+# Every source set this repository still compiles more than once in one full
+# verify run, and why.
+#
+# `task compile-census` reads the completed census `verify-runner.sh` produces
+# and fails in BOTH directions: a family that starts repeating must be added
+# here, and one that stops must be removed. The second direction is what makes
+# this file shrink rather than accumulate, and it is how #1205's migrations
+# stay migrated.
+#
+# The key is codegen-affecting flags, `-D` macros, and the sorted source set.
+# It is not the argv: argv contains `-o <path>`, which is unique per gate, so
+# it reports two identical objects as different work. #1205's own census
+# measured the two keys 9x apart on one run — 1.8% against 16.0% — and reported
+# the understating one first. Both are still reported side by side, and the
+# gate asserts the count under this key.
+#
+# `count` is the number of compiles in the measured run. `reason` names the
+# gate scripts that mention the family's rarest source, which is what explains
+# the repetition; it is a derivation, not an accounting of `count`. A gate that
+# runs twice, or one that names a driver it does not compile, will make the two
+# disagree, and that is fine — the count is the asserted quantity.
+#
+# Regenerate the candidate list with
+# `KOFUN_COMPILE_CENSUS_LOG=<census> node tooling/compile-census/check.mjs --regenerate`.
+# It cannot emit a reasonless row; if it emits `NO OWNER FOUND`, find the gate.
+#
+# Measured on `origin/main@a99a96995766d31cb362d93c3230685ea88bc5dd` with
+# `VERIFY_JOBS=3 task verify`: 146 invocations, 137 compiles, 9 pure links,
+# 12 codegen profiles, 0 failures. 76 distinct families under this key, 61
+# repeats costing 133.4 s of compiler wall.
+#
+# What is left is not object redundancy of the kind #1205 removed. Every row
+# below is a gate compiling its own driver together with the shared sources,
+# and the shared sources are already objects — the repetition is the driver's,
+# and removing it means not running the gate twice rather than not compiling
+# the source twice.
+#
+# repeated-ceiling is the count, not a share of wall time. Suite wall on the
+# measuring machine has been 3570 s and 1608 s for identical input, so a share
+# ceiling would fail on a busy afternoon and pass on a quiet one. The share is
+# reported on every run instead, with the run's own suite wall beside it.
+#
+# repeated-ceiling: 61
+#
+# count	profile	macros	sources	reason
+4	-O0 -fanalyzer	-	bootstrap/stage2/imports_selective.c	compiled by 2 gates: tests/conformance/modules/import-aliases/run.sh tests/conformance/modules/imports-selective/run.sh
+4	-O1 -fno-omit-frame-pointer -fsanitize=address,undefined -g	-	bootstrap/stage2/imports_selective.c bootstrap/stage2/kif_v1.c bootstrap/stage2/sha256.c bootstrap/stage2/visibility_access.c unicode/kofun_unicode.c	compiled by 2 gates: tests/conformance/modules/import-aliases/run.sh tests/conformance/modules/imports-selective/run.sh
+2	-O0 -fanalyzer	-	bootstrap/stage2/re_exports.c	compiled by 2 gates: tests/conformance/modules/raw-re-exports/run.sh tests/conformance/modules/re-exports/run.sh
+3	-O0 -fanalyzer	-	bootstrap/stage2/kif_v1_tool.c	compiled by 6 gates: tests/artifact-qualification/check.sh tests/conformance/incremental/run.sh tests/conformance/modules/kif-v1/run.sh tests/conformance/modules/re-exports/run.sh tests/conformance/modules/stage2-kif-producer/run.sh tests/tooling/verify-object-reuse/check.sh
+2	-O1 -fno-omit-frame-pointer -fsanitize=address,undefined -g	-	bootstrap/stage2/kif_v1.c bootstrap/stage2/re_exports.c bootstrap/stage2/sha256.c bootstrap/stage2/visibility_access.c unicode/kofun_unicode.c	compiled by 2 gates: tests/conformance/modules/raw-re-exports/run.sh tests/conformance/modules/re-exports/run.sh
+8	-O2	-	bootstrap/stage2/kif_v1_tool.c	compiled by 6 gates: tests/artifact-qualification/check.sh tests/conformance/incremental/run.sh tests/conformance/modules/kif-v1/run.sh tests/conformance/modules/re-exports/run.sh tests/conformance/modules/stage2-kif-producer/run.sh tests/tooling/verify-object-reuse/check.sh
+3	-O1 -fno-omit-frame-pointer -fsanitize=address,undefined -g	-	bootstrap/stage2/kif_v1.c bootstrap/stage2/sha256.c tests/conformance/modules/kif-v1/codec_test.c unicode/kofun_unicode.c	compiled once per case by tests/conformance/modules/kif-v1/run.sh
+7	-	-DKOFUN_TEST_DIAGNOSTIC_FAULTS	bootstrap/stage2/imports_qualified.c bootstrap/stage2/kif_v1.c bootstrap/stage2/sha256.c bootstrap/stage2/visibility_access.c unicode/kofun_unicode.c	compiled by 4 gates: tests/conformance/modules/import-aliases/run.sh tests/conformance/modules/imports-qualified/run.sh tests/conformance/modules/raw-imports/run.sh tests/modules/inventory/check.sh
+9	-	-	bootstrap/stage2/module_symbols.c bootstrap/stage2/sha256.c unicode/kofun_unicode.c	compiled by 4 gates: tests/conformance/adt-exhaustiveness/run.sh tests/conformance/modules/imports-qualified/run.sh tests/conformance/modules/raw-imports/run.sh tests/conformance/modules/top-level-declarations/run.sh
+2	-O2	-DRE_EXPORT_GRAPH_WORK_LIMIT=1	bootstrap/stage2/kif_v1.c bootstrap/stage2/re_exports.c bootstrap/stage2/sha256.c bootstrap/stage2/visibility_access.c unicode/kofun_unicode.c	compiled by 2 gates: tests/conformance/modules/raw-re-exports/run.sh tests/conformance/modules/re-exports/run.sh
+2	-O2 -g	-	bootstrap/stage2/semantic_events.c bootstrap/stage2/sha256.c tests/typed-sidecar/stage2_events_test.c unicode/kofun_unicode.c	compiled by 2 gates: tests/tooling/discovery-sanitizer-reuse/check.sh tests/tooling/verify-object-reuse/check.sh
+4	-	-DKOFUN_TEST_DIAGNOSTIC_FAULTS	bootstrap/stage2/imports_selective.c bootstrap/stage2/kif_v1.c bootstrap/stage2/sha256.c bootstrap/stage2/visibility_access.c unicode/kofun_unicode.c	compiled by 2 gates: tests/conformance/modules/import-aliases/run.sh tests/conformance/modules/imports-selective/run.sh
+2	-O1 -fno-omit-frame-pointer -fsanitize=address,undefined -g	-	bootstrap/stage2/module_symbols.c bootstrap/stage2/sha256.c unicode/kofun_unicode.c	compiled by 4 gates: tests/conformance/adt-exhaustiveness/run.sh tests/conformance/modules/imports-qualified/run.sh tests/conformance/modules/raw-imports/run.sh tests/conformance/modules/top-level-declarations/run.sh
+3	-O2	-DKOFUN_TEST_DIAGNOSTIC_FAULTS	bootstrap/stage2/kif_v1_tool.c	compiled by 6 gates: tests/artifact-qualification/check.sh tests/conformance/incremental/run.sh tests/conformance/modules/kif-v1/run.sh tests/conformance/modules/re-exports/run.sh tests/conformance/modules/stage2-kif-producer/run.sh tests/tooling/verify-object-reuse/check.sh
+3	-	-	bootstrap/stage2/imports_qualified.c bootstrap/stage2/kif_v1.c bootstrap/stage2/sha256.c bootstrap/stage2/visibility_access.c unicode/kofun_unicode.c	compiled by 4 gates: tests/conformance/modules/import-aliases/run.sh tests/conformance/modules/imports-qualified/run.sh tests/conformance/modules/raw-imports/run.sh tests/modules/inventory/check.sh
+2	-O2	-DKOFUN_TEST_DIAGNOSTIC_FAULTS	bootstrap/stage2/re_exports.c	compiled by 2 gates: tests/conformance/modules/raw-re-exports/run.sh tests/conformance/modules/re-exports/run.sh
+2	-O2	-	bootstrap/stage2/module_symbols.c bootstrap/stage2/sha256.c unicode/kofun_unicode.c	compiled by 4 gates: tests/conformance/adt-exhaustiveness/run.sh tests/conformance/modules/imports-qualified/run.sh tests/conformance/modules/raw-imports/run.sh tests/conformance/modules/top-level-declarations/run.sh
+2	-O0 -fanalyzer	-	bootstrap/stage2/module_symbols.c	compiled by 4 gates: tests/conformance/adt-exhaustiveness/run.sh tests/conformance/modules/imports-qualified/run.sh tests/conformance/modules/raw-imports/run.sh tests/conformance/modules/top-level-declarations/run.sh
+3	-O2	-DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY	bootstrap/stage2/kif_v1.c bootstrap/stage2/stage2_kif_producer.c	compiled by 2 gates: tests/conformance/modules/stage2-kif-producer/run.sh tests/tooling/verify-object-reuse/check.sh
+2	-O2	-	bootstrap/stage2/confusable_visible_set.c bootstrap/stage2/sha256.c tests/conformance/modules/confusable-visible-set/driver.c unicode/kofun_unicode.c	compiled by 2 gates: tests/conformance/modules/confusable-visible-set/run.sh tests/diagnostics/unicode/run.sh
+2	-	-	bootstrap/stage2/kif_v1.c bootstrap/stage2/re_exports.c bootstrap/stage2/sha256.c bootstrap/stage2/visibility_access.c unicode/kofun_unicode.c	compiled by 2 gates: tests/conformance/modules/raw-re-exports/run.sh tests/conformance/modules/re-exports/run.sh
+3	-O2	-	tests/conformance/modules/kif-v1/codec_test.c	compiled once per case by tests/conformance/modules/kif-v1/run.sh
+7	-	-	bootstrap/stage2/sha256.c tests/conformance/modules/imports-qualified/identity_reference.c	compiled by 2 gates: tests/conformance/modules/import-aliases/run.sh tests/conformance/modules/imports-qualified/run.sh
+3	-O2	-DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY	bootstrap/stage2/stage2_kif_producer.c	compiled by 2 gates: tests/conformance/modules/stage2-kif-producer/run.sh tests/tooling/verify-object-reuse/check.sh
+2	-O2	-	tests/conformance/modules/re-exports/export_binding_reference.c	compiled once per case by tests/conformance/modules/re-exports/run.sh

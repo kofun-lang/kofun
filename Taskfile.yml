@@ -700,6 +700,11 @@ tasks:
     cmds:
       - "sh tests/tooling/verify-object-reuse/check.sh"
 
+  compile-census:
+    desc: "Assert the repeated-compile count of a full run against its ledger"
+    cmds:
+      - "sh tooling/compile-census/check.sh"
+
   fuzz-sanitizer-reuse:
     desc: "Verify runner-scoped fuzz sanitizer compiler object reuse"
     cmds:

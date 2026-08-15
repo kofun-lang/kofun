@@ -83,7 +83,7 @@ export const GROUPS = Object.freeze([
         tasks: [
             'task-help', 'gate-reachability', 'discovery', 'discovery-sanitizer-reuse',
             'cli-framework', 'tui-framework', 'build-system',
-            'verify-object-reuse', 'packages', 'typed-sidecar-spec', 'typed-sidecar-codec',
+            'verify-object-reuse', 'compile-census', 'packages', 'typed-sidecar-spec', 'typed-sidecar-codec',
             'typed-sidecar-captures', 'typed-sidecar-projector', 'upgrade-patch', 'documentation-index', 'ownership-view',
             'artifact-qualification', 'lsp', 'roadmap',
             'graphify-setup', 'graphify-update'
