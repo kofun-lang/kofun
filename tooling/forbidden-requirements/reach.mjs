@@ -196,6 +196,53 @@ export function reachability(root, rawFiles) {
         pathPattern(path).test(caller.body) ||
         (dirOf(caller.path) === dirOf(path) && caller.body.includes(`/${baseOf(path)}`))
 
+    /*
+     * Two indexes, both built once, because the closure below used to rebuild
+     * their work on every pass (#1493).
+     *
+     * The loop was `for each unresolved candidate, scan every on-path body`,
+     * so the cost was iterations x candidates x files x body length and each
+     * body was re-scanned for each candidate. Measured on a quiet machine, that
+     * one loop was 2.47 s of the checker's 3.01 s — 82%.
+     *
+     * The filter is exact rather than approximate, which is what lets it change
+     * the cost without changing an answer: **every rule above requires the
+     * basename to appear literally.** Only a non-final segment may be
+     * wildcarded, the same-directory rule tests `/` + basename, and a resolved
+     * relative import ends in it. So a file whose text does not contain the
+     * basename cannot name the candidate under any of the three, and skipping
+     * it is not a heuristic.
+     */
+    /*
+     * The needles are the candidate basenames themselves, not a guess at what a
+     * filename looks like. The first version of this index extracted
+     * `[\w.@+-]+\.(sh|mjs|js|ya?ml)` and lost every file that has no
+     * extension — `bin/kofun-digest` and `tooling/lsp/kofun-lsp` are found by
+     * shebang, and three rows flipped to `unknown`. The census caught it in one
+     * diff, which is what a both-directions ledger is for.
+     *
+     * Longest first, so a candidate whose basename is a suffix of another's is
+     * not consumed by it.
+     */
+    const needles = [...new Set(files.map((f) => baseOf(f.path)))]
+        .sort((a, b) => b.length - a.length)
+    const needleRe = new RegExp(needles.map(quote).join('|'), 'g')
+    const basenamesIn = (body) => new Set(body.match(needleRe) ?? [])
+    const callersByBasename = new Map()
+    const importsCache = new Map()
+    for (const file of files) {
+        importsCache.set(file.path, importsOf(file))
+        for (const base of basenamesIn(file.body)) {
+            if (!callersByBasename.has(base)) callersByBasename.set(base, [])
+            callersByBasename.get(base).push(file)
+        }
+        for (const target of importsCache.get(file.path)) {
+            const base = baseOf(target)
+            if (!callersByBasename.has(base)) callersByBasename.set(base, [])
+            if (!callersByBasename.get(base).includes(file)) callersByBasename.get(base).push(file)
+        }
+    }
+
     for (;;) {
         let grew = false
         for (const { path } of files) {
@@ -208,11 +255,12 @@ export function reachability(root, rawFiles) {
              * because `Taskfile.yml` mentions it, which is exactly the fact
              * that step had already decided did not count.
              */
-            const reached = files.some(
+            const candidates = callersByBasename.get(baseOf(path)) ?? []
+            const reached = candidates.some(
                 (f) => f.path !== path && onPath.has(f.path) &&
                     !/(^|\/)Taskfile\.ya?ml$/.test(f.path) &&
                     !crossesOutOfThisTool(f.path, path) &&
-                    (namesFile(f, path) || importsOf(f).includes(path)),
+                    (namesFile(f, path) || importsCache.get(f.path).includes(path)),
             )
             if (reached) {
                 onPath.add(path)
