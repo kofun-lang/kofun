@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 114,
+  "open_issues": 113,
   "issues": [
     {
       "number": 26,
@@ -1973,13 +1973,19 @@
       "number": 1449,
       "title": "verify: compile the four repeated -O0 -fanalyzer object identities once",
       "state_labels": [
-        "ready"
+        "in-progress"
       ],
-      "state_line": "ready",
+      "state_line": "in-progress",
       "blocked_by": [],
       "evidence_commits": [
         "9e3b85328a710b3a2335e2dee8d72b3ac6fb71e1",
         "ad2a0c0f13af96bed3ed77f10447d05e0c67ad8f"
+      ],
+      "claims": [
+        {
+          "agent_id": "claude-1449-analyzer-object-reuse-20260815",
+          "status": "active"
+        }
       ]
     },
     {
@@ -2153,24 +2159,6 @@
       ],
       "evidence_commits": [
         "21e89ecb8807606712c902481a6b39f82a190c79"
-      ]
-    },
-    {
-      "number": 1472,
-      "title": "Ledger the gates whose verdict depends on the machine, not the tree",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "21e89ecb8807606712c902481a6b39f82a190c79"
-      ],
-      "claims": [
-        {
-          "agent_id": "claude-1472-machine-dependent-ledger-20260815",
-          "status": "active"
-        }
       ]
     },
     {
