@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 101,
+  "open_issues": 116,
   "issues": [
     {
       "number": 26,
@@ -784,12 +784,11 @@
       "number": 1205,
       "title": "[Umbrella] Remove repeated C compilation from task verify",
       "state_labels": [
-        "in-progress"
+        "blocked"
       ],
-      "state_line": "in-progress",
+      "state_line": "blocked",
       "blocked_by": [
-        1338,
-        1339
+        1449
       ],
       "evidence_commits": [
         "50f79e38c1b273a5870905b693b1e9b3267c7a37",
@@ -831,6 +830,10 @@
         {
           "agent_id": "claude-opus-5-b326d627",
           "status": "active"
+        },
+        {
+          "agent_id": "claude-opus-5-b326d627",
+          "status": "released"
         }
       ]
     },
@@ -843,6 +846,7 @@
       "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
+        "2e9fa1d1b0035f06a47c8736d8e190b0ad2c7189",
         "5c5cf42404b0dbeea36a4de0fb457c4479e8bf68",
         "8fd0b25497c1fd4c61085260a416af619beb3c3f",
         "d72c3da65c0c77b74ec5b7b542de2c5725bdf6cc"
@@ -984,9 +988,9 @@
       "number": 1243,
       "title": "Stage 2 authority kind: propagate Owned through shipped composites",
       "state_labels": [
-        "in-progress"
+        "ready"
       ],
-      "state_line": "in-progress",
+      "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
         "855ca05a6cf6a01c404585cddc48443e9177086c"
@@ -995,6 +999,10 @@
         {
           "agent_id": "claude-opus-5-b326d627",
           "status": "active"
+        },
+        {
+          "agent_id": "claude-opus-5-b326d627",
+          "status": "released"
         }
       ]
     },
@@ -1016,9 +1024,9 @@
       "number": 1245,
       "title": "Stage 2 explicit pure boundary over inferred pure/io summaries",
       "state_labels": [
-        "ready"
+        "in-progress"
       ],
-      "state_line": "ready",
+      "state_line": "in-progress",
       "blocked_by": [],
       "evidence_commits": [
         "5c5cf42404b0dbeea36a4de0fb457c4479e8bf68",
@@ -1032,6 +1040,10 @@
         {
           "agent_id": "claude-opus-5-b326d627",
           "status": "released"
+        },
+        {
+          "agent_id": "claude-opus-5-b326d627",
+          "status": "active"
         }
       ]
     },
@@ -1208,6 +1220,16 @@
       "evidence_commits": [
         "5c5cf42404b0dbeea36a4de0fb457c4479e8bf68",
         "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+      ],
+      "claims": [
+        {
+          "agent_id": "claude-1268-generic-binders-20260815",
+          "status": "active"
+        },
+        {
+          "agent_id": "claude-1268-generic-binders-20260815",
+          "status": "released"
+        }
       ]
     },
     {
@@ -1967,31 +1989,280 @@
         {
           "agent_id": "claude-1408-undefended-branch-ledger-20260814",
           "status": "active"
+        },
+        {
+          "agent_id": "claude-1408-undefended-branch-ledger-20260814",
+          "status": "pr-open"
         }
       ]
     },
     {
-      "number": 1424,
-      "title": "Two mutation-proven gates have never run, and nothing would notice a third",
+      "number": 1449,
+      "title": "verify: compile the four repeated -O0 -fanalyzer object identities once",
       "state_labels": [
         "ready"
       ],
       "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
-        "82f9b93c0e8760d242e085b0fc582f42aa423b03"
+        "9e3b85328a710b3a2335e2dee8d72b3ac6fb71e1",
+        "ad2a0c0f13af96bed3ed77f10447d05e0c67ad8f"
       ]
     },
     {
-      "number": 1428,
-      "title": "Eleven native-toolchain profiles run the same check and print different names",
+      "number": 1451,
+      "title": "[Umbrella] Measure and close the distance to the self-contained toolchain contract",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1454,
+        1455,
+        1456,
+        1457,
+        1458,
+        1460,
+        1467,
+        1468
+      ],
+      "evidence_commits": [
+        "21e89ecb8807606712c902481a6b39f82a190c79",
+        "9e3b85328a710b3a2335e2dee8d72b3ac6fb71e1",
+        "a98cb13eabc7b5c48a948d381928a460670e3d67"
+      ]
+    },
+    {
+      "number": 1454,
+      "title": "stdlib capabilities: nine planned/deferred rows cite closed issues",
+      "state_labels": [
+        "in-progress"
+      ],
+      "state_line": "in-progress",
+      "blocked_by": [],
+      "evidence_commits": [
+        "9e3b85328a710b3a2335e2dee8d72b3ac6fb71e1"
+      ],
+      "claims": [
+        {
+          "agent_id": "claude-1454-capability-liveness-20260815",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "number": 1455,
+      "title": "Replace bin/kofun-digest with a Kofun digest command",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1382
+      ],
+      "evidence_commits": [
+        "9e3b85328a710b3a2335e2dee8d72b3ac6fb71e1"
+      ]
+    },
+    {
+      "number": 1456,
+      "title": "Move the kofun CLI driver from 1545 lines of shell into Kofun",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1232,
+        1233,
+        1235,
+        1246
+      ],
+      "evidence_commits": [
+        "9e3b85328a710b3a2335e2dee8d72b3ac6fb71e1"
+      ]
+    },
+    {
+      "number": 1457,
+      "title": "Move the package manager from package/manager.sh into Kofun",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1264,
+        1323,
+        1382,
+        1453,
+        1468
+      ],
+      "evidence_commits": [
+        "9e3b85328a710b3a2335e2dee8d72b3ac6fb71e1"
+      ]
+    },
+    {
+      "number": 1458,
+      "title": "Move the language server from Node.js into Kofun",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1246,
+        1260
+      ],
+      "evidence_commits": [
+        "9e3b85328a710b3a2335e2dee8d72b3ac6fb71e1"
+      ]
+    },
+    {
+      "number": 1460,
+      "title": "[Umbrella] Split the task runner and the 264-file gate corpus off shell and node",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1220,
+        1232,
+        1456
+      ],
+      "evidence_commits": [
+        "9e3b85328a710b3a2335e2dee8d72b3ac6fb71e1"
+      ]
+    },
+    {
+      "number": 1462,
+      "title": "stdlib capabilities: no row covers directory create, remove, copy, or rename",
       "state_labels": [
         "ready"
       ],
       "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
-        "82f9b93c0e8760d242e085b0fc582f42aa423b03"
+        "8639360a82fa2b4d1f9821a180e9d5d04adcf645"
+      ]
+    },
+    {
+      "number": 1463,
+      "title": "Decide the interrupt guarantee for a partially written package cache entry",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": [
+        "8639360a82fa2b4d1f9821a180e9d5d04adcf645"
+      ]
+    },
+    {
+      "number": 1465,
+      "title": "Stage 2: admit authority nominal types in record fields and check ADT payload types",
+      "state_labels": [
+        "in-progress"
+      ],
+      "state_line": "in-progress",
+      "blocked_by": [],
+      "evidence_commits": [
+        "8639360a82fa2b4d1f9821a180e9d5d04adcf645"
+      ],
+      "claims": [
+        {
+          "agent_id": "claude-1465-authority-composite-slices-20260815",
+          "status": "active"
+        },
+        {
+          "agent_id": "claude-1465-authority-composite-slices-20260815",
+          "status": "merged"
+        },
+        {
+          "agent_id": "claude-1465-authority-composite-slices-20260815",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "number": 1467,
+      "title": "The contract does not name readelf, and task verify requires it on eight paths",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [
+        1452
+      ],
+      "evidence_commits": [
+        "21e89ecb8807606712c902481a6b39f82a190c79"
+      ]
+    },
+    {
+      "number": 1468,
+      "title": "Decide whether the five sibling repositories are inside the self-contained toolchain",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [],
+      "evidence_commits": [
+        "21e89ecb8807606712c902481a6b39f82a190c79"
+      ]
+    },
+    {
+      "number": 1471,
+      "title": "The CPU-time LSP budget that replaced #1379's wall-clock ones still fails under a contended verify",
+      "state_labels": [
+        "needs-detail"
+      ],
+      "state_line": "needs-detail",
+      "blocked_by": [
+        1379
+      ],
+      "evidence_commits": [
+        "21e89ecb8807606712c902481a6b39f82a190c79"
+      ]
+    },
+    {
+      "number": 1472,
+      "title": "Ledger the gates whose verdict depends on the machine, not the tree",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "21e89ecb8807606712c902481a6b39f82a190c79"
+      ]
+    },
+    {
+      "number": 1474,
+      "title": "Bound the census's unknown bucket, so an unclassifiable use cannot arrive quietly",
+      "state_labels": [
+        "in-progress"
+      ],
+      "state_line": "in-progress",
+      "blocked_by": [
+        1459,
+        1470
+      ],
+      "evidence_commits": [
+        "a98cb13eabc7b5c48a948d381928a460670e3d67"
+      ],
+      "claims": [
+        {
+          "agent_id": "claude-opus-5-be36d9bd",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "number": 1475,
+      "title": "Standard library: buffered-io, secure-randomness, and compression-archive are planned against nothing",
+      "state_labels": [
+        "needs-detail"
+      ],
+      "state_line": "needs-detail",
+      "blocked_by": [],
+      "evidence_commits": [
+        "a98cb13eabc7b5c48a948d381928a460670e3d67"
       ]
     }
   ]
