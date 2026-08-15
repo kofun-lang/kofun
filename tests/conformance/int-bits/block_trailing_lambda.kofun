@@ -1,4 +1,6 @@
-# A block trailing lambda retains the parser-owned E2S158 refusal at `fn`.
+# #1398 admits the block body, so this reaches the bit-operation check and is
+# refused for the reason it always deserved: `and` has no functional parameter.
+# The parser-owned atomic case moved to `block_lambda_position`.
 
 fn main() -> Int {
     print(to_text((1).and(2) fn(y) { return y }))
