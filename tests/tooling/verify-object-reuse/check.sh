@@ -808,12 +808,13 @@ common_census_error_count() {
             # unknown site rather than a satisfied expectation.
             expected_analyzed["kif-v1/analyzed"] = \
                 scope == "aggregate" ? 3 : 2
+            expected_analyzed["imports-selective/analyzed"] = \
+                scope == "aggregate" ? 4 : 3
             expected_analyzed["re-exports/analyzed"] = \
                 scope == "aggregate" ? 2 : 1
             expected_analyzed["incremental/analyzed"] = 1
-            expected_analyzed["imports-selective/analyzed"] = 1
-            expected_analyzed["top-level-declarations/analyzed"] = 1
-            expected_analyzed_links = scope == "aggregate" ? 8 : 6
+            expected_analyzed["top-level-declarations/analyzed"] = 2
+            expected_analyzed_links = scope == "aggregate" ? 12 : 9
         }
         {
             delete field
@@ -1039,8 +1040,30 @@ if test "${KOFUN_STAGE2_SEMANTIC_OBJECT_DIR+x}" = x; then
         "$(census_count "$build_log" common-object-link)" -eq 24
     assert_num 'full verify exact-family common source links' \
         "$(census_count "$build_log" common-source-link)" -eq 0
+    analyzed_link_count=$(census_count "$build_log" common-analyzer-object-link)
+    if test "$analyzed_link_count" -ne 12; then
+        # Naming the per-site counts here rather than leaving the total to be
+        # bisected one assertion per run: the runner deletes its census on
+        # exit, so a failing total is otherwise the only surviving evidence.
+        awk -F '\t' '
+            {
+                delete field
+                for (column = 2; column <= NF; column++) {
+                    split($column, pair, "=")
+                    field[pair[1]] = pair[2]
+                }
+                if (field["common_class"] == "common-analyzer-object-link")
+                    seen[field["site"]]++
+            }
+            END {
+                for (site in seen)
+                    printf "NOTE: analysed site %s ran %d time(s)\n",
+                        site, seen[site]
+            }
+        ' "$build_log"
+    fi
     assert_num 'full verify selected analysed object-link executions' \
-        "$(census_count "$build_log" common-analyzer-object-link)" -eq 8
+        "$analyzed_link_count" -eq 12
     assert_num 'full verify exact-family analysed source links' \
         "$(census_count "$build_log" common-analyzer-source-link)" -eq 0
     assert_num 'full verify mixed, malformed, or unknown common rows' \
@@ -1073,6 +1096,12 @@ if test "${KOFUN_STAGE2_SEMANTIC_OBJECT_DIR+x}" = x; then
             }
             END { for (site in seen) count++; print count + 0 }
         ' "$build_log")" -eq 5
+    # Every site is compared before any of them is reported, so one run names
+    # all the wrong ones. Asserting inside the loop stops at the first, and a
+    # multiplicity that has to be measured from a census the runner deletes on
+    # exit costs a whole verify per site that way.
+    site_multiplicity_problems=$WORK/site-multiplicity.problems
+    : >"$site_multiplicity_problems"
     while IFS= read -r expected_site; do
         # An analysed site is counted in its own class; counting it in the O2
         # class would report zero for every one of them and read as a passing
@@ -1084,16 +1113,30 @@ if test "${KOFUN_STAGE2_SEMANTIC_OBJECT_DIR+x}" = x; then
         case $expected_site in
             kif-v1/tool|kif-v1/codec-test) expected_site_count=3 ;;
             kif-v1/analyzed) expected_site_count=3 ;;
+            imports-selective/analyzed) expected_site_count=4 ;;
+            top-level-declarations/analyzed) expected_site_count=2 ;;
             re-exports/resolver|re-exports/reader|\
             re-exports/export-binding-reference) expected_site_count=2 ;;
             re-exports/analyzed) expected_site_count=2 ;;
             *) expected_site_count=1 ;;
         esac
-        assert_num "full verify $expected_site multiplicity" \
-            "$(census_site_count "$build_log" "$expected_site" \
-                "$expected_site_class")" \
-            -eq "$expected_site_count"
+        observed_site_count=$(
+            census_site_count "$build_log" "$expected_site" \
+                "$expected_site_class"
+        )
+        if test "$observed_site_count" -ne "$expected_site_count"; then
+            printf '%s expected %s, got %s\n' "$expected_site" \
+                "$expected_site_count" "$observed_site_count" \
+                >>"$site_multiplicity_problems"
+        fi
     done <"$expected_common_sites"
+    if test -s "$site_multiplicity_problems"; then
+        while IFS= read -r site_multiplicity_problem; do
+            printf 'NOTE: multiplicity %s\n' "$site_multiplicity_problem"
+        done <"$site_multiplicity_problems"
+    fi
+    assert_num 'full verify common site multiplicities' \
+        "$(wc -l <"$site_multiplicity_problems" | tr -d ' ')" -eq 0
     assert_num 'full verify selected rows bind complete argv' \
         "$(awk -F '\t' '
             {
@@ -1186,7 +1229,9 @@ while IFS= read -r synthetic_site; do
         */analyzed) synthetic_class=common-analyzer-object-link ;;
     esac
     case $synthetic_site in
+        imports-selective/analyzed) synthetic_count=3 ;;
         kif-v1/tool|kif-v1/codec-test|kif-v1/analyzed) synthetic_count=2 ;;
+        top-level-declarations/analyzed) synthetic_count=2 ;;
         *) synthetic_count=1 ;;
     esac
     synthetic_index=0
@@ -1203,15 +1248,17 @@ assert_num 'synthetic closed common census baseline' \
 
 # Aggregate verify runs the re-exports gate both as its own owner task and as
 # the diagnostic registry adapter.  Re-exports also executes its nested KIF
-# prerequisite, so the second owner execution contributes these exact seven
-# rows without adding a new call-site identity -- five O2 links and the two
-# analysed links those same two gates carry (#1449).
+# prerequisite -- and, through it, the selective-import gate -- so the second
+# owner execution contributes these exact eight rows without adding a new
+# call-site identity: five O2 links and the three analysed links those same
+# three gates carry (#1449).
 synthetic_aggregate_census=$WORK/common-census.aggregate.tsv
 cp "$synthetic_common_census" "$synthetic_aggregate_census"
 for synthetic_aggregate_site in \
     kif-v1/tool \
     kif-v1/codec-test \
     kif-v1/analyzed \
+    imports-selective/analyzed \
     re-exports/resolver \
     re-exports/reader \
     re-exports/export-binding-reference \
