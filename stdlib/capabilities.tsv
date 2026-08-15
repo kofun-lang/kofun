@@ -44,15 +44,15 @@ time-zone-data	module	specified	docs/stdlib/date-time.md	accepted contract (#639
 clock-adapters	adapter	implemented	task clock-adapters	explicit monotonic/system identities, affine handles, deterministic fake time and waiters; Linux x86-64 gate checks read/sleep units and errno behavior
 affine-resource-handle	portable	implemented	task affine-resource-handle	one bounded per-type read/write/drain/close/cancel table; E2S123 static moves and EARH01 generation backstop, not a general ownership pass
 benchmark-harness	portable	specified	docs/stdlib/benchmark.md	accepted contract (#640); raw-sample report schema slice is #646
-concurrency	portable	planned	#555 #736	scoped parallelism only, after the runtime contract exists
+concurrency	portable	planned	#1162 #1163	scoped parallelism only, after the runtime contract exists
 stream-protocol	portable	specified	docs/stdlib/stream-protocol.md	accepted protocol contract (#627); no operators, scheduler, or adapters implemented
-buffered-io	portable	planned	#231	no buffered reader/writer exists over the syscall seed today
-url	portable	planned	#638	parsing and normalisation; owned by the HTTP client contract, not independent
-secure-randomness	adapter	planned	#234	the Linux entropy adapter exists; the portable capability boundary does not
-temporary-files	adapter	planned	#231	creation, cleanup on take, and collision behaviour are unspecified
-hashes-checksums	portable	deferred	#636	no consumer yet; the toolchain digests with the repository's own bin/kofun-digest, not a stdlib API
-compression-archive	module	deferred	#636	no consumer yet; belongs to the module tier when one appears
-mime	module	deferred	#638	only meaningful once the HTTP client contract fixes content negotiation
-crypto-tls	module	deferred	#638	security-critical and independently versioned; must not enter the portable tier
+buffered-io	portable	planned	#1475	no buffered reader/writer exists over the syscall seed today
+url	portable	planned	#1258	parsing and normalisation; owned by the HTTP client contract, not independent
+secure-randomness	adapter	planned	#1475	the Linux entropy adapter exists; the portable capability boundary does not
+temporary-files	adapter	planned	#1463	creation, cleanup on take, and collision behaviour are unspecified
+hashes-checksums	portable	deferred	#1455	no consumer yet; the toolchain digests with the repository's own bin/kofun-digest, not a stdlib API
+compression-archive	module	deferred	#1475	no consumer yet; belongs to the module tier when one appears
+mime	module	deferred	#644	only meaningful once the HTTP client contract fixes content negotiation
+crypto-tls	module	deferred	#644	security-critical and independently versioned; must not enter the portable tier
 yaml	none	non-goal	charter	TOML is the baseline config format; a second one splits the toolchain's own config
 database-drivers	none	non-goal	charter	protocol- and vendor-specific; belongs outside the distribution entirely
