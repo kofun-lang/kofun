@@ -1,0 +1,27 @@
+# What a block body is for: several statements, a local binding, a nested
+# block, and an early return. Each is lowered by the same walk that lowers a
+# named function's body, so `return` is an ordinary return and `let` an
+# ordinary local — and the local lives in the lambda's own block scope, which
+# is why reading it is not a capture of an enclosing binding.
+fn apply(value: Int, action: Int -> Int) -> Int {
+    return action(value)
+}
+
+fn main() -> Int {
+    print(apply(5) fn(x: Int) {
+        let doubled = x * 2
+        if doubled > 8 {
+            let scaled = doubled * 10
+            return scaled
+        }
+        return doubled
+    })
+    print(apply(3) fn(x: Int) {
+        let doubled = x * 2
+        if doubled > 8 {
+            return doubled * 10
+        }
+        return doubled
+    })
+    return 0
+}

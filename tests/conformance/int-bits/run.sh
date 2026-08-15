@@ -159,7 +159,8 @@ for stem in arity_short arity_long float_receiver float_receiver_used \
             optional_receiver optional_argument receiver_before_unknown \
             type_before_unknown label_before_unknown \
             nested_receiver_before_unknown nested_label_before_unknown \
-            callable_named_argument callable_direct_argument; do
+            callable_named_argument callable_direct_argument \
+            block_trailing_lambda; do
     set +e
     "$WORK/kofun-stage2" --compile-outcome "$CASES/$stem.kofun" \
         "$WORK/$stem.c" "$WORK/$stem.ir" "$WORK/$stem.tokens" \
@@ -177,9 +178,13 @@ for stem in arity_short arity_long float_receiver float_receiver_used \
     cmp "$CASES/$stem.stderr" "$WORK/$stem.actual" ||
         assert_fail "$stem diagnostic changed"
 done
-# A block trailing lambda is refused by the parser before the IR/token
-# checkpoints exist. It still must be atomic: no C or partial checkpoint.
-stem=block_trailing_lambda
+# A parser-owned refusal fires before the IR/token checkpoints exist, and must
+# still be atomic: no C and no partial checkpoint. `block_trailing_lambda` held
+# this case until #1398 admitted the block body — it now reaches the ordinary
+# loop above with `E2S169`, because `and` has no functional parameter, which is
+# the diagnostic that shape always deserved. A block-bodied lambda *outside*
+# the trailing position is still parser-owned, so it holds the case now.
+stem=block_lambda_position
 set +e
 "$WORK/kofun-stage2" --compile-outcome "$CASES/$stem.kofun" \
     "$WORK/$stem.c" "$WORK/$stem.ir" "$WORK/$stem.tokens" \
@@ -269,8 +274,14 @@ assert_grep 'a label outranks the labelled value type' \
 assert_grep 'an expression trailing lambda outranks wrong arity' \
     -Fq -- 'takes no trailing lambda' \
     "$CASES/trailing_before_arity.stderr"
-assert_grep 'a block trailing lambda keeps E2S158 authority' \
-    -Fq -- 'error[E2S158]:' "$CASES/block_trailing_lambda.stderr"
+# The two block-lambda shapes are different boundaries and are asserted
+# separately. The trailing one is admitted and refused here only because the
+# receiver has no functional parameter; the position one is refused for being
+# written where a block body is not recognized.
+assert_grep 'a block trailing lambda on a bit receiver is an arity refusal' \
+    -Fq -- 'error[E2S169]:' "$CASES/block_trailing_lambda.stderr"
+assert_grep 'a block lambda outside the trailing position keeps E2S158' \
+    -Fq -- 'error[E2S158]:' "$CASES/block_lambda_position.stderr"
 assert_grep 'a bad receiver outranks a later unresolved argument' \
     -Fq -- 'this receiver is `Bool`' \
     "$CASES/receiver_before_unknown.stderr"
@@ -347,8 +358,8 @@ assert_grep 'R010 is also observed by the int-bits adapter' \
 present_count=$(find "$CASES" -name '*.kofun' -type f | wc -l | tr -d ' ')
 golden_count=$(find "$CASES" \( -name '*.stdout' -o -name '*.stderr' \) \
     -type f | wc -l | tr -d ' ')
-assert_num 'every source fixture is exercised' "$present_count" -eq 42
-assert_num 'every source fixture has one golden' "$golden_count" -eq 42
+assert_num 'every source fixture is exercised' "$present_count" -eq 43
+assert_num 'every source fixture has one golden' "$golden_count" -eq 43
 
 printf '%s\n' \
     'PASS: eight Int bit operations execute with the semantics RFC-0013 fixes' \

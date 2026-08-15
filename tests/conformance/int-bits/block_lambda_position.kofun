@@ -1,0 +1,11 @@
+# A block-bodied lambda outside the trailing position, on a bit receiver. #1398
+# admits the block body after a call's `)` and only there, and the position
+# refusal is parser-owned — it fires before the IR and token checkpoints exist,
+# which is the atomicity this case is here to hold.
+fn main() -> Int {
+    let double = fn(value: Int) {
+        return (value).and(2)
+    }
+    print(to_text(double(3)))
+    return 0
+}

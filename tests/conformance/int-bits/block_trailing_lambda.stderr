@@ -1,1 +1,1 @@
-error[E2S158]: a trailing lambda with a block body is specified by call-arguments v1 but not implemented at byte 124
+error[E2S169]: `and` takes no trailing lambda; the bit operations have no functional parameter at byte 272
