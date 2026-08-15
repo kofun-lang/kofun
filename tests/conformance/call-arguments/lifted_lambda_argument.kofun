@@ -1,0 +1,16 @@
+# The expression-bodied lambda in argument position. Its labelled call is
+# lowered into the lifted function's own body, which is the whole of #1399:
+# the carriers are declared beside the call that reads them rather than in
+# `main`, which never runs it.
+fn combine(as_first left: Int, as_second right: Int) -> Int {
+    return left * 10 + right
+}
+
+fn apply(value: Int, action: Int -> Int) -> Int {
+    return action(value)
+}
+
+fn main() -> Int {
+    print(apply(3, (x) => combine(as_second: x, as_first: 4)))
+    return 0
+}

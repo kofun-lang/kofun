@@ -86,15 +86,25 @@ kofun_stage2_build "$root" "$temporary/stage2"
 # Lower one case and run it against its golden. `stem` names the fixture and
 # the artifacts, so a second case cannot silently assert against the first
 # one's output.
+#
+# Each step is tested rather than left to `set -e`. A refused compile writes
+# its sentence to the capture file and returns non-zero, so the bare form took
+# the whole gate down with an exit status and no output at all — the one
+# failure mode where the reader most needs the sentence is the one that used
+# to swallow it.
 executes_case() {
     stem=$1
     label=$2
-    "$temporary/stage2" "$cases/$stem.kofun" \
+    if ! "$temporary/stage2" "$cases/$stem.kofun" \
         "$temporary/$stem.c" "$temporary/$stem.ir" \
-        "$temporary/$stem.tokens" >"$temporary/$stem.compiler"
+        "$temporary/$stem.tokens" >"$temporary/$stem.compiler"; then
+        fail "$label was refused: $(sed -n 1p "$temporary/$stem.compiler")"
+    fi
     "$compiler" -std=c11 -O2 -Wall -Wextra -Werror -I "$root/unicode" \
-        "$temporary/$stem.c" -o "$temporary/$stem.program"
-    "$temporary/$stem.program" >"$temporary/$stem.stdout"
+        "$temporary/$stem.c" -o "$temporary/$stem.program" ||
+        fail "$label emitted C that does not compile"
+    "$temporary/$stem.program" >"$temporary/$stem.stdout" ||
+        fail "$label exited non-zero"
     cmp "$cases/$stem.stdout" "$temporary/$stem.stdout" ||
         fail "$label did not evaluate once in source order"
 }
@@ -268,12 +278,19 @@ unsupported_case() {
 unsupported_case "$cases/double_move_carrier.kofun" \
     "$(cat "$cases/double_move_carrier.diagnostic")" \
     'double move through a take-labelled slot'
+# Two refusals shared one sentence until #1399, and only one of them was a
+# hold. This one is a v1 rule: a labelled argument names a parameter of the
+# declaration being called, and a callee that resolves to a lexical binding
+# has no declaration to name against. It reads as its own rule now, so
+# nothing promises it will start working when #882 finishes.
 unsupported_case "$cases/shadowed_callable.kofun" \
-    'error[E2S158]: labelled-call ABI lowering is owned by #882; fixed-slot checked HIR is available at byte 212' \
+    'error[E2S158]: labelled arguments name the parameters of a top-level declaration; this callee is a lexical binding and has none at byte 212' \
     'shadowed callable parameter'
-unsupported_case "$cases/lifted_lambda_call.kofun" \
-    'error[E2S158]: labelled-call ABI lowering is owned by #882; fixed-slot checked HIR is available at byte 140' \
-    'labelled call inside a lifted lambda'
+# The other one was the hold, and #1399 is where it ends. `lifted_lambda_call`
+# is asserted below as a case that runs.
+unsupported_case "$cases/assigned_lambda.kofun" \
+    'error[E2S10]: unsupported Core statement at byte 505' \
+    'lambda assigned to an existing binding'
 # The case above is about where a labelled call may appear. This one was about
 # what a trailing lambda's body may be, and #1398 moved it: the block body
 # executes, and the assertion above is left untouched, which is exactly what
@@ -298,6 +315,95 @@ unsupported_case "$cases/block_lambda_let_position.kofun" \
 unsupported_case "$cases/block_lambda_argument_position.kofun" \
     'error[E2S158]: a block-bodied lambda is recognized only in the trailing position at byte 334' \
     'block-bodied lambda in ordinary argument position'
+
+# #1399, the last of #882. A labelled call inside a lifted lambda is lowered,
+# and the property that makes it lowerable is *where* its fixed-slot carriers
+# are declared: in the lifted function that reads them, not in the source
+# function the lambda was written in.
+#
+# Splitting the emitted C at the lifted definitions is the only way to tell
+# "declared in the lambda" from "declared somewhere in this file". A single
+# grep over the whole translation unit passes on the bug these cases are about.
+split_lifted() {
+    awk -v inside="$2" -v outside="$3" '
+        /^static int64_t kofun_lambda_[0-9A-Za-z_]*\(.*\) \{$/ { lifted = 1 }
+        { print > (lifted ? inside : outside) }
+        lifted && /^\}$/ { lifted = 0 }
+    ' "$1"
+}
+
+# Lower one case without compiling it. The placement assertions below have to
+# read emitted C that has not been through `cc` yet, and the order is the
+# point: a carrier declared in the wrong function is either unused there or
+# undeclared where it is read, so `-Werror` refuses it too. If the compile ran
+# first it would refuse it first, every time, and these assertions could never
+# fail — they would pass forever while proving nothing. Emitting first is what
+# keeps them the guard, and what turns an opaque diagnostic inside generated C
+# into a sentence naming the defect.
+emits_case() {
+    stem=$1
+    label=$2
+    if ! "$temporary/stage2" "$cases/$stem.kofun" \
+        "$temporary/$stem.c" "$temporary/$stem.ir" \
+        "$temporary/$stem.tokens" >"$temporary/$stem.compiler"; then
+        fail "$label was refused: $(sed -n 1p "$temporary/$stem.compiler")"
+    fi
+}
+
+# One labelled call in `main` and one in a lambda lifted out of it. The walk
+# that declares carriers runs over the source text of both, so each call has
+# to be keyed to the body that emits it, and each key must appear on exactly
+# one side of the split.
+and_body_label='a labelled call in a function and one in a lambda lifted out of it'
+emits_case lifted_lambda_and_body "$and_body_label"
+split_lifted "$temporary/lifted_lambda_and_body.c" \
+    "$temporary/and_body.inside" "$temporary/and_body.outside"
+# Containment is asserted before the two keys are compared, and the order is
+# not cosmetic. `call_site_key` reads the first key in a file, so a run that
+# declares the lifted pair in the enclosing function as well can hand back the
+# same key from both sides — which reports as "one call site" and describes
+# neither the defect nor where to look.
+inside_key=$(call_site_key "$temporary/and_body.inside")
+test -n "$inside_key" ||
+    fail 'the lifted lambda body reserved no keyed temporary'
+test "$(grep -c "kofun_call_arg_${inside_key}_" \
+    "$temporary/and_body.outside")" -eq 0 ||
+    fail 'the lifted call carriers were declared outside the lifted body too'
+outside_key=$(call_site_key "$temporary/and_body.outside")
+test -n "$outside_key" ||
+    fail 'the enclosing function reserved no keyed temporary'
+test "$outside_key" != "$inside_key" ||
+    fail 'both labelled calls were keyed to one call site'
+test "$(grep -c "kofun_call_arg_${outside_key}_" \
+    "$temporary/and_body.inside")" -eq 0 ||
+    fail 'a carrier of the enclosing call appeared inside the lifted body'
+
+# The nested case has exactly one labelled call and it belongs to the
+# innermost lambda, so nothing outside a lifted body may name its carriers.
+emits_case lifted_lambda_nested \
+    'labelled call in a lambda nested in another lambda'
+split_lifted "$temporary/lifted_lambda_nested.c" \
+    "$temporary/nested.inside" "$temporary/nested.outside"
+nested_key=$(call_site_key "$temporary/nested.inside")
+test -n "$nested_key" ||
+    fail 'the innermost lambda reserved no keyed temporary'
+test "$(grep -c 'kofun_call_arg_' "$temporary/nested.outside")" -eq 0 ||
+    fail 'a nested lambda carrier was declared outside every lifted body'
+
+# Placement holds. Now the same programs have to compile, run, and print their
+# answers — the four bodies a call can occupy, plus the two-body case.
+executes_case lifted_lambda_call 'labelled call in a let-bound lambda'
+executes_case lifted_lambda_argument 'labelled call in an argument lambda'
+executes_case lifted_lambda_block \
+    'two labelled calls in a block-bodied trailing lambda'
+executes_case lifted_lambda_nested \
+    'labelled call in a lambda nested in another lambda'
+executes_case lifted_lambda_and_body "$and_body_label"
+for lifted_stem in lifted_lambda_call lifted_lambda_argument \
+    lifted_lambda_block lifted_lambda_nested lifted_lambda_and_body; do
+    no_runtime_dispatch "$temporary/$lifted_stem.c" 'as_first|as_second' \
+        "$lifted_stem C"
+done
 
 # #1190 recognizes `subject |> callee(arguments)` as one production and fails
 # closed before slot binding. What it buys is the diagnostic: before it, every
@@ -682,4 +788,4 @@ refuses_on source_order_wide wasm32 \
     'the enum and record carriers'
 
 printf '%s\n' \
-    'PASS: labelled calls bind fixed HIR slots and the Int/Text/List[Int]/Optional/enum/record C11 slice evaluates once in source order; take slots move once and refuse double transfer as E2S123; the expression-bodied trailing lambda binds the final parameter as a lifted address; the direct-call pipeline is one production whose spans are published, whose subject binds slot 0 ahead of the explicit arguments and is then counted, type-checked, and moved once into a take slot, and whose C11 lowering evaluates the subject first and exactly once before the explicit arguments; the chain is that one production iterated, left-associated, with every stage checked and lowered as a stage whose subject is the result of the stage before it, and no second temporary family; a binding whose initializer is a pipeline carries the declared result of the last stage and is checked against the slot it is later piped into; A trailing lambda may be written on a pipeline target: the lambda attaches to the call and the pipeline rewrite applies to the result, so the subject binds slot 0, the parenthesised arguments bind theirs in source order, and the lambda binds the final functional slot as a lifted address. A trailing lambda may take a block body: it is lifted exactly as the expression body is, and its statements are lowered by the walk that lowers a named function body, so `return` is an ordinary return and a local binding lives in the block scope of the lambda itself. The block body is recognized in the trailing position and only there. #882 retains bare/member pipeline forms, block-bodied lambdas outside the trailing position, labelled calls in lifted lambdas, and lexical/indirect targets; the labelled Int call executes on direct-native and wasm32 against the same golden as C11, carrying no label into either artifact, and the pipeline, trailing lambda, Optional, Text/List[Int], and enum/record shapes each stop at one named source-located boundary per backend'
+    'PASS: labelled calls bind fixed HIR slots and the Int/Text/List[Int]/Optional/enum/record C11 slice evaluates once in source order; take slots move once and refuse double transfer as E2S123; the expression-bodied trailing lambda binds the final parameter as a lifted address; the direct-call pipeline is one production whose spans are published, whose subject binds slot 0 ahead of the explicit arguments and is then counted, type-checked, and moved once into a take slot, and whose C11 lowering evaluates the subject first and exactly once before the explicit arguments; the chain is that one production iterated, left-associated, with every stage checked and lowered as a stage whose subject is the result of the stage before it, and no second temporary family; a binding whose initializer is a pipeline carries the declared result of the last stage and is checked against the slot it is later piped into; A trailing lambda may be written on a pipeline target: the lambda attaches to the call and the pipeline rewrite applies to the result, so the subject binds slot 0, the parenthesised arguments bind theirs in source order, and the lambda binds the final functional slot as a lifted address. A trailing lambda may take a block body: it is lifted exactly as the expression body is, and its statements are lowered by the walk that lowers a named function body, so `return` is an ordinary return and a local binding lives in the block scope of the lambda itself. The block body is recognized in the trailing position and only there. #882 retains bare/member pipeline forms and block-bodied lambdas outside the trailing position; a labelled call inside a lifted lambda lowers into that lambda, whose own prologue declares the fixed-slot carriers it reads, and a lexical/indirect target is refused under its own rule rather than as a slice of #882; the labelled Int call executes on direct-native and wasm32 against the same golden as C11, carrying no label into either artifact, and the pipeline, trailing lambda, Optional, Text/List[Int], and enum/record shapes each stop at one named source-located boundary per backend'

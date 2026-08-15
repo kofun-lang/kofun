@@ -138,10 +138,12 @@ builder cannot resolve, so without an earlier refusal it reports
 `E2S35 unknown lexical binding` about a binding the author never meant to
 reference.
 
-Bare pipeline targets, member pipeline targets, labelled calls inside lifted
-lambdas, block-bodied lambdas outside the trailing position, and
-lexical/indirect targets remain unsupported at their existing E2S158 or
-earlier named refusal boundaries and remain owned by #882. The one-stage direct
+Bare pipeline targets, member pipeline targets, and block-bodied lambdas
+outside the trailing position remain unsupported at their existing E2S158 or
+earlier named refusal boundaries and remain owned by #882. Labelled calls
+inside lifted lambdas left that set with #1399, which is the last of #882's
+children; lexical/indirect targets left it too, but by being restated as a v1
+rule rather than by being admitted. The one-stage direct
 top-level Stage 2/C11 pipeline no longer belongs to that unsupported set: #1226
 binds its subject to slot zero, #1227 checks it, and #1228 lowers it. Neither
 does the chain. A pipeline chain is that production iterated: it associates
@@ -177,12 +179,13 @@ The Text refusal wording is deliberately left alone. `spec/wasm-host-profile-v1`
 owns it and pins it, which is why `pipeline_subject_type_mismatch` still stops
 at its `"text"` subject on wasm32 rather than at its pipe.
 
-The block-bodied trailing lambda and labelled call inside a lifted lambda are
+The block-bodied trailing lambda and labelled call inside a lifted lambda were
 different boundaries under one code, so `trailing_lambda_block.kofun` and
-`lifted_lambda_call.kofun` are asserted separately rather than through one
+`lifted_lambda_call.kofun` were asserted separately rather than through one
 pattern: the first is about what a trailing lambda's body may be, the second
-about where a labelled call may appear. A slice that admits one must leave the
-other's wording intact.
+about where a labelled call may appear. #1398 admitted the first and left the
+second refused, which is what keeping them apart was for; #1399 then admitted
+the second, and both now execute.
 
 Supplying the final parameter twice — once by label and again by the trailing
 lambda — is E2S167, not E2S158. It is a binding failure rather than a lowering
@@ -190,9 +193,31 @@ boundary: the shape is understood, and no later slice makes it legal.
 
 `shadowed_callable.kofun` keeps lexical resolution load-bearing: a callable
 parameter named like a supported top-level function must not be redirected to
-that top-level ABI. The bounded slice refuses it before C emission.
+that top-level ABI. The bounded slice refuses it before C emission, and since
+#1399 it says why in its own words rather than borrowing #882's.
 
-`lifted_lambda_call.kofun` pins a second function-scope boundary. Lifted
-lambdas become separate generated C functions, so this slice refuses a
-labelled call in their body rather than declaring its temporaries in the
-enclosing source function.
+The five lifted-lambda cases are all about one thing: which C function
+declares a call's fixed-slot carriers. A lifted lambda becomes a separate
+generated C function, and until #1399 the carriers were only ever declared in
+the enclosing source function, so a labelled call inside a lambda had nowhere
+to put them and was refused. Each body that can hold such a call now declares
+its own: `lifted_lambda_call` a `let` initializer, `lifted_lambda_argument` an
+argument, `lifted_lambda_block` a block-bodied trailing lambda, and
+`lifted_lambda_nested` a lambda inside another lambda.
+
+`lifted_lambda_and_body.kofun` is the one that can fail while the other four
+pass, and it is asserted differently for that reason. It puts a labelled call
+in `main` and another in a lambda lifted out of `main`, then splits the
+emitted C at the lifted definitions and requires each call site key to appear
+on exactly one side. Grepping the whole translation unit cannot distinguish
+"declared in the lambda" from "declared in this file", which is the property
+at issue; the split is what makes the assertion mean anything.
+
+`assigned_lambda.kofun` holds the reasoning closed rather than testing an
+output. Keying a call to the innermost lambda containing it is only safe
+because every lambda the grammar admits is lifted — `let` initializers and
+arguments are the two positions, and both have a lifter. A lambda reachable by
+a third route would be emitted in place and its carriers declared by nobody.
+Assignment is the nearest such route, and this case pins that it is refused as
+an unsupported statement. If it is ever admitted, this fixture fails and
+whoever admits it has to revisit the keying.

@@ -1,0 +1,14 @@
+# One labelled call in `main` and one in a lambda lifted out of it. The walk
+# that declares carriers runs over the text of both, so without keying each
+# call to the body that emits it the lambda's pair would be declared twice —
+# once in a function that never reads them — and `main` would not compile.
+fn combine(as_first left: Int, as_second right: Int) -> Int {
+    return left * 10 + right
+}
+
+fn main() -> Int {
+    let deferred = fn() => combine(as_second: 2, as_first: 1)
+    print(combine(as_second: 4, as_first: 3))
+    print(deferred())
+    return 0
+}
