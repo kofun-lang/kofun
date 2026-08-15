@@ -1,0 +1,15 @@
+# A lambda inside another lambda's argument. The innermost body owns the call,
+# so neither `main` nor the outer lambda may declare its carriers.
+fn combine(as_first left: Int, as_second right: Int) -> Int {
+    return left * 10 + right
+}
+
+fn apply(value: Int, action: Int -> Int) -> Int {
+    return action(value)
+}
+
+fn main() -> Int {
+    let outer = (x) => apply(x, (y) => combine(as_first: y, as_second: 3))
+    print(outer(6))
+    return 0
+}

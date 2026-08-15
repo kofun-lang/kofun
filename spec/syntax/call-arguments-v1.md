@@ -37,8 +37,20 @@ so `return` is an ordinary return and a local binding lives in the block scope o
 The block body is recognized in the trailing position and only there. #1398 is landed and gated by the same
 task.
 
-Bare pipeline targets, labelled calls inside lifted lambdas, block-bodied
-lambdas outside the trailing position, and lexical/member/indirect targets
+A labelled call may be written inside a lifted lambda:
+the lambda is emitted as its own C function and declares the fixed-slot carriers that call reads,
+so the temporaries live in the body that evaluates them rather than in the function the lambda was written in.
+This holds for all four bodies a call can occupy — a `let` initializer lambda, an argument lambda,
+a block-bodied trailing lambda, and a lambda nested inside another. #1399 is landed and gated by the
+same task, and completes #882.
+
+A lexical or indirect target is refused under its own rule rather than as a
+slice of #882. A labelled argument names a parameter of the declaration being
+called, so a callee that resolves to a lexical binding has no declaration to
+name against, and no later slice makes it legal.
+
+Bare pipeline targets, block-bodied
+lambdas outside the trailing position, and member targets
 remain at their existing `E2S158` or
 earlier named refusal boundaries. Direct-native and Wasm behavior is measured
 by the same corpus: the labelled Int call executes on both and is compared

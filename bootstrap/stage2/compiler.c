@@ -7983,6 +7983,48 @@ static bool fixed_slot_call_shape(
     return labelled || piped || has_list;
 }
 
+/*
+ * The body whose prologue carries `call_start`'s fixed-slot temporaries.
+ *
+ * A lifted lambda is emitted as its own C function, so a call written inside
+ * one is carried by that lambda and not by the named function the source
+ * nests it in. Every emitter that declares a temporary and the walker that
+ * decides which ones to declare must agree on this single answer: a
+ * disagreement puts the declaration in one C function and its read in
+ * another, which is a C compile error rather than a refusal here.
+ *
+ * The answer is keyed the way each body's emitter keys it — a named function
+ * and a block-bodied lambda by their `{`, which is what `lower_body` receives
+ * as its `function_open`, and an expression-bodied lambda by its parameter
+ * `(`, which is the only token it has. -1 outside any function.
+ *
+ * `lambda_scope_open` is the whole of the lambda question because both lambda
+ * positions the grammar admits are lifted: a `let` initializer by
+ * `emit_lifted_lambdas` and an argument by `emit_lifted_argument_lambdas`.
+ * `assigned_lambda.kofun` holds that pair closed — a lambda assigned to an
+ * existing binding is refused as an unsupported statement, so it never
+ * reaches an emitter that would key a temporary to a body nobody writes.
+ */
+static int64_t fixed_slot_temporary_body(
+    const char *source,
+    int64_t call_start
+) {
+    int64_t function_open = enclosing_function_open(source, call_start);
+    if (function_open < 0) return -1;
+    int64_t lambda_open = lambda_scope_open(
+        source,
+        function_open,
+        call_start
+    );
+    if (lambda_open < 0) return function_open;
+    int64_t parameters_close = token_equal(source, lambda_open, "(")
+        ? balanced_end(source, lambda_open, "(", ")")
+        : token_end(source, lambda_open);
+    if (parameters_close < 0) return lambda_open;
+    int64_t body = skip_trivia(source, parameters_close);
+    return token_equal(source, body, "{") ? body : lambda_open;
+}
+
 static bool fixed_slot_call_supported(
     const char *source,
     const char *hir,
@@ -7991,21 +8033,27 @@ static bool fixed_slot_call_supported(
     int64_t open,
     bool labelled
 ) {
-    if (!fixed_slot_call_shape(
+    /*
+     * Placement used to be a second condition here. The temporaries were only
+     * ever emitted into the enclosing named function's prologue, so a call
+     * inside a lifted lambda — a separate C function — had nowhere to put
+     * them and was refused: #882's hold, reported as E2S158.
+     *
+     * Every body that can hold a call now emits that prologue itself, keyed
+     * by `fixed_slot_temporary_body`: a named function's, and a lifted
+     * lambda's in both the block form (#1398) and the expression form
+     * (#1399). `emit_fixed_slot_call_temporaries` declares each temporary in
+     * exactly the body that reads it, so placement is answered by
+     * construction and the shape is once again the whole of the decision.
+     */
+    return fixed_slot_call_shape(
         source,
         hir,
         call_start,
         callee,
         open,
         labelled
-    )) {
-        return false;
-    }
-    /* Lifted lambdas are emitted as separate C functions. Their call-site
-     * temporaries therefore cannot live in the enclosing source function. */
-    int64_t function_open = enclosing_function_open(source, call_start);
-    return function_open < 0 ||
-        lambda_scope_open(source, function_open, call_start) < 0;
+    );
 }
 
 /* Thin wrappers keep the existing diagnostic routing and make each mode's
@@ -8024,23 +8072,6 @@ static bool labelled_call_supported(
         callee,
         open,
         true
-    );
-}
-
-static bool direct_list_int_call_shape(
-    const char *source,
-    const char *hir,
-    int64_t call_start,
-    const char *callee,
-    int64_t open
-) {
-    return fixed_slot_call_shape(
-        source,
-        hir,
-        call_start,
-        callee,
-        open,
-        false
     );
 }
 
@@ -8284,23 +8315,50 @@ static char *emit_fixed_slot_call(
 /* Reserve the fixed carrier slots before any statement in the containing
  * function. The call-start byte makes nested and repeated call sites distinct
  * without carrying an external label into generated artifacts. */
+/*
+ * Declare the fixed-slot temporaries for every call `body_open` will emit.
+ *
+ * `body_open` is keyed as `fixed_slot_temporary_body` keys it, and the two
+ * are compared per call rather than assumed: the span of a named function
+ * contains the text of every lambda written inside it, and those calls belong
+ * to the lambda's own C function. Walking without the comparison would
+ * declare them here as well — the same carrier defined twice in one
+ * translation unit, and once in a function that never reads it.
+ *
+ * An expression-bodied lambda has no brace to bound it, so its extent is what
+ * `lambda_parameters_end` spans and its statements begin after the arrow.
+ */
 static char *emit_fixed_slot_call_temporaries(
     const char *source,
     const char *hir,
-    int64_t function_open
+    int64_t body_open
 ) {
-    int64_t close = balanced_end(source, function_open, "{", "}");
+    bool braced = token_equal(source, body_open, "{");
+    int64_t close = braced
+        ? balanced_end(source, body_open, "{", "}")
+        : lambda_parameters_end(source, -1, body_open);
     Buffer output;
     buffer_init(&output);
     if (close < 0) return output.data;
-    int64_t cursor = skip_trivia(
-        source,
-        token_end(source, function_open)
-    );
+    int64_t cursor;
+    if (braced) {
+        cursor = skip_trivia(source, token_end(source, body_open));
+    } else {
+        int64_t parameters_close = token_equal(source, body_open, "(")
+            ? balanced_end(source, body_open, "(", ")")
+            : token_end(source, body_open);
+        if (parameters_close < 0) return output.data;
+        int64_t arrow = skip_trivia(source, parameters_close);
+        cursor = skip_trivia(source, token_end(source, arrow));
+    }
     while (cursor < close) {
         if (strcmp(token_kind(source, cursor), "identifier") == 0) {
             int64_t open = skip_trivia(source, token_end(source, cursor));
-            if (open < close && token_equal(source, open, "(")) {
+            if (
+                open < close &&
+                token_equal(source, open, "(") &&
+                fixed_slot_temporary_body(source, cursor) == body_open
+            ) {
                 char *callee = token_copy(source, cursor);
                 bool labelled = call_has_labelled_argument(source, open);
                 if (fixed_slot_call_supported(
@@ -9639,31 +9697,18 @@ static char *emit_primary(
         /* A callee the scope HIR resolved to a binding is either a lifted
          * lambda or a callable-typed parameter; anything else is a top-level
          * function looked up by name. */
-        if (
-            direct_list_int_call_shape(
-                source,
-                hir,
-                cursor,
-                name,
-                open
-            ) &&
-            !direct_list_int_call_supported(
-                source,
-                hir,
-                cursor,
-                name,
-                open
-            )
-        ) {
-            free(name);
-            free(output.data);
-            return lower_error(
-                "E2S157",
-                "List[Int] carrier calls inside lambdas are outside this "
-                "lowering slice",
-                cursor
-            );
-        }
+        /*
+         * A fourth E2S157 stood here, refusing a List[Int] carrier call
+         * inside a lambda when the shape check passed and the support check
+         * did not. #1399 removed the difference between those two — support
+         * is now the shape, because every body declares its own temporaries —
+         * so the condition became `shape && !shape` and the branch could not
+         * execute. It could not execute before either: a List[Int] reaching a
+         * call inside a lambda has to arrive as a literal, an annotation, or
+         * a binding use, and `validate_list_int_lambda_uses` refuses all
+         * three under their own E2S157 wordings first. Measured on both
+         * sides of this change: the three surviving sentences are unmoved.
+         */
         if (direct_list_int_call_supported(
             source,
             hir,
@@ -9705,7 +9750,27 @@ static char *emit_primary(
             return labelled;
         }
         if (call_has_labelled_argument(source, open)) {
+            /*
+             * Two refusals reached this one sentence, and only one of them is
+             * a hold. A labelled argument names a parameter of the
+             * declaration being called, so a callee that resolves to a
+             * lexical binding has no declaration to name against — a v1 rule
+             * that survives #882 rather than a slice of it. Reporting both as
+             * "owned by #882" promises the second one will start working.
+             */
+            char *labelled_binding = hir_use_binding_id(hir, cursor);
+            bool lexical = labelled_binding[0] != '\0';
+            free(labelled_binding);
             free(name);
+            if (lexical) {
+                return lower_error(
+                    "E2S158",
+                    "labelled arguments name the parameters of a top-level "
+                    "declaration; this callee is a lexical binding and has "
+                    "none",
+                    cursor
+                );
+            }
             return lower_error(
                 "E2S158",
                 "labelled-call ABI lowering is owned by #882; fixed-slot "
@@ -23013,6 +23078,15 @@ static char *emit_lifted_lambdas(
             free(binding_id);
             return value;
         }
+        /* The lifted body is its own C function, so the fixed-slot carriers a
+         * call inside it reads have to be declared here rather than in the
+         * prologue of whatever function the lambda was written in (#1399).
+         * `lower_body` does exactly this for the block form. */
+        char *temporaries = emit_fixed_slot_call_temporaries(
+            source,
+            hir,
+            open
+        );
         buffer_format(
             prototypes,
             "static int64_t kofun_lambda_%s(%s);\n",
@@ -23022,6 +23096,7 @@ static char *emit_lifted_lambdas(
         buffer_format(
             bodies,
             "static int64_t kofun_lambda_%s(%s) {\n"
+            "%s"
             "    {\n"
             "        int64_t kofun_result = %s;\n"
             "        if (kofun_failed) return 0;\n"
@@ -23030,8 +23105,10 @@ static char *emit_lifted_lambdas(
             "}\n",
             binding_id,
             c_parameters,
+            temporaries,
             value
         );
+        free(temporaries);
         free(value);
         free(signature.data);
         free(binding_id);
@@ -23181,9 +23258,19 @@ static char *emit_lifted_argument_lambdas(
                     value
                 );
             } else {
+                /* The expression form gets the same prologue the block form
+                 * receives from `lower_body`: this is a separate C function,
+                 * so a call inside it reads carriers that nothing else
+                 * declares (#1399). */
+                char *temporaries = emit_fixed_slot_call_temporaries(
+                    source,
+                    hir,
+                    cursor
+                );
                 buffer_format(
                     bodies,
                     "static int64_t %s(%s) {\n"
+                    "%s"
                     "    {\n"
                     "        int64_t kofun_result = %s;\n"
                     "        if (kofun_failed) return 0;\n"
@@ -23192,8 +23279,10 @@ static char *emit_lifted_argument_lambdas(
                     "}\n",
                     name,
                     c_parameters,
+                    temporaries,
                     value
                 );
+                free(temporaries);
             }
             free(name);
             free(value);

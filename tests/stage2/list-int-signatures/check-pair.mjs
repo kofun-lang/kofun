@@ -47,19 +47,31 @@ function callCount(source, name) {
 const minimumCalls = new Map([
   ["list_int_type_end", { c: 13, kofun: 13 }],
   ["validate_list_int_annotations", { c: 4, kofun: 3 }],
-  ["fixed_slot_call_shape", { c: 3, kofun: 3 }],
+  ["fixed_slot_call_shape", { c: 2, kofun: 2 }],
   // #1228 added one dispatch per half, in `emit_expression`, where `|>` is
   // claimed before the coalescing operator. Raising the minimum is what keeps
   // the removal mutation detected: at the old 4 a removed call still left 4,
   // so the mutation stopped producing its named failure and proved nothing.
   ["fixed_slot_call_supported", { c: 5, kofun: 5 }],
   ["labelled_call_supported", { c: 2, kofun: 2 }],
-  ["direct_list_int_call_shape", { c: 2, kofun: 2 }],
-  ["direct_list_int_call_supported", { c: 3, kofun: 3 }],
+  // #1399 removed `direct_list_int_call_shape`. Its only caller was an E2S157
+  // branch guarded by `shape && !supported`, and making support the shape made
+  // that condition unsatisfiable; the wrapper then had no callers at all and
+  // `-Werror=unused-function` refused the build. Each number below is the
+  // exact current count for the same reason the `fixed_slot_call_supported`
+  // note gives: a minimum set below it stops detecting a removed call.
+  ["direct_list_int_call_supported", { c: 2, kofun: 2 }],
   ["labelled_argument_slot", { c: 2, kofun: 2 }],
   ["labelled_argument_value", { c: 2, kofun: 2 }],
   ["emit_fixed_slot_call", { c: 3, kofun: 3 }],
-  ["emit_fixed_slot_call_temporaries", { c: 2, kofun: 2 }],
+  // #1399 gave both lambda lifters the prologue the block form already got
+  // from `lower_body`, so the shared walker gained two dispatches per half.
+  ["emit_fixed_slot_call_temporaries", { c: 4, kofun: 4 }],
+  // The one answer every emitter keys a call's temporaries by (#1399). Its
+  // count is the definition plus the walker comparison that skips a call
+  // belonging to a nested lambda; losing that call is how a named function
+  // starts declaring carriers a lifted lambda reads.
+  ["fixed_slot_temporary_body", { c: 2, kofun: 2 }],
   ["emit_list_int_value", { c: 6, kofun: 5 }],
   ["function_result_is_list_int", { c: 2, kofun: 2 }],
   ["validate_list_int_lambda_uses", { c: 2, kofun: 2 }],
@@ -327,7 +339,27 @@ if (mode === "self-test") {
   );
   requireFailure(
     verifyPair(cSource, underCalledDirectKofun),
-    "Kofun dispatch direct_list_int_call_supported: expected at least 3, saw 2",
+    "Kofun dispatch direct_list_int_call_supported: expected at least 2, saw 1",
+  );
+
+  const underCalledTemporaryBodyC = replaceLast(
+    cSource,
+    "fixed_slot_temporary_body(",
+    "removed_fixed_slot_temporary_body(",
+  );
+  requireFailure(
+    verifyPair(underCalledTemporaryBodyC, kofunSource),
+    "C dispatch fixed_slot_temporary_body: expected at least 2, saw 1",
+  );
+
+  const underCalledTemporaryBodyKofun = replaceLast(
+    kofunSource,
+    "fixed_slot_temporary_body(",
+    "removed_fixed_slot_temporary_body(",
+  );
+  requireFailure(
+    verifyPair(cSource, underCalledTemporaryBodyKofun),
+    "Kofun dispatch fixed_slot_temporary_body: expected at least 2, saw 1",
   );
 
   const sourceBlindKofun = kofunSource.replace(

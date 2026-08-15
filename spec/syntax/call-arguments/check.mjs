@@ -158,7 +158,7 @@ const requiredRunTruth = [
   "a binding whose initializer is a pipeline carries the declared result of the last stage and is checked against the slot it is later piped into",
   "A trailing lambda may be written on a pipeline target: the lambda attaches to the call and the pipeline rewrite applies to the result, so the subject binds slot 0, the parenthesised arguments bind theirs in source order, and the lambda binds the final functional slot as a lifted address.",
   "A trailing lambda may take a block body: it is lifted exactly as the expression body is, and its statements are lowered by the walk that lowers a named function body, so `return` is an ordinary return and a local binding lives in the block scope of the lambda itself. The block body is recognized in the trailing position and only there.",
-  "#882 retains bare/member pipeline forms, block-bodied lambdas outside the trailing position, labelled calls in lifted lambdas, and lexical/indirect targets",
+  "#882 retains bare/member pipeline forms and block-bodied lambdas outside the trailing position; a labelled call inside a lifted lambda lowers into that lambda, whose own prologue declares the fixed-slot carriers it reads, and a lexical/indirect target is refused under its own rule rather than as a slice of #882",
   "the labelled Int call executes on direct-native and wasm32 against the same golden as C11",
   "each stop at one named source-located boundary per backend",
 ];

@@ -1,0 +1,12 @@
+# The pair of lambda positions is closed, and this case is what holds it
+# closed. `let` initializers and arguments are the two forms that get lifted
+# to their own C function, and #1399 keys a call's carriers to the innermost
+# lambda containing it on exactly that basis. A lambda reachable by any third
+# route would be emitted in place, and its carriers would be declared by
+# nobody. Assignment is the nearest such route, and it is refused.
+fn main() -> Int {
+    let mut f = (x) => x + 1
+    f = (y) => y + 2
+    print(f(1))
+    return 0
+}

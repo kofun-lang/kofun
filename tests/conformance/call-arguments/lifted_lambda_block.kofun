@@ -1,0 +1,19 @@
+# The block-bodied trailing lambda #1398 admitted, now carrying a labelled
+# call. Its statements are lowered by `lower_body`, so the prologue that
+# declares the carriers is the same one a named function receives — the two
+# labelled calls below are keyed separately and both live here.
+fn combine(as_first left: Int, as_second right: Int) -> Int {
+    return left * 10 + right
+}
+
+fn apply(value: Int, action: Int -> Int) -> Int {
+    return action(value)
+}
+
+fn main() -> Int {
+    print(apply(1) fn(x: Int) {
+        let inner = combine(as_first: x, as_second: 2)
+        return combine(as_first: inner, as_second: 5)
+    })
+    return 0
+}
