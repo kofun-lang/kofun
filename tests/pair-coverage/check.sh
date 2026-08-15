@@ -31,6 +31,22 @@
 #
 # Regeneration is deliberately manual: the number moving is the event this file
 # exists to make visible.
+#
+# THIS HARNESS IS SHELL, AND THAT IS RECORDED DEBT, NOT A CHOICE THAT WAS MADE
+# HERE. RFC-0018 is accepted: Kofun is a self-contained native toolchain, and
+# the maintainer's direction is that everything around the compiler becomes
+# Kofun -- these three scripts included, not only the CLI and the package
+# manager. The debt is written down rather than implied: this file, measure.sh
+# and prove.sh each carry a `shell-build-driver` row in
+# tooling/forbidden-requirements/census.tsv, and measure.sh carries `cc` and
+# `go-task` rows besides. That census re-derives every row from the tree and
+# fails in both directions, so this cannot quietly stop being true.
+#
+# What a Kofun rewrite has to be able to do, recorded so whoever picks it up
+# inherits the requirements and not just the row: spawn on the order of 1,400
+# child processes and collect their exit status; read the coverage tool's own
+# output format for two different tool families; and hold a per-function table
+# over a file with several hundred entries. #1451 owns that work.
 set -eu
 
 ROOT=$(CDPATH= cd -P -- "$(dirname -- "$0")/../.." && pwd)
