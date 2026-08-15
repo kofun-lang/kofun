@@ -1,0 +1,20 @@
+# The other direction. A binding typed from its pipeline must still satisfy a
+# matching slot, or #1487 would have bought the refusal by refusing everything.
+# The chain in the second binding proves the type comes from the *last* stage:
+# `describe` accepts what `twice` returns, not what `start` was.
+fn twice(base: Int) -> Int {
+    return base * 2
+}
+
+fn describe(value: Int, label: Int) -> Int {
+    return value * 10 + label
+}
+
+fn main() -> Int {
+    let start = 1
+    let doubled = start |> twice()
+    let quadrupled = start |> twice() |> twice()
+    print(doubled |> describe(7))
+    print(quadrupled |> describe(9))
+    return 0
+}

@@ -1,0 +1,18 @@
+# A binding whose initializer is a pipeline carries the declared result of that
+# pipeline's last stage. Until #1487 it carried no type at all, and a binding
+# with no type is not checked against the slot it is later piped into — so this
+# program compiled and put an `Int` in a `Text` slot.
+fn twice(base: Int) -> Int {
+    return base * 2
+}
+
+fn shout(word: Text) -> Text {
+    return word
+}
+
+fn main() -> Int {
+    let start = 1
+    let doubled = start |> twice()
+    print(doubled |> shout())
+    return 0
+}
