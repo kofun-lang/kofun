@@ -1,0 +1,15 @@
+# diagnostic-mode: compile
+# expect-code: E2S176
+# expect-span: byte 140
+fn helper() -> Int {
+    print("side effect")
+    return 1
+}
+
+pure fn calc() -> Int {
+    return helper()
+}
+
+fn main() -> Int {
+    return calc()
+}

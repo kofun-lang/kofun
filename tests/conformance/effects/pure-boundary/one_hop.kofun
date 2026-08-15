@@ -1,0 +1,12 @@
+fn helper() -> Int {
+    print("side effect")
+    return 1
+}
+
+pure fn calc() -> Int {
+    return helper()
+}
+
+fn main() -> Int {
+    return calc()
+}

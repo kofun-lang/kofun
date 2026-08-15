@@ -1,0 +1,1 @@
+error[E353]: RootAuthority is an Owned authority and cannot be copied; pass it with `take`, or borrow it with `read` or `edit` at byte 202

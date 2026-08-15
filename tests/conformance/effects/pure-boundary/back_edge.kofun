@@ -1,0 +1,19 @@
+# The annotated function is declared before everything it reaches, so one
+# forward scan cannot settle the io set: `calc` learns about `helper` only
+# after `helper` has learned about `sink`.
+pure fn calc() -> Int {
+    return helper()
+}
+
+fn helper() -> Int {
+    return sink()
+}
+
+fn sink() -> Int {
+    print("side effect")
+    return 1
+}
+
+fn main() -> Int {
+    return calc()
+}

@@ -1,0 +1,11 @@
+# `pure` is an annotation only where a declaration begins. Everywhere else it
+# is the identifier it always was: a function name, a binding, and a call.
+fn pure(value: Int) -> Int {
+    return value
+}
+
+fn main() -> Int {
+    let pure: Int = 40
+    print(pure(pure + 2))
+    return 0
+}

@@ -1,0 +1,8 @@
+pure fn calc() -> Int {
+    print("side effect")
+    return 7
+}
+
+fn main() -> Int {
+    return calc()
+}

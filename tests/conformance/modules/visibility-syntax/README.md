@@ -12,7 +12,10 @@ carry the deterministic single-input `file:0` identity and declaration-order
 `symbol:N` identity used by this bounded frontend. The mixed case proves that
 the modifier has no effect on same-file calls, forward references, or runtime
 behavior. The contextual-identifier case proves that modifier spellings remain
-ordinary identifiers outside a declaration prefix.
+ordinary identifiers outside a declaration prefix. `pure` is in that case
+without being a visibility modifier: #1245 gave it the same slot as an effect
+annotation, so the word that is now read there before `fn` must still be a
+function name, a binding, and a call everywhere else.
 
 The negative cases reserve `E2S33` for malformed, duplicate, conflicting, or
 misplaced basic modifiers and `E2S34` for deferred or foreign visibility

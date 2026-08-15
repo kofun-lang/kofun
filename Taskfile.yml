@@ -272,6 +272,11 @@ tasks:
       - "sh tests/conformance/effects/pure-io/run.sh"
       - "KOFUN_PURE_IO_CASES=96 sh tests/fuzz/pure_io.sh"
 
+  pure-boundary:
+    desc: "Verify the source-level `pure fn` boundary over inferred effects"
+    cmds:
+      - "sh tests/conformance/effects/pure-boundary/run.sh"
+
   traits:
     desc: "Verify the bounded trait declaration frontend and dictionary shape"
     cmds:
@@ -1202,6 +1207,7 @@ tasks:
             const-generics \
             hm-levels \
             effect-inference \
+            pure-boundary \
             traits \
             optional \
             optional-narrowing \

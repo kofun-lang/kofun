@@ -1,0 +1,16 @@
+fn second() -> Int {
+    return 2
+}
+
+pure fn calc() -> Int {
+    return second() + first()
+}
+
+fn first() -> Int {
+    print("side effect")
+    return 1
+}
+
+fn main() -> Int {
+    return calc()
+}

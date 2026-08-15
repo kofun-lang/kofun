@@ -1,0 +1,7 @@
+fn calc(pure value: Int) -> Int {
+    return value
+}
+
+fn main() -> Int {
+    return calc(0)
+}

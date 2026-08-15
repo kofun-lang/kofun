@@ -1,0 +1,15 @@
+fn sink() -> Int {
+    print("side effect")
+    return 1
+}
+
+pure fn calc(depth: Int) -> Int {
+    if depth == 0 {
+        return sink()
+    }
+    return calc(depth - 1)
+}
+
+fn main() -> Int {
+    return calc(2)
+}

@@ -1,0 +1,5 @@
+pure type Marker = | Ready
+
+fn main() -> Int {
+    return 0
+}
