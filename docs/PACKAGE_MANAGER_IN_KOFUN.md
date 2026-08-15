@@ -70,6 +70,22 @@ What `manager.sh` uses, counted:
 A `planned` row is a promise; an absent row is not even a question anyone has
 asked. These four need rows before they need issues.
 
+The matrix is not the only witness. `stdlib/linux_x86_64/` exposes 68
+functions, and the syscall surface behind them is:
+
+```
+raw_accept4 raw_bind raw_clock_gettime raw_close raw_connect
+raw_epoll_create1 raw_epoll_ctl raw_epoll_wait raw_exit raw_exit_group
+raw_getrandom raw_listen raw_lseek raw_mmap raw_munmap raw_nanosleep
+raw_open raw_read raw_setsockopt raw_socket raw_stat raw_write
+```
+
+No `mkdir`, `rmdir`, `unlink`, `rename`, or `getdents64`; no `fork`, `execve`,
+or `wait`; no environment access. So the four absent rows are absent from the
+implementation too, and `process-spawn`, `directory-listing`, and
+`environment-authority` are `planned` against a surface that has nothing to
+build on yet rather than against a partial one.
+
 ## 3. Capabilities that have a row
 
 | `manager.sh` needs | row | state | usable today |
