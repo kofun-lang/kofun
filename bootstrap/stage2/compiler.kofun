@@ -11440,6 +11440,31 @@ fn initializer_type_bounded(
     if lambda_end >= 0 && lambda_end <= end {
         return "Fn"
     }
+    # A pipeline's type is the declared result of its last stage (#1487).
+    #
+    # Asked before every shape rule below because `|>` is the lowest-precedence
+    # boundary: an initializer that contains a pipeline *is* a pipeline, and
+    # the rules below would classify it by its subject — the value that went in
+    # rather than the one that came out. Until this they classified it as
+    # nothing at all, and a binding with no type is not checked against the
+    # slot it is later piped into.
+    let initializer_pipe = pipeline_last_pipe(source, initializer, end)
+    if initializer_pipe >= 0 {
+        let initializer_stage = skip_trivia(
+            source,
+            token_end(source, initializer_pipe)
+        )
+        let staged = function_return_type(
+            source,
+            token_text(source, initializer_stage)
+        )
+        # An undeclared callee is somebody else's diagnostic. Falling through
+        # leaves the classification exactly as it was rather than inventing a
+        # type for a call that does not resolve.
+        if staged != "" {
+            return staged
+        }
+    }
     # A `let` whose whole initializer is a bit-operation chain binds `Int`,
     # whatever the receiver is, because the eight operations return `Int`.
     # Without this, `let y = f.and(1)` bound `y` as `Float` and the reader was

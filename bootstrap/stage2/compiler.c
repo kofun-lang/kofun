@@ -11215,11 +11215,22 @@ static char *validate_pipeline_checked(
             actual = function_return_type(source, subject_name);
             free(subject_name);
         } else {
-            actual = initializer_type(
+            /*
+             * Bounded by the subject's own end (#1487). Unbounded, the
+             * classifier walks from the subject through this very `|>` and
+             * types the whole pipeline — so the subject reports the result of
+             * the call it is being checked against, matches it by
+             * construction, and the check passes for every subject that is not
+             * itself a pipeline. It read as correct because before #1487 the
+             * classifier answered nothing for a pipeline and the mismatch was
+             * skipped for a different reason.
+             */
+            actual = initializer_type_bounded(
                 source,
                 hir,
                 enclosing_function_open(source, subject),
-                subject
+                subject,
+                subject_end
             );
         }
         if (
@@ -15686,6 +15697,32 @@ static char *initializer_type_bounded(
     int64_t lambda_end = lambda_parameters_end(source, -1, initializer);
     if (lambda_end >= 0 && lambda_end <= end) {
         return owned_text("Fn");
+    }
+    /*
+     * A pipeline's type is the declared result of its last stage (#1487).
+     *
+     * Asked before every shape rule below because `|>` is the lowest-precedence
+     * boundary: an initializer that contains a pipeline *is* a pipeline, and
+     * the rules below would classify it by its subject — the value that went
+     * in rather than the one that came out. Until this, they classified it as
+     * nothing at all, and a binding with no type is not checked against the
+     * slot it is later piped into, so `let v = 1 |> twice()` could be piped
+     * into a `Text` slot and accepted.
+     */
+    int64_t initializer_pipe = pipeline_last_pipe(source, initializer, end);
+    if (initializer_pipe >= 0) {
+        int64_t initializer_stage = skip_trivia(
+            source,
+            token_end(source, initializer_pipe)
+        );
+        char *initializer_stage_name = token_copy(source, initializer_stage);
+        char *staged = function_return_type(source, initializer_stage_name);
+        free(initializer_stage_name);
+        /* An undeclared callee is somebody else's diagnostic. Falling through
+         * leaves the classification exactly as it was rather than inventing a
+         * type for a call that does not resolve. */
+        if (staged[0] != '\0') return staged;
+        free(staged);
     }
     /*
      * A `let` whose whole initializer is a bit-operation chain binds `Int`,

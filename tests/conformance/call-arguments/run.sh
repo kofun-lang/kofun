@@ -446,6 +446,19 @@ unsupported_case "$cases/pipeline_subject_type_mismatch.kofun" \
     'error[E2S15]: Core function `add` expects Int for argument 1, got Text at byte 126' \
     'pipeline subject type is checked against slot 0'
 
+# #1487. A binding whose initializer is a pipeline carries the declared result
+# of that pipeline's last stage. Both directions are here because the refusal
+# alone would be bought by refusing everything, and the executing case alone
+# would be satisfied by carrying no type — which is exactly what it did.
+#
+# `pipeline_binding` also proves the type comes from the *last* stage rather
+# than the first: `quadrupled` is a two-stage chain, and `describe` accepts
+# what `twice` returns, not what `start` was.
+unsupported_case "$cases/pipeline_binding_type_mismatch.kofun" \
+    'error[E2S15]: Core function `shout` expects Text for argument 1, got Int at byte 478' \
+    'a binding typed from its pipeline is checked against slot 0'
+executes_case pipeline_binding 'binding typed from its pipeline'
+
 # RFC-0010, reached without a label: the subject flows into a `take` slot 0, so
 # it moves exactly once and the later use is the existing E2S123 with both
 # spans. `move_call_binding` admits it on the declared mode of slot 0 rather
@@ -619,4 +632,4 @@ refuses_on source_order_wide wasm32 \
     'the enum and record carriers'
 
 printf '%s\n' \
-    'PASS: labelled calls bind fixed HIR slots and the Int/Text/List[Int]/Optional/enum/record C11 slice evaluates once in source order; take slots move once and refuse double transfer as E2S123; the expression-bodied trailing lambda binds the final parameter as a lifted address; the direct-call pipeline is one production whose spans are published, whose subject binds slot 0 ahead of the explicit arguments and is then counted, type-checked, and moved once into a take slot, and whose C11 lowering evaluates the subject first and exactly once before the explicit arguments; the chain is that one production iterated, left-associated, with every stage checked and lowered as a stage whose subject is the result of the stage before it, and no second temporary family; #882 retains bare/member/trailing-lambda pipeline forms, block-bodied trailing calls, labelled calls in lifted lambdas, and lexical/indirect targets; the labelled Int call executes on direct-native and wasm32 against the same golden as C11, carrying no label into either artifact, and the pipeline, trailing lambda, Optional, Text/List[Int], and enum/record shapes each stop at one named source-located boundary per backend'
+    'PASS: labelled calls bind fixed HIR slots and the Int/Text/List[Int]/Optional/enum/record C11 slice evaluates once in source order; take slots move once and refuse double transfer as E2S123; the expression-bodied trailing lambda binds the final parameter as a lifted address; the direct-call pipeline is one production whose spans are published, whose subject binds slot 0 ahead of the explicit arguments and is then counted, type-checked, and moved once into a take slot, and whose C11 lowering evaluates the subject first and exactly once before the explicit arguments; the chain is that one production iterated, left-associated, with every stage checked and lowered as a stage whose subject is the result of the stage before it, and no second temporary family; a binding whose initializer is a pipeline carries the declared result of the last stage and is checked against the slot it is later piped into; #882 retains bare/member/trailing-lambda pipeline forms, block-bodied trailing calls, labelled calls in lifted lambdas, and lexical/indirect targets; the labelled Int call executes on direct-native and wasm32 against the same golden as C11, carrying no label into either artifact, and the pipeline, trailing lambda, Optional, Text/List[Int], and enum/record shapes each stop at one named source-located boundary per backend'

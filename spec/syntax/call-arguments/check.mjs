@@ -155,6 +155,7 @@ const pipelineTruth = {
 const requiredRunTruth = [
   "whose C11 lowering evaluates the subject first and exactly once before the explicit arguments",
   "the chain is that one production iterated, left-associated, with every stage checked and lowered as a stage whose subject is the result of the stage before it, and no second temporary family",
+  "a binding whose initializer is a pipeline carries the declared result of the last stage and is checked against the slot it is later piped into",
   "#882 retains bare/member/trailing-lambda pipeline forms, block-bodied trailing calls, labelled calls in lifted lambdas, and lexical/indirect targets",
   "the labelled Int call executes on direct-native and wasm32 against the same golden as C11",
   "each stop at one named source-located boundary per backend",
