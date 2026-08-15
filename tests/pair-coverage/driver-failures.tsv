@@ -1,0 +1,28 @@
+# Drivers that fail under the instrumented compiler, and why each is tolerated.
+#
+# `measure.sh` fails in BOTH directions against this file: a driver that fails
+# without a row here is refused, and a row whose driver now succeeds is refused
+# too, so this shrinks rather than accumulating excuses.
+#
+# WHY THIS FILE EXISTS AT ALL. The driver loop already asserted that every
+# pinned driver was ATTEMPTED, which catches the loop ending early -- the defect
+# that once ran 76 of 138 drivers and exited 0. It said nothing about a driver
+# that ran and failed, and those are not the same thing: a failed driver
+# contributes the coverage of however far it got, so the branches it did not
+# reach are reported as undefended. The ledger would then name functions as
+# hiding places on the strength of a gate that crashed.
+#
+# The dangerous case is environmental rather than deliberate, because it does
+# not reproduce. Measured on this repository: `tests/fuzz/semantic_runner.sh`
+# carries `TIMEOUT_SECONDS=10`, and `roadmap` runs the LSP sidecar's absolute
+# `hover p95 < 2ms` assertion. Four concurrent agent sessions on an 8-core
+# machine took the 1-minute load average to 21 and killed a peer's `fuzz` run
+# outright; `task fuzz` then passed standalone. A ledger measured through that
+# window would have recorded fabricated undefended branches, in a form nobody
+# could later reproduce or refute.
+#
+# So a row here is a claim that the failure is a property of the driver under
+# instrumentation, not of the machine it ran on. If a driver fails because the
+# box was busy, the answer is to re-run on a quiet one, not to add a row.
+#
+# driver	exit	reason

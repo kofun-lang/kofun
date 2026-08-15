@@ -109,6 +109,43 @@ expect_refusal "recorded-now-absent" "$LEDGER" "$WORK/m.absent" "$last"
 expect_refusal "present-not-recorded" "$LEDGER" "$WORK/m.extra" \
     "kofun_prove_sh_unrecorded_function"
 
+# The driver failure policy, exercised through measure.sh's own entry point
+# rather than a transcription of it, so what is proved here is what a measuring
+# run enforces.
+#
+# The must-not-fire case is first and is not decoration: this rule refuses on a
+# NON-empty difference in either direction, so a version that refused everything
+# would satisfy the three refusals below and be useless. A rule with a
+# false-positive shape has two properties, and only testing the one it is named
+# for leaves the other unproved.
+printf '\n--- driver failure policy (no measurement) ---\n'
+POLICY="$WORK/policy"
+mkdir -p "$POLICY"
+printf 'adt\tok\nfuzz\tok\nroadmap\tok\n' >"$POLICY/clean.tsv"
+printf 'adt\tok\nfuzz\texit=124\nroadmap\tok\n' >"$POLICY/timedout.tsv"
+printf '# driver\texit\treason\n' >"$POLICY/none.tsv"
+printf '# driver\texit\treason\nfuzz\texit=124\ta reason someone checked\n' \
+    >"$POLICY/recorded.tsv"
+
+policy_case() {
+    label=$1; results=$2; expected=$3; want=$4
+    if sh "$ROOT/tests/pair-coverage/measure.sh" --check-driver-failures \
+        "$results" "$expected" >"$WORK/out.$label" 2>&1
+    then got=accept; else got=refuse; fi
+    if test "$got" = "$want"; then
+        printf 'ok   %-28s %sed, as it must\n' "$label" "$want"
+        pass=$((pass + 1))
+    else
+        printf 'FAIL: %s: wanted %s, got %s:\n' "$label" "$want" "$got" >&2
+        sed 's/^/      /' "$WORK/out.$label" >&2
+        fail=$((fail + 1))
+    fi
+}
+policy_case "clean-run"          "$POLICY/clean.tsv"    "$POLICY/none.tsv"     accept
+policy_case "failure-unrecorded" "$POLICY/timedout.tsv" "$POLICY/none.tsv"     refuse
+policy_case "failure-recorded"   "$POLICY/timedout.tsv" "$POLICY/recorded.tsv" accept
+policy_case "record-now-stale"   "$POLICY/clean.tsv"    "$POLICY/recorded.tsv" refuse
+
 # Criterion 4, literally: a branch added to compiler.c that no pinned input
 # reaches must make the gate fail. This measures for real, so it costs a full
 # run; the four cases above are analogues that distinguish the directions, and

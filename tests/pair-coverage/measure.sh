@@ -26,6 +26,68 @@
 set -eu
 
 ROOT=$(CDPATH= cd -P -- "$(dirname -- "$0")/../.." && pwd)
+
+# The driver failure policy, defined before the dispatch below so that the rule
+# a measuring run enforces and the rule the proof exercises are the SAME code.
+# Transcribing it into a test would prove the transcription: this repository has
+# already paid for that once, where a hand-written gate accepted a module the
+# normative validator refused.
+#
+#   sh measure.sh --check-driver-failures RESULTS EXPECTED
+#
+# RESULTS is `driver<TAB>ok|exit=N`, EXPECTED is `driver<TAB>exit=N<TAB>reason`.
+check_driver_failures() {
+    cdf_results=$1
+    cdf_expected=$2
+    cdf_work=${3:-$(dirname -- "$cdf_results")}
+    cdf_bad=0
+
+    awk -F '\t' '$2 != "ok" { print $1 "\t" $2 }' "$cdf_results" | sort \
+        >"$cdf_work/failed.txt"
+    if test -f "$cdf_expected"; then
+        grep -v '^#' "$cdf_expected" | grep -v '^[[:space:]]*$' | cut -f1,2 | sort \
+            >"$cdf_work/failed-expected.txt"
+    else
+        : >"$cdf_work/failed-expected.txt"
+    fi
+
+    while IFS= read -r cdf_row; do
+        test -n "$cdf_row" || continue
+        if ! grep -qxF "$cdf_row" "$cdf_work/failed-expected.txt"; then
+            if test "$cdf_bad" -eq 0; then
+                echo "measure.sh: driver(s) failed and are not recorded in" >&2
+                echo "  tests/pair-coverage/driver-failures.tsv:" >&2
+            fi
+            printf '    %s\n' "$cdf_row" >&2
+            cdf_bad=$((cdf_bad + 1))
+        fi
+    done <"$cdf_work/failed.txt"
+
+    while IFS= read -r cdf_row; do
+        test -n "$cdf_row" || continue
+        if ! grep -qxF "$cdf_row" "$cdf_work/failed.txt"; then
+            echo "measure.sh: driver-failures.tsv records '$cdf_row', which now" >&2
+            echo "  succeeds. Remove the row: a stale excuse hides the next failure." >&2
+            cdf_bad=$((cdf_bad + 1))
+        fi
+    done <"$cdf_work/failed-expected.txt"
+
+    test "$cdf_bad" -eq 0 || {
+        echo "  A driver that failed contributes only the coverage it reached, so the" >&2
+        echo "  untaken set would be larger than the tree warrants. Refusing to report" >&2
+        echo "  a fabricated one. Re-run on a quiet machine, or record the failure with" >&2
+        echo "  a reason someone checked." >&2
+        return 1
+    }
+}
+
+if test "${1:-}" = "--check-driver-failures"; then
+    check_driver_failures "${2:?usage: --check-driver-failures RESULTS EXPECTED}" \
+        "${3:?usage: --check-driver-failures RESULTS EXPECTED}"
+    echo "PASS: every driver that failed is recorded, and every record still fails"
+    exit 0
+fi
+
 WORK=${1:?usage: measure.sh WORK_DIR}
 
 # The compiler for the INSTRUMENTED build only, never exported as `CC`.
@@ -147,6 +209,21 @@ test "$declared" -eq "$attempted" || {
     echo "  Refusing to report a basis smaller than the one the ledger names." >&2
     exit 1
 }
+
+# ATTEMPTED IS NOT RUN. The count above catches the loop ending early; it says
+# nothing about a driver that ran and FAILED, and a failed driver contributes
+# the coverage of however far it got. That gap is not academic on this machine:
+# `tests/fuzz/semantic_runner.sh` has TIMEOUT_SECONDS=10 and `roadmap` runs the
+# LSP sidecar's absolute `hover p95 < 2ms` assertion, so a loaded box can fail
+# either one. The measurement would then report the branches that driver did not
+# reach as undefended -- inventing exactly the findings this ledger exists to
+# make trustworthy, and inventing them in the one way that does not reproduce.
+#
+# So every non-ok driver must be recorded with a reason, and this fails in BOTH
+# directions like every other ledger here: an unrecorded failure is refused, and
+# a recorded driver that now succeeds is refused too, so the file shrinks rather
+# than accumulating excuses.
+check_driver_failures "$WORK/driver-results.tsv" "$HERE/driver-failures.tsv" "$WORK"
 
 echo "drivers took $(( $(date +%s) - phase_start ))s" >&2
 phase_start=$(date +%s)
