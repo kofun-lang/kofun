@@ -10,9 +10,14 @@ fn private() -> Int {
     return 1
 }
 
+fn pure() -> Int {
+    return 0
+}
+
 fn main() -> Int {
     let pub: Int = internal()
     let internal: Int = private()
-    print(pub(pub + internal + 40))
+    let pure: Int = pure()
+    print(pub(pub + internal + pure + 40))
     return 0
 }

@@ -1,0 +1,4 @@
+fn main() -> Int {
+    let value: Int = pure + 1
+    return value
+}

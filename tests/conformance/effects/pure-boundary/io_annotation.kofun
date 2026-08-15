@@ -1,0 +1,11 @@
+# `pure` is the only spelling #1241 froze, so `io` in the same position is
+# still an unknown visibility modifier. Admitting a second annotation by
+# omission would be a decision this child has no mandate to make.
+io fn calc() -> Int {
+    print("side effect")
+    return 7
+}
+
+fn main() -> Int {
+    return calc()
+}

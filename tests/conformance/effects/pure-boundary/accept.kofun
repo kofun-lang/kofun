@@ -1,0 +1,19 @@
+# The accepted shapes: an annotated function whose summary is `pure`, and an
+# unannotated one that reaches the `print` root and is inferred `io` rather
+# than refused.
+fn logger() -> Int {
+    print("side effect")
+    return 1
+}
+
+fn double(value: Int) -> Int {
+    return value + value
+}
+
+pure fn total(left: Int, right: Int) -> Int {
+    return double(left) + right
+}
+
+fn main() -> Int {
+    return total(1, 1) + logger()
+}

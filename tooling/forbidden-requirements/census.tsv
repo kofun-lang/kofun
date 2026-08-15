@@ -131,6 +131,7 @@ cc	invoke	4	required-today	required	tests/conformance/decimal/run.sh
 cc	invoke	10	required-today	required	tests/conformance/discovery/run.sh
 cc	invoke	1	required-today	required	tests/conformance/discovery/sanitizer-cc-wrapper.sh
 cc	invoke	2	required-today	required	tests/conformance/discovery/sanitizer-objects.sh
+cc	invoke	4	required-today	required	tests/conformance/effects/pure-boundary/run.sh
 cc	invoke	1	required-today	required	tests/conformance/effects/pure-io/run.sh
 cc	invoke	3	required-today	required	tests/conformance/generics/run.sh
 cc	invoke	4	required-today	required	tests/conformance/incremental/run.sh
@@ -263,6 +264,7 @@ node	invoke	7	required-today	required	tests/conformance/aggregate-bridge/run.sh
 node	invoke	1	required-today	required	tests/conformance/authority-carrier/run.sh
 node	invoke	2	required-today	unknown	tests/conformance/backends/wasm32-node.sh
 node	invoke	1	required-today	required	tests/conformance/call-arguments/run.sh
+node	invoke	4	required-today	required	tests/conformance/effects/pure-boundary/run.sh
 node	invoke	5	required-today	required	tests/conformance/effects/pure-io/run.sh
 node	invoke	1	required-today	required	tests/conformance/int-bits-lowering/check.sh
 node	invoke	3	required-today	required	tests/conformance/int-bits/run.sh
@@ -377,6 +379,7 @@ node	source	1	required-today	required	tests/conformance/aggregate-bridge/check-c
 node	source	1	required-today	required	tests/conformance/aggregate-bridge/check-layout.mjs
 node	source	1	required-today	required	tests/conformance/aggregate-bridge/check-production-field-access.mjs
 node	source	1	required-today	required	tests/conformance/aggregate-bridge/check-sidecar.mjs
+node	source	1	required-today	required	tests/conformance/effects/pure-boundary/report.mjs
 node	source	1	required-today	required	tests/conformance/effects/pure-io/report.mjs
 node	source	1	required-today	required	tests/conformance/int-bits/check-pair.mjs
 node	source	1	required-today	required	tests/docs/audited-claim-metadata.mjs
@@ -569,6 +572,7 @@ shell-build-driver	source	1	required-today	required	tests/conformance/decimal/ru
 shell-build-driver	source	1	required-today	required	tests/conformance/discovery/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/discovery/sanitizer-cc-wrapper.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/discovery/sanitizer-objects.sh
+shell-build-driver	source	1	required-today	required	tests/conformance/effects/pure-boundary/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/effects/pure-io/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/generics/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/incremental/run.sh

@@ -1396,11 +1396,20 @@ fn visibility_prefix_candidate(source: Text, start: Int) -> Bool {
     token_text(source, next) == "type"
 }
 
+# #1245. The effect annotation #1241 chose. It occupies the visibility
+# modifier's position without being one, so every place that skips a modifier
+# to reach `fn` has to skip this too -- and only before `fn`, since
+# `visibility_prefix_error` refuses it before `type`.
+fn effect_annotation_token(source: Text, start: Int) -> Bool {
+    return token_text(source, start) == "pure"
+}
+
 fn function_declaration_start(source: Text, start: Int) -> Int {
     if token_text(source, start) == "fn" {
         return start
     }
-    if !basic_visibility_modifier(source, start) {
+    if !basic_visibility_modifier(source, start) &&
+       !effect_annotation_token(source, start) {
         return -1
     }
     let after_modifier = skip_trivia(source, token_end(source, start))
@@ -1567,6 +1576,24 @@ fn visibility_prefix_error(source: Text, start: Int) -> Text {
     }
     if !basic_visibility_modifier(source, start) {
         let next = skip_trivia(source, token_end(source, start))
+        # #1245. `pure` is an effect annotation, not a visibility modifier, and
+        # #1241 chose `pure fn` as the spelling. It sits in the same position, so
+        # it arrived here as an unknown modifier; the position is shared and the
+        # meaning is not. Accepted before `fn` and refused before `type`,
+        # because an effect is a property of a computation and a type does not
+        # compute. `validate_pure_annotations` is what makes the acceptance mean
+        # something -- an annotation that parses and is never checked is a
+        # promise nothing keeps.
+        if modifier == "pure" && next < len(source) {
+            if token_text(source, next) == "fn" {
+                return ""
+            }
+            if token_text(source, next) == "type" {
+                return "error[E2S33]: `pure` annotates a function, not a type" +
+                " at bytes " + to_text(start) + ".." +
+                to_text(token_end(source, start))
+            }
+        }
         if token_kind(source, start) == "identifier" &&
            next < len(source) &&
            (token_text(source, next) == "fn" ||
@@ -16927,6 +16954,249 @@ fn authority_binding_misuse(
     return "ok"
 }
 
+# #1245. Every declaration the annotation applies to, as `|start|start|`, from
+# one forward pass. One pass and not one backward walk per declaration: the
+# walk cost a scan from byte zero for every function in the file, and the empty
+# set is also the cheap exit for every program that never writes `pure fn`.
+fn annotated_pure_declarations(source: Text) -> Text {
+    let mut cursor = skip_trivia(source, 0)
+    let mut previous = ""
+    let mut found = "|"
+    while cursor < len(source) {
+        let text = token_text(source, cursor)
+        if previous == "pure" && text == "fn" {
+            found = found + to_text(cursor) + "|"
+        }
+        previous = text
+        let next = skip_trivia(source, token_end(source, cursor))
+        if next <= cursor {
+            return found
+        }
+        cursor = next
+    }
+    return found
+}
+
+# The number of function declarations, which is the convergence bound below.
+fn source_function_count(source: Text) -> Int {
+    let mut count = 0
+    let mut function_start = next_function_start(source, 0)
+    while function_start < len(source) {
+        count = count + 1
+        let function_close = function_end(source, function_start)
+        if function_close < 0 {
+            return count
+        }
+        function_start = next_function_start(source, function_close)
+    }
+    return count
+}
+
+# #1245. The explicit `pure` boundary over the effects the compiler already
+# infers. The io root is a parameter: a function that reaches it, directly or
+# through any chain of calls, is io, and an annotated function that is io is a
+# promise the program does not keep. This is where that is caught.
+#
+# Reachability is a fixed point over a text set rather than a recursion,
+# because the set is what makes mutual recursion terminate: `a` calling `b`
+# calling `a` adds each once and then stops changing.
+#
+# The callee is found by the shape an identifier followed by `(` -- the same
+# shape the rest of this file uses -- and `fn` before the name excludes the
+# declaration itself.
+fn function_calls_name(
+    source: Text,
+    body_start: Int,
+    body_end: Int,
+    callee: Text
+) -> Bool {
+    let mut cursor = skip_trivia(source, body_start)
+    let mut previous = ""
+    while cursor < body_end {
+        let text = token_text(source, cursor)
+        if text == callee && previous != "fn" && previous != "." &&
+           token_kind(source, cursor) == "identifier" {
+            let after = skip_trivia(source, token_end(source, cursor))
+            if after < body_end && token_text(source, after) == "(" {
+                return true
+            }
+        }
+        previous = text
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return false
+}
+
+# The first call in this body, in source order, that the io set already holds.
+# Source order and not declaration order: criterion 5 asks for the same
+# diagnostic after the declarations are reordered, and reordering moves
+# declaration order while leaving the body exactly as it was.
+fn first_io_callee(
+    source: Text,
+    body_start: Int,
+    body_end: Int,
+    io_set: Text
+) -> Text {
+    let mut cursor = skip_trivia(source, body_start)
+    let mut previous = ""
+    while cursor < body_end {
+        let text = token_text(source, cursor)
+        if previous != "fn" && previous != "." &&
+           token_kind(source, cursor) == "identifier" &&
+           contains(io_set, "|" + text + "|") {
+            let after = skip_trivia(source, token_end(source, cursor))
+            if after < body_end && token_text(source, after) == "(" {
+                return text
+            }
+        }
+        previous = text
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return ""
+}
+
+# The io set, as `|name|name|`. One round per call to this function; the caller
+# iterates until it stops growing.
+fn io_functions_round(source: Text, known: Text, root: Text) -> Text {
+    let mut found = known
+    let mut function_start = next_function_start(source, 0)
+    while function_start < len(source) {
+        let function_close = function_end(source, function_start)
+        let parameters = parameter_open(source, function_start)
+        if function_close < 0 || parameters < 0 {
+            return found
+        }
+        let parameters_close = balanced_end(source, parameters, "(", ")")
+        if parameters_close < 0 {
+            return found
+        }
+        let name = function_name(source, function_start)
+        if !contains(found, "|" + name + "|") {
+            let mut reaches = function_calls_name(
+                source,
+                parameters_close,
+                function_close,
+                root
+            )
+            if !reaches {
+                # Any already-known io function reached from this body makes
+                # this one io as well.
+                let mut probe = next_function_start(source, 0)
+                while probe < len(source) && !reaches {
+                    let probe_name = function_name(source, probe)
+                    if contains(found, "|" + probe_name + "|") &&
+                       function_calls_name(
+                           source,
+                           parameters_close,
+                           function_close,
+                           probe_name
+                       ) {
+                        reaches = true
+                    }
+                    let probe_close = function_end(source, probe)
+                    if probe_close < 0 {
+                        probe = len(source)
+                    } else {
+                        probe = next_function_start(source, probe_close)
+                    }
+                }
+            }
+            if reaches {
+                found = found + name + "|"
+            }
+        }
+        function_start = next_function_start(source, function_close)
+    }
+    return found
+}
+
+# #1245 criterion 8. The one checked function-boundary query. The io root and
+# the diagnostic code are parameters because the environment integration child
+# asks this same question about its own root when it emits E356; a second copy
+# of the fixed point over there is exactly the duplicated inference the
+# criterion forbids.
+fn pure_boundary_violation(source: Text, root: Text, code: Text) -> Text {
+    let annotated = annotated_pure_declarations(source)
+    # Cheap exit: no annotation, no work. Keeps the fixed point off every
+    # program that does not use the feature.
+    if annotated == "|" {
+        return "ok"
+    }
+    # At most one round per function. A round that changes anything adds at
+    # least one name and there are only that many names to add, so this bound
+    # is a proof that the loop settles rather than a cap that can stop it early
+    # and call an unproven program pure.
+    let bound = source_function_count(source)
+    let mut io_set = "|"
+    let mut rounds = 0
+    let mut settled = false
+    while rounds <= bound && !settled {
+        let next_set = io_functions_round(source, io_set, root)
+        if next_set == io_set {
+            settled = true
+        } else {
+            io_set = next_set
+        }
+        rounds = rounds + 1
+    }
+    let mut function_start = next_function_start(source, 0)
+    while function_start < len(source) {
+        let function_close = function_end(source, function_start)
+        let parameters = parameter_open(source, function_start)
+        if function_close < 0 || parameters < 0 {
+            return "ok"
+        }
+        let parameters_close = balanced_end(source, parameters, "(", ")")
+        if parameters_close < 0 {
+            return "ok"
+        }
+        let name = function_name(source, function_start)
+        if contains(annotated, "|" + to_text(function_start) + "|") &&
+           contains(io_set, "|" + name + "|") {
+            # Name the first forcing thing, not merely that it is io: the root
+            # when the body reaches it directly, otherwise the first call in
+            # the body that carries it.
+            if function_calls_name(
+                source,
+                parameters_close,
+                function_close,
+                root
+            ) {
+                return "error[" + code + "]: `pure fn " + name +
+                "` reaches `" + root + "` directly at byte " +
+                to_text(function_start)
+            }
+            let callee = first_io_callee(
+                source,
+                parameters_close,
+                function_close,
+                io_set
+            )
+            return "error[" + code + "]: `pure fn " + name +
+            "` reaches `" + root + "` through `" + callee +
+            "` at byte " + to_text(function_start)
+        }
+        function_start = next_function_start(source, function_close)
+    }
+    return "ok"
+}
+
+# `print` is the io root this compiler already infers from, and E2S176 is the
+# general effect-boundary code -- the next Stage 2 code after E2S175.
+#
+# Not an `E3xx` one. That space is where the RFCs place design identities, and
+# every band in it is spoken for or is a gap left beside its owner: E340-E344
+# is RFC-0001, E350-E356 is RFC-0002 and holds the E356 that #1241 reserves for
+# the environment-specific violation the integration child emits through the
+# query above, E360-E364 is accepted RFC-0004's ownership kinds, E370-E372 is
+# RFC-0005, E380-E384 is RFC-0007, and E390 onward is RFC-0008 and -0009. This
+# refusal is not an RFC identity awaiting an implementation; it is an ordinary
+# Stage 2 frontend refusal with an emitter today, so it takes an ordinary
+# Stage 2 code and leaves those bands to the proposals that named them.
+fn validate_pure_annotations(source: Text) -> Text {
+    return pure_boundary_violation(source, "print", "E2S176")
+}
+
 fn validate_authority_uses(source: Text) -> Text {
     let mut function_start = next_function_start(source, 0)
     while function_start < len(source) {
@@ -17021,6 +17291,18 @@ fn compile_file(
         let authority_check = validate_authority_uses(source)
         if starts_with(authority_check, "error[") {
             print(authority_check)
+            return 1
+        }
+        # #1245. Beside the authority check and for the same reason: an
+        # annotation that parses and is never enforced is a promise nothing
+        # keeps.
+        #
+        # After the authority check, not before it: #1241 orders the authority
+        # codes ahead of the effect boundary, and a carrier misused inside a
+        # `pure` function is both faults at once.
+        let pure_check = validate_pure_annotations(source)
+        if starts_with(pure_check, "error[") {
+            print(pure_check)
             return 1
         }
         let pattern_check = validate_executable_patterns(source)

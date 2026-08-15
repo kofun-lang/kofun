@@ -1,0 +1,1 @@
+error[E2S176]: `pure fn calc` reaches `print` through `even` at byte 5

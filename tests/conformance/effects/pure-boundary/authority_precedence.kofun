@@ -1,0 +1,11 @@
+# Both an authority misuse and an effect violation. #1241 orders the authority
+# codes ahead of the boundary, so this must answer E353.
+pure fn holder(take root: RootAuthority) -> Int {
+    let alias = root
+    print("side effect")
+    return 0
+}
+
+fn main() -> Int {
+    return 0
+}

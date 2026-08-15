@@ -1,0 +1,23 @@
+pure fn calc() -> Int {
+    return even(4)
+}
+
+fn even(depth: Int) -> Int {
+    if depth == 0 {
+        return sink()
+    }
+    return odd(depth - 1)
+}
+
+fn odd(depth: Int) -> Int {
+    return even(depth - 1)
+}
+
+fn sink() -> Int {
+    print("side effect")
+    return 1
+}
+
+fn main() -> Int {
+    return calc()
+}

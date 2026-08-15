@@ -1,0 +1,9 @@
+# An unresolved callee is a name failure, not an effect one: the boundary must
+# not classify what the compiler could not resolve.
+pure fn calc() -> Int {
+    return missing()
+}
+
+fn main() -> Int {
+    return calc()
+}

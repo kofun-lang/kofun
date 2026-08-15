@@ -1,0 +1,1 @@
+error[E2S33]: `pure` annotates a function, not a type at bytes 0..4

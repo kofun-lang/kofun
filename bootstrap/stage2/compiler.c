@@ -2093,13 +2093,26 @@ static bool visibility_prefix_candidate(const char *source, int64_t start) {
            token_equal(source, next, "type");
 }
 
+/*
+ * #1245. The effect annotation #1241 chose. It occupies the visibility
+ * modifier's position without being one, so every place that skips a modifier
+ * to reach `fn` has to skip this too — and only before `fn`, since
+ * `visibility_prefix_error` refuses it before `type`.
+ */
+static bool effect_annotation_token(const char *source, int64_t start) {
+    return token_equal(source, start, "pure");
+}
+
 static int64_t function_declaration_start(
     const char *source,
     int64_t start
 ) {
     int64_t length = source_length(source);
     if (token_equal(source, start, "fn")) return start;
-    if (!basic_visibility_modifier(source, start)) return -1;
+    if (!basic_visibility_modifier(source, start) &&
+        !effect_annotation_token(source, start)) {
+        return -1;
+    }
     int64_t after_modifier = skip_trivia(source, token_end(source, start));
     if (
         after_modifier < length &&
@@ -2165,6 +2178,34 @@ static char *visibility_prefix_error(const char *source, int64_t start) {
     }
     if (!basic_visibility_modifier(source, start)) {
         int64_t next = skip_trivia(source, token_end(source, start));
+        /* #1245. `pure` is an effect annotation, not a visibility modifier, and
+         * #1241 chose `pure fn` as the spelling. It sits in the same position,
+         * so it arrived here as an unknown modifier; the position is shared and
+         * the meaning is not. Accepted before `fn` and refused before `type`,
+         * because an effect is a property of a computation and a type does not
+         * compute. `validate_pure_annotations` is what makes the acceptance
+         * mean something — an annotation that parses and is never checked is a
+         * promise nothing keeps. */
+        if (token_equal(source, start, "pure") && next < length) {
+            if (token_equal(source, next, "fn")) return owned_text("");
+            if (token_equal(source, next, "type")) {
+                buffer_format(
+                    &error,
+                    "error[E2S33]: `pure` annotates a function, not a type at "
+                    "bytes %" PRId64 "..%" PRId64,
+                    start,
+                    token_end(source, start)
+                );
+                stage2_diagnostic_set(
+                    "E2S33",
+                    start,
+                    token_end(source, start),
+                    true,
+                    error.data
+                );
+                return error.data;
+            }
+        }
         if (
             strcmp(token_kind(source, start), "identifier") == 0 &&
             next < length &&
@@ -26102,6 +26143,308 @@ static char *authority_binding_misuse(
     return owned_text("ok");
 }
 
+/*
+ * #1245. The explicit `pure` boundary over the effects the compiler already
+ * infers. The io root is a parameter: a function that reaches it, directly or
+ * through any chain of calls, is io, and an annotated function that is io is a
+ * promise the program does not keep. This is where that is caught.
+ *
+ * Reachability is a fixed point over a text set rather than a recursion,
+ * because the set is what makes mutual recursion terminate: `a` calling `b`
+ * calling `a` adds each once and then stops changing.
+ */
+static bool function_calls_name(
+    const char *source,
+    int64_t body_start,
+    int64_t body_end,
+    const char *callee
+) {
+    int64_t cursor = skip_trivia(source, body_start);
+    char *previous = owned_text("");
+    bool found = false;
+    while (cursor < body_end && !found) {
+        char *text = token_copy(source, cursor);
+        if (strcmp(text, callee) == 0 &&
+            strcmp(previous, "fn") != 0 &&
+            strcmp(previous, ".") != 0 &&
+            strcmp(token_kind(source, cursor), "identifier") == 0) {
+            int64_t after = skip_trivia(source, token_end(source, cursor));
+            if (after < body_end && token_equal(source, after, "(")) found = true;
+        }
+        free(previous);
+        previous = text;
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    free(previous);
+    return found;
+}
+
+/*
+ * #1245. Every declaration the annotation applies to, as `|start|start|`, from
+ * one forward pass. One pass and not one backward walk per declaration: the
+ * walk cost a scan from byte zero for every function in the file, and the
+ * empty set is also the cheap exit for every program that never writes
+ * `pure fn`.
+ */
+static char *annotated_pure_declarations(const char *source) {
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, 0);
+    char *previous = owned_text("");
+    Buffer found;
+    buffer_init(&found);
+    buffer_append(&found, "|");
+    while (cursor < length) {
+        char *text = token_copy(source, cursor);
+        int64_t next;
+        if (strcmp(previous, "pure") == 0 && strcmp(text, "fn") == 0) {
+            buffer_format(&found, "%lld|", (long long)cursor);
+        }
+        free(previous);
+        previous = text;
+        next = skip_trivia(source, token_end(source, cursor));
+        if (next <= cursor) break;
+        cursor = next;
+    }
+    free(previous);
+    return found.data;
+}
+
+/* The number of function declarations, which is the convergence bound below. */
+static int64_t source_function_count(const char *source) {
+    int64_t length = source_length(source);
+    int64_t count = 0;
+    int64_t function_start = next_function_start(source, 0);
+    while (function_start < length) {
+        int64_t function_close;
+        count += 1;
+        function_close = function_end(source, function_start);
+        if (function_close < 0) return count;
+        function_start = next_function_start(source, function_close);
+    }
+    return count;
+}
+
+/*
+ * The first call in this body, in source order, that the io set already holds.
+ * Source order and not declaration order: criterion 5 asks for the same
+ * diagnostic after the declarations are reordered, and reordering moves
+ * declaration order while leaving the body exactly as it was.
+ */
+static char *first_io_callee(
+    const char *source,
+    int64_t body_start,
+    int64_t body_end,
+    const char *io_set
+) {
+    int64_t cursor = skip_trivia(source, body_start);
+    char *previous = owned_text("");
+    while (cursor < body_end) {
+        char *text = token_copy(source, cursor);
+        Buffer key;
+        buffer_init(&key);
+        buffer_format(&key, "|%s|", text);
+        if (strcmp(previous, "fn") != 0 &&
+            strcmp(previous, ".") != 0 &&
+            strcmp(token_kind(source, cursor), "identifier") == 0 &&
+            strstr(io_set, key.data) != NULL) {
+            int64_t after = skip_trivia(source, token_end(source, cursor));
+            if (after < body_end && token_equal(source, after, "(")) {
+                free(key.data);
+                free(previous);
+                return text;
+            }
+        }
+        free(key.data);
+        free(previous);
+        previous = text;
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    free(previous);
+    return owned_text("");
+}
+
+/* One round of the io set, held as `|name|name|`. */
+static char *io_functions_round(
+    const char *source,
+    const char *known,
+    const char *root
+) {
+    int64_t length = source_length(source);
+    Buffer found;
+    buffer_init(&found);
+    buffer_append(&found, known);
+    int64_t function_start = next_function_start(source, 0);
+    while (function_start < length) {
+        int64_t function_close = function_end(source, function_start);
+        int64_t parameters = parameter_open(source, function_start);
+        if (function_close < 0 || parameters < 0) return found.data;
+        int64_t parameters_close = balanced_end(source, parameters, "(", ")");
+        if (parameters_close < 0) return found.data;
+        char *name = function_name(source, function_start);
+        Buffer key;
+        buffer_init(&key);
+        buffer_format(&key, "|%s|", name);
+        if (strstr(found.data, key.data) == NULL) {
+            bool reaches = function_calls_name(
+                source, parameters_close, function_close, root);
+            if (!reaches) {
+                int64_t probe = next_function_start(source, 0);
+                while (probe < length && !reaches) {
+                    char *probe_name = function_name(source, probe);
+                    Buffer probe_key;
+                    buffer_init(&probe_key);
+                    buffer_format(&probe_key, "|%s|", probe_name);
+                    if (strstr(found.data, probe_key.data) != NULL &&
+                        function_calls_name(source, parameters_close,
+                                            function_close, probe_name)) {
+                        reaches = true;
+                    }
+                    free(probe_key.data);
+                    free(probe_name);
+                    int64_t probe_close = function_end(source, probe);
+                    probe = probe_close < 0
+                        ? length
+                        : next_function_start(source, probe_close);
+                }
+            }
+            if (reaches) {
+                buffer_append(&found, name);
+                buffer_append(&found, "|");
+            }
+        }
+        free(key.data);
+        free(name);
+        function_start = next_function_start(source, function_close);
+    }
+    return found.data;
+}
+
+/*
+ * #1245 criterion 8. The one checked function-boundary query. The io root and
+ * the diagnostic code are parameters because the environment integration child
+ * asks this same question about its own root when it emits E356; a second copy
+ * of the fixed point over there is exactly the duplicated inference the
+ * criterion forbids.
+ */
+static char *pure_boundary_violation(
+    const char *source,
+    const char *root,
+    const char *code
+) {
+    char *annotated = annotated_pure_declarations(source);
+    int64_t length;
+    int64_t bound;
+    int64_t rounds;
+    bool settled = false;
+    char *io_set;
+    int64_t function_start;
+    /* Cheap exit: no annotation, no work. */
+    if (strcmp(annotated, "|") == 0) {
+        free(annotated);
+        return owned_text("ok");
+    }
+    length = source_length(source);
+    /*
+     * At most one round per function. A round that changes anything adds at
+     * least one name and there are only that many names to add, so this bound
+     * is a proof that the loop settles rather than a cap that can stop it
+     * early and call an unproven program pure.
+     */
+    bound = source_function_count(source);
+    io_set = owned_text("|");
+    for (rounds = 0; rounds <= bound && !settled; ++rounds) {
+        char *next_set = io_functions_round(source, io_set, root);
+        settled = strcmp(next_set, io_set) == 0;
+        free(io_set);
+        io_set = next_set;
+    }
+    function_start = next_function_start(source, 0);
+    while (function_start < length) {
+        int64_t function_close = function_end(source, function_start);
+        int64_t parameters = parameter_open(source, function_start);
+        int64_t parameters_close;
+        char *name;
+        Buffer key;
+        Buffer declaration;
+        bool annotated_here;
+        if (function_close < 0 || parameters < 0) break;
+        parameters_close = balanced_end(source, parameters, "(", ")");
+        if (parameters_close < 0) break;
+        name = function_name(source, function_start);
+        buffer_init(&key);
+        buffer_format(&key, "|%s|", name);
+        buffer_init(&declaration);
+        buffer_format(&declaration, "|%lld|", (long long)function_start);
+        annotated_here = strstr(annotated, declaration.data) != NULL;
+        free(declaration.data);
+        if (annotated_here && strstr(io_set, key.data) != NULL) {
+            /*
+             * Name the first forcing thing, not merely that it is io: the root
+             * when the body reaches it directly, otherwise the first call in
+             * the body that carries it.
+             */
+            bool direct = function_calls_name(
+                source, parameters_close, function_close, root);
+            char *callee = direct
+                ? owned_text("")
+                : first_io_callee(
+                      source, parameters_close, function_close, io_set);
+            Buffer message;
+            char *error;
+            buffer_init(&message);
+            if (direct) {
+                buffer_format(
+                    &message,
+                    "`pure fn %s` reaches `%s` directly",
+                    name,
+                    root
+                );
+            } else {
+                buffer_format(
+                    &message,
+                    "`pure fn %s` reaches `%s` through `%s`",
+                    name,
+                    root,
+                    callee
+                );
+            }
+            error = lower_error(code, message.data, function_start);
+            free(message.data);
+            free(callee);
+            free(key.data);
+            free(name);
+            free(io_set);
+            free(annotated);
+            return error;
+        }
+        free(key.data);
+        free(name);
+        function_start = next_function_start(source, function_close);
+    }
+    free(io_set);
+    free(annotated);
+    return owned_text("ok");
+}
+
+/*
+ * `print` is the io root this compiler already infers from, and E2S176 is the
+ * general effect-boundary code -- the next Stage 2 code after E2S175.
+ *
+ * Not an `E3xx` one. That space is where the RFCs place design identities, and
+ * every band in it is spoken for or is a gap left beside its owner: E340-E344
+ * is RFC-0001, E350-E356 is RFC-0002 and holds the E356 that #1241 reserves
+ * for the environment-specific violation the integration child emits through
+ * the query above, E360-E364 is accepted RFC-0004's ownership kinds, E370-E372
+ * is RFC-0005, E380-E384 is RFC-0007, and E390 onward is RFC-0008 and -0009.
+ * This refusal is not an RFC identity awaiting an implementation; it is an
+ * ordinary Stage 2 frontend refusal with an emitter today, so it takes an
+ * ordinary Stage 2 code and leaves those bands to the proposals that named
+ * them.
+ */
+static char *validate_pure_annotations(const char *source) {
+    return pure_boundary_violation(source, "print", "E2S176");
+}
+
 static char *validate_authority_uses(const char *source) {
     int64_t function_start = next_function_start(source, 0);
     int64_t length = (int64_t)strlen(source);
@@ -26277,6 +26620,23 @@ static bool stage2_compile_outcome(
         goto done;
     }
     free(authority_check);
+
+    /* #1245. The same check as in `compile_file`, and it has to be in both:
+     * this is the pipeline `semantic_producer.c` uses, so a `pure` enforced in
+     * one and not the other makes `kofun run` and `kofun check
+     * --emit-typed-sidecar` disagree about the same program.
+     *
+     * After the authority check, not before it. The profile #1241 froze orders
+     * the authority codes ahead of the effect boundary, and a program that
+     * misuses a carrier inside a `pure` function has both faults; running the
+     * boundary first would answer with the effect and hide the carrier. */
+    char *pure_check = validate_pure_annotations(source);
+    if (strncmp(pure_check, "error[", 6) == 0) {
+        result->diagnostic = pure_check;
+        result->exit_class = 1u;
+        goto done;
+    }
+    free(pure_check);
 
     pattern_check = validate_executable_patterns(source);
     if (strncmp(pattern_check, "error[", 6) == 0) {
@@ -26489,6 +26849,23 @@ static int compile_file(
             return 1;
         }
         free(authority_check);
+        /* #1245. Beside the authority check and for the same reason: an
+         * annotation that parses and is never enforced is a promise nothing
+         * keeps. Wired into both pipelines — see the note on the other call.
+         *
+         * After the authority check, not before it: #1241 orders the authority
+         * codes ahead of the effect boundary, and a carrier misused inside a
+         * `pure` function is both faults at once. */
+        char *pure_check = validate_pure_annotations(source);
+        if (strncmp(pure_check, "error[", 6) == 0) {
+            puts(pure_check);
+            free(pure_check);
+            free(ir);
+            free(tokens);
+            free(source);
+            return 1;
+        }
+        free(pure_check);
         char *pattern_check = validate_executable_patterns(source);
         if (strncmp(pattern_check, "error[", 6) == 0) {
             int status = unsupported_lowering_error(pattern_check) ? 3 : 1;
