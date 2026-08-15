@@ -230,6 +230,24 @@ const CASES = victim === undefined ? [] : [
         expect: 'is not one of',
     },
     {
+        name: 'more unknown rows than the declared ceiling',
+        why: 'this is what a use the rules cannot classify looks like when it arrives as an ordinary row',
+        ledger: original.replace(/^# unknown-ceiling: \d+$/m, '# unknown-ceiling: 4'),
+        expect: 'may not arrive as an ordinary row',
+    },
+    {
+        name: 'a ceiling left above the count',
+        why: 'the other direction: slack nobody recorded is an improvement nobody can see',
+        ledger: original.replace(/^# unknown-ceiling: \d+$/m, '# unknown-ceiling: 400'),
+        expect: 'lower it so the improvement is recorded',
+    },
+    {
+        name: 'no ceiling at all',
+        why: 'an absent bound and a satisfied bound must not look the same',
+        ledger: original.replace(/^# unknown-ceiling: \d+$/m, '# (no ceiling here)'),
+        expect: 'declares no',
+    },
+    {
         name: 'an unknown class',
         why: 'the classification is the half that measures the gap, so it may not be free text',
         ledger: original.replace(victim, victim.replace('\trequired-today\t', '\tsomeday\t')),

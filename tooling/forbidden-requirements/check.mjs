@@ -159,6 +159,32 @@ function detect(files) {
 
 /* ---------------------------------------------------------------- the ledger */
 
+/*
+ * A declared bound on the one value that means "the rules could not tell".
+ *
+ * The stored-and-recomputed `need` already catches a rule that *stops* working:
+ * removing one of the four naming rules moves 39 rows into `unknown` and every
+ * one of them contradicts its stored value and fails by name. What it does not
+ * catch is a use *arriving* unclassifiable — a new file produces a new row, and
+ * a new row is the ordinary flow, so in a 635-row ledger it reads like every
+ * other addition while the headline gets quietly less true (#1474).
+ *
+ * So the count is declared, and checked in both directions the way
+ * `tests/assertions/budget.tsv` is: over is drift, under is an improvement that
+ * was not recorded.
+ */
+function readCeiling() {
+    const raw = readFileSync(LEDGER, 'utf8')
+    const match = /^#\s*unknown-ceiling:\s*(\d+)\s*$/m.exec(raw)
+    if (match === null) {
+        fail('census.tsv declares no `# unknown-ceiling: N`, so the one value that means ' +
+            '"the rules could not tell" has no bound and a new unclassifiable use would ' +
+            'arrive as an ordinary row')
+        return null
+    }
+    return Number(match[1])
+}
+
 function readLedger(quiet = false) {
     const complain = quiet ? () => {} : fail
     const rows = new Map()
@@ -372,13 +398,27 @@ process.stdout.write(
  */
 const byNeed = (value) => uses.filter((r) => r.need === value)
 const onPath = byNeed('required')
+const ceiling = readCeiling()
+const unknowns = byNeed('unknown')
+if (ceiling !== null && unknowns.length > ceiling) {
+    fail(`${unknowns.length} rows are \`unknown\` and census.tsv declares a ceiling of ` +
+        `${ceiling}. A use the rules cannot classify may not arrive as an ordinary row: ` +
+        `classify it — see the four naming rules in reach.mjs — or raise the ceiling ` +
+        'deliberately, in the same commit, with the reason')
+}
+if (ceiling !== null && unknowns.length < ceiling) {
+    fail(`only ${unknowns.length} rows are \`unknown\` and census.tsv still declares a ` +
+        `ceiling of ${ceiling}; lower it so the improvement is recorded`)
+}
+if (process.exitCode === 1) process.exit(1)
 process.stdout.write(
     `PASS: ${onPath.length} of ${uses.length} uses are on the path \`task verify\` runs and ` +
     'cannot be skipped — this is what an independent builder must obtain\n')
 for (const value of ['optional', 'off-path', 'unknown']) {
     const rows = byNeed(value)
+    const bound = value === 'unknown' ? ` of ${ceiling} allowed` : ''
     process.stdout.write(
-        `      ${value.padEnd(26)} ${rows.length}` +
+        `      ${value.padEnd(26)} ${rows.length}${bound}` +
         (rows.length === 0 ? '' : ` (${[...new Set(rows.map((r) => r.requirement))].join(', ')})`) +
         '\n')
 }

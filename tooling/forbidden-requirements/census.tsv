@@ -68,6 +68,20 @@
 # three rows it named — `scripts/graphify.sh`'s `python` — is genuinely off the
 # build path, and the `need` column is how that is now said.
 #
+# unknown-ceiling: 31
+#
+# The bound on `unknown`, checked in BOTH directions like
+# tests/assertions/budget.tsv: over it is a use the rules could not classify
+# arriving as an ordinary row, under it is an improvement that was not
+# recorded. Raising it is a deliberate edit with a reason, in the same commit
+# as the row that needed it.
+#
+# It exists because the two directions of this column are not equally safe. A
+# rule that *stops working* fails loudly — removing one of the four naming
+# rules in reach.mjs moves 39 rows into `unknown` and each one contradicts its
+# stored value by name. A use *arriving* unclassifiable produces a new row, and
+# a new row is the ordinary flow (#1474).
+#
 # requirement	kind	count	class	need	path
 cc	invoke	11	required-today	required	bin/kofun
 cc	invoke	1	required-today	required	bin/kofun-digest
