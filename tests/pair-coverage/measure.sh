@@ -209,6 +209,31 @@ echo "building instrumented compiler.c with: $COVERAGE_CC $COVERAGE_FLAGS" >&2
 # thread.
 KOFUN_STAGE2_COMPILER="$WORK/stage2-cov"
 export KOFUN_STAGE2_COMPILER
+
+# Give the latency backstops room, because THIS RUN IS NOT MEASURING LATENCY.
+# The binary the drivers exercise is built -O0 --coverage and is several times
+# slower than the -O2 one those bounds were calibrated against, and the machine
+# is shared. A backstop that fires turns a slow-but-correct gate into a failed
+# driver, and a failed driver's unreached branches are reported as undefended --
+# a fabricated finding, in the one form that does not reproduce.
+#
+# Raising a bound cannot make a gate pass that would otherwise fail on its
+# assertions; it only stops the clock deciding. Only the knobs the gates
+# themselves expose are touched -- no gate script is modified:
+#
+#   KOFUN_SEMANTIC_TIMEOUT         tests/fuzz/semantic_runner.sh, default 10s
+#   KOFUN_VISIBILITY_FUZZ_TIMEOUT  visibility fuzz cases, default 30s
+#
+# NOT COVERED, and stated because a partial mitigation read as a total one is
+# worse than none: `tests/fuzz/grammar.sh:101` uses a hard-coded `timeout 2`,
+# `tests/conformance/run.sh:260` a hard-coded `timeout 10`, and
+# `tests/lsp/semantic_sidecar_test.mjs` asserts an absolute `hover p95 < 2ms`
+# that `roadmap` runs. Those can still fail on a loaded box, and when they do
+# the answer is the driver-failure policy's: re-run on a quiet machine. They are
+# the reason this mitigation reduces the risk rather than removing it.
+KOFUN_SEMANTIC_TIMEOUT=${KOFUN_SEMANTIC_TIMEOUT:-120}
+KOFUN_VISIBILITY_FUZZ_TIMEOUT=${KOFUN_VISIBILITY_FUZZ_TIMEOUT:-300}
+export KOFUN_SEMANTIC_TIMEOUT KOFUN_VISIBILITY_FUZZ_TIMEOUT
 phase_start=$(date +%s)
 : >"$WORK/driver-results.tsv"
 while IFS= read -r driver; do
