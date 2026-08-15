@@ -1,0 +1,7 @@
+# diagnostic-mode: compile
+# expect-code: E2S35
+# expect-span: byte 114
+fn main() -> Int {
+    let slot: Optional[RootAuthority] = none
+    return 0
+}

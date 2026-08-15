@@ -1,0 +1,7 @@
+# diagnostic-mode: compile
+# expect-code: E2S157
+# expect-span: byte 106
+fn main() -> Int {
+    let slot: List[RootAuthority] = []
+    return 0
+}
