@@ -575,6 +575,11 @@ tasks:
     cmds:
       - "sh tests/interop/bindgen-c/import-boundary/run.sh"
 
+  optional-tool-skips:
+    desc: "Verify the readelf-dependent gates announce a skip or refuse by name"
+    cmds:
+      - "sh tests/tooling/optional-tool-skips/check.sh"
+
   rust-shim:
     desc: "Verify the vendored Rust crate shim offline"
     cmds:
@@ -1279,6 +1284,7 @@ tasks:
             c-abi \
             bindgen-c \
             bindgen-c-import-boundary \
+            optional-tool-skips \
             rust-shim \
             http \
             http-client-model \

@@ -698,6 +698,7 @@ shell-build-driver	source	1	required-today	required	tests/stdlib/kotest/check.sh
 shell-build-driver	source	1	required-today	required	tests/stdlib/tzdb/check.sh
 shell-build-driver	source	1	required-today	required	tests/tooling/discovery-sanitizer-reuse/check.sh
 shell-build-driver	source	1	required-today	required	tests/tooling/fuzz-sanitizer-reuse/check.sh
+shell-build-driver	source	1	required-today	required	tests/tooling/optional-tool-skips/check.sh
 shell-build-driver	source	1	required-today	required	tests/tooling/ownership-view/run.sh
 shell-build-driver	source	1	required-today	required	tests/tooling/stage2-build-reuse/check.sh
 shell-build-driver	source	1	required-today	required	tests/tooling/task-help/check.sh
