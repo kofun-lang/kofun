@@ -20,6 +20,22 @@ node --check "$GENERATOR"
 node "$VALIDATOR" schema
 node "$VALIDATOR" validate
 
+# #1446. The corpus is run a second time with today set well past every fixture
+# date. `proposed-claiming-a-decision-date` carried a literal `2026-08-15`,
+# chosen as "the future" when it was written; on that morning it stopped being
+# the future, the rule it relied on stopped firing, and the mutation was
+# accepted. Nothing failed because the ledger changed — the calendar moved.
+#
+# One run cannot catch that: a fixture that expires tomorrow passes today. So
+# the axis itself is exercised, and a date that expires is caught the day it is
+# written rather than the day it expires.
+for horizon in 2027-01-01 3000-01-01; do
+    KOFUN_RFC_TODAY="$horizon" node "$VALIDATOR" validate >/dev/null 2>&1 || {
+        printf '%s\n' "FAIL: rfc ledger: the ledger itself is invalid at today=$horizon" >&2
+        exit 1
+    }
+done
+
 mutations=0
 node "$GENERATOR" list > "$WORK/mutations.tsv"
 while IFS='	' read -r mutation blame; do
@@ -42,6 +58,20 @@ while IFS='	' read -r mutation blame; do
         exit 1
     }
 done < "$WORK/mutations.tsv"
+for horizon in 2027-01-01 3000-01-01; do
+    while IFS='	' read -r mutation blame; do
+        test -n "$mutation" || continue
+        KOFUN_RFC_TODAY="$horizon" node "$GENERATOR" "$mutation" "$WORK/$mutation.$horizon.json"
+        if KOFUN_RFC_TODAY="$horizon" node "$VALIDATOR" validate \
+            "$WORK/$mutation.$horizon.json" >/dev/null 2>&1
+        then
+            printf '%s\n' \
+                "FAIL: rfc ledger: $mutation is accepted at today=$horizon; its fixture date expires" >&2
+            exit 1
+        fi
+    done < "$WORK/mutations.tsv"
+done
+
 test "$mutations" -eq 23 || {
     printf '%s\n' "FAIL: rfc ledger: expected 23 generic mutations, ran $mutations" >&2
     exit 1

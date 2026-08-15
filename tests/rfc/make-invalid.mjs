@@ -16,6 +16,32 @@ import { fileURLToPath } from 'node:url'
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const REGISTRY_PATH = join(ROOT, 'rfcs', 'index.json')
 
+/*
+ * A date strictly after the day this run treats as today, so a "future date"
+ * fixture cannot expire. `KOFUN_RFC_TODAY` is read here for the same reason the
+ * validator reads it: the two must agree about which day it is, or a mutation
+ * lands on the wrong side of the boundary it is testing.
+ */
+function afterToday(days) {
+    const today = process.env.KOFUN_RFC_TODAY ?? new Date().toISOString().slice(0, 10)
+    const when = new Date(`${today}T00:00:00Z`)
+    when.setUTCDate(when.getUTCDate() + days)
+    const stamped = when.toISOString().slice(0, 10)
+    /*
+     * Past 9999-12-31 `toISOString` switches to the expanded form
+     * (`+010000-01-01`), which is a different shape and would silently produce
+     * a fixture the ledger rejects for the wrong reason — "not a date" rather
+     * than "has not happened yet". Refusing here keeps the failure honest
+     * rather than making the corpus mean something else at the boundary.
+     */
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(stamped)) {
+        throw new Error(
+            `afterToday(${days}) from ${today} leaves the four-digit calendar: ${stamped}`,
+        )
+    }
+    return stamped
+}
+
 const MUTATIONS = {
     // Acceptance is not implementation. Both directions of that confusion.
     'implemented-without-implementation': {
@@ -138,16 +164,26 @@ const MUTATIONS = {
     // A scheduled date and a real one look identical once written down, so a
     // proposal that carries either closing date reads as closed to anything
     // that joins on that field.
+    //
+    // #1446. These two carried `2026-08-15`, chosen as "a date in the future"
+    // when they were written. On 2026-08-15 it stopped being one, the
+    // future-date rule stopped firing, and the first mutation was accepted —
+    // the corpus failed because the calendar moved rather than because the
+    // ledger changed.
+    //
+    // The dates are now relative to the pinned today, so there is no date at
+    // which they stop being future. `KOFUN_RFC_TODAY` pins that for the whole
+    // corpus, which is what makes the run deterministic; the harness sets it.
     'proposed-claiming-a-decision-date': {
         blame: 'RFC-0001',
         apply(ledger) {
-            find(ledger, 'RFC-0001').dates.decided_on = '2026-08-15'
+            find(ledger, 'RFC-0001').dates.decided_on = afterToday(1)
         },
     },
     'proposed-claiming-a-closed-review': {
         blame: 'RFC-0001',
         apply(ledger) {
-            find(ledger, 'RFC-0001').dates.review_closed_on = '2026-08-15'
+            find(ledger, 'RFC-0001').dates.review_closed_on = afterToday(1)
         },
     },
     // Every ledger date is a fact. One that has not happened yet is a promise
@@ -160,8 +196,8 @@ const MUTATIONS = {
             rfc.document = 'rfcs/TEMPLATE.md'
             rfc.dates = {
                 opened_on: '2026-07-20',
-                review_closed_on: '2999-01-01',
-                decided_on: '2999-01-02',
+                review_closed_on: afterToday(2),
+                decided_on: afterToday(3),
             }
         },
     },
