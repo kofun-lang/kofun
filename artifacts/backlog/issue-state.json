@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 116,
+  "open_issues": 114,
   "issues": [
     {
       "number": 26,
@@ -2155,32 +2155,6 @@
       ]
     },
     {
-      "number": 1465,
-      "title": "Stage 2: admit authority nominal types in record fields and check ADT payload types",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "8639360a82fa2b4d1f9821a180e9d5d04adcf645"
-      ],
-      "claims": [
-        {
-          "agent_id": "claude-1465-authority-composite-slices-20260815",
-          "status": "active"
-        },
-        {
-          "agent_id": "claude-1465-authority-composite-slices-20260815",
-          "status": "merged"
-        },
-        {
-          "agent_id": "claude-1465-authority-composite-slices-20260815",
-          "status": "active"
-        }
-      ]
-    },
-    {
       "number": 1467,
       "title": "The contract does not name readelf, and task verify requires it on eight paths",
       "state_labels": [
@@ -2230,27 +2204,6 @@
       "blocked_by": [],
       "evidence_commits": [
         "21e89ecb8807606712c902481a6b39f82a190c79"
-      ]
-    },
-    {
-      "number": 1474,
-      "title": "Bound the census's unknown bucket, so an unclassifiable use cannot arrive quietly",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [
-        1459,
-        1470
-      ],
-      "evidence_commits": [
-        "a98cb13eabc7b5c48a948d381928a460670e3d67"
-      ],
-      "claims": [
-        {
-          "agent_id": "claude-opus-5-be36d9bd",
-          "status": "active"
-        }
       ]
     },
     {
