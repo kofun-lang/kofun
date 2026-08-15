@@ -1,0 +1,10 @@
+# diagnostic-mode: compile
+# expect-code: E2S31
+# expect-span: byte 103
+type Maybe =
+    | Some(value: NotAType)
+    | None
+
+fn main() -> Int {
+    return 0
+}

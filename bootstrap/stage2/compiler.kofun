@@ -1966,6 +1966,67 @@ fn record_field_type_end(source: Text, field_type: Int, limit: Int) -> Int {
     return token_end(source, field_type)
 }
 
+# #1465. The composite type positions #1243 must classify, admitted here so
+# that they exist to be classified. Measured before the change:
+#
+#     type Holder = { slot: RootAuthority }              error[E2S32]
+#     type Maybe = | Some(value: RootAuthority) | None   exit 0
+#
+# The record refuses the type and the ADT does not look -- two different
+# absences, and #1243's criteria have a subject under neither. This admits the
+# three reserved authority names in both positions and nothing else. No
+# ownership kind, no cleanup, no way to construct a value: `E352` still says no
+# source construct creates one, and every criterion #1243 states is a static
+# classification that does not need one.
+fn admissible_composite_member_token(source: Text, index: Int) -> Bool {
+    let text = token_text(source, index)
+    if text == "Int" || text == "Bool" || text == "Text" {
+        return true
+    }
+    return authority_type_name(text)
+}
+
+# #1465. The first token of a constructor payload member that names its type.
+# Both spellings are in the corpus and both have to work: `Wrap(value: Inner)`
+# and `Admitted(Int)`. Returns -1 when the member is empty.
+fn payload_member_type_token(source: Text, member: Int, close: Int) -> Int {
+    if member >= close {
+        return -1
+    }
+    let after = skip_trivia(source, token_end(source, member))
+    if after < close && token_text(source, after) == ":" {
+        let typed = skip_trivia(source, token_end(source, after))
+        if typed < close {
+            return typed
+        }
+        return -1
+    }
+    return member
+}
+
+# #1465. Whether a constructor payload may name this type.
+#
+# Measured before writing it, because the rule had to be wide enough not to
+# refuse anything the compiler accepts today. Across every tracked `.kofun`
+# there are 366 payload type occurrences. All of them are a builtin, a
+# `List[...]`, or a type declared in the same source -- except four files whose
+# payloads name a type from another module, and Stage 2 already refuses all
+# four for unrelated reasons. So this refuses `NotAType` and nothing that
+# compiles.
+fn admissible_payload_type_token(source: Text, index: Int, close: Int) -> Bool {
+    if admissible_composite_member_token(source, index) {
+        return true
+    }
+    if parameter_list_type_end(source, index, close) >= 0 {
+        return true
+    }
+    let text = token_text(source, index)
+    if record_declaration_start(source, text) >= 0 {
+        return true
+    }
+    return enum_declaration_start(source, text) >= 0
+}
+
 fn record_field_count(source: Text, record_type: Text) -> Int {
     let declaration = record_declaration_start(source, record_type)
     if declaration < 0 {
@@ -2013,9 +2074,8 @@ fn record_field_count(source: Text, record_type: Text) -> Int {
                "List[Int]" {
                 return -2
             }
-        } else if token_text(source, field_type) != "Int" &&
-           token_text(source, field_type) != "Bool" &&
-           token_text(source, field_type) != "Text" {
+        } else if admissible_composite_member_token(source, field_type) ==
+                  false {
             return -2
         }
         count = count + 1
@@ -3047,6 +3107,83 @@ fn parse_program(source: Text) -> Text {
                 if payload_open < end &&
                    token_text(source, payload_open) == "(" {
                     payload_count = 1
+                    # #1465. Check every payload member's type. Until this, no
+                    # payload type was examined at all: `Some(value: NotAType)`
+                    # and `Some(NotAType)` both compiled, exactly as
+                    # `Some(value: Int)` did. So an authority in a payload was
+                    # not admitted, it was unread -- which is why #1243's
+                    # criterion about ADT payloads had no subject to classify.
+                    #
+                    # The position is reported as an ordinal, not a spelling,
+                    # because #1243's causal paths are specified in those terms.
+                    let payload_close = balanced_end(
+                        source,
+                        payload_open,
+                        "(",
+                        ")"
+                    )
+                    let mut member = skip_trivia(
+                        source,
+                        token_end(source, payload_open)
+                    )
+                    let mut ordinal = 0
+                    let mut scanning = payload_close > 0
+                    while scanning {
+                        if member >= payload_close {
+                            scanning = false
+                        } else if token_text(source, member) == ")" {
+                            scanning = false
+                        } else {
+                            let typed = payload_member_type_token(
+                                source,
+                                member,
+                                payload_close
+                            )
+                            if typed < 0 {
+                                return "error[E2S31]: enum constructor `" +
+                                constructor_name + "` payload " +
+                                to_text(ordinal) + " has no type at byte " +
+                                to_text(member)
+                            }
+                            if admissible_payload_type_token(
+                                source,
+                                typed,
+                                payload_close
+                            ) == false {
+                                return "error[E2S31]: enum constructor `" +
+                                constructor_name + "` payload " +
+                                to_text(ordinal) + " has undeclared type `" +
+                                token_text(source, typed) + "` at byte " +
+                                to_text(typed)
+                            }
+                            let mut after = skip_trivia(
+                                source,
+                                token_end(source, typed)
+                            )
+                            let mut seeking = true
+                            while seeking {
+                                if after >= payload_close {
+                                    seeking = false
+                                } else if token_text(source, after) == "," {
+                                    seeking = false
+                                } else {
+                                    after = skip_trivia(
+                                        source,
+                                        token_end(source, after)
+                                    )
+                                }
+                            }
+                            if after >= payload_close {
+                                scanning = false
+                            } else {
+                                member = skip_trivia(
+                                    source,
+                                    token_end(source, after)
+                                )
+                                ordinal = ordinal + 1
+                            }
+                        }
+                    }
                     let payload_name = skip_trivia(
                         source,
                         token_end(source, payload_open)

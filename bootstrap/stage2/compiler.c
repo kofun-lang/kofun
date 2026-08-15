@@ -2807,6 +2807,89 @@ static int64_t record_field_type_end(
  * AggregateLayout v1 remains the authority for the corresponding
  * declaration-order C layout.
  */
+static bool authority_type_name(const char *name);
+static int64_t record_declaration_start(const char *source, const char *name);
+static int64_t enum_declaration_start(const char *source, const char *name);
+
+/*
+ * #1465. The composite type positions #1243 must classify, admitted here so
+ * that they exist to be classified. Measured before the change, compiling this
+ * file with `cc -std=c11 -O2`:
+ *
+ *     type Holder = { slot: RootAuthority }   error[E2S32]
+ *     type Maybe = | Some(value: RootAuthority) | None   exit 0
+ *
+ * The record refuses the type and the ADT does not look — two different
+ * absences, and #1243's criteria have a subject under neither. This admits the
+ * three reserved authority names in both positions and nothing else. No
+ * ownership kind, no cleanup, no way to construct a value: `E352` still says
+ * no source construct creates one, and every criterion #1243 states is a
+ * static classification that does not need one.
+ */
+static bool admissible_composite_member_token(
+    const char *source,
+    int64_t index
+) {
+    if (
+        token_equal(source, index, "Int") ||
+        token_equal(source, index, "Bool") ||
+        token_equal(source, index, "Text")
+    ) return true;
+    char *text = token_copy(source, index);
+    bool authority = authority_type_name(text);
+    free(text);
+    return authority;
+}
+
+/*
+ * #1465. The first token of a constructor payload member that names its type.
+ * Both spellings are in the corpus and both have to work: `Wrap(value: Inner)`
+ * and `Admitted(Int)`. Returns the type token, or -1 when the member is empty.
+ */
+static int64_t payload_member_type_token(
+    const char *source,
+    int64_t member,
+    int64_t close
+) {
+    if (member >= close) return -1;
+    int64_t after = skip_trivia(source, token_end(source, member));
+    if (after < close && token_equal(source, after, ":")) {
+        int64_t typed = skip_trivia(source, token_end(source, after));
+        return typed < close ? typed : -1;
+    }
+    return member;
+}
+
+/*
+ * #1465. Whether a constructor payload may name this type.
+ *
+ * Measured before writing it, because the rule had to be wide enough not to
+ * refuse anything the compiler accepts today. Across every tracked `.kofun`
+ * there are 366 payload type occurrences. All of them are a builtin, a
+ * `List[...]`, or a type declared in the same source — except four files whose
+ * payloads name a type from another module, and Stage 2 already refuses all
+ * four for unrelated reasons (`E2S02` at their top level, `E2S148` on a type
+ * parameter). So this refuses `NotAType` and nothing that compiles.
+ *
+ * A cross-module payload type is therefore *not* admitted here, and that is
+ * a boundary rather than an oversight: nothing that reaches this compiler has
+ * one yet, and admitting a name this source cannot see would be the same
+ * unexamined position the check exists to close.
+ */
+static bool admissible_payload_type_token(
+    const char *source,
+    int64_t index,
+    int64_t close
+) {
+    if (admissible_composite_member_token(source, index)) return true;
+    if (parameter_list_type_end(source, index, close) >= 0) return true;
+    char *text = token_copy(source, index);
+    bool declared = record_declaration_start(source, text) >= 0 ||
+                    enum_declaration_start(source, text) >= 0;
+    free(text);
+    return declared;
+}
+
 static int64_t record_field_count(
     const char *source,
     const char *record_type
@@ -2867,11 +2950,7 @@ static int64_t record_field_count(
                 free(covered.data);
                 return -2;
             }
-        } else if (
-            !token_equal(source, field_type, "Int") &&
-            !token_equal(source, field_type, "Bool") &&
-            !token_equal(source, field_type, "Text")
-        ) {
+        } else if (!admissible_composite_member_token(source, field_type)) {
             free(covered.data);
             return -2;
         }
@@ -4283,6 +4362,98 @@ static char *parse_program(const char *source) {
                 int64_t payload_count =
                     payload_open < end && token_equal(source, payload_open, "(") ?
                         1 : 0;
+                /*
+                 * #1465. Check every payload member's type. Until this, no
+                 * payload type was examined at all: `Some(value: NotAType)`
+                 * and `Some(NotAType)` both compiled, exactly as
+                 * `Some(value: Int)` did. So an authority in a payload was not
+                 * admitted, it was unread — which is why #1243's criterion
+                 * about ADT payloads had no subject to classify.
+                 *
+                 * The position is reported as an ordinal, not a spelling,
+                 * because #1243's causal paths are specified in those terms
+                 * and will be built on whatever this emits.
+                 *
+                 * Keep the message short. `Stage2StructuredDiagnostic.fallback`
+                 * is `char[160]`, and the producer pipeline renders from that
+                 * buffer while `compile_file` returns the full string. A longer
+                 * message makes the two pipelines disagree by truncation
+                 * rather than by logic -- which is how the first version of
+                 * this failed `task stage2-events`, at char 160 exactly.
+                 */
+                if (payload_count != 0) {
+                    int64_t payload_close =
+                        balanced_end(source, payload_open, "(", ")");
+                    int64_t member = skip_trivia(
+                        source,
+                        token_end(source, payload_open)
+                    );
+                    int64_t ordinal = 0;
+                    while (
+                        payload_close > 0 && member < payload_close &&
+                        !token_equal(source, member, ")")
+                    ) {
+                        int64_t typed = payload_member_type_token(
+                            source,
+                            member,
+                            payload_close
+                        );
+                        if (
+                            typed < 0 ||
+                            !admissible_payload_type_token(
+                                source,
+                                typed,
+                                payload_close
+                            )
+                        ) {
+                            Buffer error;
+                            buffer_init(&error);
+                            char *spelling = typed < 0
+                                ? owned_text("")
+                                : token_copy(source, typed);
+                            buffer_format(
+                                &error,
+                                "error[E2S31]: enum constructor `%s` payload "
+                                "%" PRId64 " has undeclared type `%s` at byte "
+                                "%" PRId64,
+                                constructor_name,
+                                ordinal,
+                                spelling,
+                                typed < 0 ? member : typed
+                            );
+                            stage2_diagnostic_set(
+                                "E2S31",
+                                typed < 0 ? member : typed,
+                                token_end(source, typed < 0 ? member : typed),
+                                true,
+                                error.data
+                            );
+                            free(spelling);
+                            free(constructor_name);
+                            free(name);
+                            free(declared_types.data);
+                            free(declared_constructors.data);
+                            free(ir.data);
+                            return const_generic_refusal(&error);
+                        }
+                        int64_t after = skip_trivia(
+                            source,
+                            token_end(source, typed)
+                        );
+                        while (
+                            after < payload_close &&
+                            !token_equal(source, after, ",")
+                        ) {
+                            after = skip_trivia(
+                                source,
+                                token_end(source, after)
+                            );
+                        }
+                        if (after >= payload_close) break;
+                        member = skip_trivia(source, token_end(source, after));
+                        ++ordinal;
+                    }
+                }
                 char *payload_type = owned_text("");
                 if (payload_count != 0) {
                     int64_t payload_name = skip_trivia(
