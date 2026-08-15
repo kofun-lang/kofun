@@ -73,8 +73,13 @@ fn main() -> Int {
 }
 
 $ ./bin/kofun check generic.kofun
-error[E2S03]: malformed function at byte 0
+error[E2S175]: type parameters on a function are unsupported; `identity` opens a type parameter list at byte 11
 ```
+
+Until #1268 that refusal was `error[E2S03]: malformed function at byte 0` — the
+message a stray brace produces, pointing at the start of the file rather than
+at the binder. The boundary was unnamed rather than refused. Naming it does not
+move it: `identity` is still not compiled, and the paragraph below still holds.
 
 So "a frontend exists for X" and "X compiles" are different claims, and this
 repository deliberately makes only the first one for these nine. A feature is

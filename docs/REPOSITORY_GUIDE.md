@@ -176,7 +176,7 @@ and run only by its own gate. So a file named for a feature is evidence that a
 bounded claim about it is checked, not that the feature compiles:
 `generics_frontend.c` is 59 KB with a passing `task generics`, while
 `./bin/kofun check` on `fn identity[T](value: T) -> T` reports
-`error[E2S03]: malformed function at byte 0`.
+`error[E2S175]: type parameters on a function are unsupported`.
 
 The two files that *are* the user-facing compiler are `compiler.kofun`
 (canonical) and `compiler.c` (the trusted seed that executes). See
