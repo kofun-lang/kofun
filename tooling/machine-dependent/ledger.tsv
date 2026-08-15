@@ -1,0 +1,70 @@
+# Every bound in this tree whose verdict can depend on how busy the machine is,
+# and why each one is tolerated (#1472).
+#
+# `node tooling/machine-dependent/check.mjs` fails in BOTH directions, the way
+# tooling/gate-reachability/unreachable.tsv and
+# tooling/forbidden-requirements/census.tsv do. A site with no row is a bound
+# that arrived unrecorded. A row with no site is the direction that matters
+# more: the fix for these rows is to stop being time-dependent, and without the
+# reverse check nothing notices when one does.
+#
+# Regenerate the rows with `--count`; print the three searches with
+# `--predicates`. A count is only meaningful with its predicate attached.
+#
+# CLASSIFY BY MARGIN, NOT BY CLOCK. Which clock a bound reads does not decide
+# whether it is a finding. In tests/lsp/semantic_sidecar_test.mjs, `hover p95 <
+# 2` and `decode/index p95 < 75` read the same clock three lines apart: the
+# first has 66x headroom and the second has ranged 9.93 to 92.14ms in one day.
+# DIAGNOSTIC_MAX_CPU_MS reads a CPU clock and still failed at 148.91 against
+# 145. So `observed` carries the worst number anyone has recorded and the load
+# it was taken at, and the checker computes headroom from it.
+#
+# class   `verdict`     the bound IS the assertion. Must carry an observation:
+#                       "passed once" and "has margin" are different claims.
+#         `unmeasured`  verdict-shaped, and nobody has recorded its range. Not
+#                       a safe cell -- it means the category is unknown.
+#         `backstop`    exists to stop a hang, set far above the expected cost,
+#                       and the reason says what that cost is.
+#         `indirect`    the bound here is a variable; another row holds the
+#                       literal, and `evidence` names it.
+#         `runtime`     product code -- a debounce, a poll interval, a lock
+#                       wait. It cannot fail a build.
+#         `domain`      a duration in the problem domain, not a measurement of
+#                       this run. A UTC offset bound is not a machine dependency.
+#
+# observed  `<number><unit>@load<average>`, or `-` for classes that make no
+#           margin claim. The load is required because a single observation of
+#           a load-sensitive quantity says nothing about its range, and one
+#           taken on a quiet box says least of all.
+#
+# site	file	count	bound	observed	class	evidence	reason
+duration-budget	bootstrap/selfhost/check-compiler-driver.sh	1	120s	-	unmeasured	-	selfhost_timeout_seconds, overridable by KOFUN_SELFHOST_TIMEOUT. Bounds a full A1 self-compile of the canonical S source. That compile is the most expensive single step in the tree and nothing records its duration, so 120s cannot be called generous on the evidence available.
+duration-budget	bootstrap/selfhost/generations-lib.sh	1	120s	-	unmeasured	-	The same default in the shared generation library, bounding each derived generation.
+duration-budget	tests/fuzz/semantic_protocol_test.sh	3	1s	-	domain	the three call sites set it on the runner deliberately	KOFUN_SEMANTIC_TIMEOUT=1 is an input to the case, not a bound on it: these three cases exist to exercise the runner's timeout path, so a fast machine must still reach it. Tightening rather than loosening is what would break them.
+duration-budget	tests/fuzz/semantic_runner.sh	1	10s	10s@load17	verdict	#1472: `semantic runner: adapter timed out: native-x86_64` inside task verify, passing standalone minutes later on the same tree	TIMEOUT_SECONDS, the default nobody overrides. It has fired, which makes the observation the bound itself and the headroom exactly 1.0. Recorded as a verdict rather than a backstop because that is what it behaved as.
+duration-budget	tests/fuzz/visibility-artifacts.sh	1	30s	-	backstop	the comment above the assignment in that file	The file states it outright: the ceiling is a hang detector, not a performance budget, and the slowest case finishes well inside a second.
+duration-budget	tests/interop/bindgen-c/fuzz/fuzz-macros.mjs	1	45000ms	-	backstop	the comment on the line itself	CASE_TIMEOUT_MS. The file calls it a driver watchdog set above the tool's own bound, so it fires only when the tool's own timeout did not.
+duration-budget	tests/interop/bindgen-c/fuzz/fuzz-macros.mjs	1	600000ms	-	backstop	the comment on the line itself	TOTAL_BUDGET_MS, a ten-minute ceiling on the whole fuzz run rather than on any one case.
+duration-budget	tests/lsp/performance_test.js	1	10ms	6.60ms@load31.07	verdict	calibration table in the file at 30f18e4d; three runs 6.51/5.94/6.60	COMPLETION_WARM_P95_CPU_MS. Thin for the same reason as the cold budget above it.
+duration-budget	tests/lsp/performance_test.js	1	130ms	98.85ms@load26.27	verdict	calibration table in the file at 30f18e4d; three runs 94.39/98.85/96.18	DIAGNOSTIC_P95_CPU_MS. CPU time, which moves 1.15x from a quiet box to load 31 where wall clock moves 14x -- but 1.15x is not immunity and this is the tightest of the six.
+duration-budget	tests/lsp/performance_test.js	1	145ms	148.91ms@load20.5	verdict	#1472, probed under instrumentation; passes at load 11.5 and 13.5, fails at 20.5	DIAGNOSTIC_MAX_CPU_MS. Has actually failed, 2.7% over, from neighbours alone -- contention makes the same work cost more CPU through cache and memory-bandwidth pressure. The clearest case that a CPU budget is still load-dependent.
+duration-budget	tests/lsp/performance_test.js	1	18ms	12.55ms@load26.27	verdict	calibration table in the file at 30f18e4d; three runs 10.36/12.55/10.69	COMPLETION_COLD_P95_CPU_MS. Thin, and the file says so: anyone tightening it must re-measure on the slowest host they intend to keep green.
+duration-budget	tests/lsp/performance_test.js	2	4ms	1.69ms@load31.07	verdict	calibration table in the file at 30f18e4d	DEFINITION_P95_CPU_MS and HOVER_P95_CPU_MS. The file states these two are effectively smoke tests rather than budgets; 14x headroom on CI is deliberate because the same work costs five times more here than on the runner.
+duration-budget	tooling/bindgen-c/bindgen-c.mjs	1	20000ms	-	runtime	-	CLANG_TIMEOUT_MS bounds the external clang invocation the tool shells out to. It is the shipped tool's own behaviour, not a gate assertion, and it cannot fail a build by being slow.
+duration-budget	tooling/typed-sidecar/codec.mjs	1	10ms	-	runtime	-	LOCK_POLL_MILLISECONDS, the poll interval inside that wait.
+duration-budget	tooling/typed-sidecar/codec.mjs	1	2000ms	-	runtime	-	LOCK_WAIT_MILLISECONDS, how long a writer waits for the sidecar lock before giving up. Shipped behaviour; a busy machine makes it wait longer, not fail a gate.
+duration-budget	tooling/typed-sidecar/documentation-index.mjs	1	10ms	-	runtime	-	The same poll interval in the documentation-index writer.
+duration-budget	tooling/typed-sidecar/documentation-index.mjs	1	2000ms	-	runtime	-	The same lock wait in the documentation-index writer.
+duration-comparison	stdlib/date_time/tests/reference.mjs	1	-64800s	-	domain	-	The negative half of the same UTC offset bound.
+duration-comparison	stdlib/date_time/tests/reference.mjs	1	64800s	-	domain	-	An 18-hour UTC offset bound in the date-time reference model. A duration in the problem domain, not a measurement of this run; no machine can make it fail.
+duration-comparison	tests/lsp/protocol_test.js	1	1000ms	-	unmeasured	-	deepMilliseconds, wall clock, on deep-delimiter diagnostics. The test computes the number and only prints it on failure, so no range is recorded anywhere. Measuring it means reporting the value it already has; changing the bound is out of scope for #1472.
+duration-comparison	tests/lsp/semantic_sidecar_test.mjs	1	75ms	92.14ms@load20	verdict	#1472 records four observations in one day: 9.93, 16.77, 80.70, 92.14	decodeP95Ms. An 8x spread and two failures in a day, both inside `task verify` and neither reproducible alone. The site this issue exists for. tests/lsp/check.sh already separates CPU (asserted) from wall clock (recorded) for its own budgets; this assertion did not get that treatment.
+duration-comparison	tests/lsp/semantic_sidecar_test.mjs	2	2ms	0.030ms@load20	verdict	#1472 for hover; 0.010ms and 0.003ms measured here at load 1.93	hoverP95Ms and definitionP95Ms. 66x headroom on the worst recorded number, reading the same clock as the 75ms assertion three lines above. Kept as a row because the ledger's job is to show that the clock is not what decides.
+timeout-command	bootstrap/selfhost/check-compiler-driver.sh	2	${selfhost_timeout_seconds}s	-	indirect	the selfhost_timeout_seconds row in this same file	The bound is the variable; the literal is the duration-budget row below.
+timeout-command	bootstrap/selfhost/generations-lib.sh	1	${selfhost_timeout_seconds}s	-	indirect	the selfhost_timeout_seconds row in this same file	The bound is the variable; the literal is the duration-budget row below.
+timeout-command	tests/conformance/run.sh	1	10s	-	unmeasured	-	Bounds one compiled conformance program, which prints and exits. Nothing records the slowest case, so whether 10s is two orders above the cost or one is not written down anywhere.
+timeout-command	tests/fuzz/grammar.sh	1	2s	-	unmeasured	-	Bounds one Stage 2 compile of a generated program. The tightest timeout in the tree and the only one under five seconds; no per-case cost is recorded, so it cannot be called a backstop on the evidence available.
+timeout-command	tests/fuzz/semantic_runner.sh	2	$TIMEOUT_SECONDS	-	indirect	the TIMEOUT_SECONDS row in this same file	The bound is the variable; the literal and the occasion it fired are the duration-budget row below.
+timeout-command	tests/fuzz/visibility-artifacts.sh	1	$CASE_TIMEOUT	-	indirect	the CASE_TIMEOUT row in this same file	The bound is the variable; the literal and its rationale are the duration-budget row below.
+timeout-command	tests/stage2/else-if-chain/run.sh	2	120s	-	backstop	same shape as tests/stage2/while-list-int/run.sh, which documents it	A `kofun run` of a three-branch fixture, guarded against a non-terminating lowering. Undocumented here, unlike its sibling gate; the expected cost is one `kofun run` and 120s is two orders above it.
+timeout-command	tests/stage2/while-list-int/run.sh	2	60s	-	backstop	the comment above run_bounded in that file	The file states the rationale: the failure this slice can introduce is not a wrong answer but a loop that never returns one, so the bound exists to fail CI instead of hanging it.

@@ -300,6 +300,7 @@ node	invoke	4	required-today	required	tests/typed-sidecar/stage2-projector.sh
 node	invoke	6	required-today	required	tests/wasm-list-v1/check.sh
 node	invoke	4	required-today	required	tests/wasm-text-v1/check.sh
 node	invoke	8	required-today	required	tests/wasm/wasi-command/check.sh
+node	invoke	6	required-today	required	tooling/machine-dependent/check.sh
 node	source	1	required-today	required	bootstrap/native/macho64-check.mjs
 node	source	1	required-today	required	bootstrap/native/macho64-signed-check.mjs
 node	source	1	required-today	required	bootstrap/native/pe32plus-check.mjs
@@ -433,6 +434,9 @@ node	source	1	required-today	required	tooling/lsp/semantic-sidecar.mjs
 node	source	1	required-today	required	tooling/lsp/semantic-worker.mjs
 node	source	1	required-today	required	tooling/lsp/server.js
 node	source	1	required-today	required	tooling/lsp/visibility.js
+node	source	1	required-today	required	tooling/machine-dependent/check.mjs
+node	source	1	required-today	required	tooling/machine-dependent/detect.mjs
+node	source	1	required-today	required	tooling/machine-dependent/self-test.mjs
 node	source	1	required-today	required	tooling/task-help.mjs
 node	source	1	required-today	required	tooling/typed-sidecar/captures.mjs
 node	source	1	required-today	required	tooling/typed-sidecar/codec.mjs
@@ -708,6 +712,7 @@ shell-build-driver	source	1	required-today	required	tests/wasm/wasi-command/chec
 shell-build-driver	source	1	required-today	required	tooling/kotest/run.sh
 shell-build-driver	source	1	required-today	required	tooling/lsp/build-semantic-bundle.sh
 shell-build-driver	source	1	required-today	required	tooling/lsp/kofun-lsp
+shell-build-driver	source	1	required-today	required	tooling/machine-dependent/check.sh
 shell-build-driver	source	1	required-today	unknown	unicode/generate_tables.sh
 go-task	invoke	4	required-today	required	.github/workflows/ci.yml
 go-task	invoke	1	required-today	required	.github/workflows/fuzz.yml
