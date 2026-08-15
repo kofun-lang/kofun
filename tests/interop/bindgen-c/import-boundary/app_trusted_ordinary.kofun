@@ -1,0 +1,9 @@
+# The marker is not decorative. Writing `trusted import` of a module that is
+# not raw-foreign is refused (E2S172), so the word cannot be sprinkled on
+# imports until one of them happens to be the raw one.
+module app.main
+trusted import lib.facade
+
+fn main() -> Int {
+    return facade.doubled(21)
+}

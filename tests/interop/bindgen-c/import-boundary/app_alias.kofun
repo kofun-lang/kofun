@@ -1,0 +1,8 @@
+# An alias is not a crossing either: renaming the module at the import site
+# changes what the author types, not what they are importing (E2S171).
+module app.main
+import ffi.kbscale as scale
+
+fn main() -> Int {
+    return scale.kbscale_double(21)
+}

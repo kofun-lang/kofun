@@ -111,6 +111,15 @@ case $module in
 esac
 require_line "$module" 'RAW TRUSTED FOREIGN BINDINGS - NOT A SAFE INTERFACE' \
     'module lost its prominent raw-trust banner'
+# #1217. The module declares itself and its trust class, in the source, as the
+# first two lines. Before it, `trust` was a comment and a JSON field: neither is
+# read by anything that resolves an import, which is what RFC-0012 replaced.
+head -2 "$module" >"$WORK/module-header.actual"
+printf 'module kbfix\ntrust raw-foreign\n' >"$WORK/module-header.expected"
+cmp "$WORK/module-header.expected" "$WORK/module-header.actual" ||
+    fail 'the generated module does not begin with its module header and trust class'
+require_line "$report" '"trust_class": "raw-foreign"' \
+    'the report does not record the module trust class the language reads'
 require_line "$module" 'trust: raw-trusted-foreign' \
     'module lost its machine-readable trust line'
 require_line "$module" 'DO NOT EDIT' \
@@ -245,7 +254,31 @@ done <"$WORK/bound-symbols.txt"
 
 # ---------------- the module is valid input to the checked C ABI profile
 
-cat "$module" "$CASES/driver.kofun" >"$WORK/program.kofun"
+# The single-file `--c-abi` profile has no modules and no visibility keywords,
+# so the module framing #1217 added is removed before this build. The
+# declarations are the same bytes either way, and that is asserted rather than
+# assumed: everything the transformation removes must be one of the two header
+# lines or a `pub ` prefix, and the count of each is checked. A `sed` that
+# silently removed something else would produce a program that still built.
+#
+# The framing is not untested by being stripped here — it is what
+# `import-boundary/run.sh` exists to build and run, on the path that has
+# modules. This build owns the declarations: opaque handles, the by-value
+# `repr(C)` record, and the callback typedef, none of which the module path
+# lowers.
+sed -e '/^module kbfix$/d' -e '/^trust raw-foreign$/d' \
+    -e 's/^pub extern "C" fn /extern "C" fn /' "$module" \
+    >"$WORK/module-declarations.kofun"
+assert_num 'stripping removed exactly the two header lines' \
+    "$(( $(wc -l <"$module") - $(wc -l <"$WORK/module-declarations.kofun") ))" \
+    -eq 2
+assert_num 'every stripped declaration was a `pub extern "C" fn`' \
+    "$(grep -c '^extern "C" fn ' "$WORK/module-declarations.kofun")" \
+    -eq "$(grep -c '^pub extern "C" fn ' "$module")"
+assert_num 'nothing else lost a `pub`' \
+    "$(grep -c '^pub ' "$WORK/module-declarations.kofun")" -eq 0
+cat "$WORK/module-declarations.kofun" "$CASES/driver.kofun" \
+    >"$WORK/program.kofun"
 "$ROOT/bin/kofun" build "$WORK/program.kofun" --backend c --c-abi \
     --link-library "$WORK/libkbfix.so" --emit-c "$WORK/program.c" \
     -o "$WORK/program" >"$WORK/build.stdout" 2>"$WORK/build.stderr" ||
