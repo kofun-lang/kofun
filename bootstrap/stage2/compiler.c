@@ -3324,11 +3324,51 @@ static char *type_parameter_list_error(const char *source, int64_t start) {
  * prefix test would refuse for sharing five letters with a builtin it has
  * nothing to do with. Measured before reserving: no tracked source declares
  * `type Bytes`. */
+/*
+ * The three RFC-0002 authority types, selected by #1241 and recorded in
+ * `spec/native-toolchain-v1/contract.json` under that issue's entry. They are
+ * opaque nominal types: no declaration in source introduces them and no source
+ * construct produces a value of one, so `record_declaration_start` will never
+ * find them and they need their own recognizer.
+ *
+ * The name set lives in exactly one function on each half of the pair so that
+ * the carrier, the refusals, and the arity of the set cannot drift apart. A
+ * gate asserts the count, because three names spelled out at four call sites
+ * is how a fourth authority type gets added to three of them.
+ */
+static bool authority_type_name(const char *name) {
+    return strcmp(name, "RootAuthority") == 0 ||
+           strcmp(name, "EnvironmentAuthority") == 0 ||
+           strcmp(name, "EnvironmentKey") == 0;
+}
+
+/*
+ * Root and Environment authority are Owned: unforgeable, non-Copy, and moved
+ * by a whole-binding transfer. `EnvironmentKey` is deliberately unrestricted
+ * and copyable — it names a variable, it does not carry the right to read one,
+ * so making it affine would cost every caller a clone and buy nothing.
+ */
+static bool authority_type_is_owned(const char *name) {
+    return strcmp(name, "RootAuthority") == 0 ||
+           strcmp(name, "EnvironmentAuthority") == 0;
+}
+
+/*
+ * #1243. The authority names are reserved for the same reason `Int` is:
+ * they are built-in nominal types and a declaration that reuses the name
+ * would make the name mean two things. Measured before this was added:
+ * `type RootAuthority = { n: Int }` compiled and constructed, and then
+ * every function taking it as a parameter reported a carrier the author
+ * had never asked for. No authority was forged — the value could not be
+ * passed anywhere — but "one stable nominal TypeId independent of source
+ * spelling" was false, because the spelling could be taken over.
+ */
 static bool reserved_type_name(const char *name) {
     return strcmp(name, "Int") == 0 || strcmp(name, "Bool") == 0 ||
            strcmp(name, "Float") == 0 || strcmp(name, "Unit") == 0 ||
            strcmp(name, "Text") == 0 || strcmp(name, "List") == 0 ||
-           strcmp(name, "Bytes") == 0 || strcmp(name, "_") == 0;
+           strcmp(name, "Bytes") == 0 || strcmp(name, "_") == 0 ||
+           authority_type_name(name);
 }
 
 static char *function_return_type(const char *source, const char *wanted);
@@ -3368,34 +3408,6 @@ static bool ownership_mode_token(const char *source, int64_t cursor) {
            token_equal(source, cursor, "take");
 }
 
-/*
- * The three RFC-0002 authority types, selected by #1241 and recorded in
- * `spec/native-toolchain-v1/contract.json` under that issue's entry. They are
- * opaque nominal types: no declaration in source introduces them and no source
- * construct produces a value of one, so `record_declaration_start` will never
- * find them and they need their own recognizer.
- *
- * The name set lives in exactly one function on each half of the pair so that
- * the carrier, the refusals, and the arity of the set cannot drift apart. A
- * gate asserts the count, because three names spelled out at four call sites
- * is how a fourth authority type gets added to three of them.
- */
-static bool authority_type_name(const char *name) {
-    return strcmp(name, "RootAuthority") == 0 ||
-           strcmp(name, "EnvironmentAuthority") == 0 ||
-           strcmp(name, "EnvironmentKey") == 0;
-}
-
-/*
- * Root and Environment authority are Owned: unforgeable, non-Copy, and moved
- * by a whole-binding transfer. `EnvironmentKey` is deliberately unrestricted
- * and copyable — it names a variable, it does not carry the right to read one,
- * so making it affine would cost every caller a clone and buy nothing.
- */
-static bool authority_type_is_owned(const char *name) {
-    return strcmp(name, "RootAuthority") == 0 ||
-           strcmp(name, "EnvironmentAuthority") == 0;
-}
 
 /*
  * A word in a parameter head, which is an identifier *or* a keyword.

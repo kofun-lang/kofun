@@ -2485,9 +2485,17 @@ fn type_parameter_list_error(source: Text, start: Int) -> Text {
 # would refuse for sharing five letters with a builtin it has nothing to do
 # with. Measured before reserving: no tracked source declares `type Bytes`.
 fn reserved_type_name(name: Text) -> Bool {
+    # #1243. The authority names are reserved for the same reason `Int` is:
+    # they are built-in nominal types and a declaration that reuses the name
+    # would make the name mean two things. Measured before this was added:
+    # `type RootAuthority = { n: Int }` compiled and constructed, and then
+    # every function taking it as a parameter reported a carrier the author had
+    # never asked for. No authority was forged -- the value could not be passed
+    # anywhere -- but "one stable nominal TypeId independent of source
+    # spelling" was false, because the spelling could be taken over.
     return name == "Int" || name == "Bool" || name == "Float" ||
     name == "Unit" || name == "Text" || name == "List" ||
-    name == "Bytes" || name == "_"
+    name == "Bytes" || name == "_" || authority_type_name(name)
 }
 
 # Ownership mode is the optional first component of a parameter head.

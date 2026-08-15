@@ -148,6 +148,44 @@ case $(first_line) in
     *) fail "comparing authority bindings reported $(first_line)" ;;
 esac
 
+# --- the name cannot be taken over -----------------------------------------
+# #1243. "One stable nominal TypeId independent of source spelling" is false if
+# the spelling can be redeclared. Before the names were reserved,
+# `type RootAuthority = { n: Int }` compiled and constructed, and then every
+# function taking it as a parameter reported a carrier the author never asked
+# for. Both declaration forms are covered because both reach
+# `reserved_type_name`.
+while IFS= read -r type; do
+    printf 'type %s =\n    | A\n    | B\n\nfn main() -> Int {\n    return 0\n}\n' \
+        "$type" >"$WORK/case.kofun"
+    status=$(outcome "$WORK/case.kofun")
+    test "$status" -eq 1 ||
+        fail "an enum named $type exited $status, not 1"
+    case $(first_line) in
+        "error[E2S31]: concrete enum cannot shadow built-in type \`$type\`"*) ;;
+        *) fail "an enum named $type reported $(first_line)" ;;
+    esac
+
+    printf 'type %s = {\n    n: Int,\n}\n\nfn main() -> Int {\n    return 0\n}\n' \
+        "$type" >"$WORK/case.kofun"
+    status=$(outcome "$WORK/case.kofun")
+    test "$status" -eq 1 ||
+        fail "a record named $type exited $status, not 1"
+    case $(first_line) in
+        "error[E2S32]: nominal record cannot shadow built-in type \`$type\`"*) ;;
+        *) fail "a record named $type reported $(first_line)" ;;
+    esac
+done <"$WORK/types.txt"
+
+# The reservation is exact, not a substring: a name that merely contains an
+# authority name must still be declarable. Without this the obvious
+# implementation -- a `contains` test -- passes everything above.
+printf 'type MyAuthority = {\n    n: Int,\n}\n\nfn main() -> Int {\n    let r: MyAuthority = MyAuthority(n: 3)\n    print(to_text(r.n))\n    return 0\n}\n' \
+    >"$WORK/case.kofun"
+status=$(outcome "$WORK/case.kofun")
+test "$status" -eq 0 ||
+    fail "a record named MyAuthority exited $status; the reservation must be exact, not a substring"
+
 # --- the refusal is not the whole language ----------------------------------
 # A negative control. Without it, a compiler that refused every program would
 # pass everything above.
