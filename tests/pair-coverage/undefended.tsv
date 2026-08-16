@@ -7,23 +7,23 @@
 #
 # A LISTED FUNCTION IS NOT WRONG. It is unwatched.
 #
-#   measured at   4cdedf7a527b8e6dcac919aaf036004688f4426d
+#   measured at   6ee19d952020f7429f0fe055863e9e7ae0e5ec8d
 #   gcc           gcc (GCC) 16.2.1 20260810
 #   clang         clang version 22.1.8
-#   basis         the union of 150 verify drivers and 1219 pinned *.kofun inputs,
+#   basis         the union of 155 verify drivers and 1258 pinned *.kofun inputs,
 #                 per drivers.tsv and inputs.tsv at this commit
-#   totals        1816 untaken under gcc, 1733 under clang, across 338 functions
+#   totals        1911 untaken under gcc, 1823 under clang, across 354 functions
 #
 # COST, measured on this run rather than estimated -- it is the number the
 # `verify`-or-not argument in tooling/gate-reachability/unreachable.tsv rests
 # on, and the reason that file rather than the verify list is where this gate
 # is accounted for:
-#   gcc    drivers  4691s + corpus  612s =   88 min, drivers are 88% of it
-#   clang  drivers  4689s + corpus  806s =   92 min, drivers are 85% of it
-#   both   drivers  9380s + corpus 1418s =  180 min for the pair
+#   gcc    drivers  4502s + corpus  767s =   88 min, drivers are 85% of it
+#   clang  drivers  4681s + corpus  729s =   90 min, drivers are 86% of it
+#   both   drivers  9183s + corpus 1496s =  178 min for the pair
 #
-#   8 cores; sampled load average: min 1.2, mean 4.0, max 10.3.
-#   The sampler covered 44 of the 184 minutes this run took, so those are
+#   8 cores; .
+#   The sampler covered 0 of the 186 minutes this run took, so those are
 #   sampled extremes and not the run maximum -- load 24.9 was observed by
 #   hand during a window the sampler was not running.
 #
@@ -44,8 +44,10 @@
 # fewer is an improvement nobody wrote down.
 #
 # gcc	clang	function
+2	2	admissible_payload_type_token
 6	6	after_optional_module_header
 2	2	allocate
+1	1	annotated_pure_declarations
 3	3	annotation_type_end
 4	4	annotation_type_text
 3	2	append_captures
@@ -100,13 +102,13 @@
 3	3	emit_fixed_slot_call_temporaries
 11	11	emit_int_bit_chain
 1	1	emit_lifted_argument_lambdas
-3	3	emit_lifted_lambdas
+4	4	emit_lifted_lambdas
 1	1	emit_list_int_index_value
 2	2	emit_list_int_literal
 5	5	emit_list_int_subscript
 16	14	emit_list_int_value
 2	2	emit_optional_int_coalescing_temporaries
-24	21	emit_primary
+22	19	emit_primary
 10	10	emit_product
 1	1	emit_record_c_declarations
 3	3	emit_record_value
@@ -136,8 +138,10 @@
 2	2	expression_end
 6	6	field_read_postfix_end
 1	1	final_result_if
+5	5	first_io_callee
 1	1	fixed_slot_call_shape
-1	1	fixed_slot_call_supported
+2	2	fixed_slot_temporary_body
+5	5	function_calls_name
 7	7	function_end
 2	2	function_name
 7	7	function_parameter_mode
@@ -164,11 +168,13 @@
 2	1	int_bit_expression_contains
 2	2	int_bit_method_arity_at
 7	7	int_bit_postfix_end
+4	4	io_functions_round
 7	7	labelled_argument_slot
 2	2	labelled_argument_value
 1	1	lambda_binding_open
-2	2	lambda_captures
+3	2	lambda_captures
 1	1	lambda_declaration_syntax_token
+19	15	lambda_fn_keyword_before
 4	4	lambda_parameter_count
 4	4	lambda_parameters_end
 3	3	lambda_unparenthesised_annotation
@@ -181,11 +187,11 @@
 4	4	list_int_type_end
 15	11	local_visibility_error
 136	136	lower_body
-3	3	lower_c_body
+4	4	lower_c_body
 26	25	lower_enum_match
 17	17	lower_record_binding
 1	1	lower_selfhost_c11_file
-3	3	main
+6	6	main
 4	4	malformed_numeric_literal
 10	10	match_arm_pattern_start
 11	10	match_guard_scope_open
@@ -227,6 +233,8 @@
 1	1	optional_int_result_containing
 2	2	optional_int_type_end
 9	7	optional_int_value
+10	10	pair_sha256_absorb
+14	14	pair_sha256_of_message
 2	2	parameter_count
 1	1	parameter_external_start
 5	5	parameter_internal_start
@@ -241,7 +249,7 @@
 12	11	parse_pattern_or
 1	1	parse_patterns_file
 8	7	parse_pattern_trees
-18	17	parse_program
+26	25	parse_program
 3	3	parse_value_arm
 29	26	parse_value_enum_match
 13	13	parse_value_if
@@ -257,12 +265,17 @@
 3	3	pattern_record_field
 17	17	pattern_recovery_end
 5	4	pattern_stop_token
-3	3	pipeline_call_end
+3	3	payload_member_type_token
+4	4	pipeline_call_end
+4	4	pipeline_last_pipe
+1	1	pipeline_pipe_for_call
+1	1	pipeline_subject_end
 1	1	pipeline_subject_for_call
 1	1	pipeline_subject_start
-5	5	pipeline_subject_take
+4	4	pipeline_subject_take
 19	19	primary_end
 2	2	product_end
+4	4	pure_boundary_violation
 5	5	read_file
 2	2	record_declaration_at
 1	1	record_declaration_start
@@ -278,6 +291,7 @@
 1	1	scope_depth_for_open
 4	4	scoped_parallel_member
 5	5	selfhost_compile_file
+4	4	sha256_selftest
 1	1	sh_bind
 1	1	sh_emit_expr
 1	1	sh_emit_stmt
@@ -319,6 +333,7 @@
 1	1	sl_split
 1	1	sl_symbol
 1	1	sl_type_key
+1	1	source_function_count
 3	3	source_has_list_int_local
 1	1	source_length
 1	1	source_slice
@@ -348,13 +363,14 @@
 2	2	type_name
 4	4	type_parameter_list_error
 4	4	type_parameter_open
+1	1	unsupported_lowering_error
 5	5	validate_authority_uses
 3	3	validate_const_arguments
 4	4	validate_const_erasure
 2	2	validate_core_calls
 11	8	validate_core_types
 4	3	validate_decimal_slice5_members
-22	24	validate_declared_call_arguments
+19	21	validate_declared_call_arguments
 12	9	validate_enum_uses
 10	9	validate_executable_patterns
 9	6	validate_fractional_operators
@@ -370,15 +386,15 @@
 23	23	validate_optional_uses
 4	4	validate_pipeline_calls
 6	6	validate_pipeline_checked
-4	4	validate_pipeline_shapes
+3	3	validate_pipeline_shapes
 2	2	validate_record_uses
 4	4	validate_removed_callable_notation
 1	1	validate_struct_identity
-3	3	validate_trailing_lambda_surface
+8	8	validate_trailing_lambda_surface
 2	2	value_if_branch_end
 4	4	value_match_enum_type
 1	0	visibility_prefix_candidate
-4	4	visibility_prefix_error
+6	6	visibility_prefix_error
 2	1	visibility_word
 3	3	write_file
 6	6	write_file_transactional
