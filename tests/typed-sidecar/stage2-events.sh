@@ -36,9 +36,7 @@ $ROOT/bootstrap/stage2/semantic_events.c
 $ROOT/tests/typed-sidecar/stage2_events_test.c
 "
 # shellcheck disable=SC2086
-kofun_path_log_record $COMMON_SOURCES \
-    "$ROOT/bootstrap/stage2/semantic_producer.c" \
-    "$ROOT/bootstrap/stage2/compiler.c"
+kofun_path_log_record $COMMON_SOURCES
 
 # shellcheck disable=SC2086
 "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic \
@@ -52,6 +50,25 @@ kofun_path_log_record $COMMON_SOURCES \
 # scope-HIR builder, and ownership checker in compiler.c, then emits through
 # the public sink API.
 kofun_stage2_semantic_inputs "$ROOT" main
+# THE PRODUCER SOURCES ARE DELIBERATELY NOT RECORDED, and the reason is a
+# constraint on instrumenting this file at all.
+# tests/tooling/verify-object-reuse/check.sh counts, in this file's TEXT, two
+# things as proxies for build stanzas: the literal producer source path, and the
+# quoted producer-input variable, which it requires to appear a fixed number of
+# times across its consumer set. Naming that source either way reads to it as
+# one more build.
+#
+# This comment cannot spell either token out, which is not fastidiousness: the
+# first draft said why the variable could not be mentioned, spelled it, and
+# pushed the count from 13 to 14 by itself. `grep -Fc` does not strip comments.
+# The forbidden-requirements reader has the same scar from the other side --
+# #1428 wrote a task name into a comment explaining that nothing ran it, and was
+# counted as a caller.
+#
+# Nothing is lost. Those sources live under $ROOT, so they are `repo` class:
+# worktree-private by construction and therefore not candidates for the
+# collision this log exists to find. Recording them would add rows to the class
+# that already has a thousand and none to the class that has zero. (#1504)
 "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic \
     -I"$ROOT/bootstrap/stage2" \
     "$KOFUN_STAGE2_SEMANTIC_PRODUCER_INPUT" \
