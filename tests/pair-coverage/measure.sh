@@ -373,8 +373,33 @@ command -v "${GCOV_TOOL%% *}" >/dev/null 2>&1 || {
 for top in bootstrap unicode vendor; do
     test -e "$ROOT/$top" && ln -sfn "$ROOT/$top" "$WORK/$top"
 done
+# The notes basename is DERIVED, not hard-coded, and this is the second half of
+# the KOFUN_PAIR_COVERAGE_SOURCE seam. `cc src.c -o out` names its coverage
+# files `<out>-<source stem>.gcno`, so `compiler.c` gives `stage2-cov-compiler`
+# and a mutated copy gives `stage2-cov-compiler.mutated`. Only the .gcov output
+# name below was derived from $SOURCE; this one was written `stage2-cov-compiler`
+# and so was correct for exactly one source file -- the one it was developed
+# against.
+#
+# That made the seam work for the build and fail at the read: criterion 4's
+# tree-side probe measured for 105 minutes, collected both phases, and then
+# found no notes file. gcov reports that as "No executable lines", which parses
+# as a coverage result rather than a missing input, and check.sh then refused
+# the mutant for having no data at all. The refusal looked like the refusal the
+# proof wanted. It was caught only because that proof requires the refusal to
+# NAME sl_emit_expr rather than merely occur.
+#
+# The `.gcno` suffix is load-bearing. gcov's `-o FILE` strips ONE extension from
+# what it is given, so `-o stage2-cov-compiler.mutated` becomes a search for
+# `stage2-cov-compiler.gcno` -- the original file, silently, which is how the
+# hard-coded name looked correct. Handing it the notes path itself round-trips:
+# `.gcno` is the extension it strips. Verified against both readers, since
+# `llvm-cov gcov` only emulates gcov: gcc and clang both name their notes
+# `<output>-<source stem>.gcno`, and both accept `-o <that path>` and emit
+# `<source>.gcov`.
+GCOV_NOTES="$WORK/stage2-cov-$(basename "$SOURCE" .c).gcno"
 # shellcheck disable=SC2086
-( cd "$WORK" && $GCOV_TOOL -b -f -o "$WORK/stage2-cov-compiler" "$SOURCE" ) \
+( cd "$WORK" && $GCOV_TOOL -b -f -o "$GCOV_NOTES" "$SOURCE" ) \
     >"$WORK/gcov.stdout" 2>&1 || true
 GCOV_OUT="$WORK/$(basename "$SOURCE").gcov"
 test -f "$GCOV_OUT" || {
