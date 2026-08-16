@@ -41,6 +41,24 @@
 # ledger that implied it covered the whole risk would be worse than one that
 # names its own edge.
 #
+# A SECOND EDGE, and the sharper one, because coverage cannot see it even in
+# principle: A BRANCH CAN BE TAKEN AND STILL BE WRONG. #1315 found
+# `emit_enum_value` returning from a bare-identifier branch before reaching its
+# own constructor handling, so a whole shape was unreachable through the shared
+# lowerer while one caller compensated privately. Nothing failed, because the
+# compensating caller was the only one anybody exercised.
+#
+# Every row of this ledger is a branch with a count of ZERO, which is at least
+# visible as an absence. That defect had a NON-zero count: the branch was taken,
+# the coverage was there, and the ledger would call the function defended. What
+# was missing was a second caller, not a second execution.
+#
+# So the two things outside this ledger are the two things worth stating: the
+# Kofun half is never semantically compiled, and a covered branch may still be
+# wrong when a sibling caller papers over it. Neither is an argument against
+# measuring the untaken set. Both are arguments against reading a short ledger
+# as a small risk.
+#
 # TWO COMPILERS, because one column cannot distinguish "undefended" from
 # "undefended under gcc", and telling those apart is the whole point of keeping
 # a diverse pair. A branch one compiler folds and the other keeps is exactly the
