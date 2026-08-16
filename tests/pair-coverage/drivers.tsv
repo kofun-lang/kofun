@@ -27,6 +27,7 @@ benchmark-report-model
 benchmark-report-spec
 benchmark-summary
 bindgen-c
+bindgen-c-import-boundary
 bootstrap
 build-system
 bytes-carrier
@@ -72,6 +73,7 @@ kofun-digest-model
 kotest
 list-int-signatures
 list-int-values
+machine-dependent-bounds
 module-constants
 module-identity
 module-interface-artifact
@@ -87,10 +89,12 @@ optional-coalescing
 optional-construction
 optional-narrowing
 optional-pair
+optional-tool-skips
 ownership-view
 package-roots
 packages
 patterns
+pure-boundary
 raw-imports
 raw-re-exports
 records
@@ -116,6 +120,7 @@ selfhost-native
 selfhost-profile
 selfhost-self-compile
 semantic-identity
+sha256-pair
 source-file-mapping
 stage1-adapter
 stage2
