@@ -1,1 +1,1 @@
-error[E2S170]: Stage 2 Bytes[65536] cannot lower possible managed Bytes alias for `nested` (backend limitation) at byte 129
+error[E2S170]: Stage 2 Bytes[65536] cannot lower possible managed Bytes alias for `b` (backend limitation) at byte 445
