@@ -10,6 +10,7 @@ WORK=${KOFUN_STAGE2_EVENTS_WORK:-"$ROOT/build/stage2-semantic-events"}
 FIXTURE="$ROOT/tests/typed-sidecar/fixtures/stage2_events.kofun"
 . "$ROOT/bootstrap/stage2/build.sh"
 . "$ROOT/bootstrap/stage2/semantic-objects.sh"
+. "$ROOT/tests/typed-sidecar/path-log.sh"
 ASSERT_CONTEXT='stage2 events'
 . "$ROOT/tests/assertions/assert.sh"
 
@@ -25,6 +26,8 @@ case $WORK in
 esac
 rm -rf "$WORK"
 mkdir -p "$WORK/plain" "$WORK/sanitized" "$WORK/analyzer"
+kofun_path_log_init
+kofun_path_log_record "$WORK" "$FIXTURE"
 
 COMMON_SOURCES="
 $ROOT/bootstrap/stage2/sha256.c
@@ -32,6 +35,10 @@ $ROOT/unicode/kofun_unicode.c
 $ROOT/bootstrap/stage2/semantic_events.c
 $ROOT/tests/typed-sidecar/stage2_events_test.c
 "
+# shellcheck disable=SC2086
+kofun_path_log_record $COMMON_SOURCES \
+    "$ROOT/bootstrap/stage2/semantic_producer.c" \
+    "$ROOT/bootstrap/stage2/compiler.c"
 
 # shellcheck disable=SC2086
 "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic \
@@ -339,12 +346,25 @@ find "$ROOT/tests" "$ROOT/bootstrap" -type f \
     \( -name '*.stdout' -o -name '*.stderr' \) \
     -exec grep -l '^error\[' {} + |
     sort >"$WORK/plain/repository-error-companions"
+# THE CENSUS LIST IS THE EVIDENCE, so record it before anything filters it.
+# `repository_error_cases` counts a subset -- companions with a `.kofun` beside
+# them and a code in the E2S/E007/E3xx bands -- and the failure is that the
+# count comes up one short. Logging the unfiltered list is what lets a diff name
+# WHICH file one run saw and the other did not, instead of confirming that a
+# number differs, which the assertion already said. (#1504)
+if test -n "${KOFUN_STAGE2_EVENTS_PATH_LOG:-}"; then
+    while IFS= read -r companion
+    do
+        kofun_path_log_record "$companion"
+    done <"$WORK/plain/repository-error-companions"
+fi
 repository_error_cases=0
 while IFS= read -r expected
 do
     stem=${expected%.*}
     source=$stem.kofun
     test -f "$source" || continue
+    kofun_path_log_record "$source"
     companion_code=$(
         sed -n 's/^error\[\([^]]*\)\].*/\1/p' "$expected" |
             sed -n '1p'
@@ -533,6 +553,27 @@ assert_file_empty "plain/unknown-after.stderr" \
     "$WORK/plain/unknown-after.stderr"
 assert_absent "plain/unknown-before.c" "$WORK/plain/unknown-before.c"
 assert_absent "plain/unknown-after.c" "$WORK/plain/unknown-after.c"
+
+# The instrument has to prove it could have seen something before its silence
+# means anything. An empty log, or one missing the companions this run just
+# counted, reads exactly like "no shared paths" and is worth nothing -- that is
+# the failure mode #1504 was filed about, one level up from the census itself.
+if test -n "${KOFUN_STAGE2_EVENTS_PATH_LOG:-}"; then
+    kofun_path_log_finish
+    test -s "$KOFUN_STAGE2_EVENTS_PATH_LOG" ||
+        fail "path log is empty: $KOFUN_STAGE2_EVENTS_PATH_LOG"
+    logged_companions=$(grep -c '^repo	' "$KOFUN_STAGE2_EVENTS_PATH_LOG" || true)
+    test "$logged_companions" -ge "$repository_error_cases" ||
+        fail "path log holds $logged_companions repo paths but the census counted
+      $repository_error_cases companions; the instrument saw less than the gate
+      did, so its silence about shared paths would mean nothing"
+    printf 'PASS: path log %s: %s paths (%s work, %s repo, %s outside)\n' \
+        "$KOFUN_STAGE2_EVENTS_PATH_LOG" \
+        "$(grep -c . "$KOFUN_STAGE2_EVENTS_PATH_LOG")" \
+        "$(grep -c '^work	' "$KOFUN_STAGE2_EVENTS_PATH_LOG" || true)" \
+        "$logged_companions" \
+        "$(grep -c '^outside	' "$KOFUN_STAGE2_EVENTS_PATH_LOG" || true)"
+fi
 
 printf '%s\n' \
     'PASS: Stage 2 semantic sink, compatibility, ASan/UBSan, and analyzer'

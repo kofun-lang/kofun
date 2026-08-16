@@ -222,9 +222,14 @@ tasks:
     cmds:
       - "sh bootstrap/stage2/check.sh"
 
+  # The path-log self-test runs FIRST and costs under a second: it exercises the
+  # #1504 recorder directly instead of through a `stage2-events` run that builds
+  # five binaries and drives four hundred companions. A check that can only run
+  # inside a ten-minute gate is one nobody runs while changing what it checks.
   stage2-events:
     desc: "Verify bounded complete/partial semantic events"
     cmds:
+      - "sh tests/typed-sidecar/path-log-self-test.sh"
       - "sh tests/typed-sidecar/stage2-events.sh"
       - "sh tests/typed-sidecar/stage2-event-stream.sh"
 
