@@ -7,7 +7,24 @@
 #
 # A LISTED FUNCTION IS NOT WRONG. It is unwatched.
 #
-#   measured at   6ee19d952020f7429f0fe055863e9e7ae0e5ec8d
+# AND A ROW IS NOT AUTOMATICALLY WORK. #1408 deliberately does not classify
+# these as unreachable-by-construction versus reachable-but-uncovered --
+# that judgement is per-region and belongs to the later children of #1401.
+# This file is their work-list, so it has to say what a row does not mean.
+#
+# Some branches here cannot be reached by any fixture, because an earlier
+# rule refuses first. The session working #1315 measured the shape: the
+# `escaping store` and `escaping capture` reasons are unreachable, since
+# Bytes is not an admitted record field type and cannot be captured, so
+# E2S32 and E2S96 refuse before either is reached. They reported it rather
+# than writing fixtures, because a fixture aimed there PASSES TODAY against
+# a compiler that never implements the reason -- a defended-looking row
+# defending nothing, which is worse than the undefended row it replaced.
+#
+# So: before writing a fixture to retire a row, check whether anything can
+# reach it. A green fixture is not evidence that it could.
+#
+#   measured at   d07bfcf56756d69e868c1922de3d9d5a04d2f09e
 #   gcc           gcc (GCC) 16.2.1 20260810
 #   clang         clang version 22.1.8
 #   basis         the union of 155 verify drivers and 1258 pinned *.kofun inputs,
@@ -18,12 +35,12 @@
 # `verify`-or-not argument in tooling/gate-reachability/unreachable.tsv rests
 # on, and the reason that file rather than the verify list is where this gate
 # is accounted for:
-#   gcc    drivers  4502s + corpus  767s =   88 min, drivers are 85% of it
-#   clang  drivers  4681s + corpus  729s =   90 min, drivers are 86% of it
-#   both   drivers  9183s + corpus 1496s =  178 min for the pair
+#   gcc    drivers  3808s + corpus  644s =   74 min, drivers are 85% of it
+#   clang  drivers  4309s + corpus  693s =   83 min, drivers are 86% of it
+#   both   drivers  8117s + corpus 1337s =  158 min for the pair
 #
-#   8 cores; .
-#   The sampler covered 0 of the 186 minutes this run took, so those are
+#   8 cores; sampled load average: min 0.4, mean 1.6, max 2.5.
+#   The sampler covered 37 of the 164 minutes this run took, so those are
 #   sampled extremes and not the run maximum -- load 24.9 was observed by
 #   hand during a window the sampler was not running.
 #
@@ -33,6 +50,23 @@
 # between the driver phase and the corpus phase is what the cost argument
 # turns on, and a ratio between two phases measured under the same
 # contention survives it.
+#
+# DETERMINISM (#1408 criterion 5). Two full measurements of this same tree,
+# run back to back, produced BYTE-IDENTICAL rows -- 354 rows, same counts,
+# same names:
+#
+#   run 1  at 6ee19d95  drivers 4502s + corpus 767s  /  4681s + 729s
+#   run 2  at d07bfcf5  drivers 3808s + corpus 644s  /  4309s + 693s
+#
+# The two trees are measurement-identical: compiler.c, drivers.tsv,
+# inputs.tsv and driver-failures.tsv are the same blobs at both commits,
+# and measure.sh has the same 233 executable lines. Only comments and this
+# file changed between them.
+#
+# The wall clock differs by up to 18% between the runs and the ledger does
+# not differ at all, which is the useful half: it says the measurement is a
+# property of the tree and not of the machine it was taken on. A repeat that
+# happened to run under identical load would not have shown that.
 #
 # Regenerate with:
 #
