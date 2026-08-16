@@ -129,10 +129,39 @@ grep '^static int64_t kofun_fn_consume(KofunEnumValue ' \
     "$WORK/enum_payload_functions.c" >/dev/null ||
     fail 'Stage 2 did not lower the enum parameter'
 
+# #1503. A payload-free constructor in argument and return position, where it
+# used to be reported as a binding with the wrong type. The fixture keeps the
+# payload-carrying forms beside it so a change admitting one and breaking the
+# other cannot pass.
+"$WORK/kofun-stage2" \
+    "$CASES/payload_free_constructor.kofun" \
+    "$WORK/payload_free_constructor.c" \
+    "$WORK/payload_free_constructor.ir" \
+    "$WORK/payload_free_constructor.tokens" >/dev/null ||
+    fail 'a payload-free constructor was refused as a value'
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$WORK/payload_free_constructor.c" \
+    -o "$WORK/payload_free_constructor"
+"$WORK/payload_free_constructor" \
+    >"$WORK/payload_free_constructor.stdout" \
+    2>"$WORK/payload_free_constructor.stderr"
+cmp "$CASES/payload_free_constructor.stdout" \
+    "$WORK/payload_free_constructor.stdout" ||
+    fail 'payload-free constructor output differs'
+test ! -s "$WORK/payload_free_constructor.stderr" ||
+    fail 'payload-free constructor wrote unexpected stderr'
+# The bare form must lower to the same carrier the annotated route produces:
+# tag 0, detail zero. A payload-free constructor that reached C as anything
+# else would still print the right number through `classify`.
+grep -F '((KofunEnumValue){INT64_C(0), INT64_C(0)})' \
+    "$WORK/payload_free_constructor.c" >/dev/null ||
+    fail 'the payload-free constructor did not lower to its declaration-order tag with a zero payload'
+
 printf '%s\n' \
     'PASS: MaybeInt declarations and uses carry deterministic nominal IDs' \
     'PASS: declarations are collected before constructor body resolution' \
     'PASS: bounded parenthesized Int arithmetic payloads type without evaluation' \
     'PASS: zero/one-Int arity and payload typing diagnostics are exact' \
     'PASS: generic, recursive, multi-field, and malformed forms are explicit' \
-    'PASS: Stage 2 executes payload enum arguments, returns, and catch-all bindings'
+    'PASS: Stage 2 executes payload enum arguments, returns, and catch-all bindings' \
+    'PASS: a payload-free constructor is a value in argument and return position, lowering to its declaration-order tag with a zero payload'

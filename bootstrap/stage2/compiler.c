@@ -7557,6 +7557,57 @@ static char *emit_enum_value(
         );
     }
     if (open >= end) {
+        /*
+         * #1503. A payload-free constructor, before the binding lookup.
+         *
+         * This branch treated every bare identifier as a binding and
+         * returned, so it never reached the constructor handling below —
+         * which is guarded behind a following `(`. `Ok` was therefore a value
+         * only where some other caller compensated, and the annotated-`let`
+         * lowerer is the one that does: it carries its own copy of this
+         * emission rather than coming through here. Argument and return
+         * position had no such compensation, and reported a payload-free
+         * constructor as a *binding* with the wrong type — which reads as an
+         * error in the author's program rather than a shape the slice does
+         * not lower.
+         *
+         * The binding lookup stays as the fallback, so a bare binding of the
+         * wrong enum keeps its existing diagnostic and a constructor of
+         * another enum still reaches the owner check below.
+         */
+        char *bare_owner = enum_constructor_owner(source, name);
+        if (strcmp(bare_owner, enum_type) == 0) {
+            int64_t bare_tag = enum_constructor_index(source, enum_type, name);
+            int64_t bare_arity = enum_constructor_payload_arity(
+                source,
+                enum_type,
+                name
+            );
+            if (bare_tag >= 0 && bare_arity == 0) {
+                Buffer bare;
+                buffer_init(&bare);
+                buffer_format(
+                    &bare,
+                    "((KofunEnumValue){INT64_C(%" PRId64 "), INT64_C(0)})",
+                    bare_tag
+                );
+                free(bare_owner);
+                free(name);
+                return bare.data;
+            }
+            if (bare_tag >= 0) {
+                /* Named without its payload. The arity message below has
+                 * always been the right one for this; it was unreachable. */
+                free(bare_owner);
+                free(name);
+                return lower_error(
+                    "E2S32",
+                    "constructor takes one Int payload",
+                    cursor
+                );
+            }
+        }
+        free(bare_owner);
         char *binding_id = hir_use_binding_id(hir, cursor);
         char *binding_type = hir_binding_field(hir, binding_id, 5);
         if (
