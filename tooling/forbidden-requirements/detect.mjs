@@ -58,7 +58,19 @@ const WRAPPERS = 'exec|command|env|xargs|sudo|time|nice|then|do|else|elif|if'
  */
 const ASSIGN = String.raw`(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)[ \t]+)*`
 
-const OPEN = String.raw`(?:^|[|;&(){}\`\n!]|\$\(|&&|\|\||(?:\b(?:${WRAPPERS})\b(?:\s+[-!]\w*)*\s+))${ASSIGN}`
+/*
+ * `(` opens a subshell — but only when nothing identifier-like precedes it.
+ * `foo(node)` is a call, and the census recorded
+ * `tests/conformance/int-bits-lowering/check.sh` as invoking Node.js on the
+ * strength of `def find(node):` inside a Python heredoc it embeds. Every
+ * occurrence of the word in that file is a parameter name (#1500).
+ *
+ * And `$(` at end of line opens a command on the NEXT line. Measured: 80
+ * sites in tracked shell open that way, none of them with a forbidden
+ * requirement today — so this half fixes no count now and stops the next one
+ * being silent.
+ */
+const OPEN = String.raw`(?:^|(?<![A-Za-z0-9_])[(]|[|;&){}\`\n!]|\$\([ \t]*\n?[ \t]*|&&|\|\||(?:\b(?:${WRAPPERS})\b(?:\s+[-!]\w*)*\s+))${ASSIGN}`
 const CLOSE = String.raw`(?=\s|$|['"\`;|&)])`
 
 /*

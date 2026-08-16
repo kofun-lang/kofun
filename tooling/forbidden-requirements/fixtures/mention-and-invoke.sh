@@ -28,3 +28,19 @@ KOFUN_FIXTURE_ID=mention-and-invoke \
 "$CC" -std=c11 -O2 -o /dev/null - </dev/null
 
 echo "done"   # node is named again here, and again counts for nothing
+
+# The near miss that put a `node invoke` row on
+# tests/conformance/int-bits-lowering/check.sh, which embeds a Python heredoc:
+# `(` opens a subshell, but `foo(` is a call and its argument is not a command.
+printf 'def find(node):\n'
+printf 'if isinstance(node, dict):\n'
+
+# The subshell that must survive that fix: `(` is the only opener on this line,
+# so it proves the subshell case rather than the `&&` beside it.
+(node --version >/dev/null)
+
+# And the opener a single line cannot see: the command is on the line after.
+version=$(
+    node --version
+)
+printf '%s\n' "$version" >/dev/null

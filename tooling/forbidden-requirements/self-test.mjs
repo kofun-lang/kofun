@@ -45,8 +45,10 @@ const fail = (message) => {
  * two properties, and a suite that only proves it fires proves half of it.
  */
 const FIXTURE_CASES = [
-    ['mention-and-invoke.sh', 'node', 'invoke', 1,
-        'one invocation; four mentions in comments, including a trailing one'],
+    ['mention-and-invoke.sh', 'node', 'invoke', 3,
+        'three invocations — at a line start, inside a subshell, and on the line ' +
+        'after a multi-line `$(` — against five mentions in comments and two ' +
+        'Python-heredoc lines where `node` is a parameter name (#1500)'],
     ['mention-and-invoke.sh', 'cc', 'invoke', 1,
         'one compile line, opened by an environment assignment and continued'],
     ['mention-and-invoke.sh', 'import-library', 'invoke', 0,

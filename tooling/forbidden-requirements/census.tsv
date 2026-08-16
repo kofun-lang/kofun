@@ -270,7 +270,6 @@ node	invoke	2	required-today	unknown	tests/conformance/backends/wasm32-node.sh
 node	invoke	1	required-today	required	tests/conformance/call-arguments/run.sh
 node	invoke	4	required-today	required	tests/conformance/effects/pure-boundary/run.sh
 node	invoke	5	required-today	required	tests/conformance/effects/pure-io/run.sh
-node	invoke	1	required-today	required	tests/conformance/int-bits-lowering/check.sh
 node	invoke	3	required-today	required	tests/conformance/int-bits/run.sh
 node	invoke	3	required-today	required	tests/conformance/optional-construction/run.sh
 node	invoke	3	required-today	optional	tests/digest/check.sh
