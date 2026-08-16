@@ -1,0 +1,45 @@
+# #1503. A payload-free constructor is a value in argument and return
+# position, not only as the initializer of an annotated `let`.
+#
+# Each call below has the bare constructor as the *only* reason it is
+# interesting: no annotated local stands in for it, and the payload-carrying
+# forms are asserted beside it so a change that admitted one and broke the
+# other cannot pass. Deleting the constructor check in `emit_enum_value`
+# fails the first two lines and leaves the rest untouched.
+type Reply =
+    | Pending
+    | Ready(value: Int)
+
+fn classify(reply: Reply) -> Int {
+    let mut result = 0
+    match reply {
+        Pending => { result = 1 },
+        Ready(value) => { result = value },
+    }
+    return result
+}
+
+fn make_pending() -> Reply {
+    return Pending
+}
+
+fn make_ready(value: Int) -> Reply {
+    return Ready(value)
+}
+
+fn main() -> Int {
+    print(classify(Pending))
+
+    let returned: Reply = make_pending()
+    print(classify(returned))
+
+    print(classify(Ready(7)))
+
+    let carried: Reply = make_ready(9)
+    print(classify(carried))
+
+    let annotated: Reply = Pending
+    print(classify(annotated))
+
+    return 0
+}

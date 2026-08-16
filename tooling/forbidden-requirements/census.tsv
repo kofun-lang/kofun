@@ -120,7 +120,7 @@ cc	invoke	2	required-today	required	tests/artifact-qualification/check.sh
 cc	invoke	1	required-today	required	tests/build_system.sh
 cc	invoke	5	required-today	optional	tests/conformance/adt-exhaustiveness/run.sh
 cc	invoke	7	required-today	optional	tests/conformance/adt-usefulness-v2/run.sh
-cc	invoke	2	required-today	required	tests/conformance/adt/run.sh
+cc	invoke	3	required-today	required	tests/conformance/adt/run.sh
 cc	invoke	1	required-today	required	tests/conformance/aggregate-bridge/run.sh
 cc	invoke	1	required-today	required	tests/conformance/backends/c11-stage1.sh
 cc	invoke	1	required-today	required	tests/conformance/backends/c11-stage2.sh
