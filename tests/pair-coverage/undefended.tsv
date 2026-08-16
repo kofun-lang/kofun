@@ -1,0 +1,434 @@
+# The Stage 2 pair's undefended-branch ledger (#1408, parent #1401).
+#
+# Per function of bootstrap/stage2/compiler.c, how many of its branches
+# nothing this repository runs ever takes -- once under each host compiler of
+# the diverse pair. That set is where a divergence between compiler.kofun and
+# its hand-maintained compiler.c transliteration can hide.
+#
+# A LISTED FUNCTION IS NOT WRONG. It is unwatched.
+#
+# AND A ROW IS NOT AUTOMATICALLY WORK. #1408 deliberately does not classify
+# these as unreachable-by-construction versus reachable-but-uncovered --
+# that judgement is per-region and belongs to the later children of #1401.
+# This file is their work-list, so it has to say what a row does not mean.
+#
+# Some branches here cannot be reached by any fixture, because an earlier
+# rule refuses first. The session working #1315 measured the shape: the
+# `escaping store` and `escaping capture` reasons are unreachable, since
+# Bytes is not an admitted record field type and cannot be captured, so
+# E2S32 and E2S96 refuse before either is reached. They reported it rather
+# than writing fixtures, because a fixture aimed there PASSES TODAY against
+# a compiler that never implements the reason -- a defended-looking row
+# defending nothing, which is worse than the undefended row it replaced.
+#
+# So: before writing a fixture to retire a row, check whether anything can
+# reach it. A green fixture is not evidence that it could.
+#
+#   measured at   d07bfcf56756d69e868c1922de3d9d5a04d2f09e
+#   gcc           gcc (GCC) 16.2.1 20260810
+#   clang         clang version 22.1.8
+#   basis         the union of 155 verify drivers and 1258 pinned *.kofun inputs,
+#                 per drivers.tsv and inputs.tsv at this commit
+#   totals        1911 untaken under gcc, 1823 under clang, across 354 functions
+#
+# COST, measured on this run rather than estimated -- it is the number the
+# `verify`-or-not argument in tooling/gate-reachability/unreachable.tsv rests
+# on, and the reason that file rather than the verify list is where this gate
+# is accounted for:
+#   gcc    drivers  3808s + corpus  644s =   74 min, drivers are 85% of it
+#   clang  drivers  4309s + corpus  693s =   83 min, drivers are 86% of it
+#   both   drivers  8117s + corpus 1337s =  158 min for the pair
+#
+#   8 cores; sampled load average: min 0.4, mean 1.6, max 2.5.
+#   The sampler covered 37 of the 164 minutes this run took, so those are
+#   sampled extremes and not the run maximum -- load 24.9 was observed by
+#   hand during a window the sampler was not running.
+#
+# READ THE RATIO, NOT THE ABSOLUTE. These timings were taken on a shared
+# machine with other sessions building concurrently, so the wall-clock
+# figures are an upper bound rather than a clean-machine cost. The split
+# between the driver phase and the corpus phase is what the cost argument
+# turns on, and a ratio between two phases measured under the same
+# contention survives it.
+#
+# DETERMINISM (#1408 criterion 5). Two full measurements of this same tree,
+# run back to back, produced BYTE-IDENTICAL rows -- 354 rows, same counts,
+# same names:
+#
+#   run 1  at 6ee19d95  drivers 4502s + corpus 767s  /  4681s + 729s
+#   run 2  at d07bfcf5  drivers 3808s + corpus 644s  /  4309s + 693s
+#
+# The two trees are measurement-identical: compiler.c, drivers.tsv,
+# inputs.tsv and driver-failures.tsv are the same blobs at both commits,
+# and measure.sh has the same 233 executable lines. Only comments and this
+# file changed between them.
+#
+# The wall clock differs by up to 18% between the runs and the ledger does
+# not differ at all, which is the useful half: it says the measurement is a
+# property of the tree and not of the machine it was taken on. A repeat that
+# happened to run under identical load would not have shown that.
+#
+# Regenerate with:
+#
+#   sh tests/pair-coverage/check.sh --count
+#
+# Regeneration is deliberately manual: the number moving is the event this
+# file exists to make visible. `sh tests/pair-coverage/check.sh` holds it
+# exact in both directions -- more untaken than recorded is a regression,
+# fewer is an improvement nobody wrote down.
+#
+# gcc	clang	function
+2	2	admissible_payload_type_token
+6	6	after_optional_module_header
+2	2	allocate
+1	1	annotated_pure_declarations
+3	3	annotation_type_end
+4	4	annotation_type_text
+3	2	append_captures
+4	4	argument_end
+2	2	argument_position_lambda
+1	1	arithmetic_expression_end
+6	5	authority_binding_misuse
+2	2	balanced_end
+19	19	borrowed_collection_check
+1	1	buffer_format
+1	1	buffer_reserve
+28	28	build_scope_hir_mode
+10	8	builtin_argument_check
+1	1	builtin_parameter_types
+1	1	callable_c_declarator
+2	2	callable_parameter_type_start
+4	4	callable_type_arity
+8	8	callable_type_end
+13	11	call_argument_parameter_property
+6	4	call_argument_position
+4	4	call_arity
+4	4	call_has_labelled_argument
+1	0	call_slot_carried
+1	1	c_identifier_name
+1	1	coalescing_expression_end
+1	0	compile_file
+1	1	condition_end
+1	1	constant_declaration_count
+9	9	constant_declaration_end
+1	1	constant_name
+1	1	constant_value_text
+1	1	const_argument_of
+2	2	const_argument_over_budget
+2	2	const_digit_greater
+1	1	const_generic_declaration_head
+6	6	const_generic_refusal
+1	1	const_instantiation_at
+3	3	const_parameter_name
+4	4	constructed_list_type_end
+1	1	constructed_list_type_text
+3	2	copy_type
+11	11	core_body_open
+10	10	core_parameters
+1	1	decimal_rounding_c_name
+4	4	decimal_value
+3	3	emit_argument
+8	7	emit_arithmetic_expression
+10	10	emit_condition_into
+15	13	emit_enum_value
+4	4	emit_expression
+6	5	emit_fixed_slot_call
+3	3	emit_fixed_slot_call_temporaries
+11	11	emit_int_bit_chain
+1	1	emit_lifted_argument_lambdas
+4	4	emit_lifted_lambdas
+1	1	emit_list_int_index_value
+2	2	emit_list_int_literal
+5	5	emit_list_int_subscript
+16	14	emit_list_int_value
+2	2	emit_optional_int_coalescing_temporaries
+22	19	emit_primary
+10	10	emit_product
+1	1	emit_record_c_declarations
+3	3	emit_record_value
+5	5	emit_scope_hir_file
+8	8	emit_selfhost_hir_document
+4	4	emit_selfhost_hir_file
+1	1	emit_unary
+9	8	emit_value_enum_match_into
+3	3	emit_value_into
+6	6	emit_value_match_into
+4	4	enclosing_function_open
+1	1	ends_with
+2	2	enum_binding_catchall_name
+1	0	enum_constructor_count
+1	0	enum_constructor_index
+1	1	enum_constructor_owner
+3	3	enum_constructor_payload_arity
+2	1	enum_constructors_covered
+1	1	enum_constructor_token_end
+2	2	enum_declaration_names
+1	1	enum_declaration_start
+2	2	enum_match_end
+9	9	enum_match_pattern_token
+2	1	enum_missing_constructors
+6	6	enum_payload_field_supported
+8	7	executable_constructor_pattern
+2	2	expression_end
+6	6	field_read_postfix_end
+1	1	final_result_if
+5	5	first_io_callee
+1	1	fixed_slot_call_shape
+2	2	fixed_slot_temporary_body
+5	5	function_calls_name
+7	7	function_end
+2	2	function_name
+7	7	function_parameter_mode
+8	8	function_parameter_type_at
+4	4	function_return_type_at
+2	2	function_return_type_containing
+3	3	generic_binder_open
+1	1	hir_binding_declaration_start
+5	5	hir_field
+6	6	hir_index_add
+1	1	hir_index_grow
+9	9	hir_index_refresh
+1	0	hir_index_split
+2	2	hir_pending_declaration
+1	1	hir_scope_root
+4	4	identifier_continue_at
+1	1	identifier_start_at
+2	2	if_has_else
+2	2	if_statement_end
+3	3	if_then_branch_end
+14	12	initializer_type_bounded
+2	2	int_bit_chain_dot
+29	28	int_bit_error_before_unresolved_in
+2	1	int_bit_expression_contains
+2	2	int_bit_method_arity_at
+7	7	int_bit_postfix_end
+4	4	io_functions_round
+7	7	labelled_argument_slot
+2	2	labelled_argument_value
+1	1	lambda_binding_open
+3	2	lambda_captures
+1	1	lambda_declaration_syntax_token
+19	15	lambda_fn_keyword_before
+4	4	lambda_parameter_count
+4	4	lambda_parameters_end
+3	3	lambda_unparenthesised_annotation
+1	0	line_at
+5	5	list_int_binding_literal_count
+4	4	list_int_constant_index
+3	3	list_int_index_close
+12	12	list_int_literal_count
+3	2	list_int_local_type_token
+4	4	list_int_type_end
+15	11	local_visibility_error
+136	136	lower_body
+4	4	lower_c_body
+26	25	lower_enum_match
+17	17	lower_record_binding
+1	1	lower_selfhost_c11_file
+6	6	main
+4	4	malformed_numeric_literal
+10	10	match_arm_pattern_start
+11	10	match_guard_scope_open
+15	13	move_assertion_arm_terminates
+13	9	move_assertion_callee_is_alias_free
+4	3	move_assertion_head
+15	15	move_assertion_read_is_alias_free
+5	5	move_assertion_scope_reaches
+1	0	move_call_binding
+3	3	move_finding_keep
+1	1	move_statement_end
+4	4	move_statement_head
+1	1	move_statement_partial
+1	1	move_use_position
+2	2	next_constant_start
+2	2	next_function_start
+4	4	numeric_conversion_at
+1	1	numeric_conversion_between
+1	1	numeric_conversion_head
+4	4	numeric_member_argument
+4	4	numeric_member_expected_arity
+4	4	numeric_member_expected_type
+2	2	numeric_primary_type
+3	3	numeric_underscore_error
+8	8	optional_int_binding
+4	4	optional_int_block_returns
+1	1	optional_int_carrier_position
+5	4	optional_int_coalescing_left
+3	2	optional_int_coalescing_left_site
+1	1	optional_int_coalescing_null_context
+7	7	optional_int_coalescing_transparent_bound
+5	5	optional_int_condition
+7	7	optional_int_declaration_count
+3	3	optional_int_function_start
+8	8	optional_int_null_context
+14	14	optional_int_refined
+1	1	optional_int_result
+3	3	optional_int_result_at
+1	1	optional_int_result_containing
+2	2	optional_int_type_end
+9	7	optional_int_value
+10	10	pair_sha256_absorb
+14	14	pair_sha256_of_message
+2	2	parameter_count
+1	1	parameter_external_start
+5	5	parameter_internal_start
+9	9	parameter_list_type_end
+1	1	parameter_list_type_text
+1	1	parameter_open
+3	3	parameter_type_start
+2	2	par_loop_block_open
+7	7	par_production_error
+4	4	par_scope_rule_error
+27	26	parse_pattern_atomic
+12	11	parse_pattern_or
+1	1	parse_patterns_file
+8	7	parse_pattern_trees
+26	25	parse_program
+3	3	parse_value_arm
+29	26	parse_value_enum_match
+13	13	parse_value_if
+19	19	parse_value_match
+11	10	par_spawn_bound_handle
+5	5	par_spawn_site_within
+9	9	pattern_arm_arrow
+3	3	pattern_duplicate_binding_error
+2	2	pattern_error
+1	1	pattern_first_error
+2	2	pattern_limit_error
+13	13	pattern_match_open
+3	3	pattern_record_field
+17	17	pattern_recovery_end
+5	4	pattern_stop_token
+3	3	payload_member_type_token
+4	4	pipeline_call_end
+4	4	pipeline_last_pipe
+1	1	pipeline_pipe_for_call
+1	1	pipeline_subject_end
+1	1	pipeline_subject_for_call
+1	1	pipeline_subject_start
+4	4	pipeline_subject_take
+19	19	primary_end
+2	2	product_end
+4	4	pure_boundary_violation
+5	5	read_file
+2	2	record_declaration_at
+1	1	record_declaration_start
+11	11	record_field_count
+5	5	record_field_text
+3	2	record_initializer_constructor_token
+1	1	record_syntax_token
+11	11	removed_callable_rewrite
+7	7	reserved_type_name
+5	5	return_move_at
+7	5	same_file
+2	2	scan_optional_int_annotation
+1	1	scope_depth_for_open
+4	4	scoped_parallel_member
+5	5	selfhost_compile_file
+4	4	sha256_selftest
+1	1	sh_bind
+1	1	sh_emit_expr
+1	1	sh_emit_stmt
+1	1	sh_fail
+1	1	sh_operator_at
+1	1	sh_ownership
+5	5	sh_parse_binary_level
+9	9	sh_parse_block
+4	4	sh_parse_postfix
+13	12	sh_parse_primary
+12	12	sh_parse_signature
+31	30	sh_parse_stmt
+4	4	sh_parse_unary
+1	1	sh_scope_close
+1	1	sh_scope_open
+1	1	sh_text_literal_field
+1	1	sh_type_id_key
+1	1	skip_trivia
+1	1	sl_binding
+2	2	sl_binding_type
+1	1	sl_builtin_helper
+2	2	sl_c_string
+1	1	sl_c_type
+4	4	sl_emit_block
+16	16	sl_emit_expr
+8	8	sl_emit_function
+17	16	sl_emit_statement
+1	1	sl_fail
+1	1	sl_failed_check
+1	1	sl_fail_name
+2	2	sl_field
+3	2	sl_list_parameter
+9	9	sl_load
+4	4	sl_lower_document
+1	1	sl_node
+4	4	sl_parameters
+1	1	sl_result_key
+1	1	sl_scope
+1	1	sl_split
+1	1	sl_symbol
+1	1	sl_type_key
+1	1	source_function_count
+3	3	source_has_list_int_local
+1	1	source_length
+1	1	source_slice
+1	1	source_uses_bytes
+1	1	source_uses_optional_int
+6	6	stage2_declaration_observe
+3	3	stage2_diagnostic_affected
+5	5	stage2_diagnostic_related
+5	5	stage2_diagnostic_remedy
+15	11	stage2_diagnostic_set
+3	3	stage2_parse_prefix_observe
+3	3	stage2_scope_prefix_observe
+7	7	stage2_semantic_observe
+1	1	string_end
+2	2	text_find_from
+2	2	text_literal_c_form
+2	2	text_operand
+1	1	token_copy
+3	3	token_end
+14	13	token_end_uncached
+1	1	token_equal
+4	4	token_kind
+2	2	trailing_lambda_open
+1	1	trailing_lambda_slot
+11	10	type_declaration_end
+1	1	type_equals_token
+2	2	type_name
+4	4	type_parameter_list_error
+4	4	type_parameter_open
+1	1	unsupported_lowering_error
+5	5	validate_authority_uses
+3	3	validate_const_arguments
+4	4	validate_const_erasure
+2	2	validate_core_calls
+11	8	validate_core_types
+4	3	validate_decimal_slice5_members
+19	21	validate_declared_call_arguments
+12	9	validate_enum_uses
+10	9	validate_executable_patterns
+9	6	validate_fractional_operators
+2	2	validate_list_int_annotations
+4	4	validate_list_int_lambda_uses
+19	19	validate_move_assertions
+5	5	validate_move_uses
+2	2	validate_numeric_annotations
+4	4	validate_numeric_conversions
+0	1	validate_numeric_literals
+4	4	validate_numeric_operand_types
+3	3	validate_optional_int_coalescing
+23	23	validate_optional_uses
+4	4	validate_pipeline_calls
+6	6	validate_pipeline_checked
+3	3	validate_pipeline_shapes
+2	2	validate_record_uses
+4	4	validate_removed_callable_notation
+1	1	validate_struct_identity
+8	8	validate_trailing_lambda_surface
+2	2	value_if_branch_end
+4	4	value_match_enum_type
+1	0	visibility_prefix_candidate
+6	6	visibility_prefix_error
+2	1	visibility_word
+3	3	write_file
+6	6	write_file_transactional
