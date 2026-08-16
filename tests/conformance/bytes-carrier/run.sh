@@ -198,6 +198,35 @@ do
         fail "status/detail or destination preservation failed (budget $budget): $(head -1 "$WORK/status.$budget.out")"
 done
 
+# The criterion asks for the transfer to be *visible*, not merely correct. A
+# transfer that reclaimed correctly by some other means would satisfy the
+# sanitizers and leave nothing for a reader to find, so the emitted C is
+# checked for the move itself.
+grep -q 'kofun_bytes_take(&' "$WORK/transferred_owner.c" ||
+    fail 'the take crossing does not move the fields; the caller slot is never emptied'
+grep -q 'KofunBytesValue kofun_result = kofun_bytes_take(&' \
+    "$WORK/produced_owner.c" ||
+    fail 'the terminal return does not take before it releases'
+# Take, then release, then return -- in that order on one line of emitted C.
+# The reverse order frees the storage the return is handing to the caller, and
+# it is the order that reads more naturally, so it is worth pinning.
+tr -d '\n' <"$WORK/produced_owner.c" |
+    grep -qE 'kofun_result = kofun_bytes_take\(&[A-Za-z0-9_]+\);.*kofun_bytes_release\(&[A-Za-z0-9_]+\); *return kofun_result;' ||
+    fail 'the terminal return does not take, then release, then return'
+
+# The injected-failure edge under the sanitizers as well as under -Werror. The
+# criterion names ASan/LSan/UBSan across every exit *including* injected
+# allocation failure, and the -Werror build above proves the values, not the
+# memory.
+"${CC:-cc}" -std=c11 -O1 -g -fsanitize=address,undefined \
+    -DKOFUN_BYTES_INJECT_ALLOC_BUDGET=1 -I "$WORK" -I "$ROOT/unicode" \
+    "$CASES/status_driver.c" -o "$WORK/status.asan" \
+    2>"$WORK/status.asan.cc" ||
+    fail 'the status driver did not build under the sanitizers'
+ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 \
+    "$WORK/status.asan" >"$WORK/status.asan.out" 2>&1 ||
+    fail "the injected allocation failure edge is not sanitizer-clean: $(head -1 "$WORK/status.asan.out")"
+
 # Every refusal names its own reason. Sharing one reason across seven shapes
 # would let a slice that admits one silently change what the others report.
 refuses() {
@@ -230,6 +259,16 @@ refuses escaping_return \
 refuses copied_parameter \
     'alias for `b` (backend limitation)'
 
+# A refusal must say the same thing twice. A message built from a walk that
+# depends on iteration order, or on a buffer reused between runs, drifts
+# between invocations and the first reading looks like a real change.
+"$ROOT/bin/kofun" build "$CASES/alias_initializer.kofun" \
+    -o "$WORK/repeat.bin" >"$WORK/repeat.1" 2>&1 || true
+"$ROOT/bin/kofun" build "$CASES/alias_initializer.kofun" \
+    -o "$WORK/repeat.bin" >"$WORK/repeat.2" 2>&1 || true
+cmp "$WORK/repeat.1" "$WORK/repeat.2" ||
+    fail 'the same refusal reported differently on a second run'
+
 # Two of the nine reasons have no source program that reaches them, and this
 # records which rule gets there first. `escaping store` and `escaping capture`
 # would need `Bytes` to be an admitted record field type and a capturable
@@ -260,4 +299,6 @@ printf '%s\n' \
     'PASS: empty and zeroed 1/255/16384/65536 execute identically at -O0 and -O2 under ASan/UBSan; 65537, a negative length, and an injected allocation failure return their exact tag and detail and leave the destination fields and bytes unchanged' \
     'PASS: a take transfer and a proven-fresh producer reclaim exactly once with no leak, use-after-free, or double free' \
     'PASS: the 0..8 status declaration is emitted once and carries no consumed tag' \
+    'PASS: the take crossing and the terminal return are visible in the emitted C as take-then-release-then-return, and the injected allocation failure edge is sanitizer-clean' \
+    'PASS: a refusal reports identically on a second run' \
     'PASS: seven refusal shapes each report their own E2S170 reason and commit no C; escaping store and escaping capture are refused earlier, by E2S32 and E2S96'
