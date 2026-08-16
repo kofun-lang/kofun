@@ -13,6 +13,34 @@
 # THE LEDGER RECORDS A HIDING PLACE, NOT A DEFECT. A listed function is not
 # wrong; it is unwatched.
 #
+# AND IT IS NOT THE ONLY HIDING PLACE. The sentence above says a divergence on a
+# taken branch changes emitted C and is caught. That is true of the C half. It
+# overstates what happens to the Kofun half, and the difference was measured by
+# the session working #1315, who found it the right way -- a byte count that did
+# not move after adding ~480 lines to what they believed was the input.
+#
+# `bootstrap/manifest.json` names the fixed-point chain's inputs:
+#
+#     canonical_source  bootstrap/stage1/compiler.kofun
+#     trusted_seed      bootstrap/stage2/compiler.c
+#
+# `bootstrap/stage2/compiler.kofun` is neither. Checked here rather than taken
+# on trust: it IS processed -- `bootstrap/stage2/check.sh:592` round-trips it
+# through `kofun-stage2`, byte-compares the identity projection against the
+# source, and produces an IR -- but that IR is only asserted NON-EMPTY and to
+# carry a version header. Its contents are compared to nothing, and nothing
+# compiles it to C or runs the result.
+#
+# So the Kofun half is checked for syntax and for structure -- matching function
+# names and counts, asserted string literals, the per-name dispatch minimums in
+# `list-int-signatures`, `optional-pair` and `sha256-pair`. A logic error that
+# preserved all of those would be invisible to every gate in this repository,
+# whether or not the corresponding C branch is ever taken.
+#
+# THIS LEDGER DOES NOT MEASURE THAT LARGER SET, and saying so is the point: a
+# ledger that implied it covered the whole risk would be worse than one that
+# names its own edge.
+#
 # TWO COMPILERS, because one column cannot distinguish "undefended" from
 # "undefended under gcc", and telling those apart is the whole point of keeping
 # a diverse pair. A branch one compiler folds and the other keeps is exactly the
