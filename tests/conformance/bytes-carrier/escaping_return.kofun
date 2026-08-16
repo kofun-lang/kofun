@@ -1,0 +1,12 @@
+# A borrow leaving the frame that owns it: the caller's storage would gain a
+# second owner without the caller ever transferring it.
+fn leak(read b: Bytes) -> Bytes {
+    return b
+}
+
+fn main() -> Int {
+    let owned = stage2_bytes_empty()
+    let escaped = leak(owned)
+    print(0)
+    return 0
+}

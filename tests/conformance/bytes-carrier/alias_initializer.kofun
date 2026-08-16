@@ -1,0 +1,9 @@
+# Two names for one allocation. Both would join the funnel and both would
+# reclaim it.
+fn main() -> Int {
+    let owned = stage2_bytes_empty()
+    stage2_bytes_assign_zeroed(owned, 64)
+    let alias = owned
+    print(0)
+    return 0
+}

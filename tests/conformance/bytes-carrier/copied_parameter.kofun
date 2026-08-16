@@ -1,0 +1,11 @@
+# A parameter head with no ownership mode is a copy in, and copying the
+# three-word carrier duplicates the pointer.
+fn copy_in(b: Bytes) -> Int {
+    return 0
+}
+
+fn main() -> Int {
+    let owned = stage2_bytes_empty()
+    print(copy_in(owned))
+    return 0
+}

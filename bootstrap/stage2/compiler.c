@@ -7733,6 +7733,39 @@ static char *emit_argument(
         free(expected_type);
         return value;
     }
+    if (strcmp(expected_type, "Bytes") == 0) {
+        /*
+         * #1315. `read` and `edit` receive the carrier's address, so the
+         * callee reads and writes the caller's storage rather than a copy of
+         * the three words — a copy is the alias this backend refuses, and it
+         * would also leave the callee's cleanup and the caller's both
+         * answerable for one allocation. `take` passes the fields by value:
+         * the transfer is the point, and the caller's slot is zeroed and its
+         * cleanup suppressed at the call.
+         */
+        char *mode = function_parameter_mode(
+            source,
+            callee,
+            argument_index
+        );
+        bool borrowed =
+            strcmp(mode, "read") == 0 || strcmp(mode, "edit") == 0;
+        bool transferred = strcmp(mode, "take") == 0;
+        free(mode);
+        free(expected_type);
+        char *value = emit_expression(source, hir, cursor, end);
+        if (strncmp(value, "error[", 6) == 0) return value;
+        if (!borrowed && !transferred) return value;
+        Buffer crossing;
+        buffer_init(&crossing);
+        buffer_format(
+            &crossing,
+            borrowed ? "&%s" : "kofun_bytes_take(&%s)",
+            value
+        );
+        free(value);
+        return crossing.data;
+    }
     char *actual_type = initializer_type(
         source,
         hir,
@@ -9384,6 +9417,66 @@ static char *emit_primary(
             free(name);
             return owned_text("stage2_bytes_empty()");
         }
+        /*
+         * #1315. The transactional producer. Its destination is an `edit`
+         * borrow, so the helper receives the caller's carrier by address and
+         * writes through it.
+         *
+         * The address is added here rather than in `emit_argument`, which
+         * decides borrow-versus-transfer from
+         * `function_parameter_mode(source, callee, index)` — a lookup into a
+         * *source* declaration. A builtin has none, so that path would find no
+         * mode, emit the carrier by value, and hand the helper a copy whose
+         * writes the caller never sees.
+         */
+        if (
+            open < end && token_equal(source, open, "(") &&
+            strcmp(name, "stage2_bytes_assign_zeroed") == 0
+        ) {
+            int64_t destination = skip_trivia(
+                source,
+                token_end(source, open)
+            );
+            int64_t destination_end = argument_end(source, destination);
+            int64_t separator = skip_trivia(source, destination_end);
+            int64_t requested = skip_trivia(
+                source,
+                token_end(source, separator)
+            );
+            char *carrier = emit_expression(
+                source,
+                hir,
+                destination,
+                destination_end
+            );
+            if (strncmp(carrier, "error[", 6) == 0) {
+                free(name);
+                return carrier;
+            }
+            char *length = emit_expression(
+                source,
+                hir,
+                requested,
+                argument_end(source, requested)
+            );
+            if (strncmp(length, "error[", 6) == 0) {
+                free(carrier);
+                free(name);
+                return length;
+            }
+            Buffer assigned;
+            buffer_init(&assigned);
+            buffer_format(
+                &assigned,
+                "stage2_bytes_assign_zeroed(&%s, %s)",
+                carrier,
+                length
+            );
+            free(length);
+            free(carrier);
+            free(name);
+            return assigned.data;
+        }
         if (
             open < end && token_equal(source, open, "(") &&
             strcmp(name, "to_text") == 0
@@ -10295,6 +10388,7 @@ static int64_t builtin_arity(const char *name) {
         {"read_text", 1},
         {"replace", 3},
         {"stage2_bytes_empty", 0},
+        {"stage2_bytes_assign_zeroed", 2},
         {"starts_with", 2},
         {"text_slice", 3},
         {"to_text", 1},
@@ -10363,6 +10457,7 @@ static const char *builtin_parameter_types(const char *name) {
         {"read_text", "Text"},
         {"replace", "Text|Text|Text"},
         {"stage2_bytes_empty", ""},
+        {"stage2_bytes_assign_zeroed", "Bytes|Int"},
         {"starts_with", "Text|Text"},
         {"text_slice", "Text|Int|Int"},
         {"to_text", "Int"},
@@ -11668,7 +11763,8 @@ static char *validate_core_calls(const char *source, const char *hir) {
                         strcmp(name, "len") == 0 ||
                         strcmp(name, "text_slice") == 0 ||
                         strcmp(name, "to_text") == 0 ||
-                        strcmp(name, "stage2_bytes_empty") == 0
+                        strcmp(name, "stage2_bytes_empty") == 0 ||
+                        strcmp(name, "stage2_bytes_assign_zeroed") == 0
                     ) {
                         expected = builtin_expected;
                     } else {
@@ -11769,6 +11865,196 @@ static char *malformed_core_parameters_error(void) {
     return error;
 }
 
+/*
+ * #1315. The one refusal this backend owns, in one place on each half of the
+ * pair so the nine reasons cannot drift into nine spellings.
+ *
+ * `name` is the binding the author wrote, selected by BindingId rather than by
+ * source spelling, so a shadowed name reports the binding that actually
+ * carries the storage. `reason` is one of the frozen nine.
+ */
+static char *bytes_alias_error(
+    const char *name,
+    const char *reason,
+    int64_t offset
+) {
+    Buffer message;
+    buffer_init(&message);
+    buffer_format(
+        &message,
+        "Stage 2 Bytes[65536] cannot lower possible managed Bytes alias "
+        "for `%s` (%s)",
+        name,
+        reason
+    );
+    char *error = lower_error("E2S170", message.data, offset);
+    free(message.data);
+    return error;
+}
+
+/*
+ * #1315. The ownership mode written in front of a parameter, or "" for none.
+ * `ownership_mode_token` answers whether one is there; the Bytes carrier needs
+ * to know *which*, because the three modes take three different C carriers and
+ * the absent mode is a refusal rather than a fourth.
+ */
+static const char *parameter_ownership_mode(
+    const char *source,
+    int64_t cursor
+) {
+    if (token_equal(source, cursor, "read")) return "read";
+    if (token_equal(source, cursor, "edit")) return "edit";
+    if (token_equal(source, cursor, "take")) return "take";
+    return "";
+}
+
+/*
+ * #1315. Which construct a nested block belongs to, so a Bytes owner declared
+ * inside one is refused under the reason that describes it rather than under
+ * the catch-all.
+ *
+ * The distinction is not cosmetic: an author who put an owner in a loop and
+ * one who put it in a branch have hit different limits and would fix them
+ * differently. `backend limitation` remains for a nested block that is
+ * neither -- a bare `{ }` scope -- which is the one case where "the backend
+ * cannot yet" really is the whole story.
+ *
+ * The scan runs forward and lets a later match overwrite an earlier one, so
+ * the innermost enclosing construct wins.
+ */
+static const char *bytes_block_reason(
+    const char *source,
+    int64_t function_open,
+    int64_t open
+) {
+    const char *reason = "backend limitation";
+    int64_t close = balanced_end(source, function_open, "{", "}");
+    if (close < 0) return reason;
+    int64_t cursor = skip_trivia(source, token_end(source, function_open));
+    while (cursor < close && cursor < open) {
+        bool loop = token_equal(source, cursor, "while") ||
+            token_equal(source, cursor, "loop");
+        bool branch = token_equal(source, cursor, "if") ||
+            token_equal(source, cursor, "match") ||
+            token_equal(source, cursor, "else");
+        if (loop || branch) {
+            int64_t body = cursor;
+            while (body < close && !token_equal(source, body, "{")) {
+                body = skip_trivia(source, token_end(source, body));
+            }
+            if (body < close) {
+                int64_t body_close = balanced_end(source, body, "{", "}");
+                if (body <= open && body_close > open) {
+                    reason = loop ? "loop-carried storage" : "branch mismatch";
+                }
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return reason;
+}
+
+static int64_t core_body_open(
+    const char *source,
+    const char *hir,
+    int64_t function_start,
+    bool is_main
+);
+
+/*
+ * #1315. Why a call yielding `Bytes` may not be an owning origin, or "" when
+ * it may.
+ *
+ * The profile admits one call shape besides the two builtins: "a direct
+ * current-file helper may return that same proven-fresh storage as its whole
+ * terminal result; recursive summaries and conditional-value producers are
+ * refused". Proving that is what this does, and the three ways it can fail are
+ * three of the frozen reasons rather than one blanket refusal -- an author who
+ * wrote a recursive producer and one who returned a borrow have made different
+ * mistakes and need to be told which.
+ *
+ * The analysis is deliberately one level deep and non-transitive. A producer
+ * whose own terminal result is another helper's call is refused as a
+ * managed-result call: chasing the chain would need a summary per function,
+ * and a summary that must not recurse is exactly what this issue excludes.
+ */
+static const char *bytes_producer_refusal(
+    const char *source,
+    const char *hir,
+    const char *callee
+) {
+    int64_t declaration = function_start_named(source, callee);
+    if (declaration < 0) return "managed-result call";
+    char *result_type = function_return_type(source, callee);
+    bool yields_bytes = strcmp(result_type, "Bytes") == 0;
+    free(result_type);
+    if (!yields_bytes) return "managed-result call";
+    int64_t open = core_body_open(source, hir, declaration, false);
+    if (open < 0) return "managed-result call";
+    int64_t close = balanced_end(source, open, "{", "}");
+    if (close < 0) return "managed-result call";
+
+    int64_t returns = 0;
+    int64_t returned_name = -1;
+    int64_t cursor = skip_trivia(source, token_end(source, open));
+    while (cursor < close) {
+        if (token_equal(source, cursor, callee)) return "recursive summary";
+        if (token_equal(source, cursor, "return")) {
+            ++returns;
+            returned_name = skip_trivia(source, token_end(source, cursor));
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    /* One exit, and it is the whole terminal result. Two exits mean the value
+     * depends on a branch, which is the conditional producer the profile
+     * names. */
+    if (returns != 1 || returned_name < 0) return "branch mismatch";
+    if (strcmp(token_kind(source, returned_name), "identifier") != 0) {
+        return "managed-result call";
+    }
+
+    /* A returned `read`/`edit` parameter is a borrow leaving the frame that
+     * owns it -- the caller's storage would gain a second owner without the
+     * caller ever transferring it. */
+    int64_t parameters = parameter_open(source, declaration);
+    int64_t parameters_end = parameters < 0
+        ? -1
+        : balanced_end(source, parameters, "(", ")");
+    if (parameters_end >= 0) {
+        int64_t parameter = skip_trivia(
+            source,
+            token_end(source, parameters)
+        );
+        while (
+            parameter < parameters_end &&
+            !token_equal(source, parameter, ")")
+        ) {
+            int64_t name_at = parameter_internal_start(
+                source,
+                parameter,
+                parameters_end
+            );
+            if (name_at < 0) break;
+            char *parameter_name = token_copy(source, name_at);
+            char *returned = token_copy(source, returned_name);
+            bool same = strcmp(parameter_name, returned) == 0;
+            free(returned);
+            free(parameter_name);
+            if (same) return "escaping return";
+            int64_t separator = skip_trivia(source, name_at);
+            while (
+                separator < parameters_end &&
+                !token_equal(source, separator, ",")
+            ) {
+                separator = skip_trivia(source, token_end(source, separator));
+            }
+            if (separator >= parameters_end) break;
+            parameter = skip_trivia(source, token_end(source, separator));
+        }
+    }
+    return "";
+}
+
 static char *core_parameters(
     const char *source,
     const char *hir,
@@ -11865,6 +12151,48 @@ static char *core_parameters(
             buffer_init(&list);
             buffer_format(&list, "KofunIntListValue k_b%s", binding_id);
             declarator = list.data;
+        } else if (token_equal(source, type_cursor, "Bytes")) {
+            /*
+             * #1315. A Managed Bytes parameter is a borrow or a transfer and
+             * never a copy. Copying the three-word carrier duplicates the
+             * pointer and leaves two locals answerable for one allocation,
+             * which is the alias this backend exists to refuse rather than
+             * the thing it is for.
+             *
+             * `read` and `edit` pass the address and carry no cleanup
+             * obligation: the caller still owns the storage across the call
+             * and reclaims it. `take` moves the three fields, so the callee
+             * becomes answerable and the caller's slot is zeroed and its
+             * cleanup suppressed. A parameter head with no mode is a copy in,
+             * and that is the refusal.
+             */
+            type_end = token_end(source, type_cursor);
+            const char *mode = parameter_ownership_mode(source, cursor);
+            if (strcmp(mode, "") == 0) {
+                char *error = bytes_alias_error(
+                    name,
+                    "backend limitation",
+                    cursor
+                );
+                free(binding_id);
+                free(name);
+                free(emitted.data);
+                return error;
+            }
+            Buffer bytes;
+            buffer_init(&bytes);
+            if (strcmp(mode, "read") == 0) {
+                buffer_format(
+                    &bytes,
+                    "const KofunBytesValue *k_b%s",
+                    binding_id
+                );
+            } else if (strcmp(mode, "edit") == 0) {
+                buffer_format(&bytes, "KofunBytesValue *k_b%s", binding_id);
+            } else {
+                buffer_format(&bytes, "KofunBytesValue k_b%s", binding_id);
+            }
+            declarator = bytes.data;
         } else if (
             ownership_mode_token(source, cursor) &&
             parameter_list_type_end(source, type_cursor, parameters_end) >= 0
@@ -13896,6 +14224,14 @@ static char *emit_value_match_into(
     return emitted.data;
 }
 
+/* #1315. Whether a named function's declared result is the Bytes carrier. */
+static bool function_result_is_bytes(const char *source, const char *wanted) {
+    char *result_type = function_return_type(source, wanted);
+    bool bytes = strcmp(result_type, "Bytes") == 0;
+    free(result_type);
+    return bytes;
+}
+
 static int64_t core_body_open(
     const char *source,
     const char *hir,
@@ -13932,9 +14268,17 @@ static int64_t core_body_open(
                 : -1;
         }
         char *result_type = token_copy(source, cursor);
+        /* #1315. `Bytes` joins the admitted results because the issue's
+         * profile requires a direct helper to hand its own proven-fresh
+         * storage back: "a direct current-file helper may return that same
+         * proven-fresh storage as its whole terminal result". Refusing the
+         * return type outright made that criterion unreachable rather than
+         * unmet. What stays refused is *which* Bytes may be returned, and
+         * that is decided at the `return` itself under its own reason. */
         bool supported_result =
             strcmp(result_type, "Int") == 0 ||
             strcmp(result_type, "Text") == 0 ||
+            strcmp(result_type, "Bytes") == 0 ||
             enum_constructor_count(source, result_type) >= 0 ||
             record_declaration_start(source, result_type) >= 0;
         free(result_type);
@@ -15607,6 +15951,7 @@ static const char *builtin_return_type(const char *name) {
          * `Bytes` would make the ownership pass believe an assignment created
          * storage. */
         {"stage2_bytes_empty", "Bytes"},
+        {"stage2_bytes_assign_zeroed", "Void"},
         {"starts_with", "Bool"},
         {"text_slice", "Text"},
         {"to_text", "Text"},
@@ -20216,6 +20561,143 @@ static int64_t scoped_parallel_member(const char *source, int64_t start)
     return member;
 }
 
+/*
+ * #1315. A `take Bytes` parameter arrives owning. The caller moved the three
+ * fields and left its own slot empty, so this body is the one answerable for
+ * the allocation and every exit of it must reclaim exactly once.
+ *
+ * These seed the funnel before any statement runs, which is also what places
+ * them correctly in the reverse-creation order: a parameter existed before
+ * every local, so it is released after all of them. Among themselves the
+ * parameters reverse too, which is why each one is prepended rather than
+ * appended.
+ *
+ * `comma_form` selects the expression funnel used inside a `return`, as
+ * against the statement funnel used at a fallthrough.
+ */
+/*
+ * #1315. `(void)` for each borrowed Bytes parameter.
+ *
+ * A `read`/`edit` Bytes parameter is admitted by the profile -- an owner may
+ * be lent to a direct helper -- but this slice ships no operation that reads
+ * one, so every such helper would emit a parameter nothing touches and fail
+ * `-Werror=unused-parameter`. The borrow is real and the operations arrive
+ * with the byte and range children; discarding it explicitly is how the
+ * emitted C says "not yet" rather than not compiling.
+ *
+ * A `take` parameter needs no discard: the cleanup funnel reclaims it, which
+ * is a use.
+ */
+static char *bytes_parameter_discards(
+    const char *source,
+    const char *hir,
+    int64_t function_start
+) {
+    Buffer out;
+    buffer_init(&out);
+    int64_t parameters = parameter_open(source, function_start);
+    if (parameters < 0) return out.data;
+    int64_t parameters_end = balanced_end(source, parameters, "(", ")");
+    if (parameters_end < 0) return out.data;
+    int64_t cursor = skip_trivia(source, token_end(source, parameters));
+    while (cursor < parameters_end && !token_equal(source, cursor, ")")) {
+        int64_t name_at = parameter_internal_start(
+            source,
+            cursor,
+            parameters_end
+        );
+        int64_t type_cursor = parameter_type_start(
+            source,
+            cursor,
+            parameters_end
+        );
+        if (name_at < 0 || type_cursor < 0) break;
+        const char *mode = parameter_ownership_mode(source, cursor);
+        if (
+            token_equal(source, type_cursor, "Bytes") &&
+            (strcmp(mode, "read") == 0 || strcmp(mode, "edit") == 0)
+        ) {
+            char *binding_id = hir_definition_id_at(hir, name_at);
+            buffer_format(&out, "    (void)k_b%s;\n", binding_id);
+            free(binding_id);
+        }
+        int64_t separator = skip_trivia(source, type_cursor);
+        while (
+            separator < parameters_end &&
+            !token_equal(source, separator, ",")
+        ) {
+            separator = skip_trivia(source, token_end(source, separator));
+        }
+        if (separator >= parameters_end) break;
+        cursor = skip_trivia(source, token_end(source, separator));
+    }
+    return out.data;
+}
+
+static char *bytes_parameter_releases(
+    const char *source,
+    const char *hir,
+    int64_t function_start,
+    bool comma_form
+) {
+    Buffer out;
+    buffer_init(&out);
+    int64_t parameters = parameter_open(source, function_start);
+    if (parameters < 0) return out.data;
+    int64_t parameters_end = balanced_end(source, parameters, "(", ")");
+    if (parameters_end < 0) return out.data;
+    int64_t cursor = skip_trivia(source, token_end(source, parameters));
+    while (cursor < parameters_end && !token_equal(source, cursor, ")")) {
+        int64_t name_at = parameter_internal_start(
+            source,
+            cursor,
+            parameters_end
+        );
+        int64_t type_cursor = parameter_type_start(
+            source,
+            cursor,
+            parameters_end
+        );
+        if (name_at < 0 || type_cursor < 0) break;
+        if (
+            token_equal(source, type_cursor, "Bytes") &&
+            strcmp(parameter_ownership_mode(source, cursor), "take") == 0
+        ) {
+            char *binding_id = hir_definition_id_at(hir, name_at);
+            Buffer grown;
+            buffer_init(&grown);
+            if (comma_form) {
+                buffer_format(
+                    &grown,
+                    "kofun_bytes_release(&k_b%s), %s",
+                    binding_id,
+                    out.data
+                );
+            } else {
+                buffer_format(
+                    &grown,
+                    "kofun_bytes_release(&k_b%s); %s",
+                    binding_id,
+                    out.data
+                );
+            }
+            free(out.data);
+            out = grown;
+            free(binding_id);
+        }
+        int64_t separator = skip_trivia(source, type_cursor);
+        while (
+            separator < parameters_end &&
+            !token_equal(source, separator, ",")
+        ) {
+            separator = skip_trivia(source, token_end(source, separator));
+        }
+        if (separator >= parameters_end) break;
+        cursor = skip_trivia(source, token_end(source, separator));
+    }
+    return out.data;
+}
+
 static char *lower_body(
     const char *source,
     const char *hir,
@@ -20263,6 +20745,7 @@ static char *lower_body(
         optional_int_result_containing(source, function_open);
     bool returns_text = strcmp(body_result_type, "Text") == 0;
     bool returns_list_int = strcmp(body_result_type, "List[Int]") == 0;
+    bool returns_bytes = strcmp(body_result_type, "Bytes") == 0;
     char failure_record[512] = "";
     if (returns_record) {
         char *c_type = record_c_type_name(body_result_type);
@@ -20291,7 +20774,9 @@ static char *lower_body(
                                * value. */
                               (returns_text ? "\"\"" :
                                (returns_list_int ?
-                                    "KOFUN_LIST_INT_ZERO" : "0"))))
+                                    "KOFUN_LIST_INT_ZERO" :
+                                    (returns_bytes ?
+                                         "KOFUN_BYTES_EMPTY" : "0")))))
             );
     /* #1315. Reclamation for the owned locals declared *so far*, and the
      * failure value that carries them. Both start empty and grow as each owner
@@ -21095,6 +21580,51 @@ static char *lower_body(
             /* #1315. A nested block's owner would have to be reclaimed at
              * the block's end rather than the body's, and the funnel keys on
              * the function body. Refusing is honest until it does. */
+            if (
+                strcmp(binding_type, "Bytes") == 0 &&
+                !token_equal(
+                    source,
+                    skip_trivia(source, value_start),
+                    "stage2_bytes_empty"
+                )
+            ) {
+                /*
+                 * #1315. `stage2_bytes_empty()` is the only admitted owning
+                 * origin, so a Bytes binding initialized by anything else is
+                 * a second name for storage that already has an owner. Both
+                 * names then join the funnel and both reclaim it: a double
+                 * free with real storage, and invisible with an empty carrier
+                 * because releasing {0,0,NULL} twice is two no-ops.
+                 *
+                 * Two reasons, because they are two different mistakes. A
+                 * call yielding Bytes is a managed-result call -- the callee
+                 * decided the lifetime and this backend cannot see that
+                 * decision. A bare binding is the plain alias.
+                 */
+                int64_t origin = skip_trivia(source, value_start);
+                int64_t after = skip_trivia(source, token_end(source, origin));
+                const char *reason = "alias initializer";
+                if (after < value_end && token_equal(source, after, "(")) {
+                    char *producer = token_copy(source, origin);
+                    reason = bytes_producer_refusal(source, hir, producer);
+                    free(producer);
+                }
+                if (reason[0] == '\0') {
+                    /* A proven-fresh producer: this binding owns what the
+                     * helper handed back, exactly as if it had called
+                     * `stage2_bytes_empty()` itself. */
+                    free(binding_type);
+                    binding_type = owned_text("Bytes");
+                } else {
+                char *refusal = bytes_alias_error(name, reason, value_start);
+                free(binding_type);
+                free(value);
+                free(binding_id);
+                free(name);
+                free(emitted.data);
+                return refusal;
+                }
+            }
             if (strcmp(binding_type, "Bytes") == 0 && open != function_open) {
                 Buffer message;
                 char *refusal;
@@ -21102,8 +21632,9 @@ static char *lower_body(
                 buffer_format(
                     &message,
                     "Stage 2 Bytes[65536] cannot lower possible managed Bytes "
-                    "alias for `%s` (backend limitation)",
-                    name
+                    "alias for `%s` (%s)",
+                    name,
+                    bytes_block_reason(source, function_open, open)
                 );
                 /* Through lower_error, not buffer_format: it is the helper
                  * that also calls stage2_diagnostic_set, and the semantic
@@ -22221,7 +22752,54 @@ static char *lower_body(
             }
         } else if (token_equal(source, cursor, "return")) {
             int64_t value_start = skip_trivia(source, token_end(source, cursor));
-            if (returns_list_int) {
+            if (returns_bytes) {
+                /*
+                 * #1315. The terminal transfer. `kofun_bytes_take` moves the
+                 * three fields into `kofun_result` and leaves the local
+                 * empty, so the funnel that runs on the next line finds
+                 * {0,0,NULL} and reclaims nothing.
+                 *
+                 * The order is the whole of it, and it is the reverse of what
+                 * reads naturally: take first, release second, return third.
+                 * Releasing before the value was computed would free the
+                 * storage this return is handing to the caller.
+                 */
+                int64_t value_end = expression_end(source, value_start);
+                if (
+                    value_end < 0 || value_start >= length ||
+                    token_equal(source, value_start, "}")
+                ) {
+                    free(emitted.data);
+                    return bytes_alias_error(
+                        "this result",
+                        "backend limitation",
+                        value_start
+                    );
+                }
+                char *returned = emit_expression(
+                    source,
+                    hir,
+                    value_start,
+                    value_end
+                );
+                if (strncmp(returned, "error[", 6) == 0) {
+                    free(emitted.data);
+                    return returned;
+                }
+                buffer_format(
+                    &emitted,
+                    "    {\n"
+                    "        KofunBytesValue kofun_result = "
+                    "kofun_bytes_take(&%s);\n"
+                    "        if (kofun_failed) return KOFUN_BYTES_EMPTY;\n"
+                    "        %sreturn kofun_result;\n"
+                    "    }\n",
+                    returned,
+                    bytes_cleanup
+                );
+                free(returned);
+                cursor = skip_trivia(source, value_end);
+            } else if (returns_list_int) {
                 int64_t value_end = expression_end(source, value_start);
                 if (
                     value_end < 0 || value_start >= length ||
@@ -24500,6 +25078,7 @@ static bool source_uses_bytes(const char *source) {
     int64_t cursor = skip_trivia(source, 0);
     while (cursor < length) {
         if (token_equal(source, cursor, "stage2_bytes_empty") ||
+            token_equal(source, cursor, "stage2_bytes_assign_zeroed") ||
             token_equal(source, cursor, "Bytes")) {
             return true;
         }
@@ -26133,6 +26712,8 @@ static char *lower_c_body(const char *source, const char *hir) {
             c_result = "const char *";
         } else if (function_result_is_list_int(source, name)) {
             c_result = "KofunIntListValue";
+        } else if (function_result_is_bytes(source, name)) {
+            c_result = "KofunBytesValue";
         } else if (function_result_is_record(source, name)) {
             char *result_type = function_return_type(source, name);
             char *record_c_type = record_c_type_name(result_type);
@@ -26204,7 +26785,41 @@ static char *lower_c_body(const char *source, const char *hir) {
             free(bodies.data);
             return error.data;
         }
-        char *body = lower_body(source, hir, open, is_main, true, open, "", "");
+        char *parameter_cleanup = bytes_parameter_releases(
+            source,
+            hir,
+            cursor,
+            false
+        );
+        char *parameter_comma = bytes_parameter_releases(
+            source,
+            hir,
+            cursor,
+            true
+        );
+        char *body = lower_body(
+            source,
+            hir,
+            open,
+            is_main,
+            true,
+            open,
+            parameter_cleanup,
+            parameter_comma
+        );
+        if (strncmp(body, "error[", 6) != 0) {
+            char *discards = bytes_parameter_discards(source, hir, cursor);
+            if (discards[0] != '\0') {
+                Buffer touched;
+                buffer_init(&touched);
+                buffer_format(&touched, "%s%s", discards, body);
+                free(body);
+                body = touched.data;
+            }
+            free(discards);
+        }
+        free(parameter_comma);
+        free(parameter_cleanup);
         if (strncmp(body, "error[", 6) == 0) {
             free(parameters);
             free(name);
@@ -26415,10 +27030,82 @@ static char *lower_c_body(const char *source, const char *hir) {
         "static inline KofunBytesValue stage2_bytes_empty(void) {\n"
         "    return KOFUN_BYTES_EMPTY;\n"
         "}\n"
+        /*
+         * The transfer, as one expression. `take` moves the three fields and
+         * leaves the source empty, so the caller's cleanup still runs and
+         * finds {0,0,NULL} -- which is what "suppresses its cleanup" is, with
+         * no second mechanism to keep in step with the first. Exits before the
+         * take see live storage, exits after see an empty carrier, and neither
+         * needs to know a transfer happened.
+         */
+        "static inline KofunBytesValue kofun_bytes_take(KofunBytesValue *source) {\n"
+        "    KofunBytesValue moved = *source;\n"
+        "    source->length = UINT64_C(0); source->capacity = UINT64_C(0);\n"
+        "    source->data = NULL;\n"
+        "    return moved;\n"
+        "}\n"
         "static inline void kofun_bytes_release(KofunBytesValue *value) {\n"
         "    if (value->data != NULL) free(value->data);\n"
         "    value->length = UINT64_C(0); value->capacity = UINT64_C(0);\n"
         "    value->data = NULL;\n"
+        "}\n"
+        /*
+         * Allocation goes through one seam so a test can make the Nth request
+         * fail on purpose. Ordinary programs compile the `#else` arm and get
+         * plain `malloc` with no counter, no branch, and no global: the
+         * injection exists only when the translation unit is compiled with
+         * -DKOFUN_BYTES_INJECT_ALLOC_BUDGET=N, which is what the gate does.
+         * Deterministic rather than probabilistic, so a failing edge is
+         * reproducible from the command line alone.
+         */
+        "#ifdef KOFUN_BYTES_INJECT_ALLOC_BUDGET\n"
+        "static int64_t kofun_bytes_alloc_budget =\n"
+        "    KOFUN_BYTES_INJECT_ALLOC_BUDGET;\n"
+        "static void *kofun_bytes_allocate(size_t size) {\n"
+        "    if (kofun_bytes_alloc_budget <= 0) return NULL;\n"
+        "    kofun_bytes_alloc_budget -= 1;\n"
+        "    return malloc(size);\n"
+        "}\n"
+        "#else\n"
+        "static void *kofun_bytes_allocate(size_t size) { return malloc(size); }\n"
+        "#endif\n"
+        /*
+         * The transactional producer. The order of the three checks is the
+         * order the issue froze -- negative length, then the ceiling, then
+         * allocation -- and each failure returns before anything about the
+         * destination has changed.
+         *
+         * The allocation happens *before* the old storage is released, which
+         * is the whole of "failure preserves the exact destination fields and
+         * bytes". Releasing first would be the same instructions in a cheaper
+         * order and would leave a failed call holding a freed pointer in a
+         * live binding.
+         *
+         * Length zero allocates nothing: empty is exactly {0,0,NULL}, and a
+         * malloc(0) may return a non-null pointer that would make an empty
+         * value indistinguishable from a one-allocation one.
+         */
+        "static inline KofunBytesStatus stage2_bytes_assign_zeroed(\n"
+        "    KofunBytesValue *destination, int64_t length) {\n"
+        "    if (length < 0) {\n"
+        "        return kofun_bytes_status(KOFUN_BYTES_NEGATIVE_LENGTH, length);\n"
+        "    }\n"
+        "    if (length > KOFUN_BYTES_CAPACITY_LIMIT) {\n"
+        "        return kofun_bytes_status(KOFUN_BYTES_CAPACITY_EXCEEDED, length);\n"
+        "    }\n"
+        "    unsigned char *fresh = NULL;\n"
+        "    if (length > 0) {\n"
+        "        fresh = (unsigned char *)kofun_bytes_allocate((size_t)length);\n"
+        "        if (fresh == NULL) {\n"
+        "            return kofun_bytes_status(KOFUN_BYTES_ALLOCATION_FAILED, length);\n"
+        "        }\n"
+        "        memset(fresh, 0, (size_t)length);\n"
+        "    }\n"
+        "    if (destination->data != NULL) free(destination->data);\n"
+        "    destination->length = (uint64_t)length;\n"
+        "    destination->capacity = (uint64_t)length;\n"
+        "    destination->data = fresh;\n"
+        "    return kofun_bytes_status(KOFUN_BYTES_SUCCEEDED, 0);\n"
         "}\n"
     );
     }
