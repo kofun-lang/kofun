@@ -78,7 +78,15 @@
 set -eu
 
 ROOT=$(CDPATH= cd -P -- "$(dirname -- "$0")/../.." && pwd)
-LEDGER="$ROOT/tests/pair-coverage/undefended.tsv"
+# The ledger, overridable only so `prove.sh` can hand this gate a deliberately
+# broken one. It ANNOUNCES itself for the same reason the measurement seam does:
+# a gate silently reading a ledger other than the committed one would report on
+# a file nobody is looking at.
+LEDGER=${KOFUN_PAIR_COVERAGE_LEDGER:-$ROOT/tests/pair-coverage/undefended.tsv}
+if test "$LEDGER" != "$ROOT/tests/pair-coverage/undefended.tsv"; then
+    printf 'NOTE: pair coverage: checking %s, not the committed ledger.\n' \
+        "$LEDGER" >&2
+fi
 MEASURE="$ROOT/tests/pair-coverage/measure.sh"
 
 # The diverse pair, defaulting to the same two
@@ -158,6 +166,30 @@ test -s "$LEDGER" || {
 }
 
 grep -v '^#' "$LEDGER" | grep -v '^[[:space:]]*$' | sort -k3,3 >"$WORK/ledger.tsv"
+
+# A ROW THAT IS NOT THREE TAB-SEPARATED FIELDS IS CORRUPTION, AND SILENCE ABOUT
+# IT IS WORSE THAN THE CORRUPTION. The comparison below skips any row whose
+# function name is empty, so a malformed line was ignored there and still
+# counted in the PASS line's function total -- the gate reported 355 functions
+# over a 354-row measurement and passed. That is the shape this whole harness
+# exists to refuse: an output that is well formed, means nothing, and reads as
+# success.
+#
+# It was not hypothetical. The generator that writes this header built one of
+# its lines from `grep -c . file || echo 0`, which on an EMPTY file prints 0 AND
+# exits 1, so the fallback fired too and the value spanned two lines. The second
+# line landed in the ledger without its `#`.
+malformed=$(awk -F '\t' 'NF != 3 || $3 == "" { print FNR ": " $0 }' "$WORK/ledger.tsv")
+if test -n "$malformed"; then
+    printf 'FAIL: pair coverage: %s is not a ledger of rows.\n' "$LEDGER" >&2
+    printf '      Every row must be exactly three tab-separated fields,\n' >&2
+    printf '      "%s<TAB>%s<TAB>function". These are not:\n' "$CC_A" "$CC_B" >&2
+    printf '%s\n' "$malformed" | sed 's/^/        /' >&2
+    printf '      A row the comparison cannot read is skipped by it and still\n' >&2
+    printf '      counted in the totals, so this refuses rather than reporting a\n' >&2
+    printf '      number over a file it did not fully understand.\n' >&2
+    exit 1
+fi
 
 failures=0
 report() {

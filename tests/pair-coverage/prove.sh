@@ -109,6 +109,27 @@ expect_refusal "recorded-now-absent" "$LEDGER" "$WORK/m.absent" "$last"
 expect_refusal "present-not-recorded" "$LEDGER" "$WORK/m.extra" \
     "kofun_prove_sh_unrecorded_function"
 
+# A malformed ledger row must be REFUSED, not skipped. The comparison ignores a
+# row it cannot read and the totals count it anyway, so the gate once reported
+# 355 functions over a 354-row measurement and passed. The must-not-fire case is
+# the committed ledger itself, which the baseline above already established.
+MALFORMED="$WORK/ledger.malformed"
+head -3 "$MEASURED" >"$MALFORMED"
+printf 'a line that is not three fields\n' >>"$MALFORMED"
+if KOFUN_PAIR_COVERAGE_LEDGER="$MALFORMED" KOFUN_PAIR_COVERAGE_MEASURED="$MEASURED" \
+    sh "$ROOT/tests/pair-coverage/check.sh" >"$WORK/out.malformed" 2>&1
+then
+    printf 'FAIL: %-28s a malformed row was ACCEPTED\n' "malformed-ledger-row" >&2
+    fail=$((fail + 1))
+elif grep -q 'not a ledger of rows' "$WORK/out.malformed"; then
+    printf 'ok   %-28s refused, naming the malformed row\n' "malformed-ledger-row"
+    pass=$((pass + 1))
+else
+    printf 'FAIL: %s refused for another reason:\n' "malformed-ledger-row" >&2
+    sed 's/^/      /' "$WORK/out.malformed" >&2
+    fail=$((fail + 1))
+fi
+
 # The driver failure policy, exercised through measure.sh's own entry point
 # rather than a transcription of it, so what is proved here is what a measuring
 # run enforces.
