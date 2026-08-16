@@ -193,15 +193,28 @@ echo "building instrumented compiler.c with: $COVERAGE_CC $COVERAGE_FLAGS" >&2
 # integrity, not correctness of the drivers, and the toolchains already ship the
 # mechanism that would buy both:
 #
-#   gcc    GCOV_PREFIX per worker gives each driver its own .gcda tree;
-#          `gcov-tool merge dirA dirB -o dirC` combines them afterwards.
-#   clang  LLVM_PROFILE_FILE with a %p pattern already writes one raw file per
-#          process, and `llvm-profdata merge` is the normal way to combine them
-#          -- so this half may not need serialising at all, which is measurable
-#          rather than a matter of opinion.
+#   gcc    GCOV_PREFIX per worker gives each driver its own .gcda tree, and
+#          `gcov-tool merge dirA dirB -o dirC` combines them. MEASURED: two runs
+#          of one binary, each taking a different branch, merge into a profile
+#          showing both taken and the unreachable one at 0%. That is the union
+#          this needs.
+#   clang  ONLY HALF OF THAT WORKS, and the earlier note here was wrong. This
+#          builds with `--coverage`, which writes gcda in LLVM's own version of
+#          the format. GCOV_PREFIX does isolate them, but `gcov-tool merge`
+#          refuses to read them -- "incorrect gcov version 1110520106 vs
+#          1110848042" -- and LLVM ships no gcov merge tool. `llvm-profdata`
+#          takes `-fprofile-instr-generate` raw profiles, a different
+#          instrumentation that measures something else; `LLVM_PROFILE_FILE`
+#          and its `%p` pattern belong to that mode and have no effect here.
+#          Conflating the two is what made the earlier claim look reasonable.
 #
-# Both tools are present on this machine. Doing it is out of #1408's scope and
-# needs its own evidence -- a parallel run and a serial run over the same tree
+# So the clang half stays serial until something can merge its profiles, and
+# parallelising the gcc half alone takes the pair from about 180 minutes to
+# about 120. That is a real improvement and not the transformation the earlier
+# note implied.
+#
+# Doing it is out of #1408's scope and needs its own evidence -- a parallel run
+# and a serial run over the same tree
 # must produce the same ledger, and nothing short of that comparison should be
 # believed. But it is the concrete answer to "a both-directions ledger is
 # unmaintainable when compiler.c takes 51 commits a week", and that answer
