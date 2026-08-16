@@ -1,0 +1,15 @@
+# The `take` transfer, with storage that exists. An empty carrier cannot
+# distinguish a transfer from a copy: both sides would release {0,0,NULL} and
+# two no-ops look exactly like one correct reclamation. Only a real allocation
+# makes a double free or a leak observable, which is why this fixture assigns
+# before it transfers.
+fn consume(take b: Bytes) -> Int {
+    return 7
+}
+
+fn main() -> Int {
+    let owned = stage2_bytes_empty()
+    stage2_bytes_assign_zeroed(owned, 4096)
+    print(consume(owned))
+    return 0
+}

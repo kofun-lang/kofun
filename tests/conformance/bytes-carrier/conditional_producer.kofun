@@ -1,0 +1,14 @@
+# Two exits, so which storage comes back depends on a branch.
+fn pick(n: Int) -> Bytes {
+    let b = stage2_bytes_empty()
+    if n == 0 {
+        return b
+    }
+    return b
+}
+
+fn main() -> Int {
+    let owned = pick(1)
+    print(0)
+    return 0
+}

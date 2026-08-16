@@ -124,6 +124,7 @@ cc	invoke	2	required-today	required	tests/conformance/adt/run.sh
 cc	invoke	1	required-today	required	tests/conformance/aggregate-bridge/run.sh
 cc	invoke	1	required-today	required	tests/conformance/backends/c11-stage1.sh
 cc	invoke	1	required-today	required	tests/conformance/backends/c11-stage2.sh
+cc	invoke	3	required-today	required	tests/conformance/bytes-carrier/run.sh
 cc	invoke	2	required-today	required	tests/conformance/call-arguments/run.sh
 cc	invoke	5	required-today	required	tests/conformance/codegen/dense-enum-dispatch/run.sh
 cc	invoke	6	required-today	required	tests/conformance/const-generics/run.sh

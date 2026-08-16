@@ -1,0 +1,16 @@
+# The four lengths the acceptance criterion names, plus empty. The status is
+# private to the emitted C, so what a source program proves here is that each
+# length compiles, runs, and reclaims; the tags and details are proved by the
+# C driver beside this fixture, which is where they live.
+fn main() -> Int {
+    let a = stage2_bytes_empty()
+    stage2_bytes_assign_zeroed(a, 1)
+    let b = stage2_bytes_empty()
+    stage2_bytes_assign_zeroed(b, 255)
+    let c = stage2_bytes_empty()
+    stage2_bytes_assign_zeroed(c, 16384)
+    let d = stage2_bytes_empty()
+    stage2_bytes_assign_zeroed(d, 65536)
+    print(0)
+    return 0
+}

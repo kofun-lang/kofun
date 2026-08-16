@@ -1,0 +1,23 @@
+# A direct current-file helper returning its own proven-fresh storage as its
+# whole terminal result, and a second helper returning that. Both are admitted
+# origins; the borrow in between is not an owner and reclaims nothing.
+fn produce() -> Bytes {
+    let fresh = stage2_bytes_empty()
+    stage2_bytes_assign_zeroed(fresh, 512)
+    return fresh
+}
+
+fn relay() -> Bytes {
+    let carried = produce()
+    return carried
+}
+
+fn measure(read b: Bytes) -> Int {
+    return 3
+}
+
+fn main() -> Int {
+    let owned = relay()
+    print(measure(owned))
+    return 0
+}

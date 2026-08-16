@@ -1,9 +1,17 @@
 # diagnostic-mode: compile
 # expect-code: E2S170
-# expect-span: byte 129
+# expect-span: byte 445
+# A parameter head with no ownership mode is a copy in, and copying the
+# three-word carrier duplicates the pointer. #1315 gave the branch, loop,
+# recursion and alias shapes their own reasons, so `backend limitation` now
+# names exactly one thing: a crossing the backend has no carrier for. This
+# fixture demonstrates that one rather than borrowing the name.
+fn copy_in(b: Bytes) -> Int {
+    return 0
+}
+
 fn main() -> Int {
-    if 1 == 1 {
-        let nested = stage2_bytes_empty()
-    }
+    let owned = stage2_bytes_empty()
+    print(copy_in(owned))
     return 0
 }

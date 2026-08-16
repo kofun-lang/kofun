@@ -1,0 +1,9 @@
+# An owner inside a branch: live on one path and not the other.
+fn main() -> Int {
+    let n = 1
+    if n == 1 {
+        let inside = stage2_bytes_empty()
+        print(0)
+    }
+    return 0
+}

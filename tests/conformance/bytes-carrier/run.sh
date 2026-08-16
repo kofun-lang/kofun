@@ -134,6 +134,171 @@ then
     fail "a program owning no storage still carries the Bytes prelude"
 fi
 
+# ---------------------------------------------------------------------------
+# #1315. The transactional producer, the three parameter crossings, and the
+# nine refusal reasons.
+
+# Lower and run one case under the sanitizers, against its golden. `-O0` and
+# `-O2` are both built from the same emitted C and must agree: the criterion
+# asks for identical execution, and a carrier whose reclamation depended on an
+# optimisation level would satisfy neither.
+executes() {
+    stem=$1
+    label=$2
+    "$ROOT/bin/kofun" build "$CASES/$stem.kofun" -o "$WORK/$stem.bin" \
+        --emit-c "$WORK/$stem.c" >"$WORK/$stem.stdout" 2>"$WORK/$stem.stderr" ||
+        fail "$label did not build: $(head -1 "$WORK/$stem.stderr")"
+    for level in 0 2
+    do
+        "${CC:-cc}" -std=c11 "-O$level" -g -fsanitize=address,undefined \
+            -I "$ROOT/unicode" "$WORK/$stem.c" -o "$WORK/$stem.O$level" \
+            2>"$WORK/$stem.cc.O$level" ||
+            fail "$label emitted C that does not compile at -O$level"
+        ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 \
+            "$WORK/$stem.O$level" >"$WORK/$stem.out.O$level" 2>&1 ||
+            fail "$label did not run clean under the sanitizers at -O$level"
+        cmp "$CASES/$stem.stdout" "$WORK/$stem.out.O$level" ||
+            fail "$label printed unexpected output at -O$level"
+    done
+}
+
+executes zeroed_lengths 'the four zeroed lengths and empty'
+executes transferred_owner 'a take transfer of real storage'
+executes produced_owner 'a proven-fresh producer and a relayed one'
+
+# The status lives in the emitted C, so it is proved there. The prelude is
+# extracted from a program the compiler just emitted rather than restated
+# here, so this measures the shipped bytes.
+prelude_end=$(
+    awk '/^static inline KofunBytesStatus stage2_bytes_assign_zeroed/ {found = 1}
+         found && /^\}$/ {print NR; exit}' "$WORK/zeroed_lengths.c"
+)
+test -n "$prelude_end" ||
+    fail 'the emitted C carries no stage2_bytes_assign_zeroed to extract'
+sed -n "1,${prelude_end}p" "$WORK/zeroed_lengths.c" >"$WORK/prelude.h"
+grep -q 'KOFUN_BYTES_TEXT_LIMIT_EXCEEDED = 8' "$WORK/prelude.h" ||
+    fail 'the extracted prelude is missing the 0..8 status declaration'
+test "$(grep -c 'KOFUN_BYTES_SUCCEEDED = 0' "$WORK/prelude.h")" -eq 1 ||
+    fail 'the 0..8 status declaration is not emitted exactly once'
+grep -q 'KOFUN_BYTES_CONSUMED' "$WORK/prelude.h" &&
+    fail 'the status declaration carries an impossible consumed tag'
+
+for budget in none 1
+do
+    if test "$budget" = none
+    then inject=
+    else inject="-DKOFUN_BYTES_INJECT_ALLOC_BUDGET=$budget"
+    fi
+    # shellcheck disable=SC2086
+    "${CC:-cc}" -std=c11 -O2 -Wall -Wextra -Werror -pedantic $inject \
+        -I "$WORK" -I "$ROOT/unicode" "$CASES/status_driver.c" \
+        -o "$WORK/status.$budget" 2>"$WORK/status.$budget.cc" ||
+        fail "the status driver did not build (allocation budget $budget)"
+    "$WORK/status.$budget" >"$WORK/status.$budget.out" 2>&1 ||
+        fail "status/detail or destination preservation failed (budget $budget): $(head -1 "$WORK/status.$budget.out")"
+done
+
+# The criterion asks for the transfer to be *visible*, not merely correct. A
+# transfer that reclaimed correctly by some other means would satisfy the
+# sanitizers and leave nothing for a reader to find, so the emitted C is
+# checked for the move itself.
+grep -q 'kofun_bytes_take(&' "$WORK/transferred_owner.c" ||
+    fail 'the take crossing does not move the fields; the caller slot is never emptied'
+grep -q 'KofunBytesValue kofun_result = kofun_bytes_take(&' \
+    "$WORK/produced_owner.c" ||
+    fail 'the terminal return does not take before it releases'
+# Take, then release, then return -- in that order on one line of emitted C.
+# The reverse order frees the storage the return is handing to the caller, and
+# it is the order that reads more naturally, so it is worth pinning.
+tr -d '\n' <"$WORK/produced_owner.c" |
+    grep -qE 'kofun_result = kofun_bytes_take\(&[A-Za-z0-9_]+\);.*kofun_bytes_release\(&[A-Za-z0-9_]+\); *return kofun_result;' ||
+    fail 'the terminal return does not take, then release, then return'
+
+# The injected-failure edge under the sanitizers as well as under -Werror. The
+# criterion names ASan/LSan/UBSan across every exit *including* injected
+# allocation failure, and the -Werror build above proves the values, not the
+# memory.
+"${CC:-cc}" -std=c11 -O1 -g -fsanitize=address,undefined \
+    -DKOFUN_BYTES_INJECT_ALLOC_BUDGET=1 -I "$WORK" -I "$ROOT/unicode" \
+    "$CASES/status_driver.c" -o "$WORK/status.asan" \
+    2>"$WORK/status.asan.cc" ||
+    fail 'the status driver did not build under the sanitizers'
+ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 \
+    "$WORK/status.asan" >"$WORK/status.asan.out" 2>&1 ||
+    fail "the injected allocation failure edge is not sanitizer-clean: $(head -1 "$WORK/status.asan.out")"
+
+# Every refusal names its own reason. Sharing one reason across seven shapes
+# would let a slice that admits one silently change what the others report.
+refuses() {
+    stem=$1
+    expected=$2
+    rm -f "$WORK/$stem.c"
+    if "$ROOT/bin/kofun" build "$CASES/$stem.kofun" -o "$WORK/$stem.bin" \
+        --emit-c "$WORK/$stem.c" >"$WORK/$stem.stdout" 2>"$WORK/$stem.stderr"
+    then
+        fail "$stem was accepted"
+    fi
+    grep -qF "$expected" "$WORK/$stem.stdout" "$WORK/$stem.stderr" ||
+        fail "$stem did not report: $expected"
+    test ! -e "$WORK/$stem.c" ||
+        fail "$stem committed C"
+}
+
+refuses alias_initializer \
+    'alias for `alias` (alias initializer)'
+refuses branch_owner \
+    'alias for `inside` (branch mismatch)'
+refuses loop_owner \
+    'alias for `carried` (loop-carried storage)'
+refuses recursive_producer \
+    'alias for `owned` (recursive summary)'
+refuses conditional_producer \
+    'alias for `owned` (branch mismatch)'
+refuses escaping_return \
+    'alias for `escaped` (escaping return)'
+refuses copied_parameter \
+    'alias for `b` (backend limitation)'
+
+# A refusal must say the same thing twice. A message built from a walk that
+# depends on iteration order, or on a buffer reused between runs, drifts
+# between invocations and the first reading looks like a real change.
+"$ROOT/bin/kofun" build "$CASES/alias_initializer.kofun" \
+    -o "$WORK/repeat.bin" >"$WORK/repeat.1" 2>&1 || true
+"$ROOT/bin/kofun" build "$CASES/alias_initializer.kofun" \
+    -o "$WORK/repeat.bin" >"$WORK/repeat.2" 2>&1 || true
+cmp "$WORK/repeat.1" "$WORK/repeat.2" ||
+    fail 'the same refusal reported differently on a second run'
+
+# Two of the nine reasons have no source program that reaches them, and this
+# records which rule gets there first. `escaping store` and `escaping capture`
+# would need `Bytes` to be an admitted record field type and a capturable
+# binding; both are refused earlier, under messages that name the actual rule
+# rather than a backend limit.
+#
+# Asserting E2S170 for either would have produced a fixture that passes today
+# against a compiler that never implements that reason.
+printf 'type Box = { held: Bytes }\nfn main() -> Int {\n    print(0)\n    return 0\n}\n' \
+    >"$WORK/stored.kofun"
+"$ROOT/bin/kofun" build "$WORK/stored.kofun" -o "$WORK/stored.bin" \
+    >"$WORK/stored.stdout" 2>"$WORK/stored.stderr" &&
+    fail 'a Bytes record field was accepted'
+grep -q 'E2S32' "$WORK/stored.stdout" "$WORK/stored.stderr" ||
+    fail 'a Bytes record field no longer stops at E2S32; escaping store may now be reachable'
+
+printf 'fn apply(v: Int, f: Int -> Int) -> Int {\n    return f(v)\n}\nfn peek(read b: Bytes) -> Int {\n    return 1\n}\nfn main() -> Int {\n    let owned = stage2_bytes_empty()\n    print(apply(1, (x) => peek(owned)))\n    return 0\n}\n' \
+    >"$WORK/captured.kofun"
+"$ROOT/bin/kofun" build "$WORK/captured.kofun" -o "$WORK/captured.bin" \
+    >"$WORK/captured.stdout" 2>"$WORK/captured.stderr" &&
+    fail 'a captured Bytes owner was accepted'
+grep -q 'E2S96' "$WORK/captured.stdout" "$WORK/captured.stderr" ||
+    fail 'a captured Bytes owner no longer stops at E2S96; escaping capture may now be reachable'
+
 printf '%s\n' \
     'PASS: every exit of an owning function reclaims in reverse creation order, including exits inside nested blocks and in functions other than main' \
-    'PASS: a program that owns no storage carries no carrier, allocator, or reclamation'
+    'PASS: a program that owns no storage carries no carrier, allocator, or reclamation' \
+    'PASS: empty and zeroed 1/255/16384/65536 execute identically at -O0 and -O2 under ASan/UBSan; 65537, a negative length, and an injected allocation failure return their exact tag and detail and leave the destination fields and bytes unchanged' \
+    'PASS: a take transfer and a proven-fresh producer reclaim exactly once with no leak, use-after-free, or double free' \
+    'PASS: the 0..8 status declaration is emitted once and carries no consumed tag' \
+    'PASS: the take crossing and the terminal return are visible in the emitted C as take-then-release-then-return, and the injected allocation failure edge is sanitizer-clean' \
+    'PASS: a refusal reports identically on a second run' \
+    'PASS: seven refusal shapes each report their own E2S170 reason and commit no C; escaping store and escaping capture are refused earlier, by E2S32 and E2S96'

@@ -1,0 +1,12 @@
+# A producer that names itself. Proving its result fresh needs a summary of a
+# function whose summary is what is being computed.
+fn spin(n: Int) -> Bytes {
+    let b = stage2_bytes_empty()
+    return spin(n - 1)
+}
+
+fn main() -> Int {
+    let owned = spin(2)
+    print(0)
+    return 0
+}

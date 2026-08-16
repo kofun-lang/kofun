@@ -1,0 +1,11 @@
+# An owner inside a loop: each turn would create storage the previous turn
+# still holds.
+fn main() -> Int {
+    let mut i = 0
+    while i < 2 {
+        let carried = stage2_bytes_empty()
+        i = i + 1
+    }
+    print(0)
+    return 0
+}
