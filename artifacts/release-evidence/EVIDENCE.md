@@ -9,6 +9,7 @@ Generated from `release/claims.json` by `task release-evidence`. Do not edit.
 | `bindgen-c-stage1` | `sh tests/interop/bindgen-c/check.sh` | The pinned fixture header generates byte-identical bindings and an audit report twice; the C compiler confirms the recorded sizes, offsets, enum values, and calling convention; and the bindings build, link, and run against the fixture library under AddressSanitizer and UndefinedBehaviorSanitizer with leak detection on. |
 | `borrowed-list-ownership` | `sh bootstrap/stage2/check.sh` | The borrowed-List Copy/move checkpoint passes. |
 | `bounded-tzdb-producer` | `sh tests/stdlib/tzdb/check.sh` | Typed HIR, emitted C11, the reference executor, and two repeated backend runs agree on exact normal/gap/fold, provenance, malformed, and resource-limit observations. |
+| `bytes-bounded-mutation` | `task bytes-mutation` | Exact byte values survive read, write, copy and append at the boundary lengths, under O0 and O2 and under the sanitizers, with every failure leaving the carrier unchanged. |
 | `c-abi-profile` | `sh bootstrap/c_abi/check.sh` | The C ABI profile builds and round-trips through host C. |
 | `c11-function-calls` | `sh bootstrap/stage2/check.sh` | Int Core user-function calls lower and execute through C11. |
 | `c11-list-int-values` | `task list-int-values` | Bounded list locals, direct-call copies, positive and negative reads and writes, source isolation, dynamic traps, exact refusals, and sanitizer execution agree. |

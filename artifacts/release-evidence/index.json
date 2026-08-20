@@ -4,12 +4,12 @@
   "version": "0.9.0-seed",
   "inputs": {
     "VERSION": "c65c21a1346dc7786f34a1799fb91137e023e9c1a057afba60038cce09a91dc2",
-    "release/claims.json": "0e3805b2bf6e81c82d5e9797f85100e8cfb2997ab93e082b952f0828fa1313ad",
+    "release/claims.json": "7d2ecbbbc5bd7caf630fc7b471f225aa4ce66d28bd4ec2867f4e98682fdc60ba",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
     "bootstrap/manifest.json": "f8dfc789c11532661287f8d395e29e409469425da061bc531ecccc1533ff989a"
   },
   "states": {
-    "checkpoint": 40,
+    "checkpoint": 41,
     "implemented": 9,
     "design": 1,
     "open": 3
@@ -87,6 +87,19 @@
       "prerequisites": [
         "cc"
       ]
+    },
+    {
+      "id": "bytes-bounded-mutation",
+      "state": "checkpoint",
+      "area": "c-backend",
+      "targets": [
+        "c11",
+        "stage2"
+      ],
+      "positive_gate": "task bytes-mutation",
+      "negative_boundary": "tests/diagnostics/stage2/e2s177_bytes_append_range_identity.kofun",
+      "reproduction": "task bytes-mutation",
+      "prerequisites": []
     },
     {
       "id": "c-abi-profile",
@@ -795,7 +808,7 @@
     "docs/LAW_SYSTEM.md": "b974f0ad762bec778ee76afa5d0a2176423ac96a3a583739eee55dcb8dca5043",
     "docs/LINGUIST_RECOGNITION.md": "279f9afa7157c90e41d656974c2f5020f8b6d25acbbd389ee760efbb2d6d6166",
     "docs/MEMORY_MODEL.md": "2ad150ffa325a6ac8778ce307b6d9d15584916ec116ae697a22028dc2e6c102e",
-    "docs/MVP_IMPLEMENTED.md": "88aee423c82aec04e492021692a865b10333593fd34be6767bc5c26ac054c007",
+    "docs/MVP_IMPLEMENTED.md": "54e829596e7abbc3c0f26d18b97e6f0d88df066d2070309aa7419599aa8a83db",
     "docs/NATIVE_BACKEND.md": "cc5b3680a3e250a4bcaa31170d40f5c7cf3fa3ecc74a489613a9a61bfeafd51f",
     "docs/ROADMAP.md": "01f4d69e2027aeadb6b1ae5dc00a2b00cfb945fb5a9ca22fa7e52578894afe9c",
     "docs/RUST_CRATE_SHIMS.md": "4365b064cbc9a05733710d3a609c1db2623b28cb9ed4ba0e48536e35f9d58c47",
@@ -831,6 +844,7 @@
     "tests/diagnostics/README.md": "0c915028a977e49a363c31304fec0e0e4635f0c814cb0cce5cfd4cabca6ff70e",
     "tests/diagnostics/registry.tsv": "b0ea38a5290601db555b0bec1060f1dc8c6dc42938670637d390026a955d1e57",
     "tests/diagnostics/stage2/e2s10_unsupported_statement.kofun": "664c4d3b0d4bcd9265fee34b3ae60d8bf0eb58c9ce5c2b504579c1249aa16f2d",
+    "tests/diagnostics/stage2/e2s177_bytes_append_range_identity.kofun": "2d197c57544a29e65667314d670d3afa83ac7a242df2309422e5523c54e5fedf",
     "tests/diagnostics/visibility-api-leaks.sh": "5c65b941bec961bc7b814e3979170af630df34fa8812d0fa650639e159ea755a",
     "tests/docs/documentation_index_test.mjs": "1195ff0fb6486bd046e1b70a8d364838a51ae06b47749206f851de54ac8d4c44",
     "tests/fuzz/SEMANTIC_PROTOCOL.md": "95644005013d2aae82a042deb341785a083552c766abafa71bdbf4335deea522",

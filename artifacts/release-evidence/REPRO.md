@@ -33,6 +33,7 @@ report a pass it did not observe.
 | `bindgen-c-stage1` | `task bindgen-c` |
 | `borrowed-list-ownership` | `task stage2` |
 | `bounded-tzdb-producer` | `task tzdb` |
+| `bytes-bounded-mutation` | `task bytes-mutation` |
 | `c-abi-profile` | `task c-abi` |
 | `c11-function-calls` | `task stage2` |
 | `c11-list-int-values` | `task list-int-values` |
