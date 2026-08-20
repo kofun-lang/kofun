@@ -1,0 +1,94 @@
+import stdlib.linux_x86_64.abi
+import stdlib.linux_x86_64.bytes
+import stdlib.linux_x86_64.io
+import stdlib.buffered_io.buffered_io
+
+# #1510. The adapter half: the refill step, and the loop that turns a `File`
+# into lines. The outcome and error types live here rather than in the portable
+# half because `BufferedSystem` names `SysError`, which is the one thing the
+# portable half must not reach.
+#
+# The reader borrows the file per call rather than owning it. `File` is affine
+# -- `file_close(take file: File)` -- so a reader that owned it would have to
+# re-export close and drop, and a caller who wanted the descriptor back could
+# not have it. Borrowing keeps the lifetime where the caller already manages it.
+
+type BufferedLine =
+    | Line(Bytes)
+    | Eof
+
+type BufferedError =
+    | BufferedSystem(SysError)
+    | BufferedLineTooLong(Int)
+    | BufferedBuffer(ByteError)
+
+# One line, or `Eof`.
+#
+# A final line with no line feed is returned, not discarded -- a file whose last
+# byte is not a newline still has a last line, and a reader that dropped it
+# would lose data silently, which is the worst of the available behaviours.
+#
+# `Eof` is answered from `ended` rather than by asking again, so reading past
+# the end costs no syscall and cannot block.
+#
+# `BufferedLineTooLong` leaves the reader intact: the buffered bytes are still
+# there and the cursor has not moved. It reports the capacity, which is what the
+# caller would have to raise, rather than a length nobody can act on.
+fn buffered_read_line(
+    read file: File,
+    edit reader: BufferedReader
+) -> Result[BufferedLine, BufferedError] {
+    while true {
+        let end = match buffered_line_end(reader) {
+            Ok(value) => value,
+            Err(error) => return Err(BufferedBuffer(error)),
+        }
+        if end >= 0 {
+            let line = match buffered_slice(reader, end) {
+                Ok(value) => value,
+                Err(error) => return Err(BufferedBuffer(error)),
+            }
+            reader.cursor = end + 1
+            return Ok(Line(line))
+        }
+        if reader.ended {
+            if buffered_pending(reader) == 0 {
+                return Ok(Eof)
+            }
+            let line = match buffered_slice(reader, reader.filled) {
+                Ok(value) => value,
+                Err(error) => return Err(BufferedBuffer(error)),
+            }
+            reader.cursor = reader.filled
+            return Ok(Line(line))
+        }
+        match buffered_compact(reader) {
+            Ok(_) => {}
+            Err(error) => return Err(BufferedBuffer(error)),
+        }
+        if buffered_free(reader) == 0 {
+            return Err(BufferedLineTooLong(buffered_capacity(reader)))
+        }
+        # `file_read` is the one call, and it is asked for exactly the free
+        # tail. `EINTR` is retried with the offset unchanged, the same
+        # discipline `file_read_exact` already applies -- it is not a failure of
+        # the file, and surfacing it would make every caller write this loop.
+        let received = match file_read(
+            file,
+            reader.buffer,
+            reader.filled,
+            buffered_free(reader),
+        ) {
+            Ok(value) => value,
+            Err(error) if error.errno == EINTR => 0 - 1,
+            Err(error) => return Err(BufferedSystem(error)),
+        }
+        if received == 0 {
+            reader.ended = true
+        }
+        if received > 0 {
+            reader.filled = reader.filled + received
+        }
+    }
+    return Ok(Eof)
+}

@@ -1,0 +1,219 @@
+# Executable Int-Core projection of stdlib/buffered_io.
+#
+# The two halves cannot be compiled or run: `bin/kofun check` on any file in
+# stdlib/linux_x86_64 stops at its first `import`, and `trusted intrinsic` is
+# refused at top level in both pipelines, so `raw_read` is unreachable from any
+# compilable program. This is the resolution stdlib/random already ships,
+# applied to a state machine whose whole content is control flow.
+#
+# `Bytes` becomes a `List[Int]` of byte values and `file_read` becomes a script:
+# `read_limit(script, step)` is how many bytes the k-th read may deliver, where
+# a negative value is `-errno` and -4 is EINTR. Everything else -- the compact,
+# the scan, the capacity rule, the final line with no line feed, the state that
+# answers a read past the end -- is the algorithm itself.
+#
+# Per script it prints: the script id, the outcome (0 end of input, 1 line too
+# long, 2 system error), how many lines were produced, how many reads were
+# made, whether the reader ended in the state where another call returns Eof
+# without reading, and then each line's length.
+
+fn source_capacity(script: Int) -> Int {
+    if script == 5 { return 4 }
+    return 8
+}
+
+fn source_content(script: Int) -> List[Int] {
+    if script == 1 {
+        let two_lines = [97, 98, 10, 99, 100, 10]
+        return two_lines
+    }
+    if script == 2 {
+        let unterminated = [97, 98, 99]
+        return unterminated
+    }
+    if script == 3 {
+        let empty = [0]
+        return empty
+    }
+    if script == 4 {
+        let just_a_line_feed = [10]
+        return just_a_line_feed
+    }
+    if script == 5 {
+        let too_long_for_four = [97, 98, 99, 100, 101, 102, 10]
+        return too_long_for_four
+    }
+    if script == 6 {
+        let exactly_capacity = [49, 50, 51, 52, 53, 54, 55, 10]
+        return exactly_capacity
+    }
+    if script == 7 {
+        let one_over_capacity = [49, 50, 51, 52, 53, 54, 55, 56, 10]
+        return one_over_capacity
+    }
+    if script == 8 {
+        let two_lines_byte_at_a_time = [97, 98, 10, 99, 100, 10]
+        return two_lines_byte_at_a_time
+    }
+    if script == 9 {
+        let interrupted = [97, 98, 10]
+        return interrupted
+    }
+    if script == 10 {
+        let spans_two_refills = [97, 98, 99, 100, 101, 102, 103, 10]
+        return spans_two_refills
+    }
+    if script == 11 {
+        let holds_a_nul = [1, 0, 2, 10]
+        return holds_a_nul
+    }
+    let then_a_system_error = [97, 98, 10]
+    return then_a_system_error
+}
+
+# Script 3 is the empty source. A `List[Int]` literal cannot be empty here, so
+# it carries one byte and this length says to deliver none of it.
+fn source_length(script: Int) -> Int {
+    if script == 3 { return 0 }
+    let content = source_content(script)
+    return len(content)
+}
+
+fn read_limit(script: Int, step: Int) -> Int {
+    if script == 8 { return 1 }
+    if script == 9 {
+        if step == 0 { return 0 - 4 }
+        return 8
+    }
+    if script == 10 { return 4 }
+    if script == 12 {
+        if step == 1 { return 0 - 5 }
+        return 8
+    }
+    return 8
+}
+
+fn smaller(left: Int, right: Int) -> Int {
+    if left < right { return left }
+    return right
+}
+
+fn simulate(script: Int) -> Int {
+    let capacity = source_capacity(script)
+    let content = source_content(script)
+    let total = source_length(script)
+    let mut buffer = [0, 0, 0, 0, 0, 0, 0, 0]
+    let mut lengths = [0, 0, 0, 0, 0, 0, 0, 0]
+    let mut filled = 0
+    let mut cursor = 0
+    let mut ended = 0
+    let mut consumed = 0
+    let mut step = 0
+    let mut calls = 0
+    let mut lines = 0
+    let mut outcome = 0
+    let mut running = 1
+
+    while running == 1 {
+        let mut end = 0 - 1
+        let mut probe = cursor
+        while probe < filled {
+            if end < 0 {
+                if buffer[probe] == 10 {
+                    end = probe
+                }
+            }
+            probe = probe + 1
+        }
+
+        if end >= 0 {
+            lengths[lines] = end - cursor
+            lines = lines + 1
+            cursor = end + 1
+        }
+        if end < 0 {
+            if ended == 1 {
+                if filled - cursor > 0 {
+                    lengths[lines] = filled - cursor
+                    lines = lines + 1
+                    cursor = filled
+                }
+                if filled - cursor == 0 {
+                    outcome = 0
+                    running = 0
+                }
+            }
+            if ended == 0 {
+                if cursor > 0 {
+                    let pending = filled - cursor
+                    let mut moved = 0
+                    while moved < pending {
+                        buffer[moved] = buffer[cursor + moved]
+                        moved = moved + 1
+                    }
+                    filled = pending
+                    cursor = 0
+                }
+                if filled >= capacity {
+                    outcome = 1
+                    running = 0
+                }
+                if filled < capacity {
+                    let limit = read_limit(script, step)
+                    step = step + 1
+                    calls = calls + 1
+                    if limit < 0 {
+                        if 0 - limit != 4 {
+                            outcome = 2
+                            running = 0
+                        }
+                    }
+                    if limit > 0 {
+                        let room = smaller(capacity - filled, limit)
+                        let available = smaller(room, total - consumed)
+                        if available == 0 {
+                            ended = 1
+                        }
+                        let mut taken = 0
+                        while taken < available {
+                            buffer[filled + taken] = content[consumed + taken]
+                            taken = taken + 1
+                        }
+                        filled = filled + available
+                        consumed = consumed + available
+                    }
+                }
+            }
+        }
+    }
+
+    let mut again = 0
+    if outcome == 0 {
+        if ended == 1 {
+            if filled - cursor == 0 {
+                again = 1
+            }
+        }
+    }
+
+    print(script)
+    print(outcome)
+    print(lines)
+    print(calls)
+    print(again)
+    let mut index = 0
+    while index < lines {
+        print(lengths[index])
+        index = index + 1
+    }
+    return 0
+}
+
+fn main() -> Int {
+    let mut script = 1
+    while script <= 12 {
+        let reported = simulate(script)
+        script = script + 1 + reported
+    }
+    return 0
+}

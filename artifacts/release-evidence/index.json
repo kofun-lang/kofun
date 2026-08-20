@@ -817,7 +817,7 @@
     "spec/wasm-host-abi-v1.md": "b49538b8b8bbdd29c36faa7b8bcd07e34c1dc14fb86cb654f1dbe6c93f25beaf",
     "spec/wasm-host-profile-v1.md": "162c197b85ca283e72dfa8009b0615be6454366da0e93c34f26dae95f4a533b6",
     "stdlib/decimal/README.md": "ae6ac8ebf59826e12b85593a55018bd2bc47ade82c6655bf3d98a2ddae19a1f5",
-    "stdlib/tests/verify.sh": "b87733886bb65f2afc741f3a21d69eea3c12ce568bfd1018e6c84545c5402396",
+    "stdlib/tests/verify.sh": "85dbe0ab72691c7a5d9fc5e3088de354d94dda6f7a5584dfac5f9cf4f50d6145",
     "tests/cli.sh": "6ca726adc3cb5fa4437d34665603b6556a63d01d26db1141a93af3388c5240f9",
     "tests/cli_stage2_outcomes.sh": "9f84a95495afab023a1572b37a2508a4ee02a3a89881df14b887c209a628a9a7",
     "tests/conformance/aggregate-bridge/README.md": "aec3624a10648a59d18723bf7429422ff017cec17995402653e403f065ec0f0a",

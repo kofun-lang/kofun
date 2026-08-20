@@ -114,6 +114,7 @@ cc	invoke	1	required-today	required	framework/tui/build.sh
 cc	invoke	2	required-today	required	framework/tui/check.sh
 cc	invoke	1	required-today	required	spec/kif-generics-v1/check.mjs
 cc	invoke	1	required-today	required	spec/roadmap-31-34/verify-current-gates.sh
+cc	invoke	1	required-today	required	stdlib/buffered_io/tests/verify.sh
 cc	invoke	1	required-today	required	stdlib/date_time/tests/verify.sh
 cc	invoke	1	required-today	required	stdlib/entropy/tests/verify.sh
 cc	invoke	1	required-today	required	stdlib/random/tests/verify.sh
@@ -541,6 +542,7 @@ shell-build-driver	source	1	required-today	required	spec/wasm-host-abi-v1/check.
 shell-build-driver	source	1	required-today	required	spec/wasm-host-profile-v1/check.sh
 shell-build-driver	source	1	required-today	required	stdlib/array/tests/verify.sh
 shell-build-driver	source	1	required-today	required	stdlib/binary_heap/tests/verify.sh
+shell-build-driver	source	1	required-today	required	stdlib/buffered_io/tests/verify.sh
 shell-build-driver	source	1	required-today	required	stdlib/check-capabilities.sh
 shell-build-driver	source	1	required-today	required	stdlib/clock/tests/verify.sh
 shell-build-driver	source	1	required-today	required	stdlib/csv/tests/verify.sh
