@@ -27,7 +27,7 @@ export const GROUPS = Object.freeze([
             'selfhost-declared-inputs', 'selfhost-b6-report',
             'selfhost-b6-policy',
             'selfhost-native', 'stage1-adapter', 'stage2', 'stage2-events', 'sha256-pair',
-            'stage2-pair-coverage', 'stage2-pair-calls',
+            'stage2-pair-coverage', 'stage2-pair-calls', 'stage2-pair-mirror',
             'native', 'native-host-evidence', 'wasm',
             'wasm-host-abi', 'wasm-host-profile', 'wasi-command-profile',
             'wasi-host-matrix-policy', 'atomic-write-authority-contract',

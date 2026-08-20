@@ -1,0 +1,403 @@
+# Which functions of the Stage 2 pair does the Kofun half mirror at all? (#1514,
+# parent #1401)
+#
+# `undefended.tsv` beside this file lists, per function of
+# bootstrap/stage2/compiler.c, how many branches nothing this repository runs
+# ever takes -- #1401's work-list of places a divergence between the two halves
+# can hide. THAT FRAMING ASSUMES BOTH HALVES IMPLEMENT THE FUNCTION. For 25 of
+# the 354 they do not, and for 67 more the counterpart is there under a
+# different name, which a reader triaging the ledger cannot see.
+#
+# So this file answers one question per ledger row, and only that question:
+# DOES THE KOFUN HALF DO THIS WORK, AND UNDER WHAT NAME?
+#
+# WHAT A ROW DOES NOT SAY. It does not say the two implementations agree. A
+# `same-name` row means a function of that name exists in compiler.kofun, not
+# that it behaves the same -- deciding that is the regional classification work
+# of #1401's other children, and #1508 found two live asymmetries inside
+# functions that are mirrored by name. This file narrows the reading; it does
+# not do it.
+#
+# verdict     `same-name`   compiler.kofun defines a `fn` of the same name
+#             `other-name`  it does the same work under the name in column 3,
+#                           or inline / through a builtin, which column 3 states
+#                           in parentheses
+#             `c-only`      the Kofun half does not do this work at all
+#
+# EVERY `other-name` AND `c-only` ROW CARRIES A MARK, and a mark is evidence
+# rather than a resemblance: a diagnostic code with identical message text, an
+# identical emitted record field order, a duplicated doc comment, or -- for
+# `c-only` -- the vocabulary that is absent, with the line of compiler.kofun
+# that already says so where one exists. Three of the four C-only clusters are
+# documented in that file today.
+#
+# WHAT THE C-ONLY ROWS AMOUNT TO, so a reader knows what is being set aside:
+# `compiler.ensure_move` (#572, #904) at 71 untaken branches; the
+# `Stage2AuthorityContext` embedder API and its observations at 53; memo,
+# capacity and allocator plumbing at 21; host-level file and identifier handling
+# at 7; and `ends_with`, which is not a cluster but a defect -- the Kofun half
+# calls it and never defines it (#1508). 153 of the ledger's 1911 branches, 8%.
+# The other 92% is a real pair surface.
+#
+# ONE C-ONLY ROW IS A LIVE DIVERGENCE rather than a documented omission:
+# `c_identifier_name` escapes non-ASCII identifiers to `k_uXXXXXX` at 12 sites
+# in the C half and has no counterpart, so the two halves emit different C for
+# the same input. Filed as #1513.
+#
+# `sh tests/pair-coverage/mirror.sh` holds this exact in both directions: a
+# ledger function with no row is refused, a row naming a function the ledger
+# does not carry is refused, a `same-name` or `other-name` counterpart that does
+admissible_payload_type_token	same-name	admissible_payload_type_token	-
+after_optional_module_header	same-name	after_optional_module_header	-
+allocate	c-only	-	the bootstrap subset has no allocator surface
+annotated_pure_declarations	same-name	annotated_pure_declarations	-
+annotation_type_end	same-name	annotation_type_end	-
+annotation_type_text	same-name	annotation_type_text	-
+append_captures	same-name	append_captures	-
+argument_end	same-name	argument_end	-
+argument_position_lambda	same-name	argument_position_lambda	-
+arithmetic_expression_end	same-name	arithmetic_expression_end	-
+authority_binding_misuse	same-name	authority_binding_misuse	-
+balanced_end	same-name	balanced_end	-
+borrowed_collection_check	same-name	borrowed_collection_check	-
+buffer_format	c-only	-	varargs formatting; the bootstrap subset has neither va_list nor a growable buffer
+buffer_reserve	c-only	-	growable Buffer; the Kofun half concatenates Text and has no capacity to reserve
+build_scope_hir_mode	same-name	build_scope_hir_mode	-
+builtin_argument_check	same-name	builtin_argument_check	-
+builtin_parameter_types	same-name	builtin_parameter_types	-
+callable_c_declarator	same-name	callable_c_declarator	-
+callable_parameter_type_start	same-name	callable_parameter_type_start	-
+callable_type_arity	same-name	callable_type_arity	-
+callable_type_end	same-name	callable_type_end	-
+call_argument_parameter_property	same-name	call_argument_parameter_property	-
+call_argument_position	same-name	call_argument_position	-
+call_arity	same-name	call_arity	-
+call_has_labelled_argument	same-name	call_has_labelled_argument	-
+call_slot_carried	same-name	call_slot_carried	-
+c_identifier_name	c-only	-	non-ASCII identifier escaping; `k_u` has no occurrence in compiler.kofun — a live divergence, #1513
+coalescing_expression_end	same-name	coalescing_expression_end	-
+compile_file	same-name	compile_file	-
+condition_end	same-name	condition_end	-
+constant_declaration_count	same-name	constant_declaration_count	-
+constant_declaration_end	same-name	constant_declaration_end	-
+constant_name	same-name	constant_name	-
+constant_value_text	same-name	constant_value_text	-
+const_argument_of	same-name	const_argument_of	-
+const_argument_over_budget	same-name	const_argument_over_budget	-
+const_digit_greater	same-name	const_digit_greater	-
+const_generic_declaration_head	same-name	const_generic_declaration_head	-
+const_generic_refusal	c-only	-	exists only to feed stage2_diagnostic_set; the Kofun half emits the same text bare
+const_instantiation_at	same-name	const_instantiation_at	-
+const_parameter_name	same-name	const_parameter_name	-
+constructed_list_type_end	same-name	constructed_list_type_end	-
+constructed_list_type_text	same-name	constructed_list_type_text	-
+copy_type	same-name	copy_type	-
+core_body_open	same-name	core_body_open	-
+core_parameters	same-name	core_parameters	-
+decimal_rounding_c_name	same-name	decimal_rounding_c_name	-
+decimal_value	same-name	decimal_value	-
+emit_argument	same-name	emit_argument	-
+emit_arithmetic_expression	same-name	emit_arithmetic_expression	-
+emit_condition_into	same-name	emit_condition_into	-
+emit_enum_value	same-name	emit_enum_value	-
+emit_expression	same-name	emit_expression	-
+emit_fixed_slot_call	same-name	emit_fixed_slot_call	-
+emit_fixed_slot_call_temporaries	same-name	emit_fixed_slot_call_temporaries	-
+emit_int_bit_chain	same-name	emit_int_bit_chain	-
+emit_lifted_argument_lambdas	same-name	emit_lifted_argument_lambdas	-
+emit_lifted_lambdas	same-name	emit_lifted_lambdas	-
+emit_list_int_index_value	same-name	emit_list_int_index_value	-
+emit_list_int_literal	same-name	emit_list_int_literal	-
+emit_list_int_subscript	same-name	emit_list_int_subscript	-
+emit_list_int_value	same-name	emit_list_int_value	-
+emit_optional_int_coalescing_temporaries	same-name	emit_optional_int_coalescing_temporaries	-
+emit_primary	same-name	emit_primary	-
+emit_product	same-name	emit_product	-
+emit_record_c_declarations	same-name	emit_record_c_declarations	-
+emit_record_value	same-name	emit_record_value	-
+emit_scope_hir_file	same-name	emit_scope_hir_file	-
+emit_selfhost_hir_document	other-name	selfhost_document	same `schema|kofun.selfhost-hir/v1` header, same section order, same E2S04 first refusal
+emit_selfhost_hir_file	same-name	emit_selfhost_hir_file	-
+emit_unary	same-name	emit_unary	-
+emit_value_enum_match_into	same-name	emit_value_enum_match_into	-
+emit_value_into	same-name	emit_value_into	-
+emit_value_match_into	same-name	emit_value_match_into	-
+enclosing_function_open	same-name	enclosing_function_open	-
+ends_with	c-only	-	the Kofun half calls it at :18143 and never defines it; recorded in unresolved-calls.tsv (#1508)
+enum_binding_catchall_name	same-name	enum_binding_catchall_name	-
+enum_constructor_count	same-name	enum_constructor_count	-
+enum_constructor_index	same-name	enum_constructor_index	-
+enum_constructor_owner	same-name	enum_constructor_owner	-
+enum_constructor_payload_arity	same-name	enum_constructor_payload_arity	-
+enum_constructors_covered	same-name	enum_constructors_covered	-
+enum_constructor_token_end	same-name	enum_constructor_token_end	-
+enum_declaration_names	same-name	enum_declaration_names	-
+enum_declaration_start	same-name	enum_declaration_start	-
+enum_match_end	same-name	enum_match_end	-
+enum_match_pattern_token	same-name	enum_match_pattern_token	-
+enum_missing_constructors	same-name	enum_missing_constructors	-
+enum_payload_field_supported	same-name	enum_payload_field_supported	-
+executable_constructor_pattern	same-name	executable_constructor_pattern	-
+expression_end	same-name	expression_end	-
+field_read_postfix_end	same-name	field_read_postfix_end	-
+final_result_if	same-name	final_result_if	-
+first_io_callee	same-name	first_io_callee	-
+fixed_slot_call_shape	same-name	fixed_slot_call_shape	-
+fixed_slot_temporary_body	same-name	fixed_slot_temporary_body	-
+function_calls_name	same-name	function_calls_name	-
+function_end	same-name	function_end	-
+function_name	same-name	function_name	-
+function_parameter_mode	same-name	function_parameter_mode	-
+function_parameter_type_at	other-name	function_parameter_type	same precedence and the same comment tail; Kofun fuses the by-name wrapper
+function_return_type_at	other-name	function_return_type	the Kofun half inlines the same body in the same order, callable then optional then list
+function_return_type_containing	same-name	function_return_type_containing	-
+generic_binder_open	same-name	generic_binder_open	-
+hir_binding_declaration_start	same-name	hir_binding_declaration_start	-
+hir_field	same-name	hir_field	-
+hir_index_add	c-only	-	FNV line index; the C section comment says the index can be dropped without changing an output byte
+hir_index_grow	c-only	-	same index
+hir_index_refresh	c-only	-	FNV line index; compiler.kofun:8533 "canonical Kofun has no process-global cache"
+hir_index_split	c-only	-	feeds hir_index_refresh; `hir_index` has no occurrence in compiler.kofun
+hir_pending_declaration	same-name	hir_pending_declaration	-
+hir_scope_root	same-name	hir_scope_root	-
+identifier_continue_at	other-name	identifier_continue	same predicate; the `_at` half is byte-offset plumbing chars() removes
+identifier_start_at	other-name	identifier_start	same `_` or XID_Start predicate; the three C call sites land in the matching Kofun functions
+if_has_else	same-name	if_has_else	-
+if_statement_end	same-name	if_statement_end	-
+if_then_branch_end	same-name	if_then_branch_end	-
+initializer_type_bounded	same-name	initializer_type_bounded	-
+int_bit_chain_dot	same-name	int_bit_chain_dot	-
+int_bit_error_before_unresolved_in	same-name	int_bit_error_before_unresolved_in	-
+int_bit_expression_contains	same-name	int_bit_expression_contains	-
+int_bit_method_arity_at	same-name	int_bit_method_arity_at	-
+int_bit_postfix_end	same-name	int_bit_postfix_end	-
+io_functions_round	same-name	io_functions_round	-
+labelled_argument_slot	same-name	labelled_argument_slot	-
+labelled_argument_value	same-name	labelled_argument_value	-
+lambda_binding_open	same-name	lambda_binding_open	-
+lambda_captures	same-name	lambda_captures	-
+lambda_declaration_syntax_token	same-name	lambda_declaration_syntax_token	-
+lambda_fn_keyword_before	same-name	lambda_fn_keyword_before	-
+lambda_parameter_count	same-name	lambda_parameter_count	-
+lambda_parameters_end	same-name	lambda_parameters_end	-
+lambda_unparenthesised_annotation	same-name	lambda_unparenthesised_annotation	-
+line_at	same-name	line_at	-
+list_int_binding_literal_count	same-name	list_int_binding_literal_count	-
+list_int_constant_index	same-name	list_int_constant_index	-
+list_int_index_close	same-name	list_int_index_close	-
+list_int_literal_count	same-name	list_int_literal_count	-
+list_int_local_type_token	same-name	list_int_local_type_token	-
+list_int_type_end	same-name	list_int_type_end	-
+local_visibility_error	same-name	local_visibility_error	-
+lower_body	same-name	lower_body	-
+lower_c_body	same-name	lower_c_body	-
+lower_enum_match	same-name	lower_enum_match	-
+lower_record_binding	same-name	lower_record_binding	-
+lower_selfhost_c11_file	same-name	lower_selfhost_c11_file	-
+main	same-name	main	-
+malformed_numeric_literal	same-name	malformed_numeric_literal	-
+match_arm_pattern_start	same-name	match_arm_pattern_start	-
+match_guard_scope_open	same-name	match_guard_scope_open	-
+move_assertion_arm_terminates	c-only	-	compiler.ensure_move; #904 terminator walk with no Kofun surface
+move_assertion_callee_is_alias_free	c-only	-	compiler.ensure_move; E2S146 has no occurrence in compiler.kofun
+move_assertion_head	c-only	-	the `compiler.` intrinsic namespace has no occurrence in compiler.kofun
+move_assertion_read_is_alias_free	c-only	-	compiler.ensure_move; E2S146 has no occurrence in compiler.kofun
+move_assertion_scope_reaches	c-only	-	compiler.ensure_move; the scope kinds exist in Kofun HIR, the walk over them does not
+move_call_binding	same-name	move_call_binding	-
+move_finding_keep	other-name	(inlined in validate_move_uses)	same tie-break rule; the rationale paragraph is duplicated verbatim
+move_statement_end	same-name	move_statement_end	-
+move_statement_head	same-name	move_statement_head	-
+move_statement_partial	same-name	move_statement_partial	-
+move_use_position	same-name	move_use_position	-
+next_constant_start	same-name	next_constant_start	-
+next_function_start	same-name	next_function_start	-
+numeric_conversion_at	same-name	numeric_conversion_at	-
+numeric_conversion_between	same-name	numeric_conversion_between	-
+numeric_conversion_head	same-name	numeric_conversion_head	-
+numeric_member_argument	same-name	numeric_member_argument	-
+numeric_member_expected_arity	same-name	numeric_member_expected_arity	-
+numeric_member_expected_type	same-name	numeric_member_expected_type	-
+numeric_primary_type	same-name	numeric_primary_type	-
+numeric_underscore_error	same-name	numeric_underscore_error	-
+optional_int_binding	same-name	optional_int_binding	-
+optional_int_block_returns	same-name	optional_int_block_returns	-
+optional_int_carrier_position	same-name	optional_int_carrier_position	-
+optional_int_coalescing_left	same-name	optional_int_coalescing_left	-
+optional_int_coalescing_left_site	same-name	optional_int_coalescing_left_site	-
+optional_int_coalescing_null_context	same-name	optional_int_coalescing_null_context	-
+optional_int_coalescing_transparent_bound	same-name	optional_int_coalescing_transparent_bound	-
+optional_int_condition	same-name	optional_int_condition	-
+optional_int_declaration_count	same-name	optional_int_declaration_count	-
+optional_int_function_start	same-name	optional_int_function_start	-
+optional_int_null_context	same-name	optional_int_null_context	-
+optional_int_refined	same-name	optional_int_refined	-
+optional_int_result_at	same-name	optional_int_result_at	-
+optional_int_result_containing	same-name	optional_int_result_containing	-
+optional_int_result	same-name	optional_int_result	-
+optional_int_type_end	same-name	optional_int_type_end	-
+optional_int_value	same-name	optional_int_value	-
+pair_sha256_absorb	other-name	sha256_absorb	the C header says it mirrors the Kofun side function for function; task sha256-pair compares both
+pair_sha256_of_message	other-name	sha256_of_message	same IV and the same 0x80 padding with a big-endian bit-length tail; task sha256-pair compares
+parameter_count	same-name	parameter_count	-
+parameter_external_start	same-name	parameter_external_start	-
+parameter_internal_start	same-name	parameter_internal_start	-
+parameter_list_type_end	same-name	parameter_list_type_end	-
+parameter_list_type_text	same-name	parameter_list_type_text	-
+parameter_open	same-name	parameter_open	-
+parameter_type_start	same-name	parameter_type_start	-
+par_loop_block_open	same-name	par_loop_block_open	-
+par_production_error	same-name	par_production_error	-
+par_scope_rule_error	same-name	par_scope_rule_error	-
+parse_pattern_atomic	other-name	parse_pattern_atomic_result	same records and the same node/depth limits; the Kofun half returns them Text-encoded
+parse_pattern_or	other-name	parse_pattern_or_result	same alternative walk and the same doubled-or/trailing-or refusals
+parse_patterns_file	same-name	parse_patterns_file	-
+parse_pattern_trees	same-name	parse_pattern_trees	-
+parse_program	same-name	parse_program	-
+parse_value_arm	other-name	validate_value_arm	three E2S30 texts verbatim and in the same order
+parse_value_enum_match	other-name	validate_value_enum_match	eight shared E2S24/E2S26/E2S32 texts in the same order and the same covered-constructor accumulator
+parse_value_if	other-name	validate_value_if	shared E2S27 "value-position if requires `else`" and E2S28 in the same order
+parse_value_match	other-name	validate_value_match	ten shared E2S24/E2S26/E2S29/E2S30 texts in the same order, including "pattern after catch-all is unreachable"
+par_spawn_bound_handle	same-name	par_spawn_bound_handle	-
+par_spawn_site_within	same-name	par_spawn_site_within	-
+pattern_arm_arrow	same-name	pattern_arm_arrow	-
+pattern_duplicate_binding_error	same-name	pattern_duplicate_binding_error	-
+pattern_error	other-name	pattern_error_result	byte-identical `node|…|ErrorPattern|…` and `pattern-diagnostic|E2S58|…` pair
+pattern_first_error	same-name	pattern_first_error	-
+pattern_limit_error	other-name	pattern_limit_result	byte-identical `node|…|node-limit` and `pattern-diagnostic|E2S58|node-limit|…` pair
+pattern_match_open	same-name	pattern_match_open	-
+pattern_record_field	other-name	pattern_line_field	same field split and the same "" on a miss; C takes a positioned pointer, Kofun an offset
+pattern_recovery_end	same-name	pattern_recovery_end	-
+pattern_stop_token	same-name	pattern_stop_token	-
+payload_member_type_token	same-name	payload_member_type_token	-
+pipeline_call_end	same-name	pipeline_call_end	-
+pipeline_last_pipe	same-name	pipeline_last_pipe	-
+pipeline_pipe_for_call	other-name	(inlined in pipeline_subject_for_call)	same body; C keeps it factored because emit_argument needs the offset separately
+pipeline_subject_end	same-name	pipeline_subject_end	-
+pipeline_subject_for_call	same-name	pipeline_subject_for_call	-
+pipeline_subject_start	same-name	pipeline_subject_start	-
+pipeline_subject_take	same-name	pipeline_subject_take	-
+primary_end	same-name	primary_end	-
+product_end	same-name	product_end	-
+pure_boundary_violation	same-name	pure_boundary_violation	-
+read_file	other-name	(the read_text builtin)	seven C call sites against seven read_text sites, one per CLI subcommand
+record_declaration_at	same-name	record_declaration_at	-
+record_declaration_start	same-name	record_declaration_start	-
+record_field_count	same-name	record_field_count	-
+record_field_text	same-name	record_field_text	-
+record_initializer_constructor_token	same-name	record_initializer_constructor_token	-
+record_syntax_token	same-name	record_syntax_token	-
+removed_callable_rewrite	same-name	removed_callable_rewrite	-
+reserved_type_name	same-name	reserved_type_name	-
+return_move_at	same-name	return_move_at	-
+same_file	other-name	(the input == output guards)	four call sites, four E2S35 "input and output must be distinct"; the stat()/inode half is C-only
+scan_optional_int_annotation	same-name	scan_optional_int_annotation	-
+scope_depth_for_open	same-name	scope_depth_for_open	-
+scoped_parallel_member	same-name	scoped_parallel_member	-
+selfhost_compile_file	same-name	selfhost_compile_file	-
+sha256_selftest	same-name	sha256_selftest	-
+sh_bind	other-name	selfhost_bind_records	identical `symbol|` and `binding|` field order and the same 512 binding limit
+sh_emit_expr	other-name	selfhost_emit_expression	identical `node|` record and identical kind dispatch order
+sh_emit_stmt	other-name	selfhost_statement	identical `node|` field order including assign being the only `edit` ownership
+sh_fail	other-name	selfhost_error	same rendered text and the same `at >= 0` suffix rule; 55 against 57 call sites
+sh_operator_at	other-name	selfhost_operator_level	same per-level operator table, including `//` before `/`
+sh_ownership	other-name	selfhost_ownership	same Text-or-List to "read" classification; C's edit arm is dead in C too
+sh_parse_binary_level	other-name	selfhost_parse_binary	same level numbering and the same four E2S15 operand texts
+sh_parse_block	other-name	selfhost_block	same four diagnostics in the same order, ending at E2S18 "expected `}`"
+sh_parse_postfix	other-name	selfhost_parse_postfix	three shared E2S12/E2S15 texts; both build an index node typed Text
+sh_parse_primary	other-name	selfhost_parse_primary	the five-line `par` refusal comment is word-for-word in both, with the same E2S154
+sh_parse_signature	other-name	selfhost_signature	shared E2S16 "function limit is 128", E2S17 "parameter limit is 8" and the callable-parameter comment
+sh_parse_stmt	other-name	selfhost_statement	same dispatch order; E2S154 `par` refusal text and its comment are word-for-word in both
+sh_parse_unary	other-name	selfhost_parse_unary	E2S15 "`!` expects Bool" and "unary `-` expects Int" occur once each in both halves
+sh_scope_close	other-name	(value semantics in selfhost_block)	same scope discipline and the same E2S35 depth limit 32; Kofun has no stack to pop
+sh_scope_open	other-name	(inlined in selfhost_block)	same six-field `scope|` record and the same three scope kinds at the same sites
+sh_text_literal_field	other-name	selfhost_text_literal_field	same decode with only \n special-cased, then the same re-escape
+sh_type_id_key	other-name	selfhost_type_require	same `type|ID|KEY` record and the same "selfhost-HIR type limit is 64"
+skip_trivia	same-name	skip_trivia	-
+sl_binding	other-name	selfhost_c11_binding_field	the two callers carry the identical comment and read the same symbol field
+sl_binding_type	other-name	selfhost_c11_binding_type	byte-identical doc comment; same two-hop symbol lookup
+sl_builtin_helper	other-name	selfhost_c11_builtin_helper	identical 17-entry builtin to kofun_rt_* table
+sl_c_string	other-name	selfhost_c11_string	verbatim comment in both; same decode then same three re-escapes
+sl_c_type	other-name	selfhost_c11_c_type	identical mapping table in identical order
+sl_emit_block	other-name	selfhost_c11_block	verbatim comment in both and the same E2S35 scope reference refusal
+sl_emit_expr	other-name	selfhost_c11_expression	same node lookup failure and the same E2S10 unsupported family
+sl_emit_function	other-name	selfhost_c11_function	identical fail_return table, identical main prologue, same four diagnostics and exit codes
+sl_emit_statement	other-name	selfhost_c11_statement	same kind dispatch and the same emitted C, including `for (;;)` plus `if (!cond) break;` for while
+sl_failed_check	other-name	selfhost_c11_failed_check	byte-identical doc comment and byte-identical emitted C on both arms
+sl_fail_name	other-name	selfhost_c11_error	exit codes align call for call, nine against nine at class 3
+sl_fail	other-name	selfhost_c11_error	nine exit-class-3 sites on each side, first error wins in both
+sl_field	other-name	pattern_line_field	same out-of-range contract; one Kofun function serves both C readers
+sl_list_parameter	other-name	selfhost_c11_list_parameter	byte-identical doc comment in both files
+sl_load	other-name	(prologue of selfhost_c11_document)	three shared E2S35 texts in order; the SL_MAX_* capacity guards are C-only
+sl_lower_document	other-name	selfhost_c11_document	same eight `(void)kofun_*` lines in order and the same generated-by header
+sl_node	other-name	selfhost_c11_node_line	both search only the current function's node window
+sl_parameters	other-name	selfhost_c11_signature	same E2S10 failure at exit class 3 and the same spelling table, trailing spaces included
+sl_result_key	other-name	selfhost_c11_result_key	word-for-word identical comment in both files
+sl_scope	other-name	selfhost_c11_scope_field	shared E2S35 "selfhost-C11 scope reference is out of range" at the same exit class
+sl_split	other-name	pattern_line_field	same field-of-record job; the >16-field overflow branch is C-only
+sl_symbol	other-name	selfhost_c11_symbol_field	same record lookup and the same not-found sentinel
+sl_type_key	other-name	selfhost_c11_type_key	same closed key universe named in both comments
+source_function_count	same-name	source_function_count	-
+source_has_list_int_local	same-name	source_has_list_int_local	-
+source_length	other-name	(the len builtin)	same use at the head of token_end; the address-keyed memo is C-only
+source_slice	other-name	(the text_slice builtin)	its reference implementation is the runtime helper compiler.kofun emits at :21111, clamp included
+source_uses_bytes	same-name	source_uses_bytes	-
+source_uses_optional_int	same-name	source_uses_optional_int	-
+stage2_declaration_observe	c-only	-	`kofun-stage2-declarations` has no occurrence in compiler.kofun
+stage2_diagnostic_affected	c-only	-	structured sink; compiler.kofun:10618
+stage2_diagnostic_related	c-only	-	structured sink; compiler.kofun:10618
+stage2_diagnostic_remedy	c-only	-	numeric remedy ids exist only in the C structured diagnostic
+stage2_diagnostic_set	c-only	-	structured sink; compiler.kofun:10618 "a seed-only capability with no Kofun surface yet"
+stage2_parse_prefix_observe	c-only	-	`parse_prefix` has no occurrence in compiler.kofun
+stage2_scope_prefix_observe	c-only	-	`scope_prefix` has no occurrence in compiler.kofun
+stage2_semantic_observe	c-only	-	compiler.kofun:7497 "This frontend checkpoint emits no semantic observations at all"
+string_end	same-name	string_end	-
+text_find_from	same-name	text_find_from	-
+text_literal_c_form	same-name	text_literal_c_form	-
+text_operand	same-name	text_operand	-
+token_copy	other-name	token_text	token_end plus slice in both, with the same empty result for a token that does not advance
+token_end	same-name	token_end	-
+token_end_uncached	other-name	token_end	same scan and the same DECIMAL.md maximal-munch comment; only the memo wrapper is C-only
+token_equal	other-name	(token_text with ==)	1:1 at the call sites, 904 against 915, including the same E2S154 guard
+token_kind	same-name	token_kind	-
+trailing_lambda_open	same-name	trailing_lambda_open	-
+trailing_lambda_slot	same-name	trailing_lambda_slot	-
+type_declaration_end	same-name	type_declaration_end	-
+type_equals_token	same-name	type_equals_token	-
+type_name	same-name	type_name	-
+type_parameter_list_error	same-name	type_parameter_list_error	-
+type_parameter_open	same-name	type_parameter_open	-
+unsupported_lowering_error	same-name	unsupported_lowering_error	-
+validate_authority_uses	same-name	validate_authority_uses	-
+validate_const_arguments	same-name	validate_const_arguments	-
+validate_const_erasure	same-name	validate_const_erasure	-
+validate_core_calls	same-name	validate_core_calls	-
+validate_core_types	same-name	validate_core_types	-
+validate_decimal_slice5_members	other-name	validate_numeric_conversions	the bare comment "# #1411, same sentinel." sits above the arity test in both
+validate_declared_call_arguments	same-name	validate_declared_call_arguments	-
+validate_enum_uses	same-name	validate_enum_uses	-
+validate_executable_patterns	same-name	validate_executable_patterns	-
+validate_fractional_operators	same-name	validate_fractional_operators	-
+validate_list_int_annotations	same-name	validate_list_int_annotations	-
+validate_list_int_lambda_uses	same-name	validate_list_int_lambda_uses	-
+validate_move_assertions	c-only	-	compiler.ensure_move; compiler.kofun:17128 "lives in the C seed only"
+validate_move_uses	same-name	validate_move_uses	-
+validate_numeric_annotations	same-name	validate_numeric_annotations	-
+validate_numeric_conversions	same-name	validate_numeric_conversions	-
+validate_numeric_literals	same-name	validate_numeric_literals	-
+validate_numeric_operand_types	same-name	validate_numeric_operand_types	-
+validate_optional_int_coalescing	same-name	validate_optional_int_coalescing	-
+validate_optional_uses	same-name	validate_optional_uses	-
+validate_pipeline_calls	same-name	validate_pipeline_calls	-
+validate_pipeline_checked	same-name	validate_pipeline_checked	-
+validate_pipeline_shapes	same-name	validate_pipeline_shapes	-
+validate_record_uses	same-name	validate_record_uses	-
+validate_removed_callable_notation	same-name	validate_removed_callable_notation	-
+validate_struct_identity	same-name	validate_struct_identity	-
+validate_trailing_lambda_surface	same-name	validate_trailing_lambda_surface	-
+value_if_branch_end	same-name	value_if_branch_end	-
+value_match_enum_type	same-name	value_match_enum_type	-
+visibility_prefix_candidate	same-name	visibility_prefix_candidate	-
+visibility_prefix_error	same-name	visibility_prefix_error	-
+visibility_word	same-name	visibility_word	-
+write_file	other-name	(the write_text builtin)	call sites correspond one for one; the stdio failure paths are the host runtime's
+write_file_transactional	c-only	-	temp-file plus rename commit; the Kofun scope-HIR command calls write_text directly
