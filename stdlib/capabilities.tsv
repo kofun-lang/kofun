@@ -50,12 +50,12 @@ affine-resource-handle	portable	implemented	task affine-resource-handle	one boun
 benchmark-harness	portable	specified	docs/stdlib/benchmark.md	accepted contract (#640); raw-sample report schema slice is #646
 concurrency	portable	planned	#1162 #1163	scoped parallelism only, after the runtime contract exists
 stream-protocol	portable	specified	docs/stdlib/stream-protocol.md	accepted protocol contract (#627); no operators, scheduler, or adapters implemented
-buffered-io	portable	planned	#1475	no buffered reader/writer exists over the syscall seed today
+buffered-io	portable	planned	#1510	reader only; no writer half until a consumer names one
 url	portable	planned	#1258	parsing and normalisation; owned by the HTTP client contract, not independent
-secure-randomness	adapter	planned	#1475	the Linux entropy adapter exists; the portable capability boundary does not
+secure-randomness	adapter	planned	#1511	the getrandom(2) binding exists without complete-or-error discipline; the boundary that states it does not
 temporary-files	adapter	planned	#1463	creation, cleanup on take, and collision behaviour are unspecified
 hashes-checksums	portable	deferred	#1455	no consumer yet; the toolchain digests with the repository's own bin/kofun-digest, not a stdlib API
-compression-archive	module	deferred	#1475	no consumer yet; belongs to the module tier when one appears
+compression-archive	module	deferred	#644	gzip response decompression is named by the accepted http-client contract; no archive format has a consumer and tar is not in scope
 mime	module	deferred	#644	only meaningful once the HTTP client contract fixes content negotiation
 crypto-tls	module	deferred	#644	security-critical and independently versioned; must not enter the portable tier
 yaml	none	non-goal	charter	TOML is the baseline config format; a second one splits the toolchain's own config
