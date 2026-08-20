@@ -70,7 +70,29 @@ const ASSIGN = String.raw`(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)[ \t]
  * requirement today — so this half fixes no count now and stops the next one
  * being silent.
  */
-const OPEN = String.raw`(?:^|(?<![A-Za-z0-9_])[(]|[|;&){}\`\n!]|\$\([ \t]*\n?[ \t]*|&&|\|\||(?:\b(?:${WRAPPERS})\b(?:\s+[-!]\w*)*\s+))${ASSIGN}`
+const POSITION = String.raw`(?:^|(?<![A-Za-z0-9_])[(]|[|;&){}\`\n!]|\$\([ \t]*\n?[ \t]*|&&|\|\|)`
+const WRAPPER_OPEN = String.raw`(?:\b(?:${WRAPPERS})\b(?:\s+[-!]\w*)*\s+)`
+
+/*
+ * A standalone `--` is not one of the short flags above. It ends option
+ * parsing for these three measured executable wrappers:
+ *
+ *     env -- npm ci
+ *     command -- node script.mjs
+ *     printf x | xargs -- npm exec
+ *
+ * Keep this branch separate from WRAPPER_OPEN. That list also contains flow
+ * keywords such as `if`, and `if -- node` invokes `--`, not Node.js. The
+ * real command-position prefix is load-bearing too: an unanchored
+ * `env ... --` branch would count prose such as `echo env -- npm ci`.
+ */
+const FLOW_POSITIONS = 'then|do|else|elif|if'
+const DASH_DASH_WRAPPER = String.raw`(?:env(?:[ \t]+-i)?|command|xargs)`
+const DASH_DASH_OPEN =
+    String.raw`${POSITION}[ \t]*${ASSIGN}` +
+    String.raw`(?:\b(?:${FLOW_POSITIONS})\b[ \t]+${ASSIGN})?` +
+    String.raw`\b${DASH_DASH_WRAPPER}\b[ \t]+--[ \t]+`
+const OPEN = String.raw`(?:${POSITION}|${WRAPPER_OPEN})${ASSIGN}`
 const CLOSE = String.raw`(?=\s|$|['"\`;|&)])`
 
 /*
@@ -95,7 +117,7 @@ const YAML_OPEN = String.raw`(?:^|[|;&(){}\n!]|\$\(|&&|\|\||run:\s*|cmd:\s*|-\s+
 export function commandPosition(token, dialect = 'sh') {
     if (dialect === 'js') return new RegExp(`${JS_SPAWN}(?:${token})${CLOSE}`, 'gm')
     if (dialect === 'yaml') return new RegExp(`${YAML_OPEN}[ \\t]*(?:${token})${CLOSE}`, 'gm')
-    return new RegExp(`${OPEN}[ \\t]*(?:${token})${CLOSE}`, 'gm')
+    return new RegExp(`(?:${OPEN}|${DASH_DASH_OPEN})[ \\t]*(?:${token})${CLOSE}`, 'gm')
 }
 
 export function dialectOf(path) {
