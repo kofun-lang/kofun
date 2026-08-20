@@ -1,0 +1,112 @@
+# Executable Int-Core projection of stdlib/entropy/linux_x86_64.kofun.
+#
+# The adapter itself cannot be compiled or run: `bin/kofun check` on any file in
+# stdlib/linux_x86_64 stops at its first `import`, and `trusted intrinsic` is
+# refused at top level in both pipelines, so `raw_getrandom` is unreachable from
+# any compilable program. The same boundary is why stdlib/random ships a
+# projection, and this is that resolution applied to a loop whose whole content
+# is control flow.
+#
+# The syscall is replaced by a script: a pure function of (script, step) giving
+# what `getrandom(2)` would have returned at that step. A negative value is
+# `-errno`; -4 is EINTR. Nothing else about the adapter changes, so what this
+# proves is exactly what is worth proving here -- that the loop retries EINTR,
+# continues from the offset already filled, refuses a count it cannot trust, and
+# calls nothing at all for an empty destination.
+
+fn script_total(script: Int) -> Int {
+    if script == 5 { return 0 }
+    return 8
+}
+
+fn script_return(script: Int, step: Int) -> Int {
+    if script == 1 { return 8 }
+    if script == 2 {
+        if step == 0 { return 3 }
+        if step == 1 { return 2 }
+        return 3
+    }
+    if script == 3 {
+        if step == 0 { return 0 - 4 }
+        return 8
+    }
+    if script == 4 {
+        if step == 0 { return 4 }
+        if step == 1 { return 0 - 4 }
+        return 4
+    }
+    if script == 5 { return 8 }
+    if script == 6 { return 0 }
+    if script == 7 { return 0 - 22 }
+    if script == 8 {
+        if step == 0 { return 3 }
+        return 9
+    }
+    if step == 0 { return 0 - 4 }
+    if step == 1 { return 0 - 4 }
+    if step == 2 { return 0 - 4 }
+    return 8
+}
+
+# 0 filled, 1 impossible count, 2 system error.
+#
+# No trailing comma in this parameter list, deliberately: Stage 2 counts one as
+# a sixth parameter and refuses the call with `expects 6 arguments, got 5`.
+# That is #1515, and the spec allows the comma -- this file avoids it because it
+# is one of the few Kofun sources a gate actually compiles.
+fn field_result(
+    field: Int,
+    outcome: Int,
+    detail: Int,
+    calls: Int,
+    offset: Int
+) -> Int {
+    if field == 0 { return outcome }
+    if field == 1 { return detail }
+    if field == 2 { return calls }
+    return offset
+}
+
+fn fill(script: Int, field: Int) -> Int {
+    let total = script_total(script)
+    let mut offset = 0
+    let mut step = 0
+    let mut calls = 0
+    while offset < total {
+        let value = script_return(script, step)
+        step = step + 1
+        calls = calls + 1
+        if value < 0 {
+            let errno = 0 - value
+            if errno != 4 {
+                return field_result(field, 2, errno, calls, offset)
+            }
+        }
+        if value == 0 {
+            return field_result(field, 1, value, calls, offset)
+        }
+        if value > total - offset {
+            return field_result(field, 1, value, calls, offset)
+        }
+        if value > 0 {
+            offset = offset + value
+        }
+    }
+    return field_result(field, 0, 0, calls, offset)
+}
+
+# Five lines per script: the script id, then outcome, detail, calls, offset.
+# One integer per line, because that is what this Core can print and what the
+# C11 oracle can reproduce without agreeing on a format first.
+fn main() -> Int {
+    let mut script = 1
+    while script <= 9 {
+        print(script)
+        print(fill(script, 0))
+        print(fill(script, 1))
+        print(fill(script, 2))
+        print(fill(script, 3))
+        script = script + 1
+    }
+    return 0
+}

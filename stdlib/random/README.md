@@ -61,7 +61,17 @@ a clock, PID, fixed value, or partially filled buffer. That adapter makes a
 simulation stream nondeterministic; it does **not** turn Park-Miller into a
 cryptographically secure generator. `random_next`, `random_below`, and
 `random_fill_bytes` must never produce keys, passwords, salts, tokens, or
-nonces. Security-sensitive callers must use the platform entropy API directly.
+nonces. Security-sensitive callers must use `entropy_fill` in
+[`stdlib/entropy/linux_x86_64.kofun`](../entropy/linux_x86_64.kofun), which fills
+a caller's buffer from `getrandom(2)` completely or returns an error.
+
+"Use the platform entropy API directly" is what this paragraph used to say, and
+it pointed at `random_fill` in `stdlib/linux_x86_64/process.kofun` -- one
+`getrandom(2)` call, which surfaces `EINTR` and returns `Ok(n)` with `n`
+possibly smaller than the buffer. A caller who wanted key material and believed
+that `Ok` would have been handed a partially filled buffer. The retry loop that
+makes this file's eight seeding bytes trustworthy was never available to them;
+`entropy_fill` is that loop, for any length, with the guarantee stated (#1511).
 
 ## Current compiler boundary
 
