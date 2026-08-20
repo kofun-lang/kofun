@@ -11,6 +11,11 @@ jobs:
       # no operator on this line at all — the first census reported the CI
       # workflow as invoking nothing.
       - run: task verify
+      # These two npm commands are Node.js toolchain invocations.
+      - run: npm ci
+      - name: multiline npm command
+        run: |
+          npm run fixture
       - name: names the task runner in prose and runs none of it
         run: |
           echo "task verify is what CI runs"

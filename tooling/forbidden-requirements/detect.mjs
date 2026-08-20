@@ -276,9 +276,9 @@ export const DETECTORS = [
     {
         requirement: 'node',
         kind: 'invoke',
-        predicate: String.raw`$FILES | xargs grep -coE '(^|[|;&(\`]|\$\()[ ]*node[ ]'`,
-        describes: 'Node.js invoked as a command',
-        match: (body, dialect) => body.match(commandPosition('node', dialect)) ?? [],
+        predicate: String.raw`$FILES | xargs grep -coE '(^|[|;&(\`]|\$\(|run:[ ]*|cmd:[ ]*|-[ ]+)[ ]*(node|npm)[ ]'`,
+        describes: 'Node.js or its npm package-manager frontend invoked as a command',
+        match: (body, dialect) => body.match(commandPosition('node|npm', dialect)) ?? [],
     },
     {
         requirement: 'node',
