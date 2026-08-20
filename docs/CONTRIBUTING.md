@@ -55,6 +55,13 @@ a `ready` issue — in particular, re-run the commands in its **Current behavior
 and evidence** section. `main` moves several times an hour here, and an issue's
 stated premise can be stale by the time you pick it up.
 
+[`CONCURRENT_AGENTS.md`](CONCURRENT_AGENTS.md) is the companion contract for
+when more than one contributor — human or agent — is working the repository at
+the same time. Ownership by resource rather than by issue, one checkout per
+session, and one `task verify` at a time are not preferences: five concurrent
+sessions produced seven collisions in two days, and six of the seven were caught
+only because somebody happened to notice.
+
 If no issue exists, a small documentation correction can be submitted
 directly. For changes to language semantics, stable diagnostics, public
 artifact schemas, security boundaries, or release behavior, open or agree on
