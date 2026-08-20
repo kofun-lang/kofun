@@ -1,0 +1,13 @@
+{
+  "issue": 1510,
+  "capability": "buffered-io",
+  "portable": "stdlib/buffered_io/buffered_io.kofun",
+  "portable_sha256": "aac6fc1bd9c01671ab85d681138ad657cd5bf30ef44d0eb5a1c955d5162dee98",
+  "adapter": "stdlib/buffered_io/linux_x86_64.kofun",
+  "adapter_sha256": "2bbccc4f3bd4bd2d2ce6ff4cf1ebfec3cbf8cad6f4cd878d5a8999b71043f447",
+  "oracle": "stdlib/buffered_io/tests/buffered_io_reference.c",
+  "oracle_sha256": "020ec68b445352c5c50bf5d6c6544060c1ecb068112dd581bc4391e729fd94a4",
+  "what_is_proved": "the state machine splits on LF, preserves an empty line, a trailing CR and an interior NUL, joins a line across refills, returns a final line with no terminator, refuses a line the buffer cannot hold together with its terminator, retries EINTR without surfacing it, and answers a read past the end from state without reading",
+  "what_is_not_proved": "that file_read is called with the right descriptor, offset and length; neither half is compiled by any gate",
+  "file_read_executed": false
+}

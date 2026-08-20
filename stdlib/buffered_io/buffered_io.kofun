@@ -1,0 +1,125 @@
+import stdlib.linux_x86_64.bytes
+
+# #1510. The portable half of `buffered-io`: a fixed-capacity buffer and the
+# line-splitting state machine over it. No syscall, and no import that reaches
+# one.
+#
+# `stdlib.linux_x86_64.bytes` is named here and is the only exception, because
+# the byte surface lives there and a buffer is made of bytes. It is portable
+# code under a platform directory name: it calls five things -- `abi_bytes_equal`,
+# `abi_bytes_zeroed`, `abi_load_u8`, `abi_store_u8`, `abi_text_utf8_bytes` --
+# every one a compiler intrinsic, and `grep -cE 'raw_|syscall'` over it is 0.
+# The gate asserts that measurement rather than trusting this comment, so the
+# day it grows a syscall this half stops being portable loudly.
+
+# The byte a line ends at. LF only. A trailing CR is preserved in the returned
+# bytes: a reader that strips it silently makes a decision the caller cannot
+# undo, and a caller that wants it gone can do that itself.
+let BUFFERED_LINE_FEED = 10
+
+# `filled` is how much of `buffer` holds source bytes; `cursor` is where the
+# next unread byte is. `ended` records that the source reported end of input,
+# so the reader never asks again -- reading past the end is answered from
+# state, not from another call.
+type BufferedReader = {
+    buffer: Bytes,
+    filled: Int,
+    cursor: Int,
+    ended: Bool,
+}
+
+# Capacity is fixed at construction and is the maximum length of a line
+# *including* its line feed: a line of `capacity` bytes plus its terminator has
+# nowhere to be seen whole, and is refused rather than silently split.
+fn buffered_reader(capacity: Int) -> Result[BufferedReader, ByteError] {
+    let allocated = bytes_zeroed(capacity)
+    let buffer = match allocated {
+        Ok(value) => value,
+        Err(error) => return Err(error),
+    }
+    return Ok(BufferedReader {
+        buffer: buffer,
+        filled: 0,
+        cursor: 0,
+        ended: false,
+    })
+}
+
+fn buffered_capacity(read reader: BufferedReader) -> Int {
+    return len(reader.buffer)
+}
+
+fn buffered_pending(read reader: BufferedReader) -> Int {
+    return reader.filled - reader.cursor
+}
+
+fn buffered_free(read reader: BufferedReader) -> Int {
+    return len(reader.buffer) - reader.filled
+}
+
+# The offset of the next line feed at or after the cursor, or -1.
+fn buffered_line_end(read reader: BufferedReader) -> Result[Int, ByteError] {
+    let mut offset = reader.cursor
+    while offset < reader.filled {
+        let item = match byte_at(reader.buffer, offset) {
+            Ok(value) => value,
+            Err(error) => return Err(error),
+        }
+        if item == BUFFERED_LINE_FEED {
+            return Ok(offset)
+        }
+        offset = offset + 1
+    }
+    return Ok(0 - 1)
+}
+
+# The bytes in `[cursor, end)`, as a value of their own. `end` is the line
+# feed's offset, or `filled` for a final line that has none.
+fn buffered_slice(
+    read reader: BufferedReader,
+    end: Int
+) -> Result[Bytes, ByteError] {
+    let length = end - reader.cursor
+    let allocated = bytes_zeroed(length)
+    let mut line = match allocated {
+        Ok(value) => value,
+        Err(error) => return Err(error),
+    }
+    let mut offset = 0
+    while offset < length {
+        let item = match byte_at(reader.buffer, reader.cursor + offset) {
+            Ok(value) => value,
+            Err(error) => return Err(error),
+        }
+        match byte_set(line, offset, item) {
+            Ok(_) => {}
+            Err(error) => return Err(error),
+        }
+        offset = offset + 1
+    }
+    return Ok(line)
+}
+
+# Move the unread bytes to the front, so a refill has the whole tail to fill.
+# Nothing is discarded: the bytes already read are the only thing overwritten.
+fn buffered_compact(edit reader: BufferedReader) -> Result[Void, ByteError] {
+    if reader.cursor == 0 {
+        return Ok(())
+    }
+    let pending = reader.filled - reader.cursor
+    let mut offset = 0
+    while offset < pending {
+        let item = match byte_at(reader.buffer, reader.cursor + offset) {
+            Ok(value) => value,
+            Err(error) => return Err(error),
+        }
+        match byte_set(reader.buffer, offset, item) {
+            Ok(_) => {}
+            Err(error) => return Err(error),
+        }
+        offset = offset + 1
+    }
+    reader.filled = pending
+    reader.cursor = 0
+    return Ok(())
+}
