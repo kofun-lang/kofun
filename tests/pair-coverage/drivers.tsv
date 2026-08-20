@@ -127,6 +127,7 @@ stage2
 stage2-events
 stage2-kif-producer
 stage2-pair-calls
+stage2-pair-mirror
 stdlib
 syntax
 task-help
