@@ -1,0 +1,64 @@
+import stdlib.linux_x86_64.abi
+import stdlib.linux_x86_64.bytes
+
+# #1511. The secure-randomness boundary: entropy for keys, nonces, tokens, and
+# salts, obtained completely or not at all.
+#
+# This is deliberately not in `stdlib/random`. That module's adapter seeds a
+# Park-Miller generator from eight bytes and its own README says the result is
+# not cryptographic; `stdlib/random/tests/verify.sh:52` asserts that exactly one
+# file under that directory obtains system entropy, and a second caller added
+# there would break that assertion rather than extend it. The boundary this file
+# draws is the one that sentence points at.
+#
+# The difference from `random_fill` in `stdlib/linux_x86_64/process.kofun` is the
+# whole capability. That function is one `getrandom(2)` call: it surfaces `EINTR`
+# to the caller and returns `Ok(n)` with `n` possibly smaller than the buffer,
+# with nothing saying that is not success. A caller who wanted key material and
+# believed `Ok` would be handed a partially filled buffer. Here, `Ok(())` means
+# every byte of the destination came from `getrandom(2)`, and anything else is an
+# `Err`.
+
+type EntropyError =
+    | EntropySystem(SysError)
+    | EntropyImpossibleCount(Int)
+
+# `flags` is not a parameter, and that is a decision rather than an omission.
+# `GRND_RANDOM` and `GRND_NONBLOCK` change whether the call blocks, and a
+# capability whose blocking behaviour depends on a caller-supplied integer cannot
+# state one guarantee. v1 is the blocking, initialised-pool call: flags 0.
+#
+# A zero-length destination succeeds without calling the syscall. That is the
+# loop condition rather than a special case, and it is asserted so it stays one.
+fn entropy_fill(edit destination: Bytes) -> Result[Void, EntropyError] {
+    let total = len(destination)
+    let mut offset = 0
+    while offset < total {
+        let address = abi_bytes_edit_address(destination, offset)
+        let attempt = syscall_result(
+            "getrandom",
+            raw_getrandom(address, total - offset, 0),
+        )
+        match attempt {
+            Ok(received) => {
+                # A count of zero would loop forever and a count past the
+                # remaining space would write outside it; the kernel promises
+                # neither can happen, so both are reported rather than trusted.
+                if received <= 0 || received > total - offset {
+                    return Err(EntropyImpossibleCount(received))
+                }
+                offset = offset + received
+            }
+            Err(error) if error.errno == EINTR => {
+                # Retry. `getrandom(2)` is interruptible before it has filled
+                # anything, and an interrupted call is not a failure of the
+                # pool. The offset is unchanged, so the retry asks for exactly
+                # what is still missing.
+            }
+            Err(error) => {
+                return Err(EntropySystem(error))
+            }
+        }
+    }
+    return Ok(())
+}

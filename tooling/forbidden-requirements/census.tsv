@@ -115,6 +115,7 @@ cc	invoke	2	required-today	required	framework/tui/check.sh
 cc	invoke	1	required-today	required	spec/kif-generics-v1/check.mjs
 cc	invoke	1	required-today	required	spec/roadmap-31-34/verify-current-gates.sh
 cc	invoke	1	required-today	required	stdlib/date_time/tests/verify.sh
+cc	invoke	1	required-today	required	stdlib/entropy/tests/verify.sh
 cc	invoke	1	required-today	required	stdlib/random/tests/verify.sh
 cc	invoke	2	required-today	required	tests/artifact-qualification/check.sh
 cc	invoke	1	required-today	required	tests/build_system.sh
@@ -545,6 +546,7 @@ shell-build-driver	source	1	required-today	required	stdlib/clock/tests/verify.sh
 shell-build-driver	source	1	required-today	required	stdlib/csv/tests/verify.sh
 shell-build-driver	source	1	required-today	required	stdlib/date_time/tests/verify.sh
 shell-build-driver	source	1	required-today	required	stdlib/decimal/tests/verify.sh
+shell-build-driver	source	1	required-today	required	stdlib/entropy/tests/verify.sh
 shell-build-driver	source	1	required-today	required	stdlib/json/tests/verify.sh
 shell-build-driver	source	1	required-today	required	stdlib/list/tests/verify.sh
 shell-build-driver	source	1	required-today	required	stdlib/logging/tests/verify.sh

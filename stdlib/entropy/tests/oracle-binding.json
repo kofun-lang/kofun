@@ -1,0 +1,11 @@
+{
+  "issue": 1511,
+  "capability": "secure-randomness",
+  "adapter": "stdlib/entropy/linux_x86_64.kofun",
+  "adapter_sha256": "9017563061f72f227e5bb8c8a5b482ea72e7a72bf33cba6f41ab5cbf0496818e",
+  "oracle": "stdlib/entropy/tests/entropy_reference.c",
+  "oracle_sha256": "4042a801ce6c767a3ccb0b023ea710e6e8c05799333a8675f1fa9328c6b76fb0",
+  "what_is_proved": "the fill loop retries EINTR, continues from the offset already filled, refuses a count of zero or one past the remaining space, stops on any other error, and calls nothing for an empty destination",
+  "what_is_not_proved": "that the real getrandom(2) is called with the right arguments; the adapter is not compiled by any gate",
+  "syscall_executed": false
+}
