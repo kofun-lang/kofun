@@ -81,6 +81,7 @@ run_degraded() {
     expected=$3
     set +e
     KOFUN_C_ABI_WORK="$WORK/c-abi-work" \
+        KOFUN_C_ABI_BUILD_DIR="$WORK/c-abi-build" \
         PATH="$WORK/bin" sh "$ROOT/$script" \
         >"$WORK/$label.stdout" 2>"$WORK/$label.stderr"
     status=$?
@@ -94,6 +95,8 @@ run_degraded c-abi bootstrap/c_abi/check.sh \
     'SKIP: dynamic linkage of the C ABI output (readelf unavailable)'
 assert_executable 'degraded C ABI executable in private work directory' \
     "$WORK/c-abi-work/kofun-caller"
+assert_executable 'degraded driver compiler in private C ABI build directory' \
+    "$WORK/c-abi-build/kofun-c-abi"
 # The claim its `readelf` reads must not be printed when it did not read it.
 if grep -Fq 'PASS: the C ABI output is a dynamically linked executable' \
     "$WORK/c-abi.stdout"
