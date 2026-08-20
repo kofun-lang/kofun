@@ -116,7 +116,7 @@
       "public_status": "bounded stage-1 generator; raw and trusted, not safe",
       "state": "checkpoint",
       "area": "interop",
-      "bounded_capability": "One self-contained C header becomes raw `extern \"C\"` declarations in the checked C ABI profile plus a machine-readable audit report, deterministically and with the interpretation context pinned by a digest. Sizes, alignments, field offsets, enum values, and the calling convention are verified against the C compiler rather than recorded from the generator's own arithmetic. Constructs outside the profile \u2014 macros, variadics, unions, bitfields, flexible arrays, inline functions, explicit calling conventions \u2014 are reported with a reason and never bound. Generated code declares `trust raw-foreign` in its own source, so an ordinary import of it is refused and a rename cannot change that; it is marked `raw-trusted-foreign` and is not safe: pointer ownership, lifetime, thread affinity, callback duration, and error conventions are recorded as unreviewed review rows, not checked. Arbitrary C is not supported, a safe facade is hand-written reviewed work, and `kofun migrate-c` does not exist.",
+      "bounded_capability": "One self-contained C header becomes raw `extern \"C\"` declarations in the checked C ABI profile plus a machine-readable audit report, deterministically and with the interpretation context pinned by a digest. Sizes, alignments, field offsets, enum values, and the calling convention are verified against the C compiler rather than recorded from the generator's own arithmetic. Constructs outside the profile — macros, variadics, unions, bitfields, flexible arrays, inline functions, explicit calling conventions — are reported with a reason and never bound. Generated code declares `trust raw-foreign` in its own source, so an ordinary import of it is refused and a rename cannot change that; it is marked `raw-trusted-foreign` and is not safe: pointer ownership, lifetime, thread affinity, callback duration, and error conventions are recorded as unreviewed review rows, not checked. Arbitrary C is not supported, a safe facade is hand-written reviewed work, and `kofun migrate-c` does not exist.",
       "targets": [
         "host-c",
         "linux-x86_64"
@@ -183,6 +183,44 @@
       },
       "reproduction": {
         "command": "task stage2",
+        "prerequisites": []
+      }
+    },
+    {
+      "id": "bounded-bytes",
+      "public_wording": "bounded Bytes[65536] carrier and mutation on C11 Stage 2",
+      "public_status": "uniquely-owned byte buffer with checked read/write, clear, reserve, append, append-range and self-append; exact bounded growth and transactional failure; no Text bridge",
+      "state": "implemented",
+      "area": "c-backend",
+      "bounded_capability": "A uniquely-owned byte buffer bounded at 65,536 bytes, with length, capacity, checked byte read and write, clear, reserve, single-byte append, append of a range from a second carrier, and append of a range of itself. Growth is exact: capacity 0 grows to 16, then doubles until the request fits, capped at the ceiling. Every failure is transactional, leaving length, capacity, pointer and bytes unchanged, including under an injected allocation failure. It is not a general buffer, has no Text bridge, and is observable from source only through length and capacity.",
+      "targets": [
+        "c11",
+        "stage2"
+      ],
+      "specification": [
+        "spec/bytes-bounded-v1.md",
+        "docs/MEMORY_MODEL.md"
+      ],
+      "compatibility": "The 65,536 ceiling, the three-field carrier layout, and the 0..8 status tag values are frozen; tags 6..8 are reserved for the Text bridge and unused. Widenings arrive as new operations rather than as changes to these.",
+      "positive_gate": {
+        "command": "task bytes-mutation",
+        "observation": "The growth ladder, a copy between carriers, a self append and clear execute identically at -O0 and -O2 under ASan/UBSan."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": "tests/conformance/bytes-mutation/same_carrier.kofun",
+        "observation": "One value in both positions of append_range is refused as E2S177 and commits no C."
+      },
+      "safety": {
+        "classification": "memory-safety",
+        "threat_model": "docs/MEMORY_MODEL.md",
+        "negative_test": "tests/conformance/bytes-carrier/alias_initializer.kofun"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "task bytes-mutation",
         "prerequisites": []
       }
     },
@@ -748,7 +786,7 @@
       "negative_boundary": {
         "kind": "rejection",
         "evidence": "tests/conformance/syntax/issues_35_47/enum_payload_unsupported_field.kofun",
-        "observation": "Enum shapes outside the slice \u2014 a non-`Int` payload, more than one payload field, or a payload arity the pattern does not match \u2014 are refused rather than silently accepted."
+        "observation": "Enum shapes outside the slice — a non-`Int` payload, more than one payload field, or a payload arity the pattern does not match — are refused rather than silently accepted."
       },
       "safety": {
         "classification": "none"
