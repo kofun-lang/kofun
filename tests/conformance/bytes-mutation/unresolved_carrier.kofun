@@ -1,0 +1,5 @@
+fn main() -> Int {
+    let b = stage2_bytes_empty()
+    stage2_bytes_append_range(b, stage2_bytes_empty(), 0, 0)
+    return 0
+}

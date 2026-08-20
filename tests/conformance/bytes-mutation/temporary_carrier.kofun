@@ -1,0 +1,9 @@
+# #1321. A carrier slot holding a temporary. `stage2_bytes_empty()` is an
+# admitted owning origin, but it is not a binding, so there is nothing to take
+# the address of -- the emitted C was `&stage2_bytes_empty()` and the author
+# was sent to `lvalue required as unary '&' operand` at a byte offset in
+# generated code.
+fn main() -> Int {
+    print(stage2_bytes_len(stage2_bytes_empty()))
+    return 0
+}

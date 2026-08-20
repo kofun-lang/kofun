@@ -1,0 +1,27 @@
+# #1321. The mutation surface as a source program. What a source can observe
+# is `len` and `capacity`; the status and the read carrier are private to the
+# emitted C and are proved by the driver beside this file.
+#
+# The two printed numbers are the growth ladder and the copy, so a defect in
+# either is a diff here rather than a silent pass.
+fn main() -> Int {
+    let source = stage2_bytes_empty()
+    stage2_bytes_append(source, 0)
+    stage2_bytes_append(source, 127)
+    stage2_bytes_append(source, 128)
+    stage2_bytes_append(source, 255)
+    stage2_bytes_byte_set(source, 0, 65)
+    stage2_bytes_byte_at(source, 0)
+
+    let destination = stage2_bytes_empty()
+    stage2_bytes_reserve(destination, 8)
+    stage2_bytes_append_range(destination, source, 0, 4)
+    stage2_bytes_append_self(destination, 0, 4)
+    print(stage2_bytes_len(destination))
+    print(stage2_bytes_capacity(destination))
+
+    stage2_bytes_clear(destination)
+    print(stage2_bytes_len(destination))
+    print(stage2_bytes_capacity(destination))
+    return 0
+}

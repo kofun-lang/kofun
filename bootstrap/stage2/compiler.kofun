@@ -4596,7 +4596,10 @@ fn emit_argument(
             return value
         }
         if mode == "read" || mode == "edit" {
-            return "&" + value
+            # #1321. Not always `&`: a borrow parameter is already the
+            # address. See `bytes_borrow_address`, which owns the rule and
+            # the measurement that found this.
+            return bytes_borrow_address(hir, cursor, value)
         }
         if mode == "take" {
             return "kofun_bytes_take(&" + value + ")"
@@ -4963,6 +4966,199 @@ fn bytes_parameter_discards(
         cursor = skip_trivia(source, token_end(source, separator))
     }
     return out
+}
+
+# #1321. The nine operations of the bounded mutation surface, named once so
+# the lowering, the three builtin tables, and `source_uses_bytes` cannot drift
+# into four vocabularies of the same set.
+fn bytes_mutation_builtin(name: Text) -> Bool {
+    return name == "stage2_bytes_len" ||
+    name == "stage2_bytes_capacity" ||
+    name == "stage2_bytes_byte_at" ||
+    name == "stage2_bytes_byte_set" ||
+    name == "stage2_bytes_clear" ||
+    name == "stage2_bytes_reserve" ||
+    name == "stage2_bytes_append" ||
+    name == "stage2_bytes_append_range" ||
+    name == "stage2_bytes_append_self"
+}
+
+# #1321. How many leading arguments of a mutation operation are carriers.
+# Every one of them takes its carriers first, so a count is enough to decide
+# which arguments lower as addresses and which as `Int` expressions.
+fn bytes_mutation_carriers(name: Text) -> Int {
+    if name == "stage2_bytes_append_range" {
+        return 2
+    }
+    if bytes_mutation_builtin(name) {
+        return 1
+    }
+    return 0
+}
+
+# #1321. The address of a Bytes carrier, which is not always `&`.
+#
+# A local owner is a `KofunBytesValue`, so its address is `&k_bN`. A `read` or
+# `edit` parameter is *already* the address: the declarator at the head of the
+# function is `const KofunBytesValue *k_bN`, so prefixing `&` produces
+# `KofunBytesValue **` and the emitted C does not compile. Measured on
+# `origin/main@f42cfdd3`, which is #1315 as shipped:
+#
+#     fn inner(read b: Bytes) -> Int { return 7 }
+#     fn outer(read b: Bytes) -> Int { return inner(b) }
+#     error: passing argument 1 of `kofun_fn_inner` from incompatible
+#            pointer type
+#
+# #1315 admitted the borrow and shipped no fixture that lent one onward, so
+# nothing reached the second case. The ownership mode is field 6 of the typed
+# HIR binding record, which is where the parameter head already recorded it --
+# re-deriving it from the source would be a second copy of one fact.
+fn bytes_borrow_address(hir: Text, cursor: Int, value: Text) -> Text {
+    let mode = hir_binding_field(hir, hir_use_binding_id(hir, cursor), 6)
+    if mode == "read" || mode == "edit" {
+        return value
+    }
+    return "&" + value
+}
+
+# #1321. One argument of a mutation call, lowered as a carrier address.
+fn bytes_carrier_address(
+    source: Text,
+    hir: Text,
+    cursor: Int,
+    end: Int
+) -> Text {
+    let value = emit_expression(source, hir, cursor, end)
+    if starts_with(value, "error[") {
+        return value
+    }
+    return bytes_borrow_address(hir, cursor, value)
+}
+
+# #1321. `stage2_bytes_append_range` copies between two carriers with
+# `memcpy`, which is undefined on overlapping storage. Two distinct typed-HIR
+# BindingIds are what proves the two carriers are different values, and under
+# #1315's alias refusal two different Bytes values never share storage -- so
+# the identity check here is the whole overlap argument, made before any C is
+# emitted rather than defended at run time.
+#
+# An unresolved identity is refused with the same code rather than admitted:
+# a destination the typed HIR could not resolve is one whose overlap nothing
+# proved, and admitting it would make the guarantee depend on how well the
+# resolver happened to do.
+#
+# The author is sent to `stage2_bytes_append_self`, which is defined for
+# overlap and uses `memmove`.
+#
+# Both sentences are kept under the typed sidecar's frozen
+# `KOFUN_SEMANTIC_ERROR_DETAIL_BYTES` of 160. The semantic producer copies a
+# diagnostic into a `char detail[160]` and truncates silently; `stage2-events`
+# catches it only because it compares the producer against the compiler
+# authority. The first draft of this refusal was 185 bytes and the longest
+# existing Stage 2 golden is 142, so nothing had reached the bound before.
+fn bytes_unresolved_carrier_error(offset: Int) -> Text {
+    return lower_error(
+        "E2S177",
+        "Stage 2 bounded Bytes operations need a named carrier binding, " +
+        "not a temporary",
+        offset
+    )
+}
+
+fn bytes_distinct_carriers_error(
+    destination: Text,
+    lender: Text,
+    offset: Int
+) -> Text {
+    if destination == lender {
+        return lower_error(
+            "E2S177",
+            "Stage 2 `stage2_bytes_append_range` needs two distinct Bytes " +
+            "values; append a value to itself with " +
+            "`stage2_bytes_append_self`",
+            offset
+        )
+    }
+    return ""
+}
+
+# #1321. The whole family lowers through one function, because the shape of
+# the call is the same for all nine: the leading `bytes_mutation_carriers`
+# arguments become carrier addresses and the rest are ordinary `Int`
+# expressions. A tenth operation needs a row in the tables, not a tenth
+# branch.
+#
+# This is a top-level function rather than a block inside `emit_expression`
+# for the reason #1483 measures: Stage 2 admits 256 lexical uses per function
+# and `emit_expression` is the largest one in the pair.
+fn emit_bytes_mutation_call(
+    source: Text,
+    hir: Text,
+    name: Text,
+    call_start: Int,
+    open: Int
+) -> Text {
+    let carriers = bytes_mutation_carriers(name)
+    let arity = builtin_arity(name)
+    let mut rendered = ""
+    let mut index = 0
+    let mut argument = skip_trivia(source, token_end(source, open))
+    let mut destination = ""
+    let mut lender = ""
+    while index < arity {
+        let argument_stop = argument_end(source, argument)
+        let mut lowered = ""
+        if index < carriers {
+            # #1321. The identity is settled before anything is emitted. A
+            # carrier slot holding an expression the typed HIR did not resolve
+            # to a binding is a temporary, and the address of a temporary is
+            # not an lvalue -- `stage2_bytes_len(stage2_bytes_empty())` used to
+            # emit `&stage2_bytes_empty()` and send the author to a byte offset
+            # in generated C. It is refused here, under the same code as the
+            # two-carrier identity failure, because it is the same fact: an
+            # operation on a carrier needs a carrier it can name.
+            let resolved = hir_use_binding_id(hir, argument)
+            if len(resolved) == 0 {
+                return bytes_unresolved_carrier_error(call_start)
+            }
+            if index == 0 {
+                destination = resolved
+            } else {
+                lender = resolved
+            }
+            lowered = bytes_carrier_address(
+                source,
+                hir,
+                argument,
+                argument_stop
+            )
+        } else {
+            lowered = emit_expression(source, hir, argument, argument_stop)
+        }
+        if starts_with(lowered, "error[") {
+            return lowered
+        }
+        if index > 0 {
+            rendered = rendered + ", "
+        }
+        rendered = rendered + lowered
+        index = index + 1
+        if index < arity {
+            let separator = skip_trivia(source, argument_stop)
+            argument = skip_trivia(source, token_end(source, separator))
+        }
+    }
+    if carriers == 2 {
+        let refusal = bytes_distinct_carriers_error(
+            destination,
+            lender,
+            call_start
+        )
+        if len(refusal) > 0 {
+            return refusal
+        }
+    }
+    return name + "(" + rendered + ")"
 }
 
 # #1315. The one refusal this backend owns, in one place on each half of the
@@ -6030,7 +6226,13 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
             let destination_end = argument_end(source, destination)
             let separator = skip_trivia(source, destination_end)
             let requested = skip_trivia(source, token_end(source, separator))
-            let carrier = emit_expression(
+            # #1321. The address, not `&` -- an `edit` borrow parameter is
+            # already the address. `stage2_bytes_assign_zeroed(b, 4)` inside
+            # `fn writes(edit b: Bytes)` emitted `&k_b0` on a
+            # `KofunBytesValue *` and the emitted C did not compile, which is
+            # the same defect `bytes_borrow_address` records, in the one
+            # lowering that predates it.
+            let carrier = bytes_carrier_address(
                 source, hir, destination, destination_end)
             if starts_with(carrier, "error[") {
                 return carrier
@@ -6040,8 +6242,16 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
             if starts_with(length, "error[") {
                 return length
             }
-            return "stage2_bytes_assign_zeroed(&" + carrier + ", " +
+            return "stage2_bytes_assign_zeroed(" + carrier + ", " +
                 length + ")"
+        }
+        # #1321. The bounded mutation surface, lowered through one function.
+        # Its carriers take the same address treatment the producer above
+        # takes, and for the same reason: a builtin has no source declaration
+        # for `emit_argument` to read a mode from.
+        if open < end && token_text(source, open) == "(" &&
+           bytes_mutation_builtin(name) {
+            return emit_bytes_mutation_call(source, hir, name, cursor, open)
         }
         # `to_text(Int)` lowers beside `len`, the other one-argument builtin
         # the ordinary Core path emits directly.
@@ -6673,6 +6883,25 @@ fn builtin_arity(name: Text) -> Int {
     if name == "stage2_bytes_assign_zeroed" {
         return 2
     }
+    # #1321. The bounded mutation surface. `len` and `capacity` answer about
+    # the carrier; `clear` empties it. `byte_at`, `reserve`, and `append`
+    # take one `Int` beside it, `byte_set` and `append_self` take two, and
+    # `append_range` takes a second carrier and two.
+    if name == "stage2_bytes_len" || name == "stage2_bytes_capacity" ||
+       name == "stage2_bytes_clear" {
+        return 1
+    }
+    if name == "stage2_bytes_byte_at" || name == "stage2_bytes_reserve" ||
+       name == "stage2_bytes_append" {
+        return 2
+    }
+    if name == "stage2_bytes_byte_set" ||
+       name == "stage2_bytes_append_self" {
+        return 3
+    }
+    if name == "stage2_bytes_append_range" {
+        return 4
+    }
     if name == "chars" || name == "is_digit" || name == "is_space" ||
        name == "is_xid_continue" || name == "len" || name == "read_text" ||
        name == "to_text" || name == "trim" ||
@@ -6698,6 +6927,21 @@ fn builtin_parameter_types(name: Text) -> Text {
     }
     if name == "stage2_bytes_assign_zeroed" {
         return "Bytes|Int"
+    }
+    if name == "stage2_bytes_len" || name == "stage2_bytes_capacity" ||
+       name == "stage2_bytes_clear" {
+        return "Bytes"
+    }
+    if name == "stage2_bytes_byte_at" || name == "stage2_bytes_reserve" ||
+       name == "stage2_bytes_append" {
+        return "Bytes|Int"
+    }
+    if name == "stage2_bytes_byte_set" ||
+       name == "stage2_bytes_append_self" {
+        return "Bytes|Int|Int"
+    }
+    if name == "stage2_bytes_append_range" {
+        return "Bytes|Bytes|Int|Int"
     }
     if name == "chars" || name == "is_digit" || name == "is_space" ||
        name == "is_xid_continue" || name == "read_text" || name == "trim" ||
@@ -7629,7 +7873,8 @@ fn validate_core_calls(source: Text, hir: Text) -> Text {
                     if name == "len" || name == "text_slice" ||
                        name == "to_text" ||
                        name == "stage2_bytes_empty" ||
-                       name == "stage2_bytes_assign_zeroed" {
+                       name == "stage2_bytes_assign_zeroed" ||
+                       bytes_mutation_builtin(name) {
                         expected = builtin_expected
                     } else {
                         return "error[E2S10]: unsupported Core builtin call `" +
@@ -11784,6 +12029,21 @@ fn builtin_return_type(name: Text) -> Text {
     if name == "stage2_bytes_assign_zeroed" {
         return "Void"
     }
+    # #1321. `len` and `capacity` are the two operations whose result is an
+    # ordinary `Int`, so they are the two a source program can use.
+    if name == "stage2_bytes_len" || name == "stage2_bytes_capacity" {
+        return "Int"
+    }
+    # #1321. `Void` for the same reason `stage2_bytes_assign_zeroed` is:
+    # the status and the `Stage2ByteRead` carrier are private to the emitted
+    # C and are proved there. Surfacing either needs a compiler-owned enum
+    # declaration, and Stage 2 resolves an enum by scanning the source for
+    # its `type` declaration -- a type the compiler owns has no declaration
+    # site to be found at. The consumer that needs the byte in source is
+    # #1499, and it is where that mechanism belongs.
+    if bytes_mutation_builtin(name) {
+        return "Void"
+    }
     return ""
 }
 
@@ -15616,13 +15876,29 @@ fn lower_body(
                 # deliberately excluded: `main` already appends its own status
                 # return, and an enum or record result needs its own C shape
                 # rather than the `int64_t` this emits.
+                # #1321. A statement is the one expression position that
+                # dropped a refusal. Both arms below concatenated
+                # `emit_expression` straight into the emitted C, so a call
+                # that refused emitted `(void)error[E2S177]: ...;` and the
+                # host compiler reported an undeclared `error` at a byte
+                # offset in generated C. Every other caller of
+                # `emit_expression` already tests this; these two did not.
+                let statement_value = emit_expression(
+                    source,
+                    hir,
+                    cursor,
+                    value_end
+                )
+                if starts_with(statement_value, "error[") {
+                    return statement_value
+                }
                 if !is_main && append_default && !returns_enum &&
                    !returns_record && !returns_list_int &&
                    after < len(source) && token_text(source, after) == "}" {
                     emitted = emitted +
                     "    {\n" +
                     "        int64_t kofun_result = " +
-                    emit_expression(source, hir, cursor, value_end) + ";\n" +
+                    statement_value + ";\n" +
                     "        if (kofun_failed) return " + failure_result + ";\n" +
                     bytes_cleanup +
                 "        return kofun_result;\n" +
@@ -15630,7 +15906,7 @@ fn lower_body(
                     returned = true
                 } else {
                     emitted = emitted + "    (void)" +
-                    emit_expression(source, hir, cursor, value_end) + ";\n" +
+                    statement_value + ";\n" +
                     "    if (kofun_failed) return " + failure_result + ";\n"
                 }
                 cursor = skip_trivia(source, value_end)
@@ -16676,6 +16952,171 @@ fn bytes_carrier_prelude() -> Text {
     "    destination->capacity = (uint64_t)length;\n" +
     "    destination->data = fresh;\n" +
     "    return kofun_bytes_status(KOFUN_BYTES_SUCCEEDED, 0);\n" +
+    "}\n" +
+    # #1321. The bounded mutation surface over the carrier above. Three
+    # things are frozen here rather than described in prose: the growth
+    # ladder (capacity 0 -> 16, then doubling until the request fits, capped
+    # at the 65,536 ceiling), the order the range checks run in, and which
+    # operand a refusal reports.
+    #
+    # `kofun_bytes_range` never computes `offset + count`. Two in-range
+    # operands can sum past the ceiling, and a refusal that depends on that
+    # sum is one a wrap can skip; subtraction against the length cannot
+    # overflow, and it refuses the same cases.
+    #
+    # Growth is transactional for the same reason `stage2_bytes_assign_zeroed`
+    # is: the fresh allocation is taken and filled before the old pointer is
+    # released, so every failure leaves length, capacity, pointer, and bytes
+    # exactly as it found them.
+    #
+    # The read carrier is emitted exactly once, here, with its three tags in
+    # declaration order 0..2. It is a separate outcome from the 0..8 status
+    # above and carries no consumed tag; #1322's Text bridge extends that
+    # status and must not redeclare either.
+    "enum { KOFUN_BYTES_GROWTH_FLOOR = 16 };\n" +
+    "typedef struct { int64_t tag; int64_t detail; } Stage2ByteRead;\n" +
+    "enum {\n" +
+    "    KOFUN_BYTE_VALUE = 0,\n" +
+    "    KOFUN_BYTE_READ_NEGATIVE_OFFSET = 1,\n" +
+    "    KOFUN_BYTE_READ_OUT_OF_BOUNDS = 2\n" +
+    "};\n" +
+    "static inline Stage2ByteRead kofun_byte_read(int64_t tag, int64_t detail) {\n" +
+    "    Stage2ByteRead read; read.tag = tag; read.detail = detail; return read;\n" +
+    "}\n" +
+    "static inline int64_t stage2_bytes_len(const KofunBytesValue *value) {\n" +
+    "    return (int64_t)value->length;\n" +
+    "}\n" +
+    "static inline int64_t stage2_bytes_capacity(const KofunBytesValue *value) {\n" +
+    "    return (int64_t)value->capacity;\n" +
+    "}\n" +
+    "static inline Stage2ByteRead stage2_bytes_byte_at(\n" +
+    "    const KofunBytesValue *value, int64_t offset) {\n" +
+    "    if (offset < 0) {\n" +
+    "        return kofun_byte_read(KOFUN_BYTE_READ_NEGATIVE_OFFSET, offset);\n" +
+    "    }\n" +
+    "    if ((uint64_t)offset >= value->length) {\n" +
+    "        return kofun_byte_read(KOFUN_BYTE_READ_OUT_OF_BOUNDS, offset);\n" +
+    "    }\n" +
+    "    return kofun_byte_read(KOFUN_BYTE_VALUE, (int64_t)value->data[offset]);\n" +
+    "}\n" +
+    "static inline KofunBytesStatus stage2_bytes_byte_set(\n" +
+    "    KofunBytesValue *value, int64_t offset, int64_t item) {\n" +
+    "    if (offset < 0 || (uint64_t)offset >= value->length) {\n" +
+    "        return kofun_bytes_status(KOFUN_BYTES_RANGE_OUT_OF_BOUNDS, offset);\n" +
+    "    }\n" +
+    "    if (item < 0 || item > 255) {\n" +
+    "        return kofun_bytes_status(KOFUN_BYTES_INVALID_BYTE, item);\n" +
+    "    }\n" +
+    "    value->data[offset] = (unsigned char)item;\n" +
+    "    return kofun_bytes_status(KOFUN_BYTES_SUCCEEDED, 0);\n" +
+    "}\n" +
+    "static inline void stage2_bytes_clear(KofunBytesValue *value) {\n" +
+    "    value->length = UINT64_C(0);\n" +
+    "}\n" +
+    "static inline KofunBytesStatus kofun_bytes_grow(\n" +
+    "    KofunBytesValue *value, int64_t requested) {\n" +
+    "    if (requested > KOFUN_BYTES_CAPACITY_LIMIT) {\n" +
+    "        return kofun_bytes_status(KOFUN_BYTES_CAPACITY_EXCEEDED, requested);\n" +
+    "    }\n" +
+    "    if ((uint64_t)requested <= value->capacity) {\n" +
+    "        return kofun_bytes_status(KOFUN_BYTES_SUCCEEDED, 0);\n" +
+    "    }\n" +
+    "    int64_t target = (int64_t)value->capacity;\n" +
+    "    if (target < KOFUN_BYTES_GROWTH_FLOOR) {\n" +
+    "        target = KOFUN_BYTES_GROWTH_FLOOR;\n" +
+    "    }\n" +
+    "    while (target < requested) {\n" +
+    "        target = target * 2;\n" +
+    "        if (target > KOFUN_BYTES_CAPACITY_LIMIT) {\n" +
+    "            target = KOFUN_BYTES_CAPACITY_LIMIT;\n" +
+    "        }\n" +
+    "    }\n" +
+    "    unsigned char *fresh =\n" +
+    "        (unsigned char *)kofun_bytes_allocate((size_t)target);\n" +
+    "    if (fresh == NULL) {\n" +
+    "        return kofun_bytes_status(KOFUN_BYTES_ALLOCATION_FAILED, target);\n" +
+    "    }\n" +
+    "    if (value->length > 0) {\n" +
+    "        memcpy(fresh, value->data, (size_t)value->length);\n" +
+    "    }\n" +
+    "    if (value->data != NULL) free(value->data);\n" +
+    "    value->capacity = (uint64_t)target;\n" +
+    "    value->data = fresh;\n" +
+    "    return kofun_bytes_status(KOFUN_BYTES_SUCCEEDED, 0);\n" +
+    "}\n" +
+    "static inline KofunBytesStatus stage2_bytes_reserve(\n" +
+    "    KofunBytesValue *value, int64_t capacity) {\n" +
+    "    if (capacity < 0) {\n" +
+    "        return kofun_bytes_status(KOFUN_BYTES_NEGATIVE_LENGTH, capacity);\n" +
+    "    }\n" +
+    "    return kofun_bytes_grow(value, capacity);\n" +
+    "}\n" +
+    "static inline KofunBytesStatus stage2_bytes_append(\n" +
+    "    KofunBytesValue *value, int64_t item) {\n" +
+    "    if (item < 0 || item > 255) {\n" +
+    "        return kofun_bytes_status(KOFUN_BYTES_INVALID_BYTE, item);\n" +
+    "    }\n" +
+    "    KofunBytesStatus grown = kofun_bytes_grow(\n" +
+    "        value, (int64_t)value->length + 1);\n" +
+    "    if (grown.tag != KOFUN_BYTES_SUCCEEDED) {\n" +
+    "        return grown;\n" +
+    "    }\n" +
+    "    value->data[value->length] = (unsigned char)item;\n" +
+    "    value->length += UINT64_C(1);\n" +
+    "    return kofun_bytes_status(KOFUN_BYTES_SUCCEEDED, 0);\n" +
+    "}\n" +
+    "static inline KofunBytesStatus kofun_bytes_range(\n" +
+    "    int64_t length, int64_t offset, int64_t count) {\n" +
+    "    if (offset < 0) {\n" +
+    "        return kofun_bytes_status(KOFUN_BYTES_RANGE_OUT_OF_BOUNDS, offset);\n" +
+    "    }\n" +
+    "    if (count < 0) {\n" +
+    "        return kofun_bytes_status(KOFUN_BYTES_RANGE_OUT_OF_BOUNDS, count);\n" +
+    "    }\n" +
+    "    if (offset > length) {\n" +
+    "        return kofun_bytes_status(KOFUN_BYTES_RANGE_OUT_OF_BOUNDS, offset);\n" +
+    "    }\n" +
+    "    if (count > length - offset) {\n" +
+    "        return kofun_bytes_status(KOFUN_BYTES_RANGE_OUT_OF_BOUNDS, count);\n" +
+    "    }\n" +
+    "    return kofun_bytes_status(KOFUN_BYTES_SUCCEEDED, 0);\n" +
+    "}\n" +
+    "static inline KofunBytesStatus stage2_bytes_append_range(\n" +
+    "    KofunBytesValue *destination, const KofunBytesValue *source,\n" +
+    "    int64_t offset, int64_t count) {\n" +
+    "    KofunBytesStatus ranged = kofun_bytes_range(\n" +
+    "        (int64_t)source->length, offset, count);\n" +
+    "    if (ranged.tag != KOFUN_BYTES_SUCCEEDED) {\n" +
+    "        return ranged;\n" +
+    "    }\n" +
+    "    KofunBytesStatus grown = kofun_bytes_grow(\n" +
+    "        destination, (int64_t)destination->length + count);\n" +
+    "    if (grown.tag != KOFUN_BYTES_SUCCEEDED) {\n" +
+    "        return grown;\n" +
+    "    }\n" +
+    "    if (count > 0) {\n" +
+    "        memcpy(destination->data + destination->length,\n" +
+    "            source->data + offset, (size_t)count);\n" +
+    "    }\n" +
+    "    destination->length += (uint64_t)count;\n" +
+    "    return kofun_bytes_status(KOFUN_BYTES_SUCCEEDED, 0);\n" +
+    "}\n" +
+    "static inline KofunBytesStatus stage2_bytes_append_self(\n" +
+    "    KofunBytesValue *value, int64_t offset, int64_t count) {\n" +
+    "    int64_t length = (int64_t)value->length;\n" +
+    "    KofunBytesStatus ranged = kofun_bytes_range(length, offset, count);\n" +
+    "    if (ranged.tag != KOFUN_BYTES_SUCCEEDED) {\n" +
+    "        return ranged;\n" +
+    "    }\n" +
+    "    KofunBytesStatus grown = kofun_bytes_grow(value, length + count);\n" +
+    "    if (grown.tag != KOFUN_BYTES_SUCCEEDED) {\n" +
+    "        return grown;\n" +
+    "    }\n" +
+    "    if (count > 0) {\n" +
+    "        memmove(value->data + length, value->data + offset, (size_t)count);\n" +
+    "    }\n" +
+    "    value->length = (uint64_t)(length + count);\n" +
+    "    return kofun_bytes_status(KOFUN_BYTES_SUCCEEDED, 0);\n" +
     "}\n"
 }
 
@@ -16689,7 +17130,8 @@ fn source_uses_bytes(source: Text) -> Bool {
     while cursor < len(source) {
         let token = token_text(source, cursor)
         if token == "stage2_bytes_empty" ||
-           token == "stage2_bytes_assign_zeroed" || token == "Bytes" {
+           token == "stage2_bytes_assign_zeroed" || token == "Bytes" ||
+           bytes_mutation_builtin(token) {
             return true
         }
         cursor = skip_trivia(source, token_end(source, cursor))
