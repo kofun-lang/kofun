@@ -1169,6 +1169,20 @@ tasks:
       - "sh tests/pair-coverage/check.sh"
       - "sh tests/pair-coverage/prove.sh build/{{.NAMESPACE}}pair-coverage-proof"
 
+  # Every call in the Stage 2 pair's Kofun half names something that exists.
+  # Cheap -- two files of text, no build -- so unlike its `stage2-pair-coverage`
+  # neighbour it belongs in `verify` rather than in
+  # tooling/gate-reachability/unreachable.tsv. It also demonstrates that it can
+  # refuse on every run: the ledger it holds records two live defects, so
+  # "green" here would otherwise say nothing.
+  stage2-pair-calls:
+    desc: "Resolve every call in bootstrap/stage2/compiler.kofun, or record why not"
+    vars:
+      NAMESPACE: '{{if .KOFUN_GATE_WORK_NAMESPACE}}{{.KOFUN_GATE_WORK_NAMESPACE}}/{{end}}'
+    cmds:
+      - "sh tests/pair-coverage/calls.sh"
+      - "sh tests/pair-coverage/calls.sh --prove build/{{.NAMESPACE}}pair-calls-proof"
+
   # An issue's state is carried twice, as a label and as the `State:` line in
   # its body, and nothing held the two together until this. Reads the committed
   # snapshot only, so it stays hermetic and belongs in `verify`.
@@ -1256,6 +1270,7 @@ tasks:
             selfhost-native \
             stage2 \
             stage2-events \
+            stage2-pair-calls \
             patterns \
             adt \
             records \

@@ -678,6 +678,7 @@ shell-build-driver	source	1	required-today	required	tests/ownership/affine-resou
 shell-build-driver	source	1	required-today	required	tests/package_manager.sh
 shell-build-driver	source	1	required-today	required	tests/packages/cc-snapshot-consistency.sh
 shell-build-driver	source	1	required-today	required	tests/packages/cp-temp-name-collision.sh
+shell-build-driver	source	1	required-today	required	tests/pair-coverage/calls.sh
 shell-build-driver	source	1	required-today	required	tests/pair-coverage/check.sh
 shell-build-driver	source	1	required-today	required	tests/pair-coverage/measure.sh
 shell-build-driver	source	1	required-today	off-path	tests/pair-coverage/prove.sh
