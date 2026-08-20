@@ -415,4 +415,7 @@ sh spec/typed-sidecar/check.sh
 ```
 
 No v1 file is extended in place. A v1 reader refuses the new schema names, and
-the new contract does not change the bytes emitted for any v1 input.
+the new contract does not change the bytes emitted for any v1 input. The
+[typed-sidecar compatibility route](../tooling/typed-sidecar.md#compatibility-and-privacy)
+distinguishes values an existing schema already admits from changes that need
+a successor-owned definition or a DD-028 amendment.
