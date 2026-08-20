@@ -43,7 +43,7 @@
 #
 #   sh tests/pair-coverage/calls.sh             check the ledger
 #   sh tests/pair-coverage/calls.sh --count     print current unresolved names
-#   sh tests/pair-coverage/calls.sh --prove DIR demonstrate it can refuse
+#   sh tests/pair-coverage/calls.sh --prove     demonstrate it can refuse
 #
 # WHAT IT DOES NOT COVER, stated because a partial check read as a total one is
 # worse than none:
@@ -97,12 +97,217 @@ fi
 # that only asserted "it failed" would have passed on a gate that could not
 # look.
 #
-#   sh tests/pair-coverage/calls.sh --prove DIR
+#   sh tests/pair-coverage/calls.sh --prove
 # ---------------------------------------------------------------------------
+case ${1:-} in
+    ""|--count) test "$#" -le 1 || { echo "usage: calls.sh [--count|--prove]" >&2; exit 2; } ;;
+    --prove) test "$#" -eq 1 || { echo "usage: calls.sh [--count|--prove]" >&2; exit 2; } ;;
+    *) echo "usage: calls.sh [--count|--prove]" >&2; exit 2 ;;
+esac
+
+# The outer proof sets this only on its extra-operand probe. If the arity guard
+# is weakened to accept and ignore that operand, stop here instead of recursively
+# entering another complete proof suite until processes or temporary space run
+# out. Exit 98 is deliberately different from the required usage exit 2.
+if test "${KOFUN_PAIR_PROOF_OPERAND_PROBE:-0}" = 1; then
+    echo "calls.sh: operand probe reached proof setup" >&2
+    exit 98
+fi
+
 if test "${1:-}" = "--prove"; then
-    PROVE=${2:?usage: calls.sh --prove DIR}
-    rm -rf "$PROVE"
-    mkdir -p "$PROVE"
+    # `mktemp` is still validated below, but its output is never the cleanup
+    # authority. Establish a private parent with mkdir's exclusive-create
+    # success first, then clean only that exact parent. A broken `mktemp` that
+    # returns an existing caller-owned directory therefore cannot nominate it
+    # for deletion.
+    PROVE_PARENT_PREFIX=${TMPDIR:-/tmp}/kofun-pair-calls-parent.$$.
+    PROVE_PARENT=
+    PROVE_PARENT_OWNED=0
+    cleanup_prove() {
+        if test "$PROVE_PARENT_OWNED" = 1; then
+            case $PROVE_PARENT in
+                "$PROVE_PARENT_PREFIX"[0-9]|"$PROVE_PARENT_PREFIX"[0-9][0-9])
+                    PROVE_PARENT_OWNED=0
+                    rm -rf "$PROVE_PARENT"
+                    ;;
+                *)
+                    echo "calls.sh: refusing to clean an unvalidated proof parent" >&2
+                    ;;
+            esac
+        fi
+    }
+    prove_parent_attempt=0
+    while test "$prove_parent_attempt" -lt 100; do
+        prove_parent_candidate=$PROVE_PARENT_PREFIX$prove_parent_attempt
+        if (umask 077 && mkdir "$prove_parent_candidate") 2>/dev/null; then
+            PROVE_PARENT=$prove_parent_candidate
+            PROVE_PARENT_OWNED=1
+            break
+        fi
+        prove_parent_attempt=$((prove_parent_attempt + 1))
+    done
+    test "$PROVE_PARENT_OWNED" = 1 || {
+        echo "calls.sh: could not create private proof parent" >&2
+        exit 1
+    }
+    trap cleanup_prove EXIT
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+
+    PROVE_PREFIX=$PROVE_PARENT/proof.
+    PROVE=$(mktemp -d "${PROVE_PREFIX}XXXXXX") || {
+        echo "calls.sh: could not create private proof scratch" >&2
+        exit 1
+    }
+    case $PROVE in
+        "$PROVE_PREFIX"*) PROVE_SUFFIX=${PROVE#"$PROVE_PREFIX"} ;;
+        *)
+            echo "calls.sh: mktemp returned an unexpected proof path" >&2
+            exit 1
+            ;;
+    esac
+    case $PROVE_SUFFIX in
+        ??????) ;;
+        *)
+            echo "calls.sh: mktemp returned an unexpected proof suffix" >&2
+            exit 1
+            ;;
+    esac
+    case $PROVE_SUFFIX in
+        */*)
+            echo "calls.sh: mktemp returned a non-child proof path" >&2
+            exit 1
+            ;;
+    esac
+    test -d "$PROVE" && test ! -L "$PROVE" || {
+        echo "calls.sh: mktemp did not return a proof directory" >&2
+        exit 1
+    }
+
+    # The outer suite sets this only for the injected first-write failure. Stop
+    # at the first fixture mkdir so that the child cannot recursively run its
+    # own complete proof suite under the fake mkdir.
+    if test "${KOFUN_PAIR_PROOF_FIRST_WRITE_PROBE:-0}" = 1; then
+        mkdir "$PROVE/caller-owned"
+        echo "calls.sh: first-write probe unexpectedly succeeded" >&2
+        exit 98
+    fi
+
+    # Exercise the argument refusal only against a sentinel inside the private
+    # scratch. If this regresses, the proof cannot damage the checkout or any
+    # caller-selected directory while demonstrating the failure.
+    mkdir "$PROVE/caller-owned"
+    printf 'must survive\n' >"$PROVE/expected-sentinel"
+    cp "$PROVE/expected-sentinel" "$PROVE/caller-owned/sentinel"
+    operand_exit=0
+    KOFUN_PAIR_PROOF_OPERAND_PROBE=1 sh "$0" --prove "$PROVE/caller-owned" \
+        >"$PROVE/caller-operand.out" 2>"$PROVE/caller-operand.err" || operand_exit=$?
+    if test "$operand_exit" -ne 2 ||
+       ! cmp -s "$PROVE/expected-sentinel" "$PROVE/caller-owned/sentinel"; then
+        echo "FAIL: pair calls: --prove accepted or modified a caller-owned path" >&2
+        exit 1
+    fi
+    printf '  prove caller-path-operand: refused and untouched\n'
+
+    mkdir "$PROVE/fake-mktemp-fail"
+    printf '%s\n' '#!/bin/sh' 'exit 73' >"$PROVE/fake-mktemp-fail/mktemp"
+    chmod +x "$PROVE/fake-mktemp-fail/mktemp"
+    setup_exit=0
+    PATH="$PROVE/fake-mktemp-fail:$PATH" sh "$0" --prove \
+        >"$PROVE/mktemp-fail.out" 2>"$PROVE/mktemp-fail.err" || setup_exit=$?
+    test "$setup_exit" -eq 1 || {
+        echo "FAIL: pair calls: mktemp failure did not refuse" >&2
+        exit 1
+    }
+    printf '  prove mktemp-failure: refused\n'
+
+    mkdir "$PROVE/fake-mktemp-path" "$PROVE/attack-tmp"
+    attack_victim=$PROVE/attack-tmp/kofun-pair-calls-proof.ABCDEF
+    mkdir "$attack_victim"
+    cp "$PROVE/expected-sentinel" "$attack_victim/sentinel"
+    printf '%s\n' '#!/bin/sh' \
+        'printf "%s\n" "$KOFUN_FAKE_MKTEMP_RESULT"' \
+        >"$PROVE/fake-mktemp-path/mktemp"
+    chmod +x "$PROVE/fake-mktemp-path/mktemp"
+    setup_exit=0
+    KOFUN_FAKE_MKTEMP_RESULT="$attack_victim" \
+    TMPDIR="$PROVE/attack-tmp" \
+    PATH="$PROVE/fake-mktemp-path:$PATH" sh "$0" --prove \
+        >"$PROVE/mktemp-path.out" 2>"$PROVE/mktemp-path.err" || setup_exit=$?
+    if test "$setup_exit" -ne 1 ||
+       ! test -d "$attack_victim" ||
+       ! cmp -s "$PROVE/expected-sentinel" "$attack_victim/sentinel" ||
+       test -e "$attack_victim/caller-owned"; then
+        echo "FAIL: pair calls: existing mktemp path was accepted or cleaned" >&2
+        exit 1
+    fi
+    printf '  prove existing-mktemp-path: refused and untouched\n'
+
+    mkdir "$PROVE/fake-mktemp-slash" "$PROVE/slash-tmp"
+    cp "$PROVE/expected-sentinel" "$PROVE/slash-tmp/sentinel"
+    printf '%s\n' '#!/bin/sh' \
+        'for arg do template=$arg; done' \
+        'prefix=${template%XXXXXX}' \
+        'mkdir "$prefix" || exit 76' \
+        'printf "%s/../..\n" "$prefix"' \
+        >"$PROVE/fake-mktemp-slash/mktemp"
+    chmod +x "$PROVE/fake-mktemp-slash/mktemp"
+    setup_exit=0
+    TMPDIR="$PROVE/slash-tmp" PATH="$PROVE/fake-mktemp-slash:$PATH" \
+        sh "$0" --prove >"$PROVE/mktemp-slash.out" \
+        2>"$PROVE/mktemp-slash.err" || setup_exit=$?
+    if test "$setup_exit" -ne 1 ||
+       ! cmp -s "$PROVE/expected-sentinel" "$PROVE/slash-tmp/sentinel" ||
+       test -e "$PROVE/slash-tmp/caller-owned"; then
+        echo "FAIL: pair calls: slash-suffix mktemp path was accepted" >&2
+        exit 1
+    fi
+    printf '  prove mktemp-slash-suffix: refused and untouched\n'
+
+    mkdir "$PROVE/fake-mktemp-symlink" "$PROVE/symlink-victim"
+    cp "$PROVE/expected-sentinel" "$PROVE/symlink-victim/sentinel"
+    printf '%s\n' '#!/bin/sh' \
+        'for arg do result=$arg; done' \
+        'result=${result%XXXXXX}ABCDEF' \
+        'ln -s "$KOFUN_FAKE_MKTEMP_TARGET" "$result" || exit 75' \
+        'printf "%s\n" "$result"' \
+        >"$PROVE/fake-mktemp-symlink/mktemp"
+    chmod +x "$PROVE/fake-mktemp-symlink/mktemp"
+    setup_exit=0
+    KOFUN_FAKE_MKTEMP_TARGET="$PROVE/symlink-victim" \
+    PATH="$PROVE/fake-mktemp-symlink:$PATH" sh "$0" --prove \
+        >"$PROVE/mktemp-symlink.out" 2>"$PROVE/mktemp-symlink.err" || setup_exit=$?
+    if test "$setup_exit" -ne 1 ||
+       ! cmp -s "$PROVE/expected-sentinel" "$PROVE/symlink-victim/sentinel" ||
+       test -e "$PROVE/symlink-victim/caller-owned"; then
+        echo "FAIL: pair calls: mktemp symlink was accepted or followed" >&2
+        exit 1
+    fi
+    printf '  prove mktemp-symlink: refused and untouched\n'
+
+    mkdir "$PROVE/fake-first-write" "$PROVE/child-tmp"
+    KOFUN_PAIR_REAL_MKDIR=$(command -v mkdir)
+    export KOFUN_PAIR_REAL_MKDIR
+    printf '%s\n' '#!/bin/sh' \
+        'case ${1##*/} in' \
+        '    kofun-pair-calls-parent.*) exec "$KOFUN_PAIR_REAL_MKDIR" "$@" ;;' \
+        '    *) exit 74 ;;' \
+        'esac' >"$PROVE/fake-first-write/mkdir"
+    chmod +x "$PROVE/fake-first-write/mkdir"
+    setup_exit=0
+    KOFUN_PAIR_PROOF_FIRST_WRITE_PROBE=1 TMPDIR="$PROVE/child-tmp" \
+    PATH="$PROVE/fake-first-write:$PATH" \
+        sh "$0" --prove >"$PROVE/first-write.out" \
+        2>"$PROVE/first-write.err" || setup_exit=$?
+    first_write_leak=$(find "$PROVE/child-tmp" -mindepth 1 -print -quit)
+    if test "$setup_exit" -ne 74 || test -n "$first_write_leak"; then
+        printf 'FAIL: pair calls: first proof write exit %s; leftover %s\n' \
+            "$setup_exit" "${first_write_leak:-none}" >&2
+        exit 1
+    fi
+    printf '  prove first-write-failure: refused and cleaned\n'
+
     passed=0
     failed=0
 

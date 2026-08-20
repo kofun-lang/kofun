@@ -4,8 +4,8 @@
 #
 # `undefended.tsv` is #1401's work-list: per function of
 # bootstrap/stage2/compiler.c, how many branches nothing takes. Its usefulness
-# rests on both halves implementing the function, and for 22 of the 354 they do
-# not -- while 64 more are mirrored under a different name, which is invisible
+# rests on both halves implementing the function, and for 25 of the 354 they do
+# not -- while 67 more are mirrored under a different name, which is invisible
 # to anyone reading the ledger. `mirror.tsv` answers that one question per row
 # and this gate keeps the answer true.
 #
@@ -35,7 +35,7 @@
 #
 #   sh tests/pair-coverage/mirror.sh             check the map
 #   sh tests/pair-coverage/mirror.sh --count     print the verdict tallies
-#   sh tests/pair-coverage/mirror.sh --prove DIR demonstrate it can refuse
+#   sh tests/pair-coverage/mirror.sh --prove     demonstrate it can refuse
 #
 # THIS HARNESS IS SHELL, AND THAT IS RECORDED DEBT, like its three neighbours:
 # it carries a `shell-build-driver` row in
@@ -63,10 +63,214 @@ if test "$KOFUN_HALF" != "$ROOT/bootstrap/stage2/compiler.kofun"; then
         "$KOFUN_HALF" >&2
 fi
 
+case ${1:-} in
+    ""|--count) test "$#" -le 1 || { echo "usage: mirror.sh [--count|--prove]" >&2; exit 2; } ;;
+    --prove) test "$#" -eq 1 || { echo "usage: mirror.sh [--count|--prove]" >&2; exit 2; } ;;
+    *) echo "usage: mirror.sh [--count|--prove]" >&2; exit 2 ;;
+esac
+
+# This is set only by the outer proof's extra-operand probe. It prevents a
+# future accept-but-ignore arity regression from recursively starting complete
+# proof suites until processes or temporary space are exhausted. The outer
+# proof requires usage exit 2, so reaching this distinct exit still fails it.
+if test "${KOFUN_PAIR_PROOF_OPERAND_PROBE:-0}" = 1; then
+    echo "mirror.sh: operand probe reached proof setup" >&2
+    exit 98
+fi
+
 if test "${1:-}" = "--prove"; then
-    PROVE=${2:?usage: mirror.sh --prove DIR}
-    rm -rf "$PROVE"
-    mkdir -p "$PROVE"
+    # Do not let `mktemp` choose what cleanup may delete. First establish an
+    # invocation-owned private parent through mkdir's exclusive-create result;
+    # cleanup is permanently scoped to that exact parent. The mktemp child is
+    # useful scratch, but never deletion authority on its own.
+    PROVE_PARENT_PREFIX=${TMPDIR:-/tmp}/kofun-pair-mirror-parent.$$.
+    PROVE_PARENT=
+    PROVE_PARENT_OWNED=0
+    cleanup_prove() {
+        if test "$PROVE_PARENT_OWNED" = 1; then
+            case $PROVE_PARENT in
+                "$PROVE_PARENT_PREFIX"[0-9]|"$PROVE_PARENT_PREFIX"[0-9][0-9])
+                    PROVE_PARENT_OWNED=0
+                    rm -rf "$PROVE_PARENT"
+                    ;;
+                *)
+                    echo "mirror.sh: refusing to clean an unvalidated proof parent" >&2
+                    ;;
+            esac
+        fi
+    }
+    prove_parent_attempt=0
+    while test "$prove_parent_attempt" -lt 100; do
+        prove_parent_candidate=$PROVE_PARENT_PREFIX$prove_parent_attempt
+        if (umask 077 && mkdir "$prove_parent_candidate") 2>/dev/null; then
+            PROVE_PARENT=$prove_parent_candidate
+            PROVE_PARENT_OWNED=1
+            break
+        fi
+        prove_parent_attempt=$((prove_parent_attempt + 1))
+    done
+    test "$PROVE_PARENT_OWNED" = 1 || {
+        echo "mirror.sh: could not create private proof parent" >&2
+        exit 1
+    }
+    trap cleanup_prove EXIT
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+
+    PROVE_PREFIX=$PROVE_PARENT/proof.
+    PROVE=$(mktemp -d "${PROVE_PREFIX}XXXXXX") || {
+        echo "mirror.sh: could not create private proof scratch" >&2
+        exit 1
+    }
+    case $PROVE in
+        "$PROVE_PREFIX"*) PROVE_SUFFIX=${PROVE#"$PROVE_PREFIX"} ;;
+        *)
+            echo "mirror.sh: mktemp returned an unexpected proof path" >&2
+            exit 1
+            ;;
+    esac
+    case $PROVE_SUFFIX in
+        ??????) ;;
+        *)
+            echo "mirror.sh: mktemp returned an unexpected proof suffix" >&2
+            exit 1
+            ;;
+    esac
+    case $PROVE_SUFFIX in
+        */*)
+            echo "mirror.sh: mktemp returned a non-child proof path" >&2
+            exit 1
+            ;;
+    esac
+    test -d "$PROVE" && test ! -L "$PROVE" || {
+        echo "mirror.sh: mktemp did not return a proof directory" >&2
+        exit 1
+    }
+
+    # This injection is scoped to the outer suite's first-write regression.
+    # Stop at the first fixture mkdir rather than recursively starting another
+    # full proof suite under the fake mkdir.
+    if test "${KOFUN_PAIR_PROOF_FIRST_WRITE_PROBE:-0}" = 1; then
+        mkdir "$PROVE/caller-owned"
+        echo "mirror.sh: first-write probe unexpectedly succeeded" >&2
+        exit 98
+    fi
+
+    # The public proof interface must never accept an existing caller-owned
+    # directory. Keep the sentinel inside this invocation-owned scratch so the
+    # regression itself remains harmless if the refusal is broken.
+    mkdir "$PROVE/caller-owned"
+    printf 'must survive\n' >"$PROVE/expected-sentinel"
+    cp "$PROVE/expected-sentinel" "$PROVE/caller-owned/sentinel"
+    operand_exit=0
+    KOFUN_PAIR_PROOF_OPERAND_PROBE=1 sh "$0" --prove "$PROVE/caller-owned" \
+        >"$PROVE/caller-operand.out" 2>"$PROVE/caller-operand.err" || operand_exit=$?
+    if test "$operand_exit" -ne 2 ||
+       ! cmp -s "$PROVE/expected-sentinel" "$PROVE/caller-owned/sentinel"; then
+        echo "FAIL: pair mirror: --prove accepted or modified a caller-owned path" >&2
+        exit 1
+    fi
+    printf '  prove caller-path-operand: refused and untouched\n'
+
+    mkdir "$PROVE/fake-mktemp-fail"
+    printf '%s\n' '#!/bin/sh' 'exit 73' >"$PROVE/fake-mktemp-fail/mktemp"
+    chmod +x "$PROVE/fake-mktemp-fail/mktemp"
+    setup_exit=0
+    PATH="$PROVE/fake-mktemp-fail:$PATH" sh "$0" --prove \
+        >"$PROVE/mktemp-fail.out" 2>"$PROVE/mktemp-fail.err" || setup_exit=$?
+    test "$setup_exit" -eq 1 || {
+        echo "FAIL: pair mirror: mktemp failure did not refuse" >&2
+        exit 1
+    }
+    printf '  prove mktemp-failure: refused\n'
+
+    mkdir "$PROVE/fake-mktemp-path" "$PROVE/attack-tmp"
+    attack_victim=$PROVE/attack-tmp/kofun-pair-mirror-proof.ABCDEF
+    mkdir "$attack_victim"
+    cp "$PROVE/expected-sentinel" "$attack_victim/sentinel"
+    printf '%s\n' '#!/bin/sh' \
+        'printf "%s\n" "$KOFUN_FAKE_MKTEMP_RESULT"' \
+        >"$PROVE/fake-mktemp-path/mktemp"
+    chmod +x "$PROVE/fake-mktemp-path/mktemp"
+    setup_exit=0
+    KOFUN_FAKE_MKTEMP_RESULT="$attack_victim" \
+    TMPDIR="$PROVE/attack-tmp" \
+    PATH="$PROVE/fake-mktemp-path:$PATH" sh "$0" --prove \
+        >"$PROVE/mktemp-path.out" 2>"$PROVE/mktemp-path.err" || setup_exit=$?
+    if test "$setup_exit" -ne 1 ||
+       ! test -d "$attack_victim" ||
+       ! cmp -s "$PROVE/expected-sentinel" "$attack_victim/sentinel" ||
+       test -e "$attack_victim/caller-owned"; then
+        echo "FAIL: pair mirror: existing mktemp path was accepted or cleaned" >&2
+        exit 1
+    fi
+    printf '  prove existing-mktemp-path: refused and untouched\n'
+
+    mkdir "$PROVE/fake-mktemp-slash" "$PROVE/slash-tmp"
+    cp "$PROVE/expected-sentinel" "$PROVE/slash-tmp/sentinel"
+    printf '%s\n' '#!/bin/sh' \
+        'for arg do template=$arg; done' \
+        'prefix=${template%XXXXXX}' \
+        'mkdir "$prefix" || exit 76' \
+        'printf "%s/../..\n" "$prefix"' \
+        >"$PROVE/fake-mktemp-slash/mktemp"
+    chmod +x "$PROVE/fake-mktemp-slash/mktemp"
+    setup_exit=0
+    TMPDIR="$PROVE/slash-tmp" PATH="$PROVE/fake-mktemp-slash:$PATH" \
+        sh "$0" --prove >"$PROVE/mktemp-slash.out" \
+        2>"$PROVE/mktemp-slash.err" || setup_exit=$?
+    if test "$setup_exit" -ne 1 ||
+       ! cmp -s "$PROVE/expected-sentinel" "$PROVE/slash-tmp/sentinel" ||
+       test -e "$PROVE/slash-tmp/caller-owned"; then
+        echo "FAIL: pair mirror: slash-suffix mktemp path was accepted" >&2
+        exit 1
+    fi
+    printf '  prove mktemp-slash-suffix: refused and untouched\n'
+
+    mkdir "$PROVE/fake-mktemp-symlink" "$PROVE/symlink-victim"
+    cp "$PROVE/expected-sentinel" "$PROVE/symlink-victim/sentinel"
+    printf '%s\n' '#!/bin/sh' \
+        'for arg do result=$arg; done' \
+        'result=${result%XXXXXX}ABCDEF' \
+        'ln -s "$KOFUN_FAKE_MKTEMP_TARGET" "$result" || exit 75' \
+        'printf "%s\n" "$result"' \
+        >"$PROVE/fake-mktemp-symlink/mktemp"
+    chmod +x "$PROVE/fake-mktemp-symlink/mktemp"
+    setup_exit=0
+    KOFUN_FAKE_MKTEMP_TARGET="$PROVE/symlink-victim" \
+    PATH="$PROVE/fake-mktemp-symlink:$PATH" sh "$0" --prove \
+        >"$PROVE/mktemp-symlink.out" 2>"$PROVE/mktemp-symlink.err" || setup_exit=$?
+    if test "$setup_exit" -ne 1 ||
+       ! cmp -s "$PROVE/expected-sentinel" "$PROVE/symlink-victim/sentinel" ||
+       test -e "$PROVE/symlink-victim/caller-owned"; then
+        echo "FAIL: pair mirror: mktemp symlink was accepted or followed" >&2
+        exit 1
+    fi
+    printf '  prove mktemp-symlink: refused and untouched\n'
+
+    mkdir "$PROVE/fake-first-write" "$PROVE/child-tmp"
+    KOFUN_PAIR_REAL_MKDIR=$(command -v mkdir)
+    export KOFUN_PAIR_REAL_MKDIR
+    printf '%s\n' '#!/bin/sh' \
+        'case ${1##*/} in' \
+        '    kofun-pair-mirror-parent.*) exec "$KOFUN_PAIR_REAL_MKDIR" "$@" ;;' \
+        '    *) exit 74 ;;' \
+        'esac' >"$PROVE/fake-first-write/mkdir"
+    chmod +x "$PROVE/fake-first-write/mkdir"
+    setup_exit=0
+    KOFUN_PAIR_PROOF_FIRST_WRITE_PROBE=1 TMPDIR="$PROVE/child-tmp" \
+    PATH="$PROVE/fake-first-write:$PATH" \
+        sh "$0" --prove >"$PROVE/first-write.out" \
+        2>"$PROVE/first-write.err" || setup_exit=$?
+    first_write_leak=$(find "$PROVE/child-tmp" -mindepth 1 -print -quit)
+    if test "$setup_exit" -ne 74 || test -n "$first_write_leak"; then
+        printf 'FAIL: pair mirror: first proof write exit %s; leftover %s\n' \
+            "$setup_exit" "${first_write_leak:-none}" >&2
+        exit 1
+    fi
+    printf '  prove first-write-failure: refused and cleaned\n'
+
     passed=0
     failed=0
     prove_case() {
