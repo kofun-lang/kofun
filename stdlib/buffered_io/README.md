@@ -33,6 +33,22 @@ before it is read. This is the reader for that.
   this loop.
 - **Reading past the end costs nothing.** `Eof` is answered from the reader's
   own state, so it makes no syscall and cannot block.
+- **One allocation per returned line, and none anywhere else.** `Line(Bytes)`
+  holds a fresh owned copy of the line, bounded by the reader's capacity. The
+  reader's buffer, capacity, pointer, and descriptor never change, and a
+  refusal — `BufferedLineTooLong` or any system error — allocates nothing and
+  leaves the contents and cursor untouched.
+
+  This is a recorded decision, not an implementation detail. A borrowed `Bytes`
+  view does not exist: the whole surface is `bytes_zeroed`, `bytes_from_utf8`,
+  `bytes_same`, `byte_at`, `byte_set`, and #1315 keeps `Bytes` Managed and
+  non-Copy, refuses escaping borrows, and puts slice operations out of scope.
+  An offset/length observation would be invalidated by the very next refill,
+  which is the aliasing hazard #1315 exists to prevent — the caller would have
+  to copy before calling again, which is this same allocation with the
+  invariant no longer enforceable. The copy buys the property that makes the
+  API usable: a returned line has no lifetime coupling to the reader, so a
+  caller may hold every line of a file at once, or none.
 - **The file is borrowed, not owned.** `File` is affine — `file_close(take file: File)`
   — so a reader that owned it would have to re-export close and drop, and a
   caller who wanted the descriptor back could not have it.

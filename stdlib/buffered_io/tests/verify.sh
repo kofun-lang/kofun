@@ -91,6 +91,34 @@ grep -Fq 'if buffered_pending(reader) == 0' "$adapter" ||
 
 printf 'buffered io adapter contract: PASS\n'
 
+# ------------------------------------------------- the representation decision
+#
+# `Line(Bytes)` under a non-aliasing carrier costs one copy per line, and that
+# copy is the decision rather than an implementation detail. #1315 keeps `Bytes`
+# Managed and non-Copy, refuses escaping borrows, and puts slice operations out
+# of scope, so a borrowed view does not exist; an offset/length observation
+# would be invalidated by the next refill, which is the aliasing hazard #1315
+# exists to prevent. So: exactly one allocation per returned line, and none
+# anywhere else after construction.
+#
+# Gated rather than described, because a second allocation site is the way this
+# decision would be lost -- silently, and in whichever half nobody was reading.
+
+[ "$(grep -c 'bytes_zeroed(' "$portable")" -eq 2 ] ||
+    fail 'the portable half does not allocate exactly twice: once at construction, once per returned line'
+grep -Fq 'fn buffered_reader(capacity: Int)' "$portable" ||
+    fail 'the construction allocation is not where it is claimed to be'
+grep -Fq 'let allocated = bytes_zeroed(length)' "$portable" ||
+    fail 'the per-line allocation is not of the line length'
+
+[ "$(grep -c 'bytes_zeroed(\|bytes_from_utf8(' "$adapter")" -eq 0 ] ||
+    fail 'the adapter half allocates; every allocation belongs to the portable half'
+
+[ "$(grep -c 'buffered_slice(' "$adapter")" -eq 2 ] ||
+    fail 'the slice helper is called from somewhere other than the two line-returning paths'
+
+printf 'buffered io allocates once per line and nowhere else: PASS\n'
+
 # --------------------------------------------------------------- the projection
 
 "$repo_dir/bin/kofun" run "$buffered_dir/tests/checkpoint.kofun" \
