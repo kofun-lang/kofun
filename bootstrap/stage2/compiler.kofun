@@ -19482,7 +19482,21 @@ fn selfhost_parse_call(
                 expected = expected_parameter_tail(expected)
                 index = index + 1
             }
-            symbol = count + selfhost_builtin_slot(name)
+            # #1545. The signature table places eighteen names and the
+            # language admits more, so a call can arrive with no slot. This
+            # used to compute `count + -1`, one below the first builtin, and
+            # the C seed's counterpart read `builtin_symbols[-1]`. Two
+            # different wrong answers for the same program; both are refused
+            # by name now.
+            let slot = selfhost_builtin_slot(name)
+            if slot < 0 {
+                return selfhost_error(
+                    "E2S15",
+                    at,
+                    "builtin `" + name + "` is outside the frozen profile"
+                )
+            }
+            symbol = count + slot
         }
     }
     let call_record = "xnode|" + to_text(local_next) + "|call|" +
