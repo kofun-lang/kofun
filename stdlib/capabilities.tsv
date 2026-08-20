@@ -53,7 +53,7 @@ stream-protocol	portable	specified	docs/stdlib/stream-protocol.md	accepted proto
 buffered-io	portable	implemented	task stdlib	line reader over an open File; capacity is the maximum line length including its terminator; no writer half until a consumer names one
 url	portable	planned	#1258	parsing and normalisation; owned by the HTTP client contract, not independent
 secure-randomness	adapter	implemented	task stdlib	entropy_fill obtains getrandom(2) bytes completely or returns an error; not a CSPRNG, not a portable Random replacement, Linux x86-64 only
-temporary-files	adapter	planned	#1463	creation, cleanup on take, and collision behaviour are unspecified
+temporary-files	adapter	planned	#1457	decided (#1463): a partial file never occupies a final name, every read re-verifies the digest that names it, a collision refuses the publish and re-verifies rather than overwriting; recovery from a mismatch is #1457's to build
 hashes-checksums	portable	deferred	#1455	no consumer yet; the toolchain digests with the repository's own bin/kofun-digest, not a stdlib API
 compression-archive	module	deferred	#644	gzip response decompression is named by the accepted http-client contract; no archive format has a consumer and tar is not in scope
 mime	module	deferred	#644	only meaningful once the HTTP client contract fixes content negotiation
