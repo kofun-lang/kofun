@@ -1,0 +1,1 @@
+error[E2S177]: Stage 2 `stage2_bytes_append_range` needs two distinct Bytes values; append a value to itself with `stage2_bytes_append_self` at byte 592

@@ -1,0 +1,15 @@
+# diagnostic-mode: compile
+# expect-code: E2S177
+# expect-span: byte 592
+# #1321. `stage2_bytes_append_range` copies between two carriers with
+# `memcpy`, which is undefined on overlapping storage. Two distinct typed-HIR
+# BindingIds are what proves the two carriers are different values; one value
+# in both positions proves the opposite, so it is refused here rather than
+# defended at run time. The author is sent to `stage2_bytes_append_self`,
+# which is defined for overlap and copies with `memmove`.
+fn main() -> Int {
+    let b = stage2_bytes_empty()
+    stage2_bytes_append(b, 1)
+    stage2_bytes_append_range(b, b, 0, 1)
+    return 0
+}

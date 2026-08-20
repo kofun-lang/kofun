@@ -1,0 +1,43 @@
+# #1321. The operations reached through a borrow, which is what a toolchain
+# component written in Kofun is made of: one function owns the storage and
+# lends it to the helpers that read and edit it.
+#
+# Three shapes, each of which failed to compile at `f42cfdd3` for the same
+# reason -- `&` applied to a parameter that is already the carrier's address:
+#
+#   `seed`  reaches #1315's own producer through an `edit` borrow, which is
+#           the lowering that predates the address rule;
+#   `relay` lends a `read` borrow onward to another function;
+#   `widen` lends an `edit` borrow to a `read` parameter, which is a widening
+#           and must keep working -- an author may lend less than they hold.
+fn measure(read b: Bytes) -> Int {
+    return stage2_bytes_len(b)
+}
+
+fn relay(read b: Bytes) -> Int {
+    return measure(b)
+}
+
+fn widen(edit b: Bytes) -> Int {
+    return measure(b)
+}
+
+fn seed(edit b: Bytes) -> Int {
+    stage2_bytes_assign_zeroed(b, 4)
+    return stage2_bytes_len(b)
+}
+
+fn fill(edit b: Bytes) -> Int {
+    stage2_bytes_append(b, 7)
+    stage2_bytes_append(b, 8)
+    return stage2_bytes_capacity(b)
+}
+
+fn main() -> Int {
+    let owned = stage2_bytes_empty()
+    print(seed(owned))
+    print(widen(owned))
+    print(fill(owned))
+    print(relay(owned))
+    return 0
+}
