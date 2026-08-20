@@ -26,6 +26,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { DETECTORS, dialectOf, withoutComments } from './detect.mjs'
+import { guardVerdict, needOf } from './reach.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(HERE, '..', '..')
@@ -63,7 +64,10 @@ const FIXTURE_CASES = [
     ['mention-and-invoke.mjs', 'cc', 'invoke', 0, 'nothing here compiles C'],
     ['mention-and-invoke.yml', 'go-task', 'invoke', 1,
         '`- run: task verify` is an invocation; the same words in prose are not'],
-    ['mention-and-invoke.yml', 'node', 'invoke', 0, 'nothing here runs node'],
+    ['mention-and-invoke.yml', 'node', 'invoke', 2,
+        '`npm ci` and multiline `npm run` count as Node.js toolchain invocations'],
+    ['mention-only.yml', 'node', 'invoke', 0,
+        'an npm-shaped comment, `actions/setup-node`, quoted prose, and `npm-cli` do not count'],
 ]
 
 const bodies = new Map()
@@ -87,6 +91,54 @@ for (const [name, requirement, kind, expected, why] of FIXTURE_CASES) {
 }
 
 /*
+ * `npm` is a spelling of the existing `node` requirement in both halves of
+ * the model. Counting the command without teaching the guard reader its name
+ * would make an optional branch look unguarded and therefore required. The
+ * optional case is the load-bearing one: omitting `npm` from SPELLINGS.node
+ * leaves guardVerdict's default at `required` and this test fails.
+ */
+const NPM_GUARD_CASES = [
+    {
+        name: 'optional npm guard',
+        expected: 'optional',
+        body: `if command -v npm >/dev/null 2>&1; then
+    npm --version
+else
+    printf 'SKIP: npm unavailable\\n'
+fi
+`,
+    },
+    {
+        name: 'fail-closed npm guard',
+        expected: 'required',
+        body: `command -v npm >/dev/null 2>&1 || {
+    printf 'npm is required\\n' >&2
+    exit 1
+}
+npm --version
+`,
+    },
+]
+
+const npmGuardPath = 'fixtures/npm-guard.sh'
+const npmGuardWhere = new Map([[npmGuardPath, 'on']])
+for (const { name, expected, body } of NPM_GUARD_CASES) {
+    const direct = guardVerdict(body, 'node')
+    if (direct !== expected) {
+        fail(`${name}: guardVerdict returned \`${direct}\`, expected \`${expected}\``)
+    }
+    const joined = needOf({
+        path: npmGuardPath,
+        body,
+        requirement: 'node',
+        kind: 'invoke',
+    }, npmGuardWhere)
+    if (joined !== expected) {
+        fail(`${name}: needOf returned \`${joined}\`, expected \`${expected}\``)
+    }
+}
+
+/*
  * The fixture directory must stay outside the scan. It contains deliberate
  * invocations, so a checker that walked into it would census its own test data
  * and the exclusion would be indistinguishable from a bug in the file set.
@@ -96,7 +148,12 @@ const censusPaths = new Set(
         .filter((l) => l !== '' && !l.startsWith('#'))
         .map((l) => l.split('\t')[5]),
 )
-for (const name of ['mention-and-invoke.sh', 'mention-and-invoke.mjs', 'mention-and-invoke.yml']) {
+for (const name of [
+    'mention-and-invoke.sh',
+    'mention-and-invoke.mjs',
+    'mention-and-invoke.yml',
+    'mention-only.yml',
+]) {
     const path = `tooling/forbidden-requirements/fixtures/${name}`
     if (censusPaths.has(path)) fail(`${path} is in the census; the fixture directory must be excluded`)
 }
@@ -279,8 +336,11 @@ if (clean.status !== 0) {
 if (failures !== 0) process.exit(1)
 
 process.stdout.write(
-    `PASS: ${FIXTURE_CASES.length} detector cases over 3 fixtures, ` +
+    `PASS: ${FIXTURE_CASES.length} detector cases over ` +
+    `${new Set(FIXTURE_CASES.map((c) => c[0])).size} fixtures, ` +
     `${FIXTURE_CASES.filter((c) => c[3] === 0).length} of them asserting a near miss counts zero\n`)
+process.stdout.write(
+    `PASS: ${NPM_GUARD_CASES.length} npm guard cases distinguish optional from fail-closed use\n`)
 process.stdout.write(
     `PASS: ${CASES.length} ledger mutations each refused with a diagnostic that names the drift\n`)
 process.stdout.write('PASS: the committed census passes the same checker unmutated\n')

@@ -1,0 +1,13 @@
+# A negative-only fixture. Every npm-shaped token below is a mention rather
+# than an npm command, and each must count zero independently of the positive
+# workflow fixture.
+name: npm-near-misses
+jobs:
+  build:
+    steps:
+      # npm install -- a comment is not an invocation.
+      - uses: actions/setup-node@fixture
+      - name: quoted prose and a similarly named executable
+        run: |
+          echo "npm run fixture is prose here"
+          npm-cli --version

@@ -336,7 +336,7 @@ const SPELLINGS = {
     rustc: ['rustc'],
     cargo: ['cargo'],
     zig: ['zig'],
-    node: ['node'],
+    node: ['node', 'npm'],
     python: ['python3?'],
     'go-task': ['task'],
     'system-sdk': ['xcrun', 'xcodebuild', 'pkg-config'],
