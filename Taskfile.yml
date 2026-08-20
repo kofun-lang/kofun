@@ -703,6 +703,15 @@ tasks:
     cmds:
       - "sh tests/usability/check.sh"
 
+  preflight:
+    desc: "Report every structural obligation a new task or fixture carries, in one run"
+    cmds:
+      # The self-test first: a preflight that could not refuse would report
+      # `PASS` for six obligations it had stopped checking, which is worse than
+      # not having one. It writes into its own scratch directory, not `build/`.
+      - "sh tests/preflight/check.sh --prove"
+      - "sh tests/preflight/check.sh"
+
   capabilities:
     desc: "Verify the standard library capability matrix states and evidence"
     cmds:
