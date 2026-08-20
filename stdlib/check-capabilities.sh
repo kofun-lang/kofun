@@ -133,7 +133,24 @@ test -s "$WORK/open-issues" ||
     fail "backlog snapshot contains no issue numbers: $SNAPSHOT"
 HORIZON=$(tail -n 1 "$WORK/open-issues")
 
-# 0 live, 1 all-closed, 2 undecidable (every citation above the horizon).
+# One evidence field's verdict: `live`, `closed`, or `unchecked`.
+#
+# The verdict is printed rather than returned, and that is the whole reason this
+# function has this shape. It used to answer with an exit status -- 0 live, 1
+# all-closed, 2 undecidable -- and a non-zero exit status is data the shell also
+# reads as failure. `validate_liveness` is called as `$(...)`, so under `set -e`
+# a shell that applies `-e` inside a command substitution kills that subshell on
+# the first `unchecked` row. The gate then reported "a planned or deferred row
+# cites only closed issues" while its own re-scan -- which calls the same
+# function in a tested context, where `-e` does not apply -- found no such row
+# and printed nothing. A failure naming a row it cannot then name is the shape
+# of this bug.
+#
+# It stayed hidden because it needs both halves at once: `dash` applies `-e`
+# inside a command substitution and `bash` does not, so it passed on a developer
+# machine and failed in CI; and it needs a row citing an issue *newer* than the
+# snapshot, which no row did until #1510. A verdict on stdout cannot be mistaken
+# for a failure, in any shell.
 citation_liveness() {
     liveness_unknown=0
     for ref in $1; do
@@ -142,14 +159,18 @@ citation_liveness() {
             ''|*[!0-9]*) continue ;;
         esac
         if grep -Fxq "$number" "$WORK/open-issues"; then
+            printf 'live\n'
             return 0
         fi
         if test "$number" -gt "$HORIZON"; then
             liveness_unknown=1
         fi
     done
-    test "$liveness_unknown" -eq 0 || return 2
-    return 1
+    if test "$liveness_unknown" -eq 0; then
+        printf 'closed\n'
+    else
+        printf 'unchecked\n'
+    fi
 }
 
 validate_liveness() {
@@ -158,10 +179,9 @@ validate_liveness() {
     while IFS='	' read -r job tier state evidence note; do
         case $job in ''|'#'*|job) continue ;; esac
         case $state in planned|deferred) ;; *) continue ;; esac
-        citation_liveness "$evidence"
-        case $? in
-            0) liveness_decided=$((liveness_decided + 1)) ;;
-            1) liveness_decided=$((liveness_decided + 1)); return 1 ;;
+        case $(citation_liveness "$evidence") in
+            live) liveness_decided=$((liveness_decided + 1)) ;;
+            closed) liveness_decided=$((liveness_decided + 1)); return 1 ;;
             *) ;;
         esac
         : "$tier" "$note"
@@ -181,8 +201,7 @@ decided=$(validate_liveness "$MATRIX") || {
     while IFS='	' read -r job tier state evidence note; do
         case $job in ''|'#'*|job) continue ;; esac
         case $state in planned|deferred) ;; *) continue ;; esac
-        citation_liveness "$evidence" && continue
-        test $? -eq 1 || continue
+        test "$(citation_liveness "$evidence")" = closed || continue
         printf '  %s is %s against %s, all closed\n' "$job" "$state" "$evidence" >&2
         : "$tier" "$note"
     done <"$MATRIX"
@@ -311,6 +330,31 @@ tolerated() {
     printf '%s\n' 'PASS [capabilities-positive] one closed citation beside an open one is tolerated'
 }
 tolerated
+
+# The must-not-fire half, second case: a citation *newer* than the snapshot is
+# "not checked", and not-checked must not fail anything. The horizon paragraph
+# above promises exactly that, and until #1510 no row exercised it.
+#
+# The call below is written the way the real one is -- `$(validate_liveness …)`
+# guarded by `||` -- because that is where the defect was. A verdict returned as
+# an exit status let `set -e` kill the substitution's subshell on the first
+# unchecked row, in every shell that applies `-e` inside a command substitution.
+# `dash` does and `bash` does not, so the gate passed locally and failed in CI.
+# Written any other way this test would pass on the broken version.
+newer_than_snapshot() {
+    sed 's|^\(process-spawn\t[a-z]*\tplanned\t\)[^\t]*\t|\1#999999\t|' \
+        "$MATRIX" >"$WORK/newer.tsv"
+    grep -q '^process-spawn.*#999999' "$WORK/newer.tsv" ||
+        fail 'the newer-than-snapshot mutation did not apply'
+    newer_decided=$(validate_liveness "$WORK/newer.tsv") ||
+        fail 'a citation newer than the snapshot aborted the liveness pass'
+    test "$newer_decided" -eq "$((decided - 1))" ||
+        fail "an unchecked citation left $newer_decided decided rows, not $((decided - 1))"
+    validate_complete "$WORK/newer.tsv" >/dev/null 2>&1 ||
+        fail 'a row citing an issue newer than the snapshot was refused'
+    printf '%s\n' 'PASS [capabilities-positive] a citation newer than the snapshot is not checked, not refused'
+}
+newer_than_snapshot
 
 # A missing snapshot must fail loudly. Absence is also what "every issue is
 # closed" looks like, so a checker that skipped on a missing oracle would
