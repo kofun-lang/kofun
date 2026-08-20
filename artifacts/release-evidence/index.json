@@ -812,7 +812,7 @@
     "spec/modules/visibility.md": "40209bbc776037f0f397b169b428e3f6d9cf8a0536c2ba12c10988f20a7c0c22",
     "spec/records-v1.md": "f194d068f72697548dc341e1c243864b84d3b277a6c1364a2b816c51298e4a50",
     "spec/semantics.md": "79909588ff01f3f48b79840d434ed2ccea9918d12ebe8a03fd87b60a054c67d3",
-    "spec/tooling/typed-sidecar.md": "51f18b0fea3734ce73603bbcb43c048edf6a8309e48afb4bd588c386ec23dd92",
+    "spec/tooling/typed-sidecar.md": "f0adb1081f7f37d58e86eb61d7df344cf57fb7364470e7635900901307692691",
     "spec/typed-sidecar/kofun.typed-sidecar.v1.schema.json": "2574494144647b9e89ff45a126dc768ab947ed21a02044965ee22a0076f77460",
     "spec/wasm-host-abi-v1.md": "b49538b8b8bbdd29c36faa7b8bcd07e34c1dc14fb86cb654f1dbe6c93f25beaf",
     "spec/wasm-host-profile-v1.md": "162c197b85ca283e72dfa8009b0615be6454366da0e93c34f26dae95f4a533b6",

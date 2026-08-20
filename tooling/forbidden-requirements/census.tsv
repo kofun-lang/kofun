@@ -241,7 +241,7 @@ node	invoke	7	required-today	required	spec/aggregate-layout-v1/check.sh
 node	invoke	6	required-today	required	spec/atomic-write-authority-v1/check.sh
 node	invoke	6	required-today	required	spec/benchmark-report-v1/check.sh
 node	invoke	13	required-today	required	spec/concurrency/schedule-trace/check.sh
-node	invoke	3	required-today	optional	spec/concurrency/scoped-captures-v1/check.sh
+node	invoke	4	required-today	optional	spec/concurrency/scoped-captures-v1/check.sh
 node	invoke	4	required-today	optional	spec/concurrency/scoped-parallelism-v1/check.sh
 node	invoke	4	required-today	required	spec/effects/affine-resumption/check.sh
 node	invoke	1	required-today	required	spec/kif-generics-v1/check.sh

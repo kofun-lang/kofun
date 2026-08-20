@@ -330,6 +330,26 @@ Unknown schema major/version rejects. Compatible optional fields require a
 new schema that defines how old readers preserve the status lattice; readers
 never guess that an unknown fact is validated.
 
+The existing `kofun.typed-sidecar/v2` schema is one instance of that route. It
+adds capture data at the root while reusing ten definitions from the frozen v1
+schema, including `nodes`. Reusing a frozen definition preserves that
+definition; it does not create an extension point inside it. A successor that
+changes an inherited object must own the changed definition instead of
+referencing the frozen object under a new root version.
+
+Use this routing rule before changing a producer or schema:
+
+| Requested change | Route |
+| --- | --- |
+| a new value already admitted by an existing free-form field and by its producer contract | use the existing schema and prove the value through its normal gates |
+| a new emitted fact kind, public reason, or node kind declared by a frozen semantic-event or v1 file | leave v1 unchanged and define the successor event/schema route |
+| a new root or object shape | define a successor version that owns every changed definition rather than inheriting that definition from frozen v1 |
+| a change to accepted semantics or to a v1 compatibility claim | record a separate amendment to DD-028 with compatibility evidence |
+
+The digest failure in the scoped-capture gate points here. Passing that gate by
+regenerating its v1 digest is not a versioning route: the manifest is the
+tripwire that prevents an unrelated child from silently amending v1.
+
 Logical path remapping is mandatory for reproducible/shared artifacts. Source
 snippets and documentation bodies are omitted by default and require an
 explicit future privacy field/limit. Another package's private sidecar is not
