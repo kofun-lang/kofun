@@ -80,7 +80,9 @@ run_degraded() {
     script=$2
     expected=$3
     set +e
-    PATH="$WORK/bin" sh "$ROOT/$script" >"$WORK/$label.stdout" 2>"$WORK/$label.stderr"
+    KOFUN_C_ABI_WORK="$WORK/c-abi-work" \
+        PATH="$WORK/bin" sh "$ROOT/$script" \
+        >"$WORK/$label.stdout" 2>"$WORK/$label.stderr"
     status=$?
     set -e
     assert_num "$label exits 0 without readelf" "$status" -eq 0
@@ -90,6 +92,8 @@ run_degraded() {
 
 run_degraded c-abi bootstrap/c_abi/check.sh \
     'SKIP: dynamic linkage of the C ABI output (readelf unavailable)'
+assert_executable 'degraded C ABI executable in private work directory' \
+    "$WORK/c-abi-work/kofun-caller"
 # The claim its `readelf` reads must not be printed when it did not read it.
 if grep -Fq 'PASS: the C ABI output is a dynamically linked executable' \
     "$WORK/c-abi.stdout"
