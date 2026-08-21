@@ -1,0 +1,32 @@
+# #1537. Nine labelled parameters. The fixed-slot lowering carries eight, so
+# this is refused -- but by a sentence that names the bound.
+#
+# Before #1537 the binder held its parameter table in five arrays of eight and
+# stopped filling them at the eighth, so the ninth parameter was never
+# recorded and the label that named it matched nothing:
+#
+#     error[E2S162]: unknown call label `i`
+#
+# The label is declared. A reader following that message edits a correct line.
+# Nine parameters were never the problem either: the same declaration called
+# positionally compiled and ran, and still does.
+#
+# Every parameter is used, because a function that ignores one does not
+# compile for an unrelated reason (#1548).
+fn nine(
+    a x1: Int,
+    b x2: Int,
+    c x3: Int,
+    d x4: Int,
+    e x5: Int,
+    f x6: Int,
+    g x7: Int,
+    h x8: Int,
+    i x9: Int
+) -> Int {
+    return x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9
+}
+
+fn main() -> Int {
+    return nine(a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8, i: 9)
+}

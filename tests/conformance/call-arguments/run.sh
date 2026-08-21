@@ -78,6 +78,38 @@ printf '%s\n' "$duplicate" |
     "$diagnostics/e2s166_internal_name_as_label.kofun" E2S166 text ||
     fail 'E2S166 declaration-related span changed'
 
+# #1537. A declaration with more parameters than the fixed-slot lowering can
+# carry is refused by a sentence that names the bound, not by one that names a
+# label the declaration plainly has.
+#
+# The binder used to hold its parameter table in five arrays of eight and stop
+# filling them at the eighth, so a ninth parameter was never recorded and the
+# label naming it matched nothing:
+#
+#     error[E2S162]: unknown call label `i`
+#
+# Nine parameters were never the problem -- the same declaration called
+# positionally compiled and ran, and `positional_beyond_bound` below still
+# does. The bound belongs to the labelled lowering alone.
+bounded=$(
+    "$temporary/observer" "$cases/labelled_parameter_bound.kofun" diagnostic
+)
+printf '%s\n' "$bounded" |
+    grep -F 'error[E2S158]: a labelled call binds at most 8 parameters; `nine` declares 9' \
+    >/dev/null ||
+    fail "a labelled call past the bound did not name the bound: $bounded"
+printf '%s\n' "$bounded" | grep -F 'E2S162' >/dev/null &&
+    fail 'a labelled call past the bound still reports an unknown label'
+
+# The same nine parameters, called positionally, are accepted. This is what
+# makes the sentence above a statement about the labelled lowering rather than
+# about the declaration, and it is the half a fix could most easily break.
+positional=$(
+    "$temporary/observer" "$cases/positional_beyond_bound.kofun" diagnostic
+)
+test -z "$positional" ||
+    fail "nine positional parameters were refused: $positional"
+
 # Compile the canonical Stage 2 seed itself, then make source order disagree
 # with declaration order. C11's comma operator must assign the fixed
 # temporaries as written before the ABI-ordered call runs.

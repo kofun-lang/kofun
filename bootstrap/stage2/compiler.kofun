@@ -4723,6 +4723,15 @@ fn call_slot_zero(source: Text, carrier: Text) -> Text {
 # accepted boundary. Labelled calls use the full call-slot carrier vocabulary
 # and require a carried result; direct calls remain Int/List[Int]-only,
 # require a List, and deliberately keep their unrestricted result.
+# #1537. The fixed-slot lowering carries at most this many parameters, and the
+# number is named because two places read it: the shape test, and the refusal
+# that has to tell an author which bound they met. It was a bare `8` in one
+# place and nothing in the other, so a ninth parameter was reported as a hold
+# on #882 rather than as a bound.
+fn fixed_slot_parameter_limit() -> Int {
+    return 8
+}
+
 fn fixed_slot_call_shape(
     source: Text,
     hir: Text,
@@ -4745,7 +4754,7 @@ fn fixed_slot_call_shape(
         return false
     }
     let count = parameter_count(source, declaration)
-    if count < 1 || count > 8 {
+    if count < 1 || count > fixed_slot_parameter_limit() {
         return false
     }
     # A pipeline always needs fixed slots, whatever it carries. Its subject is
@@ -6471,6 +6480,33 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
                     "labelled arguments name the parameters of a top-level " +
                     "declaration; this callee is a lexical binding and has " +
                     "none",
+                    cursor
+                )
+            }
+            # #1537. A third reason now reaches this sentence, and the
+            # comment above is the reason it must not: a declaration with more
+            # than `fixed_slot_parameter_limit()` parameters is a bound, not a
+            # hold, and "owned by #882" would promise it starts working when
+            # that lands.
+            #
+            # It became reachable only when the binder stopped truncating its
+            # parameter table at eight. Before that, a ninth parameter was
+            # refused earlier and wrongly, as `E2S162: unknown call label`,
+            # naming a label the declaration carried.
+            #
+            # The sentence is kept short for the reason #1321's refusals are:
+            # the typed sidecar copies a diagnostic into a `char detail[160]`
+            # and truncates silently, and an identifier may be 63 bytes.
+            let labelled_declaration = function_start_named(source, name)
+            if labelled_declaration >= 0 &&
+               parameter_count(source, labelled_declaration) >
+               fixed_slot_parameter_limit() {
+                return lower_error(
+                    "E2S158",
+                    "a labelled call binds at most " +
+                    to_text(fixed_slot_parameter_limit()) +
+                    " parameters; `" + name + "` declares " +
+                    to_text(parameter_count(source, labelled_declaration)),
                     cursor
                 )
             }

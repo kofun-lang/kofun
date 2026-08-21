@@ -8042,6 +8042,15 @@ static int64_t pipeline_pipe_for_call(
     int64_t call_start
 );
 
+/*
+ * #1537. The fixed-slot lowering carries at most this many parameters, and the
+ * number is named here because two places read it: this shape test, and the
+ * refusal that has to tell an author which bound they met. It was a bare `8`
+ * in one place and nothing in the other, so a ninth parameter was reported as
+ * a hold on #882 rather than as a bound.
+ */
+enum { STAGE2_FIXED_SLOT_PARAMETER_LIMIT = 8 };
+
 static bool fixed_slot_call_shape(
     const char *source,
     const char *hir,
@@ -8061,7 +8070,7 @@ static bool fixed_slot_call_shape(
     int64_t declaration = function_start_named(source, callee);
     if (declaration < 0) return false;
     int64_t count = parameter_count(source, declaration);
-    if (count < 1 || count > 8) return false;
+    if (count < 1 || count > STAGE2_FIXED_SLOT_PARAMETER_LIMIT) return false;
     /*
      * A pipeline always needs fixed slots, whatever it carries. Its subject is
      * written outside the parentheses and must be assigned before any explicit
@@ -9955,7 +9964,48 @@ static char *emit_primary(
             char *labelled_binding = hir_use_binding_id(hir, cursor);
             bool lexical = labelled_binding[0] != '\0';
             free(labelled_binding);
+            /*
+             * #1537. A third reason now reaches this sentence, and the comment
+             * above is the reason it must not: a declaration with more than
+             * `STAGE2_FIXED_SLOT_PARAMETER_LIMIT` parameters is a bound, not a
+             * hold, and "owned by #882" would promise it starts working when
+             * that lands.
+             *
+             * It became reachable here only when the binder stopped truncating
+             * its parameter table at eight. Before that, a ninth parameter was
+             * refused earlier and wrongly, as `E2S162: unknown call label`,
+             * naming a label the declaration carried.
+             *
+             * Built before `name` is released, because the sentence names the
+             * callee. It is kept short for the same reason #1321's refusals
+             * are: the typed sidecar copies a diagnostic into a
+             * `char detail[160]` and truncates silently, and an identifier may
+             * be 63 bytes, so the fixed part has to leave room for one.
+             */
+            char *bounded = NULL;
+            if (!lexical) {
+                int64_t labelled_declaration =
+                    function_start_named(source, name);
+                int64_t labelled_parameters = labelled_declaration >= 0
+                    ? parameter_count(source, labelled_declaration) : 0;
+                if (labelled_parameters >
+                    STAGE2_FIXED_SLOT_PARAMETER_LIMIT) {
+                    Buffer bound;
+                    buffer_init(&bound);
+                    buffer_format(
+                        &bound,
+                        "a labelled call binds at most %d parameters; `%s` "
+                        "declares %lld",
+                        (int)STAGE2_FIXED_SLOT_PARAMETER_LIMIT,
+                        name,
+                        (long long)labelled_parameters
+                    );
+                    bounded = lower_error("E2S158", bound.data, cursor);
+                    free(bound.data);
+                }
+            }
             free(name);
+            if (bounded != NULL) return bounded;
             if (lexical) {
                 return lower_error(
                     "E2S158",
@@ -11001,16 +11051,51 @@ static char *validate_declared_call_arguments(
     int64_t close = balanced_end(source, open, "(", ")");
     if (parameters_end < 0 || close < 0) return owned_text("");
 
-    int64_t parameter_starts[8];
-    int64_t parameter_external[8];
-    int64_t parameter_internal[8];
-    int64_t parameter_types[8];
-    int64_t bound_argument[8];
+    /*
+     * #1537. These tables were eight, and the ninth parameter was silently
+     * dropped rather than refused — so a label that named it matched nothing
+     * and the call was refused as `E2S162: unknown call label`, sending a
+     * reader to edit a line that was correct. Nine parameters are not the
+     * problem: the same declaration called positionally compiled and ran.
+     *
+     * The bound below is not a new limit. A parameter is a lexical binding,
+     * and E2S35 already refuses the 257th binding in a function, before this
+     * function is reached. Measured on `origin/main@e882af3f`, one program per
+     * row, labelled calls:
+     *
+     *     255 parameters -> E2S162 on the ninth label   (this defect)
+     *     256 parameters -> E2S162 on the ninth label   (this defect)
+     *     257 parameters -> E2S35 lexical binding limit is 256 per function
+     *     260 parameters -> E2S35 lexical binding limit is 256 per function
+     *
+     * So 256 is the count that can actually arrive here, and sizing to it
+     * makes the array bound provable from this function rather than from a
+     * rule enforced several passes earlier.
+     *
+     * The Kofun half applies no constant of its own: it takes
+     * `parameter_count` and indexes with `function_parameter_start_at`, so it
+     * is bounded by the same E2S35 and the two halves agree on every program
+     * that reaches either of them.
+     */
+    enum { STAGE2_DECLARED_PARAMETER_LIMIT = 256 };
+    int64_t parameter_starts[STAGE2_DECLARED_PARAMETER_LIMIT];
+    int64_t parameter_external[STAGE2_DECLARED_PARAMETER_LIMIT];
+    int64_t parameter_internal[STAGE2_DECLARED_PARAMETER_LIMIT];
+    int64_t parameter_types[STAGE2_DECLARED_PARAMETER_LIMIT];
+    int64_t bound_argument[STAGE2_DECLARED_PARAMETER_LIMIT];
     int64_t parameter_count_value = 0;
     bool has_external_parameter = false;
     int64_t parameter = skip_trivia(source, token_end(source, parameters));
     while (parameter < parameters_end && !token_equal(source, parameter, ")")) {
-        if (parameter_count_value >= 8) break;
+        /*
+         * Unreachable while E2S35 holds, and it declines rather than breaks so
+         * that even if it were reached it would fall back to the positional
+         * path instead of fabricating a label error out of a truncated table —
+         * which is precisely how the eight-parameter version failed.
+         */
+        if (parameter_count_value >= STAGE2_DECLARED_PARAMETER_LIMIT) {
+            return owned_text("");
+        }
         int64_t internal = parameter_internal_start(
             source,
             parameter,
