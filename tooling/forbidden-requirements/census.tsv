@@ -689,6 +689,7 @@ shell-build-driver	source	1	required-today	required	tests/pair-coverage/check.sh
 shell-build-driver	source	1	required-today	required	tests/pair-coverage/measure.sh
 shell-build-driver	source	1	required-today	required	tests/pair-coverage/mirror.sh
 shell-build-driver	source	1	required-today	off-path	tests/pair-coverage/prove.sh
+shell-build-driver	source	1	required-today	required	tests/preflight/check.sh
 shell-build-driver	source	1	required-today	required	tests/release/check-claims.sh
 shell-build-driver	source	1	required-today	required	tests/rfc/check-registry.sh
 shell-build-driver	source	1	required-today	required	tests/security/generated-meta-access.sh
