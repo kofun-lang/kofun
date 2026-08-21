@@ -1,0 +1,31 @@
+# `pattern_match_open` scans from just after `match` for the `{` that opens the
+# arms, tracking parenthesis and bracket depth. These four functions pin what it
+# does with a bracket, an unmatched closer, and a `{` that is not at depth zero.
+# Each is refused later, by the type rules; the scan itself is what these hold.
+fn bracket_before_brace(value: Int) -> Int {
+    match value[ {
+        _ => { return 0 }
+    }
+}
+
+fn balanced_brackets(value: Int) -> Int {
+    match value[] {
+        _ => { return 0 }
+    }
+}
+
+fn unmatched_close_bracket(value: Int) -> Int {
+    match value] {
+        _ => { return 0 }
+    }
+}
+
+fn unmatched_close_paren(value: Int) -> Int {
+    match value) {
+        _ => { return 0 }
+    }
+}
+
+fn main() -> Int {
+    return 0
+}

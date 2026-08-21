@@ -1,0 +1,21 @@
+# Every arm here opens with `|`, which `parse_pattern_or` refuses as
+# `leading-or` at just that token. The refusal is not the subject: what each arm
+# pins is where `pattern_arm_arrow` then stops looking for the `=>`, which is
+# the third field of its `arm|` record.
+#
+#   | (1, 2)   a `,` inside parentheses does not end the arm
+#   | [1, 2]   nor does one inside brackets
+#   | ({})     a `{` inside parentheses is not the arm body
+#   | [{}]     nor is one inside brackets
+#   | )        a `)` at depth zero does not underflow the counter
+fn main() -> Int {
+    let value = 3
+    match value {
+        | (1, 2) => { return 0 }
+        | [1, 2] => { return 1 }
+        | ({}) => { return 2 }
+        | [{}] => { return 3 }
+        | ) => { return 4 }
+    }
+    return 0
+}

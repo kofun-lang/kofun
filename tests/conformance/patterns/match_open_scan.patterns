@@ -1,0 +1,15 @@
+kofun-pattern-tree/v1
+limits|depth|32|nodes-per-compilation|256
+match|0|371|583|584|615|616|1
+node|0|WildcardPattern|593|594
+arm|0|0|0|593|594|595|597
+match|1|467|481|482|513|514|1
+node|1|WildcardPattern|491|492
+arm|1|0|1|491|492|493|495
+match|2|570|583|584|615|616|1
+node|2|WildcardPattern|593|594
+arm|2|0|2|593|594|595|597
+match|3|670|683|684|715|716|1
+node|3|WildcardPattern|693|694
+arm|3|0|3|693|694|695|697
+match-count|4
