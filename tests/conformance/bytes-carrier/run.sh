@@ -1,10 +1,11 @@
 #!/usr/bin/env sh
-# #1315. The cleanup funnel: every exit of a function that owns backend storage
-# reclaims it, in reverse creation order.
+# #1315. The cleanup funnel over the tracked owner fixtures: every selected
+# emitted return contains a release, and released ids in the straight-line
+# two-owner fixture descend.
 #
-# The assertion is derived from the *set* of `return` statements the compiler
-# emitted, not from a list written here. A list passes forever after someone
-# adds an eleventh return site; this fails.
+# The return set is derived from emitted C rather than copied into this script,
+# so a new selected return must carry a release. This does not derive the full
+# set of live owners at each return or prove that every one is released.
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
@@ -37,19 +38,20 @@ owners=$(grep -c 'KofunBytesValue k_b[0-9]* = ' "$WORK/main.c")
 test "$owners" -eq 2 ||
     fail "expected two owning locals, found $owners"
 
-# Every return in the owning function must reclaim every live owner. Derived
-# from the returns present, so a new emission site is covered the day it lands.
+# Every selected return in this owning fixture must contain a release. Derived
+# from the returns present, so a new emission site is covered the day it lands;
+# the complete live-owner set is not derived here.
 returns=$(grep -c 'return ' "$WORK/main.c")
 test "$returns" -gt 0 || fail "main emitted no return at all"
 
 reclaiming=$(grep 'return ' "$WORK/main.c" |
     grep -c 'kofun_bytes_release' || true)
 test "$reclaiming" -eq "$returns" ||
-    fail "$reclaiming of $returns returns reclaim; every exit must"
+    fail "$reclaiming of $returns selected returns contain a release"
 
-# Reverse creation order, checked as a descending sequence rather than by
-# naming the newest owner. An exit above the second declaration reclaims only
-# the first, and that is correct -- the property is the order, not the count.
+# Descending released ids are checked without naming the newest owner. This
+# checks the order of ids present on a line, not whether every live owner is
+# present.
 grep 'return ' "$WORK/main.c" | while IFS= read -r line; do
     ids=$(printf '%s\n' "$line" |
         grep -o 'k_b[0-9]*' | sed 's/k_b//')
@@ -294,9 +296,9 @@ grep -q 'E2S96' "$WORK/captured.stdout" "$WORK/captured.stderr" ||
     fail 'a captured Bytes owner no longer stops at E2S96; escaping capture may now be reachable'
 
 printf '%s\n' \
-    'PASS: every exit of an owning function reclaims in reverse creation order, including exits inside nested blocks and in functions other than main' \
+    'PASS: every selected owning-function exit contains a release; released ids descend in the straight-line two-owner fixture, and nested and non-main cleanup paths execute' \
     'PASS: a program that owns no storage carries no carrier, allocator, or reclamation' \
-    'PASS: empty and zeroed 1/255/16384/65536 execute identically at -O0 and -O2 under ASan/UBSan; 65537, a negative length, and an injected allocation failure return their exact tag and detail and leave the destination fields and bytes unchanged' \
+    'PASS: empty and zeroed 1/255/16384/65536 execute identically at -O0 and -O2 under ASan/UBSan; 65537, a negative length, and an injected allocation failure return their exact tag and detail, leave destination storage non-null, and preserve its asserted length, capacity, and marker byte' \
     'PASS: a take transfer and a proven-fresh producer reclaim exactly once with no leak, use-after-free, or double free' \
     'PASS: the 0..8 status declaration is emitted once and carries no consumed tag' \
     'PASS: the take crossing and the terminal return are visible in the emitted C as take-then-release-then-return, and the injected allocation failure edge is sanitizer-clean' \

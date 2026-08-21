@@ -47,12 +47,11 @@
 #
 # WHAT IT DOES NOT COVER, stated because a partial check read as a total one is
 # worse than none:
-#   - argument TYPES. A call with the right name and the right number of
-#     arguments resolves here whatever it passes. Arity IS checked, since
-#     #1571: `lower_body` called `validate_value_if` with two of its three
-#     arguments, and it was the only such call in 23,021 lines -- the scope note
-#     that used to sit here said arity was out of scope, and that line was the
-#     whole of what let it through.
+#   - argument types, and arity for builtins and `.method(...)` forms. Arity is
+#     checked only when the target is a function declared in this file. #1571
+#     added that narrower check after `lower_body` called `validate_value_if`
+#     with two of its three arguments; `builtin_arity` and
+#     `int_bit_method_arity` remain outside the check.
 #   - constructors and type names. Only lowercase-initial call targets are read,
 #     which is what `fn` names and builtins are.
 #   - a `fn` defined in the Kofun half that nothing calls. That is the reverse

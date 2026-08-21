@@ -15,6 +15,7 @@ set -eu
 ROOT=$(CDPATH= cd -P -- "$(dirname -- "$0")/../.." && pwd)
 VALIDATOR="$ROOT/tests/release/validate-claims.mjs"
 GENERATOR="$ROOT/tests/release/make-invalid.mjs"
+TASKFILE_CHECK="$ROOT/tests/lib/taskfile-check.mjs"
 PACK="artifacts/release-evidence"
 
 if test "$#" -gt 0; then
@@ -30,6 +31,8 @@ trap 'rm -rf "$WORK"' EXIT HUP INT TERM
 
 node --check "$VALIDATOR"
 node --check "$GENERATOR"
+node --check "$TASKFILE_CHECK"
+node "$TASKFILE_CHECK"
 
 node "$VALIDATOR" schema
 node "$VALIDATOR" validate

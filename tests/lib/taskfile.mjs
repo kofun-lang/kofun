@@ -36,14 +36,16 @@ export function taskfileTasks(repositoryRoot) {
     return tasks
 }
 
-// What each task actually runs: its `cmds:` in declaration order, and the
-// `deps:` that run before them.
+// What each task actually runs: its shell `cmds:` in declaration order, the
+// `deps:` that run before them, and serialized `- task:` calls inside `cmds:`.
 //
 // `taskfileTasks` above answers "does this task exist?". Answering "what does
 // running it execute?" needs both lists, and #1395 needs that to check a
 // declared external prerequisite against the scripts it is claimed to be
-// required by. `deps:` is not optional detail: `task records` compiles nothing
-// itself and reaches its C11 bridge entirely through `aggregate-bridge`.
+// required by. Child tasks are not optional detail: `task records` compiles
+// nothing itself and reaches its C11 bridge through a dependency, while
+// `task bounded-bytes` uses serialized task calls so two coverage writers do
+// not run concurrently.
 // Same fixed generated shape, same parser, so the two readers cannot disagree
 // about where a task begins and ends.
 export function taskfileCommands(repositoryRoot) {
@@ -64,7 +66,7 @@ export function taskfileCommands(repositoryRoot) {
         const task = /^ {2}([A-Za-z][A-Za-z0-9_-]*):\s*$/.exec(line)
         if (task) {
             current = task[1]
-            commands.set(current, { cmds: [], deps: [] })
+            commands.set(current, { cmds: [], deps: [], calls: [] })
             inCommands = false
             continue
         }
@@ -107,7 +109,10 @@ export function taskfileCommands(repositoryRoot) {
             continue
         }
         const inline = /^cmd:\s*(.+)$/.exec(text)
-        commands.get(current).cmds.push(unquote(inline ? inline[1].trim() : text))
+        const value = unquote(inline ? inline[1].trim() : text)
+        const call = /^task:\s*([A-Za-z][A-Za-z0-9_-]*)$/.exec(value)
+        if (call) commands.get(current).calls.push(call[1])
+        else commands.get(current).cmds.push(value)
     }
     if (commands.size === 0) {
         throw new Error(`${TASKFILE} declares no tasks; the parser or the file is wrong`)

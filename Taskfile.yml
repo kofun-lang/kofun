@@ -1040,7 +1040,7 @@ tasks:
       - "sh tests/conformance/authority-carrier/run.sh"
 
   bytes-carrier:
-    desc: "Verify Bytes[65536] owners are reclaimed at every exit in reverse order"
+    desc: "Verify tracked Bytes[65536] owner cleanup, transfer, and refusal paths"
     cmds:
       - "sh tests/conformance/bytes-carrier/run.sh"
 
@@ -1048,6 +1048,12 @@ tasks:
     desc: "Verify bounded Bytes[65536] mutation, growth, and range refusals"
     cmds:
       - "sh tests/conformance/bytes-mutation/run.sh"
+
+  bounded-bytes:
+    desc: "Verify the fixture-bounded Bytes[65536] carrier and mutation checkpoint"
+    cmds:
+      - task: bytes-carrier
+      - task: bytes-mutation
 
   call-arguments:
     desc: "Verify labelled-call binding and source order across C11, native, and wasm32"
@@ -1167,14 +1173,15 @@ tasks:
   #
   # DELIBERATELY NOT IN `verify`. It rebuilds `compiler.c` under `--coverage` at
   # -O0 and drives the pinned corpus and the gate set; the measured cost is in
-  # the ledger header. Adding that to a 24-minute `verify` buys a slower gate
-  # for a number that moves when someone edits the compiler, not every commit.
-  # `prove.sh` runs here without `--tree`, which costs nothing: its nine cases
+  # the ledger header. Adding those serialized coverage measurements to
+  # `verify` buys a slower gate for a number that moves when someone edits the
+  # compiler, not every commit.
+  # `prove.sh` runs here without `--tree`, which costs nothing: its cases
   # feed check.sh a measurement through the seam instead of taking one. So this
   # task both checks the ledger and demonstrates that the gate can refuse, which
   # is the standing rule here -- a gate nobody has watched fail is not evidence.
-  # `--tree` stays out: it measures for real and costs the better part of two
-  # hours.
+  # `--tree` stays out: it performs another multi-hour pair measurement; the
+  # ledger header records the corresponding baseline measurement's cost.
   stage2-pair-coverage:
     desc: "Hold the Stage 2 pair's undefended-branch ledger exact in both directions"
     vars:
@@ -1196,7 +1203,7 @@ tasks:
       - "sh tests/pair-coverage/calls.sh --prove"
 
   # Which ledger functions the Kofun half mirrors at all, and under what name.
-  # #1401's work-list assumes both halves implement the function; for 25 of 354
+  # #1401's work-list assumes both halves implement the function; for 24 of 361
   # they do not. Cheap -- two files of text, no build -- so it belongs in
   # `verify` beside `stage2-pair-calls` rather than in
   # tooling/gate-reachability/unreachable.tsv.
@@ -1318,8 +1325,7 @@ tasks:
             text-escapes \
             unused-function \
             authority-type-carrier \
-            bytes-carrier \
-            bytes-mutation \
+            bounded-bytes \
             while-list-int \
             else-if-chain \
             list-int-signatures \

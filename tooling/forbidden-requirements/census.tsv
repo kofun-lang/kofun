@@ -288,7 +288,7 @@ node	invoke	7	required-today	required	tests/interop/bindgen-c/check.sh
 node	invoke	2	required-today	required	tests/interop/bindgen-c/import-boundary/run.sh
 node	invoke	14	required-today	required	tests/lsp/check.sh
 node	invoke	5	required-today	required	tests/lsp/visibility.sh
-node	invoke	9	required-today	required	tests/release/check-claims.sh
+node	invoke	11	required-today	required	tests/release/check-claims.sh
 node	invoke	10	required-today	required	tests/rfc/check-registry.sh
 node	invoke	2	required-today	required	tests/stage2/list-int-signatures/run.sh
 node	invoke	4	required-today	required	tests/stage2/list-int-values/run.sh
@@ -404,6 +404,7 @@ node	source	1	required-today	required	tests/interop/bindgen-c/check-report.mjs
 node	source	1	required-today	unknown	tests/interop/bindgen-c/fuzz/fuzz-macros.mjs
 node	source	1	required-today	required	tests/interop/bindgen-c/make-abi-probe.mjs
 node	source	1	required-today	required	tests/lib/json-schema.mjs
+node	source	1	required-today	required	tests/lib/taskfile-check.mjs
 node	source	1	required-today	required	tests/lib/taskfile.mjs
 node	source	1	required-today	required	tests/lsp/bridge_fallback_test.js
 node	source	1	required-today	required	tests/lsp/client.js

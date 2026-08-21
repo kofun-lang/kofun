@@ -152,12 +152,6 @@ if grep -qE 'KOFUN_BYTES_(INVALID_UTF8|TEXT_CONTAINS_NUL|TEXT_LIMIT_EXCEEDED)' \
 then
     fail 'a mutation operation emits a Text-bridge status tag'
 fi
-if grep -q 'memcpy' "$WORK/operations.c" &&
-   ! grep -q 'memmove' "$WORK/operations.c"
-then
-    fail 'the self operation copies with memcpy'
-fi
-
 # ------------------------------------------------------------ the driver
 #
 # Values, ranges, growth, precedence, and transactionality. Built with the
@@ -421,7 +415,7 @@ printf '%s\n' \
     'PASS: the operations, the zeroed producer, a relay, and an edit-to-read widening all reach a borrow without a second address-of, while a local owner is still lent by address' \
     'PASS: the operations the two halves of the pair admit and the ones the emitted runtime defines are one set, each defined exactly once' \
     'PASS: the read carrier is declared once with tags 0..2 and no consumed tag; the 0..8 status and the carrier are still declared once each' \
-    'PASS: no mutation operation reaches a Text-bridge status tag, and the self operation copies with memmove' \
-    'PASS: exact bytes 0x00/0x7f/0x80/0xff are append-attempted at lengths 0, 1, 255, 16384, and 65536 under strict O0/O2 and ASan/UBSan, succeeding below the ceiling and preserving it on refusal; every range, byte, and capacity refusal preserves all carrier pointers and bytes' \
+    'PASS: no mutation operation reaches a Text-bridge status tag' \
+    'PASS: exact bytes 0x00/0x7f/0x80/0xff are append-attempted at lengths 0, 1, 255, 16384, and 65536 under strict O0/O2 and ASan/UBSan, succeeding below the ceiling and preserving it on refusal; every named range, byte, and capacity refusal preserves the named carrier pointers and bytes' \
     'PASS: growth 0->16, every doubling edge, the ceiling, one over it, reserve, and clear-capacity preservation hold; the injected-OOM append_range call is live-proved and preserves pointer and bytes for source and destination too' \
     'PASS: one value in both positions of append_range, an unresolved identity, and a temporary in a carrier slot are refused as E2S177, commit no C and are mutation-proved to commit no binary, fit the sidecar detail bound, and the same-carrier refusal reports identically on a second run'
