@@ -58,13 +58,13 @@ it is never called.
 
 ## 3. Ownership
 
-A `Bytes` binding has an owning role, and the exercised owning fixture functions
-reclaim it in reverse creation order. This is not reference counting and there
-is no arena.
+A locally created `Bytes` owner in the exercised fixture functions is reclaimed
+in reverse creation order. This is not reference counting and there is no
+arena.
 
 For the owning fixture functions exercised by `task bytes-carrier`, the gate
 derives the emitted returns within those functions and requires each one to
-reclaim every live `Bytes` binding in reverse creation order. This is not a
+reclaim every live local owner in reverse creation order. This is not a
 proof over unexercised typed-return lowering arms (§8).
 
 A parameter carries one of three modes, and a `Bytes` parameter with no mode is
