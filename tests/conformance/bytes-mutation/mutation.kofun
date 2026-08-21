@@ -13,6 +13,11 @@ fn main() -> Int {
     stage2_bytes_byte_set(source, 0, 65)
     stage2_bytes_byte_at(source, 0)
 
+    # This owner call makes the positive `&carrier` lowering assertion in the
+    # gate non-vacuous; the borrowed fixture proves the opposite form.
+    let zeroed = stage2_bytes_empty()
+    stage2_bytes_assign_zeroed(zeroed, 2)
+
     let destination = stage2_bytes_empty()
     stage2_bytes_reserve(destination, 8)
     stage2_bytes_append_range(destination, source, 0, 4)
