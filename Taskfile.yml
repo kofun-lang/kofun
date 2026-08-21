@@ -1052,7 +1052,6 @@ tasks:
   bounded-bytes:
     desc: "Verify the fixture-bounded Bytes[65536] carrier and mutation checkpoint"
     cmds:
-      - "command -v cc >/dev/null 2>&1"
       - task: bytes-carrier
       - task: bytes-mutation
 

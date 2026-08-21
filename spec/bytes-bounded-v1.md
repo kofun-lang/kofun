@@ -47,11 +47,13 @@ offset of `capacity` (8), the width of `data` (8), and the alignment of the
 struct (8). Those assertions are in every program that uses `Bytes`, so the
 layout is proved by compiling rather than by a gate reading a table.
 
-**The empty value is exactly `{0, 0, NULL}`.** In the take-transfer fixture
-exercised by `task bytes-carrier`, the emitted move leaves the source with those
-bits and the sanitizer proof observes exactly one release. This is evidence for
-that fixture, not a claim that every call crossing records or rejects later use
-of the moved binding (#1540).
+**The empty value in the extracted prelude is exactly `{0, 0, NULL}`.** The
+tracked direct-transfer fixture requires an emitted `kofun_bytes_take` and runs
+sanitizer-clean, but it does not independently snapshot all three fields of the
+moved-from binding. This checkpoint therefore does not publish an exact
+moved-from-bit-pattern guarantee. Compile-time use-after-move is proved only
+for the forms named by the fixture set; an ordinary positional `take` call is
+still not recorded as a move (#1540).
 
 A length of zero allocates nothing. `malloc(0)` may return a non-null pointer,
 which would make an empty value distinguishable from a one-allocation one, so
@@ -59,14 +61,15 @@ it is never called.
 
 ## 3. Ownership
 
-A locally created `Bytes` owner in the exercised fixture functions is reclaimed
-in reverse creation order. This is not reference counting and there is no
-arena.
-
-For the owning fixture functions exercised by `task bytes-carrier`, the gate
-derives the emitted returns within those functions and requires each one to
-reclaim every live local owner in reverse creation order. This is not a
-proof over unexercised typed-return lowering arms (§8).
+The tracked owner fixtures exercise lexical cleanup in their emitted functions.
+`bytes-carrier` derives the return sites from emitted C and requires every
+selected return to contain at least one release. In the straight-line two-owner
+fixture it also requires any released carrier ids on each return to descend;
+the branch and nested fixtures execute their cleanup paths but do not derive a
+complete live-owner set or check its full order. These observations establish
+cleanup presence and selected ordering, not that every live carrier is released
+at every exit. Three non-`Bytes` typed return guards and a post-transfer `Bytes`
+result guard remain open in #1569 and #1581.
 
 A parameter carries one of three modes, and a `Bytes` parameter with no mode is
 refused:
@@ -86,18 +89,17 @@ as `&k_bN`.
 
 ## 4. Aliasing
 
-For the named-binding fixtures exercised by `task bytes-carrier`, distinct
-`Bytes` owners do not share storage. Nine shapes that could create an alias are
-refused as `E2S170`, each naming its own reason: an alias initializer, a branch
-mismatch, loop-carried storage, a recursive summary, an escaping return, a
-backend limitation, and the rest. The gate asserts seven of them by reason and
-records that escaping store and escaping capture are refused earlier by
-`E2S32` and `E2S96`.
+The checkpoint does not claim that every pair of distinct source values has
+distinct storage. `bytes-carrier` asserts seven tracked alias-producing shapes
+are refused as `E2S170` with distinct reasons, and records that two additional
+shapes — escaping store and escaping capture — are refused earlier by `E2S32`
+and `E2S96`. The direct `append_range` fixture separately requires two resolved
+BindingIds and refuses one BindingId in both positions as `E2S177`.
 
-For direct `append_range` calls in `task bytes-mutation`, the compiler also
-requires distinct resolved BindingIds before C emission. That is the bounded
-identity proof behind §6's copy rule; it is not a general alias analysis or a
-claim about source shapes outside the gated resolver paths.
+Within that direct fixture, the BindingId check is the compile-time premise for
+the two-carrier copy/refusal boundary in §6; it is not a general wrapper-level
+alias proof. One owner can still satisfy conflicting wrapper slots (#1561), and
+transparent parentheses can erase the identity the direct check needs (#1562).
 
 ## 5. Status
 
@@ -149,13 +151,16 @@ are carriers:
 
 ### 6.1 Growth
 
-Capacity 0 grows to 16; thereafter it doubles until the request fits, capped at
-the ceiling. The ladder is walked by the gate rather than spot-checked, because
-"doubles until it fits" is a statement about every step and a defect at one
-step is invisible from the two around it.
+The ordinary-allocation mutation driver observes capacity 0 grow to 16 and
+then walks each doubling edge until the ceiling. The ladder is walked rather
+than spot-checked, because a defect at one step is invisible from the two
+around it.
 
-Growth is **transactional**: the new allocation is taken and filled before the
-old pointer is released, so a failure has nothing to undo.
+For the injected-failure cases the current driver reaches — append, reserve,
+self-append, and two-carrier `append_range` — it observes the named carriers'
+retained fields and bytes. The pointer witness and the real `append_range` OOM
+call are independently mutation-proved. These are still fixture observations,
+not a universal transactionality claim; §6.5 states the exact boundary.
 
 ### 6.2 Range checks
 
@@ -200,12 +205,17 @@ Parenthesized carrier identity is a known gap (#1562).
 proves the original-range bytes survive both non-growth and growth cases; the
 C library copy primitive used to achieve that is not part of the checkpoint.
 
-### 6.5 Failure preserves everything
+### 6.5 Failure observations are fixture-bounded
 
-Every operation refusal exercised by `task bytes-mutation` leaves the
-participating carriers' length, capacity, pointer and bytes exactly as it found
-them. The gate executes the injected-allocation-failure `append_range` call and
-re-checks both its source and destination.
+The focused driver checks length, capacity, pointer identity, and bytes for its
+named refusal cases and builds a second time with allocation failure injected.
+Its live-proved `append_range` OOM call snapshots both source and destination;
+controlled mutations independently change each peer's saved bytes and must be
+named by the corresponding assertion. A separate pointer-only mutation swaps
+byte-identical storage after a refusal and must also be named. This proves the
+named direct cases, not every source-level ownership, alias, call, or exit
+shape. The checkpoint therefore publishes no universal transactionality or
+memory-safety promise.
 
 ## 7. What a source program can observe
 
