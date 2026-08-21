@@ -140,8 +140,9 @@ slow green.
 **Announce anything longer than about half an hour before you start it, and say
 when it ends.** `tests/pair-coverage/measure.sh` is the worked multi-hour
 example; its exact current cost is recorded in
-`tests/pair-coverage/undefended.tsv`. It refuses to report a basis where a
-driver failed, so a run spoiled by load is discarded rather than published.
+`tests/pair-coverage/undefended.tsv`. It refuses unrecorded or stale driver
+outcomes and any corpus timeout, so load-induced drift cannot silently alter
+the published basis.
 
 **Announce a release freeze, and end it.** Cutting a release means `main` must
 hold still between the commit CI proved and the tag

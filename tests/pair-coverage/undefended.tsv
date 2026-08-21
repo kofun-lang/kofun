@@ -37,7 +37,7 @@
 # on, and the reason that file rather than the verify list is where this gate
 # is accounted for:
 #   gcc    drivers  4653s + corpus  754s =   90 min, drivers are 86% of it
-#   clang  drivers  4789s + corpus  877s =   94 min, drivers are 84% of it
+#   clang  drivers  4789s + corpus  877s =   94 min, drivers are 84.5% of it
 #   both   drivers  9442s + corpus 1631s =  185 min for the pair
 #
 #   8 cores. No load sampler was active for this run, so no load range is
@@ -47,12 +47,11 @@
 # Attempts 1 through 3 were retried; the terminal failure matched the pinned
 # driver-failures.tsv policy. Neither host recorded a corpus timeout.
 #
-# READ THE RATIO, NOT THE ABSOLUTE. These timings were taken on a shared
-# machine with other sessions building concurrently, so the wall-clock
-# figures are an upper bound rather than a clean-machine cost. The split
-# between the driver phase and the corpus phase is what the cost argument
-# turns on, and a ratio between two phases measured under the same
-# contention survives it.
+# READ THE PHASE SPLIT, NOT THE ABSOLUTE. These wall-clock figures are
+# observations from one shared-machine run, not a clean-machine cost or a
+# controlled cross-host comparison. The reported phase shares describe only
+# where each sequential host run spent its wall time; without a load sampler,
+# no same-contention claim is made or inferred.
 #
 # DETERMINISM (#1408 criterion 5). This 157-driver / 1283-input tree has one
 # fresh two-compiler measurement: the run recorded above. The earlier
