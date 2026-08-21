@@ -189,9 +189,10 @@ echo "building instrumented compiler.c with: $COVERAGE_CC $COVERAGE_FLAGS" >&2
 #
 # THE SERIAL LOOP IS THIS LEDGER'S WHOLE COST PROBLEM, AND IT IS NOT INHERENT.
 # This phase is `verify`'s own driver set run one at a time; CI runs the same
-# set through `task --parallel` in 24 minutes. The serialisation buys profile
-# integrity, not correctness of the drivers, and the toolchains already ship the
-# mechanism that would buy both:
+# set through `task --parallel`. Its current timing belongs to the exact CI run,
+# while this measurement's serial timing is recorded in undefended.tsv. The
+# serialisation buys profile integrity, not correctness of the drivers, and the
+# toolchains already ship the mechanism that would buy both:
 #
 #   gcc    GCOV_PREFIX per worker gives each driver its own .gcda tree, and
 #          `gcov-tool merge dirA dirB -o dirC` combines them. MEASURED: two runs
@@ -208,10 +209,10 @@ echo "building instrumented compiler.c with: $COVERAGE_CC $COVERAGE_FLAGS" >&2
 #          and its `%p` pattern belong to that mode and have no effect here.
 #          Conflating the two is what made the earlier claim look reasonable.
 #
-# So the clang half stays serial until something can merge its profiles, and
-# parallelising the gcc half alone takes the pair from about 180 minutes to
-# about 120. That is a real improvement and not the transformation the earlier
-# note implied.
+# So the clang half stays serial until something can merge its profiles.
+# Per-worker gcov directories plus `gcov-tool merge` could parallelise the gcc
+# driver phase, but the pair-wide saving must be measured on one exact tree
+# rather than inferred from an older wall-clock run.
 #
 # Doing it is out of #1408's scope and needs its own evidence -- a parallel run
 # and a serial run over the same tree

@@ -89,7 +89,7 @@
 # fails in both directions, so this cannot quietly stop being true.
 #
 # What a Kofun rewrite has to be able to do, recorded so whoever picks it up
-# inherits the requirements and not just the row: spawn on the order of 1,400
+# inherits the requirements and not just the row: spawn several thousand
 # child processes and collect their exit status; read the coverage tool's own
 # output format for two different tool families; and hold a per-function table
 # over a file with several hundred entries. #1451 owns that work.
@@ -116,7 +116,8 @@ CC_B=${KOFUN_DDC_CC_B:-clang}
 TMP_PARENT="$ROOT/build/tmp"
 mkdir -p "$TMP_PARENT"
 WORK=$(mktemp -d "$TMP_PARENT/pair-coverage.XXXXXX")
-# Clean up only on SUCCESS. A measuring run costs the better part of an hour,
+# Clean up only on SUCCESS. A two-compiler measuring run costs hours (the exact
+# duration belongs in undefended.tsv),
 # and deleting it on failure destroys the evidence needed to tell a broken
 # harness from a changed compiler -- which is exactly the case that occurred:
 # a guard misread gcov's per-function summary as the file's, refused a correct
@@ -130,9 +131,9 @@ fail_keeping_work() {
     exit 1
 }
 
-# Two measuring runs cost the better part of an hour, and `prove.sh` needs the
+# The two host-compiler measurements cost hours, and `prove.sh` needs the
 # comparison exercised many times, so this seam supplies a measurement instead
-# of taking one. It ANNOUNCES ITSELF on every use: a seam that silently replaced
+# of taking them. It ANNOUNCES ITSELF on every use: a seam that silently replaced
 # the measurement would turn this gate into one that checks a file against
 # itself.
 if test -n "${KOFUN_PAIR_COVERAGE_MEASURED:-}"; then
