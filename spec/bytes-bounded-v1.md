@@ -6,10 +6,11 @@ ownership, lifetime, or typed-return path is complete. Implemented behavior is
 named with its gate below; incomplete boundaries are explicit in §8.
 
 **Every normative statement names the gate that fails if it is false.** A
-statement with no gate does not belong in this document — the two gates are
-`task bytes-carrier` (#1315, the carrier) and `task bytes-mutation` (#1321, the
-operations). Where a statement is proved by a specific assertion, the
-assertion is named rather than described, so a reader can go and check.
+statement with no gate does not belong in this document — `task bounded-bytes`
+invokes `task bytes-carrier` (#1315, the carrier) and `task bytes-mutation`
+(#1321, the operations) sequentially. Where a statement is proved by a
+specific assertion, the assertion is named rather than described, so a reader
+can go and check.
 
 ## 1. What this is, and what it is not
 
@@ -26,9 +27,9 @@ It is **not**:
 - convertible to or from `Text` — there is no bridge, and the three status tags
   reserved for one are unused (§5). That is #1322;
 - atomically replaceable in a bound target — that is #1323 and #1324;
-- observable from source beyond `len` and `capacity` — every other operation
-  returns `Void` at source level and its outcome is private to the emitted C
-  (§7);
+- reliably observable from source beyond `len` and `capacity` — every other
+  operation has a compiler-private emitted-C outcome, and Stage 2 does not yet
+  refuse all source value contexts that try to consume it (#1559, §7);
 - available on any backend but C11 Stage 2.
 
 ## 2. The carrier
@@ -46,11 +47,11 @@ offset of `capacity` (8), the width of `data` (8), and the alignment of the
 struct (8). Those assertions are in every program that uses `Bytes`, so the
 layout is proved by compiling rather than by a gate reading a table.
 
-**The empty value is exactly `{0, 0, NULL}`.** A consumed binding — one whose
-storage was moved away — leaves exactly the same bits. The two are
-deliberately indistinguishable at run time, so no runtime tag may be inferred
-from zero fields. Use-after-move is a compile-time question, and §8 records
-precisely how much of it is currently answered.
+**The empty value is exactly `{0, 0, NULL}`.** In the take-transfer fixture
+exercised by `task bytes-carrier`, the emitted move leaves the source with those
+bits and the sanitizer proof observes exactly one release. This is evidence for
+that fixture, not a claim that every call crossing records or rejects later use
+of the moved binding (#1540).
 
 A length of zero allocates nothing. `malloc(0)` may return a non-null pointer,
 which would make an empty value distinguishable from a one-allocation one, so
@@ -126,9 +127,10 @@ the gate asserts that.
 
 ## 6. Operations
 
-The checkpoint covers nine calls that resolve to these compiler builtins; a
-source or lexical callable with the same spelling is outside this builtin
-surface. Their leading arguments are carriers:
+The checkpoint covers nine direct call shapes that resolve to these compiler
+builtins. It does not prove that a source or lexical callable with the same
+spelling always outranks builtin recognition (#1560). Their leading arguments
+are carriers:
 
 | operation | arguments | result |
 | --- | --- | --- |
@@ -177,21 +179,26 @@ gate passes `INT64_MAX` in both slots.
 - For `byte_set`, offset negativity and bounds precede the byte check.
 - `append` validates its byte before any capacity or allocation check, so a
   full carrier asked to append a non-byte reports the byte.
-- For `append_range`, the source range is validated before any destination
-  capacity, growth or allocation failure.
+- For `append_range`, the mutation matrix's source-range refusals occur before
+  its destination capacity and growth paths. It does not combine an invalid
+  source range with injected allocation failure, so that broader precedence is
+  not claimed.
 - Capacity failure reports the requested final length; allocation failure
   reports the requested allocation capacity.
 
 ### 6.4 Copying between carriers, and within one
 
-`append_range` copies with `memcpy` and therefore requires its two carriers to
-be **distinct bindings**, proved by distinct typed-HIR BindingIds before any C
-is emitted. One value in both positions, or an identity the typed HIR could not
-resolve, is `E2S177`; the author is directed to `append_self`.
+For the direct unparenthesized named-binding forms exercised by the gate,
+`append_range` copies from a distinct source carrier and therefore requires its
+two carriers to be **distinct bindings**, proved by distinct typed-HIR
+BindingIds before any C is emitted. One direct named binding in both positions
+is `E2S177`; the author is directed to `append_self`. The C library copy
+primitive is an implementation detail, not a frozen part of this checkpoint.
+Parenthesized carrier identity is a known gap (#1562).
 
-`append_self` is the dedicated single-carrier operation. It validates against
-the length *before* growth, grows transactionally, and copies with `memmove`
-from the post-growth buffer's original range.
+`append_self` is the dedicated single-carrier operation. The mutation matrix
+proves the original-range bytes survive both non-growth and growth cases; the
+C library copy primitive used to achieve that is not part of the checkpoint.
 
 ### 6.5 Failure preserves everything
 
@@ -203,11 +210,13 @@ re-checks both its source and destination.
 ## 7. What a source program can observe
 
 For calls resolved to these builtins in the gated source forms, `len` and
-`capacity` return `Int`. Every other operation is usable only as a complete
-discarded expression statement: the status and read carriers are private to
-the emitted C. `task bytes-mutation` proves them there with a driver compiled
-against a prelude extracted from a program the compiler just emitted, while
-the Stage 2 fixture matrix refuses value contexts before publishing C.
+`capacity` return `Int`. The supported form for every other operation is a
+complete discarded expression statement: the status and read carriers are
+private to the emitted C. `task bytes-mutation` proves those direct supported
+forms with a driver compiled against a prelude extracted from a program the
+compiler just emitted. It does not carry a comprehensive private-result
+rejection matrix; current Stage 2 permits multiple source value contexts to
+reach invalid generated C (#1559).
 
 This is a deliberate boundary and it is the largest one in this document.
 Surfacing either carrier to source needs a compiler-owned enum declaration, and
@@ -222,19 +231,37 @@ works is the kind of published promise this repository gates against:
 
 - **A `take` parameter crossing performs the move and does not record it**, so
   use-after-move through a call is accepted where the same move written as a
-  `take` statement is refused with `E2S123` (#1540). §2's claim that
-  use-after-move is a compile-time question is therefore true only for the
-  statement form today.
+  `take` statement is refused with `E2S123` (#1540). The take-transfer fixture
+  in §2 therefore does not establish call-crossing use-after-move enforcement.
 - **A temporary `Bytes` call result passed to a direct declared `read`, `edit`,
   or `take` parameter is not yet refused by Stage 2** and can reach invalid
   generated C (#1516).
+- **A `read Bytes` borrow may satisfy a declared `edit Bytes` parameter or an
+  edit destination of `assign_zeroed`, `byte_set`, `clear`, `reserve`,
+  `append`, `append_range`, or `append_self`.** The invalid const-discarding
+  crossing is detected only by the host C compiler (#1517).
+- **Compiler-private Bytes operation outcomes are not refused in source value
+  contexts.** Binding, print, return/final expression, argument, arithmetic,
+  equality/comparison, and additional multiline or parenthesized contexts can
+  reach invalid generated C instead of being limited to complete discarded
+  expression statements (#1559).
+- **Builtin recognition can outrank a source or lexical callable with the same
+  `stage2_bytes_*` spelling**, so the direct-call table in §6 is not a general
+  callable-resolution precedence claim (#1560).
+- **One Bytes owner may satisfy conflicting wrapper slots when the carrier's
+  identity is lost across call binding**, so wrapper-call owner uniqueness is
+  outside the fixture proof (#1561).
+- **Parentheses can erase a named Bytes carrier BindingId**, allowing an alias
+  or mutability check to miss a source shape that its unparenthesized form
+  rejects (#1562).
 - **Seventy-one `Bytes` locals in one function are refused under `E2S170`'s
   alias reason** when the actual cause is a cleanup-list buffer, and only by
   one half of the pair (#1556).
-- **Typed-return failure exits are not completely covered by executable
-  ownership evidence.** The enum, `List[Int]`, and `Int?` paths have a known
-  C/Kofun cleanup divergence, while record and `Bytes` returns are outside the
-  current fixture matrix (#1569).
+- **All six typed-return forms lack an owning-Bytes fixture.** The C trap guard
+  drops cleanup for `List[Int]`, `Int?`, and enum returns; C/Kofun indentation
+  placement also diverges for those three plus record and `Text`. The `Bytes`
+  return has no identified pair divergence, but remains outside the executable
+  fixture matrix (#1569).
 - **The post-take failure guard of a `Bytes`-returning function may discard the
   result carrier.** Reachability and an executable ownership proof remain
   unresolved (#1581).

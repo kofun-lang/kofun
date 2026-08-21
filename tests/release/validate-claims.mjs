@@ -207,6 +207,7 @@ function computeReachableScriptText(command, taskCommands) {
         const entry = taskCommands.get(name)
         if (entry === undefined) return
         for (const dependency of entry.deps) addTask(dependency)
+        for (const call of entry.calls) addTask(call)
         seeds.push(...entry.cmds)
     }
     const task = /^task ([A-Za-z][A-Za-z0-9_-]*)$/.exec(command)

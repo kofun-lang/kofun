@@ -1325,8 +1325,7 @@ tasks:
             text-escapes \
             unused-function \
             authority-type-carrier \
-            bytes-carrier \
-            bytes-mutation \
+            bounded-bytes \
             while-list-int \
             else-if-chain \
             list-int-signatures \

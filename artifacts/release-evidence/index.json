@@ -4,7 +4,7 @@
   "version": "0.10.0-seed",
   "inputs": {
     "VERSION": "946a4192a1f78cb78fd956089650b560eaea8726833c9b7f79bc4b550bee5cc2",
-    "release/claims.json": "b4cc52ce1d2c177f59c5b4acf3fab20be47be754242c9ab8f581b2484aa8954b",
+    "release/claims.json": "127c116268b1b853e2ad95c0c5d4c57a57073b677d7ecaed572f7402813cc6ef",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
     "bootstrap/manifest.json": "9ff68f47f4cad9038096d6e357b7e8dd63e56408718570f296f64c9f4b89bb0d"
   },
@@ -785,7 +785,7 @@
   ],
   "evidence_digests": {
     ".github/workflows/native-hosts.yml": "9b0155c4caf6aeb29e7d942bffc10acd12cd61b79c4d70af45ea2b10a9967daa",
-    "Taskfile.yml": "2120822175ef80edb01237ae2a63f0a78e180fbb3880b33c9547d66a7a87c9fa",
+    "Taskfile.yml": "791904c3e3eb123ac69b58aed96a1927dcaf20cbbf2e5b6fccab22918802ea5e",
     "bootstrap/native/README.md": "6c470b203c3dbc327c6b601ab958c754e6f82be78c255d442307ad0c7691bc21",
     "bootstrap/native/check-macho64-signed.sh": "6fc51ddfec599ea85b8b06a5c16d68b6fdc994621cdb8ca4267e20be38141393",
     "bootstrap/native/check-macho64.sh": "d6bd52e3f6756aa607a2dc44a0117defeaaa55e64fa3f4221986da6406251e15",
@@ -821,7 +821,7 @@
     "examples/rust-shim/check.sh": "487dfa45e0a090f56550678fc6224c84780fbb750563b8fafcd3dd2fc34b4c01",
     "examples/wasm_arithmetic.kofun": "ea73b3ee6b5172a4c8080ed5b4540fb23288d31000dd6ccd59a473e97836c246",
     "rfcs/0010-affine-resource-handle-v1.md": "0deef14c3d575a97acbd92907757707fd49680c1f18c4171e1d2bf6a54d2656e",
-    "spec/bytes-bounded-v1.md": "49f80363fe903952f287f58e7549a4b33baf770c36c827523304797b7e61b0f5",
+    "spec/bytes-bounded-v1.md": "ab8e1478ab153f69d0878826168bfb776fb77025ba4df71183ba21f6e79896fb",
     "spec/enum-match-exhaustiveness.md": "ac383d5cdc76a3d0817bc7cacb12a473c4b18d099551d2e9a098928cc4980f43",
     "spec/modules/module-identity.md": "9fc02e1888a5d585aa9c747e3800e9d72d947eaa9d722a60fa4e4a7b385ae5a0",
     "spec/modules/re-exports.md": "adaaaa3af3a08302b979a1d92871d6a552f0dd76838a67147d876c510ef95ce3",

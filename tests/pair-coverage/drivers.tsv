@@ -30,7 +30,7 @@ bindgen-c
 bindgen-c-import-boundary
 bootstrap
 build-system
-bytes-carrier
+bounded-bytes
 c-abi
 call-arguments
 call-arguments-spec
