@@ -5,7 +5,7 @@
 # bootstrap/stage2/compiler.c, how many branches nothing this repository runs
 # ever takes -- #1401's work-list of places a divergence between the two halves
 # can hide. THAT FRAMING ASSUMES BOTH HALVES IMPLEMENT THE FUNCTION. For 24 of
-# the 360 they do not, and for 67 more the counterpart is there under a
+# the 359 they do not, and for 67 more the counterpart is there under a
 # different name, which a reader triaging the ledger cannot see.
 #
 # So this file answers one question per ledger row, and only that question:
@@ -30,11 +30,22 @@
 # `c-only` -- the vocabulary that is absent, with the line of compiler.kofun
 # that already says so where one exists.
 #
+# A ROW LEFT THIS FILE BY BEING FULLY COVERED, for the first time.
+# `pattern_arm_arrow` has no untaken branches after #1508's recovery fixtures,
+# so it left `undefended.tsv` and therefore left this map -- the map describes
+# the ledger, not the compiler, and a function with nothing unwatched in it has
+# no row here to carry a verdict. It was `same-name`, so the 24 C-only and 67
+# other-name counts above are unchanged and only the total moved.
+#
+# That is a different event from the row removed one commit earlier, which left
+# because #1548 renamed its function away. One row went because the repository
+# started testing it; the other went because the function stopped existing.
+#
 # WHAT THE C-ONLY ROWS AMOUNT TO, so a reader knows what is being set aside:
-# `compiler.ensure_move` (#572, #904) at 71 untaken branches; the
+# `compiler.ensure_move` (#572, #904) at 70 untaken branches; the
 # `Stage2AuthorityContext` embedder API and its observations at 47; memo,
 # capacity and allocator plumbing at 21; host-level file and identifier
-# handling at 7; and `const_generic_refusal` at 6. 152 of the ledger's 1959
+# handling at 7; and `const_generic_refusal` at 6. 151 of the ledger's 1921
 # branches, 8%.
 # The other 92% is a real pair surface.
 #
@@ -264,7 +275,6 @@ parse_value_if	other-name	validate_value_if	shared E2S27 "value-position if requ
 parse_value_match	other-name	validate_value_match	ten shared E2S24/E2S26/E2S29/E2S30 texts in the same order, including "pattern after catch-all is unreachable"
 par_spawn_bound_handle	same-name	par_spawn_bound_handle	-
 par_spawn_site_within	same-name	par_spawn_site_within	-
-pattern_arm_arrow	same-name	pattern_arm_arrow	-
 pattern_duplicate_binding_error	same-name	pattern_duplicate_binding_error	-
 pattern_error	other-name	pattern_error_result	byte-identical `node|…|ErrorPattern|…` and `pattern-diagnostic|E2S58|…` pair
 pattern_first_error	same-name	pattern_first_error	-

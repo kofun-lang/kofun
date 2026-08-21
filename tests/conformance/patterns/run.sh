@@ -146,6 +146,40 @@ cmp "$CASES/unexpected_after_pattern.patterns" \
 if grep 'E2S35' "$WORK/unexpected_after_pattern-normal/stdout" >/dev/null; then
     fail 'adjacent atomic pattern leaked into name resolution'
 fi
+# #1508: the recovery scanners' depth handling. Each arm of these two fixtures
+# is refused, and the refusal's END OFFSET is the assertion -- it is where
+# `pattern_recovery_end` and `pattern_arm_arrow` stopped scanning, which is the
+# only externally visible statement of how they treat a bracket, a parenthesis,
+# and a brace at depth. The golden trees carry one record per arm, so one file
+# pins five behaviours rather than one.
+#
+# They exist because the pattern-parser region of #1408's ledger reported these
+# scanners as entirely undefended: 39 untaken branches across
+# `pattern_recovery_end`, `pattern_match_open` and `pattern_arm_arrow`, every
+# one of them reachable. These three fixtures take 34 of the region's 103.
+expect_invalid recovery_depth unsupported-pattern-token
+cmp "$CASES/recovery_depth.patterns" "$WORK/recovery_depth.patterns" ||
+    fail 'recovery depth tree differs from golden'
+test "$(grep -c '^node|' "$WORK/recovery_depth.patterns")" -eq 5 ||
+    fail 'recovery depth lost an arm to recovery'
+expect_invalid arm_arrow_depth leading-or
+cmp "$CASES/arm_arrow_depth.patterns" "$WORK/arm_arrow_depth.patterns" ||
+    fail 'arm arrow depth tree differs from golden'
+
+# `pattern_match_open` scans the scrutinee, which no refusal reports, so this
+# one is a POSITIVE case: the parse succeeds and the tree is the assertion.
+"$STAGE2" --parse-patterns "$CASES/match_open_scan.kofun" \
+    "$WORK/match_open_scan.patterns" >"$WORK/match_open_scan.stdout" \
+    2>"$WORK/match_open_scan.stderr"
+test ! -s "$WORK/match_open_scan.stdout" ||
+    fail 'match open scan wrote stdout'
+test ! -s "$WORK/match_open_scan.stderr" ||
+    fail 'match open scan wrote stderr'
+cmp "$CASES/match_open_scan.patterns" "$WORK/match_open_scan.patterns" ||
+    fail 'match open scan tree differs from golden'
+test "$(grep -c '^match|' "$WORK/match_open_scan.patterns")" -eq 4 ||
+    fail 'match open scan did not find four match blocks'
+
 expect_invalid comma_recovery unsupported-pattern-token
 cmp "$CASES/comma_recovery.patterns" "$WORK/comma_recovery.patterns" ||
     fail 'comma recovery tree differs from golden'

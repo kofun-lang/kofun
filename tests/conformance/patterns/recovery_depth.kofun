@@ -1,0 +1,20 @@
+# Every arm here is refused. What each one pins is the OFFSET the refusal
+# carries: `pattern_recovery_end` scans from just after the `[` that made the
+# arm unsupported, and where it stops is the whole of what these arms assert.
+#
+#   [[]]      a `]` at bracket depth 0 stops the scan; one inside does not
+#   [({})     a `{` inside parentheses is not the arm body
+#   [[{}]     a `{` inside brackets is not the arm body either
+#   [(1, 2)   a `,` inside parentheses is not the arm separator
+#   [[1, 2]   nor is one inside brackets
+fn main() -> Int {
+    let value = 3
+    match value {
+        [[]] => { return 0 }
+        [({}) => { return 1 }
+        [[{}] => { return 2 }
+        [(1, 2) => { return 3 }
+        [[1, 2] => { return 4 }
+    }
+    return 0
+}
