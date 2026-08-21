@@ -164,6 +164,38 @@ executes() {
     done
 }
 
+# #1569. The typed-return arms. `branching_owner` above proves the funnel for
+# `Int` returns; the six typed arms are a separate code path, and three of them
+# -- `List[Int]`, `Int?` and a concrete enum -- hard-coded the zero constant
+# into the trap guard where their neighbours interpolated `failure_result`. The
+# two `let` guards released, the success path released, only the return trap
+# did not. `Text` was already right, which is why it is here as the control:
+# a fix that changed all six would pass a test that only checked the three.
+#
+# Derived from the returns present, like every other assertion in this file, so
+# a seventh arm is covered the day it lands.
+"$ROOT/bin/kofun" build "$CASES/typed_return_owner.kofun" \
+    -o "$WORK/typed.bin" --emit-c "$WORK/typed.c" >/dev/null 2>&1 ||
+    fail "the typed-return owner did not build"
+"$WORK/typed.bin" >"$WORK/typed.stdout" ||
+    fail "the typed-return owner did not run"
+cmp "$CASES/typed_return_owner.stdout" "$WORK/typed.stdout" ||
+    fail "the typed-return owner printed unexpected output"
+
+for owner in as_enum as_list as_optional as_text
+do
+    sed -n "/^static .* kofun_fn_$owner(.*) {\$/,/^}\$/p" "$WORK/typed.c" \
+        >"$WORK/typed.$owner.c"
+    grep -q 'KofunBytesValue k_b' "$WORK/typed.$owner.c" ||
+        fail "$owner declares no Bytes carrier; the fixture no longer owns storage"
+    typed_returns=$(grep -c 'return ' "$WORK/typed.$owner.c")
+    test "$typed_returns" -gt 0 || fail "$owner emitted no return at all"
+    typed_reclaiming=$(grep 'return ' "$WORK/typed.$owner.c" |
+        grep -c 'kofun_bytes_release' || true)
+    test "$typed_reclaiming" -eq "$typed_returns" ||
+        fail "$owner reclaims at $typed_reclaiming of $typed_returns exits; every typed return must"
+done
+
 executes zeroed_lengths 'the four zeroed lengths and empty'
 executes transferred_owner 'a take transfer of real storage'
 executes produced_owner 'a proven-fresh producer and a relayed one'
@@ -297,6 +329,7 @@ grep -q 'E2S96' "$WORK/captured.stdout" "$WORK/captured.stderr" ||
 
 printf '%s\n' \
     'PASS: every selected owning-function exit contains a release; released ids descend in the straight-line two-owner fixture, and nested and non-main cleanup paths execute' \
+    'PASS: a function returning List[Int], Int?, a concrete enum or Text reclaims its owner on the failure path of the return trap as well as on the let guards and the success path' \
     'PASS: a program that owns no storage carries no carrier, allocator, or reclamation' \
     'PASS: empty and zeroed 1/255/16384/65536 execute identically at -O0 and -O2 under ASan/UBSan; 65537, a negative length, and an injected allocation failure return their exact tag and detail, leave destination storage non-null, and preserve its asserted length, capacity, and marker byte' \
     'PASS: a take transfer and a proven-fresh producer reclaim exactly once with no leak, use-after-free, or double free' \

@@ -23323,14 +23323,24 @@ static char *lower_body(
                     free(emitted.data);
                     return value;
                 }
+                /*
+                 * #1569. `failure_result`, not the bare constant. It is
+                 * `(kofun_bytes_release(&k_bN), …, <constant>)` whenever an
+                 * owner is live, and hard-coding the constant here dropped
+                 * the release on this one path while the `let` guards above
+                 * and the success path below both kept it. The `Text` and
+                 * record arms interpolate it and always did, which is what
+                 * makes this a slip rather than a decision.
+                 */
                 buffer_format(
                     &emitted,
                     "    {\n"
                     "        KofunIntListValue kofun_result = %s;\n"
-                    "        if (kofun_failed) return KOFUN_LIST_INT_ZERO;\n"
+                    "        if (kofun_failed) return %s;\n"
                     "        %sreturn kofun_result;\n"
                     "    }\n",
                     value,
+                    failure_result,
                     bytes_cleanup
                 );
                 free(value);
@@ -23363,15 +23373,24 @@ static char *lower_body(
                     free(emitted.data);
                     return value;
                 }
+                /*
+                 * #1569. `failure_result`, not the bare constant. It is
+                 * `(kofun_bytes_release(&k_bN), …, <constant>)` whenever an
+                 * owner is live, and hard-coding the constant here dropped
+                 * the release on this one path while the `let` guards above
+                 * and the success path below both kept it. The `Text` and
+                 * record arms interpolate it and always did, which is what
+                 * makes this a slip rather than a decision.
+                 */
                 buffer_format(
                     &emitted,
                     "    {\n"
                     "        " OPTIONAL_INT_C_TYPE " kofun_result = %s;\n"
-                    "        if (kofun_failed) return "
-                    "KOFUN_OPTIONAL_INT_NONE;\n"
+                    "        if (kofun_failed) return %s;\n"
                     "        %sreturn kofun_result;\n"
                     "    }\n",
                     value,
+                    failure_result,
                     bytes_cleanup
                 );
                 free(value);
@@ -23406,14 +23425,24 @@ static char *lower_body(
                     free(emitted.data);
                     return value;
                 }
+                /*
+                 * #1569. `failure_result`, not the bare constant. It is
+                 * `(kofun_bytes_release(&k_bN), …, <constant>)` whenever an
+                 * owner is live, and hard-coding the constant here dropped
+                 * the release on this one path while the `let` guards above
+                 * and the success path below both kept it. The `Text` and
+                 * record arms interpolate it and always did, which is what
+                 * makes this a slip rather than a decision.
+                 */
                 buffer_format(
                     &emitted,
                     "    {\n"
                     "        KofunEnumValue kofun_result = %s;\n"
-                    "        if (kofun_failed) return KOFUN_ENUM_ZERO;\n"
+                    "        if (kofun_failed) return %s;\n"
                     "        %sreturn kofun_result;\n"
                     "    }\n",
                     value,
+                    failure_result,
                     bytes_cleanup
                 );
                 free(value);

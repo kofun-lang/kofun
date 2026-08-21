@@ -15589,10 +15589,18 @@ fn lower_body(
                 }
                 emitted = emitted +
                 "    {\n" +
+                # #1569. The indent goes before the cleanup, as it already
+                # does in the `Bytes` arm below and in every arm of the C
+                # half. Six arms here put it after, so the two halves emitted
+                # different bytes for the same program — and this half
+                # disagreed with itself in six arms out of seven.
+                #
+                # The issue counted five. It is six: the sixth is at the
+                # equivalent site further down, which the original reading
+                # missed because it is in a different lowering function.
                 "        KofunIntListValue kofun_result = " + value + ";\n" +
                 "        if (kofun_failed) return " + failure_result + ";\n" +
-                bytes_cleanup +
-                "        return kofun_result;\n" +
+                "        " + bytes_cleanup + "return kofun_result;\n" +
                 "    }\n"
                 cursor = skip_trivia(source, value_end)
             } else if returns_optional_int {
@@ -15616,8 +15624,7 @@ fn lower_body(
                 "    {\n" +
                 "        KofunOptionalInt kofun_result = " + value + ";\n" +
                 "        if (kofun_failed) return " + failure_result + ";\n" +
-                bytes_cleanup +
-                "        return kofun_result;\n" +
+                "        " + bytes_cleanup + "return kofun_result;\n" +
                 "    }\n"
                 cursor = skip_trivia(source, value_end)
             } else if returns_enum {
@@ -15641,8 +15648,7 @@ fn lower_body(
                 "    {\n" +
                 "        KofunEnumValue kofun_result = " + value + ";\n" +
                 "        if (kofun_failed) return " + failure_result + ";\n" +
-                bytes_cleanup +
-                "        return kofun_result;\n" +
+                "        " + bytes_cleanup + "return kofun_result;\n" +
                 "    }\n"
                 cursor = skip_trivia(source, value_end)
             } else if returns_record {
@@ -15667,8 +15673,7 @@ fn lower_body(
                 "        " + record_c_type_name(result_type) +
                 " kofun_result = " + value + ";\n" +
                 "        if (kofun_failed) return " + failure_result + ";\n" +
-                bytes_cleanup +
-                "        return kofun_result;\n" +
+                "        " + bytes_cleanup + "return kofun_result;\n" +
                 "    }\n"
                 cursor = skip_trivia(source, value_end)
             } else if returns_text {
@@ -15691,8 +15696,7 @@ fn lower_body(
                 "    {\n" +
                 "        const char *kofun_result = " + value + ";\n" +
                 "        if (kofun_failed) return " + failure_result + ";\n" +
-                bytes_cleanup +
-                "        return kofun_result;\n" +
+                "        " + bytes_cleanup + "return kofun_result;\n" +
                 "    }\n"
                 cursor = skip_trivia(source, value_end)
             } else if value_start < len(source) &&
@@ -15966,8 +15970,7 @@ fn lower_body(
                     "        int64_t kofun_result = " +
                     statement_value + ";\n" +
                     "        if (kofun_failed) return " + failure_result + ";\n" +
-                    bytes_cleanup +
-                "        return kofun_result;\n" +
+                    "        " + bytes_cleanup + "return kofun_result;\n" +
                     "    }\n"
                     returned = true
                 } else {
