@@ -42,13 +42,102 @@ asserted the stale string rather than catching it. Two copies of one fact with
 nothing binding them is the drift this repository gates against everywhere
 else.
 
+## Release window
+
+Before the first merge of a named, ordered release queue, the release owner
+posts a tracker-visible `FREEZE` naming the owner, target tag, starting `main`
+SHA, and queue. The freeze takes effect when that post is visible and lasts
+through publication and verification of the tag, assets, digests, and final
+notes. Only the named owner may write `main`, `VERSION`, a tag, or the release
+during that window. A successor may do so only after a tracker-visible handoff
+names them and they accept it; no unlisted write may cross the window.
+
+The owner ends the window with a tracker-visible `THAW` that names the exact
+final commit SHA, exact tag ref, and published release URL, after completing
+the postconditions in steps 7 and 8. A timeout, a green branch, or a pushed tag
+does not imply a thaw.
+
 ## Procedure
 
-Run from a clean checkout of `main`, with the working tree clean.
+Run the whole procedure in one POSIX shell, beginning with `set -eu`; every
+command block below assumes that same fail-closed shell. Use a clean checkout
+of `main`, with the working tree clean. Bind every fetch and push to the
+intended repository explicitly; do not assume that a remote named `origin` is
+`kofun-lang/kofun`:
 
-1. **Prove the tree.** `task verify` must exit 0. Check the exit status, not
-   the tail of the output — a pipeline ending in `tail` reports `tail`'s
-   status and a failing run reads as green.
+```sh
+set -eu
+release_repo=kofun-lang/kofun
+release_remote=release-target
+release_url=ssh://git@github.com/kofun-lang/kofun
+if ! git remote get-url "$release_remote" >/dev/null 2>&1; then
+    git remote add "$release_remote" "$release_url"
+fi
+fetch_urls=$(git remote get-url --all "$release_remote")
+push_urls=$(git remote get-url --push --all "$release_remote")
+test "$fetch_urls" = "$release_url"
+test "$push_urls" = "$release_url"
+test "$(gh repo view "$fetch_urls" \
+    --json nameWithOwner --jq .nameWithOwner)" = "$release_repo"
+git fetch --tags "$release_remote" main
+test "$(git rev-parse HEAD)" = "$(git rev-parse "$release_remote/main")"
+```
+
+Before admitting a late fix to the release queue, decide whether its defect was
+created by the range since the previous tag. **A release does not ship a
+regression it created.** Hold the tag until that regression is fixed. A defect
+that the previous tag already contains may remain, but the release notes must
+name its issue and bounded effect; an available fix alone is not a reason to
+widen the release window.
+
+Make that classification from the selected previous release tag, not from
+memory. Record that tag in `previous_tag`, then use both an exact byte witness
+and ancestry, for example:
+
+```sh
+previous_tag=$(git describe --tags --abbrev=0 --match 'v*-seed' HEAD)
+test "$(gh release view "$previous_tag" --repo "$release_repo" \
+    --json tagName --jq .tagName)" = "$previous_tag"
+test "$(gh release view "$previous_tag" --repo "$release_repo" \
+    --json isDraft --jq .isDraft)" = false
+git show "${previous_tag}:path/to/file" | rg --fixed-strings 'exact defective bytes'
+if git merge-base --is-ancestor SUSPECTED_INTRODUCER "$previous_tag"; then
+    printf '%s\n' 'introducer is in the previous release'
+else
+    ancestry_status=$?
+    test "$ancestry_status" -eq 1
+    printf '%s\n' 'ancestry is inconclusive; reproduce at both refs'
+fi
+```
+
+The first command proves only that those exact bytes were present. When the
+claim is about behavior, build both refs from `git archive` and run the same
+reproducer against each. An exit status of 0 from the ancestry command confirms
+that the suspected introducing commit was already in the previous tag; an exit
+status of 1 proves neither classification by itself, so inspect that commit and
+reproduce at both ends of the range. The previous-tag behavior is the deciding
+evidence. The `v0.10.0-seed` notes must be the first worked record of this rule:
+they must name the inherited defects kept out of its queue, link their issues,
+and state whether the queue widened for any of them. Do not cite those notes as
+published evidence until the release exists.
+
+1. **Pre-flight the tree locally.** Reserve a quiet machine and run
+   `task verify`; it must exit 0 before the release proceeds. Its purpose is to
+   catch a broken tree before spending the rest of the procedure on it. It is
+   one required gate in the proof chain, followed by exact-main CI in step 6
+   and the tag workflow's independent `task verify` in step 7. Neither remote
+   run substitutes for a red, killed, incomplete, or missing local run.
+
+   Check the exit status, not the tail of the output — a pipeline ending in
+   `tail` reports `tail`'s status and can make a failing run read as green. The
+   canonical inventory and classification of load-sensitive assertions and
+   timeouts is `tooling/machine-dependent/ledger.tsv`; an `unmeasured` row is
+   unknown, not a safe exception. If contention prevents a trustworthy result,
+   preserve the exact assertion or case and diagnostic output, commit SHA,
+   command and relevant environment (including `CC` and `VERIFY_JOBS`), start
+   and end load samples, elapsed time, and exit status. That record diagnoses
+   the failed attempt; it does not waive it. Stop, obtain a quiet window, and
+   rerun until this step is green.
 
 2. **Refresh the evidence pack.** `task release-evidence`, then
    `task release-claims`. The pack under `artifacts/release-evidence/` is a
@@ -84,16 +173,45 @@ Run from a clean checkout of `main`, with the working tree clean.
    `bin/kofun --version` against `VERSION` and refuses a literal written
    elsewhere.
 
-6. **Push and let CI prove it.** Push `main` and wait for the Kofun
-   verification, Backlog issue state, and Release evidence pack jobs to pass
-   at that exact commit. A release is cut from a commit CI has proven, never
-   from a local run alone.
-
-7. **Tag it.** The tag is `v` followed by `VERSION`, exactly:
+6. **Push and let exact-main CI prove it.** Record `release_sha=$(git rev-parse
+   HEAD)`, push `HEAD` to `refs/heads/main` on the validated `release_remote`,
+   fetch that remote again, and require `release-target/main` to equal that SHA.
+   Wait for all four GitHub-hosted CI jobs required by this procedure at that
+   exact SHA to pass: Kofun verification, Backlog issue state, Native host
+   evidence binding, and Release evidence pack. Record the CI run URL and its
+   `head_sha`. The native binding is a separate required proof because the
+   shallow, tokenless `task verify` lane cannot resolve the provenance of the
+   committed six-host evidence.
 
    ```sh
-   git tag "v$(cat VERSION)"
-   git push origin "v$(cat VERSION)"
+   release_sha=$(git rev-parse HEAD)
+   git push "$release_remote" "HEAD:refs/heads/main"
+   git fetch "$release_remote" main
+   test "$(git rev-parse "$release_remote/main")" = "$release_sha"
+   remote_main_record=$(git ls-remote --exit-code "$release_remote" refs/heads/main)
+   remote_main_sha=${remote_main_record%%[[:space:]]*}
+   test "$remote_main_sha" = "$release_sha"
+   ```
+
+7. **Tag the proven commit and verify publication.** Confirm that local `HEAD`
+   and remote `main` still equal `release_sha`. Fetch again *after* the CI wait
+   so the comparison cannot use a stale remote-tracking ref. The tag is `v`
+   followed by `VERSION`, exactly, and it must resolve to that same SHA:
+
+   ```sh
+   tag="v$(cat VERSION)"
+   git fetch --tags "$release_remote" main
+   test "$(git rev-parse HEAD)" = "$release_sha"
+   test "$(git rev-parse "$release_remote/main")" = "$release_sha"
+   remote_main_record=$(git ls-remote --exit-code "$release_remote" refs/heads/main)
+   remote_main_sha=${remote_main_record%%[[:space:]]*}
+   test "$remote_main_sha" = "$release_sha"
+   git tag "$tag" "$release_sha"
+   test "$(git rev-list -n 1 "$tag")" = "$release_sha"
+   git push "$release_remote" "refs/tags/$tag:refs/tags/$tag"
+   remote_tag_record=$(git ls-remote --exit-code "$release_remote" "refs/tags/$tag")
+   remote_tag_sha=${remote_tag_record%%[[:space:]]*}
+   test "$remote_tag_sha" = "$release_sha"
    ```
 
    Pushing that tag runs `.github/workflows/release.yml`, which **refuses a
@@ -101,15 +219,92 @@ Run from a clean checkout of `main`, with the working tree clean.
    commit rather than trusting the branch run, builds a reproducible source
    archive with `git archive`, rebuilds the six bounded native checkpoint
    images, and attaches them with Kofun-computed SHA-256 manifests to the
-   release. A `-seed` version is published as a pre-release, because the
-   suffix and the flag say the same thing and must not disagree.
+   release. Wait for that workflow to succeed at `release_sha`, and record its
+   URL and `head_sha`.
+
+   The release is not complete merely because the workflow is green. Fetch the
+   tag again and require local tag, remote tag, workflow head, and
+   `release_sha` to agree. Inspect the published release and require a `-seed`
+   version to be marked as a pre-release. A new release is created with that
+   flag; the workflow's existing-release upload path preserves existing
+   metadata, so correct a pre-existing release before declaring success.
+   Require exactly nine assets with the expected versioned names: the source
+   archive and its digest, six native checkpoint images, and native
+   `SHA256SUMS`. Download them and verify both digest files against the seven
+   payload assets.
+
+   ```sh
+   git fetch --tags "$release_remote" main
+   test "$(git rev-parse HEAD)" = "$release_sha"
+   test "$(git rev-parse "$release_remote/main")" = "$release_sha"
+   remote_main_record=$(git ls-remote --exit-code "$release_remote" refs/heads/main)
+   remote_main_sha=${remote_main_record%%[[:space:]]*}
+   test "$remote_main_sha" = "$release_sha"
+   remote_tag_record=$(git ls-remote --exit-code "$release_remote" "refs/tags/$tag")
+   remote_tag_sha=${remote_tag_record%%[[:space:]]*}
+   test "$remote_tag_sha" = "$release_sha"
+   test "$(gh release view "$tag" --repo "$release_repo" \
+       --json isDraft --jq .isDraft)" = false
+   test "$(gh release view "$tag" --repo "$release_repo" \
+       --json isPrerelease --jq .isPrerelease)" = true
+   test "$(gh release view "$tag" --repo "$release_repo" \
+       --json assets --jq '.assets | length')" -eq 9
+
+   version=$(cat VERSION)
+   asset_dir=$(mktemp -d)
+   gh release download "$tag" --repo "$release_repo" --dir "$asset_dir"
+   expected_assets=$(printf '%s\n' \
+       "kofun-$version.tar.gz" \
+       "kofun-$version.tar.gz.sha256" \
+       "kofun-native-checkpoint-$version-linux-aarch64.elf" \
+       "kofun-native-checkpoint-$version-linux-x86_64.elf" \
+       "kofun-native-checkpoint-$version-macos-aarch64.macho" \
+       "kofun-native-checkpoint-$version-macos-x86_64.macho" \
+       "kofun-native-checkpoint-$version-SHA256SUMS" \
+       "kofun-native-checkpoint-$version-windows-aarch64.exe" \
+       "kofun-native-checkpoint-$version-windows-x86_64.exe" | LC_ALL=C sort)
+   actual_assets=$(for asset in "$asset_dir"/*; do
+       printf '%s\n' "${asset##*/}"
+   done | LC_ALL=C sort)
+   test "$actual_assets" = "$expected_assets"
+
+   digest_tool=$(pwd)/bin/kofun-digest
+   (
+       cd "$asset_dir"
+       source_sums="kofun-$version.tar.gz.sha256"
+       native_sums="kofun-native-checkpoint-$version-SHA256SUMS"
+       test "$(wc -l <"$source_sums" | tr -d ' ')" -eq 1
+       test "$(wc -l <"$native_sums" | tr -d ' ')" -eq 6
+       test "$(awk 'NF == 2 { print $2 }' "$source_sums")" = \
+           "kofun-$version.tar.gz"
+       expected_native_payloads=$(printf '%s\n' \
+           "kofun-native-checkpoint-$version-linux-aarch64.elf" \
+           "kofun-native-checkpoint-$version-linux-x86_64.elf" \
+           "kofun-native-checkpoint-$version-macos-aarch64.macho" \
+           "kofun-native-checkpoint-$version-macos-x86_64.macho" \
+           "kofun-native-checkpoint-$version-windows-aarch64.exe" \
+           "kofun-native-checkpoint-$version-windows-x86_64.exe" | \
+           LC_ALL=C sort)
+       actual_native_payloads=$(awk 'NF == 2 { print $2 }' "$native_sums" | \
+           LC_ALL=C sort)
+       test "$actual_native_payloads" = "$expected_native_payloads"
+       "$digest_tool" -c "$source_sums"
+       "$digest_tool" -c "$native_sums"
+   )
+   ```
 
 8. **Write the notes.** The workflow generates notes from the commit range;
    replace them with what changed in terms of claims — which capability rose,
    which bounded slice widened, which refusals moved.
    `artifacts/release-evidence/CLAIMS.md` is the source for that wording, so
    the release notes and the claims manifest do not describe one capability
-   two different ways.
+   two different ways. Also list each inherited defect deliberately left for a
+   later release, with its issue number, bounded effect, and previous-tag
+   evidence. Link the exact-main CI and exact-tag workflow recorded in steps 6
+   and 7. A failed contention attempt from step 1 may be recorded as diagnostic
+   context, but the notes must not describe it as a release-gate waiver. Recheck
+   the published notes and all step 7 postconditions after editing them; only
+   then post `THAW` with the final SHA, tag ref, and release URL.
 
 ## What a release includes, and what it does not
 
