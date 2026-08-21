@@ -251,9 +251,9 @@ works is the kind of published promise this repository gates against:
 - **One Bytes owner may satisfy conflicting wrapper slots when the carrier's
   identity is lost across call binding**, so wrapper-call owner uniqueness is
   outside the fixture proof (#1561).
-- **Parentheses can erase a named Bytes carrier BindingId**, allowing an alias
-  or mutability check to miss a source shape that its unparenthesized form
-  rejects (#1562).
+- **Parentheses can erase a named Bytes carrier BindingId**, so a supported
+  named-carrier form can be refused as `E2S177` where its unparenthesized form
+  succeeds (#1562).
 - **Seventy-one `Bytes` locals in one function are refused under `E2S170`'s
   alias reason** when the actual cause is a cleanup-list buffer, and only by
   one half of the pair (#1556).
