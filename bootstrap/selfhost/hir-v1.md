@@ -37,9 +37,10 @@ status|rejected
 ```
 
 A `complete` document contains the full record sequence below and no
-`unsupported` records. A `rejected` document contains only `diagnostic` and
-`unsupported` records after the header; the frontend never emits a partial
-typed document and never falls back to another compiler stage.
+`unsupported` records. A `rejected` document contains one or more `diagnostic`
+records and may additionally contain `unsupported` records; it contains no
+other record kind after the header. The frontend never emits a partial typed
+document and never falls back to another compiler stage.
 
 ## Identities and spans
 
@@ -173,10 +174,12 @@ unsupported|START|END|CONSTRUCT
 ```
 
 Diagnostic codes are stable identifiers in the existing `E2Sxx` frontend
-family; their text is byte-stable across runs. Every construct outside the
-frozen profile produces one `unsupported` record naming the construct family
-plus at least one diagnostic, and the document status is `rejected`. Silent
-fallback to Stage 1 or acceptance without typing is forbidden.
+family; their text is byte-stable across runs. A syntactic construct family
+with no v1 node representation produces an `unsupported` record naming that
+family plus at least one diagnostic. Type and profile refusals use diagnostic
+records alone; this includes E2S15 for a globally known builtin outside the
+frozen 16-builtin vocabulary. In both cases the document status is `rejected`.
+Silent fallback to Stage 1 or acceptance without typing is forbidden.
 
 ## Worked example
 
