@@ -50,6 +50,7 @@ builds() {
 
 builds uncalled
 builds all_called
+builds unused_parameter
 
 # The mechanism, not just the outcome. Each non-`main` function gets its own
 # reference, so a fix that emitted one line for the first function would leave
@@ -66,6 +67,67 @@ done
 assert_not_grep 'no reference uses the raw non-ASCII identifier' \
     -Fq -- '(void)kofun_fn_合計;' "$work/uncalled.c"
 
+# #1548. The same defect one level down: a parameter the body does not use.
+# `check` accepted the program and `cc` rejected the emitted C with
+# `-Werror=unused-parameter`, naming a `k_bN` the author never wrote.
+#
+# The strict build above is the assertion that matters, for the reason at the
+# head of this file — a golden alone passes on a host that does not implement
+# the warning. These pin the mechanism, so a fix that emitted one discard and
+# stopped, or that walked the parameter list from the wrong end, is caught on a
+# host that does not report it either.
+#
+# The discarded ids are read out of the emitted signature rather than written
+# here, because a fixture that hard-codes `k_b1` starts testing the binding
+# numbering instead of the rule.
+for fn_name in first middle last none_used; do
+    signature=$(
+        grep -m1 "^static int64_t kofun_fn_$fn_name(" \
+            "$work/unused_parameter.c" || true
+    )
+    test -n "$signature" ||
+        assert_fail "unused_parameter emitted no signature for $fn_name"
+    body=$(
+        awk "/^static int64_t kofun_fn_$fn_name\\(.*\\) \\{\$/,/^\\}\$/" \
+            "$work/unused_parameter.c"
+    )
+    discards=$(printf '%s\n' "$body" | grep -c '(void)k_b' || true)
+    case $fn_name in
+        none_used) want=2 ;;
+        middle) want=1 ;;
+        *) want=1 ;;
+    esac
+    test "$discards" -eq "$want" ||
+        assert_fail "$fn_name discards $discards parameter(s), expected $want"
+done
+
+# A parameter the body *does* use must not be discarded. Without this the rule
+# could be "discard every parameter", which compiles just as well and says
+# nothing — and it would hide a later change that stopped detecting use at all.
+#
+# Stated as the property rather than as a pattern: the id that was discarded
+# appears nowhere else in the body it was discarded in. An earlier version of
+# this assertion looked for a literal `+` and failed, because the emitter
+# lowers addition through `kofun_add` — which is exactly the kind of
+# coincidence a pattern-matching assertion mistakes for the rule.
+middle_body=$(
+    awk '/^static int64_t kofun_fn_middle\(.*\) \{$/,/^\}$/' \
+        "$work/unused_parameter.c"
+)
+discarded=$(
+    printf '%s\n' "$middle_body" |
+        sed -n 's/^ *(void)\(k_b[0-9]*\);$/\1/p'
+)
+test -n "$discarded" ||
+    assert_fail 'middle discarded no parameter'
+others=$(
+    printf '%s\n' "$middle_body" |
+        grep -v '(void)' |
+        grep -c "\b$discarded\b" || true
+)
+test "$others" -eq 1 ||
+    assert_fail "middle discarded $discarded, which its body uses $((others - 1)) time(s)"
+
 # `main` is not referenced: it is the entry point, never `static`, and a
 # `(void)kofun_fn_main;` would name a symbol that does not exist.
 assert_not_grep 'the emitted C does not reference main as a function symbol' \
@@ -78,4 +140,5 @@ assert_grep 'the references sit in the same prologue as the runtime helpers' \
     -Fq -- '(void)kofun_bit_wrapping_add;' "$work/uncalled.c"
 
 printf '%s\n' \
-    'PASS: an uncalled function builds under the strict flags the toolchain uses, each non-main function is referenced once in the runtime prologue, and calling every function still builds'
+    'PASS: an uncalled function builds under the strict flags the toolchain uses, each non-main function is referenced once in the runtime prologue, and calling every function still builds' \
+    'PASS: a parameter the body does not use is discarded in first, middle, last and every position, and a parameter that is used is not'

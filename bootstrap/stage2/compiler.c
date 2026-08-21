@@ -21052,10 +21052,46 @@ static int64_t scoped_parallel_member(const char *source, int64_t start)
  * with the byte and range children; discarding it explicitly is how the
  * emitted C says "not yet" rather than not compiling.
  *
- * A `take` parameter needs no discard: the cleanup funnel reclaims it, which
- * is a use.
+ * #1548. The cause is not about `Bytes`.
+ * `fn pick(a: Int, b: Int) -> Int { return a }` fails the same way, and so
+ * does every function that takes an argument it does not need — implementing
+ * an interface, stubbing, or taking a value the next commit will use. The rule
+ * an author had actually run into was "every parameter must be used", enforced
+ * by gcc, phrased in terms of a name they never wrote, in a file they never
+ * opened. Nothing stated it.
+ *
+ * So the condition is the one that was always meant: emit the discard when the
+ * body does not use the parameter, whatever its type. That subsumes the case
+ * above — an unused borrow still gets its discard — and it changes the emitted
+ * C of no program that compiles today, because a parameter with a use never
+ * received one and still does not.
+ *
+ * A `take Bytes` parameter with no source use now gets a discard it does not
+ * strictly need, since the cleanup funnel reclaims it and that is a use in C.
+ * `(void)x;` beside a real use is harmless, and the alternative is a second
+ * rule that has to know what the funnel will emit.
  */
-static char *bytes_parameter_discards(
+/*
+ * #1548. Whether any use in the typed HIR resolves to this binding.
+ *
+ * The `use` record carries its BindingId in field 4, which is the field
+ * `hir_use_binding_id` reads by offset — this asks the question the other way
+ * round, and is the whole of what "is this parameter used" means here.
+ */
+static bool binding_has_use(const char *hir, const char *binding_id) {
+    if (binding_id[0] == '\0') return false;
+    int64_t line = hir_record_start(hir, "use", 0);
+    while (line >= 0) {
+        char *owner = hir_field(hir, line, 4);
+        bool same = strcmp(owner, binding_id) == 0;
+        free(owner);
+        if (same) return true;
+        line = hir_record_start(hir, "use", line + 1);
+    }
+    return false;
+}
+
+static char *unused_parameter_discards(
     const char *source,
     const char *hir,
     int64_t function_start
@@ -21079,15 +21115,11 @@ static char *bytes_parameter_discards(
             parameters_end
         );
         if (name_at < 0 || type_cursor < 0) break;
-        const char *mode = parameter_ownership_mode(source, cursor);
-        if (
-            token_equal(source, type_cursor, "Bytes") &&
-            (strcmp(mode, "read") == 0 || strcmp(mode, "edit") == 0)
-        ) {
-            char *binding_id = hir_definition_id_at(hir, name_at);
+        char *binding_id = hir_definition_id_at(hir, name_at);
+        if (!binding_has_use(hir, binding_id)) {
             buffer_format(&out, "    (void)k_b%s;\n", binding_id);
-            free(binding_id);
         }
+        free(binding_id);
         int64_t separator = skip_trivia(source, type_cursor);
         while (
             separator < parameters_end &&
@@ -27302,7 +27334,7 @@ static char *lower_c_body(const char *source, const char *hir) {
             parameter_comma
         );
         if (strncmp(body, "error[", 6) != 0) {
-            char *discards = bytes_parameter_discards(source, hir, cursor);
+            char *discards = unused_parameter_discards(source, hir, cursor);
             if (discards[0] != '\0') {
                 Buffer touched;
                 buffer_init(&touched);
