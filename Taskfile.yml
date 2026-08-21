@@ -1203,7 +1203,7 @@ tasks:
       - "sh tests/pair-coverage/calls.sh --prove"
 
   # Which ledger functions the Kofun half mirrors at all, and under what name.
-  # #1401's work-list assumes both halves implement the function; for 25 of 354
+  # #1401's work-list assumes both halves implement the function; for 24 of 361
   # they do not. Cheap -- two files of text, no build -- so it belongs in
   # `verify` beside `stage2-pair-calls` rather than in
   # tooling/gate-reachability/unreachable.tsv.

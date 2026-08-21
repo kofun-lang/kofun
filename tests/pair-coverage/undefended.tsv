@@ -24,25 +24,23 @@
 # So: before writing a fixture to retire a row, check whether anything can
 # reach it. A green fixture is not evidence that it could.
 #
-#   measured at   d07bfcf56756d69e868c1922de3d9d5a04d2f09e
+#   measured at   c005fc316e0b2d6e60babb1995390ca2b6374a96
 #   gcc           gcc (GCC) 16.2.1 20260810
 #   clang         clang version 22.1.8
-#   basis         the union of 155 verify drivers and 1258 pinned *.kofun inputs,
+#   basis         the union of 157 verify drivers and 1283 pinned *.kofun inputs,
 #                 per drivers.tsv and inputs.tsv at this commit
-#   totals        1911 untaken under gcc, 1823 under clang, across 354 functions
+#   totals        1963 untaken under gcc, 1873 under clang, across 361 functions
 #
 # COST, measured on this run rather than estimated -- it is the number the
 # `verify`-or-not argument in tooling/gate-reachability/unreachable.tsv rests
 # on, and the reason that file rather than the verify list is where this gate
 # is accounted for:
-#   gcc    drivers  3808s + corpus  644s =   74 min, drivers are 85% of it
-#   clang  drivers  4309s + corpus  693s =   83 min, drivers are 86% of it
-#   both   drivers  8117s + corpus 1337s =  158 min for the pair
+#   gcc    drivers  4653s + corpus  754s =   90 min, drivers are 86% of it
+#   clang  drivers  4789s + corpus  877s =   94 min, drivers are 85% of it
+#   both   drivers  9442s + corpus 1631s =  185 min for the pair
 #
-#   8 cores; sampled load average: min 0.4, mean 1.6, max 2.5.
-#   The sampler covered 37 of the 164 minutes this run took, so those are
-#   sampled extremes and not the run maximum -- load 24.9 was observed by
-#   hand during a window the sampler was not running.
+#   8 cores. No load sampler was active for this run, so no load range is
+#   recorded or inferred from a different measurement.
 #
 # READ THE RATIO, NOT THE ABSOLUTE. These timings were taken on a shared
 # machine with other sessions building concurrently, so the wall-clock
@@ -51,22 +49,12 @@
 # turns on, and a ratio between two phases measured under the same
 # contention survives it.
 #
-# DETERMINISM (#1408 criterion 5). Two full measurements of this same tree,
-# run back to back, produced BYTE-IDENTICAL rows -- 354 rows, same counts,
-# same names:
-#
-#   run 1  at 6ee19d95  drivers 4502s + corpus 767s  /  4681s + 729s
-#   run 2  at d07bfcf5  drivers 3808s + corpus 644s  /  4309s + 693s
-#
-# The two trees are measurement-identical: compiler.c, drivers.tsv,
-# inputs.tsv and driver-failures.tsv are the same blobs at both commits,
-# and measure.sh has the same 233 executable lines. Only comments and this
-# file changed between them.
-#
-# The wall clock differs by up to 18% between the runs and the ledger does
-# not differ at all, which is the useful half: it says the measurement is a
-# property of the tree and not of the machine it was taken on. A repeat that
-# happened to run under identical load would not have shown that.
+# DETERMINISM (#1408 criterion 5). This 157-driver / 1283-input tree has one
+# fresh two-compiler measurement: the run recorded above. The earlier
+# 155-driver / 1258-input basis was measured twice at 6ee19d95 and d07bfcf5
+# and produced byte-identical rows, but that is historical evidence for the
+# harness rather than a repeat of this tree. A second current-tree run is
+# required before claiming byte-identical repeat determinism for this basis.
 #
 # Regenerate with:
 #
@@ -96,23 +84,25 @@
 28	28	build_scope_hir_mode
 10	8	builtin_argument_check
 1	1	builtin_parameter_types
-1	1	callable_c_declarator
-2	2	callable_parameter_type_start
-4	4	callable_type_arity
-8	8	callable_type_end
+9	7	bytes_block_reason
+1	1	bytes_carrier_address
+1	1	bytes_mutation_carriers
+4	4	bytes_parameter_discards
+4	4	bytes_parameter_releases
+17	17	bytes_producer_refusal
+1	1	c_identifier_name
 13	11	call_argument_parameter_property
 6	4	call_argument_position
 4	4	call_arity
 4	4	call_has_labelled_argument
 1	0	call_slot_carried
-1	1	c_identifier_name
+1	1	callable_c_declarator
+2	2	callable_parameter_type_start
+4	4	callable_type_arity
+8	8	callable_type_end
 1	1	coalescing_expression_end
 1	0	compile_file
 1	1	condition_end
-1	1	constant_declaration_count
-9	9	constant_declaration_end
-1	1	constant_name
-1	1	constant_value_text
 1	1	const_argument_of
 2	2	const_argument_over_budget
 2	2	const_digit_greater
@@ -120,6 +110,10 @@
 6	6	const_generic_refusal
 1	1	const_instantiation_at
 3	3	const_parameter_name
+1	1	constant_declaration_count
+9	9	constant_declaration_end
+1	1	constant_name
+1	1	constant_value_text
 4	4	constructed_list_type_end
 1	1	constructed_list_type_text
 3	2	copy_type
@@ -127,10 +121,11 @@
 10	10	core_parameters
 1	1	decimal_rounding_c_name
 4	4	decimal_value
-3	3	emit_argument
+5	5	emit_argument
 8	7	emit_arithmetic_expression
+1	1	emit_bytes_mutation_call
 10	10	emit_condition_into
-15	13	emit_enum_value
+20	18	emit_enum_value
 4	4	emit_expression
 6	5	emit_fixed_slot_call
 3	3	emit_fixed_slot_call_temporaries
@@ -142,7 +137,7 @@
 5	5	emit_list_int_subscript
 16	14	emit_list_int_value
 2	2	emit_optional_int_coalescing_temporaries
-22	19	emit_primary
+26	23	emit_primary
 10	10	emit_product
 1	1	emit_record_c_declarations
 3	3	emit_record_value
@@ -160,8 +155,8 @@
 1	0	enum_constructor_index
 1	1	enum_constructor_owner
 3	3	enum_constructor_payload_arity
-2	1	enum_constructors_covered
 1	1	enum_constructor_token_end
+2	1	enum_constructors_covered
 2	2	enum_declaration_names
 1	1	enum_declaration_start
 2	2	enum_match_end
@@ -220,7 +215,7 @@
 3	2	list_int_local_type_token
 4	4	list_int_type_end
 15	11	local_visibility_error
-136	136	lower_body
+141	141	lower_body
 4	4	lower_c_body
 26	25	lower_enum_match
 17	17	lower_record_binding
@@ -269,6 +264,11 @@
 9	7	optional_int_value
 10	10	pair_sha256_absorb
 14	14	pair_sha256_of_message
+2	2	par_loop_block_open
+7	7	par_production_error
+4	4	par_scope_rule_error
+11	10	par_spawn_bound_handle
+5	5	par_spawn_site_within
 2	2	parameter_count
 1	1	parameter_external_start
 5	5	parameter_internal_start
@@ -276,20 +276,15 @@
 1	1	parameter_list_type_text
 1	1	parameter_open
 3	3	parameter_type_start
-2	2	par_loop_block_open
-7	7	par_production_error
-4	4	par_scope_rule_error
 27	26	parse_pattern_atomic
 12	11	parse_pattern_or
-1	1	parse_patterns_file
 8	7	parse_pattern_trees
+1	1	parse_patterns_file
 26	25	parse_program
 3	3	parse_value_arm
 29	26	parse_value_enum_match
 13	13	parse_value_if
 19	19	parse_value_match
-11	10	par_spawn_bound_handle
-5	5	par_spawn_site_within
 9	9	pattern_arm_arrow
 3	3	pattern_duplicate_binding_error
 2	2	pattern_error
@@ -325,7 +320,6 @@
 1	1	scope_depth_for_open
 4	4	scoped_parallel_member
 5	5	selfhost_compile_file
-4	4	sha256_selftest
 1	1	sh_bind
 1	1	sh_emit_expr
 1	1	sh_emit_stmt
@@ -335,14 +329,15 @@
 5	5	sh_parse_binary_level
 9	9	sh_parse_block
 4	4	sh_parse_postfix
-13	12	sh_parse_primary
+12	11	sh_parse_primary
 12	12	sh_parse_signature
-31	30	sh_parse_stmt
+30	29	sh_parse_stmt
 4	4	sh_parse_unary
 1	1	sh_scope_close
 1	1	sh_scope_open
 1	1	sh_text_literal_field
 1	1	sh_type_id_key
+4	4	sha256_selftest
 1	1	skip_trivia
 1	1	sl_binding
 2	2	sl_binding_type
@@ -354,8 +349,8 @@
 8	8	sl_emit_function
 17	16	sl_emit_statement
 1	1	sl_fail
-1	1	sl_failed_check
 1	1	sl_fail_name
+1	1	sl_failed_check
 2	2	sl_field
 3	2	sl_list_parameter
 9	9	sl_load
@@ -404,7 +399,7 @@
 2	2	validate_core_calls
 11	8	validate_core_types
 4	3	validate_decimal_slice5_members
-19	21	validate_declared_call_arguments
+20	22	validate_declared_call_arguments
 12	9	validate_enum_uses
 10	9	validate_executable_patterns
 9	6	validate_fractional_operators

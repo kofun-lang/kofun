@@ -4,8 +4,8 @@
 # `undefended.tsv` beside this file lists, per function of
 # bootstrap/stage2/compiler.c, how many branches nothing this repository runs
 # ever takes -- #1401's work-list of places a divergence between the two halves
-# can hide. THAT FRAMING ASSUMES BOTH HALVES IMPLEMENT THE FUNCTION. For 25 of
-# the 354 they do not, and for 67 more the counterpart is there under a
+# can hide. THAT FRAMING ASSUMES BOTH HALVES IMPLEMENT THE FUNCTION. For 24 of
+# the 361 they do not, and for 67 more the counterpart is there under a
 # different name, which a reader triaging the ledger cannot see.
 #
 # So this file answers one question per ledger row, and only that question:
@@ -34,9 +34,8 @@
 # WHAT THE C-ONLY ROWS AMOUNT TO, so a reader knows what is being set aside:
 # `compiler.ensure_move` (#572, #904) at 71 untaken branches; the
 # `Stage2AuthorityContext` embedder API and its observations at 53; memo,
-# capacity and allocator plumbing at 21; host-level file and identifier handling
-# at 7; and `ends_with`, which is not a cluster but a defect -- the Kofun half
-# calls it and never defines it (#1508). 153 of the ledger's 1911 branches, 8%.
+# capacity and allocator plumbing at 21; and host-level file and identifier
+# handling at 7. 152 of the ledger's 1963 branches, 8%.
 # The other 92% is a real pair surface.
 #
 # ONE C-ONLY ROW IS A LIVE DIVERGENCE rather than a documented omission:
@@ -65,6 +64,12 @@ buffer_reserve	c-only	-	growable Buffer; the Kofun half concatenates Text and ha
 build_scope_hir_mode	same-name	build_scope_hir_mode	-
 builtin_argument_check	same-name	builtin_argument_check	-
 builtin_parameter_types	same-name	builtin_parameter_types	-
+bytes_block_reason	same-name	bytes_block_reason	-
+bytes_carrier_address	same-name	bytes_carrier_address	-
+bytes_mutation_carriers	same-name	bytes_mutation_carriers	-
+bytes_parameter_discards	same-name	bytes_parameter_discards	-
+bytes_parameter_releases	same-name	bytes_parameter_releases	-
+bytes_producer_refusal	same-name	bytes_producer_refusal	-
 callable_c_declarator	same-name	callable_c_declarator	-
 callable_parameter_type_start	same-name	callable_parameter_type_start	-
 callable_type_arity	same-name	callable_type_arity	-
@@ -98,6 +103,7 @@ decimal_rounding_c_name	same-name	decimal_rounding_c_name	-
 decimal_value	same-name	decimal_value	-
 emit_argument	same-name	emit_argument	-
 emit_arithmetic_expression	same-name	emit_arithmetic_expression	-
+emit_bytes_mutation_call	same-name	emit_bytes_mutation_call	-
 emit_condition_into	same-name	emit_condition_into	-
 emit_enum_value	same-name	emit_enum_value	-
 emit_expression	same-name	emit_expression	-

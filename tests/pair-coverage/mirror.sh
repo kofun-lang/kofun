@@ -4,7 +4,7 @@
 #
 # `undefended.tsv` is #1401's work-list: per function of
 # bootstrap/stage2/compiler.c, how many branches nothing takes. Its usefulness
-# rests on both halves implementing the function, and for 25 of the 354 they do
+# rests on both halves implementing the function, and for 24 of the 361 they do
 # not -- while 67 more are mirrored under a different name, which is invisible
 # to anyone reading the ledger. `mirror.tsv` answers that one question per row
 # and this gate keeps the answer true.
