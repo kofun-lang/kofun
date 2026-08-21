@@ -36,14 +36,15 @@ export function taskfileTasks(repositoryRoot) {
     return tasks
 }
 
-// What each task actually runs: its `cmds:` in declaration order, and the
-// `deps:` that run before them.
+// What each task actually runs: its shell `cmds:` in declaration order, the
+// `deps:` that run before them, and child tasks invoked as `- task:` entries.
 //
 // `taskfileTasks` above answers "does this task exist?". Answering "what does
 // running it execute?" needs both lists, and #1395 needs that to check a
 // declared external prerequisite against the scripts it is claimed to be
-// required by. `deps:` is not optional detail: `task records` compiles nothing
-// itself and reaches its C11 bridge entirely through `aggregate-bridge`.
+// required by. Task edges are not optional detail: `task records` compiles
+// nothing itself and reaches its C11 bridge through a `deps:` edge, while
+// ordered aggregates use `- task:` because their children share build output.
 // Same fixed generated shape, same parser, so the two readers cannot disagree
 // about where a task begins and ends.
 export function taskfileCommands(repositoryRoot) {
@@ -91,6 +92,14 @@ export function taskfileCommands(repositoryRoot) {
         const entry = /^ {6}- (.*)$/.exec(line)
         if (!entry) continue
         const text = entry[1].trim()
+        // A structured child-task entry is an edge, not shell text. Store it
+        // with `deps` because the only consumer asks which scripts are
+        // reachable, not whether the edge runs before or during `cmds:`.
+        const childTask = /^task:\s*([A-Za-z][A-Za-z0-9_-]*)\s*$/.exec(text)
+        if (childTask) {
+            commands.get(current).deps.push(childTask[1])
+            continue
+        }
         // `- cmd: |-` opens a block scalar whose body is indented under it. A
         // parser that stopped at the marker would record the literal `cmd: |-`
         // as the command and silently see none of the script it runs.

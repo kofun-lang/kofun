@@ -4,13 +4,13 @@
   "version": "0.10.0-seed",
   "inputs": {
     "VERSION": "946a4192a1f78cb78fd956089650b560eaea8726833c9b7f79bc4b550bee5cc2",
-    "release/claims.json": "3b8d361dfec45b1221dcc7b1a5f0076be72d76d2aba8986fed3f47f5cc2e0c25",
+    "release/claims.json": "cc04f4b6d07a3c3eace1df297c345760d5ac88df03b13a0443078a64911c1ab5",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
     "bootstrap/manifest.json": "9ff68f47f4cad9038096d6e357b7e8dd63e56408718570f296f64c9f4b89bb0d"
   },
   "states": {
-    "checkpoint": 40,
-    "implemented": 10,
+    "checkpoint": 41,
+    "implemented": 9,
     "design": 1,
     "open": 3
   },
@@ -75,16 +75,18 @@
     },
     {
       "id": "bounded-bytes",
-      "state": "implemented",
+      "state": "checkpoint",
       "area": "c-backend",
       "targets": [
         "c11",
         "stage2"
       ],
-      "positive_gate": "task bytes-mutation",
+      "positive_gate": "task bounded-bytes",
       "negative_boundary": "tests/conformance/bytes-mutation/same_carrier.kofun",
-      "reproduction": "task bytes-mutation",
-      "prerequisites": []
+      "reproduction": "task bounded-bytes",
+      "prerequisites": [
+        "cc"
+      ]
     },
     {
       "id": "bounded-tzdb-producer",
@@ -783,7 +785,7 @@
   ],
   "evidence_digests": {
     ".github/workflows/native-hosts.yml": "9b0155c4caf6aeb29e7d942bffc10acd12cd61b79c4d70af45ea2b10a9967daa",
-    "Taskfile.yml": "e10cf536dab86313bdc889b7802b3283b4b3608f7589967bbeb5de91a76a0693",
+    "Taskfile.yml": "044b453fea1d8eb0b3b6d6b67b750a7765579b8e9bf37a58f2f923e1116aac09",
     "bootstrap/native/README.md": "6c470b203c3dbc327c6b601ab958c754e6f82be78c255d442307ad0c7691bc21",
     "bootstrap/native/check-macho64-signed.sh": "6fc51ddfec599ea85b8b06a5c16d68b6fdc994621cdb8ca4267e20be38141393",
     "bootstrap/native/check-macho64.sh": "d6bd52e3f6756aa607a2dc44a0117defeaaa55e64fa3f4221986da6406251e15",
@@ -808,7 +810,7 @@
     "docs/LAW_SYSTEM.md": "b974f0ad762bec778ee76afa5d0a2176423ac96a3a583739eee55dcb8dca5043",
     "docs/LINGUIST_RECOGNITION.md": "279f9afa7157c90e41d656974c2f5020f8b6d25acbbd389ee760efbb2d6d6166",
     "docs/MEMORY_MODEL.md": "2ad150ffa325a6ac8778ce307b6d9d15584916ec116ae697a22028dc2e6c102e",
-    "docs/MVP_IMPLEMENTED.md": "1c4c3ac4990555b690a766a27168419cd4da5e6c7ae37e0cae619e110237876a",
+    "docs/MVP_IMPLEMENTED.md": "06188fd668bbc25d86977d5f4bb8e1fe8172bc0389607efc0aea3a240c3556ea",
     "docs/NATIVE_BACKEND.md": "cc5b3680a3e250a4bcaa31170d40f5c7cf3fa3ecc74a489613a9a61bfeafd51f",
     "docs/ROADMAP.md": "01f4d69e2027aeadb6b1ae5dc00a2b00cfb945fb5a9ca22fa7e52578894afe9c",
     "docs/RUST_CRATE_SHIMS.md": "4365b064cbc9a05733710d3a609c1db2623b28cb9ed4ba0e48536e35f9d58c47",
@@ -819,7 +821,7 @@
     "examples/rust-shim/check.sh": "487dfa45e0a090f56550678fc6224c84780fbb750563b8fafcd3dd2fc34b4c01",
     "examples/wasm_arithmetic.kofun": "ea73b3ee6b5172a4c8080ed5b4540fb23288d31000dd6ccd59a473e97836c246",
     "rfcs/0010-affine-resource-handle-v1.md": "0deef14c3d575a97acbd92907757707fd49680c1f18c4171e1d2bf6a54d2656e",
-    "spec/bytes-bounded-v1.md": "78637d77f99923c16c1e14fe05c010323c33358cd17d26f9fb85b198784f7060",
+    "spec/bytes-bounded-v1.md": "d983ca2eb677611a5bdd6f2ca8dfe5531622951b3589fe374acc4c4751013d3b",
     "spec/enum-match-exhaustiveness.md": "ac383d5cdc76a3d0817bc7cacb12a473c4b18d099551d2e9a098928cc4980f43",
     "spec/modules/module-identity.md": "9fc02e1888a5d585aa9c747e3800e9d72d947eaa9d722a60fa4e4a7b385ae5a0",
     "spec/modules/re-exports.md": "adaaaa3af3a08302b979a1d92871d6a552f0dd76838a67147d876c510ef95ce3",
@@ -835,7 +837,6 @@
     "tests/cli.sh": "6ca726adc3cb5fa4437d34665603b6556a63d01d26db1141a93af3388c5240f9",
     "tests/cli_stage2_outcomes.sh": "9f84a95495afab023a1572b37a2508a4ee02a3a89881df14b887c209a628a9a7",
     "tests/conformance/aggregate-bridge/README.md": "aec3624a10648a59d18723bf7429422ff017cec17995402653e403f065ec0f0a",
-    "tests/conformance/bytes-carrier/alias_initializer.kofun": "4dd0504d610b52882d4fad34f4c423a0b045b9a2f9667fe0d081a3237b67dbe6",
     "tests/conformance/bytes-mutation/same_carrier.kofun": "114d7b5fc79b76c38d23bac12dc5d3dcec523edb57ca7f605c34ba920b92eceb",
     "tests/conformance/capabilities.tsv": "7dca885522b8fd775dea20b0622d62fb774d8c8df0b8c71672f379894cdc2eab",
     "tests/conformance/functions/division_floor_signs.kofun": "6bfd48679ebcf604305c78271b80e803866a64d8e9c8f732f5b1884d4d0d67b0",

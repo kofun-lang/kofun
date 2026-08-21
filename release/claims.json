@@ -189,10 +189,10 @@
     {
       "id": "bounded-bytes",
       "public_wording": "bounded Bytes[65536] carrier and mutation on C11 Stage 2",
-      "public_status": "uniquely-owned byte buffer with checked read/write, clear, reserve, append, append-range and self-append; exact bounded growth and transactional failure; no Text bridge",
-      "state": "implemented",
+      "public_status": "bounded C11 Stage 2 checkpoint over tracked fixtures; excludes read-to-edit crossing, same-name resolution, wrapper aliases, parenthesized BindingIds, private source results, and complete exit cleanup; no Text bridge",
+      "state": "checkpoint",
       "area": "c-backend",
-      "bounded_capability": "A uniquely-owned byte buffer bounded at 65,536 bytes, with length, capacity, checked byte read and write, clear, reserve, single-byte append, append of a range from a second carrier, and append of a range of itself. Growth is exact: capacity 0 grows to 16, then doubles until the request fits, capped at the ceiling. Every failure is transactional, leaving length, capacity, pointer and bytes unchanged, including under an injected allocation failure. It is not a general buffer, has no Text bridge, and is observable from source only through length and capacity.",
+      "bounded_capability": "The sequential `task bounded-bytes` checkpoint joins the checked-in carrier fixtures to the direct emitted-runtime mutation fixtures for a `Bytes[65536]` three-field carrier. Those fixtures exercise named owner cleanup and transfer paths, length and capacity, checked byte read and write, clear, reserve, append, direct two-carrier append-range, self-append, the bounded growth ladder, and named direct refusals. It does not establish read-to-edit call crossing, same-name builtin/declaration resolution, wrapper-slot alias exclusivity, parenthesized BindingId preservation, source isolation of compiler-private outcomes, complete cleanup across every exit or result path, or transactionality beyond the named direct mutation cases; #1516, #1517, #1540, #1556, #1559, #1560, #1561, #1562, #1569, and #1581 remain known gaps. It is not a general buffer and has no Text bridge.",
       "targets": [
         "c11",
         "stage2"
@@ -201,27 +201,27 @@
         "spec/bytes-bounded-v1.md",
         "docs/MEMORY_MODEL.md"
       ],
-      "compatibility": "The 65,536 ceiling, the three-field carrier layout, and the 0..8 status tag values are frozen; tags 6..8 are reserved for the Text bridge and unused. Widenings arrive as new operations rather than as changes to these.",
+      "compatibility": "Within this checkpoint, the 65,536 ceiling, three-field carrier layout, and 0..8 status tag values are frozen; tags 6..8 remain reserved and unused. This is not a general source-ownership or memory-safety compatibility promise, and closing any listed gap or widening the admitted slice is a release-note event.",
       "positive_gate": {
-        "command": "task bytes-mutation",
-        "observation": "The growth ladder, a copy between carriers, a self append and clear execute identically at -O0 and -O2 under ASan/UBSan."
+        "command": "task bounded-bytes",
+        "observation": "The sequential aggregate runs the carrier gate's tracked owner, cleanup, transfer, and refusal fixtures before the mutation gate's checked-in direct helper, growth, range, transactionality, and E2S177 fixtures. The observation is fixture-bounded and leaves the specification's known gaps open."
       },
       "negative_boundary": {
         "kind": "rejection",
         "evidence": "tests/conformance/bytes-mutation/same_carrier.kofun",
-        "observation": "One value in both positions of append_range is refused as E2S177 and commits no C."
+        "observation": "In the direct builtin fixture, one resolved BindingId in both append_range positions is refused as E2S177 before C is committed; wrapper-level alias exclusivity remains outside this observation (#1561)."
       },
       "safety": {
-        "classification": "memory-safety",
-        "threat_model": "docs/MEMORY_MODEL.md",
-        "negative_test": "tests/conformance/bytes-carrier/alias_initializer.kofun"
+        "classification": "none"
       },
       "performance": {
         "classification": "none"
       },
       "reproduction": {
-        "command": "task bytes-mutation",
-        "prerequisites": []
+        "command": "task bounded-bytes",
+        "prerequisites": [
+          "cc"
+        ]
       }
     },
     {

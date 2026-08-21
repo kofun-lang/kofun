@@ -1049,6 +1049,14 @@ tasks:
     cmds:
       - "sh tests/conformance/bytes-mutation/run.sh"
 
+  bounded-bytes:
+    desc: "Verify the bounded Bytes[65536] C11 Stage 2 fixture checkpoint"
+    cmds:
+      # Both children write under build/. Keep the published aggregate ordered
+      # so its evidence is reproducible on a shared machine.
+      - task: bytes-carrier
+      - task: bytes-mutation
+
   call-arguments:
     desc: "Verify labelled-call binding and source order across C11, native, and wasm32"
     cmds:
@@ -1318,8 +1326,7 @@ tasks:
             text-escapes \
             unused-function \
             authority-type-carrier \
-            bytes-carrier \
-            bytes-mutation \
+            bounded-bytes \
             while-list-int \
             else-if-chain \
             list-int-signatures \

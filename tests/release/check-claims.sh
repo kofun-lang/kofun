@@ -31,6 +31,59 @@ trap 'rm -rf "$WORK"' EXIT HUP INT TERM
 node --check "$VALIDATOR"
 node --check "$GENERATOR"
 
+# The shared Taskfile reader follows both dependency forms. The honest fixture
+# proves a serialized `- task:` edge reaches its children without treating the
+# YAML mapping as shell text; the controlled omission proves a removed edge is
+# not retained by a permissive parser. `bounded-bytes` depends on this exact
+# traversal for its published `cc` prerequisite.
+node --input-type=module - "$ROOT/tests/lib/taskfile.mjs" "$WORK" <<'NODE'
+import { writeFileSync } from 'node:fs'
+import { pathToFileURL } from 'node:url'
+
+const [modulePath, fixtureRoot] = process.argv.slice(2)
+const { taskfileCommands } = await import(pathToFileURL(modulePath))
+const honest = `version: '3'
+tasks:
+  serial:
+    deps: [setup]
+    cmds:
+      - task: first
+      - cmd: "node direct.mjs"
+      - task: second
+  setup:
+    cmds:
+      - "sh setup.sh"
+  first:
+    cmds:
+      - "sh first.sh"
+  second:
+    cmds:
+      - "sh second.sh"
+`
+
+function observed(source) {
+    writeFileSync(`${fixtureRoot}/Taskfile.yml`, source)
+    const entry = taskfileCommands(fixtureRoot).get('serial')
+    return JSON.stringify({ deps: entry.deps, cmds: entry.cmds })
+}
+
+const complete = JSON.stringify({
+    deps: ['setup', 'first', 'second'],
+    cmds: ['node direct.mjs'],
+})
+if (observed(honest) !== complete) {
+    throw new Error('Taskfile reader did not follow the serialized child-task edges')
+}
+const omitted = honest.replace('      - task: first\n', '')
+const afterOmission = JSON.stringify({
+    deps: ['setup', 'second'],
+    cmds: ['node direct.mjs'],
+})
+if (observed(omitted) !== afterOmission) {
+    throw new Error('Taskfile reader accepted the removed child-task edge')
+}
+NODE
+
 node "$VALIDATOR" schema
 node "$VALIDATOR" validate
 
