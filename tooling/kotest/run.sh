@@ -427,7 +427,7 @@ run_pass() {
     overall=0
     for file in $files; do
         # The call sits in a condition context so errexit cannot fire on a
-        # failing suite, even though run_unit toggles set -e internally.
+        # failing suite, even though run_unit toggles set -e internally (#1554).
         if run_unit "$file" "$work"; then
             unit_status=0
         else
