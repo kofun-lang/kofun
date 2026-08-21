@@ -121,16 +121,35 @@ Tracked as [#1454](https://github.com/kofun-lang/kofun/issues/1454), with the
 fix: the committed `artifacts/backlog/issue-state.json` snapshot is already a
 hermetic oracle for issue liveness.
 
-## 5. Signal-safe cleanup is unspecified, not merely unimplemented
+## 5. The cleanup guarantee was decided, and this section was wrong
 
-Eight `trap` sites remove partially written cache entries when the process is
-interrupted. No capability row covers this, and `temporary-files`'s note says
-"creation, cleanup on take, and collision behaviour are unspecified".
+**Correction.** This section said eight `trap` sites "remove partially written
+cache entries", and that "an artifact cache that leaves half-written entries
+behind on `SIGINT` is worse than one that has no cache, because the next run
+trusts them". Neither is true of the script it describes, and #1463 was filed
+against that premise.
 
-An artifact cache that leaves half-written entries behind on `SIGINT` is worse
-than one that has no cache, because the next run trusts them. `verify_cache_entry`
-exists in the script for exactly this reason. Whatever replaces it needs the
-cleanup guarantee stated before it is written, not discovered.
+Measured: `store_cache_entry` (`package/manager.sh:256-279`) publishes by **hard
+link**. It copies into a `mktemp` file in the same directory, `chmod 444`s it,
+and then `ln`s it to the final name. `link(2)` fails `EEXIST` rather than
+overwriting, so a partial file never occupies the entry name, and the loser of a
+race re-verifies rather than clobbering. The read path re-verifies too:
+`resolve_packages:359-360` runs `verify_cache_entry` on every use.
+
+The eight `trap` sites do not remove published entries. All eleven `rm` sites in
+the script target temporaries or `$work`; none targets a cache entry. Three of
+the eight traps remove nothing at all.
+
+So the cache is already atomic and already verifies on read, and #1463's
+question — what is guaranteed when the process dies mid-write — has the answer
+recorded there. What the interruption actually costs is **a leaked temporary**,
+because nothing sweeps `.tmp.*` and there is no `clean` subcommand; and what a
+digest mismatch costs is a **wedged cache**, because `verify_cache_entry:253`
+is `die` and no command in the tool removes the offending file.
+
+Both belong to whatever replaces the script (#1457), and both are stated in the
+`temporary-files` row so the rewrite inherits them rather than rediscovering
+them.
 
 ## What to file
 

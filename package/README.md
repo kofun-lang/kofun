@@ -65,6 +65,18 @@ Offline mode fails on a cache miss. Every use recomputes SHA-256; corrupt cache
 bytes fail instead of being trusted by path. A non-offline fetch also fails if
 newly fetched bytes differ from the lock rather than silently rewriting it.
 
+**What an interruption guarantees** (#1463). An entry is published by hard link
+from a temporary in the same directory, so a partial file never occupies a final
+name, whatever kills the process — `link(2)` has no partial state and `SIGKILL`
+runs no handler either way. Two processes fetching the same package do not
+coordinate and do not need to: the name is the digest, so the second `ln` fails
+`EEXIST` and that process verifies the entry the first one published instead of
+overwriting it.
+
+What an interruption does leave is a `.tmp.*` file in the cache directory.
+Nothing removes it today and there is no `clean` subcommand; that, and making a
+digest mismatch recoverable rather than fatal, are #1457's.
+
 ## Current boundary
 
 - `kind = "static-library"` is the only artifact kind.
