@@ -1049,6 +1049,10 @@ tasks:
     cmds:
       - "sh tests/conformance/bytes-mutation/run.sh"
 
+  bounded-bytes:
+    desc: "Verify the fixture-bounded Bytes[65536] carrier and mutation checkpoint"
+    deps: [bytes-carrier, bytes-mutation]
+
   call-arguments:
     desc: "Verify labelled-call binding and source order across C11, native, and wasm32"
     cmds:

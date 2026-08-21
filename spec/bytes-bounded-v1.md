@@ -16,8 +16,8 @@ assertion is named rather than described, so a reader can go and check.
 `Bytes` is a **bounded byte-buffer carrier with a unique-owner model** and a
 fixed ceiling of 65,536 bytes. It exists so a program the C11 Stage 2 backend
 compiles can build a byte sequence whose length is not known when it starts.
-The checkpoint proves the exercised carrier and mutation paths; §8 records the
-ownership and lifetime paths it does not claim.
+`task bounded-bytes` proves the exercised carrier and mutation paths; §8
+records the ownership and lifetime paths it does not claim.
 
 It is **not**:
 
@@ -85,18 +85,18 @@ as `&k_bN`.
 
 ## 4. Aliasing
 
-Two distinct `Bytes` values never share storage. Nine shapes that could create
-an alias are refused as `E2S170`, each naming its own reason: an alias
-initializer, a branch mismatch, loop-carried storage, a recursive summary, an
-escaping return, a backend limitation, and the rest. `bytes-carrier` asserts
-seven of them by reason, and records that two — escaping store and escaping
-capture — are refused earlier, by `E2S32` and `E2S96`, so no fixture is written
-against a reason no compiler reaches.
+For the named-binding fixtures exercised by `task bytes-carrier`, distinct
+`Bytes` owners do not share storage. Nine shapes that could create an alias are
+refused as `E2S170`, each naming its own reason: an alias initializer, a branch
+mismatch, loop-carried storage, a recursive summary, an escaping return, a
+backend limitation, and the rest. The gate asserts seven of them by reason and
+records that escaping store and escaping capture are refused earlier by
+`E2S32` and `E2S96`.
 
-This is what makes §6's copy rule sound: because two distinct values never
-overlap, proving two carriers are distinct proves their storage does not
-overlap, and the proof is a compile-time identity check rather than a run-time
-test.
+For direct `append_range` calls in `task bytes-mutation`, the compiler also
+requires distinct resolved BindingIds before C emission. That is the bounded
+identity proof behind §6's copy rule; it is not a general alias analysis or a
+claim about source shapes outside the gated resolver paths.
 
 ## 5. Status
 
@@ -126,7 +126,9 @@ the gate asserts that.
 
 ## 6. Operations
 
-Nine, and the leading arguments are always carriers:
+The checkpoint covers nine calls that resolve to these compiler builtins; a
+source or lexical callable with the same spelling is outside this builtin
+surface. Their leading arguments are carriers:
 
 | operation | arguments | result |
 | --- | --- | --- |
@@ -200,10 +202,12 @@ re-checks both its source and destination.
 
 ## 7. What a source program can observe
 
-`len` and `capacity` return `Int`. Every other operation is `Void` at source
-level: the status and the read carrier are private to the emitted C and are
-proved there, by a driver compiled against a prelude extracted from a program
-the compiler just emitted.
+For calls resolved to these builtins in the gated source forms, `len` and
+`capacity` return `Int`. Every other operation is usable only as a complete
+discarded expression statement: the status and read carriers are private to
+the emitted C. `task bytes-mutation` proves them there with a driver compiled
+against a prelude extracted from a program the compiler just emitted, while
+the Stage 2 fixture matrix refuses value contexts before publishing C.
 
 This is a deliberate boundary and it is the largest one in this document.
 Surfacing either carrier to source needs a compiler-owned enum declaration, and
