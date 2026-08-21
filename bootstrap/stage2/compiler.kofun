@@ -15044,7 +15044,7 @@ fn lower_body(
                 return "error[E2S27]: a final `if` needs an `else`; its false path yields no Int at byte " +
                 to_text(cursor)
             }
-            let value_check = validate_value_if(source, cursor)
+            let value_check = validate_value_if(source, hir, cursor)
             if starts_with(value_check, "error[") {
                 return value_check
             }
