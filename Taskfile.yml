@@ -1182,11 +1182,9 @@ tasks:
   # "green" here would otherwise say nothing.
   stage2-pair-calls:
     desc: "Resolve every call in bootstrap/stage2/compiler.kofun, or record why not"
-    vars:
-      NAMESPACE: '{{if .KOFUN_GATE_WORK_NAMESPACE}}{{.KOFUN_GATE_WORK_NAMESPACE}}/{{end}}'
     cmds:
       - "sh tests/pair-coverage/calls.sh"
-      - "sh tests/pair-coverage/calls.sh --prove build/{{.NAMESPACE}}pair-calls-proof"
+      - "sh tests/pair-coverage/calls.sh --prove"
 
   # Which ledger functions the Kofun half mirrors at all, and under what name.
   # #1401's work-list assumes both halves implement the function; for 25 of 354
@@ -1195,11 +1193,9 @@ tasks:
   # tooling/gate-reachability/unreachable.tsv.
   stage2-pair-mirror:
     desc: "Hold the map of which Stage 2 pair functions the Kofun half mirrors"
-    vars:
-      NAMESPACE: '{{if .KOFUN_GATE_WORK_NAMESPACE}}{{.KOFUN_GATE_WORK_NAMESPACE}}/{{end}}'
     cmds:
       - "sh tests/pair-coverage/mirror.sh"
-      - "sh tests/pair-coverage/mirror.sh --prove build/{{.NAMESPACE}}pair-mirror-proof"
+      - "sh tests/pair-coverage/mirror.sh --prove"
 
   # An issue's state is carried twice, as a label and as the `State:` line in
   # its body, and nothing held the two together until this. Reads the committed
