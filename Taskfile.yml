@@ -1040,7 +1040,7 @@ tasks:
       - "sh tests/conformance/authority-carrier/run.sh"
 
   bytes-carrier:
-    desc: "Verify Bytes[65536] owners are reclaimed at every exit in reverse order"
+    desc: "Verify tracked Bytes[65536] owner cleanup, transfer, and refusal paths"
     cmds:
       - "sh tests/conformance/bytes-carrier/run.sh"
 

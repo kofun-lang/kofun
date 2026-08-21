@@ -545,7 +545,7 @@ memory-safety proof.
 
 ### What refuses an ownership error today
 
-Four bounded mechanisms exist. They do not form one general ownership pass.
+Five bounded mechanisms exist. They do not form one general ownership pass.
 
 | Mechanism | What it refuses | Code | Gate |
 |---|---|---|---|
@@ -553,16 +553,19 @@ Four bounded mechanisms exist. They do not form one general ownership pass.
 | production and standalone record frontends | a whole nominal record used after an explicit `take`, passed as a bare binding to a labelled `take` parameter and then transferred again, or partially/doubly moved | `E2S122`, `E2S123` | `task records`; `task call-arguments` |
 | `stdlib/clock` affine handles | a consumed clock handle used again | none; the type carries it | `task clock-adapters` |
 | bounded affine resource handle | use after a transition move; a stale, foreign, or adversarially duplicated generation at the host boundary | `E2S123`, `EARH01` | `task affine-resource-handle` |
+| bounded `Bytes[65536]` carrier checkpoint | named unsupported `Bytes` ownership and alias shapes in the tracked fixtures | `E2S32`, `E2S96`, `E2S170`, `E2S177` | `task bounded-bytes` |
 
 The first is an opt-in subcommand of the Stage 2 binary. The second reaches the
 ordinary Stage 2 C11 path for explicit, source-order whole-record moves and for
 a bare binding placed in a direct top-level labelled `take` slot, while the
 standalone evaluator keeps the same messages. The third is a clock library
-type, and the fourth is one RFC-0010 per-type table plus a host-boundary
-generation check. `bin/kofun build` therefore understands `read`/`take`
-parameters and these explicit whole-binding transfer sites only in that
-bounded record slice; it still has no `let own`, inferred moves, alias graph,
-branch/loop ownership, borrow lifetime, destructor, or general cleanup
+type, the fourth is one RFC-0010 per-type table plus a host-boundary generation
+check, and the fifth is limited to the named carrier, transfer, mutation, and
+refusal fixtures in `spec/bytes-bounded-v1.md`. `bin/kofun build` therefore has
+bounded ordinary-path evidence for explicit whole-record moves and those named
+`Bytes` paths; it does not establish general `read`/`edit`/`take` semantics
+outside those slices, and still has no `let own`, inferred moves, general alias
+graph, branch/loop ownership, borrow lifetime, destructor, or complete cleanup
 analysis.
 
 `E3xx` is not a live family. No `E3xx` code has ever been in
