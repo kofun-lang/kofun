@@ -325,11 +325,18 @@ if test "${1:-}" = "--prove"; then
 
     # 4. The direction that retires a row: someone writes the missing
     #    counterpart, and the `c-only` verdict must stop being true.
+    #
+    #    The name here must be one the Kofun half is not about to gain. This
+    #    case used to append `ends_with`, and #1508 then wrote that function --
+    #    so the proof started passing where it should have refused, and this
+    #    harness caught its own stale assumption. `buffer_format` is the durable
+    #    choice: it is varargs formatting into a growable buffer, and the
+    #    bootstrap subset has neither `va_list` nor a `Buffer` type.
     cp "$SRC" "$PROVE/now-mirrored.kofun"
-    printf '\nfn ends_with(value: Text, suffix: Text) -> Bool {\n    return false\n}\n' \
+    printf '\nfn buffer_format(target: Text, value: Text) -> Text {\n    return target + value\n}\n' \
         >>"$PROVE/now-mirrored.kofun"
     prove_case now-mirrored 1 "$HERE/mirror.tsv" "$PROVE/now-mirrored.kofun" \
-        ends_with
+        buffer_format
 
     # 5. A verdict with no evidence.
     sed 's/^c_identifier_name\tc-only\t-\t.*/c_identifier_name\tc-only\t-\t/' \
