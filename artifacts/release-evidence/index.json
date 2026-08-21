@@ -819,7 +819,7 @@
     "examples/rust-shim/check.sh": "487dfa45e0a090f56550678fc6224c84780fbb750563b8fafcd3dd2fc34b4c01",
     "examples/wasm_arithmetic.kofun": "ea73b3ee6b5172a4c8080ed5b4540fb23288d31000dd6ccd59a473e97836c246",
     "rfcs/0010-affine-resource-handle-v1.md": "0deef14c3d575a97acbd92907757707fd49680c1f18c4171e1d2bf6a54d2656e",
-    "spec/bytes-bounded-v1.md": "8431267585bc0c889eb4d714c9a0af9e23eb9b0081cf0acfcec1d84f66a8888d",
+    "spec/bytes-bounded-v1.md": "78637d77f99923c16c1e14fe05c010323c33358cd17d26f9fb85b198784f7060",
     "spec/enum-match-exhaustiveness.md": "ac383d5cdc76a3d0817bc7cacb12a473c4b18d099551d2e9a098928cc4980f43",
     "spec/modules/module-identity.md": "9fc02e1888a5d585aa9c747e3800e9d72d947eaa9d722a60fa4e4a7b385ae5a0",
     "spec/modules/re-exports.md": "adaaaa3af3a08302b979a1d92871d6a552f0dd76838a67147d876c510ef95ce3",

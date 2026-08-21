@@ -224,5 +224,3 @@ works is the kind of published promise this repository gates against:
 - **Seventy-one `Bytes` locals in one function are refused under `E2S170`'s
   alias reason** when the actual cause is a cleanup-list buffer, and only by
   one half of the pair (#1556).
-- **The mutation gate claims a build matrix and a transactionality witness it
-  does not fully exercise** (#1553).
