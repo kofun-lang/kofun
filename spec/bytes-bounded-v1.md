@@ -1,8 +1,9 @@
 # Bounded `Bytes` v1
 
 The `Bytes` carrier the C11 Stage 2 backend lowers, and the operations it
-admits. Everything here is implemented and gated today; nothing in this
-document describes intent.
+admits. This is a bounded executable checkpoint, not a claim that every
+ownership, lifetime, or typed-return path is complete. Implemented behavior is
+named with its gate below; incomplete boundaries are explicit in §8.
 
 **Every normative statement names the gate that fails if it is false.** A
 statement with no gate does not belong in this document — the two gates are
@@ -12,9 +13,11 @@ assertion is named rather than described, so a reader can go and check.
 
 ## 1. What this is, and what it is not
 
-`Bytes` is a **bounded, uniquely-owned byte buffer** with a fixed ceiling of
-65,536 bytes. It exists so a program the C11 Stage 2 backend compiles can build
-a byte sequence whose length is not known when it starts.
+`Bytes` is a **bounded byte-buffer carrier with a unique-owner model** and a
+fixed ceiling of 65,536 bytes. It exists so a program the C11 Stage 2 backend
+compiles can build a byte sequence whose length is not known when it starts.
+The checkpoint proves the exercised carrier and mutation paths; §8 records the
+ownership and lifetime paths it does not claim.
 
 It is **not**:
 
@@ -55,15 +58,14 @@ it is never called.
 
 ## 3. Ownership
 
-A `Bytes` binding is *owned*: the function that declares it reclaims it at
-every exit, in reverse creation order. This is not reference counting and there
-is no arena — an arena cannot free in reverse lexical order at each exit, which
-is what the transfer rules need.
+A `Bytes` binding has an owning role, and the exercised owning fixture functions
+reclaim it in reverse creation order. This is not reference counting and there
+is no arena.
 
-`bytes-carrier` derives this from the emitted C rather than asserting a list of
-sites: it counts the `return` statements in the owning function and requires
-every one of them to reclaim every live owner, so a new emission site is
-covered the day it lands.
+For the owning fixture functions exercised by `task bytes-carrier`, the gate
+derives the emitted returns within those functions and requires each one to
+reclaim every live `Bytes` binding in reverse creation order. This is not a
+proof over unexercised typed-return lowering arms (§8).
 
 A parameter carries one of three modes, and a `Bytes` parameter with no mode is
 refused:
@@ -191,10 +193,10 @@ from the post-growth buffer's original range.
 
 ### 6.5 Failure preserves everything
 
-Every failure of every operation leaves length, capacity, pointer and bytes
-exactly as it found them, including under an injected allocation failure. The
-gate builds its driver a second time with the allocator made to fail and
-re-checks the same properties.
+Every operation refusal exercised by `task bytes-mutation` leaves the
+participating carriers' length, capacity, pointer and bytes exactly as it found
+them. The gate executes the injected-allocation-failure `append_range` call and
+re-checks both its source and destination.
 
 ## 7. What a source program can observe
 
@@ -219,8 +221,16 @@ works is the kind of published promise this repository gates against:
   `take` statement is refused with `E2S123` (#1540). §2's claim that
   use-after-move is a compile-time question is therefore true only for the
   statement form today.
-- **Six of the fifteen argument-crossing combinations emit C that does not
-  compile** rather than being refused by name (#1516, #1517).
+- **A temporary `Bytes` call result passed to a direct declared `read`, `edit`,
+  or `take` parameter is not yet refused by Stage 2** and can reach invalid
+  generated C (#1516).
 - **Seventy-one `Bytes` locals in one function are refused under `E2S170`'s
   alias reason** when the actual cause is a cleanup-list buffer, and only by
   one half of the pair (#1556).
+- **Typed-return failure exits are not completely covered by executable
+  ownership evidence.** The enum, `List[Int]`, and `Int?` paths have a known
+  C/Kofun cleanup divergence, while record and `Bytes` returns are outside the
+  current fixture matrix (#1569).
+- **The post-take failure guard of a `Bytes`-returning function may discard the
+  result carrier.** Reachability and an executable ownership proof remain
+  unresolved (#1581).
