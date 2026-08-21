@@ -123,7 +123,7 @@ emit_value_enum_match_into	same-name	emit_value_enum_match_into	-
 emit_value_into	same-name	emit_value_into	-
 emit_value_match_into	same-name	emit_value_match_into	-
 enclosing_function_open	same-name	enclosing_function_open	-
-ends_with	c-only	-	the Kofun half calls it at :18143 and never defines it; recorded in unresolved-calls.tsv (#1508)
+ends_with	same-name	ends_with	-
 enum_binding_catchall_name	same-name	enum_binding_catchall_name	-
 enum_constructor_count	same-name	enum_constructor_count	-
 enum_constructor_index	same-name	enum_constructor_index	-

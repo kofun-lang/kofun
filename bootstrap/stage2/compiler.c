@@ -29367,6 +29367,31 @@ static ShExpr *sh_parse_primary(Sh *sh, int64_t *cursor) {
                         break;
                     }
                 }
+                /*
+                 * #1545. `builtin_arity` admits nineteen names and this table
+                 * places seventeen, so a call can arrive here with no slot.
+                 * The subscript below then read `builtin_symbols[-1]`, which
+                 * lands on `function_count` and is a plausible symbol id --
+                 * `to_text(1)` was emitted as a call to `args`, and survived
+                 * into generated C as `kofun_rt_args`.
+                 *
+                 * The refusal names the builtin rather than widening the
+                 * table, because widening fixes this miss and leaves the next
+                 * one silent: three of the four builtin tables state that they
+                 * fail closed when they drift, and this fourth one failed open.
+                 */
+                if (slot < 0) {
+                    char unplaceable[96];
+                    snprintf(
+                        unplaceable,
+                        sizeof(unplaceable),
+                        "builtin `%s` is outside the frozen profile",
+                        call->text
+                    );
+                    sh_fail(sh, "E2S15", unplaceable, at);
+                    sh_free_expr(call);
+                    return NULL;
+                }
                 call->symbol_id = sh->builtin_symbols[slot];
             }
             snprintf(call->type, sizeof(call->type), "%s", result);

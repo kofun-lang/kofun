@@ -1,0 +1,3 @@
+fn show(value: Int) -> Text {
+    return to_text(value)
+}

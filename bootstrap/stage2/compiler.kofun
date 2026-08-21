@@ -15044,7 +15044,7 @@ fn lower_body(
                 return "error[E2S27]: a final `if` needs an `else`; its false path yields no Int at byte " +
                 to_text(cursor)
             }
-            let value_check = validate_value_if(source, cursor)
+            let value_check = validate_value_if(source, hir, cursor)
             if starts_with(value_check, "error[") {
                 return value_check
             }
@@ -18599,6 +18599,18 @@ fn unsupported_lowering_error(diagnostic: Text) -> Bool {
     )
 }
 
+# The C seed writes this as a `static bool ends_with(const char *, const char *)`
+# beside its own caller. The Kofun half called it and never defined it, which
+# nothing could see: this file is neither `canonical_source` nor `trusted_seed`
+# in bootstrap/manifest.json, so no gate resolves a name in it. #1508 added
+# `task stage2-pair-calls`, which now does.
+fn ends_with(value: Text, suffix: Text) -> Bool {
+    let value_length = len(value)
+    let suffix_length = len(suffix)
+    return value_length >= suffix_length &&
+    text_slice(value, value_length - suffix_length, value_length) == suffix
+}
+
 fn compile_file(
     input_path: Text,
     output_path: Text,
@@ -19470,7 +19482,21 @@ fn selfhost_parse_call(
                 expected = expected_parameter_tail(expected)
                 index = index + 1
             }
-            symbol = count + selfhost_builtin_slot(name)
+            # #1545. The signature table places eighteen names and the
+            # language admits more, so a call can arrive with no slot. This
+            # used to compute `count + -1`, one below the first builtin, and
+            # the C seed's counterpart read `builtin_symbols[-1]`. Two
+            # different wrong answers for the same program; both are refused
+            # by name now.
+            let slot = selfhost_builtin_slot(name)
+            if slot < 0 {
+                return selfhost_error(
+                    "E2S15",
+                    at,
+                    "builtin `" + name + "` is outside the frozen profile"
+                )
+            }
+            symbol = count + slot
         }
     }
     let call_record = "xnode|" + to_text(local_next) + "|call|" +
@@ -20925,13 +20951,21 @@ fn selfhost_function_hir(
 # Walk every declared function in source order, threading the document
 # counters: nodes from 0, scopes after the module scope, symbols and
 # bindings after the registered functions and builtins.
+# `first_symbol` is the id after the last one `selfhost_register` spent, and it
+# is PASSED rather than recomputed here. It used to be `count + 17`, written
+# when sixteen builtins plus the `len(List)` overload were everything there was.
+# #753 appended `fail` at `count + 17`; the C seed's running counter absorbed
+# the new symbol and this literal did not, so every parameter and local took an
+# id one lower than the seed's and the first one collided with `fail`. Deriving
+# it from the registration means the next builtin cannot reopen that gap. (#1546)
 fn selfhost_functions_hir(
     source: Text,
     functions: Text,
-    types: Text
+    types: Text,
+    first_symbol: Int
 ) -> Text {
     let count = selfhost_function_count(functions)
-    let mut counters = selfhost_counters(0, 1, count + 17, count)
+    let mut counters = selfhost_counters(0, 1, first_symbol, count)
     let mut records = ""
     let mut function_start = next_function_start(source, 0)
     let mut index = 0
@@ -20992,7 +21026,12 @@ fn selfhost_document(source: Text, path: Text, digest: Text) -> Text {
     }
     if len(failure) == 0 {
         types = selfhost_lines(registered, "type|")
-        let walked = selfhost_functions_hir(source, functions, types)
+        let walked = selfhost_functions_hir(
+            source,
+            functions,
+            types,
+            selfhost_line_count(selfhost_lines(registered, "symbol|"))
+        )
         if selfhost_failed(walked) {
             failure = walked
         } else {

@@ -47,8 +47,12 @@
 #
 # WHAT IT DOES NOT COVER, stated because a partial check read as a total one is
 # worse than none:
-#   - arity and argument types. A call with the right name and the wrong number
-#     of arguments resolves here.
+#   - argument TYPES. A call with the right name and the right number of
+#     arguments resolves here whatever it passes. Arity IS checked, since
+#     #1571: `lower_body` called `validate_value_if` with two of its three
+#     arguments, and it was the only such call in 23,021 lines -- the scope note
+#     that used to sit here said arity was out of scope, and that line was the
+#     whole of what let it through.
 #   - constructors and type names. Only lowercase-initial call targets are read,
 #     which is what `fn` names and builtins are.
 #   - a `fn` defined in the Kofun half that nothing calls. That is the reverse
@@ -364,6 +368,15 @@ if test "${1:-}" = "--prove"; then
     prove_case stale-row 1 "$SRC" "$PROVE/stale-ledger.tsv" "$CC_SRC" \
         prove_gone_zz
 
+    # 2b. A call to a function this file declares, with the wrong number of
+    #     arguments. #1571 was exactly this and nothing in the tree could see
+    #     it, because the name resolved.
+    cp "$SRC" "$PROVE/bad-arity.kofun"
+    printf 'fn prove_arity_zz(one: Text, two: Text) -> Text {\n    return one + two\n}\n\nfn prove_arity_caller_zz() -> Text {\n    return prove_arity_zz("x")\n}\n' \
+        >>"$PROVE/bad-arity.kofun"
+    prove_case bad-arity 1 "$PROVE/bad-arity.kofun" "$LED" "$CC_SRC" \
+        prove_arity_zz
+
     # 3 and 4. The scanner's two assumptions, which are the difference between
     # this gate and the naive pattern that reports 90 findings and no real ones:
     # this file carries the whole emitted C runtime as string literals.
@@ -615,6 +628,82 @@ done <"$WORK/recorded.txt"
 
 test "$bad" -eq 0 || exit 1
 
+# ---------------------------------------------------------------------------
+# Arity, over the same stripped code.
+#
+# A name that resolves can still be called wrong, and one was: #1571. This
+# reads the whole file as a single stream, because a signature or a call here
+# routinely spans lines, and counts commas at depth one inside each argument
+# list. `fn name(` is a declaration; anything else is a call.
+#
+# Only calls to functions THIS FILE declares are checked. Builtins are left to
+# the C half's `builtin_arity`, and the `.method(...)` forms to
+# `int_bit_method_arity`; both are readable and neither is read here, which is
+# the next thing this gate could grow.
+# ---------------------------------------------------------------------------
+awk '
+{ code = code $0 "\n" }
+END {
+    n = length(code)
+    for (i = 1; i <= n; i++) {
+        ch = substr(code, i, 1)
+        if (ch !~ /[a-z_]/) continue
+        if (i > 1) {
+            before = substr(code, i - 1, 1)
+            if (before ~ /[A-Za-z0-9_.]/) continue
+        }
+        j = i
+        while (j <= n && substr(code, j, 1) ~ /[A-Za-z0-9_]/) j++
+        name = substr(code, i, j - i)
+        k = j
+        while (k <= n && substr(code, k, 1) ~ /[ \t\n]/) k++
+        if (substr(code, k, 1) != "(") { i = j - 1; continue }
+        kind = "call"
+        p = i - 1
+        while (p > 0 && substr(code, p, 1) ~ /[ \t\n]/) p--
+        if (p >= 2 && substr(code, p - 1, 2) == "fn") kind = "declaration"
+        depth = 0
+        commas = 0
+        content = ""
+        for (m = k; m <= n; m++) {
+            c = substr(code, m, 1)
+            if (c == "(") { depth++; if (depth == 1) continue }
+            else if (c == ")") { depth--; if (depth == 0) break }
+            else if (c == "," && depth == 1) { commas++; continue }
+            if (depth >= 1) content = content c
+        }
+        count = commas + 1
+        if (content ~ /^[ \t\n]*$/) count = 0
+        printf "%s\t%s\t%d\n", kind, name, count
+        i = j - 1
+    }
+}
+' "$WORK/code.txt" >"$WORK/arities.tsv"
+
+awk -F'\t' '
+$1 == "declaration" { declared[$2] = $3; next }
+$1 == "call" && ($2 in declared) {
+    checked++
+    if ($3 != declared[$2]) {
+        printf "%s\t%d\t%d\n", $2, declared[$2], $3
+        bad++
+    }
+}
+END { printf "%d\t%d\n", checked + 0, bad + 0 >"/dev/stderr" }
+' "$WORK/arities.tsv" 2>"$WORK/arity-counts.txt" >"$WORK/arity-bad.tsv"
+
+if test -s "$WORK/arity-bad.tsv"; then
+    echo "FAIL: pair calls: a call does not match the arity its declaration names:" >&2
+    while IFS='	' read -r name want got; do
+        printf '    %s: declared %s, called with %s\n' "$name" "$want" "$got" >&2
+    done <"$WORK/arity-bad.tsv"
+    echo "  A name that resolves can still be called wrong, and the Kofun half is" >&2
+    echo "  never compiled, so nothing else in this repository would say so." >&2
+    exit 1
+fi
+
+arity_checked=$(cut -f1 "$WORK/arity-counts.txt")
+
 # Reach, not only hits: a count with no denominator cannot tell a rule that held
 # from a rule that reached nothing. `docs/ISSUE_READINESS.md` says the same
 # thing about the backlog gate's coverage lines.
@@ -623,6 +712,8 @@ unresolved_count=$(grep -c . "$WORK/unresolved.txt" || true)
 resolved_count=$((called_count - unresolved_count))
 printf 'PASS: %d of %d call targets in %s resolve\n' \
     "$resolved_count" "$called_count" "$(basename "$KOFUN_HALF")"
+printf '      %d calls to declared functions carry the declared argument count\n' \
+    "$arity_checked"
 printf '      %d recorded in unresolved-calls.tsv, %d definitions, %d builtins, %d Int bit methods\n' \
     "$unresolved_count" \
     "$(grep -c . "$WORK/defined.txt")" \

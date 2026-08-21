@@ -1,0 +1,4 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/selfhost/frontend/reject_builtin_outside_profile.kofun|c267932207c92aa83f051b354c2467b355eb29390629baee095288ae3f5cdda2
+status|rejected
+diagnostic|E2S15|41|48|builtin `to_text` is outside the frozen profile
