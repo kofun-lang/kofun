@@ -1,0 +1,39 @@
+# #1548. Parameters the body does not use, in first, middle and last position.
+#
+# The same defect as the uncalled function beside this file, one level down:
+# `check` accepted the program and `cc` rejected the emitted C, this time with
+# `-Werror=unused-parameter` naming `k_b1` -- a name the author never wrote, in
+# a file they never opened. The rule they had run into was "every parameter
+# must be used", enforced by gcc and stated nowhere.
+#
+# #1315 had already diagnosed the cause exactly and fixed it for one type in
+# two of its three modes: `bytes_parameter_discards` emitted `(void)k_bN;` for
+# borrowed `Bytes` parameters because "every such helper would emit a parameter
+# nothing touches and fail `-Werror=unused-parameter`". Every ordinary
+# parameter still had the problem.
+#
+# Three positions because a walk that stops early, or starts late, passes with
+# one.
+fn first(unused: Int, used: Int) -> Int {
+    return used
+}
+
+fn middle(head: Int, unused: Int, tail: Int) -> Int {
+    return head + tail
+}
+
+fn last(used: Int, unused: Int) -> Int {
+    return used
+}
+
+fn none_used(a: Int, b: Int) -> Int {
+    return 7
+}
+
+fn main() -> Int {
+    print(first(1, 2))
+    print(middle(1, 2, 3))
+    print(last(4, 5))
+    print(none_used(6, 7))
+    return 0
+}

@@ -4926,18 +4926,50 @@ fn bytes_parameter_releases(
     return out
 }
 
-# #1315. `(void)` for each borrowed Bytes parameter.
+# #1548. Whether any use in the typed HIR resolves to this binding.
 #
-# A `read`/`edit` Bytes parameter is admitted by the profile -- an owner may be
-# lent to a direct helper -- but this slice ships no operation that reads one,
-# so every such helper would emit a parameter nothing touches and fail
-# `-Werror=unused-parameter`. The borrow is real and the operations arrive with
-# the byte and range children; discarding it explicitly is how the emitted C
-# says "not yet" rather than not compiling.
+# The `use` record carries its BindingId in field 4, which is the same field
+# `hir_use_binding_id` reads by offset -- this asks the question the other way
+# round, and is the whole of what "is this parameter used" means here.
+fn binding_has_use(hir: Text, binding_id: Text) -> Bool {
+    if len(binding_id) == 0 {
+        return false
+    }
+    let mut line = hir_record_start(hir, "use", 0)
+    while line >= 0 {
+        if hir_field(hir, line, 4) == binding_id {
+            return true
+        }
+        line = hir_record_start(hir, "use", line + 1)
+    }
+    return false
+}
+
+# `(void)` for each parameter the body does not use.
 #
-# A `take` parameter needs no discard: the cleanup funnel reclaims it, which is
-# a use.
-fn bytes_parameter_discards(
+# #1315 emitted this for borrowed `Bytes` parameters only, because that slice
+# shipped no operation that read one, so every such helper emitted a parameter
+# nothing touched and failed `-Werror=unused-parameter`. Its comment named the
+# cause exactly and fixed it for one type in two of its three modes.
+#
+# #1548. The cause is not about `Bytes`. `fn pick(a: Int, b: Int) -> Int { return a }`
+# fails the same way, and so does every function that takes an argument it does
+# not need -- implementing an interface, stubbing, or taking a value the next
+# commit will use. The rule an author had actually run into was "every
+# parameter must be used", enforced by gcc, phrased in terms of a name they
+# never wrote, in a file they never opened. Nothing stated it.
+#
+# So the condition is the one that was always meant: emit the discard when the
+# body does not use the parameter, whatever its type. That subsumes #1315's
+# case -- an unused borrow still gets its discard -- and it changes the emitted
+# C of no program that compiles today, because a parameter with a use never
+# received one and still does not.
+#
+# A `take Bytes` parameter with no source use still gets a discard it does not
+# strictly need, since the cleanup funnel reclaims it and that is a use in C.
+# `(void)x;` beside a real use is harmless, and the alternative is a second
+# rule that has to know what the funnel will emit.
+fn unused_parameter_discards(
     source: Text,
     hir: Text,
     function_start: Int
@@ -4958,11 +4990,9 @@ fn bytes_parameter_discards(
         if name_at < 0 || type_cursor < 0 {
             return out
         }
-        let mode = parameter_ownership_mode(source, cursor)
-        if token_text(source, type_cursor) == "Bytes" &&
-           (mode == "read" || mode == "edit") {
-            out = out + "    (void)k_b" +
-                hir_definition_id_at(hir, name_at) + ";\n"
+        let binding_id = hir_definition_id_at(hir, name_at)
+        if !binding_has_use(hir, binding_id) {
+            out = out + "    (void)k_b" + binding_id + ";\n"
         }
         let mut separator = skip_trivia(source, type_cursor)
         while separator < parameters_end &&
@@ -17961,7 +17991,7 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
             bytes_parameter_releases(source, hir, cursor, true)
         )
         if !starts_with(body, "error[") {
-            body = bytes_parameter_discards(source, hir, cursor) + body
+            body = unused_parameter_discards(source, hir, cursor) + body
         }
         if starts_with(body, "error[") {
             return body
