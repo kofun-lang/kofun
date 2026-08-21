@@ -14621,8 +14621,30 @@ fn lower_body(
                 " = " + value + ";\n" +
                 "    if (kofun_failed) return " + failure_result + ";\n"
                 cursor = skip_trivia(source, value_end)
+            # #1570. `List[Int]` belongs in this exclusion, and its absence
+            # was a divergence rather than a limitation: the annotation check
+            # sixty lines above admits it, and the C half keeps the two in step
+            # with a `list_int` flag that short-circuits this whole ladder
+            # (`compiler.c:21463-21467`). Without the term here an annotated
+            # list binding fell past the record test into the concrete-enum
+            # ladder, where a list literal is not an identifier -- so this half
+            # refused `let xs: List[Int] = [1, 2, 3]` as
+            # `concrete enum initializer must name a constructor`, and its
+            # `mut` form as `concrete enum bindings are immutable`.
+            #
+            # Excluding it routes the annotated form into the general
+            # initializer path below, which already lowers `List[Int]`
+            # correctly: it calls `emit_list_int_value` and gives the binding a
+            # `KofunIntListValue` carrier. That is the same destination the
+            # C half reaches, by the same reasoning, which is why one term is
+            # the whole fix.
+            #
+            # 122 bindings in 43 tracked files are written this way, including
+            # `bootstrap/native/encoder.kofun`. Every one would have been
+            # refused by this half.
             } else if binding_type != "Int" &&
                binding_type != "Text" &&
+               binding_type != "List[Int]" &&
                binding_type != "Decimal" &&
                binding_type != "Float" &&
                binding_type != "DecimalResult" {
