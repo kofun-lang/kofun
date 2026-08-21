@@ -30,17 +30,22 @@
 #   basis         the union of 157 verify drivers and 1283 pinned *.kofun inputs,
 #                 per drivers.tsv and inputs.tsv at this commit
 #   totals        1963 untaken under gcc, 1873 under clang, across 361 functions
+#   rows sha256   944ab53881710c02d4d0e06db7d9507e528947dd9de4eb69117b63cf1d56bd06
 #
 # COST, measured on this run rather than estimated -- it is the number the
 # `verify`-or-not argument in tooling/gate-reachability/unreachable.tsv rests
 # on, and the reason that file rather than the verify list is where this gate
 # is accounted for:
 #   gcc    drivers  4653s + corpus  754s =   90 min, drivers are 86% of it
-#   clang  drivers  4789s + corpus  877s =   94 min, drivers are 85% of it
+#   clang  drivers  4789s + corpus  877s =   94 min, drivers are 84% of it
 #   both   drivers  9442s + corpus 1631s =  185 min for the pair
 #
 #   8 cores. No load sampler was active for this run, so no load range is
 #   recorded or inferred from a different measurement.
+#
+# RETRIES. On each host `discovery` returned exit=201 on all four attempts.
+# Attempts 1 through 3 were retried; the terminal failure matched the pinned
+# driver-failures.tsv policy. Neither host recorded a corpus timeout.
 #
 # READ THE RATIO, NOT THE ABSOLUTE. These timings were taken on a shared
 # machine with other sessions building concurrently, so the wall-clock

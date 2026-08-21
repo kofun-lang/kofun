@@ -28,14 +28,14 @@
 # rather than a resemblance: a diagnostic code with identical message text, an
 # identical emitted record field order, a duplicated doc comment, or -- for
 # `c-only` -- the vocabulary that is absent, with the line of compiler.kofun
-# that already says so where one exists. Three of the four C-only clusters are
-# documented in that file today.
+# that already says so where one exists.
 #
 # WHAT THE C-ONLY ROWS AMOUNT TO, so a reader knows what is being set aside:
 # `compiler.ensure_move` (#572, #904) at 71 untaken branches; the
-# `Stage2AuthorityContext` embedder API and its observations at 53; memo,
-# capacity and allocator plumbing at 21; and host-level file and identifier
-# handling at 7. 152 of the ledger's 1963 branches, 8%.
+# `Stage2AuthorityContext` embedder API and its observations at 47; memo,
+# capacity and allocator plumbing at 21; host-level file and identifier
+# handling at 7; and `const_generic_refusal` at 6. 152 of the ledger's 1963
+# branches, 8%.
 # The other 92% is a real pair surface.
 #
 # ONE C-ONLY ROW IS A LIVE DIVERGENCE rather than a documented omission:
