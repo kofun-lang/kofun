@@ -86,6 +86,13 @@ looks live from the top. Both mistakes have been made here: an agent reported
 three free issues as taken, and another read a `released` claim on
 [#1268](https://github.com/kofun-lang/kofun/issues/1268) as live.
 
+**Claim when you can start, not when you decide to.** A live claim you cannot
+act on for hours reads as taken to everyone who checks it, and the three
+commands above cannot tell that apart from work in progress. If you want to
+reserve something, record the intent instead: a comment saying *"I intend to
+take this when X frees; take it sooner if you can"* costs nothing and blocks
+nobody. A claim is a signal to other people, so its cost is paid by them.
+
 ## Say which artifact you are about to create
 
 Claiming the issue is not enough. Two agents wrote the same
