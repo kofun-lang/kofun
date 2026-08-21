@@ -141,8 +141,8 @@ slow green.
 when it ends.** `tests/pair-coverage/measure.sh` is the worked multi-hour
 example; its exact current cost is recorded in
 `tests/pair-coverage/undefended.tsv`. It refuses unrecorded or stale driver
-outcomes and any corpus timeout, so load-induced drift cannot silently alter
-the published basis.
+outcomes and any corpus timeout, reducing the risk that load-induced drift
+enters the published basis.
 
 **Announce a release freeze, and end it.** Cutting a release means `main` must
 hold still between the commit CI proved and the tag
