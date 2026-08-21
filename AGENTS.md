@@ -25,6 +25,15 @@ comment written before 2026-08-07 uses a form the parser ignores, so copying
 one produces a claim that looks official and is invisible; that is how the
 protocol went unused while appearing to be followed.
 
+## Working alongside other agents
+
+[`docs/CONCURRENT_AGENTS.md`](docs/CONCURRENT_AGENTS.md) is the contract for
+everything the claim protocol does not cover: ownership by resource rather than
+by issue, one checkout per session, the three-command pre-start check,
+announcing an artifact before you create it, sharing one machine, and the fact
+that not every agent is reachable on the same channel. Read it before your
+second session starts.
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
