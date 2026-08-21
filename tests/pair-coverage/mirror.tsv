@@ -5,7 +5,7 @@
 # bootstrap/stage2/compiler.c, how many branches nothing this repository runs
 # ever takes -- #1401's work-list of places a divergence between the two halves
 # can hide. THAT FRAMING ASSUMES BOTH HALVES IMPLEMENT THE FUNCTION. For 24 of
-# the 361 they do not, and for 67 more the counterpart is there under a
+# the 360 they do not, and for 67 more the counterpart is there under a
 # different name, which a reader triaging the ledger cannot see.
 #
 # So this file answers one question per ledger row, and only that question:
@@ -34,7 +34,7 @@
 # `compiler.ensure_move` (#572, #904) at 71 untaken branches; the
 # `Stage2AuthorityContext` embedder API and its observations at 47; memo,
 # capacity and allocator plumbing at 21; host-level file and identifier
-# handling at 7; and `const_generic_refusal` at 6. 152 of the ledger's 1963
+# handling at 7; and `const_generic_refusal` at 6. 152 of the ledger's 1959
 # branches, 8%.
 # The other 92% is a real pair surface.
 #
@@ -67,7 +67,6 @@ builtin_parameter_types	same-name	builtin_parameter_types	-
 bytes_block_reason	same-name	bytes_block_reason	-
 bytes_carrier_address	same-name	bytes_carrier_address	-
 bytes_mutation_carriers	same-name	bytes_mutation_carriers	-
-bytes_parameter_discards	same-name	bytes_parameter_discards	-
 bytes_parameter_releases	same-name	bytes_parameter_releases	-
 bytes_producer_refusal	same-name	bytes_producer_refusal	-
 callable_c_declarator	same-name	callable_c_declarator	-
