@@ -1,0 +1,63 @@
+# #1569. A function that owns a carrier and returns something other than Int.
+#
+# The cleanup funnel's rule is "every exit of an owning function reclaims", and
+# `branching_owner.kofun` beside this file proves it for `Int` returns. The six
+# typed-return arms are a different code path, and three of them -- `List[Int]`,
+# `Int?` and a concrete enum -- hard-coded the zero constant into the trap guard
+# where their neighbours interpolated `failure_result`:
+#
+#     if (kofun_failed) return (kofun_bytes_release(&k_b0), …);  # let guard
+#     if (kofun_failed) return (kofun_bytes_release(&k_b0), …);  # let guard
+#         if (kofun_failed) return KOFUN_LIST_INT_ZERO;          # LEAKED
+#         kofun_bytes_release(&k_b0); return kofun_result;       # success
+#
+# The two `let` guards released and the success path released; only the return
+# trap did not. `Text` was right, which is what made it a slip rather than a
+# decision.
+#
+# One function per arm, because the arms are separate `else if` branches and a
+# fixture that exercised one would have passed while the other two leaked.
+type Verdict =
+    | Yes
+    | No
+
+fn as_enum() -> Verdict {
+    let owned = stage2_bytes_empty()
+    return Yes
+}
+
+fn as_list() -> List[Int] {
+    let owned = stage2_bytes_empty()
+    let values: List[Int] = [1, 2, 3]
+    return values
+}
+
+fn as_optional() -> Int? {
+    let owned = stage2_bytes_empty()
+    let carried: Int? = 7
+    return carried
+}
+
+fn as_text(read b: Bytes) -> Text {
+    let owned = stage2_bytes_empty()
+    return "text"
+}
+
+fn main() -> Int {
+    let listed = as_list()
+    print(len(listed))
+    let held: Int? = as_optional()
+    print(held ?? 0)
+    let owned = stage2_bytes_empty()
+    print(len(as_text(owned)))
+    let verdict: Verdict = as_enum()
+    match verdict {
+        Yes => {
+            print(1)
+        },
+        No => {
+            print(0)
+        },
+    }
+    return 0
+}

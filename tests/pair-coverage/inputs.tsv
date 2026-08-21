@@ -380,6 +380,7 @@ tests/conformance/bytes-carrier/owner.kofun
 tests/conformance/bytes-carrier/produced_owner.kofun
 tests/conformance/bytes-carrier/recursive_producer.kofun
 tests/conformance/bytes-carrier/transferred_owner.kofun
+tests/conformance/bytes-carrier/typed_return_owner.kofun
 tests/conformance/bytes-carrier/zeroed_lengths.kofun
 tests/conformance/bytes-mutation/borrowed_carrier.kofun
 tests/conformance/bytes-mutation/mutation.kofun
