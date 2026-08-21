@@ -93,6 +93,15 @@ reserve something, record the intent instead: a comment saying *"I intend to
 take this when X frees; take it sooner if you can"* costs nothing and blocks
 nobody. A claim is a signal to other people, so its cost is paid by them.
 
+**Move the claim to `pr-open` when the PR opens, not when it merges.** The
+status vocabulary in [`docs/ISSUE_READINESS.md`](ISSUE_READINESS.md) treats
+`active` and `pr-open` as equally live, so leaving a claim at `active` through
+PR creation breaks no rule — and loses the only fact another agent wants:
+**`pr-open` is not bookkeeping, it is the difference between "someone is holding
+this" and "someone is holding this and you can go read what they did."** The
+agent who leaves it at `active` is answering a question nobody asked while
+withholding the answer to the one they did.
+
 ## Say which artifact you are about to create
 
 Claiming the issue is not enough. Two agents wrote the same
