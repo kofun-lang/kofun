@@ -32,6 +32,28 @@
 #   totals        1963 untaken under gcc, 1873 under clang, across 361 functions
 #   rows sha256   944ab53881710c02d4d0e06db7d9507e528947dd9de4eb69117b63cf1d56bd06
 #
+# POST-MEASUREMENT CORRECTION -- THE TOTALS ABOVE ARE THE MEASUREMENT'S AND ARE
+# LEFT ALONE. #1548 landed after this run and renamed `bytes_parameter_discards`
+# to `unused_parameter_discards`, generalising it past Bytes. The old name's row
+# has been REMOVED, because a row naming a function compiler.c does not have is
+# not an unwatched function, it is a stale record -- and `mirror.tsv` beside this
+# file must carry a verdict per row, which turned the staleness into a red gate
+# on `main` rather than a quiet inaccuracy.
+#
+# So the rows below now sum to 1959 under gcc and 1869 under clang across 360
+# functions, four fewer than the measured totals, and the difference is exactly
+# the removed row. Nothing was re-measured to produce that; one row was deleted.
+#
+# TWO FUNCTIONS HAVE NO ROW AT ALL until the next measurement:
+#
+#   unused_parameter_discards   #1548's generalisation of the removed function
+#   binding_has_use             new in #1548
+#
+# Both are mirrored in compiler.kofun, so this is a gap in the ledger, not in
+# the pair. Expect the next run's totals to RISE for that reason -- and the
+# check below reports a rise as a regression, which is the safe direction and
+# is why the gap is named here instead of being papered over with an estimate.
+#
 # COST, measured on this run rather than estimated -- it is the number the
 # `verify`-or-not argument in tooling/gate-reachability/unreachable.tsv rests
 # on, and the reason that file rather than the verify list is where this gate
@@ -91,7 +113,6 @@
 9	7	bytes_block_reason
 1	1	bytes_carrier_address
 1	1	bytes_mutation_carriers
-4	4	bytes_parameter_discards
 4	4	bytes_parameter_releases
 17	17	bytes_producer_refusal
 1	1	c_identifier_name
