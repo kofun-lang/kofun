@@ -24,63 +24,123 @@
 # So: before writing a fixture to retire a row, check whether anything can
 # reach it. A green fixture is not evidence that it could.
 #
-#   measured at   c005fc316e0b2d6e60babb1995390ca2b6374a96
+#   measured at   ae43646c85e9200066fb697d278992399031878c
 #   gcc           gcc (GCC) 16.2.1 20260810
 #   clang         clang version 22.1.8
-#   basis         the union of 157 verify drivers and 1283 pinned *.kofun inputs,
-#                 per drivers.tsv and inputs.tsv at this commit
-#   totals        1963 untaken under gcc, 1873 under clang, across 361 functions
-#   rows sha256   944ab53881710c02d4d0e06db7d9507e528947dd9de4eb69117b63cf1d56bd06
+#   basis         the union of the 158 driver rows and 1286 pinned *.kofun
+#                 inputs that drivers.tsv and inputs.tsv held at that commit
+#   totals        1925 untaken under gcc, 1836 under clang, across 360 functions
+#   rows sha256   abf806f7516dc55b92405e1a90c17aa4c22d23b56612b0c4af1d09efd2500e9b   as measured, 360 rows
+#                 a12bc80d63da0e97d520c321337fc733118d346cdc1519b8c4800733c1171f9a   as committed, 359 -- see below
 #
-# POST-MEASUREMENT CORRECTION -- THE TOTALS ABOVE ARE THE MEASUREMENT'S AND ARE
-# LEFT ALONE. #1548 landed after this run and renamed `bytes_parameter_discards`
-# to `unused_parameter_discards`, generalising it past Bytes. The old name's row
-# has been REMOVED, because a row naming a function compiler.c does not have is
-# not an unwatched function, it is a stale record -- and `mirror.tsv` beside this
-# file must carry a verdict per row, which turned the staleness into a red gate
-# on `main` rather than a quiet inaccuracy.
+# ONE MEASURED ROW HAS BEEN DELETED SINCE, AND THE TOTALS ABOVE STILL INCLUDE
+# IT. #1548 renamed `bytes_parameter_discards` out of existence after this run
+# (see the block below), so its row -- `4  4  bytes_parameter_discards` --
+# names a function compiler.c no longer has. That is a stale record rather than
+# an unwatched function, and mirror.tsv must carry a verdict per ledger row, so
+# leaving it turns the staleness into a red gate. It is deleted here as it is
+# on `main`, by the same reasoning and with the same arithmetic: the rows below
+# sum to 1921 under gcc and 1832 under clang across 359 functions, and the
+# difference from the measured totals is exactly that one row.
 #
-# So the rows below now sum to 1959 under gcc and 1869 under clang across 360
-# functions, four fewer than the measured totals, and the difference is exactly
-# the removed row. Nothing was re-measured to produce that; one row was deleted.
+# THE BASIS COUNTS ABOVE ARE NOT THE COUNTS IN THIS TREE, and both differences
+# are named rather than left to be discovered:
 #
-# TWO FUNCTIONS HAVE NO ROW AT ALL until the next measurement:
+#   drivers  158 rows then, 157 now. Not a lost gate. #1582 replaced the two
+#            leaf rows `bytes-carrier` and `bytes-mutation` with the
+#            `bounded-bytes` aggregate that runs both, so the same two gates
+#            execute under one name. Nothing was added or dropped.
+#   inputs   1286 then, 1287 now -- see the next block.
 #
-#   unused_parameter_discards   #1548's generalisation of the removed function
-#   binding_has_use             new in #1548
+# WHAT THIS MEASUREMENT DOES NOT COVER. #1548 landed after it, and it moved
+# both halves of what a measurement is made of:
 #
-# Both are mirrored in compiler.kofun, so this is a gap in the ledger, not in
-# the pair. Expect the next run's totals to RISE for that reason -- and the
-# check below reports a rise as a regression, which is the safe direction and
-# is why the gap is named here instead of being papered over with an estimate.
+#   bootstrap/stage2/compiler.c                       +43 -11
+#   tests/stage2/unused-function/unused_parameter.kofun    new, now pinned
+#
+# So no row below describes the discarded-parameter path, and the next
+# measurement should expect the totals to RISE for a reason that is not a
+# regression. The record on `main` before this one, taken at c005fc31, has
+# exactly the same gap: #1548 landed after it too, and its header was not
+# updated to say so. Naming the gap is the whole reason the `measured at`
+# line exists, so it is named here for both.
+#
+# WHAT MOVED SINCE c005fc31. That record and this one measure a BYTE-IDENTICAL
+# compiler.c -- verified, not assumed -- so every difference below is basis,
+# not compiler. This basis is the earlier one plus three fixtures and nothing
+# else, which makes the comparison one-directional by construction: coverage
+# can only grow, so untaken can only fall.
+#
+#   totals   1963 -> 1925 under gcc,  1873 -> 1836 under clang
+#   rows      361 -> 360
+#
+# Those four numbers compare the two MEASUREMENTS. The two committed files
+# differ by one more row in each, because both have had the stale
+# `bytes_parameter_discards` row deleted: 360 rows on `main` against 359 here.
+#
+# No function appears here that was absent there, which is what a superset
+# basis requires. Seven rows fell and one left:
+#
+#   pattern_recovery_end   17 -> 3      match_arm_pattern_start   10 -> 9
+#   pattern_match_open     13 -> 4      build_scope_hir_mode      28 -> 27
+#   parse_pattern_atomic   27 -> 25     validate_move_assertions  19 -> 18
+#   pattern_arm_arrow       9 -> 0      lower_body               141 -> 140
+#
+# READ THAT TABLE IN TWO PARTS, because only one part was predicted. #1508's
+# classification found the untaken branches in the three recovery scanners
+# reachable rather than refused by an earlier rule, and a scoped instrumented
+# run predicted 34 gcc branches from the four functions on the left. The
+# measurement moved exactly 34 there. The four on the right moved 4 more that
+# nobody predicted: they are functions the new fixtures merely pass through on
+# the way to the scanners. 34 + 4 = 38 = the drop in the gcc total, and the
+# clang total closes the same way at 37. The prediction was good for the
+# region it was about and silent about the rest, which is worth knowing before
+# the next region is classified on the strength of one.
+#
+# AND ONE ROW LEFT THE FILE, which has never happened before. pattern_arm_arrow
+# is fully covered and is gone from this ledger and from mirror.tsv. A row
+# leaving is the event this file exists to make visible in the other direction
+# -- the header below says an improvement nobody wrote down is slack for the
+# next regression to hide in, so it is written down here with the prediction
+# that matched it.
 #
 # COST, measured on this run rather than estimated -- it is the number the
 # `verify`-or-not argument in tooling/gate-reachability/unreachable.tsv rests
 # on, and the reason that file rather than the verify list is where this gate
 # is accounted for:
-#   gcc    drivers  4653s + corpus  754s =   90 min, drivers are 86% of it
-#   clang  drivers  4789s + corpus  877s =   94 min, drivers are 84.5% of it
-#   both   drivers  9442s + corpus 1631s =  185 min for the pair
+#   gcc    drivers  5010s + corpus  809s =   97 min, drivers are 86% of it
+#   clang  drivers  4860s + corpus  850s =   95 min, drivers are 85% of it
+#   both   drivers  9870s + corpus 1659s =  192 min for the pair
 #
-#   8 cores. No load sampler was active for this run, so no load range is
-#   recorded or inferred from a different measurement.
-#
-# RETRIES. On each host `discovery` returned exit=201 on all four attempts.
-# Attempts 1 through 3 were retried; the terminal failure matched the pinned
-# driver-failures.tsv policy. Neither host recorded a corpus timeout.
+#   8 cores. Load was read ONCE, by hand, at 11:07:53 as the run started:
+#   2.33. No sampler ran for the following 192 minutes, so that figure
+#   describes the start and nothing else. The run was scheduled against a
+#   release freeze with two other sessions holding off the machine by
+#   agreement, but an agreement is not a measurement and this file does not
+#   record it as one.
 #
 # READ THE PHASE SPLIT, NOT THE ABSOLUTE. These wall-clock figures are
 # observations from one shared-machine run, not a clean-machine cost or a
 # controlled cross-host comparison. The reported phase shares describe only
 # where each sequential host run spent its wall time; without a load sampler,
-# no same-contention claim is made or inferred.
+# no same-contention claim is made or inferred -- including against the 185
+# minutes recorded at c005fc31, which this run's 192 cannot be compared to
+# as a cost, only noted as having driven 3 more inputs.
 #
-# DETERMINISM (#1408 criterion 5). This 157-driver / 1283-input tree has one
-# fresh two-compiler measurement: the run recorded above. The earlier
-# 155-driver / 1258-input basis was measured twice at 6ee19d95 and d07bfcf5
-# and produced byte-identical rows, but that is historical evidence for the
-# harness rather than a repeat of this tree. A second current-tree run is
-# required before claiming byte-identical repeat determinism for this basis.
+# RETRIES. On each host `discovery` failed with exit=201 and was retried on
+# attempts 1 through 3, matching the pinned driver-failures.tsv policy and
+# the same behaviour recorded at c005fc31. Neither host recorded a corpus
+# timeout.
+#
+# DETERMINISM (#1408 criterion 5). This basis has one fresh two-compiler
+# measurement: the run recorded above. The 155-driver / 1258-input basis was
+# measured twice at 6ee19d95 and d07bfcf5 and produced byte-identical rows,
+# which is historical evidence for the harness rather than a repeat of this
+# basis. A second run of this basis is still required before claiming
+# byte-identical repeat determinism for it -- and because #1548 has already
+# moved compiler.c underneath it, that repeat is no longer available: the
+# next run measures a different compiler, and criterion 5 has to be met on
+# the basis that exists then.
 #
 # Regenerate with:
 #
@@ -107,7 +167,7 @@
 19	19	borrowed_collection_check
 1	1	buffer_format
 1	1	buffer_reserve
-28	28	build_scope_hir_mode
+27	27	build_scope_hir_mode
 10	8	builtin_argument_check
 1	1	builtin_parameter_types
 9	7	bytes_block_reason
@@ -240,14 +300,14 @@
 3	2	list_int_local_type_token
 4	4	list_int_type_end
 15	11	local_visibility_error
-141	141	lower_body
+140	140	lower_body
 4	4	lower_c_body
 26	25	lower_enum_match
 17	17	lower_record_binding
 1	1	lower_selfhost_c11_file
 6	6	main
 4	4	malformed_numeric_literal
-10	10	match_arm_pattern_start
+9	9	match_arm_pattern_start
 11	10	match_guard_scope_open
 15	13	move_assertion_arm_terminates
 13	9	move_assertion_callee_is_alias_free
@@ -301,7 +361,7 @@
 1	1	parameter_list_type_text
 1	1	parameter_open
 3	3	parameter_type_start
-27	26	parse_pattern_atomic
+25	25	parse_pattern_atomic
 12	11	parse_pattern_or
 8	7	parse_pattern_trees
 1	1	parse_patterns_file
@@ -310,14 +370,13 @@
 29	26	parse_value_enum_match
 13	13	parse_value_if
 19	19	parse_value_match
-9	9	pattern_arm_arrow
 3	3	pattern_duplicate_binding_error
 2	2	pattern_error
 1	1	pattern_first_error
 2	2	pattern_limit_error
-13	13	pattern_match_open
+4	4	pattern_match_open
 3	3	pattern_record_field
-17	17	pattern_recovery_end
+3	3	pattern_recovery_end
 5	4	pattern_stop_token
 3	3	payload_member_type_token
 4	4	pipeline_call_end
@@ -430,7 +489,7 @@
 9	6	validate_fractional_operators
 2	2	validate_list_int_annotations
 4	4	validate_list_int_lambda_uses
-19	19	validate_move_assertions
+18	18	validate_move_assertions
 5	5	validate_move_uses
 2	2	validate_numeric_annotations
 4	4	validate_numeric_conversions
