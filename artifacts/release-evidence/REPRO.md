@@ -32,6 +32,7 @@ report a pass it did not observe.
 | `arithmetic-core` | `task test` |
 | `bindgen-c-stage1` | `task bindgen-c` |
 | `borrowed-list-ownership` | `task stage2` |
+| `bounded-bytes` | `task bytes-mutation` |
 | `bounded-tzdb-producer` | `task tzdb` |
 | `c-abi-profile` | `task c-abi` |
 | `c11-function-calls` | `task stage2` |

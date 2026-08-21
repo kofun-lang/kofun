@@ -32,6 +32,7 @@
 | nominal heterogeneous records | bounded Stage 2 C11 mixed `Text`/capacity-64 `List[Int]`/`Int` records: labelled construction, declaration-order AggregateLayout, typed field reads, whole-record pass/return, and list-field copy semantics; no general lists, `List[Text]`, nested aggregates, modules, generics, native lowering, or stable ABI | `task aggregate-bridge`, `task records`, `spec/records-v1.md` | `nominal-records` |
 | general parser/type checker | open | no active gate | `general-parser-type-checker` |
 | borrowed-List Copy/move ownership check | narrow Stage 2 checkpoint | `bootstrap/stage2/check.sh` | `borrowed-list-ownership` |
+| bounded Bytes[65536] carrier and mutation on C11 Stage 2 | uniquely-owned byte buffer with checked read/write, clear, reserve, append, append-range and self-append; exact bounded growth and transactional failure; no Text bridge | `task bytes-carrier`, `task bytes-mutation` | `bounded-bytes` |
 | bounded injected-Bytes time-zone transition producer | bounded Stage 2/C11 checkpoint | `task tzdb` | `bounded-tzdb-producer` |
 | bounded affine resource-handle protocol | bounded Stage 2/C11 checkpoint | `task affine-resource-handle` | `affine-resource-handle` |
 | general ownership and law checking | open | no active general pass | `general-ownership-checking` |
