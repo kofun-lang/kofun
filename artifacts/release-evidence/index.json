@@ -4,7 +4,7 @@
   "version": "0.10.1-seed",
   "inputs": {
     "VERSION": "08fe0c4249dd35887ddcbe374dbce1c9422cdd119291c3f2c296e51b7a33f2e4",
-    "release/claims.json": "b59510c723ab505924eba4d0b202e04d7e370a2c7587fc62f613d9a389e6c77b",
+    "release/claims.json": "d8378b24ac0cb343764c7c96b795bc7fedc76ee2d3e75edfd601c9bf3ed5f2e4",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
     "bootstrap/manifest.json": "4e76daf2298af9e6b8f07e1a20ddf50eca2761e3968da5e61038cf319dd4c662"
   },
@@ -810,7 +810,7 @@
     "docs/LAW_SYSTEM.md": "b974f0ad762bec778ee76afa5d0a2176423ac96a3a583739eee55dcb8dca5043",
     "docs/LINGUIST_RECOGNITION.md": "279f9afa7157c90e41d656974c2f5020f8b6d25acbbd389ee760efbb2d6d6166",
     "docs/MEMORY_MODEL.md": "fdec62845a237534fcc4843b00e3f5aed68631c1eb964ceaa4a3f43d50355f17",
-    "docs/MVP_IMPLEMENTED.md": "06188fd668bbc25d86977d5f4bb8e1fe8172bc0389607efc0aea3a240c3556ea",
+    "docs/MVP_IMPLEMENTED.md": "92e15bb531eb33e403cd748fbe533d2d2de2e09314be2aa39c0ec68418b2f77b",
     "docs/NATIVE_BACKEND.md": "cc5b3680a3e250a4bcaa31170d40f5c7cf3fa3ecc74a489613a9a61bfeafd51f",
     "docs/ROADMAP.md": "01f4d69e2027aeadb6b1ae5dc00a2b00cfb945fb5a9ca22fa7e52578894afe9c",
     "docs/RUST_CRATE_SHIMS.md": "4365b064cbc9a05733710d3a609c1db2623b28cb9ed4ba0e48536e35f9d58c47",
@@ -821,7 +821,7 @@
     "examples/rust-shim/check.sh": "487dfa45e0a090f56550678fc6224c84780fbb750563b8fafcd3dd2fc34b4c01",
     "examples/wasm_arithmetic.kofun": "ea73b3ee6b5172a4c8080ed5b4540fb23288d31000dd6ccd59a473e97836c246",
     "rfcs/0010-affine-resource-handle-v1.md": "0deef14c3d575a97acbd92907757707fd49680c1f18c4171e1d2bf6a54d2656e",
-    "spec/bytes-bounded-v1.md": "1a1bb036eb816fd568fa99b47032051d5676a17414255bfecdb589cfc7c0f34f",
+    "spec/bytes-bounded-v1.md": "3333daa74408645d2be051db7c089e408a6a05320b7467d5d3f8ddd440572ce0",
     "spec/enum-match-exhaustiveness.md": "ac383d5cdc76a3d0817bc7cacb12a473c4b18d099551d2e9a098928cc4980f43",
     "spec/modules/module-identity.md": "9fc02e1888a5d585aa9c747e3800e9d72d947eaa9d722a60fa4e4a7b385ae5a0",
     "spec/modules/re-exports.md": "adaaaa3af3a08302b979a1d92871d6a552f0dd76838a67147d876c510ef95ce3",

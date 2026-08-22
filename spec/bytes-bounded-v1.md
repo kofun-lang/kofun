@@ -28,8 +28,8 @@ It is **not**:
   reserved for one are unused (§5). That is #1322;
 - atomically replaceable in a bound target — that is #1323 and #1324;
 - reliably observable from source beyond `len` and `capacity` — every other
-  operation has a compiler-private emitted-C outcome, and Stage 2 does not yet
-  refuse all source value contexts that try to consume it (#1559, §7);
+  operation has a compiler-private emitted-C outcome, and Stage 2 refuses the
+  source value contexts that try to consume it (#1559, §7);
 - available on any backend but C11 Stage 2.
 
 ## 2. The carrier
@@ -98,8 +98,10 @@ BindingIds and refuses one BindingId in both positions as `E2S177`.
 
 Within that direct fixture, the BindingId check is the compile-time premise for
 the two-carrier copy/refusal boundary in §6; it is not a general wrapper-level
-alias proof. One owner can still satisfy conflicting wrapper slots (#1561), and
-transparent parentheses can erase the identity the direct check needs (#1562).
+alias proof. One owner in conflicting wrapper slots is refused as `E2S180`
+through one- and two-level wrappers (#1561), and complete nested parentheses
+preserve the identity the direct check needs (#1562). Neither is claimed
+outside those fixture shapes.
 
 ## 5. Status
 
@@ -130,9 +132,9 @@ the gate asserts that.
 ## 6. Operations
 
 The checkpoint covers nine direct call shapes that resolve to these compiler
-builtins. It does not prove that a source or lexical callable with the same
-spelling always outranks builtin recognition (#1560). Their leading arguments
-are carriers:
+builtins. A current-file declaration or a lexical callable with the same
+`stage2_bytes_*` spelling outranks that recognition, and an undeclared control
+retains it (#1560). Their leading arguments are carriers:
 
 | operation | arguments | result |
 | --- | --- | --- |
@@ -199,7 +201,9 @@ two carriers to be **distinct bindings**, proved by distinct typed-HIR
 BindingIds before any C is emitted. One direct named binding in both positions
 is `E2S177`; the author is directed to `append_self`. The C library copy
 primitive is an implementation detail, not a frozen part of this checkpoint.
-Parenthesized carrier identity is a known gap (#1562).
+Complete nested parentheses preserve the carrier's BindingId through the
+mutation builtins and a declared relay; a parenthesized temporary stays
+unnamed (#1562).
 
 `append_self` is the dedicated single-carrier operation. The mutation matrix
 proves the original-range bytes survive both non-growth and growth cases; the
@@ -224,9 +228,9 @@ For calls resolved to these builtins in the gated source forms, `len` and
 complete discarded expression statement: the status and read carriers are
 private to the emitted C. `task bytes-mutation` proves those direct supported
 forms with a driver compiled against a prelude extracted from a program the
-compiler just emitted. It does not carry a comprehensive private-result
-rejection matrix; current Stage 2 permits multiple source value contexts to
-reach invalid generated C (#1559).
+compiler just emitted. All eight compiler-private outcomes are accepted only
+as complete discarded expression statements; every other operation and value
+context in that matrix refuses as `E2S179` and commits no C (#1559).
 
 This is a deliberate boundary and it is the largest one in this document.
 Surfacing either carrier to source needs a compiler-owned enum declaration, and
@@ -246,32 +250,14 @@ works is the kind of published promise this repository gates against:
 - **A temporary `Bytes` call result passed to a direct declared `read`, `edit`,
   or `take` parameter is not yet refused by Stage 2** and can reach invalid
   generated C (#1516).
-- **A `read Bytes` borrow may satisfy a declared `edit Bytes` parameter or an
-  edit destination of `assign_zeroed`, `byte_set`, `clear`, `reserve`,
-  `append`, `append_range`, or `append_self`.** The invalid const-discarding
-  crossing is detected only by the host C compiler (#1517).
-- **Compiler-private Bytes operation outcomes are not refused in source value
-  contexts.** Binding, print, return/final expression, argument, arithmetic,
-  equality/comparison, and additional multiline or parenthesized contexts can
-  reach invalid generated C instead of being limited to complete discarded
-  expression statements (#1559).
-- **Builtin recognition can outrank a source or lexical callable with the same
-  `stage2_bytes_*` spelling**, so the direct-call table in §6 is not a general
-  callable-resolution precedence claim (#1560).
-- **One Bytes owner may satisfy conflicting wrapper slots when the carrier's
-  identity is lost across call binding**, so wrapper-call owner uniqueness is
-  outside the fixture proof (#1561).
-- **Parentheses can erase a named Bytes carrier BindingId**, so a supported
-  named-carrier form can be refused as `E2S177` where its unparenthesized form
-  succeeds (#1562).
 - **Seventy-one `Bytes` locals in one function are refused under `E2S170`'s
   alias reason** when the actual cause is a cleanup-list buffer, and only by
   one half of the pair (#1556).
-- **All six typed-return forms lack an owning-Bytes fixture.** The C trap guard
-  drops cleanup for `List[Int]`, `Int?`, and enum returns; C/Kofun indentation
-  placement also diverges for those three plus record and `Text`. The `Bytes`
-  return has no identified pair divergence, but remains outside the executable
-  fixture matrix (#1569).
+- **The record and `Bytes` typed-return forms have no owning-Bytes fixture.**
+  The dropped trap-guard cleanup for `List[Int]`, `Int?` and enum returns is
+  fixed and proved beside the `Text` control, and the two halves no longer
+  disagree on where the cleanup goes (#1569); the remaining two forms are
+  still outside the executable matrix.
 - **The post-take failure guard of a `Bytes`-returning function may discard the
   result carrier.** Reachability and an executable ownership proof remain
   unresolved (#1581).
