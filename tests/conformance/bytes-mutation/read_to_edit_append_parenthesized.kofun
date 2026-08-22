@@ -1,0 +1,11 @@
+# Transparent outer parentheses retain the read BindingId at a mutating
+# builtin destination; they cannot bypass the read-to-edit refusal.
+fn misuse(read destination: Bytes) -> Int {
+    stage2_bytes_append(((destination)), 1)
+    return 0
+}
+
+fn main() -> Int {
+    let owned = stage2_bytes_empty()
+    return misuse(owned)
+}

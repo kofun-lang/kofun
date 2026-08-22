@@ -1,0 +1,14 @@
+# #1517 leaves Bytes outside the labelled fixed-slot ABI. This must keep the
+# existing E2S158 hold instead of accidentally admitting only one half.
+fn writes(edit as_target target: Bytes) -> Int {
+    return 0
+}
+
+fn lends(read source: Bytes) -> Int {
+    return writes(as_target: source)
+}
+
+fn main() -> Int {
+    let owned = stage2_bytes_empty()
+    return lends(owned)
+}

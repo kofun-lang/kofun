@@ -1,0 +1,20 @@
+# The E2S178 detail is serialized into a frozen 160-byte sidecar field. A
+# source-level function name may be arbitrarily long, so the slot label keeps
+# enough prefix and suffix to identify both the callee and parameter while the
+# complete diagnostic remains below that transport limit.
+fn writes_bytes_target_through_an_intentionally_long_named_function_for_width(
+    edit target: Bytes
+) -> Int {
+    return 0
+}
+
+fn lends(read source: Bytes) -> Int {
+    return writes_bytes_target_through_an_intentionally_long_named_function_for_width(
+        source
+    )
+}
+
+fn main() -> Int {
+    let owned = stage2_bytes_empty()
+    return lends(owned)
+}

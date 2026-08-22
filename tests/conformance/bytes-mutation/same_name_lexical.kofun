@@ -1,0 +1,9 @@
+# #1560. A lexical callable BindingId outranks the builtin table. This source
+# contains no Bytes carrier at all, so a spelling-only runtime prelude is also
+# visible as an unexpected allocation surface in the emitted C.
+fn main() -> Int {
+    let stage2_bytes_append = (value) => value + 70
+    let result = stage2_bytes_append(7)
+    print(result)
+    return 0
+}

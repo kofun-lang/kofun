@@ -1,0 +1,22 @@
+# #1560. Current-file declarations outrank compiler builtins with the same
+# spelling. The direct Bytes call, labelled Int call, and mutation-name call
+# cover each emitter route that used to dispatch on spelling alone.
+fn stage2_bytes_len(read value: Bytes) -> Int {
+    return 99
+}
+
+fn stage2_bytes_capacity(of value: Int) -> Int {
+    return value + 80
+}
+
+fn stage2_bytes_append(value: Int) -> Int {
+    return value + 70
+}
+
+fn main() -> Int {
+    let bytes = stage2_bytes_empty()
+    print(stage2_bytes_len(bytes))
+    print(stage2_bytes_capacity(of: 8))
+    print(stage2_bytes_append(7))
+    return 0
+}

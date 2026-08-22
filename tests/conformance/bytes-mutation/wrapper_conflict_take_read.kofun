@@ -1,0 +1,9 @@
+fn conflict(take owner: Bytes, read lender: Bytes) -> Int {
+    return 0
+}
+
+fn main() -> Int {
+    let bytes = stage2_bytes_empty()
+    print(conflict(bytes, bytes))
+    return 0
+}

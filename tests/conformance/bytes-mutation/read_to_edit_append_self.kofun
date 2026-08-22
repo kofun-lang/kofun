@@ -1,0 +1,10 @@
+# #1517. A read-only destination may not reach append_self.
+fn misuse(read destination: Bytes) -> Int {
+    stage2_bytes_append_self(destination, 0, 0)
+    return 0
+}
+
+fn main() -> Int {
+    let owned = stage2_bytes_empty()
+    return misuse(owned)
+}

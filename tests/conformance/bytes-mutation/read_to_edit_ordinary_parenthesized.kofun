@@ -1,0 +1,15 @@
+# Transparent outer parentheses retain the read BindingId at an ordinary
+# edit slot; they cannot bypass the read-to-edit refusal.
+fn writes(prefix: Int?, edit target: Bytes) -> Int {
+    return 0
+}
+
+fn lends(read source: Bytes) -> Int {
+    let absent: Int? = null
+    return writes(absent, ((source)))
+}
+
+fn main() -> Int {
+    let owned = stage2_bytes_empty()
+    return lends(owned)
+}

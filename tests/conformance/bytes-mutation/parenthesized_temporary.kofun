@@ -1,0 +1,4 @@
+fn main() -> Int {
+    print(stage2_bytes_len(((stage2_bytes_empty()))))
+    return 0
+}

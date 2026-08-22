@@ -1,0 +1,10 @@
+# Argument typing outranks the duplicate-Bytes-owner check. Reusing one Int
+# BindingId in two formal Bytes slots is a type error, not an E2S180 alias.
+fn conflict(edit destination: Bytes, read lender: Bytes) -> Int {
+    return 0
+}
+
+fn main() -> Int {
+    let number = 1
+    return conflict(number, number)
+}
