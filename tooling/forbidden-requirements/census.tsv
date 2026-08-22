@@ -735,6 +735,8 @@ shell-build-driver	source	1	required-today	required	tests/typed-sidecar/authorit
 shell-build-driver	source	1	required-today	required	tests/typed-sidecar/captures.sh
 shell-build-driver	source	1	required-today	required	tests/typed-sidecar/cli.sh
 shell-build-driver	source	1	required-today	required	tests/typed-sidecar/codec.sh
+shell-build-driver	source	1	required-today	required	tests/typed-sidecar/path-log-self-test.sh
+shell-build-driver	source	1	required-today	required	tests/typed-sidecar/path-log.sh
 shell-build-driver	source	1	required-today	required	tests/typed-sidecar/producer-races.sh
 shell-build-driver	source	1	required-today	required	tests/typed-sidecar/stage2-event-stream.sh
 shell-build-driver	source	1	required-today	required	tests/typed-sidecar/stage2-events.sh
