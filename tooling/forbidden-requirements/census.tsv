@@ -286,7 +286,7 @@ node	invoke	4	required-today	required	tests/conformance/effects/pure-boundary/ru
 node	invoke	5	required-today	required	tests/conformance/effects/pure-io/run.sh
 node	invoke	3	required-today	required	tests/conformance/int-bits/run.sh
 node	invoke	3	required-today	required	tests/conformance/optional-construction/run.sh
-node	invoke	3	required-today	optional	tests/digest/check.sh
+node	invoke	5	required-today	optional	tests/digest/check.sh
 node	invoke	5	required-today	required	tests/docs/documentation-index.sh
 node	invoke	2	required-today	unknown	tests/fuzz/adapters/arithmetic-wasm32-node.sh
 node	invoke	2	required-today	required	tests/fuzz/pure_io.sh
@@ -402,6 +402,7 @@ node	source	1	required-today	required	tests/conformance/aggregate-bridge/check-s
 node	source	1	required-today	required	tests/conformance/effects/pure-boundary/report.mjs
 node	source	1	required-today	required	tests/conformance/effects/pure-io/report.mjs
 node	source	1	required-today	required	tests/conformance/int-bits/check-pair.mjs
+node	source	1	required-today	required	tests/digest/no-host-digest-tools.mjs
 node	source	1	required-today	required	tests/docs/audited-claim-metadata.mjs
 node	source	1	required-today	required	tests/docs/documentation_index_test.mjs
 node	source	1	required-today	required	tests/fuzz/hm_levels_oracle.mjs
