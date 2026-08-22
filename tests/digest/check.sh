@@ -101,3 +101,16 @@ if ( cd "$WORK" && "$DIGEST" -c empty-sums >/dev/null 2>&1 ); then
 fi
 
 printf '%s\n' 'PASS: verify mode refuses a modified file and an empty list'
+
+# 4. And nothing in the tree still reaches for the third implementation. #1213
+#    is recorded as done in the census, the package manager, and this file's
+#    own header, and it was not: one workflow still ran GNU `sha256sum` against
+#    each emitted native image, which is the comparison that decides whether
+#    the six-host evidence a release binds is accepted. Sections 1 to 3 prove
+#    the tool is right; this proves it is the one being used.
+if command -v node >/dev/null 2>&1; then
+    node "$ROOT/tests/digest/no-gnu-sha256sum.mjs" || fail 'a call site still invokes GNU sha256sum'
+else
+    printf '%s\n' \
+        'SKIP: node is absent, so the call-site scan did not run'
+fi
