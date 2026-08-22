@@ -84,7 +84,13 @@ jobs:
           expected=$(awk -v path="$CHECKSUM_PATH" '$2 == path { print $1 }' \
             bootstrap/native/SHA256SUMS)
           test -n "$expected"
-          actual=$(sha256sum "$IMAGE" | awk '{ print $1 }')
+          # The repository's own SHA-256, not the host's (#1213). This
+          # comparison decides whether the six-host evidence a release binds is
+          # accepted, so it must not be settled by a tool the project neither
+          # ships nor tests. `bin/kofun-digest` builds from
+          # `bootstrap/stage2/sha256.c` with the C11 compiler the bootstrap
+          # already requires and prints GNU's format, so the `awk` is unchanged.
+          actual=$(./bin/kofun-digest "$IMAGE" | awk '{ print $1 }')
           test "$actual" = "$expected"
           chmod +x "$IMAGE"
           set +e
@@ -214,7 +220,10 @@ jobs:
           expected=$(awk -v path="$CHECKSUM_PATH" '$2 == path { print $1 }' \
             bootstrap/native/SHA256SUMS)
           test -n "$expected"
-          actual=$(shasum -a 256 "$IMAGE" | awk '{ print $1 }')
+          # Same reason as the Linux lane above, reached by the other
+          # spelling: this host has no GNU `sha256sum`, so it used BSD `shasum
+          # -a 256` instead of the repository's own SHA-256 (#1213).
+          actual=$(./bin/kofun-digest "$IMAGE" | awk '{ print $1 }')
           test "$actual" = "$expected"
           chmod +x "$IMAGE"
           codesign --verify --strict --verbose=4 "$IMAGE"
