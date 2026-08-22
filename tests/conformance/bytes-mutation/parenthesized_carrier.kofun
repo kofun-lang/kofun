@@ -1,0 +1,19 @@
+fn measured(read value: Bytes) -> Int {
+    return stage2_bytes_len(((value)))
+}
+
+fn relay(edit destination: Bytes, read lender: Bytes) -> Int {
+    stage2_bytes_assign_zeroed(((destination)), 1)
+    stage2_bytes_append_range(((destination)), ((lender)), 0, 2)
+    return measured(((destination)))
+}
+
+fn main() -> Int {
+    let source = stage2_bytes_empty()
+    stage2_bytes_append(source, 7)
+    stage2_bytes_append(source, 8)
+    let destination = stage2_bytes_empty()
+    print(relay(((destination)), ((source))))
+    print(stage2_bytes_len(((destination))))
+    return 0
+}

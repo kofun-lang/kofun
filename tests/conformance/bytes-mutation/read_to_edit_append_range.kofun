@@ -1,0 +1,12 @@
+# #1517. append_range requires edit for its destination and read for its
+# source. The first read-only carrier is the one this fixture refuses.
+fn misuse(read destination: Bytes, read source: Bytes) -> Int {
+    stage2_bytes_append_range(destination, source, 0, 0)
+    return 0
+}
+
+fn main() -> Int {
+    let owned = stage2_bytes_empty()
+    let spare = stage2_bytes_empty()
+    return misuse(owned, spare)
+}

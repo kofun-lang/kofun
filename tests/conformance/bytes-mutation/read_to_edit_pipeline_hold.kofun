@@ -1,0 +1,14 @@
+# #1517 leaves Bytes outside the pipeline fixed-slot ABI. The subject carrier
+# remains E2S158 until that matrix gains a complete, mode-aware Bytes shape.
+fn writes(edit target: Bytes) -> Int {
+    return 0
+}
+
+fn lends(read source: Bytes) -> Int {
+    return source |> writes()
+}
+
+fn main() -> Int {
+    let owned = stage2_bytes_empty()
+    return lends(owned)
+}

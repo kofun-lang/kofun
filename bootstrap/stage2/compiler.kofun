@@ -4591,6 +4591,34 @@ fn emit_argument(
         # one allocation. `take` moves the fields and empties the source slot,
         # so the caller funnel finds {0,0,NULL} and reclaims nothing.
         let mode = function_parameter_mode(source, callee, argument_index)
+        let parameter = function_parameter_name(
+            source,
+            callee,
+            argument_index
+        )
+        let binding_id = bytes_named_carrier_binding(
+            source,
+            hir,
+            cursor,
+            end
+        )
+        let actual_type = hir_binding_field(hir, binding_id, 5)
+        if len(binding_id) > 0 && actual_type != "Bytes" {
+            return "error[E2S15]: Core function `" + callee +
+                "` expects Bytes for argument " +
+                to_text(argument_index + 1) + ", got " + actual_type +
+                " at byte " + to_text(cursor)
+        }
+        let access = bytes_access_error(
+            hir,
+            binding_id,
+            cursor,
+            mode,
+            callee + "." + parameter
+        )
+        if starts_with(access, "error[") {
+            return access
+        }
         let value = emit_expression(source, hir, cursor, end)
         if starts_with(value, "error[") {
             return value
@@ -4599,7 +4627,7 @@ fn emit_argument(
             # #1321. Not always `&`: a borrow parameter is already the
             # address. See `bytes_borrow_address`, which owns the rule and
             # the measurement that found this.
-            return bytes_borrow_address(hir, cursor, value)
+            return bytes_borrow_address(source, hir, cursor, end, value)
         }
         if mode == "take" {
             return "kofun_bytes_take(&" + value + ")"
@@ -5022,6 +5050,171 @@ fn bytes_mutation_builtin(name: Text) -> Bool {
     name == "stage2_bytes_append_self"
 }
 
+# #1560. Whether a direct call spelling denotes a compiler builtin after the
+# same precedence the validator applies. Scope HIR records lexical callable
+# resolution, including shadowing, and the current-file declaration table is
+# the validator's next choice. Only a name unresolved by both may reach the
+# builtin tables or their special C lowering.
+fn call_resolves_to_builtin(
+    source: Text,
+    hir: Text,
+    call_start: Int,
+    name: Text
+) -> Bool {
+    return len(hir_use_binding_id(hir, call_start)) == 0 &&
+    function_start_named(source, name) < 0 && builtin_arity(name) >= 0
+}
+
+# #1559. These eight outcomes are implementation carriers, not Kofun values.
+# `len` and `capacity` deliberately stay outside: their Int result is the
+# source-visible observation surface of the bounded Bytes bridge.
+fn bytes_private_result_builtin(name: Text) -> Bool {
+    return name == "stage2_bytes_assign_zeroed" ||
+    (bytes_mutation_builtin(name) &&
+     name != "stage2_bytes_len" &&
+     name != "stage2_bytes_capacity")
+}
+
+# A newline separates statements only when the token before it can complete
+# one. This keeps a private result after `let value =`, `if`, or an operator in
+# the expression that began on the preceding line. A newline after `return`
+# ends a bare return in this grammar, so the following call is a new statement.
+fn bytes_private_result_previous_completes_statement(
+    source: Text,
+    previous: Int
+) -> Bool {
+    let kind = token_kind(source, previous)
+    let text = token_text(source, previous)
+    return kind == "identifier" || kind == "integer" ||
+        kind == "decimal" || kind == "float" || kind == "string" ||
+        text == ")" || text == "]" || text == "}" ||
+        text == "true" || text == "false" || text == "break" ||
+        text == "continue" || text == "return"
+}
+
+fn bytes_private_result_statement_boundary(
+    source: Text,
+    previous: Int,
+    next: Int
+) -> Bool {
+    let text = token_text(source, previous)
+    return text == "{" || text == "}" || text == "else" ||
+        (newline_between(source, token_end(source, previous), next) &&
+         bytes_private_result_previous_completes_statement(
+             source,
+             previous
+         ))
+}
+
+# #1559. A private result may be evaluated only where the result is discarded
+# immediately. The call must start at statement depth, cover the complete
+# expression, and not be the terminal expression of a non-main function (that
+# position supplies the function result). A closing nested block is harmless:
+# nested bodies are lowered with no implicit result and discard their ordinary
+# expression statements.
+fn bytes_private_result_is_discarded_statement(
+    source: Text,
+    call_start: Int,
+    open: Int
+) -> Bool {
+    let call_end = balanced_end(source, open, "(", ")")
+    if call_end < 0 {
+        return false
+    }
+    let function_open = enclosing_function_open(source, call_start)
+    if function_open < 0 {
+        return false
+    }
+    let mut previous = function_open
+    let mut cursor = skip_trivia(source, token_end(source, function_open))
+    let mut candidate = cursor
+    let mut group_depth = 0
+    while cursor < call_start {
+        if group_depth == 0 && bytes_private_result_statement_boundary(
+            source,
+            previous,
+            cursor
+        ) {
+            candidate = cursor
+        }
+        let token = token_text(source, cursor)
+        if token == "(" || token == "[" {
+            group_depth = group_depth + 1
+        } else if token == ")" || token == "]" {
+            group_depth = group_depth - 1
+        }
+        previous = cursor
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    if cursor != call_start {
+        return false
+    }
+    if group_depth == 0 && bytes_private_result_statement_boundary(
+        source,
+        previous,
+        call_start
+    ) {
+        candidate = call_start
+    }
+    let whole_end = expression_end(source, candidate)
+    if whole_end < 0 ||
+       optional_int_coalescing_transparent_bound(
+           source,
+           candidate,
+           whole_end,
+           true
+       ) != call_start ||
+       optional_int_coalescing_transparent_bound(
+           source,
+           candidate,
+           whole_end,
+           false
+       ) != call_end {
+        return false
+    }
+    let after = skip_trivia(source, whole_end)
+    if after >= len(source) || token_text(source, after) != "}" {
+        return true
+    }
+    let mut function_start = next_function_start(source, 0)
+    while function_start < len(source) {
+        let function_close = function_end(source, function_start)
+        if call_start >= function_start && call_start < function_close {
+            return token_end(source, after) != function_close ||
+                function_name(source, function_start) == "main"
+        }
+        function_start = next_function_start(source, function_close)
+    }
+    return false
+}
+
+# #1559. Validate private outcomes before any C exists. This walk checks the
+# resolved callee, not its spelling: a same-name source declaration or lexical
+# callable is an ordinary Kofun function and may return a source value.
+fn validate_bytes_private_results(source: Text, hir: Text) -> Text {
+    let mut cursor = next_function_start(source, 0)
+    while cursor < len(source) {
+        if token_kind(source, cursor) == "identifier" {
+            let name = token_text(source, cursor)
+            let open = skip_trivia(source, token_end(source, cursor))
+            if open < len(source) && token_text(source, open) == "(" &&
+               bytes_private_result_builtin(name) &&
+               call_resolves_to_builtin(source, hir, cursor, name) &&
+               !bytes_private_result_is_discarded_statement(
+                   source, cursor, open) {
+                return lower_error(
+                    "E2S179",
+                    "Stage 2 `" + name + "` does not produce a source " +
+                    "value; use it only as a discarded expression statement",
+                    cursor
+                )
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return "ok"
+}
+
 # #1321. How many leading arguments of a mutation operation are carriers.
 # Every one of them takes its carriers first, so a count is enough to decide
 # which arguments lower as addresses and which as `Int` expressions.
@@ -5033,6 +5226,64 @@ fn bytes_mutation_carriers(name: Text) -> Int {
         return 1
     }
     return 0
+}
+
+# #1517. The access required by every carrier slot in the bounded mutation
+# family. The table is deliberately explicit: an operation added to the
+# family must choose read or edit rather than inheriting a default that may
+# let a read-only view reach mutation.
+fn bytes_mutation_required_access(name: Text, index: Int) -> Text {
+    if name == "stage2_bytes_len" ||
+       name == "stage2_bytes_capacity" ||
+       name == "stage2_bytes_byte_at" {
+        return "read"
+    }
+    if name == "stage2_bytes_append_range" {
+        if index == 1 {
+            return "read"
+        }
+        return "edit"
+    }
+    if name == "stage2_bytes_byte_set" ||
+       name == "stage2_bytes_clear" ||
+       name == "stage2_bytes_reserve" ||
+       name == "stage2_bytes_append" ||
+       name == "stage2_bytes_append_self" {
+        return "edit"
+    }
+    return ""
+}
+
+# #1517. Refuse only the access transition this slice owns: a caller binding
+# typed as a `read` Bytes view cannot satisfy an `edit` carrier slot. Owners
+# and edit views may edit, and edit may widen to read. The caller's mode comes
+# from typed HIR field 6 rather than being re-derived from source spelling.
+fn bytes_access_slot_label(slot: Text) -> Text {
+    if len(slot) <= 40 {
+        return slot
+    }
+    return text_slice(slot, 0, 18) + "..." +
+        text_slice(slot, len(slot) - 19, len(slot))
+}
+
+fn bytes_access_error(
+    hir: Text,
+    binding_id: Text,
+    cursor: Int,
+    required: Text,
+    slot: Text
+) -> Text {
+    let available = hir_binding_field(hir, binding_id, 6)
+    if available != "read" || required != "edit" {
+        return ""
+    }
+    let label = bytes_access_slot_label(slot)
+    return lower_error(
+        "E2S178",
+        "Bytes slot `" + label + "`: available read, required edit; " +
+        "read-to-edit is forbidden",
+        cursor
+    )
 }
 
 # #1321. The address of a Bytes carrier, which is not always `&`.
@@ -5052,8 +5303,45 @@ fn bytes_mutation_carriers(name: Text) -> Int {
 # nothing reached the second case. The ownership mode is field 6 of the typed
 # HIR binding record, which is where the parameter head already recorded it --
 # re-deriving it from the source would be a second copy of one fact.
-fn bytes_borrow_address(hir: Text, cursor: Int, value: Text) -> Text {
-    let mode = hir_binding_field(hir, hir_use_binding_id(hir, cursor), 6)
+fn bytes_named_carrier_binding(
+    source: Text,
+    hir: Text,
+    start: Int,
+    end: Int
+) -> Text {
+    let cursor = optional_int_coalescing_transparent_bound(
+        source,
+        start,
+        end,
+        true
+    )
+    let stop = optional_int_coalescing_transparent_bound(
+        source,
+        start,
+        end,
+        false
+    )
+    if token_kind(source, cursor) != "identifier" ||
+       token_end(source, cursor) != stop {
+        return ""
+    }
+    return hir_use_binding_id(hir, cursor)
+}
+
+fn bytes_borrow_address(
+    source: Text,
+    hir: Text,
+    cursor: Int,
+    end: Int,
+    value: Text
+) -> Text {
+    let binding_id = bytes_named_carrier_binding(
+        source,
+        hir,
+        cursor,
+        end
+    )
+    let mode = hir_binding_field(hir, binding_id, 6)
     if mode == "read" || mode == "edit" {
         return value
     }
@@ -5071,7 +5359,7 @@ fn bytes_carrier_address(
     if starts_with(value, "error[") {
         return value
     }
-    return bytes_borrow_address(hir, cursor, value)
+    return bytes_borrow_address(source, hir, cursor, end, value)
 }
 
 # #1321. `stage2_bytes_append_range` copies between two carriers with
@@ -5156,7 +5444,12 @@ fn emit_bytes_mutation_call(
             # in generated C. It is refused here, under the same code as the
             # two-carrier identity failure, because it is the same fact: an
             # operation on a carrier needs a carrier it can name.
-            let resolved = hir_use_binding_id(hir, argument)
+            let resolved = bytes_named_carrier_binding(
+                source,
+                hir,
+                argument,
+                argument_stop
+            )
             if len(resolved) == 0 {
                 return bytes_unresolved_carrier_error(call_start)
             }
@@ -5164,6 +5457,21 @@ fn emit_bytes_mutation_call(
                 destination = resolved
             } else {
                 lender = resolved
+            }
+            let required = bytes_mutation_required_access(name, index)
+            let mut role = "destination"
+            if required == "read" {
+                role = "source"
+            }
+            let access = bytes_access_error(
+                hir,
+                resolved,
+                argument,
+                required,
+                name + "." + role
+            )
+            if starts_with(access, "error[") {
+                return access
             }
             lowered = bytes_carrier_address(
                 source,
@@ -6247,7 +6555,8 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
         # function no emitted program declares. It takes no arguments, so
         # there is nothing to emit between the parentheses.
         if open < end && token_text(source, open) == "(" &&
-           name == "stage2_bytes_empty" {
+           name == "stage2_bytes_empty" &&
+           call_resolves_to_builtin(source, hir, cursor, name) {
             return "stage2_bytes_empty()"
         }
         # #1315. The transactional producer. Its destination is an `edit`
@@ -6260,7 +6569,8 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
         # would find no mode, emit the carrier by value, and hand the helper a
         # copy whose writes the caller never sees.
         if open < end && token_text(source, open) == "(" &&
-           name == "stage2_bytes_assign_zeroed" {
+           name == "stage2_bytes_assign_zeroed" &&
+           call_resolves_to_builtin(source, hir, cursor, name) {
             let destination = skip_trivia(source, token_end(source, open))
             let destination_end = argument_end(source, destination)
             let separator = skip_trivia(source, destination_end)
@@ -6271,6 +6581,22 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
             # `KofunBytesValue *` and the emitted C did not compile, which is
             # the same defect `bytes_borrow_address` records, in the one
             # lowering that predates it.
+            let destination_binding = bytes_named_carrier_binding(
+                source,
+                hir,
+                destination,
+                destination_end
+            )
+            let access = bytes_access_error(
+                hir,
+                destination_binding,
+                destination,
+                "edit",
+                name + ".destination"
+            )
+            if starts_with(access, "error[") {
+                return access
+            }
             let carrier = bytes_carrier_address(
                 source, hir, destination, destination_end)
             if starts_with(carrier, "error[") {
@@ -6289,7 +6615,8 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
         # takes, and for the same reason: a builtin has no source declaration
         # for `emit_argument` to read a mode from.
         if open < end && token_text(source, open) == "(" &&
-           bytes_mutation_builtin(name) {
+           bytes_mutation_builtin(name) &&
+           call_resolves_to_builtin(source, hir, cursor, name) {
             return emit_bytes_mutation_call(source, hir, name, cursor, open)
         }
         # `to_text(Int)` lowers beside `len`, the other one-argument builtin
@@ -7287,15 +7614,20 @@ fn function_parameter_start_at(
         }
         let mut type_end = callable_type_end(source, type_start)
         if type_end < 0 {
-            let list_end = parameter_list_type_end(
-                source,
-                type_start,
-                parameters_end
-            )
-            if list_end >= 0 {
-                type_end = list_end
+            let optional_end = optional_int_type_end(source, type_start)
+            if optional_end >= 0 {
+                type_end = optional_end
             } else {
-                type_end = annotation_type_end(source, type_start)
+                let list_end = parameter_list_type_end(
+                    source,
+                    type_start,
+                    parameters_end
+                )
+                if list_end >= 0 {
+                    type_end = list_end
+                } else {
+                    type_end = annotation_type_end(source, type_start)
+                }
             }
         }
         let separator = skip_trivia(source, type_end)
@@ -7645,6 +7977,117 @@ fn validate_declared_call_arguments(
     return ""
 }
 
+# #1561. A direct declared call preserves the bounded Bytes no-alias
+# invariant at its own boundary. Once the ordinary binder, type checker, and
+# arity checker have accepted the call, two actual arguments that resolve to
+# one BindingId may occupy two `read` slots, but may not occupy two slots when
+# either formal is `edit` or `take`. Under #1315's refusal of every other
+# source-level Bytes alias origin, applying this rule at each direct call is
+# inductive through wrapper depth; no call-graph provenance is needed.
+fn bytes_exclusive_parameter_mode(mode: Text) -> Bool {
+    return mode == "edit" || mode == "take"
+}
+
+fn declared_bytes_argument_identity_error(
+    source: Text,
+    hir: Text,
+    callee: Text,
+    call_start: Int,
+    open: Int
+) -> Text {
+    if function_start_named(source, callee) < 0 ||
+       len(hir_use_binding_id(hir, call_start)) > 0 ||
+       call_has_labelled_argument(source, open) ||
+       call_is_pipeline_target(source, call_start) {
+        return ""
+    }
+    let close = balanced_end(source, open, "(", ")")
+    if close < 0 {
+        return ""
+    }
+    let mut argument = skip_trivia(source, token_end(source, open))
+    let mut slot = 0
+    while argument < close && token_text(source, argument) != ")" {
+        let argument_stop = argument_end(source, argument)
+        if argument_stop < 0 {
+            return ""
+        }
+        if function_parameter_type(source, callee, slot) == "Bytes" {
+            let binding_id = bytes_named_carrier_binding(
+                source,
+                hir,
+                argument,
+                argument_stop
+            )
+            if len(binding_id) > 0 &&
+               hir_binding_field(hir, binding_id, 5) == "Bytes" {
+                let mode = function_parameter_mode(source, callee, slot)
+                let mut prior = skip_trivia(
+                    source,
+                    token_end(source, open)
+                )
+                let mut prior_slot = 0
+                while prior_slot < slot {
+                    let prior_stop = argument_end(source, prior)
+                    if prior_stop < 0 {
+                        return ""
+                    }
+                    if function_parameter_type(
+                        source,
+                        callee,
+                        prior_slot
+                    ) == "Bytes" {
+                        let prior_binding = bytes_named_carrier_binding(
+                            source,
+                            hir,
+                            prior,
+                            prior_stop
+                        )
+                        let prior_mode = function_parameter_mode(
+                            source,
+                            callee,
+                            prior_slot
+                        )
+                        if len(prior_binding) > 0 &&
+                           hir_binding_field(
+                               hir,
+                               prior_binding,
+                               5
+                           ) == "Bytes" &&
+                           prior_binding == binding_id &&
+                           (bytes_exclusive_parameter_mode(prior_mode) ||
+                            bytes_exclusive_parameter_mode(mode)) {
+                            return lower_error(
+                                "E2S180",
+                                "Stage 2 Bytes argument slots " +
+                                to_text(prior_slot + 1) + " (" +
+                                prior_mode + ") and " +
+                                to_text(slot + 1) + " (" + mode +
+                                ") must use distinct owners",
+                                argument
+                            )
+                        }
+                    }
+                    let prior_separator = skip_trivia(source, prior_stop)
+                    prior = skip_trivia(
+                        source,
+                        token_end(source, prior_separator)
+                    )
+                    prior_slot = prior_slot + 1
+                }
+            }
+        }
+        let separator = skip_trivia(source, argument_stop)
+        if separator < close && token_text(source, separator) == "," {
+            argument = skip_trivia(source, token_end(source, separator))
+        } else {
+            argument = separator
+        }
+        slot = slot + 1
+    }
+    return ""
+}
+
 fn call_has_labelled_argument(source: Text, open: Int) -> Bool {
     let close = balanced_end(source, open, "(", ")")
     if close < 0 {
@@ -7964,6 +8407,19 @@ fn validate_core_calls(source: Text, hir: Text) -> Text {
                     return "error[E2S17]: Core function `" + name +
                     "` expects " + to_text(expected) + " arguments, got " +
                     to_text(actual) + " at byte " + to_text(cursor)
+                }
+                if written >= 0 && actual == expected {
+                    let identity_error =
+                    declared_bytes_argument_identity_error(
+                        source,
+                        hir,
+                        name,
+                        cursor,
+                        open
+                    )
+                    if len(identity_error) > 0 {
+                        return identity_error
+                    }
                 }
             }
         }
@@ -12263,6 +12719,40 @@ fn function_parameter_mode(
     return "copy"
 }
 
+# The internal binding name of one declared parameter. External labels are
+# intentionally not returned: ordinary positional calls diagnose the storage
+# slot the callee body uses, independent of whether labelled calls are later
+# admitted for Bytes.
+fn function_parameter_name(
+    source: Text,
+    wanted: Text,
+    wanted_index: Int
+) -> Text {
+    let declaration = function_start_named(source, wanted)
+    if declaration < 0 {
+        return ""
+    }
+    let parameter = function_parameter_start_at(
+        source,
+        declaration,
+        wanted_index
+    )
+    if parameter < 0 {
+        return ""
+    }
+    let parameters = parameter_open(source, declaration)
+    let parameters_end = balanced_end(source, parameters, "(", ")")
+    let internal = parameter_internal_start(
+        source,
+        parameter,
+        parameters_end
+    )
+    if internal < 0 {
+        return ""
+    }
+    return token_text(source, internal)
+}
+
 fn function_return_type_containing(
     source: Text,
     position: Int
@@ -12490,9 +12980,32 @@ fn initializer_type_bounded(
             if len(constructor_type) > 0 {
                 return constructor_type
             }
-            let builtin = builtin_return_type(cursor_text)
-            if len(builtin) > 0 {
-                return builtin
+            # Scope construction asks for this type before it has appended the
+            # call's `use|` record. Resolve from the bindings already in HIR as
+            # well, so a lexical callable still outranks a same-name builtin
+            # during inference, not only during validation and emission.
+            let call_scope_open = parent_block_open(
+                source,
+                function_open,
+                cursor
+            )
+            let call_scope_id = hir_scope_id_for_open(hir, call_scope_open)
+            let lexical_binding = hir_resolve_binding(
+                hir,
+                call_scope_id,
+                cursor,
+                cursor_text
+            )
+            if len(lexical_binding) == 0 && call_resolves_to_builtin(
+                source,
+                hir,
+                cursor,
+                cursor_text
+            ) {
+                let builtin = builtin_return_type(cursor_text)
+                if len(builtin) > 0 {
+                    return builtin
+                }
             }
             return "Int"
         }
@@ -15784,7 +16297,8 @@ fn lower_body(
                 cursor = skip_trivia(source, value_end)
             }
             returned = true
-        } else if token_kind(source, cursor) == "identifier" {
+        } else if token_kind(source, cursor) == "identifier" ||
+                  statement == "(" {
             let assignment_start = cursor
             let name = token_text(source, cursor)
             let equals = skip_trivia(source, token_end(source, cursor))
@@ -17216,13 +17730,20 @@ fn bytes_carrier_prelude() -> Text {
 # greps emitted C for `malloc|calloc|realloc` to prove label lowering needs no
 # runtime machinery -- and an allocator in every emitted program is real
 # degradation whether or not a gate names it.
-fn source_uses_bytes(source: Text) -> Bool {
+fn source_uses_bytes(source: Text, hir: Text) -> Bool {
     let mut cursor = skip_trivia(source, 0)
     while cursor < len(source) {
         let token = token_text(source, cursor)
-        if token == "stage2_bytes_empty" ||
-           token == "stage2_bytes_assign_zeroed" || token == "Bytes" ||
-           bytes_mutation_builtin(token) {
+        if token == "Bytes" {
+            return true
+        }
+        let bytes_builtin = token == "stage2_bytes_empty" ||
+            token == "stage2_bytes_assign_zeroed" ||
+            bytes_mutation_builtin(token)
+        let open = skip_trivia(source, token_end(source, cursor))
+        if bytes_builtin && open < len(source) &&
+           token_text(source, open) == "(" &&
+           call_resolves_to_builtin(source, hir, cursor, token) {
             return true
         }
         cursor = skip_trivia(source, token_end(source, cursor))
@@ -17842,13 +18363,17 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     if starts_with(move_use_check, "error[") {
         return move_use_check
     }
+    let bytes_private_check = validate_bytes_private_results(source, hir)
+    if starts_with(bytes_private_check, "error[") {
+        return bytes_private_check
+    }
     let fractional_values = source_uses_fractional_values(source)
     # #1315. The carrier, its asserts, and the reclamation helper are emitted
     # only for a source that can reach them. `calloc`/`free` in every program
     # is degradation the call-arguments gate correctly refuses.
     let mut bytes_prelude = ""
     let mut bytes_include = ""
-    if source_uses_bytes(source) {
+    if source_uses_bytes(source, hir) {
         bytes_prelude = bytes_carrier_prelude()
         bytes_include = "#include <stdlib.h>\n"
     }

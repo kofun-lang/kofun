@@ -1,0 +1,10 @@
+# #1517. A read-only destination may not reach the zeroed producer.
+fn misuse(read destination: Bytes) -> Int {
+    stage2_bytes_assign_zeroed(destination, 4)
+    return 0
+}
+
+fn main() -> Int {
+    let owned = stage2_bytes_empty()
+    return misuse(owned)
+}

@@ -1,0 +1,18 @@
+# diagnostic-mode: compile
+# expect-code: E2S178
+# expect-span: byte 357
+
+# The Bytes parameter is second so the diagnostic proves the internal slot
+# name and declaration-order lookup rather than accidentally hard-coding 0.
+fn writes(prefix: Int, edit target: Bytes) -> Int {
+    return prefix
+}
+
+fn lends(read source: Bytes) -> Int {
+    return writes(1, source)
+}
+
+fn main() -> Int {
+    let owned = stage2_bytes_empty()
+    return lends(owned)
+}

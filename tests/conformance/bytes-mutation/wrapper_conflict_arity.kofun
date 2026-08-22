@@ -1,0 +1,9 @@
+fn conflict(edit destination: Bytes, read lender: Bytes) -> Int {
+    return 0
+}
+
+fn main() -> Int {
+    let bytes = stage2_bytes_empty()
+    print(conflict(bytes, bytes, bytes))
+    return 0
+}

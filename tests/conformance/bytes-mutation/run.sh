@@ -56,6 +56,32 @@ executes() {
 
 executes mutation 'the bounded mutation source fixture'
 executes borrowed_carrier 'the operations reached through read and edit borrows'
+executes same_name_declarations 'same-name current-file declarations'
+executes same_name_lexical 'a same-name lexical callable'
+
+# #1560. The three current-file calls cover ordinary, labelled fixed-slot, and
+# mutation-name lowering. Their spelling must survive only behind `kofun_fn_`;
+# the undeclared control still reaches the compiler-owned helper. The lexical
+# case contains no Bytes value, so even emitting the runtime prelude would be a
+# resolution leak visible as allocation machinery.
+grep -q 'kofun_fn_stage2_bytes_len(&k_b' \
+    "$WORK/same_name_declarations.c" ||
+    fail 'a declared stage2_bytes_len did not call its Kofun function'
+grep -q 'kofun_fn_stage2_bytes_capacity(kofun_call_arg_' \
+    "$WORK/same_name_declarations.c" ||
+    fail 'a labelled declared stage2_bytes_capacity used builtin lowering'
+grep -q 'kofun_fn_stage2_bytes_append(INT64_C(7))' \
+    "$WORK/same_name_declarations.c" ||
+    fail 'a mutation-name declaration used the private runtime status'
+grep -q 'stage2_bytes_append(&k_b' "$WORK/mutation.c" ||
+    fail 'an undeclared mutation builtin stopped using its runtime helper'
+if grep -E 'stage2_bytes_(append|len)|malloc|calloc|realloc' \
+    "$WORK/same_name_lexical.c" >/dev/null
+then
+    fail 'a lexical callable spelling reached the Bytes builtin runtime'
+fi
+executes wrapper_identity 'declared wrapper identity and read/read sharing'
+executes parenthesized_carrier 'transparent parenthesized Bytes carriers'
 
 # The borrow crossing, in the emitted C. A `read`/`edit` parameter is already
 # the carrier's address, so neither the operations nor a relay to another
@@ -73,6 +99,10 @@ grep -q 'kofun_fn_measure(k_b' "$WORK/borrowed_carrier.c" ||
     fail 'a borrow lent onward takes its address again'
 grep -q 'kofun_fn_seed(&k_b' "$WORK/borrowed_carrier.c" ||
     fail 'a local owner is no longer lent by address'
+grep -q 'kofun_fn_seed(k_b' "$WORK/borrowed_carrier.c" ||
+    fail 'an edit borrow lent to edit gained a second address-of'
+grep -q 'stage2_bytes_append_range(k_b' "$WORK/borrowed_carrier.c" ||
+    fail 'append_range no longer accepts a read source beside an edit destination'
 # The rule is about the argument, not the operation, so an owner and a borrow
 # in the same slot must lower differently. Asserting only one of the two would
 # pass against an emitter that had stopped distinguishing them.
@@ -80,6 +110,10 @@ grep -q 'stage2_bytes_assign_zeroed(&k_b' "$WORK/mutation.c" ||
     fail 'an owner reached the producer without its address'
 grep -q 'stage2_bytes_assign_zeroed(k_b' "$WORK/mutation.c" &&
     fail 'an owner reached the producer as if it were already a borrow'
+grep -q 'stage2_bytes_assign_zeroed(((k_b' "$WORK/parenthesized_carrier.c" ||
+    fail 'a parenthesized edit borrow gained a second address-of'
+grep -q 'kofun_fn_relay(&((k_b' "$WORK/parenthesized_carrier.c" ||
+    fail 'a parenthesized owner was not lent by address'
 
 # ------------------------------------------------------------ the prelude
 #
@@ -274,6 +308,8 @@ refuses() {
         fail "$stem committed C"
     test ! -e "$WORK/$stem.bin" ||
         fail "$stem committed a binary"
+    cat "$WORK/$stem.stdout" "$WORK/$stem.stderr" \
+        >"$WORK/$stem.reported"
 }
 
 refuses same_carrier \
@@ -282,16 +318,159 @@ refuses unresolved_carrier \
     'error[E2S177]: Stage 2 bounded Bytes operations need a named carrier binding'
 refuses temporary_carrier \
     'error[E2S177]: Stage 2 bounded Bytes operations need a named carrier binding'
+refuses parenthesized_same_carrier \
+    'error[E2S177]: Stage 2 `stage2_bytes_append_range` needs two distinct Bytes values'
+refuses parenthesized_temporary \
+    'error[E2S177]: Stage 2 bounded Bytes operations need a named carrier binding'
+refuses wrapper_conflict_edit_read \
+    'error[E2S180]: Stage 2 Bytes argument slots 1 (edit) and 2 (read) must use distinct owners'
+refuses wrapper_conflict_edit_edit \
+    'error[E2S180]: Stage 2 Bytes argument slots 1 (edit) and 2 (edit) must use distinct owners'
+refuses wrapper_conflict_take_read \
+    'error[E2S180]: Stage 2 Bytes argument slots 1 (take) and 2 (read) must use distinct owners'
+refuses wrapper_conflict_take_edit \
+    'error[E2S180]: Stage 2 Bytes argument slots 1 (take) and 2 (edit) must use distinct owners'
+refuses wrapper_conflict_arity \
+    'error[E2S17]: Core function `conflict` expects 2 arguments, got 3'
+refuses wrapper_conflict_type \
+    'error[E2S15]: Core function `conflict` expects Bytes for argument 1, got Int'
+
+# #1517. Each mutating destination owns one exact refusal. Keeping one fixture
+# per operation prevents the first failing call in a combined program from
+# disguising an unchecked sibling, while the read append_range source remains
+# executable in borrowed_carrier above.
+for operation in \
+    assign_zeroed \
+    byte_set \
+    clear \
+    reserve \
+    append \
+    append_range \
+    append_self
+do
+    stem=read_to_edit_$operation
+    refuses "$stem" \
+        "error[E2S178]: Bytes slot \`stage2_bytes_$operation.destination\`: available read, required edit; read-to-edit is forbidden"
+done
+refuses read_to_edit_ordinary \
+    'error[E2S178]: Bytes slot `writes.target`: available read, required edit; read-to-edit is forbidden'
+refuses read_to_edit_ordinary_parenthesized \
+    'error[E2S178]: Bytes slot `writes.target`: available read, required edit; read-to-edit is forbidden'
+refuses read_to_edit_append_parenthesized \
+    'error[E2S178]: Bytes slot `stage2_bytes_append.destination`: available read, required edit; read-to-edit is forbidden'
+refuses read_to_edit_assign_zeroed_parenthesized \
+    'error[E2S178]: Bytes slot `stage2_bytes_assign_zeroed.destination`: available read, required edit; read-to-edit is forbidden'
+refuses read_to_edit_long_slot \
+    'error[E2S178]: Bytes slot `writes_bytes_targe...on_for_width.target`: available read, required edit; read-to-edit is forbidden'
+refuses read_to_edit_labelled_hold \
+    'error[E2S158]: labelled-call ABI lowering is owned by #882; fixed-slot checked HIR is available'
+refuses read_to_edit_pipeline_hold \
+    'error[E2S158]: a pipeline subject whose slot 0 carrier is outside the call-arguments v1 matrix is not checked'
+# #1559. Every private carrier operation is legal as the complete expression
+# of a discarded statement (the executable fixtures above contain all eight),
+# and illegal in every source-value context. The first loop makes the
+# operation vocabulary explicit at the boundary: a predicate that forgets one
+# operation accepts that row and commits C. The second loop holds the contexts
+# independently, including comparison, whose enclosing expression is Bool and
+# therefore cannot be caught by changing only builtin return inference.
+refuses_private_generated() {
+    stem=$1
+    operation=$2
+    source_file="$WORK/$stem.kofun"
+    c_file="$WORK/$stem.private.c"
+    bin_file="$WORK/$stem.private.bin"
+    if "$ROOT/bin/kofun" build "$source_file" -o "$bin_file" \
+        --emit-c "$c_file" >"$WORK/$stem.private.stdout" \
+        2>"$WORK/$stem.private.stderr"
+    then
+        fail "$stem was accepted as a source value"
+    fi
+    grep -qF "error[E2S179]: Stage 2 \`$operation\` does not produce a source value" \
+        "$WORK/$stem.private.stdout" "$WORK/$stem.private.stderr" ||
+        fail "$stem did not report its private-result E2S179"
+    test ! -e "$c_file" || fail "$stem committed C"
+    test ! -e "$bin_file" || fail "$stem committed a binary"
+    reported=$(sed -n '1p' "$WORK/$stem.private.stdout")
+    if test -z "$reported"
+    then
+        reported=$(sed -n '1p' "$WORK/$stem.private.stderr")
+    fi
+    width=$(printf '%s\n' "$reported" | wc -c)
+    test "$width" -lt 160 ||
+        fail "$stem's E2S179 detail exceeds the typed-sidecar bound"
+}
+
+while IFS='|' read -r operation call
+do
+    stem="private-operation-$operation"
+    {
+        printf '%s\n' \
+            'fn main() -> Int {' \
+            '    let bytes = stage2_bytes_empty()' \
+            '    let other = stage2_bytes_empty()' \
+            "    let private_value = $call" \
+            '    print(private_value)' \
+            '    return 0' \
+            '}'
+    } >"$WORK/$stem.kofun"
+    refuses_private_generated "$stem" "$operation"
+done <<'EOF'
+stage2_bytes_assign_zeroed|stage2_bytes_assign_zeroed(bytes, 4)
+stage2_bytes_byte_at|stage2_bytes_byte_at(bytes, 0)
+stage2_bytes_byte_set|stage2_bytes_byte_set(bytes, 0, 1)
+stage2_bytes_clear|stage2_bytes_clear(bytes)
+stage2_bytes_reserve|stage2_bytes_reserve(bytes, 4)
+stage2_bytes_append|stage2_bytes_append(bytes, 1)
+stage2_bytes_append_range|stage2_bytes_append_range(bytes, other, 0, 0)
+stage2_bytes_append_self|stage2_bytes_append_self(bytes, 0, 0)
+EOF
+
+while IFS='|' read -r context body
+do
+    stem="private-context-$context"
+    {
+        printf '%s\n' \
+            'fn identity(value: Int) -> Int {' \
+            '    return value' \
+            '}' \
+            '' \
+            'fn main() -> Int {' \
+            '    let bytes = stage2_bytes_empty()'
+        printf '    %b\n' "$body"
+        printf '%s\n' '    return 0' '}'
+    } >"$WORK/$stem.kofun"
+    refuses_private_generated "$stem" stage2_bytes_byte_at
+done <<'EOF'
+inferred-binding|let value = stage2_bytes_byte_at(bytes, 0)
+multiline-binding|let value =\nstage2_bytes_byte_at(bytes, 0)
+annotated-binding|let value: Int = stage2_bytes_byte_at(bytes, 0)
+print|print(stage2_bytes_byte_at(bytes, 0))
+return|return stage2_bytes_byte_at(bytes, 0)
+argument|print(identity(stage2_bytes_byte_at(bytes, 0)))
+arithmetic|print(stage2_bytes_byte_at(bytes, 0) + 1)
+condition|if stage2_bytes_byte_at(bytes, 0) {\n        print(1)\n    }
+multiline-condition|if\nstage2_bytes_byte_at(bytes, 0) {\n        print(1)\n    }
+comparison|print(stage2_bytes_byte_at(bytes, 0) == stage2_bytes_byte_at(bytes, 0))
+EOF
+
+final_stem=private-context-final-expression
+{
+    printf '%s\n' \
+        'fn private_final(edit bytes: Bytes) -> Int {' \
+        '    stage2_bytes_byte_at(bytes, 0)' \
+        '}' \
+        '' \
+        'fn main() -> Int {' \
+        '    let bytes = stage2_bytes_empty()' \
+        '    print(private_final(bytes))' \
+        '    return 0' \
+        '}'
+} >"$WORK/$final_stem.kofun"
+refuses_private_generated "$final_stem" stage2_bytes_byte_at
 
 
 # The two reasons are distinct sentences. One reason for both shapes would let
 # a later change to either stop being visible.
-cat "$WORK/same_carrier.stdout" "$WORK/same_carrier.stderr" \
-    >"$WORK/same_carrier.reported"
-cat "$WORK/unresolved_carrier.stdout" "$WORK/unresolved_carrier.stderr" \
-    >"$WORK/unresolved_carrier.reported"
-cat "$WORK/temporary_carrier.stdout" "$WORK/temporary_carrier.stderr" \
-    >"$WORK/temporary_carrier.reported"
 if cmp -s "$WORK/same_carrier.reported" "$WORK/unresolved_carrier.reported"
 then
     fail 'both refusal shapes report the same sentence'
@@ -305,11 +484,37 @@ fi
 # the first draft of this refusal was 185. `task stage2-events` catches it,
 # but only as a `cmp` failure between the producer and the authority, so the
 # bound is stated here where the sentence is chosen.
-for reported in same_carrier unresolved_carrier temporary_carrier
+for reported in same_carrier unresolved_carrier temporary_carrier \
+    parenthesized_same_carrier parenthesized_temporary \
+    wrapper_conflict_edit_read wrapper_conflict_edit_edit \
+    wrapper_conflict_take_read wrapper_conflict_take_edit \
+    wrapper_conflict_arity wrapper_conflict_type
 do
     width=$(head -n 1 "$WORK/$reported.reported" | wc -c)
     test "$width" -lt 160 ||
         fail "the $reported refusal is $width bytes; the sidecar truncates at 160"
+done
+
+for stem in read_to_edit_ordinary read_to_edit_ordinary_parenthesized \
+    read_to_edit_append_parenthesized \
+    read_to_edit_assign_zeroed_parenthesized read_to_edit_long_slot
+do
+    printf 'stale\n' >"$WORK/$stem.repeat.c"
+    printf 'stale\n' >"$WORK/$stem.repeat.bin"
+    rm -f "$WORK/$stem.repeat.c" "$WORK/$stem.repeat.bin"
+    "$ROOT/bin/kofun" build "$CASES/$stem.kofun" \
+        -o "$WORK/$stem.repeat.bin" \
+        --emit-c "$WORK/$stem.repeat.c" \
+        >"$WORK/$stem.repeat" 2>&1 || true
+    cmp "$WORK/$stem.reported" "$WORK/$stem.repeat" ||
+        fail "$stem reported differently on a second run"
+    width=$(head -n 1 "$WORK/$stem.reported" | wc -c)
+    test "$width" -lt 160 ||
+        fail "$stem refusal is $width bytes; the sidecar truncates at 160"
+    test ! -e "$WORK/$stem.repeat.c" ||
+        fail "$stem committed C on its repeat"
+    test ! -e "$WORK/$stem.repeat.bin" ||
+        fail "$stem committed a binary on its repeat"
 done
 
 printf 'stale\n' >"$WORK/repeat.c"
@@ -337,8 +542,8 @@ cmp "$WORK/repeat.1" "$WORK/repeat.2" ||
 
 # The three binary checks above are executable, not merely present beside the
 # C checks. Run this gate through a defective builder three times, leaving the
-# requested binary behind only after refusal 1 (ordinary), 4 (first repeat), or
-# 5 (second repeat). Each child must stop at its selected assertion and name
+# requested binary behind only after refusal 1 (ordinary), 26 (first repeat), or
+# 27 (second repeat). Each child must stop at its selected assertion and name
 # that artifact. Removing any one assertion lets its child reach the end, and
 # the outer proof refuses that false green.
 if test "${KOFUN_BYTES_MUTATION_BINARY_PROOF_CHILD:-0}" != 1; then
@@ -394,11 +599,61 @@ EOF
     }
     prove_binary_assertion 1 ordinary \
         'same_carrier committed a binary'
-    prove_binary_assertion 4 first-repeat \
+    prove_binary_assertion 26 first-repeat \
         'the first repeated refusal committed a binary'
-    prove_binary_assertion 5 second-repeat \
+    prove_binary_assertion 27 second-repeat \
         'the second repeated refusal committed a binary'
 fi
+for operation in \
+    assign_zeroed \
+    byte_set \
+    clear \
+    reserve \
+    append \
+    append_range \
+    append_self
+do
+    stem=read_to_edit_$operation
+    printf 'stale\n' >"$WORK/$stem.repeat.c"
+    printf 'stale\n' >"$WORK/$stem.repeat.bin"
+    rm -f "$WORK/$stem.repeat.c" "$WORK/$stem.repeat.bin"
+    "$ROOT/bin/kofun" build "$CASES/$stem.kofun" \
+        -o "$WORK/$stem.repeat.bin" --emit-c "$WORK/$stem.repeat.c" \
+        >"$WORK/$stem.repeat" 2>&1 || true
+    cat "$WORK/$stem.stdout" "$WORK/$stem.stderr" \
+        >"$WORK/$stem.reported"
+    cmp "$WORK/$stem.reported" "$WORK/$stem.repeat" ||
+        fail "$stem reported differently on a second run"
+    width=$(head -n 1 "$WORK/$stem.reported" | wc -c)
+    test "$width" -lt 160 ||
+        fail "$stem refusal is $width bytes; the sidecar truncates at 160"
+    test ! -e "$WORK/$stem.repeat.c" ||
+        fail "$stem committed C on its repeat"
+    test ! -e "$WORK/$stem.repeat.bin" ||
+        fail "$stem committed a binary on its repeat"
+done
+printf 'stale\n' >"$WORK/wrapper-repeat.c"
+printf 'stale\n' >"$WORK/wrapper-repeat.bin"
+rm -f "$WORK/wrapper-repeat.c" "$WORK/wrapper-repeat.bin"
+"$ROOT/bin/kofun" build "$CASES/wrapper_conflict_edit_read.kofun" \
+    -o "$WORK/wrapper-repeat.bin" --emit-c "$WORK/wrapper-repeat.c" \
+    >"$WORK/wrapper-repeat.1" 2>&1 || true
+test ! -e "$WORK/wrapper-repeat.c" ||
+    fail 'the first repeated wrapper refusal committed C'
+test ! -e "$WORK/wrapper-repeat.bin" ||
+    fail 'the first repeated wrapper refusal committed a binary'
+printf 'stale\n' >"$WORK/wrapper-repeat.c"
+printf 'stale\n' >"$WORK/wrapper-repeat.bin"
+rm -f "$WORK/wrapper-repeat.c" "$WORK/wrapper-repeat.bin"
+"$ROOT/bin/kofun" build "$CASES/wrapper_conflict_edit_read.kofun" \
+    -o "$WORK/wrapper-repeat.bin" --emit-c "$WORK/wrapper-repeat.c" \
+    >"$WORK/wrapper-repeat.2" 2>&1 || true
+test ! -e "$WORK/wrapper-repeat.c" ||
+    fail 'the second repeated wrapper refusal committed C'
+test ! -e "$WORK/wrapper-repeat.bin" ||
+    fail 'the second repeated wrapper refusal committed a binary'
+cmp "$WORK/wrapper-repeat.1" "$WORK/wrapper-repeat.2" ||
+    fail 'the wrapper identity refusal reported differently on a second run'
 
 # A refusal raised by a statement must be reported, not emitted. Both arms of
 # the expression-statement lowering used to concatenate the refusal into the
@@ -412,10 +667,15 @@ fi
 
 printf '%s\n' \
     'PASS: emitted source fixtures execute identically under ASan/UBSan at -O0/-O2; the full mutation driver passes strict -O0/-O2 and an ASan/UBSan build' \
-    'PASS: the operations, the zeroed producer, a relay, and an edit-to-read widening all reach a borrow without a second address-of, while a local owner is still lent by address' \
+    'PASS: the operations, the zeroed producer, a relay, and edit-to-read/edit lending all reach a borrow without a second address-of, while a local owner is still lent by address' \
+    'PASS: read/read sharing and distinct owners through one- and two-level wrappers execute, while edit/read, edit/edit, take/read, and take/edit sharing refuse as E2S180 without C or binary artifacts; arity diagnostics retain precedence' \
+    'PASS: complete nested parentheses preserve one named Bytes BindingId through mutation builtins and a declared relay; the direct same-owner reason remains E2S177 and parenthesized temporaries remain unnamed' \
     'PASS: the operations the two halves of the pair admit and the ones the emitted runtime defines are one set, each defined exactly once' \
     'PASS: the read carrier is declared once with tags 0..2 and no consumed tag; the 0..8 status and the carrier are still declared once each' \
     'PASS: no mutation operation reaches a Text-bridge status tag' \
+    'PASS: current-file declarations and lexical callables named stage2_bytes_* outrank special builtin lowering, while undeclared controls retain it' \
     'PASS: exact bytes 0x00/0x7f/0x80/0xff are append-attempted at lengths 0, 1, 255, 16384, and 65536 under strict O0/O2 and ASan/UBSan, succeeding below the ceiling and preserving it on refusal; every named range, byte, and capacity refusal preserves the named carrier pointers and bytes' \
     'PASS: growth 0->16, every doubling edge, the ceiling, one over it, reserve, and clear-capacity preservation hold; the injected-OOM append_range call is live-proved and preserves pointer and bytes for source and destination too' \
-    'PASS: one value in both positions of append_range, an unresolved identity, and a temporary in a carrier slot are refused as E2S177, commit no C and are mutation-proved to commit no binary, fit the sidecar detail bound, and the same-carrier refusal reports identically on a second run'
+    'PASS: one value in both positions of append_range, an unresolved identity, and a temporary in a carrier slot are refused as E2S177, commit no C and are mutation-proved to commit no binary, fit the sidecar detail bound, and the same-carrier refusal reports identically on a second run' \
+    'PASS: read-to-edit is refused as E2S178 for all seven mutating destinations before C or binary publication, with bounded deterministic detail; append_range still accepts its read source' \
+    'PASS: all eight compiler-private Bytes outcomes are accepted only as complete discarded expression statements; every operation and value context refuses as E2S179 with no C or binary artifact'

@@ -1,0 +1,25 @@
+fn observe_twice(read left: Bytes, read right: Bytes) -> Int {
+    return stage2_bytes_len(left) + stage2_bytes_len(right)
+}
+
+fn copy_once(edit destination: Bytes, read lender: Bytes) -> Int {
+    stage2_bytes_append_range(destination, lender, 0, 1)
+    return stage2_bytes_len(destination)
+}
+
+fn copy_twice(edit destination: Bytes, read lender: Bytes) -> Int {
+    return copy_once(destination, lender)
+}
+
+fn main() -> Int {
+    let first = stage2_bytes_empty()
+    stage2_bytes_append(first, 1)
+    let second = stage2_bytes_empty()
+    stage2_bytes_append(second, 2)
+    stage2_bytes_append(second, 3)
+    let destination = stage2_bytes_empty()
+    print(observe_twice(first, first))
+    print(copy_once(destination, first))
+    print(copy_twice(destination, second))
+    return 0
+}

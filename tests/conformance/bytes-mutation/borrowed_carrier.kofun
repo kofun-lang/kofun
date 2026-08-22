@@ -23,8 +23,14 @@ fn widen(edit b: Bytes) -> Int {
 }
 
 fn seed(edit b: Bytes) -> Int {
-    stage2_bytes_assign_zeroed(b, 4)
+    ((stage2_bytes_assign_zeroed(b, 4)))
     return stage2_bytes_len(b)
+}
+
+# Re-lending an edit borrow to another edit slot is not the forbidden
+# read-to-edit transition. It uses the existing address without adding `&`.
+fn edit_relay(edit b: Bytes) -> Int {
+    return seed(b)
 }
 
 fn fill(edit b: Bytes) -> Int {
@@ -33,11 +39,21 @@ fn fill(edit b: Bytes) -> Int {
     return stage2_bytes_capacity(b)
 }
 
+# The destination retains edit access while the range source is read-only.
+# #1517 rejects only read-to-edit, so this read source must remain admitted.
+fn copy_empty(edit destination: Bytes, read source: Bytes) -> Int {
+    stage2_bytes_append_range(destination, source, 0, 0)
+    return 0
+}
+
 fn main() -> Int {
     let owned = stage2_bytes_empty()
+    let spare = stage2_bytes_empty()
     print(seed(owned))
     print(widen(owned))
     print(fill(owned))
+    edit_relay(spare)
+    let copied = copy_empty(owned, spare)
     print(relay(owned))
-    return 0
+    return copied
 }

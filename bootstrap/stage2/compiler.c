@@ -3533,6 +3533,11 @@ static char *function_parameter_mode(
     const char *wanted,
     int64_t index
 );
+static char *function_parameter_name(
+    const char *source,
+    const char *wanted,
+    int64_t index
+);
 static int64_t function_start_named(const char *source, const char *wanted);
 static bool source_tokens_equal(
     const char *source,
@@ -5268,13 +5273,34 @@ static char *lower_error(
     const char *message,
     int64_t cursor
 );
+static char *bytes_access_error(
+    const char *hir,
+    const char *binding_id,
+    int64_t cursor,
+    const char *required,
+    const char *slot
+);
 /* #1321. The bounded mutation surface is lowered from `emit_primary`, which
  * is above the definitions; the set membership and the family lowering are
  * the two the call site needs. */
 static bool bytes_mutation_builtin(const char *name);
+static bool call_resolves_to_builtin(
+    const char *source,
+    const char *hir,
+    int64_t call_start,
+    const char *name
+);
+static char *bytes_named_carrier_binding(
+    const char *source,
+    const char *hir,
+    int64_t start,
+    int64_t end
+);
 static char *bytes_borrow_address(
+    const char *source,
     const char *hir,
     int64_t cursor,
+    int64_t end,
     char *value
 );
 static char *bytes_carrier_address(
@@ -7821,6 +7847,61 @@ static char *emit_argument(
             callee,
             argument_index
         );
+        char *parameter = function_parameter_name(
+            source,
+            callee,
+            argument_index
+        );
+        Buffer slot;
+        buffer_init(&slot);
+        buffer_format(&slot, "%s.%s", callee, parameter);
+        char *binding_id = bytes_named_carrier_binding(
+            source,
+            hir,
+            cursor,
+            end
+        );
+        char *actual_type = hir_binding_field(hir, binding_id, 5);
+        if (
+            binding_id[0] != '\0' &&
+            strcmp(actual_type, "Bytes") != 0
+        ) {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(
+                &message,
+                "Core function `%s` expects Bytes for argument %" PRId64
+                ", got %s",
+                callee,
+                argument_index + 1,
+                actual_type
+            );
+            free(actual_type);
+            free(binding_id);
+            free(slot.data);
+            free(parameter);
+            free(mode);
+            free(expected_type);
+            char *error = lower_error("E2S15", message.data, cursor);
+            free(message.data);
+            return error;
+        }
+        free(actual_type);
+        char *access = bytes_access_error(
+            hir,
+            binding_id,
+            cursor,
+            mode,
+            slot.data
+        );
+        free(binding_id);
+        free(slot.data);
+        free(parameter);
+        if (access != NULL) {
+            free(mode);
+            free(expected_type);
+            return access;
+        }
         bool borrowed =
             strcmp(mode, "read") == 0 || strcmp(mode, "edit") == 0;
         bool transferred = strcmp(mode, "take") == 0;
@@ -7832,7 +7913,15 @@ static char *emit_argument(
         /* #1321. Not always `&`: a borrow parameter is already the address.
          * See `bytes_borrow_address`, which owns the rule and carries the
          * measurement that found this. */
-        if (borrowed) return bytes_borrow_address(hir, cursor, value);
+        if (borrowed) {
+            return bytes_borrow_address(
+                source,
+                hir,
+                cursor,
+                end,
+                value
+            );
+        }
         Buffer crossing;
         buffer_init(&crossing);
         buffer_format(&crossing, "kofun_bytes_take(&%s)", value);
@@ -9494,7 +9583,8 @@ static char *emit_primary(
          * there is nothing to emit between the parentheses. */
         if (
             open < end && token_equal(source, open, "(") &&
-            strcmp(name, "stage2_bytes_empty") == 0
+            strcmp(name, "stage2_bytes_empty") == 0 &&
+            call_resolves_to_builtin(source, hir, cursor, name)
         ) {
             free(name);
             return owned_text("stage2_bytes_empty()");
@@ -9513,7 +9603,8 @@ static char *emit_primary(
          */
         if (
             open < end && token_equal(source, open, "(") &&
-            strcmp(name, "stage2_bytes_assign_zeroed") == 0
+            strcmp(name, "stage2_bytes_assign_zeroed") == 0 &&
+            call_resolves_to_builtin(source, hir, cursor, name)
         ) {
             int64_t destination = skip_trivia(
                 source,
@@ -9533,6 +9624,24 @@ static char *emit_primary(
              * the same defect `bytes_borrow_address` records, in the one
              * lowering that predates it.
              */
+            char *destination_binding = bytes_named_carrier_binding(
+                source,
+                hir,
+                destination,
+                destination_end
+            );
+            char *access = bytes_access_error(
+                hir,
+                destination_binding,
+                destination,
+                "edit",
+                "stage2_bytes_assign_zeroed.destination"
+            );
+            free(destination_binding);
+            if (access != NULL) {
+                free(name);
+                return access;
+            }
             char *carrier = bytes_carrier_address(
                 source,
                 hir,
@@ -9575,7 +9684,8 @@ static char *emit_primary(
          */
         if (
             open < end && token_equal(source, open, "(") &&
-            bytes_mutation_builtin(name)
+            bytes_mutation_builtin(name) &&
+            call_resolves_to_builtin(source, hir, cursor, name)
         ) {
             char *call = emit_bytes_mutation_call(
                 source,
@@ -11429,6 +11539,155 @@ static char *validate_declared_call_arguments(
     return owned_text("");
 }
 
+/*
+ * #1561. A direct declared call preserves the bounded Bytes no-alias
+ * invariant at its own boundary. Once the ordinary binder, type checker, and
+ * arity checker have accepted the call, two actual arguments that resolve to
+ * one BindingId may occupy two `read` slots, but may not occupy two slots when
+ * either formal is `edit` or `take`. Under #1315's refusal of every other
+ * source-level Bytes alias origin, applying this rule at each direct call is
+ * inductive through wrapper depth; no call-graph provenance is needed.
+ */
+static bool bytes_exclusive_parameter_mode(const char *mode) {
+    return strcmp(mode, "edit") == 0 || strcmp(mode, "take") == 0;
+}
+
+static char *declared_bytes_argument_identity_error(
+    const char *source,
+    const char *hir,
+    const char *callee,
+    int64_t call_start,
+    int64_t open
+) {
+    char *callee_binding = hir_use_binding_id(hir, call_start);
+    bool lexical = callee_binding[0] != '\0';
+    free(callee_binding);
+    if (
+        function_start_named(source, callee) < 0 ||
+        lexical ||
+        call_has_labelled_argument(source, open) ||
+        pipeline_subject_for_call(source, call_start) >= 0
+    ) {
+        return owned_text("");
+    }
+    int64_t close = balanced_end(source, open, "(", ")");
+    if (close < 0) return owned_text("");
+    int64_t argument = skip_trivia(source, token_end(source, open));
+    int64_t slot = 0;
+    while (argument < close && !token_equal(source, argument, ")")) {
+        int64_t argument_stop = argument_end(source, argument);
+        if (argument_stop < 0) return owned_text("");
+        char *type = function_parameter_type(source, callee, slot);
+        bool bytes = strcmp(type, "Bytes") == 0;
+        free(type);
+        if (bytes) {
+            char *binding_id = bytes_named_carrier_binding(
+                source,
+                hir,
+                argument,
+                argument_stop
+            );
+            char *binding_type = hir_binding_field(
+                hir,
+                binding_id,
+                5
+            );
+            bool binding_is_bytes = strcmp(binding_type, "Bytes") == 0;
+            free(binding_type);
+            if (binding_id[0] != '\0' && binding_is_bytes) {
+                char *mode = function_parameter_mode(source, callee, slot);
+                int64_t prior = skip_trivia(
+                    source,
+                    token_end(source, open)
+                );
+                for (int64_t prior_slot = 0; prior_slot < slot; ++prior_slot) {
+                    int64_t prior_stop = argument_end(source, prior);
+                    if (prior_stop < 0) {
+                        free(mode);
+                        free(binding_id);
+                        return owned_text("");
+                    }
+                    char *prior_type = function_parameter_type(
+                        source,
+                        callee,
+                        prior_slot
+                    );
+                    bool prior_bytes = strcmp(prior_type, "Bytes") == 0;
+                    free(prior_type);
+                    if (prior_bytes) {
+                        char *prior_binding = bytes_named_carrier_binding(
+                            source,
+                            hir,
+                            prior,
+                            prior_stop
+                        );
+                        char *prior_binding_type = hir_binding_field(
+                            hir,
+                            prior_binding,
+                            5
+                        );
+                        bool prior_binding_is_bytes =
+                            strcmp(prior_binding_type, "Bytes") == 0;
+                        free(prior_binding_type);
+                        char *prior_mode = function_parameter_mode(
+                            source,
+                            callee,
+                            prior_slot
+                        );
+                        bool conflict =
+                            prior_binding[0] != '\0' &&
+                            prior_binding_is_bytes &&
+                            strcmp(prior_binding, binding_id) == 0 &&
+                            (
+                                bytes_exclusive_parameter_mode(prior_mode) ||
+                                bytes_exclusive_parameter_mode(mode)
+                            );
+                        free(prior_binding);
+                        if (conflict) {
+                            Buffer message;
+                            buffer_init(&message);
+                            buffer_format(
+                                &message,
+                                "Stage 2 Bytes argument slots %" PRId64
+                                " (%s) and %" PRId64
+                                " (%s) must use distinct owners",
+                                prior_slot + 1,
+                                prior_mode,
+                                slot + 1,
+                                mode
+                            );
+                            free(prior_mode);
+                            free(mode);
+                            free(binding_id);
+                            char *error = lower_error(
+                                "E2S180",
+                                message.data,
+                                argument
+                            );
+                            free(message.data);
+                            return error;
+                        }
+                        free(prior_mode);
+                    }
+                    int64_t prior_separator = skip_trivia(source, prior_stop);
+                    prior = skip_trivia(
+                        source,
+                        token_end(source, prior_separator)
+                    );
+                }
+                free(mode);
+            }
+            free(binding_id);
+        }
+        int64_t separator = skip_trivia(source, argument_stop);
+        argument = separator < close && token_equal(source, separator, ",")
+            ? skip_trivia(source, token_end(source, separator))
+            : separator;
+        ++slot;
+    }
+    return owned_text("");
+}
+
 static char *validate_record_uses(const char *source) {
     int64_t length = (int64_t)strlen(source);
     int64_t function_start = next_function_start(source, 0);
@@ -12032,6 +12291,22 @@ static char *validate_core_calls(const char *source, const char *hir) {
                     free(previous);
                     return error.data;
                 }
+                if (written >= 0 && actual == expected) {
+                    char *identity_error =
+                        declared_bytes_argument_identity_error(
+                            source,
+                            hir,
+                            name,
+                            cursor,
+                            open
+                        );
+                    if (identity_error[0] != '\0') {
+                        free(name);
+                        free(previous);
+                        return identity_error;
+                    }
+                    free(identity_error);
+                }
                 {
                     int64_t call_end = balanced_end(
                         source,
@@ -12108,6 +12383,211 @@ static bool bytes_mutation_builtin(const char *name) {
 }
 
 /*
+ * #1560. Whether a direct call spelling denotes a compiler builtin after the
+ * same precedence the validator applies. Scope HIR records lexical callable
+ * resolution, including shadowing, and the current-file declaration table is
+ * the validator's next choice. Only a name unresolved by both may reach the
+ * builtin tables or their special C lowering.
+ */
+static bool call_resolves_to_builtin(
+    const char *source,
+    const char *hir,
+    int64_t call_start,
+    const char *name
+) {
+    char *binding = hir_use_binding_id(hir, call_start);
+    bool unresolved = binding[0] == '\0';
+    free(binding);
+    return unresolved && function_start_named(source, name) < 0 &&
+           builtin_arity(name) >= 0;
+}
+
+/*
+ * #1559. These eight outcomes are implementation carriers, not Kofun values.
+ * `len` and `capacity` deliberately stay outside: their Int result is the
+ * source-visible observation surface of the bounded Bytes bridge.
+ */
+static bool bytes_private_result_builtin(const char *name) {
+    return strcmp(name, "stage2_bytes_assign_zeroed") == 0 ||
+           (
+               bytes_mutation_builtin(name) &&
+               strcmp(name, "stage2_bytes_len") != 0 &&
+               strcmp(name, "stage2_bytes_capacity") != 0
+           );
+}
+
+/* A newline separates statements only when the token before it can complete
+ * one. This keeps a private result after `let value =`, `if`, or an operator
+ * in the expression that began on the preceding line. A newline after
+ * `return` ends a bare return in this grammar, so the following call is a new
+ * statement. */
+static bool bytes_private_result_previous_completes_statement(
+    const char *source,
+    int64_t previous
+) {
+    const char *kind = token_kind(source, previous);
+    return strcmp(kind, "identifier") == 0 ||
+           strcmp(kind, "integer") == 0 ||
+           strcmp(kind, "decimal") == 0 ||
+           strcmp(kind, "float") == 0 ||
+           strcmp(kind, "string") == 0 ||
+           token_equal(source, previous, ")") ||
+           token_equal(source, previous, "]") ||
+           token_equal(source, previous, "}") ||
+           token_equal(source, previous, "true") ||
+           token_equal(source, previous, "false") ||
+           token_equal(source, previous, "break") ||
+           token_equal(source, previous, "continue") ||
+           token_equal(source, previous, "return");
+}
+
+static bool bytes_private_result_statement_boundary(
+    const char *source,
+    int64_t previous,
+    int64_t next
+) {
+    return token_equal(source, previous, "{") ||
+           token_equal(source, previous, "}") ||
+           token_equal(source, previous, "else") ||
+           (
+               newline_between(source, token_end(source, previous), next) &&
+               bytes_private_result_previous_completes_statement(
+                   source,
+                   previous
+               )
+           );
+}
+
+/*
+ * #1559. A private result may be evaluated only where the result is discarded
+ * immediately. The call must start at statement depth, cover the complete
+ * expression, and not be the terminal expression of a non-main function (that
+ * position supplies the function result). A closing nested block is harmless:
+ * nested bodies are lowered with no implicit result and discard their ordinary
+ * expression statements.
+ */
+static bool bytes_private_result_is_discarded_statement(
+    const char *source,
+    int64_t call_start,
+    int64_t open
+) {
+    int64_t call_end = balanced_end(source, open, "(", ")");
+    if (call_end < 0) return false;
+    int64_t function_open = enclosing_function_open(source, call_start);
+    if (function_open < 0) return false;
+    int64_t previous = function_open;
+    int64_t cursor = skip_trivia(source, token_end(source, function_open));
+    int64_t candidate = cursor;
+    int64_t group_depth = 0;
+    while (cursor < call_start) {
+        if (
+            group_depth == 0 &&
+            bytes_private_result_statement_boundary(
+                source,
+                previous,
+                cursor
+            )
+        ) candidate = cursor;
+        if (token_equal(source, cursor, "(") ||
+            token_equal(source, cursor, "[")) {
+            ++group_depth;
+        } else if (
+            token_equal(source, cursor, ")") ||
+            token_equal(source, cursor, "]")
+        ) {
+            --group_depth;
+        }
+        previous = cursor;
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    if (cursor != call_start) return false;
+    if (
+        group_depth == 0 &&
+        bytes_private_result_statement_boundary(
+            source,
+            previous,
+            call_start
+        )
+    ) candidate = call_start;
+    int64_t whole_end = expression_end(source, candidate);
+    if (
+        whole_end < 0 ||
+        optional_int_coalescing_transparent_bound(
+            source,
+            candidate,
+            whole_end,
+            true
+        ) != call_start ||
+        optional_int_coalescing_transparent_bound(
+            source,
+            candidate,
+            whole_end,
+            false
+        ) != call_end
+    ) return false;
+    int64_t length = source_length(source);
+    int64_t after = skip_trivia(source, whole_end);
+    if (after >= length || !token_equal(source, after, "}")) return true;
+    int64_t function_start = next_function_start(source, 0);
+    while (function_start < length) {
+        int64_t function_close = function_end(source, function_start);
+        if (call_start >= function_start && call_start < function_close) {
+            char *name = function_name(source, function_start);
+            bool main_function = strcmp(name, "main") == 0;
+            free(name);
+            return token_end(source, after) != function_close || main_function;
+        }
+        function_start = next_function_start(source, function_close);
+    }
+    return false;
+}
+
+/*
+ * #1559. Validate private outcomes before any C exists. This walk checks the
+ * resolved callee, not its spelling: a same-name source declaration or lexical
+ * callable is an ordinary Kofun function and may return a source value.
+ */
+static char *validate_bytes_private_results(
+    const char *source,
+    const char *hir
+) {
+    int64_t length = source_length(source);
+    int64_t cursor = next_function_start(source, 0);
+    while (cursor < length) {
+        if (strcmp(token_kind(source, cursor), "identifier") == 0) {
+            char *name = token_copy(source, cursor);
+            int64_t open = skip_trivia(source, token_end(source, cursor));
+            if (
+                open < length && token_equal(source, open, "(") &&
+                bytes_private_result_builtin(name) &&
+                call_resolves_to_builtin(source, hir, cursor, name) &&
+                !bytes_private_result_is_discarded_statement(
+                    source,
+                    cursor,
+                    open
+                )
+            ) {
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(
+                    &message,
+                    "Stage 2 `%s` does not produce a source value; use it "
+                    "only as a discarded expression statement",
+                    name
+                );
+                char *error = lower_error("E2S179", message.data, cursor);
+                free(message.data);
+                free(name);
+                return error;
+            }
+            free(name);
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return owned_text("ok");
+}
+
+/*
  * #1321. How many leading arguments of a mutation operation are carriers.
  * Every one of them takes its carriers first, so a count is enough to decide
  * which arguments lower as addresses and which as `Int` expressions.
@@ -12116,6 +12596,81 @@ static int64_t bytes_mutation_carriers(const char *name) {
     if (strcmp(name, "stage2_bytes_append_range") == 0) return 2;
     if (bytes_mutation_builtin(name)) return 1;
     return 0;
+}
+
+/*
+ * #1517. The access required by every carrier slot in the bounded mutation
+ * family. The table is deliberately explicit: an operation added to the
+ * family must choose read or edit rather than inheriting a default that may
+ * let a read-only view reach mutation.
+ */
+static const char *bytes_mutation_required_access(
+    const char *name,
+    int64_t index
+) {
+    if (
+        strcmp(name, "stage2_bytes_len") == 0 ||
+        strcmp(name, "stage2_bytes_capacity") == 0 ||
+        strcmp(name, "stage2_bytes_byte_at") == 0
+    ) return "read";
+    if (strcmp(name, "stage2_bytes_append_range") == 0) {
+        return index == 1 ? "read" : "edit";
+    }
+    if (
+        strcmp(name, "stage2_bytes_byte_set") == 0 ||
+        strcmp(name, "stage2_bytes_clear") == 0 ||
+        strcmp(name, "stage2_bytes_reserve") == 0 ||
+        strcmp(name, "stage2_bytes_append") == 0 ||
+        strcmp(name, "stage2_bytes_append_self") == 0
+    ) return "edit";
+    return "";
+}
+
+/*
+ * #1517. Refuse only the access transition this slice owns: a caller binding
+ * typed as a `read` Bytes view cannot satisfy an `edit` carrier slot. Owners
+ * and edit views may edit, and edit may widen to read. The caller's mode comes
+ * from typed HIR field 6 rather than being re-derived from source spelling.
+ */
+static char *bytes_access_slot_label(const char *slot) {
+    size_t length = strlen(slot);
+    if (length <= 40) return owned_text(slot);
+
+    Buffer label;
+    buffer_init(&label);
+    buffer_format(&label, "%.18s...%s", slot, slot + length - 19);
+    return label.data;
+}
+
+static char *bytes_access_error(
+    const char *hir,
+    const char *binding_id,
+    int64_t cursor,
+    const char *required,
+    const char *slot
+) {
+    char *available = hir_binding_field(hir, binding_id, 6);
+    if (
+        strcmp(available, "read") != 0 ||
+        strcmp(required, "edit") != 0
+    ) {
+        free(available);
+        return NULL;
+    }
+    char *label = bytes_access_slot_label(slot);
+    Buffer message;
+    buffer_init(&message);
+    buffer_format(
+        &message,
+        "Bytes slot `%s`: available read, required edit; read-to-edit is "
+        "forbidden",
+        label
+    );
+    char *error = lower_error("E2S178", message.data, cursor);
+    free(label);
+    free(message.data);
+    free(available);
+    return error;
 }
 
 /*
@@ -12139,12 +12694,46 @@ static int64_t bytes_mutation_carriers(const char *name) {
  *
  * Takes ownership of `value` and returns the expression the caller keeps.
  */
+static char *bytes_named_carrier_binding(
+    const char *source,
+    const char *hir,
+    int64_t start,
+    int64_t end
+) {
+    int64_t cursor = optional_int_coalescing_transparent_bound(
+        source,
+        start,
+        end,
+        true
+    );
+    int64_t stop = optional_int_coalescing_transparent_bound(
+        source,
+        start,
+        end,
+        false
+    );
+    if (
+        strcmp(token_kind(source, cursor), "identifier") != 0 ||
+        token_end(source, cursor) != stop
+    ) {
+        return owned_text("");
+    }
+    return hir_use_binding_id(hir, cursor);
+}
+
 static char *bytes_borrow_address(
+    const char *source,
     const char *hir,
     int64_t cursor,
+    int64_t end,
     char *value
 ) {
-    char *binding_id = hir_use_binding_id(hir, cursor);
+    char *binding_id = bytes_named_carrier_binding(
+        source,
+        hir,
+        cursor,
+        end
+    );
     char *mode = hir_binding_field(hir, binding_id, 6);
     free(binding_id);
     bool borrowed = strcmp(mode, "read") == 0 || strcmp(mode, "edit") == 0;
@@ -12166,7 +12755,7 @@ static char *bytes_carrier_address(
 ) {
     char *value = emit_expression(source, hir, cursor, end);
     if (strncmp(value, "error[", 6) == 0) return value;
-    return bytes_borrow_address(hir, cursor, value);
+    return bytes_borrow_address(source, hir, cursor, end, value);
 }
 
 /*
@@ -12255,7 +12844,12 @@ static char *emit_bytes_mutation_call(
              * two-carrier identity failure, because it is the same fact: an
              * operation on a carrier needs a carrier it can name.
              */
-            char *resolved = hir_use_binding_id(hir, argument);
+            char *resolved = bytes_named_carrier_binding(
+                source,
+                hir,
+                argument,
+                argument_stop
+            );
             if (resolved[0] == '\0') {
                 free(resolved);
                 free(rendered.data);
@@ -12267,6 +12861,26 @@ static char *emit_bytes_mutation_call(
                 destination = resolved;
             } else {
                 lender = resolved;
+            }
+            const char *required = bytes_mutation_required_access(name, index);
+            const char *role = strcmp(required, "read") == 0
+                ? "source" : "destination";
+            Buffer slot;
+            buffer_init(&slot);
+            buffer_format(&slot, "%s.%s", name, role);
+            char *access = bytes_access_error(
+                hir,
+                resolved,
+                argument,
+                required,
+                slot.data
+            );
+            free(slot.data);
+            if (access != NULL) {
+                free(rendered.data);
+                free(destination);
+                free(lender);
+                return access;
             }
             lowered = bytes_carrier_address(
                 source,
@@ -16623,6 +17237,67 @@ static char *function_parameter_mode(
     return owned_text("");
 }
 
+/* The internal binding name of one declared parameter. External labels are
+ * intentionally not returned: ordinary positional calls diagnose the storage
+ * slot the callee body uses, independent of whether labelled calls are later
+ * admitted for Bytes. */
+static char *function_parameter_name(
+    const char *source,
+    const char *wanted,
+    int64_t wanted_index
+) {
+    int64_t declaration = function_start_named(source, wanted);
+    if (declaration < 0) return owned_text("");
+    int64_t parameters = parameter_open(source, declaration);
+    if (parameters < 0) return owned_text("");
+    int64_t parameters_end = balanced_end(source, parameters, "(", ")");
+    if (parameters_end < 0) return owned_text("");
+    int64_t parameter = skip_trivia(
+        source,
+        token_end(source, parameters)
+    );
+    int64_t index = 0;
+    while (
+        parameter < parameters_end &&
+        !token_equal(source, parameter, ")")
+    ) {
+        if (index == wanted_index) {
+            int64_t internal = parameter_internal_start(
+                source,
+                parameter,
+                parameters_end
+            );
+            return internal < 0
+                ? owned_text("") : token_copy(source, internal);
+        }
+        int64_t type_start = parameter_type_start(
+            source,
+            parameter,
+            parameters_end
+        );
+        if (type_start < 0) return owned_text("");
+        int64_t type_end = callable_type_end(source, type_start);
+        int64_t optional_end = optional_int_type_end(source, type_start);
+        int64_t list_end = parameter_list_type_end(
+            source,
+            type_start,
+            parameters_end
+        );
+        if (type_end < 0) {
+            type_end = optional_end >= 0 ? optional_end :
+                (list_end >= 0 ? list_end :
+                    annotation_type_end(source, type_start));
+        }
+        int64_t separator = skip_trivia(source, type_end);
+        parameter = separator < parameters_end &&
+            token_equal(source, separator, ",")
+            ? skip_trivia(source, token_end(source, separator))
+            : separator;
+        ++index;
+    }
+    return owned_text("");
+}
+
 /* Result type of the function whose body contains `position`. */
 static char *function_return_type_containing(
     const char *source,
@@ -16885,7 +17560,34 @@ static char *initializer_type_bounded(
                 return constructor_type;
             }
             free(constructor_type);
-            const char *builtin = builtin_return_type(name);
+            /* Scope construction asks for this type before it has appended
+             * the call's `use|` record. Resolve from the bindings already in
+             * HIR as well, so a lexical callable still outranks a same-name
+             * builtin during inference, not only validation and emission. */
+            int64_t call_scope_open = parent_block_open(
+                source,
+                function_open,
+                cursor
+            );
+            char *call_scope_id = hir_scope_id_for_open(
+                hir,
+                call_scope_open
+            );
+            char *lexical_binding = hir_resolve_binding(
+                hir,
+                call_scope_id,
+                cursor,
+                name
+            );
+            free(call_scope_id);
+            const char *builtin =
+                lexical_binding[0] == '\0' && call_resolves_to_builtin(
+                    source,
+                    hir,
+                    cursor,
+                    name
+                ) ? builtin_return_type(name) : NULL;
+            free(lexical_binding);
             free(name);
             if (builtin != NULL) return owned_text(builtin);
             return owned_text("Int");
@@ -23642,7 +24344,8 @@ static char *lower_body(
             }
             returned = true;
         } else if (
-            strcmp(token_kind(source, cursor), "identifier") == 0
+            strcmp(token_kind(source, cursor), "identifier") == 0 ||
+            token_equal(source, cursor, "(")
         ) {
             int64_t assignment_start = cursor;
             char *name = token_copy(source, cursor);
@@ -25615,28 +26318,22 @@ static char *validate_numeric_literals(const char *source) {
  * greps emitted C for `malloc|calloc|realloc` to prove label lowering needs no
  * runtime machinery -- and an allocator in every emitted program is real
  * degradation whether or not a gate names it. */
-static bool source_uses_bytes(const char *source) {
+static bool source_uses_bytes(const char *source, const char *hir) {
     int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, 0);
     while (cursor < length) {
-        if (token_equal(source, cursor, "stage2_bytes_empty") ||
-            token_equal(source, cursor, "stage2_bytes_assign_zeroed") ||
-            token_equal(source, cursor, "Bytes")) {
-            return true;
-        }
-        for (
-            size_t index = 0;
-            index < KOFUN_BYTES_MUTATION_OPERATION_COUNT;
-            ++index
-        ) {
-            if (token_equal(
-                    source,
-                    cursor,
-                    kofun_bytes_mutation_operations[index]
-                )) {
-                return true;
-            }
-        }
+        if (token_equal(source, cursor, "Bytes")) return true;
+        char *token = token_copy(source, cursor);
+        bool bytes_builtin =
+            strcmp(token, "stage2_bytes_empty") == 0 ||
+            strcmp(token, "stage2_bytes_assign_zeroed") == 0 ||
+            bytes_mutation_builtin(token);
+        int64_t open = skip_trivia(source, token_end(source, cursor));
+        bool resolved =
+            bytes_builtin && open < length && token_equal(source, open, "(") &&
+            call_resolves_to_builtin(source, hir, cursor, token);
+        free(token);
+        if (resolved) return true;
         cursor = skip_trivia(source, token_end(source, cursor));
     }
     return false;
@@ -27070,7 +27767,7 @@ static char *lower_c_body(const char *source, const char *hir) {
     /* #1315. The carrier, its asserts, and the reclamation helper are emitted
      * only for a source that can reach them. `calloc`/`free` in every program
      * is degradation the call-arguments gate correctly refuses. */
-    bool uses_bytes = source_uses_bytes(source);
+    bool uses_bytes = source_uses_bytes(source, hir);
     /* #946: the move rule runs before the assertion, so a use-after-move is
      * reported as itself rather than as whatever the erased statement leaves
      * behind. */
@@ -27083,6 +27780,11 @@ static char *lower_c_body(const char *source, const char *hir) {
     char *move_check = validate_move_assertions(source, hir);
     if (strncmp(move_check, "error[", 6) == 0) return move_check;
     free(move_check);
+    char *bytes_private_check = validate_bytes_private_results(source, hir);
+    if (strncmp(bytes_private_check, "error[", 6) == 0) {
+        return bytes_private_check;
+    }
+    free(bytes_private_check);
     /* A mixed-type expression is reported before operator lowering, so
      * `1 + 1.5` names the missing explicit conversion. */
     char *operand_check = validate_numeric_operand_types(source, hir);

@@ -1,0 +1,16 @@
+# diagnostic-mode: compile
+# expect-code: E2S180
+# expect-span: byte 538
+# #1561. Direct declared calls preserve the bounded Bytes exclusivity
+# invariant at each call boundary. The ordinary binder has already matched
+# these actuals to edit/read slots; their shared HIR BindingId is the one fact
+# this refusal needs, and the slot modes are part of its stable explanation.
+fn conflict(edit destination: Bytes, read lender: Bytes) -> Int {
+    return 0
+}
+
+fn main() -> Int {
+    let bytes = stage2_bytes_empty()
+    print(conflict(bytes, bytes))
+    return 0
+}
