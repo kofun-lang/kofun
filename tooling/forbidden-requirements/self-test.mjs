@@ -25,7 +25,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { DETECTORS, dialectOf, withoutComments } from './detect.mjs'
+import { commandPosition, DETECTORS, dialectOf, withoutComments } from './detect.mjs'
 import { guardVerdict, needOf } from './reach.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -87,6 +87,45 @@ for (const [name, requirement, kind, expected, why] of FIXTURE_CASES) {
     if (actual !== expected) {
         fail(`fixtures/${name}: \`${requirement}\` (${kind}) counted ${actual}, expected ` +
             `${expected} — ${why}`)
+    }
+}
+
+/*
+ * Wrapper terminators are tested directly rather than folded into the fixture
+ * count. Each row owns one command-position fact, so a newly missed positive
+ * cannot cancel a newly invented invocation and leave an aggregate unchanged.
+ */
+const WRAPPER_TERMINATOR_CASES = [
+    ['env terminator', 'env -- npm ci', 'node|npm', 1],
+    ['command terminator', 'command -- node script.mjs', 'node|npm', 1],
+    ['xargs terminator', 'printf x | xargs -- npm exec', 'node|npm', 1],
+    ['short option before terminator', 'env -i -- npm ci', 'node|npm', 1],
+    ['flow keyword before wrapper', 'if env -- npm ci', 'node|npm', 1],
+    ['existing env wrapper', 'env npm ci', 'node|npm', 1],
+    ['existing command wrapper', 'command node script.mjs', 'node|npm', 1],
+    ['existing xargs wrapper', 'xargs npm exec', 'node|npm', 1],
+    ['flow keyword is not an executable wrapper', 'if -- node', 'node|npm', 0],
+    ['wrapper-shaped prose', 'echo env -- npm ci', 'node|npm', 0],
+    ['quoted wrapper-shaped prose', "printf '%s\\n' 'command -- node'", 'node|npm', 0],
+    ['command terminator does not skip an assignment',
+        'command -- FOO=bar node script.mjs', 'node|npm', 0],
+    ['xargs terminator does not skip an assignment',
+        'printf x | xargs -- FOO=bar npm exec', 'node|npm', 0],
+    ['wrapper and terminator stay on one physical line',
+        'env' + '\n    -- node', 'node|npm', 0],
+    ['argument-taking xargs option is not guessed',
+        'printf x | xargs -n -- npm exec', 'node|npm', 0],
+    ['unmeasured env option is not guessed',
+        'env -u NAME -- npm ci', 'node|npm', 0],
+    ['similarly named npm executable', 'env -- npm-cli ci', 'node|npm', 0],
+    ['similarly named node executable', 'command -- nodejs script.mjs', 'node|npm', 0],
+]
+
+for (const [name, body, token, expected] of WRAPPER_TERMINATOR_CASES) {
+    const actual = (body.match(commandPosition(token)) ?? []).length
+    if (actual !== expected) {
+        fail(`${name}: commandPosition counted ${actual}, expected ${expected} in ` +
+            JSON.stringify(body))
     }
 }
 
@@ -339,6 +378,9 @@ process.stdout.write(
     `PASS: ${FIXTURE_CASES.length} detector cases over ` +
     `${new Set(FIXTURE_CASES.map((c) => c[0])).size} fixtures, ` +
     `${FIXTURE_CASES.filter((c) => c[3] === 0).length} of them asserting a near miss counts zero\n`)
+process.stdout.write(
+    `PASS: ${WRAPPER_TERMINATOR_CASES.length} wrapper command-position cases, ` +
+    `${WRAPPER_TERMINATOR_CASES.filter((c) => c[3] === 0).length} of them asserting a near miss counts zero\n`)
 process.stdout.write(
     `PASS: ${NPM_GUARD_CASES.length} npm guard cases distinguish optional from fail-closed use\n`)
 process.stdout.write(
