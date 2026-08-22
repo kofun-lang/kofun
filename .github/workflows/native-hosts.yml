@@ -84,7 +84,14 @@ jobs:
           expected=$(awk -v path="$CHECKSUM_PATH" '$2 == path { print $1 }' \
             bootstrap/native/SHA256SUMS)
           test -n "$expected"
-          actual=$(sha256sum "$IMAGE" | awk '{ print $1 }')
+          # `bin/kofun-digest`, not GNU `sha256sum` (#1213). This was the last
+          # call site in the tree still computing a digest with a tool the
+          # project does not ship and does not test, and it is the one that
+          # decides whether the six-host evidence a release binds is accepted.
+          # The tool builds from `bootstrap/stage2/sha256.c` with the C11
+          # compiler the bootstrap already requires, and prints GNU's format,
+          # so the `awk` below is unchanged.
+          actual=$(./bin/kofun-digest "$IMAGE" | awk '{ print $1 }')
           test "$actual" = "$expected"
           chmod +x "$IMAGE"
           set +e
