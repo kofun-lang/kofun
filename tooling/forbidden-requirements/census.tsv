@@ -68,6 +68,16 @@
 # three rows it named — `scripts/graphify.sh`'s `python` — is genuinely off the
 # build path, and the `need` column is how that is now said.
 #
+# What #1467 settled, and where this census cannot answer it: `readelf` and the
+# binutils class are in **neither** the forbidden list nor the allowed
+# boundaries. This ledger is exactly as complete as the contract is, by design,
+# so a tool in neither list produces no row here however many times the build
+# runs it — 57 `readelf` invocations across 11 files, and none of them visible
+# below. That is not a gap in the detector. The reasoning is in
+# `rfcs/0018-self-contained-native-toolchain.md`, "What is in neither list", and
+# the place the third region *is* checked is `release/claims.json`'s
+# `reproduction.prerequisites`.
+#
 # unknown-ceiling: 31
 #
 # The bound on `unknown`, checked in BOTH directions like

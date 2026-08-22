@@ -80,6 +80,45 @@ hidden requirement for compiling, linking, packaging, testing, or rebuilding
 the core toolchain. In particular, a Rust shim can remain an interop example
 without making `rustc` or Cargo part of Kofun's completion profile.
 
+### What is in neither list, and why that is not an omission (#1467)
+
+The forbidden requirements and the allowed boundaries do not partition the
+universe of external programs, and reading them as though they did produces a
+false question: *which list does `readelf` belong to?*
+
+A forbidden core build requirement is a **non-Kofun thing this profile promises
+Kofun will replace** — either it produces or transforms the shipped artifact
+(`cc`, `c++`, `assembler`, `system-linker`, `system-sdk`, `import-library`,
+`rustc`, `cargo`, `zig`), or it is the language, runtime, or driver the build
+itself is written in (`node`, `shell-build-driver`, `go-task`, `python`,
+`non-kofun-build-language`). An allowed external boundary is a **runtime or
+platform contract of the produced program**, which is why the three classes
+above are scoped to emitted machine code, a host ABI, or an imported adapter.
+
+A program that is neither — one the build merely *runs* to inspect what it
+produced, or to compare, filter, or move bytes — is in neither list, and that
+is deliberate. `readelf`, `nm`, `ar`, `file`, `ldd`, `cmp`, `sed`, `grep`,
+`awk`, `git`, `timeout`, `script` and `qemu-aarch64` are all in this third
+region. So was `sha256sum` before #1213 replaced it: a real, GNU-only
+dependency across dozens of files, whose remedy was replacement, with no
+contract entry and no boundary claim in between.
+
+The rule is not "external and unshipped". Measured with the census's own
+command-position detector, that criterion would admit `cmp` at 955 invocations,
+`grep` at 935 and `sed` at 467 — against `readelf`'s 57 — and the forbidden
+list would become an installation profile rather than a statement about Kofun's
+completion. That list already exists, three times over:
+`docs/GETTING_STARTED.md`'s prerequisites, `release/claims.json`'s
+`reproduction.prerequisites`, and the published
+`artifacts/release-evidence/REPRO.md`.
+
+**Where the third region is checked** is therefore the prerequisite manifest,
+not this contract — and that is where #1467 found the real defect: the check is
+one-directional. It fails when a *declared* prerequisite is named by no
+reachable script, and never when a *required* tool is declared by no claim.
+`readelf` is the second kind: three of fifty-three claims declare it while
+eleven files require it.
+
 ### Bootstrap and provenance
 
 The trusted starting binary is always named and hash-pinned. It compiles the
