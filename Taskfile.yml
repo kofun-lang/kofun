@@ -1246,6 +1246,17 @@ tasks:
     cmds:
       - "sh tests/release/check-claims.sh"
 
+  # The procedure is a document, and a document cannot be run -- so the checks
+  # inside it were trusted rather than checked, and one of them printed PASS for
+  # a tag that did not exist (#1603). This extracts every `sh` block from
+  # `docs/RELEASING.md`, requires each to open with the fail-closed guard and
+  # every check in it to carry its own failure action, and then *runs* the guard
+  # in each available shell instead of only finding it.
+  release-procedure:
+    desc: "Prove docs/RELEASING.md's blocks cannot report PASS while failing"
+    cmds:
+      - "node tests/release/procedure-blocks.mjs"
+
   # The release lane: regenerate the reviewable pack. `release-claims` then fails
   # until the regenerated pack is committed, so the two cannot diverge.
   release-evidence:
@@ -1442,4 +1453,5 @@ tasks:
             assertions \
             backlog \
             release-claims \
+            release-procedure \
             rfc-registry
