@@ -25,7 +25,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { commandPosition, DETECTORS, dialectOf, withoutComments } from './detect.mjs'
+import { DETECTORS, dialectOf, matchCommands, withoutComments } from './detect.mjs'
 import { guardVerdict, needOf } from './reach.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -122,11 +122,82 @@ const WRAPPER_TERMINATOR_CASES = [
 ]
 
 for (const [name, body, token, expected] of WRAPPER_TERMINATOR_CASES) {
-    const actual = (body.match(commandPosition(token)) ?? []).length
+    const actual = matchCommands(body, token).length
     if (actual !== expected) {
-        fail(`${name}: commandPosition counted ${actual}, expected ${expected} in ` +
+        fail(`${name}: matchCommands counted ${actual}, expected ${expected} in ` +
             JSON.stringify(body))
     }
+}
+
+/*
+ * The command-position model itself (#1552). Each row is a shape the previous,
+ * pattern-shaped rule got wrong, or one it got right and this must keep: an
+ * aggregate count cannot tell a newly missed positive from a newly invented
+ * invocation, so every fact is its own row.
+ *
+ * The first seven are the matrix measured on `main@a858e0fa` when #1552 was
+ * filed. The rest are the regions the issue names -- quoting of all three
+ * kinds, escaped operators and newlines, command substitutions, `case`
+ * patterns -- plus the two live files whose counts this changed.
+ */
+const COMMAND_POSITION_CASES = [
+    /* Prose that names a wrapper is not an invocation of what follows it. */
+    ['prose wrapper', 'echo env node', 'node|npm', 0],
+    ['single-quoted wrapper prose', "printf '%s\\n' 'command node'", 'node|npm', 0],
+    ['ANSI-C quoted wrapper prose', String.raw`printf $'command node\n'`, 'node|npm', 0],
+    /* Wrapper chains compose, in the order the shell can actually resolve. */
+    ['shell wrapper before external', 'command env -- node', 'node|npm', 1],
+    ['external before external', 'env xargs -- npm', 'node|npm', 1],
+    ['external before external, reversed', 'xargs env -- npm', 'node|npm', 1],
+    ['env cannot resolve the builtin command', 'env -- command node', 'node|npm', 0],
+    ['xargs cannot resolve the builtin command', 'xargs -- command node', 'node|npm', 0],
+    /* Quoting decides what is text. Both of these are live files. */
+    ['a generated script is text, not a command',
+        `printf '%s\\n' 'exec node "$ROOT/run.mjs" "$0.wasm"' >script`, 'node|npm', 0],
+    ['an escaped backtick is text, not a substitution',
+        'printf \'%s\\n\' "run \\`task release-evidence\\`"', 'task', 0],
+    ['a substitution inside double quotes still runs',
+        'value=$(json_string "$(rustc -Vv)")', 'rustc', 1],
+    /* An assignment may precede the command, at any indentation. */
+    ['indented assignment before the command',
+        '        KOFUN_RFC_TODAY="$horizon" node "$VALIDATOR" validate', 'node|npm', 1],
+    ['an assignment is not itself a command', 'differential=\'skipped (node absent)\'', 'node|npm', 0],
+    /* `case` patterns sit exactly where a command would. */
+    ['a case pattern is not a command', 'case "$x" in\n    node)\n        true\n        ;;\nesac', 'node|npm', 0],
+    ['a case body is', 'case "$x" in\n    a)\n        node run\n        ;;\nesac', 'node|npm', 1],
+    ['a command after esac is', 'case "$x" in\n    a)\n        true\n        ;;\nesac\nnode run', 'node|npm', 1],
+    /* A here-document body is data, including when it is a script. */
+    ['a heredoc body is not run here', "cat <<'EOF' >script\nnode run.mjs\nEOF\n", 'node|npm', 0],
+    ['a command after a heredoc is', "cat <<'EOF' >script\ntext\nEOF\nnode run.mjs\n", 'node|npm', 1],
+    /* A brace expansion names a variable; a brace group runs a command. */
+    ['a brace expansion is not a command', 'for candidate in ${KOFUN_CC:-} clang gcc cc; do :; done',
+        String.raw`cc|gcc|clang|c99`, 0],
+    ['a brace group is', '{ node run; }', 'node|npm', 1],
+    /* An escaped newline continues one command; a bare one ends it. */
+    ['an escaped newline continues the command',
+        'KOFUN_STAGE2_COMMON_LINK_ID=documentation-index \\\n    node "$EMITTER"', 'node|npm', 1],
+    /* An escape makes an operator a character. */
+    ['an escaped semicolon does not open a command', 'find . -exec rm {} \\; node', 'node|npm', 0],
+    /* A spelling may span two words: `openssl dgst` is the forbidden one, and
+     * `openssl x509` is not (#1213, tests/digest/no-host-digest-tools.mjs). */
+    ['a two-word spelling matches', 'openssl dgst -sha256 file', String.raw`openssl[ \t]+dgst`, 1],
+    ['a two-word spelling does not over-match', 'openssl x509 -noout -in cert.pem',
+        String.raw`openssl[ \t]+dgst`, 0],
+]
+
+for (const [name, body, token, expected] of COMMAND_POSITION_CASES) {
+    const actual = matchCommands(body, token).length
+    if (actual !== expected) {
+        fail(`${name}: matchCommands counted ${actual}, expected ${expected} in ` +
+            JSON.stringify(body))
+    }
+}
+
+if (process.exitCode !== 1) {
+    process.stdout.write(
+        `PASS: ${COMMAND_POSITION_CASES.length} command-position cases over quoting, ` +
+            'wrapper chains, `case` patterns, here-documents and two-word spellings\n',
+    )
 }
 
 /*

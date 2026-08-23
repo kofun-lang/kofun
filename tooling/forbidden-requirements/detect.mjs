@@ -37,63 +37,383 @@ export const FILE_SET =
     "git ls-files | while read -r f; do head -c2 \"$f\" | grep -q '#!' && echo \"$f\"; done)\""
 
 /*
- * Command position. A token counts as invoked when it starts a command: at the
- * start of a line, after a shell operator, inside `$(`, or after one of the
- * wrappers that run their argument. It must be followed by whitespace, a
- * quote, or the end of the line — `nodejs-flavour` and `taskfile` are not
- * invocations of `node` and `task`.
+ * Command position, read rather than pattern-matched (#1552).
  *
- * The wrapper list is what a `(^|[|;&(`]|\$\()` pattern alone misses:
- * `exec node`, `xargs node`, `env node`, and `command -v node` all invoke it.
+ * A token counts as invoked when it is the word the shell would run: at the
+ * start of a command, after the assignments that may precede one, and after the
+ * wrappers that run their argument. What made this a model instead of a pattern
+ * is that a regular expression cannot tell executable text from prose about it.
+ * Measured on `main@a858e0fa`, the pattern this replaces reported:
+ *
+ *     echo env node                       1   invented
+ *     printf '%s\n' 'command node'        1   invented
+ *     command env -- node                 0   missed
+ *     env xargs -- npm                    0   missed
+ *     xargs env -- npm                    0   missed
+ *     env -- command node                 1   invented
+ *     xargs -- command node               1   invented
+ *
+ * The first two are the shortcut: an unanchored `wrapper\s+` branch matches the
+ * word `env` wherever it appears, including inside a single-quoted string that
+ * is the *text of a generated script*. The middle three are wrapper chains it
+ * had no way to compose. The last two are the same shortcut in the other
+ * direction: external `env` and `xargs` cannot resolve the shell builtin
+ * `command`, so what runs there is `command`, and `node` is its argument.
+ *
+ * So the shell text is tokenised once -- words and operators, with quoted
+ * regions kept inside the word that contains them -- and command position is a
+ * property of where a word sits rather than of what precedes it in the string.
+ *
+ * WHAT IS DELIBERATELY NOT MODELLED, because guessing is worse than refusing:
+ * long wrapper options, options that consume the following argument, runtime
+ * expansion, and dynamic command names. Each of those returns "no invocation
+ * here" rather than a guess, and each has a case below.
  */
-const WRAPPERS = 'exec|command|env|xargs|sudo|time|nice|then|do|else|elif|if'
+
+/* Wrappers the shell resolves itself, so they can run a builtin or an external. */
+const SHELL_WRAPPERS = new Set(['command', 'exec', 'builtin', 'time', 'nice', 'sudo'])
+/* Wrappers that are external programs, so they can only exec another external. */
+const EXTERNAL_WRAPPERS = new Set(['env', 'xargs'])
+/* Keywords a command may follow. `if -- node` invokes `--`, not Node.js, so
+ * these are not wrappers and take no terminator. */
+const FLOW = new Set(['then', 'do', 'else', 'elif', 'if', 'while', 'until'])
+/* Operators after which the next word starts a command. */
+const OPENS_COMMAND = new Set([';', ';;', '&&', '||', '|', '&', '(', ')', '$(', '`', '\n', '{', '}', '!'])
+
+const isOption = (word) => /^-[A-Za-z0-9]+$/.test(word)
 /*
- * A command may be preceded by environment assignments on the same line:
+ * A command may be preceded by environment assignments:
  *
- *     KOFUN_STAGE2_COMMON_LINK_ID=documentation-index/producer \\
+ *     KOFUN_STAGE2_COMMON_LINK_ID=documentation-index/producer \
  *     "$CC" -std=c11 …
  *
  * Five gate scripts open their compile line exactly that way, and a rule that
  * only accepts an operator before the command name reports all five as clean.
  */
-const ASSIGN = String.raw`(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)[ \t]+)*`
+const isAssignment = (word) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(word)
 
 /*
- * `(` opens a subshell — but only when nothing identifier-like precedes it.
- * `foo(node)` is a call, and the census recorded
- * `tests/conformance/int-bits-lowering/check.sh` as invoking Node.js on the
- * strength of `def find(node):` inside a Python heredoc it embeds. Every
- * occurrence of the word in that file is a parameter name (#1500).
- *
- * And `$(` at end of line opens a command on the NEXT line. Measured: 80
- * sites in tracked shell open that way, none of them with a forbidden
- * requirement today — so this half fixes no count now and stops the next one
- * being silent.
+ * Words and operators. A quoted region is part of the word containing it and is
+ * never re-read as shell: that one property is what stops
+ * `printf '%s\n' 'exec node …'` -- the text of a script this one writes -- from
+ * being counted as an invocation of Node.js, which is the live case in
+ * `tests/conformance/backends/wasm32-node.sh`.
  */
-const POSITION = String.raw`(?:^|(?<![A-Za-z0-9_])[(]|[|;&){}\`\n!]|\$\([ \t]*\n?[ \t]*|&&|\|\|)`
-const WRAPPER_OPEN = String.raw`(?:\b(?:${WRAPPERS})\b(?:\s+[-!]\w*)*\s+)`
+export function shellTokens(body, commentRanges = null) {
+    const tokens = []
+    let word = null
+    let i = 0
+    /*
+     * Where the scanner is. Double quotes are not opaque -- `"$(rustc -Vv)"`
+     * runs rustc, and reading the whole quoted span as text lost three real
+     * invocations in `examples/rust-shim/benchmark.sh` -- so a substitution
+     * inside them opens a nested context that the matching `)` closes. Single
+     * quotes are opaque, because nothing expands inside them, which is what
+     * makes `'exec node …'` the text of a script rather than a command.
+     */
+    const context = ['top']
+    const inside = () => context[context.length - 1]
+    /*
+     * Here-document bodies are data, not shell. Reading them as shell is both
+     * wrong and unstable: an apostrophe in English prose inside one opens a
+     * quoted region that swallows the rest of the file, which is measurable --
+     * before this, one `don't` in `tests/usability/check.sh` hid every
+     * invocation after line 407. Skipping the body is also the answer the
+     * census wants for the case that started #1552: a heredoc holding the text
+     * of a script this one writes is not this script running it.
+     */
+    const pendingHeredocs = []
+    const heredocDelimiter = (text) => {
+        const match = /^<<-?\s*(.+)$/.exec(text)
+        if (match === null) return null
+        const raw = match[1].trim()
+        if (raw === '' || raw.startsWith('<')) return null
+        return { word: raw.replace(/^['"]|['"]$/g, ''), strip: text.startsWith('<<-') }
+    }
+
+    const endWord = () => {
+        if (word !== null) {
+            const heredoc = heredocDelimiter(word.text)
+            if (heredoc !== null) pendingHeredocs.push(heredoc)
+            tokens.push(word)
+            word = null
+        }
+    }
+    const pushOperator = (text) => { endWord(); tokens.push({ kind: 'op', text }) }
+    /*
+     * `quoted` records whether the word *opens* with a quote, which is the
+     * question every rule below asks: `'command node'` is prose because the
+     * quote comes first, while `KOFUN_RFC_TODAY="$horizon"` is an assignment
+     * whose value happens to be quoted. Marking the whole word quoted lost the
+     * second shape in six files -- every `NAME="value" command` line in the
+     * tree.
+     */
+    const addToWord = (text, quoted, at) => {
+        if (word === null) word = { kind: 'word', text: '', quoted, start: at }
+        word.text += text
+    }
+
+    while (i < body.length) {
+        const c = body[i]
+
+        /* An escaped newline continues the command; any other escape is part of
+         * the word, so `\;` is an argument and `` \` `` is not a substitution. */
+        if (c === '\\' && body[i + 1] === '\n') { i += 2; continue }
+        if (c === '\\') { addToWord(body.slice(i, i + 2), false, i); i += 2; continue }
+
+        if (c === '$' && body[i + 1] === '(') {
+            pushOperator('$(')
+            context.push('subst')
+            i += 2
+            continue
+        }
+
+        if (inside() === 'dquote') {
+            if (c === '"') { addToWord(c, true, i); context.pop(); i += 1; continue }
+            if (c === '`') { pushOperator('`'); context.push('subst'); i += 1; continue }
+            addToWord(c, true, i)
+            i += 1
+            continue
+        }
+
+        if (c === ' ' || c === '\t') { endWord(); i += 1; continue }
+
+        /*
+         * A `#` opens a comment only where a word could start. Inside a word it
+         * is a character, and the difference is load-bearing: the old
+         * line-oriented strip cut
+         *
+         *     assert_grep "row $item does not name issue #$owner in its header"
+         *
+         * at the `#`, leaving an unterminated quote that swallowed the rest of
+         * `tests/usability/check.sh` -- every `rustc` invocation after line 122
+         * went uncounted once the scan became stateful.
+         */
+        if (c === '#' && word === null) {
+            const lineEnd = body.indexOf('\n', i)
+            const stop = lineEnd === -1 ? body.length : lineEnd
+            if (commentRanges !== null) commentRanges.push([i, stop])
+            i = stop
+            continue
+        }
+
+        /* Single and ANSI-C quoting: opaque, and the closing quote is found
+         * here rather than by a pattern so operators inside stay text. */
+        if (c === "'" || (c === '$' && body[i + 1] === "'")) {
+            const open = c === '$' ? i + 1 : i
+            let j = open + 1
+            while (j < body.length && body[j] !== "'") j += 1
+            addToWord(body.slice(i, Math.min(j + 1, body.length)), true, i)
+            i = j + 1
+            continue
+        }
+
+        if (c === '"') { addToWord(c, true, i); context.push('dquote'); i += 1; continue }
+
+        if (c === ')' && inside() === 'subst') { context.pop(); pushOperator(')'); i += 1; continue }
+
+        if (c === ';' && body[i + 1] === ';') { pushOperator(';;'); i += 2; continue }
+        if (c === '&' && body[i + 1] === '&') { pushOperator('&&'); i += 2; continue }
+        if (c === '|' && body[i + 1] === '|') { pushOperator('||'); i += 2; continue }
+        /*
+         * `(` opens a subshell -- but only when nothing identifier-like
+         * precedes it. `foo(node)` is a call, and the census recorded
+         * `tests/conformance/int-bits-lowering/check.sh` as invoking Node.js on
+         * the strength of `def find(node):` inside a Python heredoc it embeds.
+         * Every occurrence of the word in that file is a parameter name (#1500).
+         */
+        if ('({'.includes(c) && word !== null) { addToWord(c, false, i); i += 1; continue }
+        /* `}` closes what `{` opened, so it follows the same rule: `${node}` is
+         * one word naming a variable, and `{ node; }` is a group running one. */
+        if (c === '}' && word !== null) { addToWord(c, false, i); i += 1; continue }
+        if (c === '\n' && pendingHeredocs.length !== 0) {
+            pushOperator('\n')
+            i += 1
+            while (pendingHeredocs.length !== 0) {
+                const { word: delimiter, strip } = pendingHeredocs.shift()
+                while (i < body.length) {
+                    const lineEnd = body.indexOf('\n', i)
+                    const line = body.slice(i, lineEnd === -1 ? body.length : lineEnd)
+                    i = lineEnd === -1 ? body.length : lineEnd + 1
+                    if ((strip ? line.replace(/^\t+/, '') : line) === delimiter) break
+                }
+            }
+            continue
+        }
+        if (';&|()`\n{}!'.includes(c)) { pushOperator(c); i += 1; continue }
+
+        addToWord(c, false, i)
+        i += 1
+    }
+    endWord()
+    return tokens
+}
 
 /*
- * A standalone `--` is not one of the short flags above. It ends option
- * parsing for these three measured executable wrappers:
+ * The index of every token that is run, given the tokens of one file.
  *
- *     env -- npm ci
- *     command -- node script.mjs
- *     printf x | xargs -- npm exec
- *
- * Keep this branch separate from WRAPPER_OPEN. That list also contains flow
- * keywords such as `if`, and `if -- node` invokes `--`, not Node.js. The
- * real command-position prefix is load-bearing too: an unanchored
- * `env ... --` branch would count prose such as `echo env -- npm ci`.
+ * `case` gets its own state because its patterns sit exactly where a command
+ * would: in `case "$x" in\n  node) …`, the word `node` follows a newline and is
+ * a pattern, not an invocation. The states are the three places a `case` can
+ * be -- reading its subject, reading a pattern, running a body -- and anything
+ * that does not fit them leaves the stack alone rather than guessing.
  */
-const FLOW_POSITIONS = 'then|do|else|elif|if'
-const DASH_DASH_WRAPPER = String.raw`(?:env(?:[ \t]+-i)?|command|xargs)`
-const DASH_DASH_OPEN =
-    String.raw`${POSITION}[ \t]*${ASSIGN}` +
-    String.raw`(?:\b(?:${FLOW_POSITIONS})\b[ \t]+${ASSIGN})?` +
-    String.raw`\b${DASH_DASH_WRAPPER}\b[ \t]+--[ \t]+`
-const OPEN = String.raw`(?:${POSITION}|${WRAPPER_OPEN})${ASSIGN}`
-const CLOSE = String.raw`(?=\s|$|['"\`;|&)])`
+export function commandHeads(tokens) {
+    const heads = []
+    const cases = []
+    let atCommand = true
+
+    for (let i = 0; i < tokens.length; i += 1) {
+        const token = tokens[i]
+        const open = cases.length === 0 ? null : cases[cases.length - 1]
+
+        if (token.kind === 'op') {
+            if (OPENS_COMMAND.has(token.text)) {
+                atCommand = true
+                if (open !== null && open.state === 'pattern' && token.text === ')') open.state = 'body'
+                else if (open !== null && open.state === 'body' && token.text === ';;') open.state = 'pattern'
+            }
+            continue
+        }
+
+        /*
+         * `esac` closes the construct from wherever it is reached, and where it
+         * is reached from is `pattern`: every arm ends `;;`, which returns to
+         * pattern state, and `esac` follows. Reading it only from a command
+         * position left the machine inside the `case` for the rest of the file.
+         */
+        if (open !== null && token.text === 'esac' && !token.quoted) {
+            cases.pop()
+            atCommand = false
+            continue
+        }
+        /*
+         * `case "$target" in` puts its subject and its `in` where no command
+         * can be, so these two states read every word rather than only the ones
+         * in command position. Reading them like commands is what left the
+         * machine waiting for an `in` it had already passed: measured on
+         * `bin/kofun`, every `case` body in the file went uncounted.
+         */
+        if (open !== null && open.state === 'head') {
+            if (token.text === 'in' && !token.quoted) open.state = 'pattern'
+            atCommand = false
+            continue
+        }
+        if (open !== null && open.state === 'pattern') { atCommand = false; continue }
+
+        if (!atCommand) continue
+        atCommand = false
+
+        if (token.text === 'case' && !token.quoted) { cases.push({ state: 'head' }); continue }
+
+        const head = runWord(tokens, i)
+        if (head !== -1) heads.push(head)
+    }
+    return heads
+}
+
+/*
+ * From a command position, skip assignments, flow keywords and wrapper chains,
+ * and return the index of the word that is actually run -- or -1 where this
+ * model refuses to guess.
+ *
+ * The composition rule is the one the shell has: `command env -- node` runs
+ * node, because the shell resolves `command`, which execs `env`, which execs
+ * `node`. `env -- command node` does not, because `env` is an external program
+ * and cannot resolve a shell builtin; what it runs is a program named
+ * `command`. So a shell wrapper may precede an external one and not the reverse.
+ */
+function runWord(tokens, from) {
+    let i = from
+    let external = false
+
+    while (i < tokens.length) {
+        const token = tokens[i]
+        /* A wrapper and what it runs are one command: an operator, including a
+         * newline, ends the chain rather than continuing it. */
+        if (token.kind === 'op') return -1
+
+        const word = token.text
+        if (!token.quoted && FLOW.has(word)) { i += 1; continue }
+        if (!token.quoted && isAssignment(word)) { i += 1; continue }
+
+        const shellWrapper = !token.quoted && !external && SHELL_WRAPPERS.has(word)
+        const externalWrapper = !token.quoted && EXTERNAL_WRAPPERS.has(word)
+        if (!shellWrapper && !externalWrapper) return i
+
+        const options = []
+        let j = i + 1
+        while (j < tokens.length && tokens[j].kind === 'word' && isOption(tokens[j].text)) {
+            options.push(tokens[j].text)
+            j += 1
+        }
+
+        if (j < tokens.length && tokens[j].kind === 'word' && tokens[j].text === '--') {
+            /*
+             * `--` ends option parsing, so the next word is the command -- but
+             * only where the options before it are ones whose shape has been
+             * measured. `xargs -n -- npm` reads `--` as the argument to `-n`,
+             * and a rule that guessed otherwise would report an invocation the
+             * shell does not make.
+             */
+            const measured = options.length === 0 ||
+                (word === 'env' && options.length === 1 && options[0] === '-i')
+            if (!measured) return -1
+            const next = tokens[j + 1]
+            /* After a terminator an assignment-shaped word is a program name:
+             * `command -- FOO=bar node` runs a program called `FOO=bar`. */
+            if (next === undefined || next.kind !== 'word') return -1
+            return j + 1
+        }
+
+        if (externalWrapper) external = true
+        i = j
+    }
+    return -1
+}
+
+/*
+ * How many words one requirement's spelling may span. `openssl dgst` is two --
+ * `tests/digest/no-host-digest-tools.mjs` matches the digest subcommand and not
+ * the tool (#1213) -- and nothing here spans three.
+ */
+const SPAN = 3
+
+/*
+ * One body, tokenised once. The checker asks fourteen detectors about the same
+ * file in a row, and this gate asks three; without this the scan reads every
+ * file fourteen times and the census checker goes from 0.9s to 4.7s. A single
+ * entry is the whole cache because the callers are loops over detectors inside
+ * a loop over files -- the reuse is always immediate.
+ */
+let lastBody = null
+let lastTokens = null
+let lastHeads = null
+
+function analyse(body) {
+    if (body !== lastBody) {
+        lastBody = body
+        lastTokens = shellTokens(body)
+        lastHeads = commandHeads(lastTokens)
+    }
+    return { tokens: lastTokens, heads: lastHeads }
+}
+
+function shellMatches(body, pattern) {
+    const anchored = new RegExp(`^(?:${pattern})$`)
+    const { tokens, heads } = analyse(body)
+    const hits = []
+    for (const head of heads) {
+        let candidate = ''
+        for (let n = 0; n < SPAN && head + n < tokens.length; n += 1) {
+            const token = tokens[head + n]
+            if (token.kind !== 'word') break
+            candidate = n === 0 ? token.text : `${candidate} ${token.text}`
+            if (anchored.test(candidate)) { hits.push(candidate); break }
+        }
+    }
+    return hits
+}
 
 /*
  * Command position is not one thing, and reading it as one is how a census
@@ -109,16 +429,25 @@ const CLOSE = String.raw`(?=\s|$|['"\`;|&)])`
  *
  * JavaScript does not have a command position at all. What it has is a
  * child-process call, so that is what is matched: the tool must be the first
- * token of the string handed to one.
+ * token of the string handed to one. These two stay patterns: #1552 replaced
+ * the shell half only, and a `run:` key has no quoting rules to get wrong.
  */
+const ASSIGN = String.raw`(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)[ \t]+)*`
+const CLOSE = String.raw`(?=\s|$|['"\`;|&)])`
 const JS_SPAWN = String.raw`(?:execFileSync|execSync|spawnSync|execFile|spawn|exec)\s*\(\s*['"\`]\s*`
 const YAML_OPEN = String.raw`(?:^|[|;&(){}\n!]|\$\(|&&|\|\||run:\s*|cmd:\s*|-\s+)["']?${ASSIGN}`
 
-export function commandPosition(token, dialect = 'sh') {
-    if (dialect === 'js') return new RegExp(`${JS_SPAWN}(?:${token})${CLOSE}`, 'gm')
-    if (dialect === 'yaml') return new RegExp(`${YAML_OPEN}[ \\t]*(?:${token})${CLOSE}`, 'gm')
-    return new RegExp(`(?:${OPEN}|${DASH_DASH_OPEN})[ \\t]*(?:${token})${CLOSE}`, 'gm')
+/* Every invocation of `pattern` in `body`, as the text that was matched. */
+export function matchCommands(body, pattern, dialect = 'sh') {
+    if (dialect === 'js') {
+        return body.match(new RegExp(`${JS_SPAWN}(?:${pattern})${CLOSE}`, 'gm')) ?? []
+    }
+    if (dialect === 'yaml') {
+        return body.match(new RegExp(`${YAML_OPEN}[ \\t]*(?:${pattern})${CLOSE}`, 'gm')) ?? []
+    }
+    return shellMatches(body, pattern)
 }
+
 
 export function dialectOf(path) {
     if (path.endsWith('.mjs') || path.endsWith('.js')) return 'js'
@@ -224,8 +553,8 @@ export const DETECTORS = [
         match: (body, dialect) => {
             const hits = []
             for (const line of logicalLines(body)) {
-                const direct = line.match(commandPosition(String.raw`cc|gcc|clang|c99`, dialect))
-                if (direct !== null) {
+                const direct = matchCommands(line, String.raw`cc|gcc|clang|c99`, dialect)
+                if (direct.length !== 0) {
                     hits.push(...direct)
                     continue
                 }
@@ -245,7 +574,7 @@ export const DETECTORS = [
         kind: 'invoke',
         predicate: String.raw`$FILES | xargs grep -coE '(^|[|;&(\`]|\$\()[ ]*(c\+\+|g\+\+|clang\+\+|\$\{?CXX\}?)[ ]'`,
         describes: 'a C++ compiler invoked as a command, including through $CXX',
-        match: (body, dialect) => body.match(commandPosition(String.raw`c\+\+|g\+\+|clang\+\+|\$CXX|\$\{CXX\}|"\$CXX"`, dialect)) ?? [],
+        match: (body, dialect) => matchCommands(body, String.raw`c\+\+|g\+\+|clang\+\+|\$CXX|\$\{CXX\}|"\$CXX"`, dialect),
     },
     {
         requirement: 'assembler',
@@ -259,7 +588,7 @@ export const DETECTORS = [
          * prose. It counts only when followed by a flag or an assembly source.
          */
         match: (body, dialect) => [
-            ...(body.match(commandPosition(String.raw`nasm|yasm|gas`, dialect)) ?? []),
+            ...(matchCommands(body, String.raw`nasm|yasm|gas`, dialect)),
             ...(body.match(anywhere(String.raw`(?:^|[|;&(\`]|\$\()[ \t]*as[ \t]+(?:-|\S+\.[sS](?=\s|$))`)) ?? []),
             ...(body.match(anywhere(String.raw`-Wa,`)) ?? []),
         ],
@@ -270,7 +599,7 @@ export const DETECTORS = [
         predicate: String.raw`$FILES | xargs grep -coE '(^|[|;&(\`]|\$\()[ ]*(ld|lld|link)[ ]|-Wl,|-fuse-ld='`,
         describes: 'a linker invoked directly, or a compiler driver passing -Wl, / -fuse-ld=',
         match: (body, dialect) => [
-            ...(body.match(commandPosition(String.raw`ld|lld|ld\.lld|link\.exe`, dialect)) ?? []),
+            ...(matchCommands(body, String.raw`ld|lld|ld\.lld|link\.exe`, dialect)),
             ...(body.match(anywhere(String.raw`-Wl,|-fuse-ld=`)) ?? []),
         ],
     },
@@ -279,28 +608,28 @@ export const DETECTORS = [
         kind: 'invoke',
         predicate: String.raw`$FILES | xargs grep -coE '(^|[|;&(\`]|\$\()[ ]*rustc[ ]'`,
         describes: 'the Rust compiler invoked as a command',
-        match: (body, dialect) => body.match(commandPosition('rustc', dialect)) ?? [],
+        match: (body, dialect) => matchCommands(body, 'rustc', dialect),
     },
     {
         requirement: 'cargo',
         kind: 'invoke',
         predicate: String.raw`$FILES | xargs grep -coE '(^|[|;&(\`]|\$\()[ ]*cargo[ ]'`,
         describes: 'Cargo invoked as a command',
-        match: (body, dialect) => body.match(commandPosition('cargo', dialect)) ?? [],
+        match: (body, dialect) => matchCommands(body, 'cargo', dialect),
     },
     {
         requirement: 'zig',
         kind: 'invoke',
         predicate: String.raw`$FILES | xargs grep -coE '(^|[|;&(\`]|\$\()[ ]*zig[ ]'`,
         describes: 'the Zig toolchain invoked as a command',
-        match: (body, dialect) => body.match(commandPosition('zig', dialect)) ?? [],
+        match: (body, dialect) => matchCommands(body, 'zig', dialect),
     },
     {
         requirement: 'node',
         kind: 'invoke',
         predicate: String.raw`$FILES | xargs grep -coE '(^|[|;&(\`]|\$\(|run:[ ]*|cmd:[ ]*|-[ ]+)[ ]*(node|npm)[ ]'`,
         describes: 'Node.js or its npm package-manager frontend invoked as a command',
-        match: (body, dialect) => body.match(commandPosition('node|npm', dialect)) ?? [],
+        match: (body, dialect) => matchCommands(body, 'node|npm', dialect),
     },
     {
         requirement: 'node',
@@ -314,7 +643,7 @@ export const DETECTORS = [
         kind: 'invoke',
         predicate: String.raw`$FILES | xargs grep -coE '(^|[|;&(\`]|\$\()[ ]*python3?[ ]'`,
         describes: 'a Python interpreter invoked as a command',
-        match: (body, dialect) => body.match(commandPosition(String.raw`python3?`, dialect)) ?? [],
+        match: (body, dialect) => matchCommands(body, String.raw`python3?`, dialect),
     },
     {
         requirement: 'shell-build-driver',
@@ -328,7 +657,7 @@ export const DETECTORS = [
         kind: 'invoke',
         predicate: String.raw`$FILES | xargs grep -coE '(^|[|;&(\`]|\$\()[ ]*task[ ]'`,
         describes: 'the go-task runner invoked as a command',
-        match: (body, dialect) => body.match(commandPosition('task', dialect)) ?? [],
+        match: (body, dialect) => matchCommands(body, 'task', dialect),
     },
     {
         requirement: 'go-task',
@@ -343,7 +672,7 @@ export const DETECTORS = [
         predicate: String.raw`$FILES | xargs grep -coE '(xcrun|xcodebuild|pkg-config|--sysroot|-isysroot|WindowsSdkDir)'`,
         describes: 'a platform SDK located or selected at build time',
         match: (body, dialect) => [
-            ...(body.match(commandPosition(String.raw`xcrun|xcodebuild|pkg-config`, dialect)) ?? []),
+            ...(matchCommands(body, String.raw`xcrun|xcodebuild|pkg-config`, dialect)),
             ...(body.match(anywhere(String.raw`--sysroot|-isysroot|WindowsSdkDir`)) ?? []),
         ],
     },
@@ -405,11 +734,35 @@ export const DETECTORS = [
  * matches, never invent them, so the error direction is a missed use — which is
  * why `--count` prints the mention totals beside the invoke totals.
  */
+/*
+ * Comments removed with the shell's own quoting rules, which a line-oriented
+ * pattern cannot have: a `#` inside a string is a character, and cutting there
+ * leaves an unterminated quote for everything downstream to trip over. The
+ * ranges come from the tokeniser rather than a second scanner, so there is one
+ * implementation of what a quote is.
+ */
+export function stripShellComments(body) {
+    const ranges = []
+    shellTokens(body, ranges)
+    if (ranges.length === 0) return body
+    let out = ''
+    let at = 0
+    for (const [from, to] of ranges) {
+        out += body.slice(at, from)
+        at = to
+    }
+    return out + body.slice(at)
+}
+
 export function withoutComments(path, body) {
     if (path.endsWith('.mjs') || path.endsWith('.js')) {
         return body
             .replace(/\/\*[^]*?\*\//g, ' ')
             .replace(/^\s*\/\/.*$/gm, ' ')
     }
-    return body.replace(/(^|\s)#.*$/gm, '$1')
+    /* YAML has no shell quoting, so its comments stay a line rule. */
+    if (path.endsWith('.yml') || path.endsWith('.yaml')) {
+        return body.replace(/(^|\s)#.*$/gm, '$1')
+    }
+    return stripShellComments(body)
 }

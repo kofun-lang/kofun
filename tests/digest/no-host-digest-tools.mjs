@@ -23,7 +23,7 @@
  * the tool would be a rule about the wrong thing.
  *
  * Both halves of the scan are the census's, reused rather than re-written. The
- * detector is `commandPosition`, which already knows that `$(sha256sum` is an
+ * detector is `matchCommands`, which already knows that `$(sha256sum` is an
  * invocation and that `SHA256SUMS` and `nodejs-flavour`-shaped tokens are not,
  * and which #1535 widened for wrapper `--` terminators; the file set is
  * `universe()`. This gate first shipped with its own copy of the second one,
@@ -35,14 +35,14 @@
  * One digest in the tree is deliberately outside this rule, and it is filed
  * rather than left silent: the Windows lane of the same workflow computes its
  * digest with PowerShell's built-in `Get-FileHash`, which this scan cannot see
- * because `commandPosition` reads shell, JavaScript, and YAML `run:` position
+ * because `matchCommands` reads shell, JavaScript, and YAML `run:` position
  * and not PowerShell. That is also a different dependency — a built-in of the
  * host being tested rather than a userland tool someone installs — and whether
  * `bin/kofun-digest` can run there at all is unmeasured. #1606 carries both
  * questions, so a passing run here means five lanes, not six.
  */
 
-import { commandPosition, dialectOf, withoutComments } from '../../tooling/forbidden-requirements/detect.mjs'
+import { dialectOf, matchCommands, withoutComments } from '../../tooling/forbidden-requirements/detect.mjs'
 import { universe } from '../../tooling/forbidden-requirements/universe.mjs'
 
 /* `pattern` is a regular-expression fragment; `spelling` is what a message says. */
@@ -64,7 +64,7 @@ function invocationsIn(path, body) {
     const source = withoutComments(path, body)
     const dialect = dialectOf(path)
     return TOOLS.flatMap(({ spelling, pattern }) =>
-        (source.match(commandPosition(pattern, dialect)) ?? []).map((text) => ({ spelling, text })),
+        matchCommands(source, pattern, dialect).map((text) => ({ spelling, text })),
     )
 }
 
