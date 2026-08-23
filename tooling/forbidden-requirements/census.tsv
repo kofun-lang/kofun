@@ -452,6 +452,7 @@ node	source	1	required-today	required	tooling/forbidden-requirements/check.mjs
 node	source	1	required-today	required	tooling/forbidden-requirements/detect.mjs
 node	source	1	required-today	required	tooling/forbidden-requirements/reach.mjs
 node	source	1	required-today	required	tooling/forbidden-requirements/self-test.mjs
+node	source	1	required-today	required	tooling/forbidden-requirements/universe.mjs
 node	source	1	required-today	required	tooling/gate-reachability/check.mjs
 node	source	1	required-today	required	tooling/lsp/import-target-index.js
 node	source	1	required-today	required	tooling/lsp/semantic-sidecar.mjs
