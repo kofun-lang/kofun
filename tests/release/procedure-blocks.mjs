@@ -21,24 +21,29 @@
  *   1. every `sh` block sources `release/fail-closed.sh` before it runs
  *      anything else, so a shell that would swallow failures is refused at the
  *      first line rather than at the summary;
- *   2. every `test` and every top-level `git`, `gh` or `task` in those blocks
- *      carries its own failure action, because the guard alone cannot help a
- *      wrapper that starts a fresh shell per command -- which is what the
- *      measurement below says actually happened;
+ *   2. everything those blocks run carries its own failure action, because the
+ *      guard alone cannot help a wrapper that starts a fresh shell per command
+ *      -- which is what the measurement below says actually happened;
  *   3. no `$name` is interpolated immediately before a colon;
  *   4. every block parses -- nothing else in the tree asks whether this
  *      document's shell is shell, and a mangled quote would otherwise be found
  *      by the operator mid-release;
  *   5. the guard is executed, in both directions, rather than merely located.
  *
- * WHAT IT DOES NOT ENFORCE, said here rather than left to be discovered: a
- * command that is neither `test` nor one of those three names, and an
- * assignment whose `$(...)` does not close on its own line, are not required to
- * carry a failure action. `actual_assets=$(for asset in ...; do` opens a
- * command substitution that closes three lines later, and a rule that read it
- * line by line would either demand a failure action in the middle of a `for`
- * body or need a shell parser to know better. The document writes those with
- * `|| fail` anyway; this gate does not police them.
+ * WHAT IS EXEMPT, said here rather than left to be discovered: shell keywords,
+ * an assignment that runs nothing, `printf`/`echo` without a redirection, and
+ * an assignment whose `$(...)` does not close on its own statement.
+ * `actual_assets=$(for asset in ...; do` opens a command substitution that
+ * closes three lines later, and a rule reading it line by line would either
+ * demand a failure action in the middle of a `for` body or need a shell parser
+ * to know better.
+ *
+ * The exemptions are a list of things that cannot report a wrong answer, not a
+ * list of commands someone remembered. This gate first shipped the other way
+ * round -- checking `test`, `git`, `gh` and `task` by name -- and the same
+ * document already contained `cd`, `"$digest_tool" -c` and
+ * `printf ... >VERSION`, which that rule walked past in silence while reporting
+ * the file clean. All four are in the cases below.
  *
  * WHY `$-` AND NOT A BEHAVIOUR PROBE, since that is the first thing a reader
  * will want to change: `( set -e; false; true )` returns 0 in all six
@@ -62,9 +67,21 @@ const DOC = 'docs/RELEASING.md'
 const GUARD = 'release/fail-closed.sh'
 const GUARD_LINE = `. ./${GUARD} || exit 1`
 
-/* Commands whose failure is a finding, and which always close on one logical
- * line in this document. `test` is the one the defect was made of. */
-const CHECKED = ['test', 'git', 'gh', 'task']
+/*
+ * Everything that runs is checked; these are the exemptions, and they are a
+ * list of things that cannot report a wrong answer rather than a list of
+ * commands someone remembered.
+ *
+ * The first version of this gate had it the other way round -- `test`, `git`,
+ * `gh`, `task` -- and the same document already contains `cd`, `"$digest_tool"`
+ * and `printf ... >VERSION`, which that rule passed over in silence. An
+ * allowlist of checked names is a gate that stops covering the file the moment
+ * the file grows a new verb.
+ */
+const KEYWORDS = new Set([
+    'if', 'then', 'else', 'elif', 'fi', 'for', 'while', 'until', 'do', 'done',
+    'case', 'esac', '(', ')', '{', '}', 'set',
+])
 
 let failures = 0
 
@@ -78,7 +95,7 @@ const fail = (message) => {
  * numbered step, so the fence is matched with its indent and that indent comes
  * off the body. A rule anchored at `^```` sees two of them.
  */
-export function shellBlocks(markdown) {
+function shellBlocks(markdown) {
     const blocks = []
     const lines = markdown.split('\n')
     let open = null
@@ -104,7 +121,7 @@ export function shellBlocks(markdown) {
  * `|` continues too, and that is how a failure action is wrapped inside 79
  * columns. Both joins are needed to see `test ... || fail ...` as one thing.
  */
-export function statements(body) {
+function statements(body) {
     const out = []
     let pending = ''
     for (const line of logicalLines(body)) {
@@ -126,12 +143,34 @@ const balanced = (statement) => {
     return (bare.match(/\(/g) ?? []).length === (bare.match(/\)/g) ?? []).length
 }
 
-export function unguarded(statement) {
+function unguarded(statement) {
     const trimmed = statement.trim()
     if (trimmed === '' || trimmed.startsWith('#')) return false
     if (/\|\|\s*(fail\b|exit\b)/.test(trimmed)) return false
-    if (CHECKED.includes(firstWord(trimmed))) return true
-    return /^[A-Za-z_][A-Za-z0-9_]*=\$\(/.test(trimmed) && balanced(trimmed)
+
+    const word = firstWord(trimmed)
+    if (KEYWORDS.has(word) || word.startsWith(')') || word.startsWith('}')) return false
+
+    /*
+     * An assignment that runs nothing -- `x=literal`, `x=${y%%...}` -- cannot
+     * fail, and one whose `$(...)` does not close on this statement is the head
+     * of a construct that closes later: `actual_assets=$(for asset in ...; do`
+     * is three lines from its `done`, and demanding a failure action inside a
+     * `for` body would be demanding the wrong thing.
+     */
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(word) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(trimmed)) {
+        if (!/\$\(/.test(trimmed)) return false
+        return balanced(trimmed)
+    }
+
+    /*
+     * Output is not a check. A redirection is: `printf ... >VERSION` is how the
+     * version is set, and a full disk is exactly the sort of failure this
+     * document used to print PASS through.
+     */
+    if ((word === 'printf' || word === 'echo') && !/>/.test(trimmed)) return false
+
+    return true
 }
 
 /* ------------------------------------------------------- both directions first */
@@ -141,6 +180,11 @@ const MUST_CATCH = [
     'git push "$remote" HEAD:refs/heads/main',
     'x=$(git rev-parse HEAD)',
     'task release-evidence',
+    /* The four the first, allowlist-shaped version of this rule walked past. */
+    'cd "$asset_dir"',
+    '"$digest_tool" -c "$source_sums"',
+    'printf \'%s\\n\' 0.3.50-seed >VERSION',
+    'curl -fsS https://example.invalid/thing',
 ]
 const MUST_NOT_CATCH = [
     'test "$a" = "$b" || fail \'a is not b\'',
@@ -148,8 +192,12 @@ const MUST_NOT_CATCH = [
     'test "$(gh release view "$tag" \\\n    --json isDraft --jq .isDraft)" = false ||\n    fail \'draft\'',
     '. ./release/fail-closed.sh || exit 1',
     'remote_sha=${record%%[[:space:]]*}',
+    'source_sums="kofun-$version.tar.gz.sha256"',
     'printf \'%s\\n\' done',
     'actual=$(for asset in "$dir"/*; do',
+    'set -eu',
+    'fi',
+    ')',
     '# test "$a" = "$b"',
 ]
 
