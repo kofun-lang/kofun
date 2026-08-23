@@ -99,7 +99,7 @@ cc	invoke	3	required-today	required	bootstrap/c_abi/check.sh
 cc	invoke	4	required-today	required	bootstrap/native/check.sh
 cc	invoke	1	required-today	required	bootstrap/selfhost/build-a1-a2.sh
 cc	invoke	5	required-today	required	bootstrap/selfhost/c11/check-c11.sh
-cc	invoke	12	required-today	required	bootstrap/selfhost/check-compiler-driver.sh
+cc	invoke	11	required-today	required	bootstrap/selfhost/check-compiler-driver.sh
 cc	invoke	2	required-today	required	bootstrap/selfhost/check-diverse-double-compilation-refusals.sh
 cc	invoke	2	required-today	required	bootstrap/selfhost/check-driver-diagnostics.sh
 cc	invoke	6	required-today	required	bootstrap/selfhost/check-profile.sh
@@ -193,7 +193,7 @@ cc	invoke	1	required-today	required	tests/fuzz/value_if.sh
 cc	invoke	2	required-today	required	tests/fuzz/visibility-artifacts.sh
 cc	invoke	1	required-today	optional	tests/http/check.sh
 cc	invoke	2	required-today	required	tests/interfaces/visibility-filtering.sh
-cc	invoke	6	required-today	required	tests/interop/bindgen-c/check-sanitizers.sh
+cc	invoke	5	required-today	required	tests/interop/bindgen-c/check-sanitizers.sh
 cc	invoke	4	required-today	required	tests/interop/bindgen-c/check.sh
 cc	invoke	1	required-today	required	tests/interop/bindgen-c/import-boundary/run.sh
 cc	invoke	2	required-today	required	tests/module-constants/check.sh
@@ -272,7 +272,7 @@ node	invoke	7	required-today	required	spec/wasi-command-projection-v1/check.sh
 node	invoke	5	required-today	required	spec/wasi-host-matrix-v1/check.sh
 node	invoke	15	required-today	required	spec/wasm-host-abi-v1/check.sh
 node	invoke	6	required-today	required	spec/wasm-host-profile-v1/check.sh
-node	invoke	3	required-today	optional	stdlib/date_time/tests/verify.sh
+node	invoke	2	required-today	optional	stdlib/date_time/tests/verify.sh
 node	invoke	4	required-today	required	stdlib/decimal/tests/verify.sh
 node	invoke	8	required-today	required	tests/artifact-qualification/check.sh
 node	invoke	1	required-today	required	tests/backlog/check-stamps.sh
@@ -280,7 +280,7 @@ node	invoke	1	required-today	required	tests/backlog/check.sh
 node	invoke	3	required-today	required	tests/backlog/self-test.sh
 node	invoke	7	required-today	required	tests/conformance/aggregate-bridge/run.sh
 node	invoke	1	required-today	required	tests/conformance/authority-carrier/run.sh
-node	invoke	2	required-today	unknown	tests/conformance/backends/wasm32-node.sh
+node	invoke	1	required-today	unknown	tests/conformance/backends/wasm32-node.sh
 node	invoke	1	required-today	required	tests/conformance/call-arguments/run.sh
 node	invoke	4	required-today	required	tests/conformance/effects/pure-boundary/run.sh
 node	invoke	5	required-today	required	tests/conformance/effects/pure-io/run.sh
@@ -299,7 +299,7 @@ node	invoke	2	required-today	required	tests/interop/bindgen-c/import-boundary/ru
 node	invoke	14	required-today	required	tests/lsp/check.sh
 node	invoke	5	required-today	required	tests/lsp/visibility.sh
 node	invoke	11	required-today	required	tests/release/check-claims.sh
-node	invoke	10	required-today	required	tests/rfc/check-registry.sh
+node	invoke	11	required-today	required	tests/rfc/check-registry.sh
 node	invoke	2	required-today	required	tests/stage2/list-int-signatures/run.sh
 node	invoke	4	required-today	required	tests/stage2/list-int-values/run.sh
 node	invoke	2	required-today	required	tests/stage2/optional-pair/run.sh
@@ -762,7 +762,6 @@ go-task	invoke	1	required-today	required	.github/workflows/native-hosts.yml
 go-task	invoke	2	required-today	required	.github/workflows/release.yml
 go-task	invoke	5	required-today	required	bootstrap/stage2/verify-runner.sh
 go-task	invoke	1	required-today	required	tests/pair-coverage/measure.sh
-go-task	invoke	1	required-today	required	tests/release/check-claims.sh
 go-task	invoke	2	required-today	required	tests/tooling/task-help/check.sh
 go-task	invoke	1	required-today	required	tooling/task-help.mjs
 go-task	source	1	required-today	required	Taskfile.yml
