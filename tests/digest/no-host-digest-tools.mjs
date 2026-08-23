@@ -22,11 +22,15 @@
  * dgst`: the digest subcommand is the forbidden one, and refusing every use of
  * the tool would be a rule about the wrong thing.
  *
- * The detector is the census's `commandPosition`, reused rather than
- * re-written: it already knows that `$(sha256sum` is an invocation and that
- * `SHA256SUMS` and `nodejs-flavour`-shaped tokens are not, and #1535 widened
- * it for wrapper `--` terminators. A second, private copy of that judgement
- * would drift from it.
+ * Both halves of the scan are the census's, reused rather than re-written. The
+ * detector is `commandPosition`, which already knows that `$(sha256sum` is an
+ * invocation and that `SHA256SUMS` and `nodejs-flavour`-shaped tokens are not,
+ * and which #1535 widened for wrapper `--` terminators; the file set is
+ * `universe()`. This gate first shipped with its own copy of the second one,
+ * and the copy was already wrong within the week -- it had dropped the NUL rule
+ * that keeps a binary fixture from being sniffed as a script, so the two
+ * scanners disagreed about which files the tree even contains. A private copy
+ * of either judgement drifts from it.
  *
  * One digest in the tree is deliberately outside this rule, and it is filed
  * rather than left silent: the Windows lane of the same workflow computes its
@@ -38,21 +42,8 @@
  * questions, so a passing run here means five lanes, not six.
  */
 
-import { execFileSync } from 'node:child_process'
-import { readFileSync, statSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
-
 import { commandPosition, dialectOf, withoutComments } from '../../tooling/forbidden-requirements/detect.mjs'
-
-const HERE = dirname(fileURLToPath(import.meta.url))
-const ROOT = resolve(HERE, '..', '..')
-
-/* The census's own fixtures exist to contain forbidden spellings. */
-const EXCLUDED = 'tooling/forbidden-requirements/fixtures/'
-
-/* Same set the census scans: what can invoke something. */
-const RUNNABLE = ['.sh', '.mjs', '.js', '.yml', '.yaml']
+import { universe } from '../../tooling/forbidden-requirements/universe.mjs'
 
 /* `pattern` is a regular-expression fragment; `spelling` is what a message says. */
 const TOOLS = [
@@ -120,29 +111,15 @@ if (failures === 0) {
     )
 }
 
-/* The tree itself. */
-const tracked = execFileSync('git', ['ls-files', '-z'], { cwd: ROOT, maxBuffer: 64 * 1024 * 1024 })
-    .toString('utf8')
-    .split('\0')
-    .filter(Boolean)
+/*
+ * The tree itself, over the census's file set rather than a second definition
+ * of it: what can invoke something is one judgement, and this gate and the
+ * census have to be asking about the same files for either answer to mean
+ * anything.
+ */
+const files = universe()
 
-let scanned = 0
-for (const path of tracked) {
-    if (path.startsWith(EXCLUDED)) continue
-    const full = join(ROOT, path)
-    try {
-        if (!statSync(full).isFile()) continue
-    } catch {
-        continue
-    }
-    let body
-    try {
-        body = readFileSync(full, 'utf8')
-    } catch {
-        continue
-    }
-    if (!RUNNABLE.some((suffix) => path.endsWith(suffix)) && !body.startsWith('#!')) continue
-    scanned += 1
+for (const { path, body } of files) {
     for (const { spelling, text } of invocationsIn(path, body)) {
         fail(
             `${path} computes a digest with \`${spelling}\` (${text.trim()}); ` +
@@ -151,13 +128,13 @@ for (const path of tracked) {
     }
 }
 
-if (scanned === 0) {
+if (files.length === 0) {
     fail('the scan reached no files, so it proved nothing about the tree')
 }
 
 if (failures === 0) {
     process.stdout.write(
-        `PASS: none of ${scanned} runnable tracked files computes a digest with ` +
+        `PASS: none of ${files.length} runnable tracked files computes a digest with ` +
             `${TOOLS.map((tool) => `\`${tool.spelling}\``).join(', ')}\n`,
     )
 }
