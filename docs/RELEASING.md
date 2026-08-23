@@ -63,24 +63,49 @@ Run the whole procedure in one POSIX shell, beginning with `set -eu`; every
 command block below assumes that same fail-closed shell. Use a clean checkout
 of `main`, with the working tree clean. Bind every fetch and push to the
 intended repository explicitly; do not assume that a remote named `origin` is
-`kofun-lang/kofun`:
+`kofun-lang/kofun`.
+
+**That instruction is now checked rather than trusted, in both directions.**
+Cutting `v0.11.0-seed`, step 7's block printed `PASS: remote tag ...` while no
+such tag existed on the remote: it had been pasted into a shell where `set -eu`
+was not in effect, so every `test` in it was advisory and the summary ran
+anyway. So each block opens by sourcing `release/fail-closed.sh` — from the
+checkout root, where the whole procedure runs — which refuses a shell missing
+`e` or `u` and defines `fail`, and every check in every block ends
+`|| fail '<what was being proved>'`. The guard catches the shell; the failure
+actions mean a block that reaches a wrong answer stops there even if the guard
+never ran. `task release-procedure` proves both halves, and runs the guard
+rather than only looking for it (#1603).
+
+Read the exit status of each block, not the last line it printed. Step 1 makes
+the same point about a pipeline ending in `tail`; it applies to the blocks
+themselves:
 
 ```sh
 set -eu
+. ./release/fail-closed.sh || exit 1
 release_repo=kofun-lang/kofun
 release_remote=release-target
 release_url=ssh://git@github.com/kofun-lang/kofun
 if ! git remote get-url "$release_remote" >/dev/null 2>&1; then
-    git remote add "$release_remote" "$release_url"
+    git remote add "$release_remote" "$release_url" ||
+        fail "adding the $release_remote remote"
 fi
-fetch_urls=$(git remote get-url --all "$release_remote")
-push_urls=$(git remote get-url --push --all "$release_remote")
-test "$fetch_urls" = "$release_url"
-test "$push_urls" = "$release_url"
+fetch_urls=$(git remote get-url --all "$release_remote") ||
+    fail "reading the $release_remote fetch URLs"
+push_urls=$(git remote get-url --push --all "$release_remote") ||
+    fail "reading the $release_remote push URLs"
+test "$fetch_urls" = "$release_url" ||
+    fail "fetch URL is $fetch_urls, not $release_url"
+test "$push_urls" = "$release_url" ||
+    fail "push URL is $push_urls, not $release_url"
 test "$(gh repo view "$fetch_urls" \
-    --json nameWithOwner --jq .nameWithOwner)" = "$release_repo"
-git fetch --tags "$release_remote" main
-test "$(git rev-parse HEAD)" = "$(git rev-parse "$release_remote/main")"
+    --json nameWithOwner --jq .nameWithOwner)" = "$release_repo" ||
+    fail "$release_remote does not resolve to $release_repo"
+git fetch --tags "$release_remote" main ||
+    fail "fetching main and tags from $release_remote"
+test "$(git rev-parse HEAD)" = "$(git rev-parse "$release_remote/main")" ||
+    fail "HEAD is not $release_remote/main"
 ```
 
 Before admitting a late fix to the release queue, decide whether its defect was
@@ -95,17 +120,24 @@ memory. Record that tag in `previous_tag`, then use both an exact byte witness
 and ancestry, for example:
 
 ```sh
-previous_tag=$(git describe --tags --abbrev=0 --match 'v*-seed' HEAD)
+. ./release/fail-closed.sh || exit 1
+previous_tag=$(git describe --tags --abbrev=0 --match 'v*-seed' HEAD) ||
+    fail 'no v*-seed tag is reachable from HEAD'
 test "$(gh release view "$previous_tag" --repo "$release_repo" \
-    --json tagName --jq .tagName)" = "$previous_tag"
+    --json tagName --jq .tagName)" = "$previous_tag" ||
+    fail "$previous_tag is not published on $release_repo"
 test "$(gh release view "$previous_tag" --repo "$release_repo" \
-    --json isDraft --jq .isDraft)" = false
-git show "${previous_tag}:path/to/file" | rg --fixed-strings 'exact defective bytes'
+    --json isDraft --jq .isDraft)" = false ||
+    fail "$previous_tag is still a draft"
+git show "${previous_tag}:path/to/file" |
+    rg --fixed-strings 'exact defective bytes' ||
+    fail "those bytes are not in ${previous_tag}"
 if git merge-base --is-ancestor SUSPECTED_INTRODUCER "$previous_tag"; then
     printf '%s\n' 'introducer is in the previous release'
 else
     ancestry_status=$?
-    test "$ancestry_status" -eq 1
+    test "$ancestry_status" -eq 1 ||
+        fail "merge-base exited $ancestry_status, so ancestry was not decided"
     printf '%s\n' 'ancestry is inconclusive; reproduce at both refs'
 fi
 ```
@@ -150,8 +182,10 @@ published evidence until the release exists.
    change:
 
    ```sh
-   printf '%s\n' 0.3.50-seed >VERSION
-   git commit -m "release: 0.3.50-seed" VERSION
+   . ./release/fail-closed.sh || exit 1
+   printf '%s\n' 0.3.50-seed >VERSION || fail 'writing VERSION'
+   git commit -m "release: 0.3.50-seed" VERSION ||
+       fail 'committing the version bump'
    ```
 
 4. **Bind the evidence pack to the number.** The pack records `VERSION` and its
@@ -160,10 +194,11 @@ published evidence until the release exists.
    regenerated pack separately before pushing:
 
    ```sh
-   task release-evidence
-   task release-claims
+   . ./release/fail-closed.sh || exit 1
+   task release-evidence || fail 'regenerating the evidence pack'
+   task release-claims || fail 'the regenerated pack does not join its claims'
    git commit -m "release: bind evidence to $(cat VERSION)" \
-     -- artifacts/release-evidence
+     -- artifacts/release-evidence || fail 'committing the regenerated pack'
    ```
 
    Keeping this commit separate preserves the reviewable VERSION-only commit
@@ -184,13 +219,18 @@ published evidence until the release exists.
    committed six-host evidence.
 
    ```sh
-   release_sha=$(git rev-parse HEAD)
-   git push "$release_remote" "HEAD:refs/heads/main"
-   git fetch "$release_remote" main
-   test "$(git rev-parse "$release_remote/main")" = "$release_sha"
-   remote_main_record=$(git ls-remote --exit-code "$release_remote" refs/heads/main)
+   . ./release/fail-closed.sh || exit 1
+   release_sha=$(git rev-parse HEAD) || fail 'resolving HEAD'
+   git push "$release_remote" "HEAD:refs/heads/main" ||
+       fail "pushing HEAD to $release_remote main"
+   git fetch "$release_remote" main || fail "fetching $release_remote main"
+   test "$(git rev-parse "$release_remote/main")" = "$release_sha" ||
+       fail "$release_remote/main is not $release_sha"
+   remote_main_record=$(git ls-remote --exit-code "$release_remote" \
+       refs/heads/main) || fail "$release_remote has no main"
    remote_main_sha=${remote_main_record%%[[:space:]]*}
-   test "$remote_main_sha" = "$release_sha"
+   test "$remote_main_sha" = "$release_sha" ||
+       fail "remote main is $remote_main_sha, not $release_sha"
    ```
 
 7. **Tag the proven commit and verify publication.** Confirm that local `HEAD`
@@ -199,19 +239,29 @@ published evidence until the release exists.
    followed by `VERSION`, exactly, and it must resolve to that same SHA:
 
    ```sh
-   tag="v$(cat VERSION)"
-   git fetch --tags "$release_remote" main
-   test "$(git rev-parse HEAD)" = "$release_sha"
-   test "$(git rev-parse "$release_remote/main")" = "$release_sha"
-   remote_main_record=$(git ls-remote --exit-code "$release_remote" refs/heads/main)
+   . ./release/fail-closed.sh || exit 1
+   tag="v$(cat VERSION)" || fail 'reading VERSION'
+   git fetch --tags "$release_remote" main ||
+       fail "fetching main and tags from $release_remote"
+   test "$(git rev-parse HEAD)" = "$release_sha" ||
+       fail "HEAD moved off $release_sha"
+   test "$(git rev-parse "$release_remote/main")" = "$release_sha" ||
+       fail "$release_remote/main is not $release_sha"
+   remote_main_record=$(git ls-remote --exit-code "$release_remote" \
+       refs/heads/main) || fail "$release_remote has no main"
    remote_main_sha=${remote_main_record%%[[:space:]]*}
-   test "$remote_main_sha" = "$release_sha"
-   git tag "$tag" "$release_sha"
-   test "$(git rev-list -n 1 "$tag")" = "$release_sha"
-   git push "$release_remote" "refs/tags/$tag:refs/tags/$tag"
-   remote_tag_record=$(git ls-remote --exit-code "$release_remote" "refs/tags/$tag")
+   test "$remote_main_sha" = "$release_sha" ||
+       fail "remote main is $remote_main_sha, not $release_sha"
+   git tag "$tag" "$release_sha" || fail "creating $tag"
+   test "$(git rev-list -n 1 "$tag")" = "$release_sha" ||
+       fail "$tag does not resolve to $release_sha"
+   git push "$release_remote" "refs/tags/${tag}:refs/tags/${tag}" ||
+       fail "pushing $tag"
+   remote_tag_record=$(git ls-remote --exit-code "$release_remote" \
+       "refs/tags/${tag}") || fail "$tag is not on $release_remote"
    remote_tag_sha=${remote_tag_record%%[[:space:]]*}
-   test "$remote_tag_sha" = "$release_sha"
+   test "$remote_tag_sha" = "$release_sha" ||
+       fail "remote $tag is $remote_tag_sha, not $release_sha"
    ```
 
    Pushing that tag runs `.github/workflows/release.yml`, which **refuses a
@@ -234,25 +284,37 @@ published evidence until the release exists.
    payload assets.
 
    ```sh
-   git fetch --tags "$release_remote" main
-   test "$(git rev-parse HEAD)" = "$release_sha"
-   test "$(git rev-parse "$release_remote/main")" = "$release_sha"
-   remote_main_record=$(git ls-remote --exit-code "$release_remote" refs/heads/main)
+   . ./release/fail-closed.sh || exit 1
+   git fetch --tags "$release_remote" main ||
+       fail "fetching main and tags from $release_remote"
+   test "$(git rev-parse HEAD)" = "$release_sha" ||
+       fail "HEAD moved off $release_sha"
+   test "$(git rev-parse "$release_remote/main")" = "$release_sha" ||
+       fail "$release_remote/main is not $release_sha"
+   remote_main_record=$(git ls-remote --exit-code "$release_remote" \
+       refs/heads/main) || fail "$release_remote has no main"
    remote_main_sha=${remote_main_record%%[[:space:]]*}
-   test "$remote_main_sha" = "$release_sha"
-   remote_tag_record=$(git ls-remote --exit-code "$release_remote" "refs/tags/$tag")
+   test "$remote_main_sha" = "$release_sha" ||
+       fail "remote main is $remote_main_sha, not $release_sha"
+   remote_tag_record=$(git ls-remote --exit-code "$release_remote" \
+       "refs/tags/${tag}") || fail "$tag is not on $release_remote"
    remote_tag_sha=${remote_tag_record%%[[:space:]]*}
-   test "$remote_tag_sha" = "$release_sha"
+   test "$remote_tag_sha" = "$release_sha" ||
+       fail "remote $tag is $remote_tag_sha, not $release_sha"
    test "$(gh release view "$tag" --repo "$release_repo" \
-       --json isDraft --jq .isDraft)" = false
+       --json isDraft --jq .isDraft)" = false ||
+       fail "$tag is still a draft"
    test "$(gh release view "$tag" --repo "$release_repo" \
-       --json isPrerelease --jq .isPrerelease)" = true
+       --json isPrerelease --jq .isPrerelease)" = true ||
+       fail "$tag is not marked as a pre-release"
    test "$(gh release view "$tag" --repo "$release_repo" \
-       --json assets --jq '.assets | length')" -eq 9
+       --json assets --jq '.assets | length')" -eq 9 ||
+       fail "$tag does not carry exactly nine assets"
 
-   version=$(cat VERSION)
-   asset_dir=$(mktemp -d)
-   gh release download "$tag" --repo "$release_repo" --dir "$asset_dir"
+   version=$(cat VERSION) || fail 'reading VERSION'
+   asset_dir=$(mktemp -d) || fail 'creating a download directory'
+   gh release download "$tag" --repo "$release_repo" --dir "$asset_dir" ||
+       fail "downloading the $tag assets"
    expected_assets=$(printf '%s\n' \
        "kofun-$version.tar.gz" \
        "kofun-$version.tar.gz.sha256" \
@@ -262,21 +324,26 @@ published evidence until the release exists.
        "kofun-native-checkpoint-$version-macos-x86_64.macho" \
        "kofun-native-checkpoint-$version-SHA256SUMS" \
        "kofun-native-checkpoint-$version-windows-aarch64.exe" \
-       "kofun-native-checkpoint-$version-windows-x86_64.exe" | LC_ALL=C sort)
+       "kofun-native-checkpoint-$version-windows-x86_64.exe" | LC_ALL=C sort) ||
+       fail 'building the expected asset list'
    actual_assets=$(for asset in "$asset_dir"/*; do
        printf '%s\n' "${asset##*/}"
-   done | LC_ALL=C sort)
-   test "$actual_assets" = "$expected_assets"
+   done | LC_ALL=C sort) || fail 'listing the downloaded assets'
+   test "$actual_assets" = "$expected_assets" ||
+       fail 'the published assets are not the nine expected names'
 
-   digest_tool=$(pwd)/bin/kofun-digest
+   digest_tool=$(pwd)/bin/kofun-digest || fail 'resolving the checkout root'
    (
-       cd "$asset_dir"
+       cd "$asset_dir" || fail "entering $asset_dir"
        source_sums="kofun-$version.tar.gz.sha256"
        native_sums="kofun-native-checkpoint-$version-SHA256SUMS"
-       test "$(wc -l <"$source_sums" | tr -d ' ')" -eq 1
-       test "$(wc -l <"$native_sums" | tr -d ' ')" -eq 6
+       test "$(wc -l <"$source_sums" | tr -d ' ')" -eq 1 ||
+           fail "$source_sums is not one line"
+       test "$(wc -l <"$native_sums" | tr -d ' ')" -eq 6 ||
+           fail "$native_sums is not six lines"
        test "$(awk 'NF == 2 { print $2 }' "$source_sums")" = \
-           "kofun-$version.tar.gz"
+           "kofun-$version.tar.gz" ||
+           fail "$source_sums does not name the source archive"
        expected_native_payloads=$(printf '%s\n' \
            "kofun-native-checkpoint-$version-linux-aarch64.elf" \
            "kofun-native-checkpoint-$version-linux-x86_64.elf" \
@@ -284,13 +351,16 @@ published evidence until the release exists.
            "kofun-native-checkpoint-$version-macos-x86_64.macho" \
            "kofun-native-checkpoint-$version-windows-aarch64.exe" \
            "kofun-native-checkpoint-$version-windows-x86_64.exe" | \
-           LC_ALL=C sort)
+           LC_ALL=C sort) || fail 'building the expected payload list'
        actual_native_payloads=$(awk 'NF == 2 { print $2 }' "$native_sums" | \
-           LC_ALL=C sort)
-       test "$actual_native_payloads" = "$expected_native_payloads"
-       "$digest_tool" -c "$source_sums"
-       "$digest_tool" -c "$native_sums"
-   )
+           LC_ALL=C sort) || fail "reading the payload names from $native_sums"
+       test "$actual_native_payloads" = "$expected_native_payloads" ||
+           fail "$native_sums does not name the six checkpoint images"
+       "$digest_tool" -c "$source_sums" ||
+           fail 'the published source archive does not match its digest'
+       "$digest_tool" -c "$native_sums" ||
+           fail 'a published checkpoint image does not match its digest'
+   ) || exit 1
    ```
 
 8. **Write the notes.** The workflow generates notes from the commit range;

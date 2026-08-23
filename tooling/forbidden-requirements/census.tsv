@@ -240,7 +240,7 @@ cargo	invoke	4	required-today	required	examples/rust-shim/check.sh
 cargo	invoke	2	required-today	required	tests/build_system.sh
 zig	-	0	-	-	-
 node	invoke	4	required-today	required	.github/workflows/pages.yml
-node	invoke	7	required-today	required	Taskfile.yml
+node	invoke	8	required-today	required	Taskfile.yml
 node	invoke	6	required-today	required	bin/kofun
 node	invoke	1	required-today	required	bootstrap/native/check-macho64-signed.sh
 node	invoke	1	required-today	required	bootstrap/native/check-macho64.sh
@@ -424,6 +424,7 @@ node	source	1	required-today	required	tests/lsp/protocol_test.js
 node	source	1	required-today	required	tests/lsp/semantic_sidecar_test.mjs
 node	source	1	required-today	required	tests/lsp/visibility_test.js
 node	source	1	required-today	required	tests/release/make-invalid.mjs
+node	source	1	required-today	required	tests/release/procedure-blocks.mjs
 node	source	1	required-today	required	tests/release/validate-claims.mjs
 node	source	1	required-today	required	tests/rfc/make-invalid.mjs
 node	source	1	required-today	required	tests/rfc/validate-registry.mjs
@@ -523,6 +524,7 @@ shell-build-driver	source	1	required-today	required	framework/http/build.sh
 shell-build-driver	source	1	required-today	required	framework/tui/build.sh
 shell-build-driver	source	1	required-today	required	framework/tui/check.sh
 shell-build-driver	source	1	required-today	required	package/manager.sh
+shell-build-driver	source	1	required-today	required	release/fail-closed.sh
 shell-build-driver	source	1	required-today	off-path	scripts/graphify.sh
 shell-build-driver	source	1	required-today	required	spec/adt-match-v2/check.sh
 shell-build-driver	source	1	required-today	required	spec/aggregate-layout-v1/check.sh
