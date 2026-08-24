@@ -10,10 +10,10 @@
  * decides whether the six-host evidence a release binds is accepted. Nothing
  * failed when those two call sites survived, because nothing was looking.
  *
- * The three spellings below are the three `package/manager.sh` used to try in
- * turn before #1213 replaced the chain, which is why one gate refuses all of
- * them: a rule that named only the GNU one would leave the fallback the same
- * code already knew how to reach for.
+ * Three spellings below are the chain `package/manager.sh` used to try before
+ * #1213 replaced it. The fourth is PowerShell's built-in `Get-FileHash`, which
+ * survived in both Windows native-host lanes until #1606. One gate refuses all
+ * four so a platform fallback cannot silently restore the same dependency.
  *
  * The rule is command position, not mention. Roughly half the tree's
  * occurrences of these names are prose explaining #1213 — including this file
@@ -32,14 +32,11 @@
  * scanners disagreed about which files the tree even contains. A private copy
  * of either judgement drifts from it.
  *
- * One digest in the tree is deliberately outside this rule, and it is filed
- * rather than left silent: the Windows lane of the same workflow computes its
- * digest with PowerShell's built-in `Get-FileHash`, which this scan cannot see
- * because `matchCommands` reads shell, JavaScript, and YAML `run:` position
- * and not PowerShell. That is also a different dependency — a built-in of the
- * host being tested rather than a userland tool someone installs — and whether
- * `bin/kofun-digest` can run there at all is unmeasured. #1606 carries both
- * questions, so a passing run here means five lanes, not six.
+ * `matchCommands` understands shell, JavaScript, and YAML `run:` position, not
+ * PowerShell. The small PowerShell matcher below therefore owns only the one
+ * command this rule needs. Its positive and negative cases keep that exception
+ * as fail-closed as the shared detector: a passing scan now means all six
+ * native-host lanes, not five.
  */
 
 import { dialectOf, matchCommands, withoutComments } from '../../tooling/forbidden-requirements/detect.mjs'
@@ -51,6 +48,7 @@ const TOOLS = [
     { spelling: 'shasum', pattern: 'shasum' },
     { spelling: 'openssl dgst', pattern: String.raw`openssl[ \t]+dgst` },
 ]
+const POWERSHELL_DIGEST = /(?:^|[|;&(=])[ \t]*Get-FileHash(?=[ \t;(]|$)/gim
 
 let failures = 0
 
@@ -63,9 +61,15 @@ const fail = (message) => {
 function invocationsIn(path, body) {
     const source = withoutComments(path, body)
     const dialect = dialectOf(path)
-    return TOOLS.flatMap(({ spelling, pattern }) =>
+    const shared = TOOLS.flatMap(({ spelling, pattern }) =>
         matchCommands(source, pattern, dialect).map((text) => ({ spelling, text })),
     )
+    if (dialect !== 'yaml') return shared
+    const powershell = [...source.matchAll(POWERSHELL_DIGEST)].map((match) => ({
+        spelling: 'Get-FileHash',
+        text: match[0],
+    }))
+    return shared.concat(powershell)
 }
 
 /*
@@ -80,6 +84,7 @@ const MUST_CATCH = [
     ['catch2.sh', 'true && sha256sum file\n'],
     ['bsd.sh', 'actual=$(shasum -a 256 "$IMAGE" | awk \'{ print $1 }\')\n'],
     ['openssl.sh', 'openssl dgst -sha256 "$IMAGE"\n'],
+    ['powershell.yml', 'run: |\n  $actual = (Get-FileHash -Algorithm SHA256 $env:IMAGE).Hash\n'],
 ]
 const MUST_NOT_CATCH = [
     ['prose.sh', '# sha256sum is not used here (#1213)\n'],
@@ -87,6 +92,8 @@ const MUST_NOT_CATCH = [
     ['name.sh', 'run_sha256sum_report\n'],
     ['bsd-name.sh', 'kofun_shasum_report\n'],
     ['other-openssl.sh', 'openssl x509 -noout -subject -in cert.pem\n'],
+    ['powershell-prose.yml', 'name: Explain the Get-FileHash replacement\n'],
+    ['powershell-name.yml', 'run: |\n  Write-Output Get-FileHashReport\n'],
 ]
 
 for (const [name, body] of MUST_CATCH) {
@@ -135,7 +142,8 @@ if (files.length === 0) {
 if (failures === 0) {
     process.stdout.write(
         `PASS: none of ${files.length} runnable tracked files computes a digest with ` +
-            `${TOOLS.map((tool) => `\`${tool.spelling}\``).join(', ')}\n`,
+            `${TOOLS.map((tool) => `\`${tool.spelling}\``).join(', ')}, ` +
+            '`Get-FileHash`\n',
     )
 }
 
