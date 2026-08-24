@@ -785,7 +785,7 @@
   ],
   "evidence_digests": {
     ".github/workflows/native-hosts.yml": "ce5a6b7cc1f5034a1eb97e2fdac7e4db2a540c78086ad91a0da1cc95d8627153",
-    "Taskfile.yml": "068267bb06c2a17d1be51ee4154a38b9a5945b8d14ecebb1eee78917daf0b1f0",
+    "Taskfile.yml": "ca3313dfafa62afbae759f6a509b71210e7317d7a7164c41f73d18fe2c334426",
     "bootstrap/native/README.md": "6c470b203c3dbc327c6b601ab958c754e6f82be78c255d442307ad0c7691bc21",
     "bootstrap/native/check-macho64-signed.sh": "6fc51ddfec599ea85b8b06a5c16d68b6fdc994621cdb8ca4267e20be38141393",
     "bootstrap/native/check-macho64.sh": "d6bd52e3f6756aa607a2dc44a0117defeaaa55e64fa3f4221986da6406251e15",
@@ -798,7 +798,7 @@
     "bootstrap/selfhost/driver/corpus_reject.stdout": "b11ae682acae186b10022c3469af65b54cd03c2e88a4756eba1cbe5b0e9356f9",
     "bootstrap/stage1/README.md": "449e52413da5d35eafee5b56a7c243ee0363774b8d4110d2a3a998a49f95d52f",
     "bootstrap/stage1/SHA256SUMS": "0dc3d2677f03dfe3bd6f9da9f923315dd5f30dcaeca4768f3c63ec1f66744b94",
-    "bootstrap/stage2/README.md": "2b3fe1d2204940727ca6ee250dd805121f456e283c3e56da41d773865bfca79e",
+    "bootstrap/stage2/README.md": "0ef02972ac1dafe5d13017c13f6e46b626890271e489b1a910a222a855b1cc0a",
     "bootstrap/stage2/fixtures/borrowed_move_text.kofun": "34502461891e7c8f42c9017e9fbfc857e54b10ca4fe59551be9ab9ab22d2c1b6",
     "bootstrap/wasm/fixtures/unsupported_text.kofun": "e0a45136410ddb85e9f5b3e5c39e7903d96da39aa53aaf3078d2555b4f383864",
     "bootstrap/wasm/object_arena_check.sh": "c415a46c7b83493ce72f07cd846d895ddf0980dc0f83e36023cb57fadb5f732f",

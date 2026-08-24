@@ -29,6 +29,7 @@ export const GROUPS = Object.freeze([
             'selfhost-b6-policy', 'selfhost-b6-acquisition-identity',
             'selfhost-native', 'stage1-adapter', 'stage2', 'stage2-events', 'sha256-pair',
             'stage2-pair-coverage', 'stage2-pair-calls', 'stage2-pair-mirror',
+            'stage2-pair-host-primitives-decision',
             'native', 'native-host-evidence', 'wasm',
             'wasm-host-abi', 'wasm-host-profile', 'wasi-command-profile',
             'wasi-host-matrix-policy', 'atomic-write-authority-contract',
@@ -85,7 +86,7 @@ export const GROUPS = Object.freeze([
         tasks: [
             'preflight',
             'task-help', 'gate-reachability', 'optional-tool-skips', 'discovery', 'discovery-sanitizer-reuse',
-            'cli-framework', 'tui-framework', 'build-system',
+            'cli-framework', 'native-cli-action-binding-decision', 'tui-framework', 'build-system',
             'verify-object-reuse', 'compile-census', 'packages', 'typed-sidecar-spec', 'typed-sidecar-codec',
             'typed-sidecar-captures', 'typed-sidecar-projector', 'upgrade-patch', 'documentation-index', 'ownership-view',
             'workspace-upgrade-transaction-decision',
@@ -103,6 +104,7 @@ export const GROUPS = Object.freeze([
             'directory-authority-contract', 'http-carrier-profile',
             'stdlib-partial-target-support-decision',
             'process-capture-carrier-decision', 'directory-enumeration-carrier-decision',
+            'live-https-get-adapter-decision', 'atomic-publish-if-absent-decision',
             'benchmark-summary', 'benchmark-report-spec', 'benchmark-report-model',
             'benchmark-report-comparison', 'kofun-digest-model',
             'capabilities'

@@ -1,0 +1,32 @@
+{
+  "schema": "kofun.stage2-pair-host-primitives-v1/v1",
+  "issue": 1513,
+  "selected_option": "A-compiler-private-host-primitives",
+  "visibility": "compiler-private-not-user-callable",
+  "unicode": {
+    "operation": "stage2_unicode_scalar_at",
+    "input": "validated-utf8-Text-and-byte-offset",
+    "semantics": "decode-one-scalar-at-a-code-point-boundary",
+    "result": "UnicodeScalar-or-typed-index-error",
+    "consumer": "identifier_start_at-and-c_identifier_name"
+  },
+  "file_identity": {
+    "operation": "stage2_same_file",
+    "input": "two-driver-authorized-paths",
+    "identity": "text-equality-or-followed-final-symlink-st_dev-and-st_ino",
+    "missing_output": "Different",
+    "lookup_failure": "typed-refusal-before-output-open",
+    "normalization_substitute": false
+  },
+  "authority": {
+    "source": "compiler-driver-host-boundary",
+    "ordinary_program_access": false
+  },
+  "pair": {
+    "gate": "stage2-pair-host-primitives",
+    "serialization_owner": 1483,
+    "unicode_fixture": "non-ASCII-declaration-and-call-spelling-byte-identical",
+    "file_fixture": "alias-output-refused-before-source-replacement"
+  },
+  "claims_advance": false
+}

@@ -1,0 +1,41 @@
+{
+  "schema": "kofun.live-https-get-adapter-v1/v1",
+  "issue": 1577,
+  "selected_option": "A-explicit-Network-plus-TlsProvider",
+  "target": {
+    "backend": "c11-stage2",
+    "release": "linux-x86_64",
+    "others": "refuse-before-artifact-publication"
+  },
+  "request": {
+    "method": "GET-only",
+    "scheme": "https-only",
+    "success_status": "200-only",
+    "redirect_policy": "caller-origin-allowlist-max-five"
+  },
+  "composition": {
+    "http": "accepted-HTTP-1.1-core",
+    "network": "explicit-affine-Network-authority",
+    "tls": "pinned-independently-versioned-TlsProvider",
+    "roots": "explicit-digested-root-bundle-authority",
+    "libcurl": false
+  },
+  "limits": {
+    "dns_answers": 16,
+    "connect_attempts": 4,
+    "redirect_hops": 5,
+    "header_bytes": 65536,
+    "body_bytes": 67108864,
+    "chunk_bytes": 65536,
+    "total_deadline_seconds": 300,
+    "idle_deadline_seconds": 30
+  },
+  "security": {
+    "peer_policy": "authorize-DNS-answer-and-connected-peer-each-hop",
+    "ambient_proxy_credentials_roots": false,
+    "hostname_and_chain_verification": "mandatory-no-insecure-fallback"
+  },
+  "cancellation": "explicit-authority-checked-at-DNS-connect-TLS-headers-and-each-body-read",
+  "output": "owned-bounded-Bytes-chunks-with-complete-metadata",
+  "claims_advance": false
+}

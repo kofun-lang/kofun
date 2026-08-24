@@ -9,6 +9,12 @@ not that anything ships. The first bounded implementation slice is #644 — the
 HTTP/1.1 core over the deterministic scripted transport — and live DNS,
 socket, and TLS adapters remain separate children.
 
+Issue #1577 records the first live-adapter decision in
+[`live-https-get-adapter-v1`](../../spec/live-https-get-adapter-v1/PROFILE.md):
+explicit `Network` authority plus a pinned `TlsProvider` on a bounded
+`linux-x86_64` checkpoint. The profile is not implementation evidence and does
+not change this document's status.
+
 Under the standard-library charter the client is an **independently
 versioned official module**: its TLS policy and root-store handling must be
 updateable without a compiler release. Closed #24 is evidence of a bounded

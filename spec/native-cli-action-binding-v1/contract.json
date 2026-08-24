@@ -1,0 +1,43 @@
+{
+  "schema": "kofun.native-cli-action-binding-v1/v1",
+  "issue": 1551,
+  "selected_option": "A-static-typed-action-table",
+  "target": {
+    "backend": "native-x86_64-framework-template",
+    "release": "linux-x86_64",
+    "others": "refuse-before-application-publication"
+  },
+  "binding": {
+    "reference": "current-file-top-level-FunctionId",
+    "signature": "fn(take-context-CliActionContext,read-invocation-CliInvocation)-to-CliActionResult",
+    "table": "declaration-order-command-id-plus-resolved-FunctionId",
+    "missing_or_incompatible": "build-time-refusal-naming-command-and-target"
+  },
+  "invocation": {
+    "positions": "declaration-order-Text-values",
+    "position_limit": 4,
+    "options": "declaration-order-tagged-Bool-or-Text-values",
+    "option_limit": 8,
+    "raw_argv_access": false
+  },
+  "result": {
+    "carrier": "CliActionResult-with-Ready-or-Revoked-context",
+    "status_min": 0,
+    "status_max": 125,
+    "stdout_bytes": 65536,
+    "stderr_bytes": 65536,
+    "partial_output": false
+  },
+  "authority": {
+    "source": "explicit-CliActionContext-derived-from-RootAuthority",
+    "ambient_host_access": false
+  },
+  "compatibility": {
+    "fixed_actions": "migrate-to-private-functions-on-the-same-ABI"
+  },
+  "publication": {
+    "link": "internal-static-code-image-composition",
+    "final_build_toolchain": "none"
+  },
+  "claims_advance": false
+}

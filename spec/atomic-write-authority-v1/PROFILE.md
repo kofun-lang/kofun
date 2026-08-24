@@ -133,6 +133,11 @@ by #1241/#1193/#1242-#1246, #1194's runtime root, and #1196's entitlement ABI.
 It adds no syntax, no HIR fact, and no effect identity. `check` may validate
 while `build` and `run` refuse, until those foundations exist.
 
+Create-if-absent publication is a distinct operation with opposite collision
+semantics. Issue #1578 selects the bounded Linux decision in
+[`atomic-publish-if-absent-v1`](../atomic-publish-if-absent-v1/PROFILE.md); this
+replacement authority neither implements nor implies that profile.
+
 Bounded v1 has no in-flight cancellation token and no ambient cancellation
 state. A caller may decline before replacement; an invoked adapter runs to one
 terminal syscall outcome.

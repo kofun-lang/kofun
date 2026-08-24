@@ -9,6 +9,12 @@ bootstrap subset already exercised by the Stage 1 seed:
 - `args`, `read_text`, `write_text`, `chars`, `len`, `text_slice`,
   `contains`, `starts_with`, `is_digit`, `is_space`, and `to_text`.
 
+The future compiler-private Unicode-scalar and same-file host operations are
+specified separately in
+[`stage2-pair-host-primitives-v1`](../../spec/stage2-pair-host-primitives-v1/PROFILE.md).
+That decision adds no builtin to ordinary programs and is not implemented by
+the canonical pair yet.
+
 The frontend performs five concrete operations:
 
 1. lexical scanning that ignores comments and treats escaped strings as single
