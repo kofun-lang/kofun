@@ -250,6 +250,39 @@ grep '^static KofunRecord_Packet kofun_fn_make_packet' \
     "$WORK/record_functions.c" >/dev/null ||
     fail 'Stage 2 did not lower the nominal record result'
 
+# #1555. `record_c_type_name` is unbounded, so the two result spellings must be
+# too. The old 512-byte arrays accepted this source and silently dropped the
+# close of the zero value (and part of the function result), leaving generated
+# C that failed only when cc saw it.
+long_record=R
+long_index=0
+while [ "$long_index" -lt 600 ]; do
+    long_record="${long_record}a"
+    long_index=$((long_index + 1))
+done
+printf 'type %s = {\n    value: Int,\n}\n\nfn relay(report: %s) -> %s {\n    return report\n}\n\nfn main() -> Int {\n    let constructed: %s = %s(value: 3)\n    let returned: %s = relay(constructed)\n    print(returned.value)\n    return 0\n}\n' \
+    "$long_record" "$long_record" "$long_record" "$long_record" \
+    "$long_record" "$long_record" >"$WORK/long_record_name.kofun"
+"$WORK/kofun-stage2" \
+    "$WORK/long_record_name.kofun" \
+    "$WORK/long_record_name.c" \
+    "$WORK/long_record_name.ir" \
+    "$WORK/long_record_name.tokens" >/dev/null ||
+    fail 'Stage 2 refused the long record type name'
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+    "$WORK/long_record_name.c" -o "$WORK/long_record_name" ||
+    fail 'the long record type name produced malformed C'
+"$WORK/long_record_name" >"$WORK/long_record_name.stdout" \
+    2>"$WORK/long_record_name.stderr" ||
+    fail 'the long record type program did not run'
+test "$(cat "$WORK/long_record_name.stdout")" = 3 ||
+    fail 'the long record type program printed unexpected output'
+test ! -s "$WORK/long_record_name.stderr" ||
+    fail 'the long record type program wrote unexpected stderr'
+grep -F "static KofunRecord_${long_record} kofun_fn_relay" \
+    "$WORK/long_record_name.c" >/dev/null ||
+    fail 'the long record result spelling disagrees with its typedef'
+
 expect_stage2_failure() {
     stem=$1
     set +e
@@ -426,6 +459,7 @@ printf '%s\n' \
     'PASS: blocks, conditions, loops, and lists stay separable from records' \
     'PASS: duplicate, missing, unknown, wrong-type, mutation, and move diagnostics are exact' \
     'PASS: Stage 2 executes nominal Int/Bool/Text/List[Int] records in AggregateLayout order' \
+    'PASS: record result and failure spellings grow with an unbounded source type name' \
     'PASS: a bounded List[Int] field lands at its aligned offset, not its size' \
     'PASS: a rejected record argument fails the compile instead of reaching the C' \
     'PASS: the rejection survives let, return, arithmetic, and condition positions' \

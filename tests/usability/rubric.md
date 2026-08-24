@@ -170,6 +170,8 @@ terminology**. A row that can only be explained with it scores at most 1.
 Recorded 2026-08-02 against `origin/main@69f9179`. This is a first pass by
 one reviewer; the procedures above exist so a second reviewer can reproduce
 or contest each number. Counted columns carry their measurement in brackets.
+Row 2 was re-reviewed 2026-08-24 with the #1576 candidate after unannotated
+declared-enum call results became valid in both `check` and `build`.
 Row 7 was re-reviewed 2026-08-08 after
 `695b863c87a194c98143d866666d8ada8a435759` expanded the audited Stage 1
 source to 3,523 lines; its M7 score and measured `b11, d1, c3` remain unchanged.
@@ -177,7 +179,7 @@ source to 3,523 lines; its M7 score and measured `b11, d1, c3` remain unchanged.
 | # | Item | M1 surprises | M2 annotations | M3 delimiters | M4 hidden flow | M5 diagnostics | M6 formatter | M7 beginner |
 |---|---|---|---|---|---|---|---|---|
 | 1 | list pipeline | 1 [2] | 3 [0] | 3 [b7, d1, c1] | 3 [0] | 1 | n/a | 2 |
-| 2 | parser Result x3 | 1 [2] | 0 [3] | 1 [b47, d6, c13] | 3 [0] | 0 | n/a | 2 |
+| 2 | parser Result x3 | 2 [1] | 3 [0] | 1 [b47, d6, c13] | 3 [0] | 2 | n/a | 2 |
 | 3 | read/edit/take | 1 [2] | 3 [0] | 3 [b17, d1, c4] | 3 [0] | 2 | n/a | 3 |
 | 4 | ADT + record + match | 2 [1] | 0 [6] | 3 [b38, d2, c6] | 3 [0] | 2 | n/a | 3 |
 | 5 | higher-order callback | n/a | n/a | n/a | n/a | 1 | n/a | n/a |
@@ -198,12 +200,14 @@ against source that no toolchain accepts would be scoring a wish.
 - **1.M5 = 1.** "unknown Core function `filter`" names a location and
   misdescribes the cause — `filter` is not unknown, it is unavailable in that
   backend profile.
-- **2.M2 = 0.** Three `: ParseResult` annotations are required, and required
-  *by `build` only* — `check` accepts the file without them. That is the
-  explicit 0 anchor.
-- **2.M5 = 0.** Deleting one of those annotations produces
-  `error: invalid initializer / KofunEnumValue kofun_match_value = k_b11;`
-  from the host C compiler, against generated code the author never wrote.
+- **2.M1 = 2.** The check/build split was one of this row's two witnessed
+  surprises and #1576 removed it. The remaining surprise is that a concrete
+  enum binding can be matched but cannot be mutable (`E2S32`).
+- **2.M2 = 3.** The three call-result bindings infer `ParseResult`; the same
+  annotation-free file passes both `check` and `build`.
+- **2.M5 = 2.** With no required annotation to delete, the deliberate error
+  removes the first `Failed` arm. `E2S25` names both the non-exhaustive match
+  rule and the missing `Failed` constructor, but does not suggest a fix.
 - **4.M2 = 0.** Six required binding annotations: `: Shape` three times and
   `: Extent` three times.
 - **4.M5 = 2**, not 3: the record diagnostic is excellent — "bind record

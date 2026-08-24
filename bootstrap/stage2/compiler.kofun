@@ -15040,7 +15040,9 @@ fn lower_body(
             let storage = "k_b" + binding_id
             cursor = skip_trivia(source, token_end(source, cursor))
             let mut binding_type = "Int"
+            let mut annotated = false
             if cursor < len(source) && token_text(source, cursor) == ":" {
+                annotated = true
                 cursor = skip_trivia(source, token_end(source, cursor))
                 if cursor >= len(source) ||
                    token_kind(source, cursor) != "identifier" {
@@ -15096,6 +15098,22 @@ fn lower_body(
                 return "error[E2S11]: expected `=` at byte " + to_text(cursor)
             }
             let value_start = skip_trivia(source, token_end(source, cursor))
+            # #1576. Scope construction already infers the declared result of
+            # a direct call, but lowering used only a source annotation to
+            # select the concrete-enum carrier. Preserve the deliberately
+            # narrow inference surface: only an unannotated initializer whose
+            # inferred type names a declared enum enters the enum ladder.
+            if !annotated {
+                let inferred_type = initializer_type(
+                    source,
+                    hir,
+                    function_open,
+                    value_start
+                )
+                if enum_constructor_count(source, inferred_type) >= 0 {
+                    binding_type = inferred_type
+                }
+            }
             # #1242. There is no route from safe source to an authority value.
             # Root authority is created once by the runtime and handed to the
             # entrypoint; nothing else makes one, and no literal, record

@@ -114,6 +114,11 @@ tasks:
       - "sh bootstrap/selfhost/frontend/check-frontend.sh"
       - "sh bootstrap/selfhost/c11/check-c11.sh"
 
+  selfhost-hir-identifiers:
+    desc: "Prove selfhost HIR retains complete identifier spellings and spans"
+    cmds:
+      - "sh tests/selfhost-hir-identifiers/check.sh"
+
   selfhost-self-compile:
     desc: "Compile canonical S with A1 and verify deterministic strict-C11 C2"
     cmds:
@@ -1305,6 +1310,7 @@ tasks:
             check \
             bootstrap \
             selfhost-profile \
+            selfhost-hir-identifiers \
             selfhost-self-compile \
             selfhost-driver-diagnostics \
             selfhost-generations \

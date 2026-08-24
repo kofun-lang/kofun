@@ -1,0 +1,8 @@
+# #1547. The declaration has 64 `a` bytes. Its 63-byte prefix is a distinct,
+# undeclared name and must not alias the stored binding.
+fn main() {
+    let aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa = 1
+    if aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa == 1 {
+        print("bad")
+    }
+}

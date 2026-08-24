@@ -33,17 +33,11 @@
 # `outcome` is match-only in this Core slice" (E2S32) — an enum binding can
 # be matched but not reassigned. #921 owns that.
 #
-# The three `: ParseResult` annotations look redundant and are not. Delete
-# them and `./bin/kofun check` still says `ok`; `./bin/kofun build` then
-# fails inside the generated C with
-#
-#     error: invalid initializer
-#         KofunEnumValue kofun_match_value = k_b11;
-#
-# `check` passing is not evidence that a program builds. This corpus found
-# that twice — here and in corpus item 4 — and rubric.md scores it under
-# "diagnostic quality", because the second failure is reported by the host C
-# compiler against generated code the author never wrote.
+# The three bindings below need no `: ParseResult` annotation. Stage 2 carries
+# the declared enum return type through an unannotated call initializer, so
+# `check` and `build` now agree and the generated C uses `KofunEnumValue`.
+# The gate also deletes the first `Failed` arm and requires the frontend to
+# name that missing constructor; rubric.md uses that deliberate error for M5.
 
 type ParseResult =
     | Parsed(value: Int)
@@ -72,15 +66,15 @@ fn step_checksum(value: Int) -> ParseResult {
 
 fn parse(source: Int) -> Int {
     let mut code = 0
-    let digits: ParseResult = step_digits(source)
+    let digits = step_digits(source)
     match digits {
         Failed(reason) => { code = 0 - reason },
         Parsed(number) => {
-            let ranged: ParseResult = step_range(number)
+            let ranged = step_range(number)
             match ranged {
                 Failed(reason) => { code = 0 - reason },
                 Parsed(bounded) => {
-                    let checked: ParseResult = step_checksum(bounded)
+                    let checked = step_checksum(bounded)
                     match checked {
                         Failed(reason) => { code = 0 - reason },
                         Parsed(value) => { code = value },
