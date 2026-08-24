@@ -136,13 +136,29 @@ jobs:
         with:
           name: native-images-${{ github.sha }}
           path: native-images
-      - name: Verify architecture, digest, and execution
+      - name: Verify digest with the repository SHA-256
+        shell: bash
+        env:
+          IMAGE: native-images/${{ matrix.image }}
+          CHECKSUM_PATH: ${{ matrix.checksum_path }}
+        run: |
+          set -eu
+          expected=$(awk -v path="$CHECKSUM_PATH" '$2 == path { print $1 }' \
+            bootstrap/native/SHA256SUMS)
+          test -n "$expected"
+          # Git for Windows supplies this bash, and both matching runner images
+          # supply the C11 compiler the bootstrap already requires. Keep this
+          # comparison under the repository's tested SHA-256 implementation,
+          # exactly like the Linux and macOS lanes (#1213, #1606).
+          actual=$(CC=gcc ./bin/kofun-digest "$IMAGE" | awk '{ print $1 }')
+          test "$actual" = "$expected"
+          printf 'KOFUN_IMAGE_DIGEST=%s\n' "$actual" >>"$GITHUB_ENV"
+      - name: Verify architecture and execution
         shell: pwsh
         env:
           TARGET: ${{ matrix.target }}
           EXPECTED_ARCH: ${{ matrix.architecture }}
           IMAGE: native-images/${{ matrix.image }}
-          CHECKSUM_PATH: ${{ matrix.checksum_path }}
           RUNNER_LABEL: ${{ matrix.runner }}
         run: |
           $ErrorActionPreference = 'Stop'
@@ -150,12 +166,10 @@ jobs:
           if ($actualArch -ne $env:EXPECTED_ARCH) {
             throw "runner architecture $actualArch, expected $env:EXPECTED_ARCH"
           }
-          $line = Get-Content bootstrap/native/SHA256SUMS |
-            Where-Object { $_ -match "  $([regex]::Escape($env:CHECKSUM_PATH))$" }
-          if (@($line).Count -ne 1) { throw 'expected exactly one checksum row' }
-          $expected = ($line -split '  ')[0]
-          $actual = (Get-FileHash -Algorithm SHA256 $env:IMAGE).Hash.ToLowerInvariant()
-          if ($actual -ne $expected) { throw "digest $actual, expected $expected" }
+          $actual = $env:KOFUN_IMAGE_DIGEST
+          if ($actual -notmatch '^[0-9a-f]{64}$') {
+            throw "repository digest step returned an invalid digest: $actual"
+          }
           $program = Join-Path $PWD "native-$($env:TARGET).exe"
           Copy-Item $env:IMAGE $program
           $stdout = Join-Path $PWD 'native.stdout'
