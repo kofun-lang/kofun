@@ -11,6 +11,14 @@
 > with direct ELF64, PE32+, and Mach-O 64 image writing. The ledger amendment
 > and `spec/native-toolchain-v1/contract.json` are authoritative.
 
+> **Amended: `RFC-0018/A02` (2026-08-24).** The accepted text below is
+> preserved as written. "The whole path" is derived from the fixed-point
+> acquisition set, not a repository-name list: repositories that supply a
+> required compile, link, package, test, or rebuild artifact are inside the
+> completion unit; consumers are outside until such an artifact becomes an
+> acquisition input. The ledger amendment and machine-readable contract are
+> authoritative.
+
 This RFC records the completion contract behind the native-toolchain direction
 in [#1218](https://github.com/kofun-lang/kofun/issues/1218), the bootstrap
 reproduction work in [#274](https://github.com/kofun-lang/kofun/issues/274),

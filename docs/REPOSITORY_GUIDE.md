@@ -109,14 +109,26 @@ What is deliberately not here, and where it lives instead:
 | what | repository |
 |---|---|
 | official site, docs renderer, browser playground, delivery-planning snapshots, long-range issue catalogue | [`kofun-lang/kofun-site`](https://github.com/kofun-lang/kofun-site) |
+| package resolver and content-addressed store above this repository's local manifest/lock/artifact layer | [`kofun-lang/kofun-pm`](https://github.com/kofun-lang/kofun-pm) |
+| application-framework contracts, capability injection, and replay | [`kofun-lang/kofun-boot`](https://github.com/kofun-lang/kofun-boot) |
 | VS Code extension: metadata, TextMate highlighting, snippets, packaging | [`kofun-lang/kofun-vscode`](https://github.com/kofun-lang/kofun-vscode) |
 | Tree-sitter grammar, editor queries, recovery corpus | [`kofun-lang/tree-sitter-kofun`](https://github.com/kofun-lang/tree-sitter-kofun) |
 | benchmark programs, harnesses, and recorded results | [`kofun-lang/kofun-benchmarks`](https://github.com/kofun-lang/kofun-benchmarks) |
 
-Each reads this repository, never the other way. No gate here reads anything
-from them, and `task verify` needs no npm, Next.js, or Cloudflare toolchain —
-which became true when the grammar left, because it was the last npm project
-here and `task tree-sitter` ran `npm ci` inside `verify`.
+RFC-0018/A02 classifies these repositories by artifact direction, not by name.
+None supplies an artifact to the fixed-point acquisition set today, so all are
+outside `kofun-only-native/v1`; a repository enters the completion unit in the
+same change that makes one of its artifacts a required compile, link, package,
+test, or rebuild input. In particular, the in-repository package layer remains
+the current toolchain input until `bin/kofun package` actually resolves through
+`kofun-pm`.
+
+No qualification gate reads a sibling, and `task verify` needs no npm, Next.js,
+or Cloudflare toolchain. The post-main-CI Pages publication workflow does check
+out `kofun-site` and run its Node/npm renderer; that consumption is publication,
+not fixed-point qualification. The no-npm property of `task verify` became true
+when the grammar left, because it was the last npm project enrolled there and
+`task tree-sitter` ran `npm ci` inside `verify`.
 
 The language server is the case that decides where a tool belongs. It stays in
 `tooling/lsp/` because `tests/lsp/check.sh` requires the bundle it ships to

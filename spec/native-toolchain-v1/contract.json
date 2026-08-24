@@ -8,6 +8,7 @@
     ],
     "meaning": "A production Kofun release can compile, link, package, test, and rebuild its supported native programs and its own full-language toolchain for Linux, Windows, and macOS without requiring a C/C++ compiler, assembler, system linker, Rust, Cargo, Zig, Node.js, Python, a shell build driver, or a second build language.",
     "required_language_for_shipped_toolchain": "Kofun",
+    "completion_unit": "A repository is inside kofun-only-native/v1 if and only if one of its artifacts is required to compile, link, package, test, or rebuild the Kofun toolchain at the exact release commit and therefore appears in the fixed-point acquisition set; inputs are inside and consumers are outside.",
     "required_native_targets": [
       "native-x86_64-linux-elf64",
       "native-aarch64-linux-elf64",
