@@ -206,6 +206,11 @@ tasks:
     cmds:
       - "sh bootstrap/selfhost/check-b6-policy.sh"
 
+  selfhost-b6-acquisition-identity:
+    desc: "Prove the B6 acquisition identity is non-self-referential and policy-bound"
+    cmds:
+      - "sh bootstrap/selfhost/check-b6-policy.sh --identity-contract"
+
   # RFC-0001 stage 1. The canonical contract and its bounded Stage 2
   # projection, pinned against each other. The seed grants no capability;
   # the gate refuses one appearing.
@@ -913,6 +918,26 @@ tasks:
     cmds:
       - "sh spec/native-toolchain-v1/check.sh directory-authority"
 
+  stdlib-partial-target-support-decision:
+    desc: "Verify universal portable rows and bounded target checkpoints remain distinct"
+    cmds:
+      - "node spec/decision-profiles-v1/check.mjs stdlib-partial-target-support"
+
+  workspace-upgrade-transaction-decision:
+    desc: "Verify the single-file apply, recovery, authority, and undo decision"
+    cmds:
+      - "node spec/decision-profiles-v1/check.mjs workspace-upgrade-transaction"
+
+  process-capture-carrier-decision:
+    desc: "Verify the bounded C11 process-capture carrier and termination decision"
+    cmds:
+      - "node spec/decision-profiles-v1/check.mjs process-capture-carrier"
+
+  directory-enumeration-carrier-decision:
+    desc: "Verify the packed directory snapshot, provider, and Linux lookup decision"
+    cmds:
+      - "node spec/decision-profiles-v1/check.mjs directory-enumeration-carrier"
+
   fixed-decimal-profile:
     desc: "Verify the Decimal-backed Fixed[S] carrier and conversion profile"
     cmds:
@@ -1319,6 +1344,7 @@ tasks:
             selfhost-declared-inputs \
             selfhost-b6-report \
             selfhost-b6-policy \
+            selfhost-b6-acquisition-identity \
             selfhost-native \
             stage2 \
             stage2-events \
@@ -1411,6 +1437,7 @@ tasks:
             move-assertion \
             usability-corpus \
             capabilities \
+            stdlib-partial-target-support-decision \
             build-system \
             packages \
             package-roots \
@@ -1443,6 +1470,9 @@ tasks:
             typed-sidecar-captures \
             typed-sidecar-projector \
             upgrade-patch \
+            workspace-upgrade-transaction-decision \
+            process-capture-carrier-decision \
+            directory-enumeration-carrier-decision \
             documentation-index \
             audited-claim \
             ownership-view \

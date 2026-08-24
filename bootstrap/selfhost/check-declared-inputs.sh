@@ -39,8 +39,11 @@ manifest="$output/declared-inputs.tsv"
 test -s "$manifest" || fail "declared-inputs.tsv is missing or empty"
 
 schema=$(recorded_value "$manifest" schema)
-test "$schema" = 'kofun.selfhost-declared-inputs/v1' ||
+test "$schema" = 'kofun.selfhost-declared-inputs/v2' ||
     fail "unknown declared-input schema \`$schema\`"
+test "$(recorded_value "$manifest" acquisition_identity_schema)" = \
+    'kofun.selfhost-b6-acquisition/v1' ||
+    fail "unknown acquisition identity schema"
 
 # The manifest states facts about the checkout, so a path inside it is
 # repository-relative by construction; an absolute one would describe one
@@ -73,6 +76,16 @@ while IFS= read -r row; do
         fail "altered: declared input \`$path\` is $have, not the declared $want"
 done <"$manifest"
 test "$declared" -gt 0 || fail "the manifest declares no input"
+
+grep -qF '|path=bootstrap/manifest.json|' "$manifest" ||
+    fail "the complete bootstrap manifest is not an acquisition input"
+grep -qF '|path=bootstrap/selfhost/b6/POLICY.md|' "$manifest" ||
+    fail "the B6 policy is not present in the external packet"
+grep -qF '|path=bootstrap/selfhost/b6/producer-identities.tsv|' "$manifest" ||
+    fail "the producer identity boundary is not present in the external packet"
+if grep -qF '|path=bootstrap/selfhost/b6/closure-registry.json|' "$manifest"; then
+    fail "the mutable B6 closure registry is an acquisition input"
+fi
 
 # Every file the chain reads must be declared. The corpus and runtime sets
 # grow by adding files, and a file added there without a manifest row is
@@ -128,3 +141,4 @@ test -n "$(recorded_value "$manifest" toolchain_policy)" ||
 printf 'PASS: %s declared inputs are present with their declared bytes\n' "$declared"
 printf 'PASS: the checkout carries no corpus, evidence, runtime, or vendored input the manifest omits\n'
 printf 'PASS: the set digests and toolchain policy resolve, and the reconstruction command names a declared file\n'
+printf 'PASS: the whole manifest and policy bundle are inputs while the B6 closure registry is not\n'

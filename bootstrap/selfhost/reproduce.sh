@@ -122,6 +122,8 @@ done
 
 declared_count=$(grep -c '^input|' "$manifest")
 acquisition_digest=$(digest_of "$manifest")
+policy_digest=$(digest_of bootstrap/selfhost/b6/POLICY.md)
+producer_identities_digest=$(digest_of bootstrap/selfhost/b6/producer-identities.tsv)
 
 # Every observation file the validated bundle retained, one digest over the
 # set. `$output/corpus/<case>/` is a directory per case, so the files are one
@@ -156,15 +158,31 @@ work="$output/.report.$$"
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 mkdir -p "$work"
 
+{
+    printf 'schema|kofun.selfhost-b6-policy-bundle/v1\n'
+    printf 'input|role=policy|path=bootstrap/selfhost/b6/POLICY.md|sha256=%s\n' \
+        "$policy_digest"
+    printf 'input|role=producer-identities|path=bootstrap/selfhost/b6/producer-identities.tsv|sha256=%s\n' \
+        "$producer_identities_digest"
+} >"$work/policy-bundle.tsv"
+policy_bundle_digest=$(digest_of "$work/policy-bundle.tsv")
+
 # The semantic section. Two builders must agree on every row here, and on
 # nothing outside it.
 {
-    printf 'result|report_schema|kofun.selfhost-b6-report/v1\n'
+    printf 'result|report_schema|kofun.selfhost-b6-report/v2\n'
     printf 'result|command|sh bootstrap/selfhost/reproduce.sh OUTPUT REPORT\n'
     printf 'result|criterion|%s\n' "$KOFUN_GENERATIONS_CRITERION"
     printf 'result|normalized_environment|%s\n' "$KOFUN_GENERATIONS_ENVIRONMENT"
     printf 'result|declared_inputs_schema|%s\n' \
         "$(recorded_value "$manifest" schema)"
+    printf 'result|acquisition_identity_schema|%s\n' \
+        "$(recorded_value "$manifest" acquisition_identity_schema)"
+    printf 'result|policy_bundle_schema|kofun.selfhost-b6-policy-bundle/v1\n'
+    printf 'result|policy_bundle_sha256|%s\n' "$policy_bundle_digest"
+    printf 'result|policy_sha256|%s\n' "$policy_digest"
+    printf 'result|producer_identities_sha256|%s\n' \
+        "$producer_identities_digest"
     printf 'result|inputs_sufficient_schema|%s\n' \
         "$(recorded_value "$sufficient" schema)"
     printf 'result|fixed_point_schema|%s\n' \
@@ -221,7 +239,7 @@ result_digest=$(digest_of "$work/result.tsv")
 } >"$work/provenance.tsv"
 
 {
-    printf 'schema|kofun.selfhost-b6-report/v1\n'
+    printf 'schema|kofun.selfhost-b6-report/v2\n'
     printf 'result_sha256|%s\n' "$result_digest"
     cat "$work/result.tsv"
     cat "$work/provenance.tsv"

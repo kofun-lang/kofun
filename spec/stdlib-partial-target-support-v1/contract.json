@@ -1,0 +1,38 @@
+{
+  "schema": "kofun.stdlib-partial-target-support-v1/v1",
+  "issue": 1531,
+  "selected_option": "A-universal-only",
+  "row": {
+    "artifact": "stdlib/capabilities.tsv",
+    "subject": "capability-on-every-declared-toolchain"
+  },
+  "targets": {
+    "authority": "tests/conformance/backends",
+    "identity": "adapter-filename-and-BACKEND_NAME-must-agree",
+    "disposition": "every-declared-target-is-supported-or-executably-unsupported"
+  },
+  "states": {
+    "zero_of_n": "planned",
+    "partial": "planned",
+    "full": "implemented"
+  },
+  "partial_publication": {
+    "stdlib_row": "remains-planned-and-cites-the-open-full-support-owner",
+    "target_matrix": "authoritative-per-target-execution-or-refusal",
+    "mvp": "bounded-checkpoint-only",
+    "release_claim": "checkpoint-with-exact-executing-targets"
+  },
+  "target_disposition": {
+    "supported": "focused-production-gate-executes",
+    "unsupported": "diagnostic-and-no-runnable-artifact",
+    "unadapted": "explicit-unsupported-refusal"
+  },
+  "concurrency": {
+    "row": "portable-concurrency",
+    "immediate_state": "planned",
+    "until_full_support": 1167,
+    "close_condition": "all-declared-targets-execute-focused-gate"
+  },
+  "future_target": "reopen-portable-row-until-supported-or-refusing-adapter-executes",
+  "claims_advance": false
+}

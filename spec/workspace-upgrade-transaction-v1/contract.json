@@ -1,0 +1,60 @@
+{
+  "schema": "kofun.workspace-upgrade-transaction-v1/v1",
+  "issue": 1532,
+  "selected_option": "A-single-file-automatic-v1",
+  "transaction": {
+    "files": 1,
+    "multifile": "preview-only",
+    "observers": "all-direct-path-readers-for-the-one-target",
+    "linearization": "same-directory-atomic-rename",
+    "post_rename_failure": "committed-durability-unknown"
+  },
+  "recovery": {
+    "phases": [
+      "no-intent",
+      "intent-durable",
+      "stage-partial",
+      "stage-durable",
+      "publication-complete",
+      "commit-durable",
+      "cleanup-partial"
+    ],
+    "prepublication": "rollback-if-old-bytes-otherwise-refuse",
+    "postpublication": "roll-forward-if-new-bytes-otherwise-refuse",
+    "repeated_crash": "same-digest-directed-transition-is-idempotent",
+    "tamper": "typed-refusal-without-writing"
+  },
+  "authorization": {
+    "schema": "kofun.workspace-write-authority/v1",
+    "one_shot": true,
+    "fresh_for": "apply-recover-and-undo",
+    "journal_alone": false,
+    "git_or_remote": false
+  },
+  "filesystem": {
+    "profiles": ["ext4", "xfs", "btrfs", "tmpfs"],
+    "path_resolution": "openat2-beneath-no-magiclinks-no-symlinks",
+    "hard_links": "refuse-link-count-not-one",
+    "mounts_and_submodules": "refuse-before-journal-or-stage",
+    "lock": "advisory-cooperating-writers-only",
+    "metadata": "preserve-mode-refuse-owner-group-xattr-acl-change-timestamps"
+  },
+  "journal": {
+    "schema": "kofun.workspace-upgrade-journal/v1",
+    "encoding": "canonical-json-utf8-newline",
+    "location": ".kofun/transactions",
+    "create": "exclusive-under-preopened-repository-root",
+    "commit_point": "target-rename",
+    "sync_order": "intent-journal-stage-stage-journal-rename-target-directory-commit-journal-cleanup-directory"
+  },
+  "limits": {
+    "files": 1,
+    "source_bytes": 16777216,
+    "path_bytes": 1024,
+    "edits": 4096,
+    "retained_transactions": 32,
+    "retained_bytes": 536870912
+  },
+  "undo": "fresh-authorized-single-file-transaction-with-current-new-digest",
+  "claims_advance": false
+}

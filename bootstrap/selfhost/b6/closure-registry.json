@@ -1,0 +1,9 @@
+{
+  "schema": "kofun.selfhost-b6-closure-registry/v1",
+  "acquisition_identity_schema": "kofun.selfhost-b6-acquisition/v1",
+  "policy_bundle_schema": "kofun.selfhost-b6-policy-bundle/v1",
+  "status": "open",
+  "attestations": [],
+  "revocations": [],
+  "release_claim": null
+}

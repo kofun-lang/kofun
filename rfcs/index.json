@@ -995,7 +995,9 @@
       },
       "normative_spec": [
         "rfcs/0014-explicit-host-authority-profiles.md",
-        "spec/native-toolchain-v1/contract.json"
+        "spec/native-toolchain-v1/contract.json",
+        "spec/process-capture-carrier-v1/PROFILE.md",
+        "spec/directory-enumeration-carrier-v1/PROFILE.md"
       ],
       "compatibility": {
         "category": "additive",

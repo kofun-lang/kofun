@@ -205,7 +205,7 @@ damage stale-identity \
 expect_rejection stale-identity 'result rows digest to'
 
 damage wrong-schema \
-    sed 's#^schema|kofun\.selfhost-b6-report/v1$#schema|kofun.selfhost-b6-report/v9#'
+    sed 's#^schema|kofun\.selfhost-b6-report/v2$#schema|kofun.selfhost-b6-report/v9#'
 expect_rejection wrong-schema 'unknown report schema'
 
 damage foreign-command \
@@ -252,8 +252,36 @@ assert_num "stale subject status" "$stale_status" -ne 0
 assert_grep "stale-subject.stderr" -F 'this checkout is' \
     "$WORK/stale-subject.stderr"
 
+# A policy-stale report can be internally consistent and name the current
+# acquisition key. Repair result_sha256 after changing the component so only
+# the checkout-side policy-bundle join can refuse it.
+awk -F '|' 'BEGIN { OFS = "|" }
+    $1 == "result" && $2 == "policy_sha256" {
+        print $1, $2,
+            "1111111111111111111111111111111111111111111111111111111111111111"
+        next
+    }
+    { print }
+' "$WORK/report.tsv" >"$WORK/policy-stale.rows"
+grep '^result|' "$WORK/policy-stale.rows" >"$WORK/policy-stale.result"
+policy_stale_identity=$("$ROOT/bin/kofun-digest" "$WORK/policy-stale.result" |
+    awk '{ print $1 }')
+awk -F '|' -v identity="$policy_stale_identity" 'BEGIN { OFS = "|" }
+    $1 == "result_sha256" { print $1, identity; next }
+    { print }
+' "$WORK/policy-stale.rows" >"$WORK/policy-stale.tsv"
+sh "$VALIDATOR" "$WORK/policy-stale.tsv" >"$WORK/policy-stale.stdout" 2>&1
+set +e
+sh "$VALIDATOR" "$WORK/policy-stale.tsv" --against-checkout \
+    >"$WORK/policy-stale-subject.stdout" 2>"$WORK/policy-stale-subject.stderr"
+policy_stale_status=$?
+set -e
+assert_num "policy-stale subject status" "$policy_stale_status" -ne 0
+assert_grep "policy-stale-subject.stderr" -F 'policy-stale' \
+    "$WORK/policy-stale-subject.stderr"
+
 printf '%s\n' \
     'PASS: the delegated command runs four existing gates and holds no reproduction logic of its own' \
     'PASS: its report validates structurally and against this checkout, and rehoming it leaves the identity' \
-    'PASS: 16 damaged reports, a foreign subject, and 3 builderless runs are each refused, by their own reason' \
+    'PASS: 16 damaged reports, a foreign subject, a policy-stale report, and 3 builderless runs are refused' \
     'PASS: the packet records a builder claim it states it cannot authenticate, and does not close B6'
