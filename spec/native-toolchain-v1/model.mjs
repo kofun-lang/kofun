@@ -30,6 +30,9 @@ export function validateContract(contract) {
 
     const objective = contract.objective ?? fail('objective: missing')
     equal(objective.required_language_for_shipped_toolchain, 'Kofun', 'objective.required_language_for_shipped_toolchain')
+    equal(objective.completion_unit,
+        'A repository is inside kofun-only-native/v1 if and only if one of its artifacts is required to compile, link, package, test, or rebuild the Kofun toolchain at the exact release commit and therefore appears in the fixed-point acquisition set; inputs are inside and consumers are outside.',
+        'objective.completion_unit')
     hasAll(objective.replacement_class, ['Rust', 'Zig'], 'objective.replacement_class')
     const requiredTargets = [
         'native-x86_64-linux-elf64',

@@ -55,6 +55,8 @@ const SHARED = 'objective'
 const mutations = [
     ['host compiler dependency', SHARED,
         (copy) => copy.objective.forbidden_core_build_requirements = ['rustc']],
+    ['repository-name completion unit', SHARED,
+        (copy) => copy.objective.completion_unit = 'named repository allowlist'],
     ['Linux-only native targets', SHARED, (copy) => {
         copy.objective.required_native_targets = copy.objective.required_native_targets.slice(0, 2)
     }],

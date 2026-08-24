@@ -1094,6 +1094,17 @@
             "category": "none",
             "statement": "This strengthens a future completion label and changes no accepted program or current implementation claim. Existing Linux ELF checkpoints retain exactly their bounded status."
           }
+        },
+        {
+          "id": "A02",
+          "recorded_on": "2026-08-24",
+          "change": "https://github.com/kofun-lang/kofun/issues/1468",
+          "delta": "The completion unit is derived from the fixed-point acquisition set, not assigned by repository name. A repository is inside `kofun-only-native/v1` if and only if one of its artifacts is required to compile, link, package, test, or rebuild the Kofun toolchain at the exact release commit and therefore appears in that acquisition set. Toolchain inputs are inside; consumers are outside. A consumer enters the completion unit in the same change that makes one of its artifacts a required acquisition input.",
+          "original_semantics": "This RFC makes the whole path, rather than one executable, the unit of completion.",
+          "compatibility": {
+            "category": "none",
+            "statement": "This clarifies how a future completion unit is derived and changes no accepted program, current implementation claim, or external-boundary class. No sibling repository supplies an artifact to the fixed-point acquisition set at the recorded decision commit."
+          }
         }
       ]
     }
