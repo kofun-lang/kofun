@@ -37,7 +37,7 @@
       ],
       "properties": {
         "kif_module_trust": { "$ref": "#/$defs/decision" },
-        "environment_authority": { "$ref": "#/$defs/decision" },
+        "environment_authority": { "$ref": "#/$defs/environmentAuthorityDecision" },
         "process_authority": { "$ref": "#/$defs/decision" },
         "directory_authority": { "$ref": "#/$defs/decision" },
         "fixed_decimal": { "$ref": "#/$defs/decision" },
@@ -103,6 +103,42 @@
           "minimum": 1
         }
       }
+    },
+    "environmentAuthorityDecision": {
+      "allOf": [
+        { "$ref": "#/$defs/decision" },
+        {
+          "type": "object",
+          "required": [
+            "e351_scope",
+            "known_unauthorized_get",
+            "dynamic_unauthorized_get"
+          ],
+          "properties": {
+            "e351_scope": {
+              "const": "known-attenuation-widening-and-known-unauthorized-read"
+            },
+            "known_unauthorized_get": {
+              "type": "object",
+              "required": ["io_boundary", "pure_boundary", "provider"],
+              "properties": {
+                "io_boundary": { "const": "E351" },
+                "pure_boundary": { "const": "E351-before-E356" },
+                "provider": { "const": "not-reached" }
+              }
+            },
+            "dynamic_unauthorized_get": {
+              "type": "object",
+              "required": ["io_boundary", "pure_boundary", "provider"],
+              "properties": {
+                "io_boundary": { "const": "Err(UnauthorizedEnvironmentKey)" },
+                "pure_boundary": { "const": "E356" },
+                "provider": { "const": "membership-refusal-before-provider" }
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }

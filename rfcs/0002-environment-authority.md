@@ -5,6 +5,17 @@
 - Status: accepted
 - Decided: 2026-08-09
 
+> **Amended: `RFC-0002/A01` (2026-08-24).** E351 covers both a
+> statically known attenuation widening and a statically known
+> `Environment.get` key outside a statically known grant. A known unauthorized
+> read emits E351 only in both `io`-admitting and `pure fn` boundaries; E351
+> precedes and suppresses E356, and no provider lookup occurs. A dynamic
+> unauthorized read remains `Err(UnauthorizedEnvironmentKey)` in an
+> `io`-admitting boundary after membership refusal and before provider lookup;
+> in `pure fn` it emits E356 because the unresolved read still carries `io`.
+> The accepted text below is preserved as written; the ledger amendment and
+> `spec/native-toolchain-v1/contract.json` are authoritative.
+
 Proposal for [#569](https://github.com/kofun-lang/kofun/issues/569). Review opened with the ledger's announced window; it closes when the
 shepherd closes it, and the ledger records that day. This document
 specifies target semantics only. It does not claim that the compiler,

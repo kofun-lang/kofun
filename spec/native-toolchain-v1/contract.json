@@ -101,7 +101,18 @@
         "E351-E355",
         "E350",
         "E356"
-      ]
+      ],
+      "e351_scope": "known-attenuation-widening-and-known-unauthorized-read",
+      "known_unauthorized_get": {
+        "io_boundary": "E351",
+        "pure_boundary": "E351-before-E356",
+        "provider": "not-reached"
+      },
+      "dynamic_unauthorized_get": {
+        "io_boundary": "Err(UnauthorizedEnvironmentKey)",
+        "pure_boundary": "E356",
+        "provider": "membership-refusal-before-provider"
+      }
     },
     "process_authority": {
       "issue": 1231,

@@ -659,7 +659,20 @@
         "statement": "Everything proposed is new target surface: runtime-created `RootAuthority`, key-bounded affine `EnvironmentAuthority`, portable `EnvironmentKey`, explicit derivation and attenuation, diagnostics E350-E356, and audit-only package metadata. No existing safe environment API changes, RFC-0001 is unchanged, and no tracked Kofun source collides with these names.",
         "corpus_query": "git grep -nE 'RootAuthority|Environment(Capability|Authority)|Environment\\.(acquire|get)' -- '*.kofun' 'spec/**' 'stdlib/**'",
         "result": "0 matches across 763 tracked `.kofun` sources at e270143665789e452495ea1bdf13e17db9bbf779; grep exits 1 with no output, so no tracked source or named spec/stdlib path contains the pre-RFC authority surface."
-      }
+      },
+      "amendments": [
+        {
+          "id": "A01",
+          "recorded_on": "2026-08-24",
+          "change": "https://github.com/kofun-lang/kofun/issues/1543",
+          "delta": "E351 covers both a statically known restrict or partition widening and a literal or otherwise statically known Environment.get key outside a statically known grant. A known unauthorized get emits E351 only in both io-admitting and pure boundaries; E351 precedes and suppresses E356, compilation stops, and the provider is not reached. A dynamic unauthorized get remains Err(UnauthorizedEnvironmentKey) in an io-admitting boundary after membership refusal and before provider lookup; in a pure boundary it emits E356 because the unresolved get still carries io.",
+          "original_semantics": "| `E351` | a statically known `restrict` or `partition` set is not a subset of its parent | `environment authority cannot widen from {…} to {…}` and lists only source-written keys |\n\nIf a literal key is outside a statically known grant, `E351` precedes `E356`; a dynamic mismatch is `Err(UnauthorizedEnvironmentKey)` at runtime and still carries `io`.",
+          "compatibility": {
+            "category": "none",
+            "statement": "The environment API is not implemented, E351 has no registered product owner, and the audited source query found no tracked call to the proposed API. This resolves contradictory future semantics without changing an accepted program, implementation claim, capability row, or release claim."
+          }
+        }
+      ]
     },
     {
       "id": "RFC-0003",

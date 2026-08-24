@@ -95,6 +95,20 @@ export function validateContract(contract) {
     equal(environment.pre_runtime.build, 'refuse-before-authority-carrier-abi', 'environment_authority.pre_runtime.build')
     equal(environment.pre_runtime.run, 'refuse-before-authority-carrier-abi', 'environment_authority.pre_runtime.run')
     equal(environment.diagnostic_precedence.join(','), 'parse-type-ownership,E351-E355,E350,E356', 'environment_authority.diagnostic_precedence')
+    equal(environment.e351_scope, 'known-attenuation-widening-and-known-unauthorized-read',
+        'environment_authority.e351_scope')
+    equal(environment.known_unauthorized_get.io_boundary, 'E351',
+        'environment_authority.known_unauthorized_get.io_boundary')
+    equal(environment.known_unauthorized_get.pure_boundary, 'E351-before-E356',
+        'environment_authority.known_unauthorized_get.pure_boundary')
+    equal(environment.known_unauthorized_get.provider, 'not-reached',
+        'environment_authority.known_unauthorized_get.provider')
+    equal(environment.dynamic_unauthorized_get.io_boundary, 'Err(UnauthorizedEnvironmentKey)',
+        'environment_authority.dynamic_unauthorized_get.io_boundary')
+    equal(environment.dynamic_unauthorized_get.pure_boundary, 'E356',
+        'environment_authority.dynamic_unauthorized_get.pure_boundary')
+    equal(environment.dynamic_unauthorized_get.provider, 'membership-refusal-before-provider',
+        'environment_authority.dynamic_unauthorized_get.provider')
 
     const process = decisions.process_authority
     equal(process.shell, false, 'process_authority.shell')
