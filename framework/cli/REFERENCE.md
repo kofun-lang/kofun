@@ -40,6 +40,11 @@ The current action contracts are deliberately concrete:
 This action set is a checkpoint for the framework runtime. It is not a general
 callback or module system.
 
+Issue #1551 has selected the future static typed binding contract in
+[`native-cli-action-binding-v1`](../../spec/native-cli-action-binding-v1/PROFILE.md).
+The four-action grammar above remains the only implemented behavior; the
+decision profile advances no callback, target, or release claim.
+
 ## Runtime command contract
 
 - no arguments and global `-h`/`--help` print generated global help;

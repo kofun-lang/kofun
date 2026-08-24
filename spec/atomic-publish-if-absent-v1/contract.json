@@ -1,0 +1,38 @@
+{
+  "schema": "kofun.atomic-publish-if-absent-v1/v1",
+  "issue": 1578,
+  "selected_option": "A-linux-renameat2-noreplace",
+  "target": {
+    "backend": "c11-stage2",
+    "release": "linux-x86_64",
+    "others": "refuse-before-publication"
+  },
+  "operation": {
+    "syscall": "renameat2",
+    "flags": "RENAME_NOREPLACE",
+    "directory": "one-preopened-admitted-directory",
+    "temporary": "caller-verified-synced-regular-file-handle",
+    "basename_bytes": 255
+  },
+  "filesystem": {
+    "policy": "ext4-xfs-btrfs-tmpfs-only",
+    "same_directory_and_device": true,
+    "symlink_target": "AlreadyExists-without-follow",
+    "fallback": "none",
+    "cross_device": "typed-refusal-with-temporary-returned"
+  },
+  "cancellation": {
+    "preflight": "explicit-cancellation-returns-temporary",
+    "after_syscall_entry": "unreachable-no-ambiguous-cancelled-outcome"
+  },
+  "outcomes": {
+    "published": "temporary-consumed-final-entry-created-once",
+    "already_exists": "temporary-returned-existing-entry-untouched",
+    "postcommit_sync_failure": "CommittedDurabilityUnknown-temporary-consumed"
+  },
+  "authority": {
+    "return": "Ready-or-Revoked-on-every-outcome",
+    "ambient_path_access": false
+  },
+  "claims_advance": false
+}

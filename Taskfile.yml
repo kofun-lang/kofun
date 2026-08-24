@@ -938,6 +938,26 @@ tasks:
     cmds:
       - "node spec/decision-profiles-v1/check.mjs directory-enumeration-carrier"
 
+  stage2-pair-host-primitives-decision:
+    desc: "Verify compiler-private Unicode scalar and file-identity host primitives"
+    cmds:
+      - "node spec/decision-profiles-v1/check.mjs stage2-pair-host-primitives"
+
+  native-cli-action-binding-decision:
+    desc: "Verify static typed native CLI action binding and publication"
+    cmds:
+      - "node spec/decision-profiles-v1/check.mjs native-cli-action-binding"
+
+  live-https-get-adapter-decision:
+    desc: "Verify the bounded explicit-authority live HTTPS GET adapter decision"
+    cmds:
+      - "node spec/decision-profiles-v1/check.mjs live-https-get-adapter"
+
+  atomic-publish-if-absent-decision:
+    desc: "Verify Linux no-replace atomic publication and ownership outcomes"
+    cmds:
+      - "node spec/decision-profiles-v1/check.mjs atomic-publish-if-absent"
+
   fixed-decimal-profile:
     desc: "Verify the Decimal-backed Fixed[S] carrier and conversion profile"
     cmds:
@@ -1350,6 +1370,7 @@ tasks:
             stage2-events \
             stage2-pair-calls \
             stage2-pair-mirror \
+            stage2-pair-host-primitives-decision \
             patterns \
             adt \
             records \
@@ -1416,6 +1437,7 @@ tasks:
             http \
             http-client-model \
             cli-framework \
+            native-cli-action-binding-decision \
             tui-framework \
             stdlib \
             alloc-contract \
@@ -1473,6 +1495,8 @@ tasks:
             workspace-upgrade-transaction-decision \
             process-capture-carrier-decision \
             directory-enumeration-carrier-decision \
+            live-https-get-adapter-decision \
+            atomic-publish-if-absent-decision \
             documentation-index \
             audited-claim \
             ownership-view \
