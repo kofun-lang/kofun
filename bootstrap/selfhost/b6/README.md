@@ -1,6 +1,6 @@
 # The B6 reproduction packet
 
-Two commands and one report format. They are the interface an independent
+Two commands and one current report format. They are the interface an independent
 builder is handed and the one a reviewer runs on what comes back.
 
 ```sh
@@ -20,6 +20,14 @@ not: what makes a builder independent, and what closes B6. `selfhost-b6-policy`
 is its mechanical half — it refuses reports that do not qualify as
 attestations, including the `report.tsv` in this directory, which is a valid
 report produced by the repository checking itself.
+
+New runs emit `kofun.selfhost-b6-report/v2`, which binds acquisition identity
+`kofun.selfhost-b6-acquisition/v1` and the canonical
+`kofun.selfhost-b6-policy-bundle/v1`. The checked-in `report.tsv` is deliberately
+retained as historical v1 and is validated structurally only; it is never
+treated as evidence about current main. Mutable status and reviewed
+attestation bindings live in `closure-registry.json`, which is not an
+acquisition input.
 
 ## What is new here, and what is not
 

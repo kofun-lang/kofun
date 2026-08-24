@@ -55,7 +55,8 @@ trap 'rm -rf "$work"' EXIT HUP INT TERM
 mkdir -p "$work"
 
 {
-    printf 'schema|kofun.selfhost-declared-inputs/v1\n'
+    printf 'schema|kofun.selfhost-declared-inputs/v2\n'
+    printf 'acquisition_identity_schema|kofun.selfhost-b6-acquisition/v1\n'
     printf 'criterion|%s\n' "$KOFUN_GENERATIONS_CRITERION"
     printf 'normalized_environment|%s\n' "$KOFUN_GENERATIONS_ENVIRONMENT"
     printf 'host_compiler_flags|%s\n' "$kofun_generations_flags"
@@ -74,6 +75,8 @@ mkdir -p "$work"
     declare_file profile bootstrap/selfhost/profile.meta
     declare_file profile bootstrap/selfhost/profile.tsv
     declare_file manifest bootstrap/manifest.json
+    declare_file b6-policy bootstrap/selfhost/b6/POLICY.md
+    declare_file b6-policy bootstrap/selfhost/b6/producer-identities.tsv
     declare_file sums bootstrap/stage1/SHA256SUMS
     declare_file sums bootstrap/stage2/SHA256SUMS
 
@@ -146,6 +149,15 @@ mkdir -p "$work"
     # the acquisition set with a command they could not run.
     printf 'reconstruct|%s\n' 'sh bootstrap/selfhost/check-fixed-point.sh OUTPUT'
 } >"$work/declared-inputs.tsv"
+
+# `bootstrap/selfhost/b6/closure-registry.json` is intentionally absent. It is
+# the versioned status/attestation join selected by #1530, never a build input
+# and never part of the external run's subject.
+if grep -F 'bootstrap/selfhost/b6/closure-registry.json' \
+    "$work/declared-inputs.tsv" >/dev/null
+then
+    fail "the non-input B6 closure registry entered the acquisition set"
+fi
 
 count=$(grep -c '^input|' "$work/declared-inputs.tsv")
 test "$count" -gt 0 || fail "the manifest declares no input"

@@ -1,0 +1,65 @@
+{
+  "schema": "kofun.process-capture-carrier-v1/v1",
+  "issue": 1533,
+  "selected_option": "A-bounded-singular-Bytes-checkpoint",
+  "target": {
+    "backend": "c11-stage2",
+    "release": "linux-x86_64",
+    "cli": "linux-x86_64",
+    "others": "refuse-before-artifact-publication"
+  },
+  "output": {
+    "carrier": "Bytes",
+    "bytes_per_stream": 65536,
+    "streams": 2,
+    "empty": "zero-length-Bytes",
+    "partial_success": false,
+    "within_stream_order": "preserved",
+    "cross_stream_order": "absent"
+  },
+  "resources": {
+    "payload_bytes": 131072,
+    "read_scratch_bytes": 16384,
+    "descriptor_event_bytes": 4096,
+    "total_working_bytes": 151552,
+    "live_parent_descriptors": 8
+  },
+  "authority": {
+    "operation": "spawn_wait_capture",
+    "return": "Ready-or-Revoked-on-every-outcome",
+    "compiler_owner": 1232,
+    "capture_owner": 1233,
+    "entitlement_owner": 1196
+  },
+  "outcomes": ["Exited", "Signaled"],
+  "errors": [
+    "StartError",
+    "StdoutLimitExceeded",
+    "StderrLimitExceeded",
+    "ReadFailure",
+    "AllocationFailure",
+    "TerminationFailure",
+    "WaitFailure",
+    "DescendantWriterTimeout",
+    "CleanupFailure"
+  ],
+  "cancellation": "unreachable-and-absent-from-checkpoint-ADT",
+  "adapter": {
+    "exec_identity": "open-digest-execveat-same-file-description",
+    "drain": "pipe2-nonblocking-epoll-dual-drain",
+    "termination": "dedicated-process-group-SIGKILL-then-exactly-one-reap",
+    "descendant_writer": "eight-terminal-polls-then-terminate-group",
+    "syscalls": ["openat2", "pipe2", "epoll_create1", "epoll_ctl", "epoll_wait", "clone3", "execveat", "pidfd_send_signal", "waitid", "close"]
+  },
+  "precedence": {
+    "order": ["read-failure", "stdout-overflow", "stderr-overflow", "termination-failure", "wait-failure", "exit-or-signal"],
+    "equal_stream_cut": "stdout-before-stderr"
+  },
+  "release": {
+    "capability_row": "process-capture",
+    "claim": "authorized-process-capture-v1",
+    "state_after_implementation": "checkpoint",
+    "targets": ["linux-x86_64"]
+  },
+  "claims_advance": false
+}

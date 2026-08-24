@@ -112,8 +112,10 @@ require() {
 }
 
 schema=$(awk -F '|' '$1 == "schema" { print $2 }' "$report")
-test "$schema" = 'kofun.selfhost-b6-report/v1' ||
-    fail "unknown report schema \`$schema\`"
+case "$schema" in
+    kofun.selfhost-b6-report/v1|kofun.selfhost-b6-report/v2) ;;
+    *) fail "unknown report schema \`$schema\`" ;;
+esac
 
 # The required field set, exactly. Missing is a report that says less than it
 # must; extra is a field nothing here checks, and an unchecked field in a
@@ -125,6 +127,16 @@ canonical_source_sha256 trusted_seed_sha256 corpus_sha256
 runtime_headers_sha256 c1_sha256 c2_sha256 c3_sha256 c3_bytes
 fixed_point_closure_sha256 corpus_cases corpus_observations
 corpus_observations_sha256'
+if test "$schema" = 'kofun.selfhost-b6-report/v2'; then
+    result_keys='report_schema command criterion normalized_environment
+declared_inputs_schema acquisition_identity_schema policy_bundle_schema
+policy_bundle_sha256 policy_sha256 producer_identities_sha256
+inputs_sufficient_schema fixed_point_schema closure_schema
+acquisition_set_sha256 declared_inputs canonical_source_sha256
+trusted_seed_sha256 corpus_sha256 runtime_headers_sha256 c1_sha256
+c2_sha256 c3_sha256 c3_bytes fixed_point_closure_sha256 corpus_cases
+corpus_observations corpus_observations_sha256'
+fi
 provenance_keys='host_compiler_identity host_compiler_flags a1_sha256 a2_sha256
 a3_sha256 operating_system kernel_release architecture libc digest_tool'
 builder_keys='identity basis independence'
@@ -145,6 +157,16 @@ check_section() {
 check_section result "$result_keys"
 check_section provenance "$provenance_keys"
 check_section builder "$builder_keys"
+
+# Result bytes have one canonical key order. `result_sha256` covers row order,
+# so accepting an arbitrary repaired permutation would give one semantic
+# report many identities. The retained v1 and current v2 writers both use the
+# version-specific order above.
+printf '%s\n' $result_keys >"$work/expected-result-order"
+awk -F '|' '$1 == "result" { print $2 }' "$report" \
+    >"$work/present-result-order"
+cmp -s "$work/expected-result-order" "$work/present-result-order" ||
+    fail "the result section is not in canonical schema order"
 
 # `libc` is the one required field that is legitimately empty on a host with no
 # `ldd`, so it is required to be present and allowed to be blank; everything
@@ -183,6 +205,11 @@ for key in acquisition_set_sha256 canonical_source_sha256 trusted_seed_sha256 \
     fixed_point_closure_sha256 corpus_observations_sha256; do
     hexadecimal "result|$key" "$(field result "$key")"
 done
+if test "$schema" = 'kofun.selfhost-b6-report/v2'; then
+    for key in policy_bundle_sha256 policy_sha256 producer_identities_sha256; do
+        hexadecimal "result|$key" "$(field result "$key")"
+    done
+fi
 for key in a1_sha256 a2_sha256 a3_sha256 digest_tool; do
     hexadecimal "provenance|$key" "$(field provenance "$key")"
 done
@@ -208,8 +235,21 @@ test "$(field result report_schema)" = "$schema" ||
     fail "the report schema row disagrees with the result section"
 test "$(field result command)" = 'sh bootstrap/selfhost/reproduce.sh OUTPUT REPORT' ||
     fail "the report was not produced by the declared command"
-test "$(field result declared_inputs_schema)" = 'kofun.selfhost-declared-inputs/v1' ||
-    fail "unknown declared-input schema"
+if test "$schema" = 'kofun.selfhost-b6-report/v1'; then
+    test "$(field result declared_inputs_schema)" = \
+        'kofun.selfhost-declared-inputs/v1' ||
+        fail "a v1 report carries a non-v1 declared-input schema"
+else
+    test "$(field result declared_inputs_schema)" = \
+        'kofun.selfhost-declared-inputs/v2' ||
+        fail "a v2 report carries a non-v2 declared-input schema"
+    test "$(field result acquisition_identity_schema)" = \
+        'kofun.selfhost-b6-acquisition/v1' ||
+        fail "unknown acquisition identity schema"
+    test "$(field result policy_bundle_schema)" = \
+        'kofun.selfhost-b6-policy-bundle/v1' ||
+        fail "unknown B6 policy bundle schema"
+fi
 test "$(field result inputs_sufficient_schema)" = 'kofun.selfhost-inputs-sufficient/v1' ||
     fail "unknown inputs-sufficient schema"
 test "$(field result fixed_point_schema)" = 'kofun.selfhost-fixed-point/v1' ||
@@ -264,6 +304,24 @@ if test "$against_checkout" -eq 1; then
         test "$(field result "$pair")" = "$(manifest_closure_value "$pair")" ||
             fail "report $pair differs from bootstrap/manifest.json's closure record"
     done
+    if test "$schema" = 'kofun.selfhost-b6-report/v2'; then
+        here_policy=$(digest_of bootstrap/selfhost/b6/POLICY.md)
+        here_producers=$(digest_of bootstrap/selfhost/b6/producer-identities.tsv)
+        {
+            printf 'schema|kofun.selfhost-b6-policy-bundle/v1\n'
+            printf 'input|role=policy|path=bootstrap/selfhost/b6/POLICY.md|sha256=%s\n' \
+                "$here_policy"
+            printf 'input|role=producer-identities|path=bootstrap/selfhost/b6/producer-identities.tsv|sha256=%s\n' \
+                "$here_producers"
+        } >"$work/policy-bundle.tsv"
+        here_bundle=$(digest_of "$work/policy-bundle.tsv")
+        test "$(field result policy_sha256)" = "$here_policy" ||
+            fail "policy-stale: report policy digest differs from this checkout"
+        test "$(field result producer_identities_sha256)" = "$here_producers" ||
+            fail "policy-stale: producer identity digest differs from this checkout"
+        test "$(field result policy_bundle_sha256)" = "$here_bundle" ||
+            fail "policy-stale: report policy bundle differs from this checkout"
+    fi
     printf 'PASS: the report is about this checkout: acquisition set, count, and closure digests agree\n'
 fi
 

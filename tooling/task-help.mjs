@@ -26,7 +26,7 @@ export const GROUPS = Object.freeze([
             'selfhost-driver-diagnostics', 'selfhost-generations',
             'selfhost-fixed-point', 'selfhost-diverse-double-compilation',
             'selfhost-declared-inputs', 'selfhost-b6-report',
-            'selfhost-b6-policy',
+            'selfhost-b6-policy', 'selfhost-b6-acquisition-identity',
             'selfhost-native', 'stage1-adapter', 'stage2', 'stage2-events', 'sha256-pair',
             'stage2-pair-coverage', 'stage2-pair-calls', 'stage2-pair-mirror',
             'native', 'native-host-evidence', 'wasm',
@@ -88,6 +88,7 @@ export const GROUPS = Object.freeze([
             'cli-framework', 'tui-framework', 'build-system',
             'verify-object-reuse', 'compile-census', 'packages', 'typed-sidecar-spec', 'typed-sidecar-codec',
             'typed-sidecar-captures', 'typed-sidecar-projector', 'upgrade-patch', 'documentation-index', 'ownership-view',
+            'workspace-upgrade-transaction-decision',
             'artifact-qualification', 'lsp', 'roadmap',
             'graphify-setup', 'graphify-update'
         ]
@@ -100,6 +101,8 @@ export const GROUPS = Object.freeze([
             'alloc-contract', 'kotest', 'tzdb', 'clock-adapters',
             'environment-authority-compiler-contract', 'host-process-authority-contract',
             'directory-authority-contract', 'http-carrier-profile',
+            'stdlib-partial-target-support-decision',
+            'process-capture-carrier-decision', 'directory-enumeration-carrier-decision',
             'benchmark-summary', 'benchmark-report-spec', 'benchmark-report-model',
             'benchmark-report-comparison', 'kofun-digest-model',
             'capabilities'

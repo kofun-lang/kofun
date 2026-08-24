@@ -125,6 +125,30 @@ Linux uses a direct `getdents64` adapter. WASI maps the same language contract
 to a preopen-relative adapter; a WASI implementation that cannot enforce the
 same stay-beneath and byte-name semantics refuses the profile.
 
+### 3a. First executable process and directory checkpoints
+
+The portable ceilings above are semantic maxima, not permission to assume a
+carrier exists. The first executable checkpoints were selected separately in
+Issues #1533 and #1534 and are normative through these versioned profiles:
+
+- [`kofun.process-capture-carrier-v1/v1`](../spec/process-capture-carrier-v1/PROFILE.md)
+  uses `c11-stage2` for the `linux-x86_64` checkpoint, preserves singular
+  `Bytes`, and therefore limits each captured stream to 65,536 bytes. The
+  portable 8-MiB form remains later work. This profile has no reachable
+  cancellation source and does not publish a decorative `Cancelled` outcome.
+- [`kofun.directory-enumeration-carrier-v1/v1`](../spec/directory-enumeration-carrier-v1/PROFILE.md)
+  uses a packed immutable name arena and offset/length index. It tightens the
+  reachable name payload to 16,711,680 bytes (`65,536 * 255`) and requires a
+  trusted monotonic snapshot generation. Linux without that provider or
+  without the pinned `openat2` flags refuses before enumeration; timestamps,
+  `d_off`, and an unproved `openat` fallback are not substitutes.
+
+These checkpoint limits do not weaken a portable implementation that later
+claims this RFC's larger process bound or semantically identical WASI
+directory behavior. They make the first target honest: unsupported targets
+refuse before artifact publication, and release claims name only the target
+that executes the focused gate.
+
 ### 4. Error and diagnostic boundary
 
 Compile-time authority/effect errors use:
@@ -216,6 +240,8 @@ The committed decision model is gated by:
 - `task environment-authority-compiler-contract`;
 - `task host-process-authority-contract`;
 - `task directory-authority-contract`;
+- `task process-capture-carrier-decision`;
+- `task directory-enumeration-carrier-decision`;
 - `task rfc-registry capabilities release-claims repository-check`; and
 - full `task verify`.
 

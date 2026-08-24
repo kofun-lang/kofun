@@ -1,0 +1,72 @@
+{
+  "schema": "kofun.directory-enumeration-carrier-v1/v1",
+  "issue": 1534,
+  "selected_option": "C-packed-immutable-DirectorySnapshot",
+  "target": {
+    "backend": "c11-stage2",
+    "release": "linux-x86_64",
+    "cli": "linux-x86_64",
+    "others": "refuse-before-artifact-publication"
+  },
+  "snapshot": {
+    "carrier": "packed-immutable-name-arena-plus-u32-u16-index",
+    "index_entry": "u32le-offset-u16le-length-u16le-zero",
+    "arena": "sorted-name-bytes-without-padding",
+    "entry_access": "checked-copy-into-existing-Bytes",
+    "empty": "zero-count-zero-index-zero-arena",
+    "change_detector": "trusted-monotonic-128-bit-provider-generation",
+    "retry_count": 1,
+    "no_provider": "typed-refusal-before-enumeration"
+  },
+  "limits": {
+    "entries": 65536,
+    "name_bytes": 255,
+    "total_name_bytes": 16711680,
+    "index_bytes": 524288,
+    "sort_scratch_bytes": 262144,
+    "getdents_buffer_bytes": 65536,
+    "provider_state_bytes": 4096,
+    "total_working_bytes": 17567744,
+    "live_descriptors": 2
+  },
+  "authority": {
+    "operation": "list_snapshot",
+    "return": "Ready-or-Revoked-on-every-outcome",
+    "compiler_owner": 1235,
+    "root_owner": 1536,
+    "entitlement_owner": 1196
+  },
+  "errors": [
+    "Unauthorized",
+    "InvalidComponent",
+    "UnsupportedKernel",
+    "UnsupportedFilesystem",
+    "UnsupportedSnapshotProvider",
+    "LookupRace",
+    "MalformedRecord",
+    "PermissionDenied",
+    "ResourceFailure",
+    "EntryLimitExceeded",
+    "NameLimitExceeded",
+    "TotalNameLimitExceeded",
+    "SnapshotChanged",
+    "SortFailure",
+    "CleanupFailure"
+  ],
+  "linux": {
+    "lookup": "openat2",
+    "resolve": ["RESOLVE_BENEATH", "RESOLVE_NO_MAGICLINKS", "RESOLVE_NO_SYMLINKS"],
+    "flags": ["O_RDONLY", "O_DIRECTORY", "O_CLOEXEC", "O_NOFOLLOW"],
+    "open_how_size": 24,
+    "eagain_retries": 8,
+    "fallback": "none-refuse-ENOSYS-or-unsupported-flags",
+    "decoder": "linux_dirent64-strict-v1"
+  },
+  "release": {
+    "capability_row": "directory-listing",
+    "claim": "authorized-directory-listing-v1",
+    "state_after_implementation": "checkpoint",
+    "targets": ["linux-x86_64"]
+  },
+  "claims_advance": false
+}

@@ -16,6 +16,46 @@ gate can refuse mechanically.
 
 `sh bootstrap/selfhost/check-b6-policy.sh` is that gate.
 
+## The acquisition identity boundary
+
+Issue #1530 selected **Option B**. The canonical identity schema is
+`kofun.selfhost-b6-acquisition/v1`: the SHA-256 of the canonical
+`kofun.selfhost-declared-inputs/v2` rows. The complete raw bytes of
+`bootstrap/manifest.json` remain a declared input. Formatting, a new field,
+`fixed_point_closure`, its canonical source/seed/corpus/generation values, or
+any other declared input therefore changes the acquisition key.
+
+Mutable B6 closure truth lives only in
+`bootstrap/selfhost/b6/closure-registry.json`, schema
+`kofun.selfhost-b6-closure-registry/v1`. The registry is deliberately not a
+declared acquisition input. Its owning gate joins status to the exact
+attestation report, policy bundle, and eventual release claim; unknown fields,
+missing evidence, stale subjects, revocations, or a closed row with no claim
+fail normal offline verification. It cannot become an unchecked side ledger.
+The bootstrap manifest contains one stable delegation to that registry and
+receives no post-run B6 status edit.
+
+The packet also binds the policy bytes with the newline-terminated canonical
+rows, in this exact order:
+
+```text
+schema|kofun.selfhost-b6-policy-bundle/v1
+input|role=policy|path=bootstrap/selfhost/b6/POLICY.md|sha256=<64 lowercase hex>
+input|role=producer-identities|path=bootstrap/selfhost/b6/producer-identities.tsv|sha256=<64 lowercase hex>
+```
+
+Report v2 carries both component digests and the SHA-256 of those three rows.
+The checkout verifier recomputes all three. A policy-only change requires a
+**new external run** in v1; no automatic re-review silently preserves old
+evidence.
+
+The order is fixed: land this infrastructure green on main; an external
+builder runs that exact acquisition (#1291); a maintainer validates the report
+and independence; #1292 adds the attestation to the non-input registry and the
+matching release claim without touching any acquisition input. Any intervening
+input or policy edit makes the report stale. The retained v1 `report.tsv`
+remains a historical structural fixture and is never current evidence.
+
 ## The selected option
 
 **An independent external party runs the packet and submits a reviewed
@@ -66,7 +106,7 @@ is recorded as such, but sameness in them is not a defect.
 ## 3. Authentication and review
 
 The attestation arrives as an **ordinary pull request authored by the builder's
-own GitHub account**, containing the `kofun.selfhost-b6-report/v1` report the
+own GitHub account**, containing the `kofun.selfhost-b6-report/v2` report the
 packet produces.
 
 The identity basis is PR authorship plus maintainer review that the account is

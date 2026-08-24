@@ -241,7 +241,7 @@ cargo	invoke	4	required-today	required	examples/rust-shim/check.sh
 cargo	invoke	2	required-today	required	tests/build_system.sh
 zig	-	0	-	-	-
 node	invoke	4	required-today	required	.github/workflows/pages.yml
-node	invoke	8	required-today	required	Taskfile.yml
+node	invoke	12	required-today	required	Taskfile.yml
 node	invoke	6	required-today	required	bin/kofun
 node	invoke	1	required-today	required	bootstrap/native/check-macho64-signed.sh
 node	invoke	1	required-today	required	bootstrap/native/check-macho64.sh
@@ -350,6 +350,7 @@ node	source	1	required-today	required	spec/concurrency/scoped-captures-v1/check.
 node	source	1	required-today	required	spec/concurrency/scoped-captures-v1/model.mjs
 node	source	1	required-today	required	spec/concurrency/scoped-parallelism-v1/check.mjs
 node	source	1	required-today	required	spec/concurrency/scoped-parallelism-v1/model.mjs
+node	source	1	required-today	required	spec/decision-profiles-v1/check.mjs
 node	source	1	required-today	required	spec/effects/affine-resumption/model.mjs
 node	source	1	required-today	required	spec/kif-generics-v1/check.mjs
 node	source	1	required-today	required	spec/kif-generics-v1/fixture.mjs
