@@ -26,7 +26,11 @@ POLICY="$B6/POLICY.md"
 PRODUCERS="$B6/producer-identities.tsv"
 SELF_CHECK="$B6/report.tsv"
 REGISTRY="$B6/closure-registry.json"
-WORK=${KOFUN_B6_POLICY_WORK:-"$ROOT/build/${KOFUN_GATE_WORK_NAMESPACE:+$KOFUN_GATE_WORK_NAMESPACE/}selfhost-b6-policy"}
+case ${1:-} in
+    --identity-contract) default_work_leaf=selfhost-b6-acquisition-identity ;;
+    *) default_work_leaf=selfhost-b6-policy ;;
+esac
+WORK=${KOFUN_B6_POLICY_WORK:-"$ROOT/build/${KOFUN_GATE_WORK_NAMESPACE:+$KOFUN_GATE_WORK_NAMESPACE/}$default_work_leaf"}
 ASSERT_CONTEXT='selfhost b6 policy'
 
 cd "$ROOT"
