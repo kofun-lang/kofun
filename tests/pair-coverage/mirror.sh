@@ -4,8 +4,8 @@
 #
 # `undefended.tsv` is #1401's work-list: per function of
 # bootstrap/stage2/compiler.c, how many branches nothing takes. Its usefulness
-# rests on both halves implementing the function, and for 24 of the 361 they do
-# not -- while 67 more are mirrored under a different name, which is invisible
+# rests on both halves implementing the function, and for 24 of the 367 they do
+# not -- while 68 more are mirrored under a different name, which is invisible
 # to anyone reading the ledger. `mirror.tsv` answers that one question per row
 # and this gate keeps the answer true.
 #
@@ -307,8 +307,10 @@ if test "${1:-}" = "--prove"; then
     SRC="$ROOT/bootstrap/stage2/compiler.kofun"
 
     # 1. A ledger function nobody gave a verdict.
-    grep -v '^lower_body	' "$HERE/mirror.tsv" >"$PROVE/missing-row.tsv"
-    prove_case missing-row 1 "$PROVE/missing-row.tsv" "$SRC" lower_body
+    grep -v '^lower_body_with_workspace	' "$HERE/mirror.tsv" \
+        >"$PROVE/missing-row.tsv"
+    prove_case missing-row 1 "$PROVE/missing-row.tsv" "$SRC" \
+        lower_body_with_workspace
 
     # 2. A verdict for a function the ledger does not carry.
     cp "$HERE/mirror.tsv" "$PROVE/extra-row.tsv"

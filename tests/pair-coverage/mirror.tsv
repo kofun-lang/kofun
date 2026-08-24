@@ -5,7 +5,7 @@
 # bootstrap/stage2/compiler.c, how many branches nothing this repository runs
 # ever takes -- #1401's work-list of places a divergence between the two halves
 # can hide. THAT FRAMING ASSUMES BOTH HALVES IMPLEMENT THE FUNCTION. For 24 of
-# the 359 they do not, and for 67 more the counterpart is there under a
+# the 367 they do not, and for 68 more the counterpart is there under a
 # different name, which a reader triaging the ledger cannot see.
 #
 # So this file answers one question per ledger row, and only that question:
@@ -30,22 +30,18 @@
 # `c-only` -- the vocabulary that is absent, with the line of compiler.kofun
 # that already says so where one exists.
 #
-# A ROW LEFT THIS FILE BY BEING FULLY COVERED, for the first time.
-# `pattern_arm_arrow` has no untaken branches after #1508's recovery fixtures,
-# so it left `undefended.tsv` and therefore left this map -- the map describes
-# the ledger, not the compiler, and a function with nothing unwatched in it has
-# no row here to carry a verdict. It was `same-name`, so the 24 C-only and 67
-# other-name counts above are unchanged and only the total moved.
-#
-# That is a different event from the row removed one commit earlier, which left
-# because #1548 renamed its function away. One row went because the repository
-# started testing it; the other went because the function stopped existing.
+# THIS REBIND REMOVES THREE FULLY COVERED OR GONE ROWS and adds eleven functions
+# exposed by the same completed pair measurement. Ten additions retain an exact
+# name counterpart. `lower_body_with_workspace` maps to Kofun `lower_body`:
+# unbounded Text needs no seed-C workspace wrapper, but the lowering body is the
+# same work. The map describes the ledger, so functions with nothing unwatched
+# carry no row here even when they still exist in the compiler.
 #
 # WHAT THE C-ONLY ROWS AMOUNT TO, so a reader knows what is being set aside:
 # `compiler.ensure_move` (#572, #904) at 70 untaken branches; the
 # `Stage2AuthorityContext` embedder API and its observations at 47; memo,
 # capacity and allocator plumbing at 21; host-level file and identifier
-# handling at 7; and `const_generic_refusal` at 6. 151 of the ledger's 1921
+# handling at 7; and `const_generic_refusal` at 6. 151 of the ledger's 1964
 # branches, 8%.
 # The other 92% is a real pair surface.
 #
@@ -69,6 +65,7 @@ argument_position_lambda	same-name	argument_position_lambda	-
 arithmetic_expression_end	same-name	arithmetic_expression_end	-
 authority_binding_misuse	same-name	authority_binding_misuse	-
 balanced_end	same-name	balanced_end	-
+binding_has_use	same-name	binding_has_use	-
 borrowed_collection_check	same-name	borrowed_collection_check	-
 buffer_format	c-only	-	varargs formatting; the bootstrap subset has neither va_list nor a growable buffer
 buffer_reserve	c-only	-	growable Buffer; the Kofun half concatenates Text and has no capacity to reserve
@@ -78,7 +75,12 @@ builtin_parameter_types	same-name	builtin_parameter_types	-
 bytes_block_reason	same-name	bytes_block_reason	-
 bytes_carrier_address	same-name	bytes_carrier_address	-
 bytes_mutation_carriers	same-name	bytes_mutation_carriers	-
+bytes_mutation_required_access	same-name	bytes_mutation_required_access	-
+bytes_named_carrier_binding	same-name	bytes_named_carrier_binding	-
 bytes_parameter_releases	same-name	bytes_parameter_releases	-
+bytes_private_result_is_discarded_statement	same-name	bytes_private_result_is_discarded_statement	-
+bytes_private_result_previous_completes_statement	same-name	bytes_private_result_previous_completes_statement	-
+bytes_private_result_statement_boundary	same-name	bytes_private_result_statement_boundary	-
 bytes_producer_refusal	same-name	bytes_producer_refusal	-
 callable_c_declarator	same-name	callable_c_declarator	-
 callable_parameter_type_start	same-name	callable_parameter_type_start	-
@@ -88,7 +90,6 @@ call_argument_parameter_property	same-name	call_argument_parameter_property	-
 call_argument_position	same-name	call_argument_position	-
 call_arity	same-name	call_arity	-
 call_has_labelled_argument	same-name	call_has_labelled_argument	-
-call_slot_carried	same-name	call_slot_carried	-
 c_identifier_name	c-only	-	non-ASCII identifier escaping; `k_u` has no occurrence in compiler.kofun — a live divergence, #1513
 coalescing_expression_end	same-name	coalescing_expression_end	-
 compile_file	same-name	compile_file	-
@@ -111,6 +112,7 @@ core_body_open	same-name	core_body_open	-
 core_parameters	same-name	core_parameters	-
 decimal_rounding_c_name	same-name	decimal_rounding_c_name	-
 decimal_value	same-name	decimal_value	-
+declared_bytes_argument_identity_error	same-name	declared_bytes_argument_identity_error	-
 emit_argument	same-name	emit_argument	-
 emit_arithmetic_expression	same-name	emit_arithmetic_expression	-
 emit_bytes_mutation_call	same-name	emit_bytes_mutation_call	-
@@ -164,6 +166,7 @@ function_calls_name	same-name	function_calls_name	-
 function_end	same-name	function_end	-
 function_name	same-name	function_name	-
 function_parameter_mode	same-name	function_parameter_mode	-
+function_parameter_name	same-name	function_parameter_name	-
 function_parameter_type_at	other-name	function_parameter_type	same precedence and the same comment tail; Kofun fuses the by-name wrapper
 function_return_type_at	other-name	function_return_type	the Kofun half inlines the same body in the same order, callable then optional then list
 function_return_type_containing	same-name	function_return_type_containing	-
@@ -205,7 +208,7 @@ list_int_literal_count	same-name	list_int_literal_count	-
 list_int_local_type_token	same-name	list_int_local_type_token	-
 list_int_type_end	same-name	list_int_type_end	-
 local_visibility_error	same-name	local_visibility_error	-
-lower_body	same-name	lower_body	-
+lower_body_with_workspace	other-name	lower_body	C owns growable scratch in a wrapper workspace; Kofun lower_body uses unbounded Text for the same lowering body
 lower_c_body	same-name	lower_c_body	-
 lower_enum_match	same-name	lower_enum_match	-
 lower_record_binding	same-name	lower_record_binding	-
@@ -381,8 +384,9 @@ type_equals_token	same-name	type_equals_token	-
 type_name	same-name	type_name	-
 type_parameter_list_error	same-name	type_parameter_list_error	-
 type_parameter_open	same-name	type_parameter_open	-
-unsupported_lowering_error	same-name	unsupported_lowering_error	-
+unused_parameter_discards	same-name	unused_parameter_discards	-
 validate_authority_uses	same-name	validate_authority_uses	-
+validate_bytes_private_results	same-name	validate_bytes_private_results	-
 validate_const_arguments	same-name	validate_const_arguments	-
 validate_const_erasure	same-name	validate_const_erasure	-
 validate_core_calls	same-name	validate_core_calls	-
