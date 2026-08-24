@@ -205,22 +205,31 @@ assert_eq 'item 2: 42 passes all three steps and is scaled by ten' \
 assert_eq 'item 2: 1000 fails the range step and returns its negated code' \
     "$(line "$WORK/02_parser_result.stdout" 2)" '-2'
 
-# The three `: ParseResult` annotations are required by `build` and not by
-# `check`. rubric.md scores that split as 2.M2 = 0 and 2.M5 = 0; if the split
-# closes, both scores are wrong and the gate says so.
-sed 's/let digits: ParseResult =/let digits =/' \
-    "$CASES/02_parser_result.kofun" >"$WORK/02_stripped.kofun"
-"$ROOT/bin/kofun" check "$WORK/02_stripped.kofun" \
-    >"$WORK/02_stripped.check.stdout" 2>"$WORK/02_stripped.check.stderr" ||
-    fail 'item 2 without its binding annotation is now refused by `check`; rubric.md 2.M5 must be re-scored'
-if "$ROOT/bin/kofun" build "$WORK/02_stripped.kofun" \
-    -o "$WORK/02_stripped" >"$WORK/02_stripped.build.stdout" \
-    2>"$WORK/02_stripped.build.stderr"
+# No binding annotation is required in item 2. The checked-in program proves
+# that through check/build/run above. Delete one match arm to pin the M5
+# evidence to a frontend diagnostic instead of host-C output.
+assert_not_grep 'item 2 carries no binding annotation' \
+    -Eq -- '^[[:space:]]*let [[:alnum:]_]+:[[:space:]]*ParseResult[[:space:]]*=' \
+    "$CASES/02_parser_result.kofun"
+awk '
+    !removed && $0 == "        Failed(reason) => { code = 0 - reason }," {
+        removed = 1
+        next
+    }
+    { print }
+    END { if (!removed) exit 1 }
+' "$CASES/02_parser_result.kofun" >"$WORK/02_missing_arm.kofun" ||
+    fail 'item 2 missing-arm mutation no longer matches the checked-in source'
+if "$ROOT/bin/kofun" check "$WORK/02_missing_arm.kofun" \
+    >"$WORK/02_missing_arm.check.stdout" \
+    2>"$WORK/02_missing_arm.check.stderr"
 then
-    fail 'item 2 without its binding annotation now builds; the annotation is no longer required and rubric.md 2.M2 must be re-scored'
+    fail 'item 2 without its first Failed arm was accepted; exhaustiveness regressed'
 fi
+assert_grep 'item 2 missing-arm diagnostic names the missing constructor' \
+    -Fq -- 'missing constructors `Failed`' "$WORK/02_missing_arm.check.stderr"
 
-printf 'usability corpus: item 2 Result through three steps, and the check/build split: PASS\n'
+printf 'usability corpus: item 2 Result through three inferred bindings: PASS\n'
 
 # --- item 3: read / edit / take, with no use-after-move --------------------
 #

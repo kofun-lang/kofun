@@ -21,7 +21,8 @@ export const GROUPS = Object.freeze([
         title: 'Compiler and self-hosting',
         hint: 'Bootstrap seeds, Stage 2, fixed-point evidence, code generation, and ABIs.',
         tasks: [
-            'compiler', 'bootstrap', 'selfhost-profile', 'selfhost-self-compile',
+            'compiler', 'bootstrap', 'selfhost-profile', 'selfhost-hir-identifiers',
+            'selfhost-self-compile',
             'selfhost-driver-diagnostics', 'selfhost-generations',
             'selfhost-fixed-point', 'selfhost-diverse-double-compilation',
             'selfhost-declared-inputs', 'selfhost-b6-report',

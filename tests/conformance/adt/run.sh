@@ -157,6 +157,31 @@ grep -F '((KofunEnumValue){INT64_C(0), INT64_C(0)})' \
     "$WORK/payload_free_constructor.c" >/dev/null ||
     fail 'the payload-free constructor did not lower to its declaration-order tag with a zero payload'
 
+# #1576. An unannotated binding takes the declared enum result of its direct
+# call. Before the fix, Stage 2 accepted the source but emitted an int64_t
+# initialized from KofunEnumValue; compiling the generated C is the regression
+# proof, and the grep keeps the exact carrier decision visible.
+"$WORK/kofun-stage2" \
+    "$CASES/inferred_enum_call.kofun" \
+    "$WORK/inferred_enum_call.c" \
+    "$WORK/inferred_enum_call.ir" \
+    "$WORK/inferred_enum_call.tokens" >/dev/null ||
+    fail 'an unannotated enum-returning call was refused'
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    "$WORK/inferred_enum_call.c" \
+    -o "$WORK/inferred_enum_call"
+"$WORK/inferred_enum_call" >"$WORK/inferred_enum_call.stdout" \
+    2>"$WORK/inferred_enum_call.stderr" ||
+    fail 'the inferred enum-call fixture did not run'
+cmp "$CASES/inferred_enum_call.stdout" \
+    "$WORK/inferred_enum_call.stdout" ||
+    fail 'the inferred enum-call fixture printed unexpected output'
+test ! -s "$WORK/inferred_enum_call.stderr" ||
+    fail 'the inferred enum-call fixture wrote unexpected stderr'
+test "$(grep -c 'KofunEnumValue k_b[0-9]* = kofun_fn_decide();' \
+    "$WORK/inferred_enum_call.c")" -eq 2 ||
+    fail 'the inferred and annotated calls did not use the same enum carrier'
+
 printf '%s\n' \
     'PASS: MaybeInt declarations and uses carry deterministic nominal IDs' \
     'PASS: declarations are collected before constructor body resolution' \
@@ -164,4 +189,5 @@ printf '%s\n' \
     'PASS: zero/one-Int arity and payload typing diagnostics are exact' \
     'PASS: generic, recursive, multi-field, and malformed forms are explicit' \
     'PASS: Stage 2 executes payload enum arguments, returns, and catch-all bindings' \
-    'PASS: a payload-free constructor is a value in argument and return position, lowering to its declaration-order tag with a zero payload'
+    'PASS: a payload-free constructor is a value in argument and return position, lowering to its declaration-order tag with a zero payload' \
+    'PASS: unannotated and annotated enum-returning calls lower to the same concrete-enum carrier'

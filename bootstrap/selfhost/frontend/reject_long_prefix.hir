@@ -1,0 +1,4 @@
+schema|kofun.selfhost-hir/v1
+source|bootstrap/selfhost/frontend/reject_long_prefix.kofun|f0d944305b553d212c72116f94c9118c2321125dcbd44175c3baa4d468e7f95a
+status|rejected
+diagnostic|E2S35|230|293|unknown lexical binding

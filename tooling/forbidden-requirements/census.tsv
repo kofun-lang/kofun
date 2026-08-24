@@ -132,7 +132,7 @@ cc	invoke	2	required-today	required	tests/artifact-qualification/check.sh
 cc	invoke	1	required-today	required	tests/build_system.sh
 cc	invoke	5	required-today	optional	tests/conformance/adt-exhaustiveness/run.sh
 cc	invoke	7	required-today	optional	tests/conformance/adt-usefulness-v2/run.sh
-cc	invoke	3	required-today	required	tests/conformance/adt/run.sh
+cc	invoke	4	required-today	required	tests/conformance/adt/run.sh
 cc	invoke	1	required-today	required	tests/conformance/aggregate-bridge/run.sh
 cc	invoke	1	required-today	required	tests/conformance/backends/c11-stage1.sh
 cc	invoke	1	required-today	required	tests/conformance/backends/c11-stage2.sh
@@ -169,7 +169,7 @@ cc	invoke	3	required-today	required	tests/conformance/optional-coalescing/run.sh
 cc	invoke	2	required-today	required	tests/conformance/optional-construction/run.sh
 cc	invoke	3	required-today	required	tests/conformance/optional-narrowing/run.sh
 cc	invoke	3	required-today	required	tests/conformance/optional/run.sh
-cc	invoke	4	required-today	required	tests/conformance/records/run.sh
+cc	invoke	5	required-today	required	tests/conformance/records/run.sh
 cc	invoke	1	required-today	required	tests/conformance/stage1-adapter/check.sh
 cc	invoke	17	required-today	required	tests/conformance/syntax/issues_35_47/run.sh
 cc	invoke	3	required-today	required	tests/conformance/syntax/issues_48_60/run.sh
@@ -203,6 +203,7 @@ cc	invoke	3	required-today	required	tests/ownership/affine-resource-handle/check
 cc	invoke	3	required-today	unknown	tests/package_manager.sh
 cc	invoke	1	required-today	required	tests/pair-coverage/measure.sh
 cc	invoke	1	required-today	required	tests/security/module-interface-artifact.sh
+cc	invoke	1	required-today	required	tests/selfhost-hir-identifiers/check.sh
 cc	invoke	8	required-today	required	tests/stage2/list-int-signatures/run.sh
 cc	invoke	8	required-today	required	tests/stage2/list-int-values/run.sh
 cc	invoke	4	required-today	required	tests/stage2/record-values/run.sh
@@ -709,6 +710,7 @@ shell-build-driver	source	1	required-today	required	tests/release/check-claims.s
 shell-build-driver	source	1	required-today	required	tests/rfc/check-registry.sh
 shell-build-driver	source	1	required-today	required	tests/security/generated-meta-access.sh
 shell-build-driver	source	1	required-today	required	tests/security/module-interface-artifact.sh
+shell-build-driver	source	1	required-today	required	tests/selfhost-hir-identifiers/check.sh
 shell-build-driver	source	1	required-today	required	tests/stage2/else-if-chain/run.sh
 shell-build-driver	source	1	required-today	required	tests/stage2/list-int-signatures/run.sh
 shell-build-driver	source	1	required-today	required	tests/stage2/list-int-values/run.sh

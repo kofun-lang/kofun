@@ -136,6 +136,33 @@ then
     fail "a program owning no storage still carries the Bytes prelude"
 fi
 
+# #1556. Seventy-one owners crossed the seed's private 2048-byte release-list
+# boundary and borrowed E2S170 from an unrelated carrier-crossing rule. The
+# Kofun half always used growable Text. Generate the exact old boundary here,
+# compile it, and count the releases so accepting by dropping cleanup cannot
+# satisfy the test.
+many_source="$WORK/many_owners.kofun"
+printf 'fn main() -> Int {\n' >"$many_source"
+many_index=0
+while [ "$many_index" -lt 71 ]; do
+    printf '    let b%s = stage2_bytes_empty()\n' "$many_index" \
+        >>"$many_source"
+    many_index=$((many_index + 1))
+done
+printf '    return 0\n}\n' >>"$many_source"
+"$ROOT/bin/kofun" build "$many_source" -o "$WORK/many_owners.bin" \
+    --emit-c "$WORK/many_owners.c" >"$WORK/many_owners.stdout" \
+    2>"$WORK/many_owners.stderr" ||
+    fail "seventy-one Bytes owners did not build: $(head -1 "$WORK/many_owners.stderr")"
+"$WORK/many_owners.bin" >/dev/null 2>"$WORK/many_owners.run.stderr" ||
+    fail 'seventy-one Bytes owners did not run'
+test ! -s "$WORK/many_owners.run.stderr" ||
+    fail 'seventy-one Bytes owners wrote runtime stderr'
+many_releases=$(grep 'return ' "$WORK/many_owners.c" | tail -1 |
+    grep -o 'kofun_bytes_release' | wc -l | tr -d ' ')
+test "$many_releases" -eq 71 ||
+    fail "the final exit releases $many_releases of 71 Bytes owners"
+
 # ---------------------------------------------------------------------------
 # #1315. The transactional producer, the three parameter crossings, and the
 # nine refusal reasons.

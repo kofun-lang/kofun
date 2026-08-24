@@ -82,9 +82,9 @@ diagnostic. A row that starts compiling fails the gate by name.
    is a copy of it, compared by digest so a rename is caught too.
 4. Two boundaries the corpus rests on are still boundaries: `edit` on a
    record is refused (E2S121, DD-021) and use-after-move is refused (E2S123).
-5. Two properties are checked by breaking them: deleting an arm from row 4's
-   `match` must still fail naming the missing constructor, and deleting a
-   binding annotation from row 2 must still pass `check` and fail `build`.
+5. Two exhaustive-match properties are checked by breaking them: deleting an
+   arm from rows 2 and 4 must fail naming the missing constructor. Row 2 also
+   stays annotation-free and must pass both `check` and `build`.
 6. The rubric still names all seven measures, still excludes character count,
    and still carries one score row per item in each of its two tables.
 
@@ -97,11 +97,11 @@ comparison is never reported as a pass.
 
 Writing it surfaced things that were not written down anywhere:
 
-- **`check` passing does not mean a program builds.** Two rows hit this. In
-  row 2 the failure is emitted by the host C compiler against generated code
-  the author never wrote (`error: invalid initializer`); in row 4 an inlined
-  constructor argument does the same. The gate pins row 2's case so it cannot
-  silently close.
+- **`check` passing does not always mean a program builds.** Row 4's inlined
+  constructor argument still fails in the host C compiler against generated
+  code the author never wrote. Row 2 used to fail the same way when its three
+  call-result bindings omitted `: ParseResult`; #1576 closed that split, and
+  the gate now requires the annotation-free program to build and run.
 - **A constructor application needs an explicit type annotation; a function
   call returning the same type does not.** `let circle: Shape = Circle(5)` is
   required, `let digits = step_digits(source)` is not.
@@ -112,14 +112,12 @@ Writing it surfaced things that were not written down anywhere:
   row's real blocker. Since #1190 the pipeline is recognized first and the row
   stops there instead; the generic parameter type is still unsupported, and now
   nothing in the corpus exercises that message.
-- **The worst diagnostic in the corpus is row 2's**, and it is the only
-  remaining 0. Row 5 held that place with `Core function 'accumulate' expects 3
-  arguments, got -1` -- an argument count that cannot exist -- until #1411
-  refused the sentinel that produced it; row 5 now scores 1. What is left at 0
-  is row 2's, which is not a Kofun diagnostic at all: deleting a binding
-  annotation produces `error: invalid initializer / KofunEnumValue
-  kofun_match_value = k_b11;` from the host C compiler, against generated code
-  the author never wrote.
+- **No row now scores 0 for diagnostics.** Row 2 used to be the only one:
+  deleting a binding annotation produced `error: invalid initializer /
+  KofunEnumValue kofun_match_value = k_b11;` from the host C compiler. #1576
+  removed that failure. Its deliberate missing-arm error now names the
+  missing `Failed` constructor, so row 2 scores 2; rows 1, 5, and 6 remain the
+  lowest at 1 for diagnostics that name a location but not the real boundary.
 - **`|>` has no executable form on either backend, but Stage 2 now says so.**
   This corpus recorded the original complaint: `readings |> filter` failed the
   native backend with "expected Int expression in native Core function", and

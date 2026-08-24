@@ -1,0 +1,28 @@
+# #1576. The first binding has no annotation: the declared result of decide
+# must still select KofunEnumValue in emitted C. The second binding pins the
+# annotated form that was the historical workaround.
+type Verdict =
+    | Yes
+    | No
+
+fn decide() -> Verdict {
+    return Yes
+}
+
+fn classify(verdict: Verdict) -> Int {
+    let mut result = 0
+    match verdict {
+        Yes => { result = 1 },
+        No => { result = 2 },
+    }
+    return result
+}
+
+fn main() -> Int {
+    let inferred = decide()
+    print(classify(inferred))
+
+    let annotated: Verdict = decide()
+    print(classify(annotated))
+    return 0
+}

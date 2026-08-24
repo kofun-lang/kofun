@@ -102,6 +102,7 @@ record-values
 re-exports
 re-exports-spec
 release-claims
+release-procedure
 repository-check
 reuse-candidate
 rfc-registry
@@ -116,6 +117,7 @@ selfhost-diverse-double-compilation
 selfhost-driver-diagnostics
 selfhost-fixed-point
 selfhost-generations
+selfhost-hir-identifiers
 selfhost-native
 selfhost-profile
 selfhost-self-compile

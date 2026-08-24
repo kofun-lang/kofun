@@ -19897,6 +19897,26 @@ static char *lower_body(
     const char *inherited_comma
 );
 
+typedef struct {
+    Buffer failure_record;
+    Buffer release_cleanup;
+    Buffer release_comma;
+    Buffer inherited_failure_text;
+    Buffer failure_with_release_text;
+} LowerBodyWorkspace;
+
+static char *lower_body_with_workspace(
+    const char *source,
+    const char *hir,
+    int64_t open,
+    bool is_main,
+    bool append_default,
+    int64_t function_open,
+    const char *inherited_cleanup,
+    const char *inherited_comma,
+    LowerBodyWorkspace *workspace
+);
+
 static char *lower_enum_match_error(
     Buffer *covered,
     Buffer *dispatch,
@@ -21909,6 +21929,42 @@ static char *lower_body(
     const char *inherited_cleanup,
     const char *inherited_comma
 ) {
+    LowerBodyWorkspace workspace;
+    buffer_init(&workspace.failure_record);
+    buffer_init(&workspace.release_cleanup);
+    buffer_init(&workspace.release_comma);
+    buffer_init(&workspace.inherited_failure_text);
+    buffer_init(&workspace.failure_with_release_text);
+    char *result = lower_body_with_workspace(
+        source,
+        hir,
+        open,
+        is_main,
+        append_default,
+        function_open,
+        inherited_cleanup,
+        inherited_comma,
+        &workspace
+    );
+    free(workspace.failure_record.data);
+    free(workspace.release_cleanup.data);
+    free(workspace.release_comma.data);
+    free(workspace.inherited_failure_text.data);
+    free(workspace.failure_with_release_text.data);
+    return result;
+}
+
+static char *lower_body_with_workspace(
+    const char *source,
+    const char *hir,
+    int64_t open,
+    bool is_main,
+    bool append_default,
+    int64_t function_open,
+    const char *inherited_cleanup,
+    const char *inherited_comma,
+    LowerBodyWorkspace *workspace
+) {
     int64_t length = source_length(source);
     Buffer emitted;
     buffer_init(&emitted);
@@ -21947,15 +22003,9 @@ static char *lower_body(
     bool returns_text = strcmp(body_result_type, "Text") == 0;
     bool returns_list_int = strcmp(body_result_type, "List[Int]") == 0;
     bool returns_bytes = strcmp(body_result_type, "Bytes") == 0;
-    char failure_record[512] = "";
     if (returns_record) {
         char *c_type = record_c_type_name(body_result_type);
-        snprintf(
-            failure_record,
-            sizeof failure_record,
-            "((%s){0})",
-            c_type
-        );
+        buffer_format(&workspace->failure_record, "((%s){0})", c_type);
         free(c_type);
     }
     free(body_result_type);
@@ -21966,7 +22016,7 @@ static char *lower_body(
                 returns_enum ?
                     "KOFUN_ENUM_ZERO" :
                     (returns_record ?
-                         failure_record :
+                         workspace->failure_record.data :
                          (returns_optional_int ?
                               "KOFUN_OPTIONAL_INT_NONE" :
                               /* A failed Text result is the empty string
@@ -21990,9 +22040,9 @@ static char *lower_body(
      * so every `if (kofun_failed) return <failure_result>;` the emitters below
      * produce becomes a reclaiming exit without any of them changing.
      *
-     * Fixed buffers rather than heap, as `failure_record` beside them is:
-     * `lower_body` returns from many places and a heap local here is a leak
-     * waiting for one missed exit. Overflow refuses rather than truncates. */
+     * #1556. The public wrapper owns the growable workspace and frees it after
+     * every return from this implementation, including recursive bodies and
+     * errors. The two halves therefore have no release-list capacity rule. */
     const char *failure_base = failure_result;
     /* #1315. A nested block inherits the owners live where it opens. Starting
      * these empty was a leak with a passing gate: `lower_body` recurses for an
@@ -22001,38 +22051,20 @@ static char *lower_body(
      * outer one had declared. The gate did not catch it because its fixture
      * had no conditional exit -- the assertion was structural and correct, and
      * the data could not distinguish. */
-    char bytes_cleanup[2048];
-    char bytes_comma[2048];
-    char inherited_failure[2560];
-    /* The inherited strings come from a parent frame whose buffers are the
-     * same size and whose own guard already refused overflow, so this can only
-     * fail if that invariant is broken. It is checked rather than assumed, and
-     * it reports the same code as the growth guard below because it is the
-     * same limit. */
-    if (strlen(inherited_cleanup) >= sizeof bytes_cleanup ||
-        strlen(inherited_comma) >= sizeof bytes_comma) {
-        free(emitted.data);
-        return lower_error(
-            "E2S170",
-            "Stage 2 Bytes[65536] cannot lower possible managed "
-            "Bytes alias for this body (backend limitation)",
-            open);
+    buffer_append(&workspace->release_cleanup, inherited_cleanup);
+    buffer_append(&workspace->release_comma, inherited_comma);
+    if (workspace->release_comma.length > 0) {
+        buffer_format(
+            &workspace->inherited_failure_text,
+            "(%s%s)",
+            workspace->release_comma.data,
+            failure_base
+        );
+        failure_result = workspace->inherited_failure_text.data;
     }
-    memcpy(bytes_cleanup, inherited_cleanup, strlen(inherited_cleanup) + 1u);
-    memcpy(bytes_comma, inherited_comma, strlen(inherited_comma) + 1u);
-    if (bytes_comma[0] != '\0') {
-        if (snprintf(inherited_failure, sizeof inherited_failure, "(%s%s)",
-                bytes_comma, failure_base) >= (int)sizeof inherited_failure) {
-            free(emitted.data);
-            return lower_error(
-                "E2S170",
-                "Stage 2 Bytes[65536] cannot lower possible managed "
-                "Bytes alias for this body (backend limitation)",
-                open);
-        }
-        failure_result = inherited_failure;
-    }
-    char failure_with_release[2560] = "";
+#define bytes_cleanup (workspace->release_cleanup.data)
+#define bytes_comma (workspace->release_comma.data)
+#define failure_with_release (workspace->failure_with_release_text.data)
     while (cursor < length && !token_equal(source, cursor, "}")) {
         if (returned) {
             free(emitted.data);
@@ -22154,8 +22186,10 @@ static char *lower_body(
             char *authority_type = NULL;
             bool optional_int = false;
             bool list_int = false;
+            bool annotated = false;
             cursor = skip_trivia(source, token_end(source, cursor));
             if (cursor < length && token_equal(source, cursor, ":")) {
+                annotated = true;
                 cursor = skip_trivia(source, token_end(source, cursor));
                 if (
                     cursor >= length ||
@@ -22271,6 +22305,24 @@ static char *lower_body(
                 return lower_error("E2S11", "expected `=`", cursor);
             }
             int64_t value_start = skip_trivia(source, token_end(source, cursor));
+            /* #1576. Scope construction already infers the declared result of
+             * a direct call, but lowering used only a source annotation to
+             * select the concrete-enum carrier. Preserve the deliberately
+             * narrow inference surface: only an unannotated initializer whose
+             * inferred type names a declared enum enters the enum ladder. */
+            if (!annotated) {
+                char *inferred_type = initializer_type(
+                    source,
+                    hir,
+                    function_open,
+                    value_start
+                );
+                if (enum_constructor_count(source, inferred_type) >= 0) {
+                    enum_type = inferred_type;
+                } else {
+                    free(inferred_type);
+                }
+            }
             /* #1242. There is no route from safe source to an authority value.
              * Root authority is created once by the runtime and handed to the
              * entrypoint; nothing else makes one, and no literal, record
@@ -22947,53 +22999,34 @@ static char *lower_body(
              * *before* the guard below it -- and ahead of every earlier owner,
              * which is what makes reclamation run in reverse creation order. */
             if (strcmp(binding_type, "Bytes") == 0) {
-                char entry[64];
-                char grown[2048];
-                int written = snprintf(
-                    entry, sizeof entry,
-                    "kofun_bytes_release(&k_b%s); ", binding_id);
-                int comma_written = snprintf(
-                    grown, sizeof grown,
-                    "kofun_bytes_release(&k_b%s), %s", binding_id, bytes_comma);
-                if (written < 0 || (size_t)written >= sizeof entry ||
-                    comma_written < 0 ||
-                    (size_t)comma_written >= sizeof grown ||
-                    (size_t)written + strlen(bytes_cleanup) >=
-                        sizeof bytes_cleanup) {
-                    free(record_type_owned);
-                    free(binding_type);
-                    free(value);
-                    free(name);
-                    free(binding_id);
-                    free(emitted.data);
-                    return lower_error(
-                        "E2S170",
-                        "Stage 2 Bytes[65536] cannot lower possible managed "
-                        "Bytes alias for this body (backend limitation)",
-                        value_start
-                    );
-                }
-                memmove(bytes_cleanup + written, bytes_cleanup,
-                        strlen(bytes_cleanup) + 1u);
-                memcpy(bytes_cleanup, entry, (size_t)written);
-                memcpy(bytes_comma, grown, (size_t)comma_written + 1u);
-                if ((size_t)snprintf(
-                        failure_with_release, sizeof failure_with_release,
-                        "(%s%s)", bytes_comma, failure_base) >=
-                    sizeof failure_with_release) {
-                    free(record_type_owned);
-                    free(binding_type);
-                    free(value);
-                    free(name);
-                    free(binding_id);
-                    free(emitted.data);
-                    return lower_error(
-                        "E2S170",
-                        "Stage 2 Bytes[65536] cannot lower possible managed "
-                        "Bytes alias for this body (backend limitation)",
-                        value_start
-                    );
-                }
+                Buffer next_cleanup;
+                Buffer next_comma;
+                buffer_init(&next_cleanup);
+                buffer_init(&next_comma);
+                buffer_format(
+                    &next_cleanup,
+                    "kofun_bytes_release(&k_b%s); %s",
+                    binding_id,
+                    bytes_cleanup
+                );
+                buffer_format(
+                    &next_comma,
+                    "kofun_bytes_release(&k_b%s), %s",
+                    binding_id,
+                    bytes_comma
+                );
+                free(workspace->release_cleanup.data);
+                free(workspace->release_comma.data);
+                workspace->release_cleanup = next_cleanup;
+                workspace->release_comma = next_comma;
+                workspace->failure_with_release_text.length = 0;
+                workspace->failure_with_release_text.data[0] = '\0';
+                buffer_format(
+                    &workspace->failure_with_release_text,
+                    "(%s%s)",
+                    bytes_comma,
+                    failure_base
+                );
                 failure_result = failure_with_release;
             }
             buffer_format(
@@ -24790,6 +24823,9 @@ static char *lower_body(
     if (!returned && append_default) {
         buffer_format(&emitted, "%s    return 0;\n", bytes_cleanup);
     }
+#undef failure_with_release
+#undef bytes_comma
+#undef bytes_cleanup
     return emitted.data;
 }
 
@@ -27758,7 +27794,16 @@ static char *emit_function_references(const char *source) {
     return references.data;
 }
 
-static char *lower_c_body(const char *source, const char *hir) {
+typedef struct {
+    char *record_result_types[128];
+    int64_t record_result_count;
+} LowerCWorkspace;
+
+static char *lower_c_body(
+    const char *source,
+    const char *hir,
+    LowerCWorkspace *workspace
+) {
     int64_t length = source_length(source);
     char *identity_check = validate_struct_identity(source);
     if (identity_check[0] != '\0') return identity_check;
@@ -27959,7 +28004,7 @@ static char *lower_c_body(const char *source, const char *hir) {
             return error.data;
         }
         bool is_main = strcmp(name, "main") == 0;
-        char c_result_record[512] = "";
+        char *c_result_record = NULL;
         const char *c_result = "int64_t";
         if (optional_int_result(source, name)) {
             c_result = OPTIONAL_INT_C_TYPE;
@@ -27973,15 +28018,15 @@ static char *lower_c_body(const char *source, const char *hir) {
             c_result = "KofunBytesValue";
         } else if (function_result_is_record(source, name)) {
             char *result_type = function_return_type(source, name);
-            char *record_c_type = record_c_type_name(result_type);
-            snprintf(
-                c_result_record,
-                sizeof c_result_record,
-                "%s",
-                record_c_type
-            );
-            free(record_c_type);
+            c_result_record = record_c_type_name(result_type);
             free(result_type);
+            /* validate_core_types caps declarations/functions at 128 before
+             * lowering, so the workspace has one slot for every possible
+             * owned result spelling. The lower_c wrapper releases them after
+             * any success or error return from this implementation. */
+            workspace->record_result_types[
+                workspace->record_result_count++
+            ] = c_result_record;
             c_result = c_result_record;
         }
         int64_t arity = parameter_count(source, cursor);
@@ -28638,7 +28683,13 @@ static char *lower_c_body(const char *source, const char *hir) {
 }
 
 static char *lower_c(const char *source, const char *hir) {
-    return lower_c_body(source, hir);
+    LowerCWorkspace workspace;
+    memset(&workspace, 0, sizeof(workspace));
+    char *result = lower_c_body(source, hir, &workspace);
+    for (int64_t index = 0; index < workspace.record_result_count; ++index) {
+        free(workspace.record_result_types[index]);
+    }
+    return result;
 }
 
 static bool ends_with(const char *value, const char *suffix) {
@@ -29588,7 +29639,7 @@ typedef struct {
     int64_t next_binding;
     int64_t next_node;
     struct {
-        char name[64];
+        char *name;
         char type[16];
         int64_t binding_id;
         bool is_mutable;
@@ -29597,7 +29648,7 @@ typedef struct {
     int64_t scope_stack[SH_MAX_DEPTH];
     int64_t scope_depth;
     struct {
-        char name[64];
+        char *name;
         char result[16];
         int64_t symbol_id;
         int64_t arity;
@@ -29731,7 +29782,11 @@ static void sh_scope_open(
 
 static void sh_scope_close(Sh *sh, int64_t saved_env) {
     if (sh->scope_depth > 0) --sh->scope_depth;
-    sh->env_count = saved_env;
+    while (sh->env_count > saved_env) {
+        --sh->env_count;
+        free(sh->env[sh->env_count].name);
+        sh->env[sh->env_count].name = NULL;
+    }
 }
 
 static int64_t sh_bind(
@@ -29772,12 +29827,7 @@ static int64_t sh_bind(
         name_start,
         name_end
     );
-    snprintf(
-        sh->env[sh->env_count].name,
-        sizeof(sh->env[0].name),
-        "%s",
-        name
-    );
+    sh->env[sh->env_count].name = owned_text(name);
     snprintf(
         sh->env[sh->env_count].type,
         sizeof(sh->env[0].type),
@@ -30993,13 +31043,11 @@ static bool sh_parse_signature(Sh *sh, int64_t function_start) {
         return false;
     }
     int64_t slot = sh->function_count;
-    snprintf(
-        sh->functions[slot].name,
-        sizeof(sh->functions[0].name),
-        "%s",
-        name
-    );
-    free(name);
+    sh->functions[slot].name = name;
+    /* Count the owned name immediately so document cleanup also reaches a
+     * signature that later rejects as malformed. Rejected documents never
+     * consume the partial slot. */
+    ++sh->function_count;
     int64_t parameters = parameter_open(sh->source, function_start);
     int64_t parameters_close = parameters >= 0 ?
         balanced_end(sh->source, parameters, "(", ")") : -1;
@@ -31084,7 +31132,6 @@ static bool sh_parse_signature(Sh *sh, int64_t function_start) {
             "Void"
         );
     }
-    ++sh->function_count;
     return true;
 }
 
@@ -31399,6 +31446,13 @@ static char *emit_selfhost_hir_document(
         }
         puts(sh.error);
         *complete_out = false;
+    }
+    while (sh.env_count > 0) {
+        --sh.env_count;
+        free(sh.env[sh.env_count].name);
+    }
+    for (int64_t index = 0; index < sh.function_count; ++index) {
+        free(sh.functions[index].name);
     }
     free(sh.error);
     free(sh.types.data);
