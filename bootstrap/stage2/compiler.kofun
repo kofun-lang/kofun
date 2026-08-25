@@ -13503,6 +13503,14 @@ fn build_scope_hir_mode(
                     lambda_close = token_end(source, lambda_open)
                     lambda_cursor = lambda_open
                 }
+                # The scope these parameters bind into was emitted by the
+                # scope pass above, keyed on this same `lambda_open`, so it is
+                # read back rather than recomputed. The C half's
+                # `build_scope_hir_mode` opens its lambda walk with exactly this
+                # lookup; the Kofun half used the name below without ever
+                # binding it, and nothing could see that because no gate
+                # resolves a name in this file (#1483).
+                let lambda_scope = hir_scope_id_for_open(hir, lambda_open)
                 while lambda_cursor < lambda_close &&
                       token_text(source, lambda_cursor) != ")" {
                     let name = lambda_cursor
