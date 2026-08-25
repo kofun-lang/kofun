@@ -131,36 +131,47 @@
 #
 # `unclaimed-progress` on #1243 and #1508 were added 2026-08-21 with `main` red
 # since 8fefeb40 (12:03Z) — six commits, on the only job that never runs before
-# a merge. Both are the same shape and neither is an abandoned issue:
+# a merge — and RETIRED 2026-08-26 by fixing the state each named, which is the
+# only way a row in this file is supposed to end.
 #
-#   #1243  last claim `released`, evidence 8fefeb40. Its agent
-#          (claude-1243-authority-structural-kind-20260820) is not reachable in
-#          this machine's session list, so the claim cannot be refreshed and
-#          nobody can say whether the label outlived the work or the work
-#          outlived the release.
+#   #1243  in-progress -> needs-detail. The label had outlived the work: its
+#          2026-08-21 release comment says the claim "has been describing an
+#          intention rather than a process", and all eleven acceptance criteria
+#          are unchecked. Not `blocked` either — #1242 closed, so the metadata's
+#          `Blocked by: none` was the half that was right and the `## Dependen-
+#          cies` line naming #1242 was the stale one. It is `needs-detail`
+#          because that same comment records three findings that stop anyone
+#          starting from the issue as written: four criteria have no subject,
+#          the 160-byte diagnostic ceiling is an unmade design decision, and the
+#          shape is three classes rather than two.
 #
-#   #1508  last claim `merged` on #1593, posted ~12:53Z, which is why the
-#          3a2a87b4 run at 12:51Z failed on #1243 alone and #1508 joins only
-#          from cf1999c2. Its owner determined that four of five acceptance
-#          criteria are met and the fifth is not: `is_xid_start` is still
-#          unresolved, and the gate says so on `main` right now — 543 of 544
-#          call targets resolve, 1 recorded in unresolved-calls.tsv. So the
-#          coherent state is `blocked` with `Blocked by: #1513`, NOT closed and
-#          NOT `in-progress`, and `- Blocked by: none` in its body is stale too.
+#   #1508  in-progress -> blocked, `Blocked by: #1513`. Exactly the state its
+#          owner had already determined and recorded below; only the mechanical
+#          edit was missing. Re-measured on 2c9f338d before applying: 556 of 557
+#          call targets resolve, 1 recorded, still `is_xid_start`, whose fix is
+#          #1513's Option A decision rather than a transliteration. The row's
+#          own text said "543 of 544" — the counts rise with the source, which
+#          is why the row pinned the name and not the number.
 #
-# Both rows are recorded rather than claimed, because a claim from a third
-# party would assert ownership nobody holds, and the owner of #1508 declined to
-# re-claim their own issue for the narrower reason that it would assert they
-# are working on it while handing off. Deliberately leaving the state visibly
-# wrong beat publishing a claim describing an intention.
+# What the two rows recorded while they stood, kept because the reasoning is
+# the useful part: both were recorded rather than claimed, because a claim from
+# a third party would assert ownership nobody holds, and the owner of #1508
+# declined to re-claim their own issue for the narrower reason that it would
+# assert they are working on it while handing off. Deliberately leaving the
+# state visibly wrong beat publishing a claim describing an intention. #1508's
+# fix was then a tracker edit that session could not make: `gh issue edit` was
+# denied by its own permission classifier, and running it from another session
+# would have routed around that decision rather than respected it. A later
+# session with the edit permission made it — which is not routing around
+# anything, because the decision was *what the state should be*, and that was
+# recorded publicly rather than acted on.
 #
 # WHEN THE LABEL IS FIXED, DELETE THE ROW IN THE SAME CHANGE. An issue that
 # stops being `in-progress` stops reaching the branch that consumes its row,
-# and the row then fails as unused — the gate refuses both directions. #1508's
-# fix is a tracker edit no session here could make: `gh issue edit` was denied
-# by its own permission classifier, and running it from another session would
-# route around that decision rather than respect it.
+# and the row then fails as unused — the gate refuses both directions. The two
+# cannot be atomic, because the state lives on GitHub and the row lives here:
+# relabel first, then land the row deletion with the refreshed snapshot, and
+# keep the window short. The live lane runs on every push to `main`, so the
+# window is the minutes between.
 inert-claim	847	agent-claim:v1
 capability-blocker	1291	-
-unclaimed-progress	1243	-
-unclaimed-progress	1508	-
