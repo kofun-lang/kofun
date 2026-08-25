@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 132,
+  "open_issues": 109,
   "issues": [
     {
       "number": 26,
@@ -842,11 +842,10 @@
       "state_line": "blocked",
       "blocked_by": [
         1196,
-        1533,
         1536
       ],
       "evidence_commits": [
-        "20cee8101c2792e0725fb6dd2211d1b0bfcec500"
+        "08300ac11e02947de840c4d75b51a68848db4eb8"
       ],
       "claims": [
         {
@@ -863,6 +862,14 @@
         },
         {
           "agent_id": "codex-root-1232-root-split-followup-20260821",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-20260824-readiness",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-20260824-readiness",
           "status": "released"
         }
       ]
@@ -875,11 +882,10 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1232,
-        1533
+        1232
       ],
       "evidence_commits": [
-        "20cee8101c2792e0725fb6dd2211d1b0bfcec500"
+        "08300ac11e02947de840c4d75b51a68848db4eb8"
       ],
       "claims": [
         {
@@ -888,6 +894,14 @@
         },
         {
           "agent_id": "codex-root-1233-readiness-audit-20260821",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-20260824-readiness",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-20260824-readiness",
           "status": "released"
         }
       ]
@@ -901,11 +915,10 @@
       "state_line": "blocked",
       "blocked_by": [
         1196,
-        1534,
         1536
       ],
       "evidence_commits": [
-        "20cee8101c2792e0725fb6dd2211d1b0bfcec500"
+        "08300ac11e02947de840c4d75b51a68848db4eb8"
       ],
       "claims": [
         {
@@ -923,6 +936,14 @@
         {
           "agent_id": "codex-root-1235-root-split-followup-20260821",
           "status": "released"
+        },
+        {
+          "agent_id": "codex-20260824-readiness",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-20260824-readiness",
+          "status": "released"
         }
       ]
     },
@@ -930,9 +951,9 @@
       "number": 1243,
       "title": "Stage 2 authority kind: propagate Owned through shipped composites",
       "state_labels": [
-        "in-progress"
+        "needs-detail"
       ],
-      "state_line": "in-progress",
+      "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
         "855ca05a6cf6a01c404585cddc48443e9177086c"
@@ -996,8 +1017,7 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1244,
-        1543
+        1244
       ],
       "evidence_commits": [
         "cd18b9f303553bdeef6647a08dd8055f46c4a9ed"
@@ -1025,6 +1045,14 @@
         },
         {
           "agent_id": "codex-root-1246-e351-env-chain-20260821",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-20260824-readiness",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-20260824-readiness",
           "status": "released"
         }
       ]
@@ -1510,12 +1538,13 @@
       "number": 1296,
       "title": "[WASI command] Activate the target selector and fail-closed module shell",
       "state_labels": [
-        "in-progress"
+        "needs-detail"
       ],
-      "state_line": "in-progress",
+      "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
         "82f9b93c0e8760d242e085b0fc582f42aa423b03",
+        "aa1445d58f3d7d7737854a9eea5d8bf5f092ef22",
         "dc7b49bf2404b44fa7a8f3916c0b0f1e3bd0ab03"
       ],
       "claims": [
@@ -1530,6 +1559,10 @@
         {
           "agent_id": "claude-1296-wasi-command-target-20260815",
           "status": "active"
+        },
+        {
+          "agent_id": "claude-1296-wasi-command-target-20260815",
+          "status": "released"
         }
       ]
     },
@@ -1903,8 +1936,7 @@
         1264,
         1323,
         1382,
-        1453,
-        1468
+        1453
       ],
       "evidence_commits": [
         "9e3b85328a710b3a2335e2dee8d72b3ac6fb71e1"
@@ -1942,69 +1974,6 @@
       ]
     },
     {
-      "number": 1467,
-      "title": "Decide how object-image inspection tools fit the self-contained native-toolchain contract",
-      "state_labels": [
-        "needs-decision"
-      ],
-      "state_line": "needs-decision",
-      "blocked_by": [
-        1452,
-        1496
-      ],
-      "evidence_commits": [
-        "f80d9f0c656f2f05b2ab31f923e557893e27ad60"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-root-1467-readiness-refinement-20260821",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-root-1467-readiness-refinement-20260821",
-          "status": "released"
-        }
-      ]
-    },
-    {
-      "number": 1468,
-      "title": "Decide whether the five sibling repositories are inside the self-contained toolchain",
-      "state_labels": [
-        "needs-decision"
-      ],
-      "state_line": "needs-decision",
-      "blocked_by": [],
-      "evidence_commits": [
-        "f80d9f0c656f2f05b2ab31f923e557893e27ad60"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-root-1468-readiness-refinement-20260821",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-root-1468-readiness-refinement-20260821",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-root-1468-stamp-repair-20260821",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-root-1468-stamp-repair-20260821",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-root-1468-npm-followup-20260821",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-root-1468-npm-followup-20260821",
-          "status": "released"
-        }
-      ]
-    },
-    {
       "number": 1480,
       "title": "linux_x86_64 filesystem: implement authorized create, remove, copy, and rename",
       "state_labels": [
@@ -2022,10 +1991,12 @@
       "number": 1483,
       "title": "Stage 2 cannot compile its own compiler: the first bound is 256 lexical uses per function",
       "state_labels": [
-        "in-progress"
+        "blocked"
       ],
-      "state_line": "in-progress",
-      "blocked_by": [],
+      "state_line": "blocked",
+      "blocked_by": [
+        1513
+      ],
       "evidence_commits": [
         "d42d2e4c98d66ece506802fbaaa83419f604b8bd"
       ],
@@ -2033,6 +2004,18 @@
         {
           "agent_id": "claude-1483-self-compile-bounds-20260815",
           "status": "active"
+        },
+        {
+          "agent_id": "claude-1483-self-compile-bounds-20260815",
+          "status": "active"
+        },
+        {
+          "agent_id": "claude-1483-self-compile-bounds-20260815",
+          "status": "pr-open"
+        },
+        {
+          "agent_id": "claude-1483-self-compile-bounds-20260815",
+          "status": "merged"
         }
       ]
     },
@@ -2060,31 +2043,15 @@
       ]
     },
     {
-      "number": 1504,
-      "title": "typed-sidecar: record which paths stage2-events reads, so a concurrent-run collision can be located",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "075fbb241367c27863c74f3884989ba7ddbbfa5b"
-      ],
-      "claims": [
-        {
-          "agent_id": "claude-1504-stage2-events-path-log-20260816",
-          "status": "pr-open"
-        }
-      ]
-    },
-    {
       "number": 1508,
       "title": "#1401 region 1: classify the pattern parser, and hold the Kofun half to calls that exist",
       "state_labels": [
-        "in-progress"
+        "blocked"
       ],
-      "state_line": "in-progress",
-      "blocked_by": [],
+      "state_line": "blocked",
+      "blocked_by": [
+        1513
+      ],
       "evidence_commits": [],
       "claims": [
         {
@@ -2113,12 +2080,26 @@
       "number": 1513,
       "title": "Stage 2 pair: the C half escapes non-ASCII identifiers and the Kofun half does not",
       "state_labels": [
-        "needs-decision"
+        "blocked"
       ],
-      "state_line": "needs-decision",
-      "blocked_by": [],
-      "evidence_commits": [
-        "f42cfdd383b328535a82bd4b2e365e74c8ccb9f7"
+      "state_line": "blocked",
+      "blocked_by": [
+        1483
+      ],
+      "evidence_commits": [],
+      "claims": [
+        {
+          "agent_id": "codex-20260824",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-20260824",
+          "status": "pr-open"
+        },
+        {
+          "agent_id": "codex-20260824",
+          "status": "merged"
+        }
       ]
     },
     {
@@ -2164,122 +2145,6 @@
         {
           "agent_id": "codex-root-1516-closed-blocker-refinement-20260821",
           "status": "released"
-        }
-      ]
-    },
-    {
-      "number": 1517,
-      "title": "A read Bytes borrow may be passed to edit, and only C notices",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "a858e0fa6f0060c4ecc2d0299852f4282014a9b5"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-root-1517-closed-blocker-refinement-20260821",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-root-1517-closed-blocker-refinement-20260821",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-root-1517-bytes-access-20260821",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-root-1517-bytes-access-20260821",
-          "status": "released"
-        }
-      ]
-    },
-    {
-      "number": 1530,
-      "title": "B6: choose a non-self-referential acquisition identity before external reproduction",
-      "state_labels": [
-        "needs-decision"
-      ],
-      "state_line": "needs-decision",
-      "blocked_by": [],
-      "evidence_commits": [
-        "20cee8101c2792e0725fb6dd2211d1b0bfcec500"
-      ]
-    },
-    {
-      "number": 1531,
-      "title": "Decide how the stdlib capability matrix represents partial target support",
-      "state_labels": [
-        "needs-decision"
-      ],
-      "state_line": "needs-decision",
-      "blocked_by": [],
-      "evidence_commits": [
-        "20cee8101c2792e0725fb6dd2211d1b0bfcec500"
-      ]
-    },
-    {
-      "number": 1532,
-      "title": "Decide v1 workspace transaction, write authorization, recovery, and undo semantics for typed upgrade apply",
-      "state_labels": [
-        "needs-decision"
-      ],
-      "state_line": "needs-decision",
-      "blocked_by": [],
-      "evidence_commits": [
-        "20cee8101c2792e0725fb6dd2211d1b0bfcec500"
-      ]
-    },
-    {
-      "number": 1533,
-      "title": "Decide the executable v1 process-output carrier, cancellation, and termination contract",
-      "state_labels": [
-        "needs-decision"
-      ],
-      "state_line": "needs-decision",
-      "blocked_by": [],
-      "evidence_commits": [
-        "20cee8101c2792e0725fb6dd2211d1b0bfcec500"
-      ]
-    },
-    {
-      "number": 1534,
-      "title": "Decide the executable v1 directory-enumeration carrier, snapshot, and Linux lookup contract",
-      "state_labels": [
-        "needs-decision"
-      ],
-      "state_line": "needs-decision",
-      "blocked_by": [],
-      "evidence_commits": [
-        "20cee8101c2792e0725fb6dd2211d1b0bfcec500"
-      ]
-    },
-    {
-      "number": 1535,
-      "title": "The forbidden-requirements census misses tools after a wrapper -- terminator",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "2d3aef9215b4a930827dff997418f7ebceb9cb61"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-root-1535-wrapper-terminator-20260821",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-root-1535-wrapper-terminator-20260821",
-          "status": "pr-open"
-        },
-        {
-          "agent_id": "codex-root-1535-wrapper-terminator-20260821",
-          "status": "pr-open"
         }
       ]
     },
@@ -2406,300 +2271,88 @@
       ]
     },
     {
-      "number": 1543,
-      "title": "RFC-0002/A01 decision: E351 for a statically known unauthorized Environment.get",
-      "state_labels": [
-        "needs-decision"
-      ],
-      "state_line": "needs-decision",
-      "blocked_by": [],
-      "evidence_commits": [
-        "cd18b9f303553bdeef6647a08dd8055f46c4a9ed"
-      ]
-    },
-    {
-      "number": 1545,
-      "title": "Stage 2 emits a to_text call as a call to args, through an out-of-bounds read",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "a858e0fa6f0060c4ecc2d0299852f4282014a9b5"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-root-1545-release-readiness-20260821",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-root-1545-release-readiness-20260821",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-backlog-1545-ready-a858-20260821",
-          "status": "active"
-        },
-        {
-          "agent_id": "claude-pair-parity-20260821",
-          "status": "pr-open"
-        },
-        {
-          "agent_id": "codex-backlog-1545-ready-a858-20260821",
-          "status": "released"
-        }
-      ]
-    },
-    {
-      "number": 1547,
-      "title": "Stage 2 truncates a 64-byte identifier and then resolves, deduplicates, and emits the truncated name",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "a858e0fa6f0060c4ecc2d0299852f4282014a9b5"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-root-1547-release-readiness-20260821",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-root-1547-release-readiness-20260821",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-backlog-1547-ready-a858-20260821",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-backlog-1547-ready-a858-20260821",
-          "status": "released"
-        }
-      ]
-    },
-    {
       "number": 1551,
       "title": "Native CLI framework: bind declared commands to user-defined Kofun actions",
-      "state_labels": [
-        "needs-decision"
-      ],
-      "state_line": "needs-decision",
-      "blocked_by": [],
-      "evidence_commits": [
-        "a858e0fa6f0060c4ecc2d0299852f4282014a9b5"
-      ]
-    },
-    {
-      "number": 1552,
-      "title": "The shell census treats wrapper prose and mixed wrapper chains as commands",
       "state_labels": [
         "blocked"
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1535
+        1196,
+        1536
       ],
-      "evidence_commits": [
-        "a858e0fa6f0060c4ecc2d0299852f4282014a9b5"
-      ]
-    },
-    {
-      "number": 1554,
-      "title": "A shell verdict returned as an exit status is a silent split between dash and bash",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [
-        1512
-      ],
-      "evidence_commits": [
-        "a858e0fa6f0060c4ecc2d0299852f4282014a9b5"
-      ],
+      "evidence_commits": [],
       "claims": [
         {
-          "agent_id": "codex-root-1554-shell-verdict-data-20260821",
+          "agent_id": "codex-20260824",
           "status": "active"
         },
         {
-          "agent_id": "codex-root-1554-shell-verdict-data-20260821",
-          "status": "pr-open"
-        }
-      ]
-    },
-    {
-      "number": 1555,
-      "title": "Stage 2 accepts a long record type name and emits C that does not compile",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "a858e0fa6f0060c4ecc2d0299852f4282014a9b5"
-      ]
-    },
-    {
-      "number": 1556,
-      "title": "Seventy-one Bytes locals are refused with another rule's diagnostic, and only by one half of the pair",
-      "state_labels": [
-        "needs-decision"
-      ],
-      "state_line": "needs-decision",
-      "blocked_by": [],
-      "evidence_commits": [
-        "a858e0fa6f0060c4ecc2d0299852f4282014a9b5"
-      ]
-    },
-    {
-      "number": 1559,
-      "title": "Stage 2 accepts compiler-private Bytes outcomes as source values",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "a858e0fa6f0060c4ecc2d0299852f4282014a9b5"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-root-1559-private-outcomes-20260821",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-root-1559-private-outcomes-20260821",
-          "status": "released"
-        }
-      ]
-    },
-    {
-      "number": 1560,
-      "title": "Stage 2 builtin lowering hijacks declared stage2_bytes functions",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "a858e0fa6f0060c4ecc2d0299852f4282014a9b5"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-root-1560-builtin-resolution-20260821",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-root-1560-builtin-resolution-20260821",
-          "status": "released"
-        }
-      ]
-    },
-    {
-      "number": 1561,
-      "title": "Stage 2 lets one Bytes owner satisfy conflicting wrapper slots",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "a858e0fa6f0060c4ecc2d0299852f4282014a9b5"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-root-1561-wrapper-owner-identity-20260821",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-root-1561-wrapper-owner-identity-20260821",
-          "status": "released"
-        }
-      ]
-    },
-    {
-      "number": 1562,
-      "title": "Parentheses erase a named Bytes carrier BindingId in Stage 2",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "a858e0fa6f0060c4ecc2d0299852f4282014a9b5"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-root-1562-parenthesized-carrier-20260821",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-root-1562-parenthesized-carrier-20260821",
-          "status": "released"
-        }
-      ]
-    },
-    {
-      "number": 1568,
-      "title": "Releasing step 1 assumes a quiet machine, and does not say the tag workflow verifies again",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "36acd51379caf8212dba8b271068f1e1e25d3fbc"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-root-1568-releasing-deviation-20260821",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-root-1568-releasing-deviation-20260821",
+          "agent_id": "codex-20260824",
           "status": "pr-open"
         },
         {
-          "agent_id": "codex-root-1568-releasing-deviation-20260821",
-          "status": "pr-open"
+          "agent_id": "codex-20260824",
+          "status": "merged"
         }
-      ]
-    },
-    {
-      "number": 1576,
-      "title": "An unannotated let bound to an enum-returning call emits C that does not compile",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "2d3aef9215b4a930827dff997418f7ebceb9cb61"
       ]
     },
     {
       "number": 1577,
       "title": "Live HTTPS GET transport adapter with bounded redirects and cancellation",
       "state_labels": [
-        "needs-decision"
+        "blocked"
       ],
-      "state_line": "needs-decision",
-      "blocked_by": [],
-      "evidence_commits": []
+      "state_line": "blocked",
+      "blocked_by": [
+        1196,
+        1258,
+        1264,
+        1499,
+        1536
+      ],
+      "evidence_commits": [],
+      "claims": [
+        {
+          "agent_id": "codex-20260824",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-20260824",
+          "status": "pr-open"
+        },
+        {
+          "agent_id": "codex-20260824",
+          "status": "merged"
+        }
+      ]
     },
     {
       "number": 1578,
       "title": "Atomic create-if-absent publication primitive",
       "state_labels": [
-        "needs-decision"
+        "blocked"
       ],
-      "state_line": "needs-decision",
-      "blocked_by": [],
-      "evidence_commits": []
+      "state_line": "blocked",
+      "blocked_by": [
+        1196,
+        1323
+      ],
+      "evidence_commits": [],
+      "claims": [
+        {
+          "agent_id": "codex-20260824",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-20260824",
+          "status": "pr-open"
+        },
+        {
+          "agent_id": "codex-20260824",
+          "status": "merged"
+        }
+      ]
     },
     {
       "number": 1581,
