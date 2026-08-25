@@ -1,0 +1,22 @@
+# Names READ in bootstrap/stage2/compiler.kofun that the file never introduces,
+# and why each is tolerated. (#1622, parent #1401)
+#
+# `sh tests/pair-coverage/bindings.sh` fails in BOTH directions against this
+# file, like `unresolved-calls.tsv` beside it and `tests/assertions/budget.tsv`:
+# an unlisted unresolved read is new drift, and a listed row whose read now
+# resolves is a fix nobody recorded.
+#
+# THIS FILE IS EMPTY OF ROWS, AND THAT IS THE RESULT, NOT THE STARTING STATE.
+# The gate was written because a read of an unbound name had survived in this
+# file: `lambda_scope`, at compiler.kofun:13541 and :13556, inside
+# `build_scope_hir_mode`. PR #1621 bound it, and this ledger records that the
+# set is now empty rather than that it was always empty. `sh bindings.sh
+# --prove` runs its `unbound` case against an injected read so the gate is
+# watched failing on a tree without one.
+#
+# An empty ledger here and an empty ledger because the scanner reached nothing
+# look identical from the outside, which is why the gate refuses rather than
+# passes when it reads no introductions, no reads, or no keyword table out of
+# the C half, and why its PASS line carries the denominators.
+#
+# name    kind    detail
