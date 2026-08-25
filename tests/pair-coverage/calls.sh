@@ -59,7 +59,7 @@
 #   - the C half. Its calls are resolved by the C compiler on every build, which
 #     is exactly the asymmetry this gate narrows.
 #
-# THIS HARNESS IS SHELL, AND THAT IS RECORDED DEBT. Like its three neighbours it
+# THIS HARNESS IS SHELL, AND THAT IS RECORDED DEBT. Like its four neighbours it
 # carries a `shell-build-driver` row in
 # `tooling/forbidden-requirements/census.tsv`, which re-derives from the tree
 # and fails in both directions. RFC-0018's direction is that this becomes Kofun;

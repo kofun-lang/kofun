@@ -1257,6 +1257,20 @@ tasks:
       - "sh tests/pair-coverage/calls.sh"
       - "sh tests/pair-coverage/calls.sh --prove"
 
+  # Every name READ in the Stage 2 pair's Kofun half is introduced by it.
+  # `stage2-pair-calls` resolves call targets and says in its own header that a
+  # bare read is not a call; this is the other half of that sentence. Cheap --
+  # two files of text, no build -- so it belongs in `verify` beside its two
+  # siblings rather than in tooling/gate-reachability/unreachable.tsv. Its
+  # ledger is EMPTY, so unlike `stage2-pair-calls` it cannot demonstrate a
+  # refusal from the tree; `--prove` supplies ten cases that can, including the
+  # `lambda_scope` shape it was written for.
+  stage2-pair-bindings:
+    desc: "Introduce every name read in bootstrap/stage2/compiler.kofun, or record why not"
+    cmds:
+      - "sh tests/pair-coverage/bindings.sh"
+      - "sh tests/pair-coverage/bindings.sh --prove"
+
   # Which ledger functions the Kofun half mirrors at all, and under what name.
   # #1401's work-list assumes both halves implement the function; for 24 of 361
   # they do not. Cheap -- two files of text, no build -- so it belongs in
@@ -1369,6 +1383,7 @@ tasks:
             stage2 \
             stage2-events \
             stage2-pair-calls \
+            stage2-pair-bindings \
             stage2-pair-mirror \
             stage2-pair-host-primitives-decision \
             patterns \

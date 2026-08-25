@@ -37,7 +37,7 @@
 #   sh tests/pair-coverage/mirror.sh --count     print the verdict tallies
 #   sh tests/pair-coverage/mirror.sh --prove     demonstrate it can refuse
 #
-# THIS HARNESS IS SHELL, AND THAT IS RECORDED DEBT, like its three neighbours:
+# THIS HARNESS IS SHELL, AND THAT IS RECORDED DEBT, like its four neighbours:
 # it carries a `shell-build-driver` row in
 # tooling/forbidden-requirements/census.tsv, which re-derives from the tree and
 # fails in both directions. RFC-0018's direction is that this becomes Kofun;
