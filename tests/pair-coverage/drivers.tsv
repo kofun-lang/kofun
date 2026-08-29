@@ -136,6 +136,7 @@ stage2-events
 stage2-kif-producer
 stage2-pair-bindings
 stage2-pair-calls
+stage2-pair-decisions
 stage2-pair-host-primitives-decision
 stage2-pair-mirror
 stdlib
