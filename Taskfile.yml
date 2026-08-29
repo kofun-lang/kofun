@@ -1282,6 +1282,20 @@ tasks:
       - "sh tests/pair-coverage/mirror.sh"
       - "sh tests/pair-coverage/mirror.sh --prove"
 
+  # The two halves spell the same DECISIONS separately — a type set, a table
+  # size, a seed constant, a declared arity — and the three siblings above read
+  # none of them: one resolves call targets, one resolves reads, one says a
+  # counterpart exists. Six defects in one week were exactly this, five of them
+  # literal values sitting in source in both files. Cheap — two files of text,
+  # no build, 86ms and 673ms on an 8-core x86-64 Linux box — so it belongs in
+  # `verify` beside its siblings rather than in
+  # tooling/gate-reachability/unreachable.tsv.
+  stage2-pair-decisions:
+    desc: "Hold both halves of the Stage 2 pair to the decisions they spell separately"
+    cmds:
+      - "sh tests/pair-coverage/decisions.sh"
+      - "sh tests/pair-coverage/decisions.sh --prove"
+
   # An issue's state is carried twice, as a label and as the `State:` line in
   # its body, and nothing held the two together until this. Reads the committed
   # snapshot only, so it stays hermetic and belongs in `verify`.
@@ -1385,6 +1399,7 @@ tasks:
             stage2-pair-calls \
             stage2-pair-bindings \
             stage2-pair-mirror \
+            stage2-pair-decisions \
             stage2-pair-host-primitives-decision \
             patterns \
             adt \

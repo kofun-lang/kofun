@@ -1,0 +1,55 @@
+# The decisions both halves of the Stage 2 pair must spell identically (#1584,
+# parent #1401, third sibling of `calls.sh` and `mirror.sh`).
+#
+# WHY THIS LEDGER EXISTS. The two halves are the same program written twice, and
+# they spell the same DECISIONS separately -- a type set, a table size, a seed
+# constant, a declared arity. Six defects of exactly that shape were found in one
+# week (#1570, #1546, #1537, #1571, #1545, #1508), and FIVE OF THE SIX were
+# literal values sitting in source in both files: not behaviour, not control
+# flow, but constants a human kept in step by hand and eventually did not.
+#
+# None of the three existing static gates can see them. `check.sh` round-trips
+# the Kofun half's text and so proves every value in it is spelled, not that it
+# is right. `stage2-pair-calls` resolves call targets and their arity.
+# `stage2-pair-mirror` says a counterpart function exists. None of them reads
+# what the counterpart DECIDES. And #1408's undefended-branch ledger cannot
+# help: the C half takes its branch, correctly, every time.
+#
+# THE ANCHORING SCHEME, and why it is per-half rather than shared. #1584 asked
+# whether sites can be located structurally or must be pinned by content, and
+# leaned to content anchors. That is what this is, with one correction the
+# measurement forced: THE HALVES DO NOT SPELL THE SAME TOKEN. `validate_value_if`
+# is `parse_value_if` in C; the Kofun half writes `count + 17` where the C half
+# writes `sh.builtin_symbols[16] = sh.next_symbol++`. A rule of the form "this
+# token occurs the same number of times in both halves" is therefore unsatisfiable
+# for real rows, so each row names ITS OWN token per half and the exact number of
+# occurrences each must have.
+#
+# A count, not a presence test, because the defects were omissions from ONE OF
+# SEVERAL sites: #1570's `List[Int]` was in the annotation list and missing from
+# the dispatch exclusion sixty lines later. A presence test passes on that file.
+#
+# WHAT A ROW COSTS AND WHAT IT BUYS. Both pins must be >= 1, so a token that
+# stops matching is a refusal rather than a silent zero -- that is the whole
+# argument for content anchors over line numbers, and it is why the gate refuses
+# a row pinned at 0 as malformed. The cost is that a deliberate edit to either
+# half fails this gate until the row is re-pinned, exactly like `inputs.tsv` and
+# `mirror.tsv`. That is the contract, not a defect: an artifact that silently
+# follows the tree stops being a record of what was checked.
+#
+# ROWS ARE ADDED AS PAIRS ARE FOUND. Seven is not a claim of completeness; it is
+# the six defects above plus the `len(List)` slot that sits beside the `fail`
+# slot in the same registration chain. Occurrence counts, not line counts: a
+# token twice on one line is two.
+#
+# Regenerate any count with:
+#   grep -o -F '<token>' bootstrap/stage2/compiler.kofun | wc -l
+#
+# id	kofun_count	kofun_token	c_count	c_token	note
+annotated-binding-list-int-exclusion	3	binding_type != "List[Int]"	2	source_has_list_int_local(source)	#1570. The Kofun half admitted List[Int] in the annotation check and omitted it from the dispatch exclusion sixty lines on, so the binding was refused as a malformed enum. The C half decides the same thing through a source scan rather than a type-name comparison, which is why the tokens differ and the counts do not have to match.
+selfhost-fail-builtin-slot	1	to_text(count + 17)	1	sh.builtin_symbols[16] = sh.next_symbol++;	#1546. The seventeenth builtin symbol is `fail`. The C half reaches it with a running counter; the Kofun half writes the id as a literal. When the C counter absorbed `fail` and the Kofun literal did not, every parameter and local after it was numbered one apart in the two halves.
+selfhost-len-list-builtin-slot	1	symbol = count + 16	1	sh.len_list_symbol = sh.next_symbol++;	#1546, the slot immediately before it. `len(List)` is registered between the sixteen builtins and `fail`, and it is the row that makes the seed arithmetic checkable rather than the fail row alone: two adjacent literals that must both move when the chain changes.
+selfhost-builtin-slot-table-size	1	fn selfhost_builtin_slot(name: Text) -> Int {	1	int64_t builtin_symbols[17];	#1545. Seventeen registered slots, and the language admits more builtins than that, so a call can arrive with no slot. The C half sized a table; the Kofun half computes the slot by name. Both used to fall through to an unregistered index -- `builtin_symbols[-1]` on one side and `count + -1` on the other, two different wrong answers to the same program. Both refuse by name now.
+declared-parameter-walk	6	parameter_count(source, declaration)	5	parameter_count(source, declaration)	#1537. The C half's labelled-call binder stopped at eight declared parameters while the Kofun half walked all of them, so a correct call to a nine-parameter function was refused by the half that runs. The same token in both halves and DIFFERENT counts, which is the case a shared-count rule would have got wrong.
+value-if-arity	1	fn validate_value_if(source: Text, hir: Text, start: Int)	2	static char *parse_value_if(	#1571. Three parameters declared, four call sites passing three, and `lower_body` passing two -- the only arity mismatch in 23,021 lines. `calls.sh` now checks call-site arity against the Kofun declaration; nothing checks that the C counterpart still declares the same shape, and mirror.tsv records this pair as `other-name`, so the names cannot be compared directly.
+xid-start-asymmetry	1	is_xid_start	1	is_xid_start	#1508. The Kofun half calls a builtin `is_xid_start` that no builtin table defines; the C half never goes through a builtin at all and calls `kofun_unicode_is_xid_start` from the runtime. `unresolved-calls.tsv` records the Kofun side as a known unresolved call. This row pins the OTHER side of the same fact, so closing the asymmetry -- which is a decision about non-ASCII identifiers, not a transliteration -- fails here and has to be recorded in both places.
