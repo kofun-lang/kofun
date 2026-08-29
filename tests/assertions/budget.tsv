@@ -47,6 +47,7 @@
 0	tests/diagnostics/stage2/bless.sh
 0	tests/diagnostics/unicode/run.sh
 0	tests/docs/documentation-index.sh
+0	tests/emission/check.sh
 0	tests/fuzz/adapters/arithmetic-c11.sh
 0	tests/fuzz/adapters/arithmetic-model.sh
 0	tests/fuzz/adapters/arithmetic-native-x86_64.sh

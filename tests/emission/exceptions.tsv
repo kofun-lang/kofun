@@ -1,0 +1,72 @@
+# Tracked programs that `bin/kofun build` neither builds nor refuses by name
+# (#1539).
+#
+# THE PROPERTY THIS LEDGER IS THE EXCEPTION LIST FOR, stated once so a future
+# gate can cite it rather than restate it:
+#
+#     IF `bin/kofun build` DOES NOT REFUSE A PROGRAM WITH AN `error[...]`
+#     DIAGNOSTIC, THEN THE C IT WROTE MUST COMPILE.
+#
+# It is much weaker than "the compiler is correct" and entirely mechanical. A
+# violation is a program the compiler said yes to and then handed to `cc`, which
+# said no — and the author is shown a message about generated code at a byte
+# offset in a file they did not write.
+#
+# `tests/emission/check.sh` sorts every tracked `*.kofun` into three outcomes:
+# built, refused by name, or neither. The third is what this file lists, and it
+# fails in BOTH directions the way `tests/backlog/debt.tsv` and
+# `tests/pair-coverage/driver-failures.tsv` do: an unlisted violation is new
+# drift, and a listed row that now builds or is refused is an improvement that
+# was not recorded.
+#
+# MEASURED 2026-08-29 on origin/main@3d0e2a2f69667acb5914a82d46ef357b14703c07,
+# over all 1320 tracked *.kofun: 358 built, 940 refused by name, 22 here.
+# 249 seconds serially on an 8-core x86-64 Linux box, which is why the owning
+# task is not in `task verify` and carries a row in
+# tooling/gate-reachability/unreachable.tsv saying so.
+#
+# THE THREE KINDS, and why they are separate. An exemption folded into a drift
+# ledger is indistinguishable from drift, and would be "fixed" by someone
+# inventing the missing value — the same reasoning `stateless-tracker` and
+# `capability-blocker` carry in tests/backlog/debt.tsv.
+#
+#   other-driver       The fixture belongs to a driver other than the default
+#                      C path — the native, wasm, or selfhost-A1 corpora. Its
+#                      owning gate compiles it with its own translation units
+#                      and flags. Running the default driver over it is the
+#                      WRONG INVOCATION, not a defect, and the row retires when
+#                      the file stops being tracked or its driver changes.
+#
+#   seed-include-path  bootstrap/stage1/compiler.kofun, which emits C that
+#                      includes `kofun_unicode.c`. Its own build supplies that
+#                      translation unit; the default driver does not.
+#
+#   emission-defect    A REAL VIOLATION of the property above, on a file the
+#                      default driver owns. #1539 predicted this set would be
+#                      empty — "it finds nothing new, because those files
+#                      already build in some gate". It is not empty. Owner:
+#                      #1628.
+#
+# path	kind	reason
+bootstrap/native/fixtures/function_int64_too_large.kofun	other-driver	Native backend fixture. `task native` builds it through the native image writer, which is where its INT64 bound is decided; the C path emits INT64_C(9223372036854775808) and gcc calls that unsigned.
+bootstrap/native/fixtures/function_local_frame_boundary.kofun	other-driver	Native backend fixture measuring frame layout at the local-count boundary. The C path emits a binding the fixture never reads, which is -Werror=unused-variable there and the whole point of the fixture in the native lowering.
+bootstrap/native/fixtures/function_text_file_operation.kofun	other-driver	Native backend fixture; its emitted C includes kofun_unicode.c, which `task native` supplies and the default driver does not.
+bootstrap/native/fixtures/function_text_wrong_argument.kofun	other-driver	Native backend must-fail fixture: the refusal it proves is the native lowering's, so the C path reaching cc is the wrong invocation rather than a missing diagnostic.
+bootstrap/native/fixtures/function_too_many_locals.kofun	other-driver	Native backend fixture at the local-count limit, same shape as function_local_frame_boundary.
+bootstrap/selfhost/driver/corpus_builtins.kofun	other-driver	Selfhost A1 driver corpus. `bootstrap/selfhost/check-compiler-driver.sh` compiles it with the driver's translation units, including kofun_unicode.c.
+bootstrap/selfhost/driver/corpus_trap_fail.kofun	other-driver	Selfhost A1 driver corpus, same translation-unit set as corpus_builtins.
+bootstrap/selfhost/frontend/accept_expressions.kofun	other-driver	Selfhost A1 frontend corpus; compiled by bootstrap/selfhost/frontend/check-frontend.sh with the frontend's own units.
+bootstrap/selfhost/frontend/reject_arithmetic_operands.kofun	other-driver	Selfhost A1 frontend MUST-FAIL fixture. The refusal it proves belongs to A1's checker, so the default driver emitting C at all is the wrong invocation; that C is expected not to compile.
+bootstrap/selfhost/frontend/reject_assignment_type.kofun	other-driver	Selfhost A1 frontend must-fail fixture, same reasoning as reject_arithmetic_operands.
+bootstrap/selfhost/frontend/reject_call_argument.kofun	other-driver	Selfhost A1 frontend must-fail fixture, same reasoning as reject_arithmetic_operands.
+bootstrap/selfhost/frontend/reject_unary_operand.kofun	other-driver	Selfhost A1 frontend must-fail fixture, same reasoning as reject_arithmetic_operands.
+bootstrap/wasm/fixtures/argument_order.kofun	other-driver	Wasm backend fixture; `task wasm` lowers it to a module and never hands it to cc.
+bootstrap/wasm/fixtures/argument_order_mirrored.kofun	other-driver	Wasm backend fixture, the mirrored half of argument_order.
+bootstrap/wasm/fixtures/reject_function_value.kofun	other-driver	Wasm backend must-fail fixture; the refusal it proves is the wasm lowering's.
+bootstrap/wasm/fixtures/reject_non_int_parameter.kofun	other-driver	Wasm backend must-fail fixture, same reasoning as reject_function_value.
+tests/wasm-list-v1/negative-index.kofun	other-driver	wasm-list-v1 fixture, exercised by `task wasm-list-v1` through the wasm path.
+tests/wasm-text-v1/unsupported_int_parameter.kofun	other-driver	wasm-text-v1 must-fail fixture, exercised by `task wasm-text-v1` through the wasm path.
+bootstrap/stage1/compiler.kofun	seed-include-path	The Stage 1 seed. Its emitted C includes kofun_unicode.c, which bootstrap/stage1/build.sh supplies and the default driver does not. Not a defect and not another backend: the same C path, invoked without the seed's own translation units.
+tests/conformance/inference/hm-levels/recursion.kofun	emission-defect	#1628. `recursion.c:235: error: 'k_b1' undeclared (first use in this function)`, and `kofun_lambda_1` is emitted and never called. The emitter wrote a reference to a variable it never declared — the same class as #1622's `lambda_scope`, on the emission side. The sharpest of the three and not a flag artifact.
+tests/conformance/syntax/issues_48_60/token-spans.kofun	emission-defect	#1628. `token-spans.c:227: error: unused variable 'k_b0' [-Werror=unused-variable]`. The emitter created a binding nothing reads. Whether the fix is to stop emitting it or to stop passing -Werror for it is a decision #1628 owns.
+tests/typed-sidecar/fixtures/stage2_events.kofun	emission-defect	#1628. `stage2_events.c:240: error: unused variable 'k_b3' [-Werror=unused-variable]`, same shape as token-spans.

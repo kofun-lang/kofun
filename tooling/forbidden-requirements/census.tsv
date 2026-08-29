@@ -594,6 +594,7 @@ shell-build-driver	source	1	required-today	required	tests/conformance/aggregate-
 shell-build-driver	source	1	required-today	required	tests/conformance/authority-carrier/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/backends/c11-stage1.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/backends/c11-stage2.sh
+shell-build-driver	source	1	required-today	required	tests/emission/check.sh
 shell-build-driver	source	1	required-today	unknown	tests/conformance/backends/native-aarch64.sh
 shell-build-driver	source	1	required-today	unknown	tests/conformance/backends/native-x86_64.sh
 shell-build-driver	source	1	required-today	unknown	tests/conformance/backends/wasm32-node.sh
