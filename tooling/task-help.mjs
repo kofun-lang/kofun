@@ -29,7 +29,7 @@ export const GROUPS = Object.freeze([
             'selfhost-b6-policy', 'selfhost-b6-acquisition-identity',
             'selfhost-native', 'stage1-adapter', 'stage2', 'stage2-events', 'sha256-pair',
             'stage2-pair-coverage', 'stage2-pair-calls', 'stage2-pair-bindings',
-            'stage2-pair-mirror', 'stage2-pair-decisions',
+            'stage2-pair-mirror', 'stage2-pair-decisions', 'emission-compiles',
             'stage2-pair-host-primitives-decision',
             'native', 'native-host-evidence', 'wasm',
             'wasm-host-abi', 'wasm-host-profile', 'wasi-command-profile',

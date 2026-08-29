@@ -1296,6 +1296,19 @@ tasks:
       - "sh tests/pair-coverage/decisions.sh"
       - "sh tests/pair-coverage/decisions.sh --prove"
 
+  # If `bin/kofun build` does not refuse a program with an `error[...]`
+  # diagnostic, the C it wrote must compile. Every gate that compiles emitted C
+  # does so over hand-written fixtures; the grammar fuzzer generates malformed
+  # programs and never runs a host C compiler. NOT in `verify`: 249 seconds over
+  # 1320 tracked programs on an 8-core x86-64 Linux box, against a suite that
+  # runs in about seventeen minutes. Recorded with that reason in
+  # tooling/gate-reachability/unreachable.tsv.
+  emission-compiles:
+    desc: "Check that every program Stage 2 accepts emits C that compiles"
+    cmds:
+      - "sh tests/emission/check.sh --prove"
+      - "sh tests/emission/check.sh"
+
   # An issue's state is carried twice, as a label and as the `State:` line in
   # its body, and nothing held the two together until this. Reads the committed
   # snapshot only, so it stays hermetic and belongs in `verify`.
