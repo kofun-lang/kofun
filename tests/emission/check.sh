@@ -178,7 +178,12 @@ refuse() {
 }
 
 if test -n "$CORPUS"; then
-    grep -v '^#' "$CORPUS" 2>/dev/null | grep . | sort >"$WORK/corpus.txt"
+    # No `2>/dev/null` and an explicit handler: an unreadable corpus is exactly
+    # what this gate must not swallow, and `grep` exits 1 on a corpus with no
+    # rows, which is a legitimate input the emptiness check below refuses BY
+    # NAME two lines on. Silenced and unhandled, it would abort with an empty
+    # stderr — the shape tests/assertions/budget.tsv exists to drive to zero.
+    grep -v '^#' "$CORPUS" | grep . | sort >"$WORK/corpus.txt" || true
 else
     ( cd "$ROOT" && git ls-files '*.kofun' ) | sort >"$WORK/corpus.txt"
 fi
