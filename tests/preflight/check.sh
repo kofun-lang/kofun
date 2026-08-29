@@ -2,10 +2,10 @@
 # Every structural obligation a new task or fixture carries, reported at once
 # (#1523).
 #
-# Adding one `task` target and one diagnostic fixture obliges six other files,
+# Adding one `task` target and one diagnostic fixture obliges seven other files,
 # each enforced by a different gate — and each discoverable only after the
 # previous one is satisfied, because the gate that finds it does not run until
-# the gate before it passes. Two of the six are twelve lines apart in one file
+# the gate before it passes. Two of the seven are twelve lines apart in one file
 # and still fail one at a time.
 #
 # This target exists to collapse that schedule into one run of a few seconds.
@@ -31,7 +31,7 @@
 #   sh tests/preflight/check.sh             report every obligation
 #   sh tests/preflight/check.sh --prove     demonstrate each check can refuse
 #
-# NOT IN `task verify`, deliberately. Six of these seven checks are the fast
+# NOT IN `task verify`, deliberately. Six of these eight checks are the fast
 # half of gates `verify` already runs; adding them there would pay for each
 # twice and slow the thing this speeds up. Recorded in
 # `tooling/gate-reachability/unreachable.tsv` with that reason.
@@ -41,7 +41,7 @@ set -u
 ROOT=$(CDPATH= cd -P -- "$(dirname -- "$0")/../.." && pwd)
 
 # Seams, so `--prove` can point one check at a mutated copy without disturbing
-# the tree, and so the three delegating checks can be shown to propagate a
+# the tree, and so the four delegating checks can be shown to propagate a
 # failure rather than swallow it.
 EVENTS=${KOFUN_PREFLIGHT_EVENTS:-"$ROOT/tests/typed-sidecar/stage2-events.sh"}
 INPUTS=${KOFUN_PREFLIGHT_INPUTS:-"$ROOT/tests/pair-coverage/inputs.tsv"}
@@ -49,6 +49,7 @@ HEADER=${KOFUN_PREFLIGHT_HEADER:-"$ROOT/bootstrap/stage2/semantic_events.h"}
 TASK_HELP=${KOFUN_PREFLIGHT_TASK_HELP:-"node $ROOT/tooling/task-help.mjs --check"}
 CENSUS=${KOFUN_PREFLIGHT_CENSUS:-"node $ROOT/tooling/forbidden-requirements/check.mjs"}
 EVIDENCE=${KOFUN_PREFLIGHT_EVIDENCE:-"node $ROOT/tests/release/validate-claims.mjs"}
+DRIVERS=${KOFUN_PREFLIGHT_DRIVERS:-"sh $ROOT/tests/pair-coverage/measure.sh --check-drivers"}
 
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/kofun-preflight.XXXXXX")
 trap 'rm -rf "$WORK"' 0 1 2 15
@@ -226,6 +227,30 @@ check_golden_bound() {
         'the diagnostic wording — the producer truncates silently past it'
 }
 
+# 8. The pinned driver set still names exactly the tasks `verify` runs. Like
+#    check 6 this is a basis nothing in `verify` reads, and it is the sharper of
+#    the two: `drivers.tsv` is derived from Taskfile.yml, which any issue may
+#    edit, while its only reader is a measurement that costs hours. #1321 added
+#    a `verify` task and did not pin it, and that was discovered at the top of a
+#    2.5-hour run. The rule belongs to `measure.sh` and is run from there,
+#    through an entry point that skips the measurement (#1596).
+check_pinned_drivers() {
+    if $DRIVERS >"$WORK/drivers.out" 2>"$WORK/drivers.err"; then
+        ok "the pinned driver set matches the tasks verify runs ($(grep -vc '^#' "$ROOT/tests/pair-coverage/drivers.tsv") tasks)"
+        return
+    fi
+    fail "$(grep -h -m 1 . "$WORK/drivers.err" "$WORK/drivers.out" 2>/dev/null |
+        sed -n '1p')" \
+        'tests/pair-coverage/drivers.tsv — regenerate from the verify task list'
+    # The names, not only the count: which task moved is the whole answer, and
+    # the owner already prints them one per line under its summary. Only those
+    # lines — the prose the owner closes with is advice, not a task name, and
+    # indenting it into this list would read as one.
+    awk 'NR > 1 && NF == 1 && $1 ~ /^[a-z0-9][a-z0-9-]*$/ && shown < 8 {
+             shown++; print "               " $1
+         }' "$WORK/drivers.err" >&2
+}
+
 if test "${1:-}" = "--prove"; then
     # The directory defaults to this run's own scratch space. A fixed path
     # under `build/` would be the shape of #1518: two gates recursively
@@ -294,7 +319,7 @@ if test "${1:-}" = "--prove"; then
     prove golden-bound 'exceed the 8-byte detail bound' \
         "KOFUN_PREFLIGHT_HEADER=$PROVE/header-tight.h"
 
-    # The three delegating checks add exactly one thing to their owner: they
+    # The four delegating checks add exactly one thing to their owner: they
     # propagate its failure instead of swallowing it. That is what is proved,
     # and the needle is the file each one sends the reader to.
     printf '#!/bin/sh\nexit 1\n' >"$PROVE/refuses"
@@ -305,6 +330,18 @@ if test "${1:-}" = "--prove"; then
         "KOFUN_PREFLIGHT_CENSUS=$PROVE/refuses"
     prove delegated-evidence 'edit tests/release/validate-claims.mjs' \
         "KOFUN_PREFLIGHT_EVIDENCE=$PROVE/refuses"
+    prove delegated-drivers 'edit tests/pair-coverage/drivers.tsv' \
+        "KOFUN_PREFLIGHT_DRIVERS=$PROVE/refuses"
+
+    # And the delegated rule itself, not only its propagation, because check 8
+    # is a basis check like check 6 rather than a wrapper: one row short of the
+    # verify list, checked through the owner's own entry point, with the dropped
+    # task as the needle so a rule that refused everything would not pass.
+    dropped_driver=$(grep -v '^#' "$ROOT/tests/pair-coverage/drivers.tsv" |
+        sed -n '$p')
+    sed '$d' "$ROOT/tests/pair-coverage/drivers.tsv" >"$PROVE/drivers-short.tsv"
+    prove stale-drivers "$dropped_driver" \
+        "KOFUN_PREFLIGHT_DRIVERS=sh $ROOT/tests/pair-coverage/measure.sh --check-drivers $PROVE/drivers-short.tsv"
 
     # The regenerator refusing and the pack being stale are different failures
     # with different fixes, so the staleness branch is proved on its own: a stub
@@ -331,6 +368,7 @@ check_census
 check_release_evidence
 check_corpus_counters
 check_pinned_inputs
+check_pinned_drivers
 check_golden_bound
 
 if test "$failures" -eq 0; then
