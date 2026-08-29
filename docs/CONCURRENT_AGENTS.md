@@ -40,12 +40,13 @@ Issues that change the pair carry a `## Serialization` section saying so. That
 tells you the rule once you have found the issue; it cannot tell you the pair is
 a lock *before* you pick one, and picking is when you need to know.
 
-**Four more resources belong to no issue and any issue can trip them:**
+**Five more resources belong to no issue and any issue can trip them:**
 
 | resource | what trips it | what you get |
 | --- | --- | --- |
 | `artifacts/release-evidence/index.json` | **any** `Taskfile.yml` edit, because it pins that file's digest | a separate CI job red in nine seconds, at a commit whose diff mentions nothing of the sort |
 | `tests/pair-coverage/inputs.tsv` | any new tracked `*.kofun`, from any issue | `measure.sh` refuses in both directions |
+| `tests/pair-coverage/drivers.tsv` | any task added to or removed from `verify`, from any issue | `measure.sh` refuses in both directions, and its only other reader is a run that costs hours |
 | `tests/typed-sidecar/stage2-events.sh` | any new `.stdout`/`.stderr` refusal companion | two hard-coded census counts the script's own comment says are expected to move |
 | `tooling/forbidden-requirements/census.tsv` | any new shell or Node file | `--count` regenerates the rows; classifying a new one is still yours |
 
@@ -56,6 +57,23 @@ then fails on a file that looks resolved. Run `task release-evidence` and commit
 the result. The failure mode is invisible from the conflict itself, which is why
 it is worth a line here: it cost one wasted `verify` before anyone worked it
 out.
+
+`drivers.tsv` is the quiet one, and it had drifted by ten tasks before anything
+said so. Its basis is `verify`'s own task list, which any issue may edit, while
+the only thing that read it was a measurement nobody starts casually — so the
+cost lands on whoever next runs `stage2-pair-coverage`, hours after the change
+that caused it. **`task preflight` now reads it in twenty-seven milliseconds**
+(#1596), through the same rule `measure.sh` enforces rather than a copy of it.
+Run preflight before you push a `Taskfile.yml` change and the answer arrives
+while you can still act on it.
+
+That is the general shape, and it is worth naming because it is not confined to
+this file: a derived artifact records a fact about the tree, its basis is not
+checked by the thing that changes the tree, and the bill goes to somebody else.
+Preflight is where the basis of an artifact whose own gate is slow, or outside
+`verify`, gets read cheaply. Two of its checks exist for exactly that —
+`inputs.tsv` and `drivers.tsv` — and neither replaces the gate that owns the
+rule.
 
 ## One checkout, one session
 

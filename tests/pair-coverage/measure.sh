@@ -13,6 +13,9 @@
 # size of the hiding place, not any defect.
 #
 #   sh tests/pair-coverage/measure.sh WORK_DIR    print `untaken<TAB>function` rows
+#   sh tests/pair-coverage/measure.sh --check-drivers [DRIVERS]
+#                                                 check drivers.tsv alone, in
+#                                                 milliseconds, without measuring
 #
 # THE BASIS IS THE UNION of the verify drivers and the pinned corpus, per
 # #1408's `amendment:v1`. Measured on one commit: the corpus alone reports 2,762
@@ -26,6 +29,11 @@
 set -eu
 
 ROOT=$(CDPATH= cd -P -- "$(dirname -- "$0")/../.." && pwd)
+
+HERE="$ROOT/tests/pair-coverage"
+DRIVERS="$HERE/drivers.tsv"
+INPUTS="$HERE/inputs.tsv"
+strip_comments() { grep -v '^#' "$1" | grep -v '^[[:space:]]*$' | sort; }
 
 # The driver failure policy, defined before the dispatch below so that the rule
 # a measuring run enforces and the rule the proof exercises are the SAME code.
@@ -81,10 +89,82 @@ check_driver_failures() {
     }
 }
 
+# Does drivers.tsv still pin exactly the tasks `verify` runs? Defined here, and
+# reachable on its own below, for the reason check_driver_failures is: the rule a
+# measuring run enforces and the rule anything else checks must be the SAME code.
+#
+# This one has a second reader because of what it costs to learn late. The basis
+# is Taskfile.yml's verify list, which any issue may edit; the only thing that
+# read it was a measurement that takes hours, so #1321 pinning a new `verify`
+# task and not this file was discovered at the top of a 2.5-hour run. The
+# comparison itself is milliseconds. Reaching it in milliseconds is #1596.
+check_drivers() {
+    cd_work=$1
+    # The pinned list is an argument rather than an environment seam, for the
+    # reason check_driver_failures takes its two files that way: a caller
+    # checking something other than the tree's list has said so in the command,
+    # so nothing can quietly check a file against itself.
+    cd_drivers=${2:-$DRIVERS}
+
+    # The verify task list, as Taskfile.yml states it. `roadmap` is run by
+    # verify-runner.sh after the parallel lane, so it is part of what verify
+    # executes even though it is not in that list.
+    awk '/^  verify:/{f=1}
+         f&&/^      - cmd: \|-/{c=1;next}
+         c&&/^ {10}/{print}
+         c&&!/^ {10}/&&!/^[[:space:]]*$/{exit}' "$ROOT/Taskfile.yml" |
+        sed 's/\\$//' | tr -s ' \n' ' ' |
+        sed 's/sh "[^"]*" "[^"]*" "[^"]*" //' | tr ' ' '\n' |
+        grep -vE '^$|verify-runner|PWD|VERIFY_JOBS' >"$cd_work/verify-tasks.txt"
+    echo roadmap >>"$cd_work/verify-tasks.txt"
+    sort -u "$cd_work/verify-tasks.txt" -o "$cd_work/verify-tasks.txt"
+
+    # An extraction that silently matched nothing would compare a pinned list
+    # against an empty one and report every driver as stale, which reads as a
+    # regenerated Taskfile rather than as a moved anchor.
+    test -s "$cd_work/verify-tasks.txt" || {
+        echo "measure.sh: the verify task list could not be read from Taskfile.yml;" >&2
+        echo "  its anchor moved. Fix the extraction in measure.sh's check_drivers." >&2
+        return 1
+    }
+
+    strip_comments "$cd_drivers" >"$cd_work/pinned-drivers.txt"
+    cd_undriven=$(comm -13 "$cd_work/pinned-drivers.txt" "$cd_work/verify-tasks.txt")
+    cd_stale=$(comm -23 "$cd_work/pinned-drivers.txt" "$cd_work/verify-tasks.txt")
+    if test -n "$cd_undriven"; then
+        echo "measure.sh: verify runs these tasks and drivers.tsv does not pin them:" >&2
+        printf '%s\n' "$cd_undriven" | sed 's/^/  /' >&2
+        echo "  An undriven gate makes the ledger grow for a reason unrelated to the" >&2
+        echo "  compiler. Regenerate drivers.tsv." >&2
+        return 1
+    fi
+    if test -n "$cd_stale"; then
+        echo "measure.sh: drivers.tsv pins these and verify no longer runs them:" >&2
+        printf '%s\n' "$cd_stale" | sed 's/^/  /' >&2
+        return 1
+    fi
+}
+
 if test "${1:-}" = "--check-driver-failures"; then
     check_driver_failures "${2:?usage: --check-driver-failures RESULTS EXPECTED}" \
         "${3:?usage: --check-driver-failures RESULTS EXPECTED}"
     echo "PASS: every driver that failed is recorded, and every record still fails"
+    exit 0
+fi
+
+# The basis check on its own, so a caller that is not measuring can reach it.
+# `tests/preflight/check.sh` is the caller this exists for: it reports every
+# structural obligation a change carries in one run, and until this entry point
+# existed the only thing that read drivers.tsv was a multi-hour measurement.
+if test "${1:-}" = "--check-drivers"; then
+    cd_dir=$(mktemp -d "${TMPDIR:-/tmp}/kofun-pair-drivers.XXXXXX")
+    trap 'rm -rf "$cd_dir"' 0 1 2 15
+    test -f "${2:-$DRIVERS}" || {
+        echo "measure.sh: missing ${2:-$DRIVERS}" >&2
+        exit 1
+    }
+    check_drivers "$cd_dir" "${2:-}"
+    echo "PASS: drivers.tsv pins exactly the tasks verify runs"
     exit 0
 fi
 
@@ -99,9 +179,6 @@ WORK=${1:?usage: measure.sh WORK_DIR}
 # into an assignment", 2 errors). The gates must keep their normal compiler; only
 # this translation unit changes.
 COVERAGE_CC=${KOFUN_PAIR_COVERAGE_CC:-cc}
-HERE="$ROOT/tests/pair-coverage"
-DRIVERS="$HERE/drivers.tsv"
-INPUTS="$HERE/inputs.tsv"
 
 # -O0 because gcov's attribution under optimisation is not trustworthy. -w
 # because this build proves nothing about warnings.
@@ -114,7 +191,6 @@ if test "$SOURCE" != "$ROOT/bootstrap/stage2/compiler.c"; then
 fi
 
 mkdir -p "$WORK"
-strip_comments() { grep -v '^#' "$1" | grep -v '^[[:space:]]*$' | sort; }
 
 # ---------------------------------------------------------------------------
 # Both lists are COMMITTED and checked against the tree in both directions.
@@ -127,34 +203,7 @@ strip_comments() { grep -v '^#' "$1" | grep -v '^[[:space:]]*$' | sort; }
 test -f "$DRIVERS" || { echo "measure.sh: missing $DRIVERS" >&2; exit 1; }
 test -f "$INPUTS"  || { echo "measure.sh: missing $INPUTS" >&2; exit 1; }
 
-# The verify task list, as Taskfile.yml states it. `roadmap` is run by
-# verify-runner.sh after the parallel lane, so it is part of what verify
-# executes even though it is not in that list.
-awk '/^  verify:/{f=1}
-     f&&/^      - cmd: \|-/{c=1;next}
-     c&&/^ {10}/{print}
-     c&&!/^ {10}/&&!/^[[:space:]]*$/{exit}' "$ROOT/Taskfile.yml" |
-    sed 's/\\$//' | tr -s ' \n' ' ' |
-    sed 's/sh "[^"]*" "[^"]*" "[^"]*" //' | tr ' ' '\n' |
-    grep -vE '^$|verify-runner|PWD|VERIFY_JOBS' >"$WORK/verify-tasks.txt"
-echo roadmap >>"$WORK/verify-tasks.txt"
-sort -u "$WORK/verify-tasks.txt" -o "$WORK/verify-tasks.txt"
-
-strip_comments "$DRIVERS" >"$WORK/pinned-drivers.txt"
-undriven=$(comm -13 "$WORK/pinned-drivers.txt" "$WORK/verify-tasks.txt")
-stale=$(comm -23 "$WORK/pinned-drivers.txt" "$WORK/verify-tasks.txt")
-if test -n "$undriven"; then
-    echo "measure.sh: verify runs these tasks and drivers.tsv does not pin them:" >&2
-    printf '%s\n' "$undriven" | sed 's/^/  /' >&2
-    echo "  An undriven gate makes the ledger grow for a reason unrelated to the" >&2
-    echo "  compiler. Regenerate drivers.tsv." >&2
-    exit 1
-fi
-if test -n "$stale"; then
-    echo "measure.sh: drivers.tsv pins these and verify no longer runs them:" >&2
-    printf '%s\n' "$stale" | sed 's/^/  /' >&2
-    exit 1
-fi
+check_drivers "$WORK"
 
 strip_comments "$INPUTS" >"$WORK/pinned-inputs.txt"
 ( cd "$ROOT" && git ls-files '*.kofun' ) | sort >"$WORK/tree-inputs.txt"
