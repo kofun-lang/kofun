@@ -48,13 +48,12 @@ fn main() -> Int {
     )
     print(inspect(initial))
 
+    # The declared take call consumes initial; a second take would be an error.
     let written: AffineTransport = write(initial, 5)
-    take initial
     print(inspect(written))
     print(written.generation)
 
     let summary: TerminalSummary = close(written)
-    take written
     print(summary.terminal)
     print(summary.generation)
     return 0
