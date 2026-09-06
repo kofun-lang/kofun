@@ -48,11 +48,12 @@
 #                      #1628.
 #
 # path	kind	reason
+# Remeasured 2026-09-06 for #1628: 363 built, 940 refused, 17 other-driver/seed
+# exceptions. All three emission defects and two now-building native fixtures
+# have been removed; no emission-defect row remains.
 bootstrap/native/fixtures/function_int64_too_large.kofun	other-driver	Native backend fixture. `task native` builds it through the native image writer, which is where its INT64 bound is decided; the C path emits INT64_C(9223372036854775808) and gcc calls that unsigned.
-bootstrap/native/fixtures/function_local_frame_boundary.kofun	other-driver	Native backend fixture measuring frame layout at the local-count boundary. The C path emits a binding the fixture never reads, which is -Werror=unused-variable there and the whole point of the fixture in the native lowering.
 bootstrap/native/fixtures/function_text_file_operation.kofun	other-driver	Native backend fixture; its emitted C includes kofun_unicode.c, which `task native` supplies and the default driver does not.
 bootstrap/native/fixtures/function_text_wrong_argument.kofun	other-driver	Native backend must-fail fixture: the refusal it proves is the native lowering's, so the C path reaching cc is the wrong invocation rather than a missing diagnostic.
-bootstrap/native/fixtures/function_too_many_locals.kofun	other-driver	Native backend fixture at the local-count limit, same shape as function_local_frame_boundary.
 bootstrap/selfhost/driver/corpus_builtins.kofun	other-driver	Selfhost A1 driver corpus. `bootstrap/selfhost/check-compiler-driver.sh` compiles it with the driver's translation units, including kofun_unicode.c.
 bootstrap/selfhost/driver/corpus_trap_fail.kofun	other-driver	Selfhost A1 driver corpus, same translation-unit set as corpus_builtins.
 bootstrap/selfhost/frontend/accept_expressions.kofun	other-driver	Selfhost A1 frontend corpus; compiled by bootstrap/selfhost/frontend/check-frontend.sh with the frontend's own units.
@@ -67,6 +68,3 @@ bootstrap/wasm/fixtures/reject_non_int_parameter.kofun	other-driver	Wasm backend
 tests/wasm-list-v1/negative-index.kofun	other-driver	wasm-list-v1 fixture, exercised by `task wasm-list-v1` through the wasm path.
 tests/wasm-text-v1/unsupported_int_parameter.kofun	other-driver	wasm-text-v1 must-fail fixture, exercised by `task wasm-text-v1` through the wasm path.
 bootstrap/stage1/compiler.kofun	seed-include-path	The Stage 1 seed. Its emitted C includes kofun_unicode.c, which bootstrap/stage1/build.sh supplies and the default driver does not. Not a defect and not another backend: the same C path, invoked without the seed's own translation units.
-tests/conformance/inference/hm-levels/recursion.kofun	emission-defect	#1628. `recursion.c:235: error: 'k_b1' undeclared (first use in this function)`, and `kofun_lambda_1` is emitted and never called. The emitter wrote a reference to a variable it never declared — the same class as #1622's `lambda_scope`, on the emission side. The sharpest of the three and not a flag artifact.
-tests/conformance/syntax/issues_48_60/token-spans.kofun	emission-defect	#1628. `token-spans.c:227: error: unused variable 'k_b0' [-Werror=unused-variable]`. The emitter created a binding nothing reads. Whether the fix is to stop emitting it or to stop passing -Werror for it is a decision #1628 owns.
-tests/typed-sidecar/fixtures/stage2_events.kofun	emission-defect	#1628. `stage2_events.c:240: error: unused variable 'k_b3' [-Werror=unused-variable]`, same shape as token-spans.

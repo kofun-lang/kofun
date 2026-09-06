@@ -1,5 +1,8 @@
 # Stage 2 semantic frontend checkpoint
 
+For C-emission fixes, shared lowering helpers, and their focused gates, see
+[Working on Stage 2 emission issues](../../docs/STAGE2_EMISSION.md).
+
 `compiler.kofun` is the canonical implementation. It stays inside the typed
 bootstrap subset already exercised by the Stage 1 seed:
 

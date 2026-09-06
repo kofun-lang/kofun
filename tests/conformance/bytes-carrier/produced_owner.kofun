@@ -4,6 +4,8 @@
 fn produce() -> Bytes {
     let fresh = stage2_bytes_empty()
     stage2_bytes_assign_zeroed(fresh, 512)
+    let other = stage2_bytes_empty()
+    stage2_bytes_assign_zeroed(other, 32)
     return fresh
 }
 

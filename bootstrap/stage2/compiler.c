@@ -9995,7 +9995,10 @@ static char *emit_primary(
              * tag was tested on a dominating edge, so this is the projection
              * of a checked refinement and not an extraction operator. The
              * whole value travels only where the callee declares `Int?`. */
-            if (
+            if (lambda_binding_open(source, hir, binding_id) >= 0) {
+                /* #1628. Lifting declares a function, never a k_b local. */
+                buffer_format(&output, "kofun_lambda_%s", binding_id);
+            } else if (
                 optional_int_binding(source, cursor, name) &&
                 !optional_int_carrier_position(source, cursor)
             ) {
@@ -21813,6 +21816,34 @@ static bool binding_has_use(const char *hir, const char *binding_id) {
     return false;
 }
 
+/* One discard policy for parameters and local carriers. Initializers and
+ * ownership cleanup remain the caller's responsibility. */
+static char *unused_binding_discard(const char *hir, const char *binding_id) {
+    Buffer out;
+    buffer_init(&out);
+    if (!binding_has_use(hir, binding_id)) {
+        buffer_format(&out, "    (void)k_b%s;\n", binding_id);
+    }
+    return out.data;
+}
+
+/* #1581. Test failure while binding ids still own every allocation. Taking a
+ * whole carrier only copies fields and clears the source; it cannot fail. */
+static char *emit_bytes_return(const char *returned, const char *cleanup) {
+    Buffer out;
+    buffer_init(&out);
+    buffer_format(
+        &out,
+        "    {\n"
+        "        if (kofun_failed) { %sreturn KOFUN_BYTES_EMPTY; }\n"
+        "        KofunBytesValue kofun_result = kofun_bytes_take(&%s);\n"
+        "        %sreturn kofun_result;\n"
+        "    }\n",
+        cleanup, returned, cleanup
+    );
+    return out.data;
+}
+
 static char *unused_parameter_discards(
     const char *source,
     const char *hir,
@@ -21838,9 +21869,9 @@ static char *unused_parameter_discards(
         );
         if (name_at < 0 || type_cursor < 0) break;
         char *binding_id = hir_definition_id_at(hir, name_at);
-        if (!binding_has_use(hir, binding_id)) {
-            buffer_format(&out, "    (void)k_b%s;\n", binding_id);
-        }
+        char *discard = unused_binding_discard(hir, binding_id);
+        buffer_format(&out, "%s", discard);
+        free(discard);
         free(binding_id);
         int64_t separator = skip_trivia(source, type_cursor);
         while (
@@ -22732,6 +22763,9 @@ static char *lower_body_with_workspace(
                         tag
                     );
                 }
+                char *discard = unused_binding_discard(hir, binding_id);
+                buffer_format(&emitted, "%s", discard);
+                free(discard);
                 free(constructor);
                 free(enum_type);
                 free(name);
@@ -22995,6 +23029,10 @@ static char *lower_body_with_workspace(
                 binding_id,
                 value
             );
+            /* #1628. Preserve initializer failure and effects. */
+            char *discard = unused_binding_discard(hir, binding_id);
+            buffer_format(&emitted, "%s", discard);
+            free(discard);
             /* The binding exists from here on, so its release joins the funnel
              * *before* the guard below it -- and ahead of every earlier owner,
              * which is what makes reclamation run in reverse creation order. */
@@ -24020,17 +24058,9 @@ static char *lower_body_with_workspace(
                     free(emitted.data);
                     return returned;
                 }
-                buffer_format(
-                    &emitted,
-                    "    {\n"
-                    "        KofunBytesValue kofun_result = "
-                    "kofun_bytes_take(&%s);\n"
-                    "        if (kofun_failed) return KOFUN_BYTES_EMPTY;\n"
-                    "        %sreturn kofun_result;\n"
-                    "    }\n",
-                    returned,
-                    bytes_cleanup
-                );
+                char *transfer = emit_bytes_return(returned, bytes_cleanup);
+                buffer_format(&emitted, "%s", transfer);
+                free(transfer);
                 free(returned);
                 cursor = skip_trivia(source, value_end);
             } else if (returns_list_int) {

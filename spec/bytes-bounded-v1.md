@@ -68,8 +68,12 @@ fixture it also requires any released carrier ids on each return to descend;
 the branch and nested fixtures execute their cleanup paths but do not derive a
 complete live-owner set or check its full order. These observations establish
 cleanup presence and selected ordering, not that every live carrier is released
-at every exit. Three non-`Bytes` typed return guards and a post-transfer `Bytes`
-result guard remain open in #1569 and #1581.
+at every exit. The non-`Bytes` typed guards covered by #1569 reclaim their
+owners. For the whole-carrier `Bytes` return, `emit_bytes_return` checks failure
+and releases live owners before the non-failing field transfer (#1581). Its
+two-allocation fixture and emitted-C fault probe check success transfer, both
+failure releases, and a mutation restoring the old post-take guard. This is an
+injected compiler-template proof, not a natural source-level failure reproducer.
 
 A parameter carries one of three modes, and a `Bytes` parameter with no mode is
 refused:
@@ -250,14 +254,8 @@ works is the kind of published promise this repository gates against:
 - **A temporary `Bytes` call result passed to a direct declared `read`, `edit`,
   or `take` parameter is not yet refused by Stage 2** and can reach invalid
   generated C (#1516).
-- **Seventy-one `Bytes` locals in one function are refused under `E2S170`'s
-  alias reason** when the actual cause is a cleanup-list buffer, and only by
-  one half of the pair (#1556).
-- **The record and `Bytes` typed-return forms have no owning-Bytes fixture.**
+- **The record typed-return form has no owning-Bytes fixture.**
   The dropped trap-guard cleanup for `List[Int]`, `Int?` and enum returns is
   fixed and proved beside the `Text` control, and the two halves no longer
-  disagree on where the cleanup goes (#1569); the remaining two forms are
-  still outside the executable matrix.
-- **The post-take failure guard of a `Bytes`-returning function may discard the
-  result carrier.** Reachability and an executable ownership proof remain
-  unresolved (#1581).
+  disagree on where the cleanup goes (#1569). The whole-carrier `Bytes` return
+  has the bounded success/fault-injection proof described in §3 (#1581).

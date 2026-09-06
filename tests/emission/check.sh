@@ -80,11 +80,11 @@ if test "${1:-}" = "--prove"; then
     proved=0
     behaved=0
 
-    # Two real tracked files, so the proof exercises the actual classifier
-    # rather than a transcription of it: one the default driver builds, and one
-    # it accepts and then hands to cc, which refuses it (#1628).
+    # Two real tracked files exercise the classifier. The second belongs to
+    # the A1 driver and still fails through this default driver; #1628's
+    # recursion fixture now builds and must not be kept broken for this proof.
     builds=tests/conformance/functions/branch_join.kofun
-    violates=tests/conformance/inference/hm-levels/recursion.kofun
+    violates=bootstrap/selfhost/frontend/reject_arithmetic_operands.kofun
     printf '%s\n%s\n' "$builds" "$violates" >"$PROVE/corpus.txt"
     printf '%s\n' "$builds" >"$PROVE/corpus-clean.txt"
     : >"$PROVE/corpus-empty.txt"

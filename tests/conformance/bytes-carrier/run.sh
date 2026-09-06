@@ -227,6 +227,45 @@ executes zeroed_lengths 'the four zeroed lengths and empty'
 executes transferred_owner 'a take transfer of real storage'
 executes produced_owner 'a proven-fresh producer and a relayed one'
 
+# #1581. Inject at the terminal transfer after both real allocations, before
+# the failure guard. A success-only run cannot prove this cleanup edge.
+awk '
+    /KofunBytesValue kofun_result = kofun_bytes_take/ {
+        print "        if (inject_transfer_failure) kofun_failed = true;"
+    }
+    NR > 1 { print previous }
+    { previous = $0 }
+    END { print previous }
+' "$WORK/produced_owner.c" >"$WORK/return-probe.c"
+for level in 0 2; do
+    "${CC:-cc}" -std=c11 "-O$level" -g -Wall -Wextra -Werror -pedantic \
+        -fsanitize=address,undefined -I "$WORK" \
+        "$CASES/return_driver.c" -o "$WORK/return.O$level" ||
+        fail "the return ownership probe did not compile at -O$level"
+    ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 \
+        "$WORK/return.O$level" >"$WORK/return.O$level.out" 2>&1 ||
+        fail "the return ownership probe failed: $(cat "$WORK/return.O$level.out")"
+done
+
+# Restore the exact old post-take guard. The live allocation witness must
+# name the leak even on hosts where LeakSanitizer is unavailable.
+mkdir -p "$WORK/return-mutant"
+awk '
+    /if \(kofun_failed\).*return KOFUN_BYTES_EMPTY; }/ { next }
+    { print }
+    /KofunBytesValue kofun_result = kofun_bytes_take/ {
+        print "        if (kofun_failed) return KOFUN_BYTES_EMPTY;"
+    }
+' "$WORK/return-probe.c" >"$WORK/return-mutant/return-probe.c"
+"${CC:-cc}" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+    -I "$WORK/return-mutant" "$CASES/return_driver.c" \
+    -o "$WORK/return-mutant/probe" || fail 'the return mutation did not compile'
+if "$WORK/return-mutant/probe" >"$WORK/return-mutant/out" 2>&1; then
+    fail 'the old post-take guard passed the allocation witness'
+fi
+grep -q 'failure discarded live result storage or another owner' \
+    "$WORK/return-mutant/out" || fail 'the return mutation failed for an unrelated reason'
+
 # The status lives in the emitted C, so it is proved there. The prelude is
 # extracted from a program the compiler just emitted rather than restated
 # here, so this measures the shipped bytes.

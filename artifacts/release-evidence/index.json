@@ -4,9 +4,9 @@
   "version": "0.11.5-seed",
   "inputs": {
     "VERSION": "7d27e466920ae8fb5922acd05002c1b4b66dbded395b7ca90847ac17d96c73e3",
-    "release/claims.json": "d8378b24ac0cb343764c7c96b795bc7fedc76ee2d3e75edfd601c9bf3ed5f2e4",
+    "release/claims.json": "3fa0fe2841c9a5b3b4937e085aebdefb949b6fa3dadc25b4254adabb203a6103",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
-    "bootstrap/manifest.json": "5c14871566a6813b85d5239dd6cc1020a453fc7004065fe2ebe0c5e2f73784b6"
+    "bootstrap/manifest.json": "e075aea7b9855cb671099a2edf430e225552f921f946fdddebd1ba604cbc357c"
   },
   "states": {
     "checkpoint": 41,
@@ -798,7 +798,7 @@
     "bootstrap/selfhost/driver/corpus_reject.stdout": "b11ae682acae186b10022c3469af65b54cd03c2e88a4756eba1cbe5b0e9356f9",
     "bootstrap/stage1/README.md": "449e52413da5d35eafee5b56a7c243ee0363774b8d4110d2a3a998a49f95d52f",
     "bootstrap/stage1/SHA256SUMS": "0dc3d2677f03dfe3bd6f9da9f923315dd5f30dcaeca4768f3c63ec1f66744b94",
-    "bootstrap/stage2/README.md": "0ef02972ac1dafe5d13017c13f6e46b626890271e489b1a910a222a855b1cc0a",
+    "bootstrap/stage2/README.md": "d4e1db777d3553792d044fd81fbb7e5926c2df6bc2c38d45330d910e256a2d2d",
     "bootstrap/stage2/fixtures/borrowed_move_text.kofun": "34502461891e7c8f42c9017e9fbfc857e54b10ca4fe59551be9ab9ab22d2c1b6",
     "bootstrap/wasm/fixtures/unsupported_text.kofun": "e0a45136410ddb85e9f5b3e5c39e7903d96da39aa53aaf3078d2555b4f383864",
     "bootstrap/wasm/object_arena_check.sh": "c415a46c7b83493ce72f07cd846d895ddf0980dc0f83e36023cb57fadb5f732f",
@@ -821,7 +821,7 @@
     "examples/rust-shim/check.sh": "487dfa45e0a090f56550678fc6224c84780fbb750563b8fafcd3dd2fc34b4c01",
     "examples/wasm_arithmetic.kofun": "ea73b3ee6b5172a4c8080ed5b4540fb23288d31000dd6ccd59a473e97836c246",
     "rfcs/0010-affine-resource-handle-v1.md": "0deef14c3d575a97acbd92907757707fd49680c1f18c4171e1d2bf6a54d2656e",
-    "spec/bytes-bounded-v1.md": "3333daa74408645d2be051db7c089e408a6a05320b7467d5d3f8ddd440572ce0",
+    "spec/bytes-bounded-v1.md": "25c14ece44f8b05d2f5ce2bf3c7735c6d2a26eef172f6a2bda87ce3ef46656ba",
     "spec/enum-match-exhaustiveness.md": "ac383d5cdc76a3d0817bc7cacb12a473c4b18d099551d2e9a098928cc4980f43",
     "spec/modules/module-identity.md": "9fc02e1888a5d585aa9c747e3800e9d72d947eaa9d722a60fa4e4a7b385ae5a0",
     "spec/modules/re-exports.md": "adaaaa3af3a08302b979a1d92871d6a552f0dd76838a67147d876c510ef95ce3",

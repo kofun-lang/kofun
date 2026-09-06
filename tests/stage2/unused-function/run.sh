@@ -139,6 +139,69 @@ assert_not_grep 'the emitted C does not reference main as a function symbol' \
 assert_grep 'the references sit in the same prologue as the runtime helpers' \
     -Fq -- '(void)kofun_bit_wrapping_add;' "$work/uncalled.c"
 
+# #1628. These fixtures used to be checked only through non-executing gates.
+# Exercise strict emission and runtime, then restore each defective emitted
+# shape and require the host compiler to reject it for the original reason.
+for source in \
+    tests/conformance/inference/hm-levels/recursion.kofun \
+    tests/conformance/syntax/issues_48_60/token-spans.kofun \
+    tests/typed-sidecar/fixtures/stage2_events.kofun
+do
+    stem=$(basename "$source" .kofun)
+    "$root/bin/kofun" build "$root/$source" --emit-c "$work/$stem.c" \
+        -o "$work/$stem.bin" || assert_fail "$stem did not build through the CLI"
+    "$compiler" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+        "$work/$stem.c" -o "$work/$stem.strict" ||
+        assert_fail "$stem emitted invalid strict C11"
+    "$work/$stem.strict" >"$work/$stem.stdout" ||
+        assert_fail "$stem did not execute"
+    case $stem in
+        recursion)
+            assert_file_empty 'discarding a recursive lambda does not call it' \
+                "$work/$stem.stdout"
+            sed 's/(void)kofun_lambda_\([0-9]*\);/(void)k_b\1;/' \
+                "$work/$stem.c" >"$work/$stem.mutant.c"
+            needle=undeclared ;;
+        token-spans)
+            assert_eq 'unused scalar preserves surrounding output' \
+                "$(cat "$work/$stem.stdout")" 'a"b'
+            sed '/(void)k_b[0-9]*;/d' "$work/$stem.c" >"$work/$stem.mutant.c"
+            needle=unused ;;
+        stage2_events)
+            assert_eq 'unused enum preserves surrounding output' \
+                "$(cat "$work/$stem.stdout")" 42
+            sed '/(void)k_b[0-9]*;/d' "$work/$stem.c" >"$work/$stem.mutant.c"
+            needle=unused ;;
+    esac
+    if "$compiler" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+        "$work/$stem.mutant.c" -o "$work/$stem.mutant" \
+        >"$work/$stem.mutant.stdout" 2>"$work/$stem.mutant.stderr"; then
+        assert_fail "$stem reintroduced emission defect compiled"
+    fi
+    assert_grep "$stem mutation names its emission defect" \
+        -q "$needle" "$work/$stem.mutant.stderr"
+done
+
+# Discarding the binding must not discard its initializer's effects or traps.
 printf '%s\n' \
+    'fn effect() -> Int {' '    print(7)' '    return 9' '}' \
+    'fn main() {' '    let unused = effect()' '    print(99)' '}' >"$work/effect.kofun"
+"$root/bin/kofun" build "$work/effect.kofun" -o "$work/effect.bin" ||
+    assert_fail 'the unused effectful initializer did not build'
+"$work/effect.bin" >"$work/effect.stdout" || assert_fail 'the effect fixture failed'
+printf '7\n99\n' >"$work/effect.expected"
+cmp "$work/effect.expected" "$work/effect.stdout" ||
+    assert_fail 'discarding a binding changed its initializer effects'
+printf '%s\n' 'fn main() {' '    let unused = 1 // 0' '    print(99)' '}' >"$work/trap.kofun"
+"$root/bin/kofun" build "$work/trap.kofun" -o "$work/trap.bin" ||
+    assert_fail 'the unused trapping initializer did not build'
+if "$work/trap.bin" >"$work/trap.stdout" 2>"$work/trap.stderr"; then
+    assert_fail 'discarding a binding erased its initializer trap'
+fi
+assert_file_empty 'a trapped initializer stops subsequent output' "$work/trap.stdout"
+assert_grep 'the initializer keeps its runtime diagnostic' -q 'error\[R' "$work/trap.stderr"
+
+printf '%s\n' \
+    'PASS: all three #1628 fixtures build and execute; reintroducing each emitted defect fails by name; initializer effects and traps are preserved' \
     'PASS: an uncalled function builds under the strict flags the toolchain uses, each non-main function is referenced once in the runtime prologue, and calling every function still builds' \
     'PASS: a parameter the body does not use is discarded in first, middle, last and every position, and a parameter that is used is not'

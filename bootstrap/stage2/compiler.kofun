@@ -4973,6 +4973,25 @@ fn binding_has_use(hir: Text, binding_id: Text) -> Bool {
     return false
 }
 
+# One discard policy for parameters and local carriers. Initializers and
+# ownership cleanup remain the caller's responsibility.
+fn unused_binding_discard(hir: Text, binding_id: Text) -> Text {
+    if binding_has_use(hir, binding_id) {
+        return ""
+    }
+    return "    (void)k_b" + binding_id + ";\n"
+}
+
+# #1581. Check failure while binding ids still own every allocation. Taking a
+# whole carrier only copies fields and clears the source; it cannot fail.
+fn emit_bytes_return(returned: Text, cleanup: Text) -> Text {
+    return "    {\n" +
+    "        if (kofun_failed) { " + cleanup + "return KOFUN_BYTES_EMPTY; }\n" +
+    "        KofunBytesValue kofun_result = kofun_bytes_take(&" + returned + ");\n" +
+    "        " + cleanup + "return kofun_result;\n" +
+    "    }\n"
+}
+
 # `(void)` for each parameter the body does not use.
 #
 # #1315 emitted this for borrowed `Bytes` parameters only, because that slice
@@ -5019,9 +5038,7 @@ fn unused_parameter_discards(
             return out
         }
         let binding_id = hir_definition_id_at(hir, name_at)
-        if !binding_has_use(hir, binding_id) {
-            out = out + "    (void)k_b" + binding_id + ";\n"
-        }
+        out = out + unused_binding_discard(hir, binding_id)
         let mut separator = skip_trivia(source, type_cursor)
         while separator < parameters_end &&
               token_text(source, separator) != "," {
@@ -6769,6 +6786,10 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
             # lowers to the file-scope C constant instead of `k_b`.
             if len(binding_id) == 0 && constant_is_declared(source, name) {
                 return constant_c_name(name)
+            }
+            # #1628. Lifting declares a function, never a k_b local.
+            if lambda_binding_open(source, hir, binding_id) >= 0 {
+                return "kofun_lambda_" + binding_id
             }
             if optional_int_binding(source, cursor, name) &&
                !optional_int_carrier_position(source, cursor) {
@@ -15343,6 +15364,7 @@ fn lower_body(
                     " = {INT64_C(" + to_text(tag) +
                     "), INT64_C(0)};\n"
                 }
+                emitted = emitted + unused_binding_discard(hir, binding_id)
                 cursor = skip_trivia(source, constructor_end)
                 }
                 }
@@ -15502,6 +15524,8 @@ fn lower_body(
                 }
                 emitted = emitted + "    " + c_type + " " + storage + " = " +
                 initializer + ";\n"
+                # #1628. Preserve initializer failure and effects.
+                emitted = emitted + unused_binding_discard(hir, binding_id)
                 # The binding exists from here on, so its release joins the
                 # funnel *before* the guard below it -- and ahead of every
                 # earlier owner, which is what makes reclamation run in
@@ -16123,13 +16147,7 @@ fn lower_body(
                 if starts_with(returned, "error[") {
                     return returned
                 }
-                emitted = emitted +
-                "    {\n" +
-                "        KofunBytesValue kofun_result = kofun_bytes_take(&" +
-                returned + ");\n" +
-                "        if (kofun_failed) return KOFUN_BYTES_EMPTY;\n" +
-                "        " + bytes_cleanup + "return kofun_result;\n" +
-                "    }\n"
+                emitted = emitted + emit_bytes_return(returned, bytes_cleanup)
                 cursor = skip_trivia(source, value_end)
             } else if returns_list_int {
                 let value_end = expression_end(source, value_start)
