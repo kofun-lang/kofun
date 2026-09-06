@@ -83,6 +83,7 @@ module-interface-artifact
 module-inventory
 module-symbols
 move-assertion
+move-call-crossings
 namespaces
 native
 native-cli-action-binding-decision

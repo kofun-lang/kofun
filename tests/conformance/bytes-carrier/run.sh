@@ -342,6 +342,8 @@ refuses() {
         fail "$stem did not report: $expected"
     test ! -e "$WORK/$stem.c" ||
         fail "$stem committed C"
+    test ! -e "$WORK/$stem.bin" ||
+        fail "$stem committed an executable"
 }
 
 refuses alias_initializer \
@@ -358,6 +360,58 @@ refuses escaping_return \
     'alias for `escaped` (escaping return)'
 refuses copied_parameter \
     'alias for `b` (backend limitation)'
+
+# #1516. The existing mutation-surface carrier-identity refusal also owns
+# ordinary user-function arguments: all three modes need an addressable slot.
+for mode in read edit take; do
+    refuses "temporary_${mode}_argument" \
+        'error[E2S177]: Stage 2 Bytes argument 1 to `measure` needs a named carrier binding, not a temporary'
+done
+cmp "$CASES/temporary_read_argument.stderr" \
+    "$WORK/temporary_read_argument.stderr" ||
+    fail 'the temporary Bytes argument diagnostic drifted from its golden'
+
+sed -e 's/measure(read b/measure(prefix: Int, read b/' \
+    -e 's/return 3/return prefix/' \
+    -e 's/measure(stage2/measure(3, stage2/' \
+    "$CASES/temporary_read_argument.kofun" >"$WORK/temporary_second.kofun"
+if "$ROOT/bin/kofun" build "$WORK/temporary_second.kofun" \
+    -o "$WORK/temporary_second.bin" --emit-c "$WORK/temporary_second.c" \
+    >"$WORK/temporary_second.stdout" 2>"$WORK/temporary_second.stderr"; then
+    fail 'the temporary second Bytes argument was accepted'
+fi
+grep -qF 'error[E2S177]: Stage 2 Bytes argument 2 to `measure`' \
+    "$WORK/temporary_second.stderr" || fail 'the refusal lost argument position 2'
+test ! -e "$WORK/temporary_second.c" && test ! -e "$WORK/temporary_second.bin" ||
+    fail 'the second-argument refusal committed output'
+
+# Remove the named-carrier guard from the production compiler. Each fixture
+# must now reach the original &<rvalue> host-C failure, not an unrelated error.
+awk '
+    /\/\* #1516\. Ordinary Bytes crossings/ { skipping = 1; sites++ }
+    skipping && /char \*actual_type = hir_binding_field/ { skipping = 0 }
+    !skipping { print }
+    END { if (sites != 1 || skipping) exit 1 }
+' "$ROOT/bootstrap/stage2/compiler.c" >"$WORK/temporary-mutant.c" ||
+    fail 'temporary-argument mutation did not find exactly one guard'
+"${CC:-cc}" -std=c11 -O0 -Wall -Wextra -Werror -pedantic \
+    -I "$ROOT/bootstrap/stage2" "$WORK/temporary-mutant.c" \
+    -o "$WORK/temporary-mutant" || fail 'the temporary-argument mutant did not build'
+for mode in read edit take; do
+    stem="temporary_${mode}_argument"
+    "$WORK/temporary-mutant" "$CASES/$stem.kofun" "$WORK/$stem.mutant.c" \
+        "$WORK/$stem.mutant.ir" "$WORK/$stem.mutant.tokens" \
+        >"$WORK/$stem.mutant.stdout" 2>"$WORK/$stem.mutant.stderr" ||
+        fail "$mode temporary mutant no longer reaches C emission"
+    if "${CC:-cc}" -std=c11 -O0 -Wall -Wextra -Werror -pedantic \
+        "$WORK/$stem.mutant.c" -o "$WORK/$stem.mutant.bin" \
+        >"$WORK/$stem.mutant.cc.stdout" 2>"$WORK/$stem.mutant.cc.stderr"; then
+        fail "$mode temporary mutation did not restore the defective C"
+    fi
+    grep -qiE 'lvalue required|cannot take the address of an rvalue' \
+        "$WORK/$stem.mutant.cc.stderr" ||
+        fail "$mode temporary mutant failed for a different reason"
+done
 
 # A refusal must say the same thing twice. A message built from a walk that
 # depends on iteration order, or on a buffer reused between runs, drifts
@@ -402,4 +456,5 @@ printf '%s\n' \
     'PASS: the 0..8 status declaration is emitted once and carries no consumed tag' \
     'PASS: the take crossing and the terminal return are visible in the emitted C as take-then-release-then-return, and the injected allocation failure edge is sanitizer-clean' \
     'PASS: a refusal reports identically on a second run' \
-    'PASS: seven refusal shapes each report their own E2S170 reason and commit no C; escaping store and escaping capture are refused earlier, by E2S32 and E2S96'
+    'PASS: seven refusal shapes each report their own E2S170 reason and commit no C; escaping store and escaping capture are refused earlier, by E2S32 and E2S96' \
+    'PASS: read/edit/take temporary arguments refuse as E2S177 with no C or executable; argument 2 and the golden are pinned; all three missing-guard mutants restore the host-C lvalue failure'

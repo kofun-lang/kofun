@@ -100,32 +100,26 @@ fn read_observation() -> Int {
 fn drained_generation() -> Int {
     let initial: AffineTransport = initial_handle()
     let written: AffineTransport = affine_transport_write(initial, 5)
-    take initial
     let drained: AffineTransport = affine_transport_drain(written)
-    take written
     return drained.generation
 }
 
 fn drained_reuse_observation() -> Int {
     let initial: AffineTransport = initial_handle()
     let written: AffineTransport = affine_transport_write(initial, 5)
-    take initial
     let drained: AffineTransport = affine_transport_drain(written)
-    take written
     return affine_transport_read(drained)
 }
 
 fn normal_close_terminal() -> Int {
     let initial: AffineTransport = initial_handle()
     let summary: TerminalSummary = affine_transport_close(initial)
-    take initial
     return summary.terminal
 }
 
 fn normal_close_reuse() -> Int {
     let initial: AffineTransport = initial_handle()
     let summary: TerminalSummary = affine_transport_close(initial)
-    take initial
     if summary.reusable {
         return 1
     }
@@ -135,14 +129,12 @@ fn normal_close_reuse() -> Int {
 fn cancel_terminal() -> Int {
     let initial: AffineTransport = initial_handle()
     let summary: TerminalSummary = affine_transport_cancel(initial)
-    take initial
     return summary.terminal
 }
 
 fn cancel_reuse() -> Int {
     let initial: AffineTransport = initial_handle()
     let summary: TerminalSummary = affine_transport_cancel(initial)
-    take initial
     if summary.reusable {
         return 1
     }

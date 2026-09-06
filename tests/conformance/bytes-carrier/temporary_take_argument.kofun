@@ -1,0 +1,10 @@
+# #1516. A take crossing cannot move from an unnamed producer result because
+# the canonical lowering takes the address of the source carrier.
+fn measure(take b: Bytes) -> Int {
+    return 3
+}
+
+fn main() -> Int {
+    print(measure(stage2_bytes_empty()))
+    return 0
+}

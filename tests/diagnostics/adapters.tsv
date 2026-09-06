@@ -12,6 +12,7 @@ int-bits	tests/conformance/int-bits/run.sh	verify	tests/diagnostics/reports/int-
 list-int-values	tests/stage2/list-int-values/run.sh	verify	tests/diagnostics/reports/list-int-values.tsv
 module-constants	tests/module-constants/check.sh	verify	tests/diagnostics/reports/module-constants.tsv
 module-symbols	tests/conformance/modules/top-level-declarations/run.sh	verify	tests/diagnostics/reports/module-symbols.tsv
+move-call-crossings	tests/conformance/move-call-crossings/run.sh	verify	tests/diagnostics/reports/move-call-crossings.tsv
 native	tests/diagnostics/native/run.sh	verify	tests/diagnostics/reports/native.tsv
 optional-construction	tests/conformance/optional-construction/run.sh	verify	tests/diagnostics/reports/optional-construction.tsv
 optional-narrowing	tests/conformance/optional-narrowing/run.sh	verify	tests/diagnostics/reports/optional-narrowing.tsv

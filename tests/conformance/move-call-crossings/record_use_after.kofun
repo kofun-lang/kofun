@@ -1,0 +1,12 @@
+type Point = { x: Int, valid: Bool }
+
+fn consume(take point: Point) -> Int {
+    return point.x
+}
+
+fn main() -> Int {
+    let point: Point = Point(x: 7, valid: true)
+    print(consume(point))
+    print(point.x)
+    return 0
+}

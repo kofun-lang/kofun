@@ -1,0 +1,1 @@
+error[E2S123]: `owned` was moved by `take` and cannot be used again at bytes 231..236; moved by `take` at bytes 192..197

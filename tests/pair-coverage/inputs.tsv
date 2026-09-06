@@ -382,6 +382,9 @@ tests/conformance/bytes-carrier/nested_match_owner.kofun
 tests/conformance/bytes-carrier/owner.kofun
 tests/conformance/bytes-carrier/produced_owner.kofun
 tests/conformance/bytes-carrier/recursive_producer.kofun
+tests/conformance/bytes-carrier/temporary_edit_argument.kofun
+tests/conformance/bytes-carrier/temporary_read_argument.kofun
+tests/conformance/bytes-carrier/temporary_take_argument.kofun
 tests/conformance/bytes-carrier/transferred_owner.kofun
 tests/conformance/bytes-carrier/typed_return_owner.kofun
 tests/conformance/bytes-carrier/zeroed_lengths.kofun
@@ -808,6 +811,12 @@ tests/conformance/modules/visibility-syntax/restricted_pub_deferred.kofun
 tests/conformance/modules/visibility-syntax/rust_pub_crate_alias.kofun
 tests/conformance/modules/visibility-syntax/rust_pub_in_alias.kofun
 tests/conformance/modules/visibility-syntax/rust_pub_super_alias.kofun
+tests/conformance/move-call-crossings/accepted.kofun
+tests/conformance/move-call-crossings/bytes_double.kofun
+tests/conformance/move-call-crossings/bytes_edit_after.kofun
+tests/conformance/move-call-crossings/record_double.kofun
+tests/conformance/move-call-crossings/record_edit.kofun
+tests/conformance/move-call-crossings/record_use_after.kofun
 tests/conformance/numeric/divide_by_zero_variable.kofun
 tests/conformance/numeric/expectations.kofun
 tests/conformance/numeric/floor_div_mod_signs.kofun

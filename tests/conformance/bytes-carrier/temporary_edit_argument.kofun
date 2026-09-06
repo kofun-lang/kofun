@@ -1,0 +1,9 @@
+# #1516. An edit crossing needs a named carrier just as a read crossing does.
+fn measure(edit b: Bytes) -> Int {
+    return 3
+}
+
+fn main() -> Int {
+    print(measure(stage2_bytes_empty()))
+    return 0
+}

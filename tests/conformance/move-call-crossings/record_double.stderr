@@ -1,0 +1,1 @@
+error[E2S123]: `point` was already moved by `take` at bytes 210..215; first moved by `take` at bytes 184..189

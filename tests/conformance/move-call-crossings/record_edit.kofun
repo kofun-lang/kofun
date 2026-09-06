@@ -1,0 +1,11 @@
+type Point = { x: Int, valid: Bool }
+
+fn inspect(edit point: Point) -> Int {
+    return point.x
+}
+
+fn main() -> Int {
+    let point: Point = Point(x: 7, valid: true)
+    print(inspect(point))
+    return 0
+}

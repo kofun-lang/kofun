@@ -43,6 +43,9 @@ test "$(grep -c '    take handle: AffineTransport' "$SOURCE")" -eq 4 ||
     fail 'write/drain/close/cancel do not all receive take authority'
 test "$(grep -c '^    take handle$' "$SOURCE")" -eq 4 ||
     fail 'a consuming transition did not end its local handle authority'
+if grep -Eq '^    take (initial|written)$' "$SOURCE"; then
+    fail 'a caller still uses a manual take after a consuming transition'
+fi
 if grep -Fq 'edit handle' "$SOURCE"; then
     fail 'the table gained an in-place edit transition'
 fi
@@ -80,6 +83,25 @@ compare 'repeated Stage 2 stdout' \
     "$WORK/transport.stdout" "$WORK/transport.repeat.stdout"
 compare 'repeated Stage 2 stderr' \
     "$WORK/transport.stderr" "$WORK/transport.repeat.stderr"
+
+# #1540. The call now consumes its predecessor. Restoring the old manual
+# marker must fail as a second move, not merely alter a textual inventory.
+awk '
+    { print }
+    /let written: AffineTransport = affine_transport_write/ && !changed {
+        print "    take initial"
+        changed = 1
+    }
+    END { if (!changed) exit 1 }
+' "$SOURCE" >"$WORK/manual-take.kofun" || fail 'no transition call to mutate'
+if "$WORK/kofun-stage2" "$WORK/manual-take.kofun" "$WORK/manual-take.c" \
+    "$WORK/manual-take.ir" "$WORK/manual-take.tokens" \
+    >"$WORK/manual-take.stdout" 2>"$WORK/manual-take.stderr"; then
+    fail 'the old post-transition manual take was accepted'
+fi
+require 'the manual-take mutant was not refused as a second move' \
+    'error[E2S123]: `initial` was already moved by `take`' "$WORK/manual-take.stdout"
+test ! -e "$WORK/manual-take.c" || fail 'the manual-take mutant committed C'
 
 # The standalone record evaluator is the reference backend for this bounded
 # source. It does not implement `print`, so derive the library projection by

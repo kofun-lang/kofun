@@ -1211,6 +1211,11 @@ tasks:
           printf 'PASS: VERSION is the only version literal, and the CLI reports it\n'
         silent: true
 
+  move-call-crossings:
+    desc: "Verify bounded positional take moves, BindingId invalidation and trivial-record edit refusals"
+    cmds:
+      - "sh tests/conformance/move-call-crossings/run.sh"
+
   # A gate that fails without printing anything turns a specific defect into a
   # bare exit code, and #814 counted 460 assertions that do exactly that. This
   # holds every script to a recorded budget in both directions, so the number
@@ -1417,6 +1422,7 @@ tasks:
             patterns \
             adt \
             records \
+            move-call-crossings \
             aggregate-bridge \
             generics \
             const-generics \

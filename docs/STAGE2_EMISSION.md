@@ -17,6 +17,10 @@ round-tripping the Kofun file does not execute its lowering logic.
 | C references for unused parameters and scalar/constructor locals | `unused_binding_discard`; callers retain initializer evaluation and cleanup | `task unused-function` |
 | A lambda binding used as a value | `emit_primary` selects its lifted function symbol | `task unused-function hm-levels call-arguments` |
 | Whole-carrier Bytes return | `emit_bytes_return` owns failure cleanup, transfer, then success cleanup | `task bytes-carrier bytes-mutation` |
+| A temporary passed to a Bytes parameter | `emit_argument` requires `bytes_named_carrier_binding` before taking an address | `task bytes-carrier` |
+| Which positional calls consume a binding | `call_argument_parameter_property` resolves the slot; `move_positional_binding` and `move_positional_owner` bound direct calls and owning types | `task move-call-crossings` |
+| Whether a later name is the moved value | `move_same_binding` compares HIR BindingIds for every move spelling | `task move-call-crossings records call-arguments` |
+| Trivial-record `edit` in the by-value ABI | `move_trivial_record` defines the shared type bound; `validate_move_record_modes` refuses the declaration | `task move-call-crossings` |
 
 The discard helper does not decide whether a construct may lower, erase an
 initializer, or change ownership. It is called after a declaration exists in
@@ -31,6 +35,17 @@ moved-from storage and releases the other owners before returning the result.
 If a future return form can fail while evaluating its address, first lower
 that evaluation into a checked temporary; the whole-carrier invariant would
 otherwise no longer apply.
+
+The positional move helpers are not a general ownership pass. Their new slice
+is a bare owning Bytes or Int/Bool-only nominal record passed to a direct,
+resolved current-file `take` parameter in straight-line source order. They
+exclude lexical/member/indirect callees, borrowed arguments, authority and
+composite types, and conditional/loop crossings. Existing labelled and
+pipeline rules keep their earlier scope. A crossing invalidates the resolved
+BindingId; a later shadowing declaration must not inherit the earlier move.
+`boundary_driver.c` tests those component decisions using production-built HIR;
+some excluded shapes remain outside full backend admission. Its compiler
+mutations are separate from the complete-source diagnostic and runtime tests.
 
 Keep the original reproducer in a gate reachable from `task verify`. For an
 emission defect, compile with strict C11 warnings, check observable behavior,

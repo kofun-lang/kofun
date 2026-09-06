@@ -4602,6 +4602,18 @@ fn emit_argument(
             cursor,
             end
         )
+        # #1516. Ordinary Bytes crossings need an addressable named carrier,
+        # just like the bounded mutation surface. A producer result has the
+        # right type but no BindingId; never publish &<rvalue> as C.
+        if len(binding_id) == 0 {
+            return lower_error(
+                "E2S177",
+                "Stage 2 Bytes argument " +
+                to_text(argument_index + 1) + " to `" + callee +
+                "` needs a named carrier binding, not a temporary",
+                cursor
+            )
+        }
         let actual_type = hir_binding_field(hir, binding_id, 5)
         if len(binding_id) > 0 && actual_type != "Bytes" {
             return "error[E2S15]: Core function `" + callee +
@@ -9175,6 +9187,7 @@ fn call_argument_parameter_property(
     target: Int,
     property: Text
 ) -> Text {
+    let mut previous = -1
     let mut cursor = skip_trivia(source, 0)
     while cursor < target && cursor < len(source) {
         if token_kind(source, cursor) == "identifier" {
@@ -9207,6 +9220,12 @@ fn call_argument_parameter_property(
                             }
                         }
                         if argument == target || value == target {
+                            if property == "callee" {
+                                if previous >= 0 && token_text(source, previous) == "." {
+                                    return ""
+                                }
+                                return to_text(cursor)
+                            }
                             # Whether this argument was written with a label is
                             # decided by the same walk that resolves its slot,
                             # so the ownership rule and the slot it names can
@@ -9301,6 +9320,7 @@ fn call_argument_parameter_property(
                 }
             }
         }
+        previous = cursor
         cursor = skip_trivia(source, token_end(source, cursor))
     }
     return ""
@@ -18137,20 +18157,6 @@ fn move_use_position(source: Text, previous: Int, cursor: Int) -> Bool {
     return next >= len(source) || token_text(source, next) != ":"
 }
 
-# A bare resolved binding in a parameter slot declared `take` is the same
-# semantic transfer as a written whole-binding `take`. Compound expressions,
-# constructors, and literals may produce a value for a take slot but do not
-# name a source binding for this bounded source-order invalidation pass.
-#
-# The argument must also be *labelled*. That is the boundary this increment
-# was scoped to, and it is load-bearing rather than cosmetic: the accepted
-# RFC-0010 handle model in `tests/ownership/affine-resource-handle` calls
-# `affine_transport_write(initial, 5)` positionally into a `take` slot and
-# then writes `take initial` as the transfer. Treating the positional call as
-# the move makes that written `take` a second one, so dropping this guard
-# refuses a program the ownership gate requires the compiler to accept.
-# Widening to positional calls is a change to that accepted model, not to
-# this lowering slice, and is owned by #882 rather than assumed here.
 # Whether `cursor` is a pipeline subject flowing into a `take` slot 0.
 #
 # The subject is never written with a label — it sits outside the parentheses —
@@ -18189,6 +18195,134 @@ fn pipeline_subject_take(source: Text, cursor: Int) -> Bool {
     return token_text(source, skip_trivia(source, token_end(source, parameters))) == "take"
 }
 
+# #1540. This is a type bound, not a cleanup or authority proof.
+fn move_trivial_record(source: Text, type: Text) -> Bool {
+    if type == "RootAuthority" || type == "EnvironmentAuthority" {
+        return false
+    }
+    let count = record_field_count(source, type)
+    if count < 0 {
+        return false
+    }
+    let mut index = 0
+    while index < count {
+        let field = record_field_text(source, type, index, true)
+        if field != "Int" && field != "Bool" {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn move_positional_owner(source: Text, hir: Text, binding: Text) -> Bool {
+    let mode = hir_binding_field(hir, binding, 6)
+    if mode == "read" || mode == "edit" {
+        return false
+    }
+    let type = hir_binding_field(hir, binding, 5)
+    return type == "Bytes" || move_trivial_record(source, type)
+}
+
+# Exclude conditional/loop bodies and conditional expression operands. This
+# does not construct a CFG or infer a move on a path-dependent crossing.
+fn move_straight_line_position(source: Text, target: Int) -> Bool {
+    let body = enclosing_function_open(source, target)
+    if body < 0 {
+        return false
+    }
+    let mut cursor = skip_trivia(source, token_end(source, body))
+    let mut conditional = false
+    while cursor < target {
+        let token = token_text(source, cursor)
+        if token == "if" || token == "while" || token == "match" {
+            conditional = true
+        }
+        if token == "&&" || token == "||" || token == "??" {
+            # Only the right operand is conditional, not a subsequent
+            # statement or a later argument after that operand ends.
+            let right = skip_trivia(source, token_end(source, cursor))
+            let end = expression_end(source, right)
+            if end < 0 || target < end {
+                return false
+            }
+        }
+        if token == "{" {
+            let close = balanced_end(source, cursor, "{", "}")
+            if close < 0 || target < close {
+                return false
+            }
+            cursor = skip_trivia(source, close)
+            conditional = false
+        } else {
+            cursor = skip_trivia(source, token_end(source, cursor))
+        }
+    }
+    return !conditional
+}
+
+fn move_positional_binding(source: Text, hir: Text, cursor: Int) -> Bool {
+    let position = call_argument_parameter_property(source, cursor, "callee")
+    if len(position) == 0 {
+        return false
+    }
+    let call = decimal_value(position)
+    let name = token_text(source, call)
+    if function_start_named(source, name) < 0 ||
+       len(hir_use_binding_id(hir, call)) > 0 {
+        return false
+    }
+    # An aliased multi-slot Bytes call already belongs to E2S180. It is not a
+    # successful transfer whose later argument should instead become E2S123.
+    let identity = declared_bytes_argument_identity_error(
+        source, hir, name, call, skip_trivia(source, token_end(source, call))
+    )
+    if len(identity) > 0 {
+        return false
+    }
+    let binding = hir_use_binding_id(hir, cursor)
+    return move_positional_owner(source, hir, binding) &&
+        move_straight_line_position(source, cursor)
+}
+
+# All move spellings invalidate one resolved BindingId, never a display name.
+# A declaration or a fresh shadowing binding is not a use of the old value.
+fn move_same_binding(hir: Text, moved: Int, use_at: Int) -> Bool {
+    let left = hir_use_binding_id(hir, moved)
+    return len(left) > 0 && left == hir_use_binding_id(hir, use_at)
+}
+
+fn validate_move_record_modes(source: Text) -> Text {
+    let mut function = next_function_start(source, 0)
+    while function < len(source) {
+        let open = parameter_open(source, function)
+        let mut close = -1
+        if open >= 0 {
+            close = balanced_end(source, open, "(", ")")
+        }
+        if close < 0 {
+            return ""
+        }
+        let mut cursor = skip_trivia(source, token_end(source, open))
+        while cursor < close {
+            if token_text(source, cursor) == "edit" {
+                let type_at = parameter_type_start(source, cursor, close)
+                if type_at >= 0 &&
+                   move_trivial_record(source, token_text(source, type_at)) {
+                    let name_at = parameter_internal_start(source, cursor, close)
+                    return "error[E2S181]: nominal-record parameter `" +
+                        token_text(source, name_at) + "` cannot use `edit` " +
+                        "in the Stage 2 v1 by-value ABI; use `read` or consuming `take` " +
+                        "at bytes " + to_text(cursor) + ".." + to_text(token_end(source, cursor))
+                }
+            }
+            cursor = skip_trivia(source, token_end(source, cursor))
+        }
+        function = next_function_start(source, function_end(source, function))
+    }
+    return ""
+}
+
 fn move_call_binding(
     source: Text,
     hir: Text,
@@ -18198,18 +18332,19 @@ fn move_call_binding(
        len(hir_use_binding_id(hir, cursor)) == 0 {
         return false
     }
-    # A pipeline subject reaches its slot without a label, so it is admitted on
-    # the declared mode of slot 0 rather than on how it was written. Every other
-    # shape keeps the existing rule exactly, which is what leaves the ordinary
-    # positional call outside the RFC-0010 move path.
+    # Existing labelled and pipeline rules retain their type scope. Ordinary
+    # positional calls add only the #1540 direct, bare, owning v1 slice.
     if pipeline_subject_take(source, cursor) {
         return true
     }
-    if call_argument_expected_mode(source, cursor) != "take" ||
-       call_argument_labelled(source, cursor) != "yes" {
+    if call_argument_expected_mode(source, cursor) != "take" {
         return false
     }
-    return expression_end(source, cursor) == token_end(source, cursor)
+    if expression_end(source, cursor) != token_end(source, cursor) {
+        return false
+    }
+    return call_argument_labelled(source, cursor) == "yes" ||
+        move_positional_binding(source, hir, cursor)
 }
 
 # Whole-binding move analysis for the compiler a user actually runs (#946).
@@ -18317,7 +18452,7 @@ fn validate_move_uses(source: Text, hir: Text) -> Text {
                                move_statement_partial(source, again) {
                                 break
                             }
-                            if token_text(source, again) == moved {
+                            if move_same_binding(hir, target, again) {
                                 let second = "error[E2S123]: `" + moved +
                                 "` was already moved by `take` at bytes " +
                                 to_text(use_at) + ".." + to_text(again_end) +
@@ -18336,7 +18471,7 @@ fn validate_move_uses(source: Text, hir: Text) -> Text {
                                 token_end(source, again)
                             )
                         } else if move_use_position(source, previous, use_at) &&
-                                  token_text(source, use_at) == moved {
+                                  move_same_binding(hir, target, use_at) {
                             let use_end = token_end(source, use_at)
                             let after_move = "error[E2S123]: `" + moved +
                             "` was moved by `take` and cannot be used again " +
@@ -18403,6 +18538,10 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     # #946: the move rule runs before every other validator, so a
     # use-after-move is reported as itself rather than as whatever the
     # statement it invalidates happens to contain.
+    let record_mode_check = validate_move_record_modes(source)
+    if len(record_mode_check) > 0 {
+        return record_mode_check
+    }
     let move_use_check = validate_move_uses(source, hir)
     if starts_with(move_use_check, "error[") {
         return move_use_check

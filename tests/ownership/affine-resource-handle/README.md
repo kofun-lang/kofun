@@ -27,6 +27,14 @@ fixtures prove use after a write-shaped move, a second terminal transition,
 and a read after cancellation all fail as registered `E2S123` observations,
 with no C artifact.
 
+The production call now consumes its bare predecessor binding (#1540).
+`transport.kofun` no longer writes a manual `take initial`/`take written`
+after a consuming transition. The gate reintroduces that old marker and
+requires the second-move E2S123 refusal; the existing standalone diagnostic
+goldens and runtime observations remain unchanged. The standalone reference
+evaluator is still only a reference for the successful table observations,
+not evidence that it implements positional-call move validation.
+
 `runtime_model.c` owns the host-boundary generation backstop that ordinary
 Kofun source cannot forge. It executes the same normal observations, then has
 two adversarial lanes: a stale generation and two copies of one initial handle.

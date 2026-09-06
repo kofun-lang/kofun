@@ -46,6 +46,9 @@
 #   grep -o -F '<token>' bootstrap/stage2/compiler.kofun | wc -l
 #
 # id	kofun_count	kofun_token	c_count	c_token	note
+positional-move-type-bound	1	type == "Bytes" || move_trivial_record(source, type)	1	strcmp(type, "Bytes") == 0 || move_trivial_record(source, type)	#1540. The ordinary positional move slice admits only owning Bytes and non-authority Int/Bool records; boundary mutations prove the type and owner exclusions.
+positional-move-binding-identity	2	move_same_binding(hir, target,	2	move_same_binding(hir, target,	#1540. Both later-use and second-move comparisons use HIR BindingId, so a fresh same-spelling binding does not inherit the first binding's moved state.
+record-edit-mode-validator	1	validate_move_record_modes(source)	1	validate_move_record_modes(source)	#1540. Both lowering entry points reject by-value trivial-record edit parameters before C publication.
 unused-binding-discard-callers	3	unused_binding_discard(hir, binding_id)	3	unused_binding_discard(hir, binding_id)	#1628. Parameters, scalar locals, and direct enum constructors share the HIR-based discard policy; removing one caller reopens a strict-C emission gap.
 bytes-return-template-caller	1	emit_bytes_return(returned, bytes_cleanup)	1	emit_bytes_return(returned, bytes_cleanup)	#1581. Whole-carrier returns delegate to the bounded failure/transfer/cleanup helper in both halves.
 bytes-return-before-move-guard	1	return KOFUN_BYTES_EMPTY; }\n	1	return KOFUN_BYTES_EMPTY; }\n	#1581. The pre-transfer guard reclaims the named owners. bytes-carrier proves its position, allocation outcomes, and old-guard mutation in emitted C.

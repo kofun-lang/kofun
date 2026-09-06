@@ -1,0 +1,11 @@
+fn consume(take owned: Bytes) -> Int {
+    return stage2_bytes_len(owned)
+}
+
+fn main() -> Int {
+    let owned = stage2_bytes_empty()
+    stage2_bytes_assign_zeroed(owned, 4)
+    print(consume(owned))
+    stage2_bytes_assign_zeroed(owned, 8)
+    return 0
+}

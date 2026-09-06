@@ -40,7 +40,7 @@
       "public_status": "bounded Stage 2/C11 checkpoint",
       "state": "checkpoint",
       "area": "frontend",
-      "bounded_capability": "One nominal `AffineTransport` implements the closed RFC-0010 read/write/drain/close/cancel table. The standalone record evaluator and emitted Stage 2 C11 agree on the normal observations; production E2S123 checks refuse three moved-handle misuses; and a scripted C11 host boundary refuses stale or adversarially duplicated generations as EARH01. This is not a general ownership pass or environment authority.",
+      "bounded_capability": "One nominal `AffineTransport` implements the closed RFC-0010 read/write/drain/close/cancel table. The standalone record evaluator and emitted Stage 2 C11 agree on the normal observations; production E2S123 checks refuse three moved-handle misuses; and a scripted C11 host boundary refuses stale or adversarially duplicated generations as EARH01. Production consuming calls invalidate the predecessor without a manual post-call take; reintroducing that marker is refused as a second move. The standalone evaluator remains a reference for successful observations, not positional move validation. This is not a general ownership pass or environment authority.",
       "targets": [
         "c11",
         "stage2"
@@ -192,7 +192,7 @@
       "public_status": "bounded C11 Stage 2 checkpoint over tracked fixtures; refuses read-to-edit crossing, wrapper aliases and private source results, and resolves same-name declarations and parenthesized BindingIds; excludes complete exit cleanup; no Text bridge",
       "state": "checkpoint",
       "area": "c-backend",
-      "bounded_capability": "The sequential `task bounded-bytes` checkpoint joins the checked-in carrier fixtures to the direct emitted-runtime mutation fixtures for a `Bytes[65536]` three-field carrier. Those fixtures exercise named owner cleanup and transfer paths, length and capacity, checked byte read and write, clear, reserve, append, direct two-carrier append-range, self-append, the bounded growth ladder, and named direct refusals. Read-to-edit call crossing, wrapper-slot alias exclusivity and source isolation of compiler-private outcomes are established as fixture-bounded refusals, and same-name builtin/declaration resolution and parenthesized BindingId preservation as fixture-bounded acceptances. The whole-carrier Bytes return checks failure before transferring ownership; a two-allocation fixture and emitted-C fault injection prove success transfer and failure cleanup, with a mutation restoring the old post-take guard. This does not establish a natural source-level failure reproducer, complete cleanup across every exit or result path, an owning-Bytes fixture for record typed returns, or transactionality beyond the named direct mutation cases; #1516 and #1540 remain known gaps. It is not a general buffer and has no Text bridge.",
+      "bounded_capability": "The sequential `task bounded-bytes` checkpoint joins the checked-in carrier fixtures to the direct emitted-runtime mutation fixtures for a `Bytes[65536]` three-field carrier. Those fixtures exercise named owner cleanup and transfer paths, length and capacity, checked byte read and write, clear, reserve, append, direct two-carrier append-range, self-append, the bounded growth ladder, and named direct refusals. Read-to-edit call crossing, wrapper-slot alias exclusivity and source isolation of compiler-private outcomes are established as fixture-bounded refusals, and same-name builtin/declaration resolution and parenthesized BindingId preservation as fixture-bounded acceptances. Temporary Bytes arguments to direct declared read/edit/take parameters are refused as E2S177 before C or executable publication, with argument position and missing-guard mutations pinned. The whole-carrier Bytes return checks failure before transferring ownership; a two-allocation fixture and emitted-C fault injection prove success transfer and failure cleanup, with a mutation restoring the old post-take guard. The separate positional-move-crossings claim owns the bounded call-site invalidation proof. This does not establish a natural source-level failure reproducer, complete cleanup across every exit or result path, an owning-Bytes fixture for record typed returns, or transactionality beyond the named direct mutation cases. It is not a general buffer and has no Text bridge.",
       "targets": [
         "c11",
         "stage2"
@@ -1465,6 +1465,48 @@
           "cc",
           "node",
           "readelf"
+        ]
+      }
+    },
+    {
+      "id": "positional-move-crossings",
+      "public_wording": "bounded positional take and record-edit checking",
+      "public_status": "checkpoint for direct bare owning Bytes and Int/Bool records; BindingId-based E2S123 and by-value record-edit E2S181; no general CFG ownership",
+      "state": "checkpoint",
+      "area": "frontend",
+      "bounded_capability": "A bare owning Bytes or Int/Bool-only nominal record passed to a resolved direct current-file positional take parameter is a source-order move. Later use and second transfer of that BindingId are E2S123 with exact primary and related spans; a fresh shadowing BindingId remains distinct. Trivial-record read keeps its by-value ABI and edit is refused as E2S181 at the mode token before C publication. The gate runs real complete-source positive/refusal fixtures at O0/O2, sanitizer-checks accepted ownership paths, preserves standalone/labelled/pipeline wording, and mutation-tests mode, direct-resolution, bare-binding, type/owner, straight-line and identity decisions with production-built HIR. Component exclusion witnesses do not imply full backend admission. Authorities, resource-bearing composite records, indirect/member calls, borrowed-to-owning escalation, conditional/loop crossings and general CFG/lifetime/cleanup analysis remain outside the checkpoint.",
+      "targets": [
+        "c11",
+        "stage2"
+      ],
+      "specification": [
+        "docs/MEMORY_MODEL.md",
+        "spec/bytes-bounded-v1.md",
+        "docs/STAGE2_EMISSION.md"
+      ],
+      "compatibility": "Only the named single-file C11 checkpoint and diagnostics at this release commit are evidenced. No general ownership pass, new source syntax, record reference ABI, authority guarantee or cross-release compatibility is promised.",
+      "positive_gate": {
+        "command": "task move-call-crossings",
+        "observation": "Bytes borrowing and one-time transfer, trivial-record read and one-time transfer, and fresh record shadowing execute with exact stdout at O0/O2 under ASan/UBSan. Component boundaries and missing-rule mutations fail by name."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": "tests/conformance/move-call-crossings/record_edit.kofun",
+        "observation": "A trivial-record edit parameter is refused as exact E2S181 at its mode-token span and no C is published; removing the rule reaccepts the defective by-value shape."
+      },
+      "safety": {
+        "classification": "refusal-boundary",
+        "threat_model": "docs/MEMORY_MODEL.md",
+        "negative_test": "tests/conformance/move-call-crossings/bytes_double.kofun"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "task move-call-crossings",
+        "prerequisites": [
+          "cc",
+          "node"
         ]
       }
     },

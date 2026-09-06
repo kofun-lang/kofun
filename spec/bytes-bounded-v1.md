@@ -52,8 +52,11 @@ tracked direct-transfer fixture requires an emitted `kofun_bytes_take` and runs
 sanitizer-clean, but it does not independently snapshot all three fields of the
 moved-from binding. This checkpoint therefore does not publish an exact
 moved-from-bit-pattern guarantee. Compile-time use-after-move is proved only
-for the forms named by the fixture set; an ordinary positional `take` call is
-still not recorded as a move (#1540).
+for the forms named by the fixture set. A bare owning Bytes argument to a
+resolved current-file positional `take` parameter is recorded in straight-line
+source order; later use and second transfer are E2S123, keyed by BindingId.
+This does not extend to temporary/compound arguments, indirect calls or a
+general CFG ownership proof (`task move-call-crossings`, #1540).
 
 A length of zero allocates nothing. `malloc(0)` may return a non-null pointer,
 which would make an empty value distinguishable from a one-allocation one, so
@@ -247,13 +250,14 @@ that needs a byte in source is #1499.
 Stated here rather than omitted, because a specification that lists only what
 works is the kind of published promise this repository gates against:
 
-- **A `take` parameter crossing performs the move and does not record it**, so
-  use-after-move through a call is accepted where the same move written as a
-  `take` statement is refused with `E2S123` (#1540). The take-transfer fixture
-  in §2 therefore does not establish call-crossing use-after-move enforcement.
-- **A temporary `Bytes` call result passed to a direct declared `read`, `edit`,
-  or `take` parameter is not yet refused by Stage 2** and can reach invalid
-  generated C (#1516).
+- **Positional move checking remains a bounded source-order rule**, not a
+  general CFG, alias, lifetime or cleanup analysis. #1540 closes the direct,
+  bare owning Bytes call gap; excluded compound/indirect/conditional shapes
+  are not proved by that gate.
+- **Temporary Bytes arguments remain unsupported**, but #1516 now refuses
+  direct declared `read`, `edit`, and `take` crossings as E2S177 before C or
+  executable publication, naming the argument position. Materializing a
+  temporary into a compiler-owned binding is not implemented.
 - **The record typed-return form has no owning-Bytes fixture.**
   The dropped trap-guard cleanup for `List[Int]`, `Int?` and enum returns is
   fixed and proved beside the `Text` control, and the two halves no longer

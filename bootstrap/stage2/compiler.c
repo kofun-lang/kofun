@@ -6288,6 +6288,7 @@ static char *call_argument_parameter_property(
     const char *property
 ) {
     int64_t length = source_length(source);
+    int64_t previous = -1;
     int64_t cursor = skip_trivia(source, 0);
     while (cursor < target && cursor < length) {
         if (strcmp(token_kind(source, cursor), "identifier") == 0) {
@@ -6323,6 +6324,15 @@ static char *call_argument_parameter_property(
                             }
                         }
                         if (argument == target || value == target) {
+                            if (strcmp(property, "callee") == 0) {
+                                if (previous >= 0 && token_equal(source, previous, ".")) {
+                                    return owned_text("");
+                                }
+                                Buffer position;
+                                buffer_init(&position);
+                                buffer_format(&position, "%" PRId64, cursor);
+                                return position.data;
+                            }
                             /* Whether this argument was written with a label
                              * is decided by the same walk that resolves its
                              * slot, so the ownership rule and the slot it
@@ -6447,6 +6457,7 @@ static char *call_argument_parameter_property(
                 }
             }
         }
+        previous = cursor;
         cursor = skip_trivia(source, token_end(source, cursor));
     }
     return owned_text("");
@@ -7861,6 +7872,28 @@ static char *emit_argument(
             cursor,
             end
         );
+        /* #1516. Ordinary Bytes crossings need an addressable named carrier,
+         * just like the bounded mutation surface. A producer result has the
+         * right type but no BindingId; never publish &<rvalue> as C. */
+        if (binding_id[0] == '\0') {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(
+                &message,
+                "Stage 2 Bytes argument %" PRId64 " to `%s` needs a named "
+                "carrier binding, not a temporary",
+                argument_index + 1,
+                callee
+            );
+            char *error = lower_error("E2S177", message.data, cursor);
+            free(message.data);
+            free(binding_id);
+            free(slot.data);
+            free(parameter);
+            free(mode);
+            free(expected_type);
+            return error;
+        }
         char *actual_type = hir_binding_field(hir, binding_id, 5);
         if (
             binding_id[0] != '\0' &&
@@ -26917,20 +26950,6 @@ static bool move_use_position(
     return true;
 }
 
-/* A bare resolved binding in a parameter slot declared `take` is the same
- * semantic transfer as a written whole-binding `take`. Compound expressions,
- * constructors, and literals may produce a value for a take slot but do not
- * name a source binding for this bounded source-order invalidation pass.
- *
- * The argument must also be *labelled*. That is the boundary this increment
- * was scoped to, and it is load-bearing rather than cosmetic: the accepted
- * RFC-0010 handle model in `tests/ownership/affine-resource-handle` calls
- * `affine_transport_write(initial, 5)` positionally into a `take` slot and
- * then writes `take initial` as the transfer. Treating the positional call as
- * the move makes that written `take` a second one, so dropping this guard
- * refuses a program the ownership gate requires the compiler to accept.
- * Widening to positional calls is a change to that accepted model, not to
- * this lowering slice, and is owned by #882 rather than assumed here. */
 /*
  * Whether `cursor` is a pipeline subject flowing into a `take` slot 0.
  *
@@ -26976,6 +26995,134 @@ static bool pipeline_subject_take(
     return token_equal(source, parameter, "take");
 }
 
+/* #1540. This is a type bound, not a cleanup or authority proof. */
+static bool move_trivial_record(const char *source, const char *type) {
+    if (strcmp(type, "RootAuthority") == 0 || strcmp(type, "EnvironmentAuthority") == 0) return false;
+    int64_t count = record_field_count(source, type);
+    if (count < 0) return false;
+    for (int64_t index = 0; index < count; ++index) {
+        char *field = record_field_text(source, type, index, true);
+        bool scalar = strcmp(field, "Int") == 0 || strcmp(field, "Bool") == 0;
+        free(field);
+        if (!scalar) return false;
+    }
+    return true;
+}
+
+static bool move_positional_owner(const char *source, const char *hir, const char *binding) {
+    char *mode = hir_binding_field(hir, binding, 6);
+    bool borrowed = strcmp(mode, "read") == 0 || strcmp(mode, "edit") == 0;
+    free(mode);
+    if (borrowed) return false;
+    char *type = hir_binding_field(hir, binding, 5);
+    bool admitted = strcmp(type, "Bytes") == 0 || move_trivial_record(source, type);
+    free(type);
+    return admitted;
+}
+
+/* Exclude conditional/loop bodies and conditional expression operands. This
+ * does not construct a CFG or infer a move on a path-dependent crossing. */
+static bool move_straight_line_position(const char *source, int64_t target) {
+    int64_t body = enclosing_function_open(source, target);
+    if (body < 0) return false;
+    int64_t cursor = skip_trivia(source, token_end(source, body));
+    bool conditional = false;
+    while (cursor < target) {
+        if (token_equal(source, cursor, "if") || token_equal(source, cursor, "while") ||
+            token_equal(source, cursor, "match")) {
+            conditional = true;
+        }
+        if (token_equal(source, cursor, "&&") || token_equal(source, cursor, "||") ||
+            token_equal(source, cursor, "??")) {
+            /* Only the right operand is conditional, not a subsequent
+             * statement or a later argument after that operand ends. */
+            int64_t right = skip_trivia(source, token_end(source, cursor));
+            int64_t end = expression_end(source, right);
+            if (end < 0 || target < end) return false;
+        }
+        if (token_equal(source, cursor, "{")) {
+            int64_t close = balanced_end(source, cursor, "{", "}");
+            if (close < 0 || target < close) return false;
+            cursor = skip_trivia(source, close);
+            conditional = false;
+        } else {
+            cursor = skip_trivia(source, token_end(source, cursor));
+        }
+    }
+    return !conditional;
+}
+
+static bool move_positional_binding(const char *source, const char *hir, int64_t cursor) {
+    char *position = call_argument_parameter_property(source, cursor, "callee");
+    if (position[0] == '\0') { free(position); return false; }
+    int64_t call = decimal_value(position);
+    free(position);
+    char *name = token_copy(source, call);
+    char *lexical = hir_use_binding_id(hir, call);
+    bool direct = function_start_named(source, name) >= 0 && lexical[0] == '\0';
+    free(lexical);
+    if (!direct) { free(name); return false; }
+    /* An aliased multi-slot Bytes call is already invalid as E2S180. Do not
+     * infer a successful transfer from it and replace that specific refusal
+     * with E2S123 while scanning its later argument. */
+    char *identity = declared_bytes_argument_identity_error(
+        source, hir, name, call, skip_trivia(source, token_end(source, call))
+    );
+    free(name);
+    bool valid_identity = identity[0] == '\0';
+    free(identity);
+    if (!valid_identity) return false;
+    char *binding = hir_use_binding_id(hir, cursor);
+    bool admitted = move_positional_owner(source, hir, binding);
+    free(binding);
+    return admitted && move_straight_line_position(source, cursor);
+}
+
+/* All move spellings invalidate one resolved BindingId, never a display name.
+ * A declaration or a fresh shadowing binding is not a use of the old value. */
+static bool move_same_binding(const char *hir, int64_t moved, int64_t use) {
+    char *left = hir_use_binding_id(hir, moved);
+    char *right = hir_use_binding_id(hir, use);
+    bool same = left[0] != '\0' && strcmp(left, right) == 0;
+    free(left);
+    free(right);
+    return same;
+}
+
+static char *validate_move_record_modes(const char *source) {
+    int64_t function = next_function_start(source, 0);
+    while (function < source_length(source)) {
+        int64_t open = parameter_open(source, function);
+        int64_t close = open < 0 ? -1 : balanced_end(source, open, "(", ")");
+        if (close < 0) break;
+        int64_t cursor = skip_trivia(source, token_end(source, open));
+        while (cursor < close) {
+            if (token_equal(source, cursor, "edit")) {
+                int64_t type_at = parameter_type_start(source, cursor, close);
+                char *type = type_at < 0 ? owned_text("") : token_copy(source, type_at);
+                bool trivial = move_trivial_record(source, type);
+                free(type);
+                if (trivial) {
+                    int64_t name_at = parameter_internal_start(source, cursor, close);
+                    char *name = token_copy(source, name_at);
+                    Buffer error;
+                    buffer_init(&error);
+                    buffer_format(&error,
+                        "error[E2S181]: nominal-record parameter `%s` cannot use `edit` "
+                        "in the Stage 2 v1 by-value ABI; use `read` or consuming `take` "
+                        "at bytes %" PRId64 "..%" PRId64,
+                        name, cursor, token_end(source, cursor));
+                    free(name);
+                    return error.data;
+                }
+            }
+            cursor = skip_trivia(source, token_end(source, cursor));
+        }
+        function = next_function_start(source, function_end(source, function));
+    }
+    return owned_text("");
+}
+
 static bool move_call_binding(
     const char *source,
     const char *hir,
@@ -26986,10 +27133,8 @@ static bool move_call_binding(
     bool resolved = binding[0] != '\0';
     free(binding);
     if (!resolved) return false;
-    /* A pipeline subject reaches its slot without a label, so it is admitted
-     * on the declared mode of slot 0 rather than on how it was written. Every
-     * other shape keeps the existing rule exactly, which is what leaves the
-     * ordinary positional call outside the RFC-0010 move path. */
+    /* Existing labelled and pipeline rules retain their type scope. Ordinary
+     * positional calls add only the #1540 direct, bare, owning v1 slice. */
     if (pipeline_subject_take(source, cursor)) return true;
     char *mode = call_argument_expected_mode(source, cursor);
     bool taken = strcmp(mode, "take") == 0;
@@ -26998,8 +27143,8 @@ static bool move_call_binding(
     char *labelled = call_argument_labelled(source, cursor);
     bool written_with_label = strcmp(labelled, "yes") == 0;
     free(labelled);
-    return written_with_label &&
-        expression_end(source, cursor) == token_end(source, cursor);
+    if (expression_end(source, cursor) != token_end(source, cursor)) return false;
+    return written_with_label || move_positional_binding(source, hir, cursor);
 }
 
 /*
@@ -27129,7 +27274,7 @@ static char *validate_move_uses(const char *source, const char *hir) {
                         ) {
                             break;
                         }
-                        if (token_equal(source, again, moved)) {
+                        if (move_same_binding(hir, target, again)) {
                             MoveFinding candidate;
                             Buffer error;
                             memset(&candidate, 0, sizeof(candidate));
@@ -27158,7 +27303,7 @@ static char *validate_move_uses(const char *source, const char *hir) {
                         continue;
                     }
                     if (move_use_position(source, previous, use) &&
-                        token_equal(source, use, moved)) {
+                        move_same_binding(hir, target, use)) {
                         MoveFinding candidate;
                         Buffer error;
                         memset(&candidate, 0, sizeof(candidate));
@@ -27846,6 +27991,9 @@ static char *lower_c_body(
     /* #946: the move rule runs before the assertion, so a use-after-move is
      * reported as itself rather than as whatever the erased statement leaves
      * behind. */
+    char *record_mode_check = validate_move_record_modes(source);
+    if (record_mode_check[0] != '\0') return record_mode_check;
+    free(record_mode_check);
     char *move_use_check = validate_move_uses(source, hir);
     if (strncmp(move_use_check, "error[", 6) == 0) return move_use_check;
     free(move_use_check);

@@ -1,0 +1,10 @@
+# #1516. A Bytes producer result is not a named carrier whose address can be
+# lent across an ordinary read parameter boundary.
+fn measure(read b: Bytes) -> Int {
+    return 3
+}
+
+fn main() -> Int {
+    print(measure(stage2_bytes_empty()))
+    return 0
+}

@@ -1,0 +1,37 @@
+type Point = { x: Int, valid: Bool }
+
+fn inspect(read point: Point) -> Int {
+    return point.x
+}
+
+fn consume(take point: Point) -> Int {
+    return point.x
+}
+
+fn observe(read owned: Bytes) -> Int {
+    return stage2_bytes_len(owned)
+}
+
+fn resize(edit owned: Bytes) -> Int {
+    stage2_bytes_assign_zeroed(owned, 4)
+    return stage2_bytes_len(owned)
+}
+
+fn transfer(take owned: Bytes) -> Int {
+    return stage2_bytes_len(owned)
+}
+
+fn main() -> Int {
+    let point: Point = Point(x: 7, valid: true)
+    print(inspect(point))
+    print(consume(point))
+    if true {
+        let point: Point = Point(x: 9, valid: false)
+        print(point.x)
+    }
+    let owned = stage2_bytes_empty()
+    print(resize(owned))
+    print(observe(owned))
+    print(transfer(owned))
+    return 0
+}
