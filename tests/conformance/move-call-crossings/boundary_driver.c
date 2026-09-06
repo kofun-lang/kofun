@@ -2,10 +2,12 @@
  * complete backend (for example a lexical Int callable fed a record). HIR is
  * still built by the production scope resolver, never fabricated by the test. */
 #define main kofun_compiler_entry
+#define KOFUN_STAGE2_AUTHORITY_API 1
 #ifndef KOFUN_MOVE_COMPILER
 #define KOFUN_MOVE_COMPILER "compiler.c"
 #endif
 #include KOFUN_MOVE_COMPILER
+#undef KOFUN_STAGE2_AUTHORITY_API
 #undef main
 
 #define POINT "type Point = { x: Int }\n"
@@ -79,6 +81,23 @@ int main(void) {
     require_boundary(!move_same_binding(hir, moved, fresh), "binding-id");
     require_boundary(move_same_binding(hir, moved, moved), "same-binding-id");
     free(hir);
-    puts("PASS: positional mode, direct resolution, bare binding, type/owner bounds, straight-line scope and BindingId exclusions");
+    /* The separate ownership-only wrapper is not the declaration/ABI pass. */
+    (void)stage2_ownership_outcome;
+    const char *edit = POINT
+        "fn inspect(edit point: Point) -> Int { return point.x }\n"
+        "fn main() -> Int {\n" LOCAL "return inspect(point)\n}\n";
+    int64_t mode = (int64_t)(strstr(edit, "edit point") - edit);
+    Stage2AuthorityContext context;
+    Stage2AuthorityResult result;
+    require_boundary(stage2_compile_outcome(edit, &context, &result), "record-edit compile outcome");
+    require_boundary(result.exit_class == 1u && result.diagnostic != NULL &&
+        context.diagnostic.present && context.diagnostic.has_byte_span &&
+        !context.diagnostic.truncated && strcmp(context.diagnostic.code, "E2S181") == 0 &&
+        context.diagnostic.start == mode && context.diagnostic.end == mode + 4 &&
+        context.diagnostic.related_count == 0u && context.diagnostic.affected_count == 1u &&
+        context.diagnostic.affected[0].kind == STAGE2_DIAGNOSTIC_AFFECTED_ERROR_SPAN &&
+        strcmp(context.diagnostic.fallback, result.diagnostic) == 0, "structured-record-edit");
+    stage2_authority_result_destroy(&result);
+    puts("PASS: positional mode, direct resolution, bare binding, type/owner bounds, straight-line scope, BindingId exclusions and structured record-edit diagnostic");
     return 0;
 }

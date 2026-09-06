@@ -21,6 +21,7 @@ round-tripping the Kofun file does not execute its lowering logic.
 | Which positional calls consume a binding | `call_argument_parameter_property` resolves the slot; `move_positional_binding` and `move_positional_owner` bound direct calls and owning types | `task move-call-crossings` |
 | Whether a later name is the moved value | `move_same_binding` compares HIR BindingIds for every move spelling | `task move-call-crossings records call-arguments` |
 | Trivial-record `edit` in the by-value ABI | `move_trivial_record` defines the shared type bound; `validate_move_record_modes` refuses the declaration | `task move-call-crossings` |
+| A refusal's machine-readable location | The seed's `stage2_diagnostic_set` records the same primary span for the semantic-event consumer | `task move-call-crossings stage2-events` |
 
 The discard helper does not decide whether a construct may lower, erase an
 initializer, or change ownership. It is called after a declaration exists in
@@ -46,6 +47,12 @@ BindingId; a later shadowing declaration must not inherit the earlier move.
 `boundary_driver.c` tests those component decisions using production-built HIR;
 some excluded shapes remain outside full backend admission. Its compiler
 mutations are separate from the complete-source diagnostic and runtime tests.
+
+When adding a seed refusal, register its structured diagnostic as well as its
+returned text. E2S181 originally passed the ordinary compiler golden but failed
+the semantic-event producer because no observer captured its mode-token span.
+The focused gate now checks the actual authority compile wrapper and mutates
+away that registration; the complete event census checks every error companion.
 
 Keep the original reproducer in a gate reachable from `task verify`. For an
 emission defect, compile with strict C11 warnings, check observable behavior,

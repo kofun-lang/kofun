@@ -18310,6 +18310,8 @@ fn validate_move_record_modes(source: Text) -> Text {
                 if type_at >= 0 &&
                    move_trivial_record(source, token_text(source, type_at)) {
                     let name_at = parameter_internal_start(source, cursor, close)
+                    # The seed's structured-diagnostic observer also records
+                    # this exact edit-token span for semantic-event consumers.
                     return "error[E2S181]: nominal-record parameter `" +
                         token_text(source, name_at) + "` cannot use `edit` " +
                         "in the Stage 2 v1 by-value ABI; use `read` or consuming `take` " +

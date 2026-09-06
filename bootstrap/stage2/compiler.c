@@ -27112,6 +27112,7 @@ static char *validate_move_record_modes(const char *source) {
                         "in the Stage 2 v1 by-value ABI; use `read` or consuming `take` "
                         "at bytes %" PRId64 "..%" PRId64,
                         name, cursor, token_end(source, cursor));
+                    stage2_diagnostic_set("E2S181", cursor, token_end(source, cursor), true, error.data);
                     free(name);
                     return error.data;
                 }

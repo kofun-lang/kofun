@@ -105,7 +105,8 @@ const mutations = [
   ['type-bound', 'bool admitted = strcmp(type, "Bytes") == 0 || move_trivial_record(source, type);', 'bool admitted = true || strcmp(type, "Bytes") == 0 || move_trivial_record(source, type);'],
   ['borrowed-owner', 'if (borrowed) return false;', 'if (false && borrowed) return false;'],
   ['straight-line', 'return admitted && move_straight_line_position(source, cursor);', 'return admitted && (true || move_straight_line_position(source, cursor));'],
-  ['binding-id', "bool same = left[0] != '\\0' && strcmp(left, right) == 0;", "bool same = left[0] != '\\0' && (true || strcmp(left, right) == 0);"]
+  ['binding-id', "bool same = left[0] != '\\0' && strcmp(left, right) == 0;", "bool same = left[0] != '\\0' && (true || strcmp(left, right) == 0);"],
+  ['structured-record-edit', 'stage2_diagnostic_set("E2S181", cursor, token_end(source, cursor), true, error.data);', '/* missing structured record-edit diagnostic */']
 ]
 for (const [label, before, after] of mutations) {
   assert.equal(source.split(before).length, 2, `${label}: mutation anchor must occur once`)
@@ -131,6 +132,6 @@ for (const [label, before, after, fixture] of [
   const result = compile(tool, join(cases, `${fixture}.kofun`), label, 0)
   run(cc, [...flags, '-O0', result.output, '-o', join(work, `${label}.bin`)], `${label} wrongly accepted C`)
 }
-console.log('PASS: move-call-crossings exact Bytes/record diagnostics and spans, CLI no-C/no-binary refusals, accepted borrowing/shadowing, O0/O2 sanitizer execution, three existing move spellings, seven boundary mutations and two missing-rule mutations')
+console.log('PASS: move-call-crossings exact Bytes/record diagnostics and spans, CLI no-C/no-binary refusals, accepted borrowing/shadowing, O0/O2 sanitizer execution, three existing move spellings, seven semantic-boundary mutations, a structured-diagnostic mutation and two missing-rule mutations')
 if (process.env.KOFUN_MOVE_KEEP_WORK) console.log(`Evidence directory: ${work}`)
 else rmSync(work, { recursive: true })
