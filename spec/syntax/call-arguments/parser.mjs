@@ -352,10 +352,10 @@ class Parser {
 
             if (this.at(",")) {
                 this.next();
-                if (this.at(")")) {
-                    fail("trailing-comma", "a parameter list may not end with a comma",
-                        this.peek().offset);
-                }
+                // #1515: one terminal comma separates nothing and is not a
+                // parameter. `(,` and `,,` still fail below as a malformed
+                // parameter, because nothing stands before that comma.
+                if (this.at(")")) break;
                 continue;
             }
             break;
@@ -772,10 +772,9 @@ class Parser {
             }
             if (this.at(",")) {
                 this.next();
-                if (this.at(")")) {
-                    fail("trailing-comma", "an argument list may not end with a comma",
-                        this.peek().offset);
-                }
+                // #1515: one terminal comma separates nothing and is not an
+                // argument.
+                if (this.at(")")) break;
                 continue;
             }
             break;

@@ -1,0 +1,9 @@
+# diagnostic-mode: compile
+# expect-code: E2S182
+# expect-span: byte 256
+# #1515. One terminal comma closes a List[Int] literal; a comma with nothing
+# before it is an empty element, refused at that comma.
+fn main() -> Int {
+    let values: List[Int] = [1,, 2]
+    return len(values)
+}

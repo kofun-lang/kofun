@@ -478,7 +478,8 @@ static bool identifier_continue_at(
     return codepoint == '_' || kofun_unicode_is_xid_continue(codepoint);
 }
 
-static int64_t skip_trivia(const char *source, int64_t start) {
+/* Whitespace and comments: what the token tape steps over. */
+static int64_t skip_lexical_trivia(const char *source, int64_t start) {
     int64_t length = source_length(source);
     int64_t cursor = start;
     while (cursor < length) {
@@ -489,6 +490,32 @@ static int64_t skip_trivia(const char *source, int64_t start) {
             while (cursor < length && source[cursor] != '\n') ++cursor;
         } else {
             return cursor;
+        }
+    }
+    return cursor;
+}
+
+/*
+ * What every reader of the source steps over: lexical trivia, and — #1515 —
+ * one comma standing directly before `)` or `]`. Such a comma separates
+ * nothing; the accepted contracts (`spec/syntax/call-arguments-v1.md` as
+ * amended, `spec/records-v1.md`, the list production of `spec/grammar.ebnf`)
+ * admit exactly one, and treating it as trivia here is what makes every
+ * parameter, argument, and element walker count members rather than commas.
+ * Before this, `fn add(a: Int, b: Int,)` was three parameters to
+ * `parameter_count` and the author was told `expects 3 arguments, got 2`.
+ *
+ * The token tape does not use this: a comma is a token, and the tape records
+ * tokens. `,,` is not trivia either — nothing stands before the second comma
+ * — and `validate_delimiter_surface` refuses it by name.
+ */
+static int64_t skip_trivia(const char *source, int64_t start) {
+    int64_t length = source_length(source);
+    int64_t cursor = skip_lexical_trivia(source, start);
+    if (cursor < length && source[cursor] == ',') {
+        int64_t probe = skip_lexical_trivia(source, cursor + 1);
+        if (probe < length && (source[probe] == ')' || source[probe] == ']')) {
+            return probe;
         }
     }
     return cursor;
@@ -822,7 +849,9 @@ static char *lex_source(const char *source) {
     }
     buffer_append(&tape, "kofun-token-tape/v1\n");
     int64_t length = source_length(source);
-    int64_t cursor = skip_trivia(source, 0);
+    /* Lexical trivia only: a terminal comma is a token the tape records even
+     * though every other reader steps over it. */
+    int64_t cursor = skip_lexical_trivia(source, 0);
     while (cursor < length) {
         int64_t end = token_end(source, cursor);
         if (end <= cursor) {
@@ -869,7 +898,7 @@ static char *lex_source(const char *source) {
             end,
             line_at(source, cursor)
         );
-        cursor = skip_trivia(source, end);
+        cursor = skip_lexical_trivia(source, end);
     }
     return tape.data;
 }
@@ -936,6 +965,10 @@ static PatternSummary pattern_summary(const char *source, int64_t start);
 static char *enum_constructor_owner(const char *source, const char *name);
 static bool enum_binding_catchall_name(const char *name);
 
+/* The pattern parser below steps over lexical trivia only: the Pattern IR is
+ * a lossless projection that records every payload comma as a delimiter
+ * (#1515 made a terminal comma trivia to every other reader), and
+ * `Present(value,)` already parsed as one payload before that. */
 static ParsedPattern parsed_pattern_init(int64_t start) {
     ParsedPattern result;
     result.end = start;
@@ -948,7 +981,7 @@ static ParsedPattern parsed_pattern_init(int64_t start) {
 
 static int64_t pattern_recovery_end(const char *source, int64_t start) {
     int64_t length = source_length(source);
-    int64_t cursor = skip_trivia(source, start);
+    int64_t cursor = skip_lexical_trivia(source, start);
     int64_t paren_depth = 0;
     int64_t bracket_depth = 0;
     while (cursor < length) {
@@ -976,7 +1009,7 @@ static int64_t pattern_recovery_end(const char *source, int64_t start) {
             if (bracket_depth == 0) return cursor;
             --bracket_depth;
         }
-        cursor = skip_trivia(source, token_end(source, cursor));
+        cursor = skip_lexical_trivia(source, token_end(source, cursor));
     }
     return cursor;
 }
@@ -1072,7 +1105,7 @@ static ParsedPattern parse_pattern_atomic(
 ) {
     const char *source = parser->source;
     int64_t length = source_length(source);
-    int64_t cursor = skip_trivia(source, start);
+    int64_t cursor = skip_lexical_trivia(source, start);
     int64_t checkpoint_node_id = parser->next_node_id;
     int64_t checkpoint_nodes = parser->nodes;
     int64_t checkpoint_errors = parser->errors;
@@ -1129,14 +1162,14 @@ static ParsedPattern parse_pattern_atomic(
     }
 
     if (token_equal(source, cursor, "(")) {
-        int64_t inner_start = skip_trivia(source, token_finish);
+        int64_t inner_start = skip_lexical_trivia(source, token_finish);
         ParsedPattern inner = parse_pattern_or(
             parser,
             inner_start,
             depth + 1
         );
         if (inner.fatal) return inner;
-        int64_t close = skip_trivia(source, inner.end);
+        int64_t close = skip_lexical_trivia(source, inner.end);
         if (close >= length || !token_equal(source, close, ")")) {
             int64_t recovered = pattern_recovery_end(source, close);
             free(inner.records.data);
@@ -1237,7 +1270,7 @@ static ParsedPattern parse_pattern_atomic(
         );
     }
 
-    int64_t after_name = skip_trivia(source, token_finish);
+    int64_t after_name = skip_lexical_trivia(source, token_finish);
     if (after_name < length && token_equal(source, after_name, "{")) {
         int64_t close = balanced_end(source, after_name, "{", "}");
         int64_t end = close < 0 ? pattern_recovery_end(source, after_name) : close;
@@ -1276,7 +1309,7 @@ static ParsedPattern parse_pattern_atomic(
     buffer_init(&records);
     buffer_init(&children);
     int64_t open = after_name;
-    int64_t payload = skip_trivia(source, token_end(source, open));
+    int64_t payload = skip_lexical_trivia(source, token_end(source, open));
     int64_t payload_count = 0;
     int64_t close = -1;
     if (payload < length && token_equal(source, payload, ")")) {
@@ -1305,7 +1338,7 @@ static ParsedPattern parse_pattern_atomic(
             free(child.records.data);
             pattern_append_child(&children, child.root);
             ++payload_count;
-            int64_t separator = skip_trivia(source, child.end);
+            int64_t separator = skip_lexical_trivia(source, child.end);
             if (separator < length && token_equal(source, separator, ",")) {
                 buffer_format(
                     &records,
@@ -1317,7 +1350,7 @@ static ParsedPattern parse_pattern_atomic(
                     separator,
                     token_end(source, separator)
                 );
-                payload = skip_trivia(source, token_end(source, separator));
+                payload = skip_lexical_trivia(source, token_end(source, separator));
                 if (payload < length && token_equal(source, payload, ")")) {
                     close = payload;
                     break;
@@ -1407,7 +1440,7 @@ static ParsedPattern parse_pattern_or(
 ) {
     const char *source = parser->source;
     int64_t length = source_length(source);
-    int64_t cursor = skip_trivia(source, start);
+    int64_t cursor = skip_lexical_trivia(source, start);
     int64_t checkpoint_node_id = parser->next_node_id;
     int64_t checkpoint_nodes = parser->nodes;
     int64_t checkpoint_errors = parser->errors;
@@ -1426,7 +1459,7 @@ static ParsedPattern parse_pattern_or(
 
     ParsedPattern first = parse_pattern_atomic(parser, cursor, depth);
     if (first.fatal) return first;
-    int64_t separator = skip_trivia(source, first.end);
+    int64_t separator = skip_lexical_trivia(source, first.end);
     if (separator < length && token_equal(source, separator, "||")) {
         free(first.records.data);
         parser->next_node_id = checkpoint_node_id;
@@ -1482,7 +1515,7 @@ static ParsedPattern parse_pattern_or(
             separator,
             token_end(source, separator)
         );
-        int64_t next = skip_trivia(source, token_end(source, separator));
+        int64_t next = skip_lexical_trivia(source, token_end(source, separator));
         if (next < length &&
             (token_equal(source, next, "|") ||
              token_equal(source, next, "||"))) {
@@ -1530,7 +1563,7 @@ static ParsedPattern parse_pattern_or(
         pattern_append_child(&children, alternative.root);
         ++alternatives;
         end = alternative.end;
-        separator = skip_trivia(source, alternative.end);
+        separator = skip_lexical_trivia(source, alternative.end);
     }
     if (separator < length &&
         (token_equal(source, separator, "||") ||
@@ -1580,7 +1613,7 @@ static ParsedPattern parse_pattern_or(
 
 static int64_t pattern_match_open(const char *source, int64_t match_start) {
     int64_t length = source_length(source);
-    int64_t cursor = skip_trivia(source, token_end(source, match_start));
+    int64_t cursor = skip_lexical_trivia(source, token_end(source, match_start));
     int64_t parens = 0;
     int64_t brackets = 0;
     while (cursor < length) {
@@ -1599,7 +1632,7 @@ static int64_t pattern_match_open(const char *source, int64_t match_start) {
                    brackets == 0) {
             return -1;
         }
-        cursor = skip_trivia(source, token_end(source, cursor));
+        cursor = skip_lexical_trivia(source, token_end(source, cursor));
     }
     return -1;
 }
@@ -1609,7 +1642,7 @@ static int64_t pattern_arm_arrow(
     int64_t start,
     int64_t match_close
 ) {
-    int64_t cursor = skip_trivia(source, start);
+    int64_t cursor = skip_lexical_trivia(source, start);
     int64_t parens = 0;
     int64_t brackets = 0;
     while (cursor < match_close) {
@@ -1630,7 +1663,7 @@ static int64_t pattern_arm_arrow(
                    brackets == 0) {
             return -1;
         }
-        cursor = skip_trivia(source, token_end(source, cursor));
+        cursor = skip_lexical_trivia(source, token_end(source, cursor));
     }
     return -1;
 }
@@ -1644,7 +1677,7 @@ static char *parse_pattern_trees(const char *source) {
         "kofun-pattern-tree/v1\n"
         "limits|depth|32|nodes-per-compilation|256\n"
     );
-    int64_t cursor = skip_trivia(source, 0);
+    int64_t cursor = skip_lexical_trivia(source, 0);
     int64_t match_id = 0;
     PatternParser parser;
     parser.source = source;
@@ -1662,7 +1695,7 @@ static char *parse_pattern_trees(const char *source) {
                 int64_t close = match_end - 1;
                 Buffer arms;
                 buffer_init(&arms);
-                int64_t arm_cursor = skip_trivia(
+                int64_t arm_cursor = skip_lexical_trivia(
                     source,
                     token_end(source, open)
                 );
@@ -1679,7 +1712,7 @@ static char *parse_pattern_trees(const char *source) {
                         arm_cursor,
                         1
                     );
-                    int64_t after_pattern = skip_trivia(source, pattern.end);
+                    int64_t after_pattern = skip_lexical_trivia(source, pattern.end);
                     if (!pattern.fatal && pattern.kind != PATTERN_ERROR &&
                         !token_equal(source, after_pattern, "=>") &&
                         !token_equal(source, after_pattern, "if")) {
@@ -1726,10 +1759,10 @@ static char *parse_pattern_trees(const char *source) {
                         break;
                     }
                     if (arrow < 0) {
-                        int64_t recovery = skip_trivia(source, pattern.end);
+                        int64_t recovery = skip_lexical_trivia(source, pattern.end);
                         if (recovery < close &&
                             token_equal(source, recovery, ",")) {
-                            arm_cursor = skip_trivia(
+                            arm_cursor = skip_lexical_trivia(
                                 source,
                                 token_end(source, recovery)
                             );
@@ -1737,7 +1770,7 @@ static char *parse_pattern_trees(const char *source) {
                         }
                         break;
                     }
-                    int64_t body = skip_trivia(
+                    int64_t body = skip_lexical_trivia(
                         source,
                         token_end(source, arrow)
                     );
@@ -1746,11 +1779,11 @@ static char *parse_pattern_trees(const char *source) {
                     } else {
                         int64_t body_end = balanced_end(source, body, "{", "}");
                         if (body_end < 0) break;
-                        arm_cursor = skip_trivia(source, body_end);
+                        arm_cursor = skip_lexical_trivia(source, body_end);
                     }
                     if (arm_cursor < close &&
                         token_equal(source, arm_cursor, ",")) {
-                        arm_cursor = skip_trivia(
+                        arm_cursor = skip_lexical_trivia(
                             source,
                             token_end(source, arm_cursor)
                         );
@@ -1774,7 +1807,7 @@ static char *parse_pattern_trees(const char *source) {
                 ++match_id;
             }
         }
-        cursor = skip_trivia(source, token_end(source, cursor));
+        cursor = skip_lexical_trivia(source, token_end(source, cursor));
     }
     buffer_format(&tree, "match-count|%" PRId64 "\n", match_id);
     return tree.data;
@@ -2499,6 +2532,7 @@ static int64_t after_optional_module_header(
 static char *owned_text(const char *text);
 static bool enum_name_covered(const char *covered, const char *name);
 static int64_t function_arity(const char *source, const char *wanted);
+static int64_t builtin_arity(const char *name);
 static char *const_type_base(const char *annotation);
 static char *const_generic_refusal(Buffer *error);
 
@@ -3969,6 +4003,169 @@ static char *validate_pipeline_shapes(const char *source) {
     return owned_text("");
 }
 
+/*
+ * #1515. A comma with nothing before it — `(,` or `,,` — separates nothing
+ * and is not the one terminal comma the contracts admit, so it is refused by
+ * name at that comma, ahead of every count. Left to the counts, `fn f(a:
+ * Int,, b: Int)` was `E2S35 malformed parameter head` and `f(1,, 2)` was
+ * `E2S12 invalid Int expression` at the call head — true statements about
+ * the wrong construct.
+ *
+ * Only the surfaces the contracts own are touched: a `fn` declaration's
+ * parameter list, the argument list of a call whose callee is a declared
+ * function, a builtin, or `print`, and a `List[Int]` literal. Record
+ * construction and constructor patterns are their own surfaces, and a
+ * lambda's parameter list is #882's — none of those heads reach
+ * `delimiter_fault`.
+ */
+static char *delimiter_refusal(
+    const char *source,
+    const char *message,
+    int64_t comma
+) {
+    Buffer error;
+    buffer_init(&error);
+    buffer_format(
+        &error,
+        "error[E2S182]: %s at byte %" PRId64,
+        message,
+        comma
+    );
+    stage2_diagnostic_set(
+        "E2S182",
+        comma,
+        token_end(source, comma),
+        true,
+        error.data
+    );
+    return error.data;
+}
+
+/*
+ * Walk one delimited list from `open` to the `close` that balances it and
+ * name the first comma with no member before it. This walker steps over
+ * lexical trivia only, so unlike every other reader it sees a terminal comma
+ * — which is fine after a member and an empty member when it is the first
+ * thing in the list. Nested parentheses and brackets are stepped over, so a
+ * lambda or a call inside the list is its own list.
+ *
+ * Returns the comma's byte offset, or -1 when nothing is wrong or the list
+ * does not close — an unclosed list is some other diagnostic's to name.
+ */
+static int64_t delimiter_fault(
+    const char *source,
+    int64_t open,
+    const char *close
+) {
+    int64_t length = source_length(source);
+    int64_t cursor = skip_lexical_trivia(source, token_end(source, open));
+    int64_t paren_depth = 0;
+    int64_t bracket_depth = 0;
+    int64_t members = 0;
+    bool pending = false;
+    while (cursor < length) {
+        bool nested = paren_depth > 0 || bracket_depth > 0;
+        if (!nested && token_equal(source, cursor, close)) return -1;
+        if (!nested && token_equal(source, cursor, ",")) {
+            if (pending || members == 0) return cursor;
+            pending = true;
+        } else if (!nested) {
+            if (pending || members == 0) ++members;
+            pending = false;
+        }
+        if (token_equal(source, cursor, "(")) {
+            ++paren_depth;
+        } else if (token_equal(source, cursor, ")")) {
+            if (paren_depth == 0) return -1;
+            --paren_depth;
+        } else if (token_equal(source, cursor, "[")) {
+            ++bracket_depth;
+        } else if (token_equal(source, cursor, "]")) {
+            if (bracket_depth == 0) return -1;
+            --bracket_depth;
+        }
+        cursor = skip_lexical_trivia(source, token_end(source, cursor));
+    }
+    return -1;
+}
+
+static char *validate_delimiter_surface(const char *source) {
+    /* Almost every source has a comma, so this guard rarely saves the walk;
+     * it exists so a comma-free source pays nothing at all. */
+    if (strchr(source, ',') == NULL) return owned_text("");
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, 0);
+    char *previous = owned_text("");
+    const char *previous_kind = "";
+    while (cursor < length) {
+        const char *kind = token_kind(source, cursor);
+        if (token_equal(source, cursor, "[")) {
+            /* A literal, not an index or a type argument: nothing that could
+             * be indexed or parameterised stands before it. */
+            bool literal =
+                strcmp(previous_kind, "identifier") != 0 &&
+                strcmp(previous, "]") != 0 &&
+                strcmp(previous, ")") != 0;
+            if (literal) {
+                int64_t fault = delimiter_fault(source, cursor, "]");
+                if (fault >= 0) {
+                    free(previous);
+                    return delimiter_refusal(
+                        source,
+                        "List[Int] literal has an empty element at this comma",
+                        fault
+                    );
+                }
+            }
+        } else if (strcmp(kind, "identifier") == 0) {
+            int64_t open = skip_trivia(source, token_end(source, cursor));
+            if (open < length && token_equal(source, open, "(")) {
+                if (strcmp(previous, "fn") == 0) {
+                    int64_t fault = delimiter_fault(source, open, ")");
+                    if (fault >= 0) {
+                        free(previous);
+                        return delimiter_refusal(
+                            source,
+                            "parameter list has an empty parameter at this comma",
+                            fault
+                        );
+                    }
+                } else if (strcmp(previous, ".") != 0) {
+                    int64_t fault = delimiter_fault(source, open, ")");
+                    /* The callee is classified only once a fault is found:
+                     * `function_arity` walks every declaration, and paying
+                     * that at every call for a list that is fine would be
+                     * the cost of a defect nobody wrote. */
+                    if (fault >= 0) {
+                        char *name = token_copy(source, cursor);
+                        int64_t declared = function_arity(source, name);
+                        bool callee =
+                            strcmp(name, "print") == 0 ||
+                            builtin_arity(name) >= 0 ||
+                            declared >= 0 ||
+                            declared == -2;
+                        free(name);
+                        if (callee) {
+                            free(previous);
+                            return delimiter_refusal(
+                                source,
+                                "argument list has an empty argument at this comma",
+                                fault
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        free(previous);
+        previous = token_copy(source, cursor);
+        previous_kind = kind;
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    free(previous);
+    return owned_text("");
+}
+
 static char *parse_program(const char *source) {
     /* #882 owns attachment/lowering; refuse before ordinary call analysis can
      * reinterpret the trailing lambda as a separate expression. */
@@ -3977,6 +4174,13 @@ static char *parse_program(const char *source) {
         return surface_check;
     }
     free(surface_check);
+    /* #1515: a comma that separates nothing, refused at the comma before any
+     * count can report it as a member. */
+    char *delimiter_check = validate_delimiter_surface(source);
+    if (strncmp(delimiter_check, "error[", 6) == 0) {
+        return delimiter_check;
+    }
+    free(delimiter_check);
     /* #1190: pipeline shapes outside the recognized production, refused before
      * scope construction can report a bare callee as an unknown binding. */
     char *pipeline_shape_check = validate_pipeline_shapes(source);

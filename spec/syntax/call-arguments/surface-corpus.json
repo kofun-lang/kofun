@@ -1,7 +1,7 @@
 {
   "schema": "kofun.call-arguments-surface/v1",
   "note": "The ambiguity corpus for issue #880. `declarations` is ordinary Kofun source, parsed by the same parser under test, so the signature environment every case resolves against is itself evidence that declaration external labels parse. Cases in `accept` state the surface kind, how many trailing lambdas attached, and the canonical text; cases in `reject` state the diagnostic category. Entries with \"format\": false say why they are not formatted.",
-  "declarations": "fn fold(values: List[Int], initial start: Int, combine: (Int, Int) -> Int) -> Int {\n    return start\n}\n\nfn visit(items: List[Int], order ordering: Int, action: Int -> Int) -> Int {\n    return 0\n}\n\nfn outer(value: Int, action: Int -> Int) -> Int {\n    return value\n}\n\nfn inner(action: Int -> Int) -> Int {\n    return 0\n}\n\nfn transaction(action: Int -> Int) -> Int {\n    return 0\n}\n\nfn replace(in text: Text, from old: Text, to replacement: Text) -> Text {\n    return text\n}\n\nfn write(take into file: Int, bytes data: Int) -> Int {\n    return data\n}\n\nfn draw(width w: Int, height h: Int, filled fill: Int) -> Int {\n    return w\n}\n\nfn consume(value: Int) -> Int {\n    return value\n}\n\nfn commit(handle: Int) -> Int {\n    return handle\n}\n\nfn abs(value: Int) -> Int {\n    return value\n}\n\nfn compose(outer: (Int -> Int) -> Int, thunk: () -> Int) -> Int {\n    return 0\n}\n\nfn keep(read value: Int, edit slot: Int, take thing: Int) -> Int {\n    return value\n}\n\nfn optional_bind(value: Bool?, next: Bool -> Bool?) -> Bool? {\n    return value\n}\n\nfn maybe_apply(value: Int, action: (Int -> Int)?) -> Int {\n    return value\n}\n\nfn nested(a: (Int?)?, b: take (Int -> Int) -> Int, c: List[(Int -> Int)?]) -> Int {\n    return 0\n}\n",
+  "declarations": "fn fold(values: List[Int], initial start: Int, combine: (Int, Int) -> Int) -> Int {\n    return start\n}\n\nfn visit(items: List[Int], order ordering: Int, action: Int -> Int) -> Int {\n    return 0\n}\n\nfn outer(value: Int, action: Int -> Int) -> Int {\n    return value\n}\n\nfn inner(action: Int -> Int) -> Int {\n    return 0\n}\n\nfn transaction(action: Int -> Int) -> Int {\n    return 0\n}\n\nfn replace(in text: Text, from old: Text, to replacement: Text) -> Text {\n    return text\n}\n\nfn write(take into file: Int, bytes data: Int) -> Int {\n    return data\n}\n\nfn draw(width w: Int, height h: Int, filled fill: Int) -> Int {\n    return w\n}\n\nfn consume(value: Int) -> Int {\n    return value\n}\n\nfn commit(handle: Int) -> Int {\n    return handle\n}\n\nfn abs(value: Int) -> Int {\n    return value\n}\n\nfn compose(outer: (Int -> Int) -> Int, thunk: () -> Int) -> Int {\n    return 0\n}\n\nfn keep(read value: Int, edit slot: Int, take thing: Int) -> Int {\n    return value\n}\n\nfn optional_bind(value: Bool?, next: Bool -> Bool?) -> Bool? {\n    return value\n}\n\nfn maybe_apply(value: Int, action: (Int -> Int)?) -> Int {\n    return value\n}\n\nfn nested(a: (Int?)?, b: take (Int -> Int) -> Int, c: List[(Int -> Int)?]) -> Int {\n    return 0\n}\n\nfn terminal(a: Int, b: Int,) -> Int {\n    return a\n}\n",
   "declarationSurface": [
     {
       "name": "external label and internal name are distinct",
@@ -172,6 +172,25 @@
         }
       ],
       "canonical": "fn nested(a: (Int?)?, b: take (Int -> Int) -> Int, c: List[(Int -> Int)?]) -> Int"
+    },
+    {
+      "name": "one terminal comma in a parameter list separates nothing (#1515)",
+      "function": "terminal",
+      "parameters": [
+        {
+          "mode": "read",
+          "external": null,
+          "internal": "a",
+          "type": "Int"
+        },
+        {
+          "mode": "read",
+          "external": null,
+          "internal": "b",
+          "type": "Int"
+        }
+      ],
+      "canonical": "fn terminal(a: Int, b: Int) -> Int"
     }
   ],
   "accept": [
@@ -329,6 +348,13 @@
       "kind": "statement-sequence",
       "trailing": 0,
       "canonical": "outer(0, fn(x) => x)\nfn(y) => y"
+    },
+    {
+      "name": "one terminal comma in an argument list separates nothing (#1515)",
+      "source": "replace(in: a, from: b, to: c,)",
+      "kind": "ordinary-call",
+      "trailing": 0,
+      "canonical": "replace(in: a, from: b, to: c)"
     }
   ],
   "reject": [
@@ -378,11 +404,6 @@
       "category": "duplicate-label"
     },
     {
-      "name": "an argument list may not end with a comma",
-      "source": "replace(in: a, from: b, to: c,)",
-      "category": "trailing-comma"
-    },
-    {
       "name": "a second trailing lambda is rejected however it is separated",
       "source": "items.fold(initial: 0)\nfn(acc, item) => acc + item\nfn(a, b) => a + b",
       "category": "second-trailing-lambda"
@@ -413,11 +434,6 @@
       "name": "a parameter has at most a mode, a label, and a name",
       "source": "fn f(take a b c: Int) -> Int {\n    return c\n}\n",
       "category": "malformed-parameter"
-    },
-    {
-      "name": "a parameter list may not end with a comma",
-      "source": "fn f(a: Int,) -> Int {\n    return a\n}\n",
-      "category": "trailing-comma"
     },
     {
       "name": "a one-element parenthesised type may not end with a comma",

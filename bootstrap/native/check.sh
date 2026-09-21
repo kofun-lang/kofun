@@ -37,8 +37,12 @@ assert_grep "encoder.ir" \
     '^function|elf64_core_answer_debug_image|0|' "$WORK/encoder.ir"
 assert_grep "encoder.ir" \
     '^function|dwarf_debug_strings_for|1|' "$WORK/encoder.ir"
-assert_grep "encoder.ir" '^function|dwarf_debug_info_for|8|' "$WORK/encoder.ir"
-assert_grep "encoder.ir" '^function|dwarf_debug_line_for|6|' "$WORK/encoder.ir"
+# Seven and five: the parameters these two declarations write. The gate used
+# to pin 8 and 6, which were never in the source -- each declaration ends its
+# list with a terminal comma, and until #1515 Stage 2 counted that comma as a
+# parameter. A pinned count is only evidence of what it was measured against.
+assert_grep "encoder.ir" '^function|dwarf_debug_info_for|7|' "$WORK/encoder.ir"
+assert_grep "encoder.ir" '^function|dwarf_debug_line_for|5|' "$WORK/encoder.ir"
 assert_grep "encoder.ir" '^function|pe32plus_image|2|' "$WORK/encoder.ir"
 assert_grep "encoder.ir" '^function|pe32plus_entry_image|1|' "$WORK/encoder.ir"
 assert_grep "encoder.ir" '^function|macho64_image|2|' "$WORK/encoder.ir"

@@ -1,0 +1,12 @@
+# diagnostic-mode: compile
+# expect-code: E2S182
+# expect-span: byte 234
+# #1515. A comma with nothing before it is refused at that comma, before any
+# count can report the empty member as a parameter that does not exist.
+fn f(a: Int,, b: Int) -> Int {
+    return a + b
+}
+
+fn main() -> Int {
+    return f(1, 2)
+}
