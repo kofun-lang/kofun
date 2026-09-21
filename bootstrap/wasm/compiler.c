@@ -172,6 +172,11 @@ typedef struct {
     int main_index;
     size_t block_nesting;
     size_t print_count;
+    /* The line of the first `print`, kept because the wasm32-wasi-command1
+     * refusal below has to name the operation's span: #1293's projection
+     * contract says a reachable operation without its grant is "a compile-time
+     * refusal at that operation's span", and `line 1` is not a span. */
+    size_t first_print_line;
     size_t expression_nesting;
 } Parser;
 
@@ -1067,6 +1072,7 @@ static int parse_binding_statement(Parser *parser) {
 }
 
 static int parse_print_statement(Parser *parser) {
+    if (parser->print_count == 0) parser->first_print_line = parser->line;
     if (!expect(parser, TOKEN_LEFT_PAREN,
                 "expected `(` after print in wasm32 Core")) {
         return -1;
@@ -2347,8 +2353,22 @@ static bool write_module(const char *path, const Buffer *module) {
                 path, strerror(errno));
         return false;
     }
+    /* #1296 asks that a forced LATE failure -- after lowering, during the
+     * write -- leave no partial artifact. The only way to prove that is to
+     * force one, so this seam writes half the module and then fails. It
+     * ANNOUNCES itself on every use: a seam that silently failed writes
+     * would turn every build into a coin toss nobody could see. */
+    const char *fault = getenv("KOFUN_WASM_CORE_FAULT");
+    bool forced = fault != NULL && strcmp(fault, "write") == 0;
+    size_t to_write = forced ? module->length / 2 : module->length;
+    if (forced) {
+        fprintf(stderr,
+                "NOTE: kofun wasm32: KOFUN_WASM_CORE_FAULT=write is set; "
+                "failing the write after %zu of %zu bytes\n",
+                to_write, module->length);
+    }
     bool okay =
-        fwrite(module->data, 1, module->length, file) == module->length;
+        fwrite(module->data, 1, to_write, file) == module->length;
     if (fclose(file) != 0) okay = false;
     if (!okay) {
         remove(path);
@@ -2400,7 +2420,12 @@ int main(int argc, char **argv) {
             return 1;
         }
         if (command_parser->print_count != 0) {
-            fprintf(stderr, "kofun wasm32: line 1: %s\n",
+            /* At the operation's span, per #1293 §5. The carrier that would
+             * let a checked operation name its authority is #1242-#1246; until
+             * it exists every host operation is refused here, and the refusal
+             * has to point at the operation rather than at the file. */
+            fprintf(stderr, "kofun wasm32: line %zu: %s\n",
+                    command_parser->first_print_line,
                     "wasm32-wasi-command1 has no host operations in this slice; "
                     "remove the print, or use --target wasm32");
             free(command_parser);
