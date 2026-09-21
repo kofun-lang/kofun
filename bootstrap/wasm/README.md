@@ -101,6 +101,42 @@ host; compares `len` and valid indexing with native x86-64; and checks bounds
 aborts, deterministic/sanitized builds, transactional refusal, and legacy
 wasm32 bytes.
 
+## WASI command memory
+
+`wasm32-wasi-command1` (#1296) emits the minimal Preview 1 command shape: one
+exported memory, `kofun_wasi_command_version`, `_start`, and no imports,
+because a program that reaches no checked operation must emit none. With a
+`--wasi-manifest`, the manifest's `memoryPages` becomes the module's memory
+maximum (#1297); without one the module keeps its single fixed page.
+
+`wasi_command_memory.h` is the adapter-private storage the operation slices
+(#1298–#1301) will hand to `wasi_snapshot_preview1`: byte sequences
+`{ u64 length; u8[] }`, pointer vectors `{ u64 count; u32[] }`, iovec vectors
+`{ u64 count; { u32 buf; u32 len }[] }` — all under the AggregateLayout v1
+header above, 8-aligned — plus a checked UTF-8 conversion and the
+command-lifetime bump allocator behind them. The allocator never writes,
+grows the memory on demand up to the manifest's ceiling and returns zero past
+it with nothing changed; `scope_enter`/`scope_leave` bracket one host call and
+zero everything allocated inside it, so a retained guest pointer reads zeros.
+Contract violations — a bad alignment, an index past a count, a non-object
+reference, a buffer outside the arena — trap before any mutation.
+
+Nothing in `build` carries the runtime yet: no host operation is reachable in
+this slice, and emitting it unreferenced would widen the module's declared
+surface past its behaviour. The gate drives it through the probe module
+instead:
+
+```sh
+build/wasm-core/kofun-wasm-core --wasi-command1-memory-probe build/probe.wasm 4
+sh tests/wasm/wasi-command-memory/check.sh
+```
+
+The gate computes the layout three ways (JavaScript, a C probe against the
+header, the running module), executes every carrier under the engine with
+canary-filled memory, and shows each of four announced emitter seams
+(`KOFUN_WASM_CORE_FAULT=memory-*`) caught by its own property. None of this is
+the public Kofun `Bytes` identity and none of it is a capability claim.
+
 Build and run the sample:
 
 ```sh
@@ -207,11 +243,13 @@ numeric and function differential corpora are executable, and the sample
 renders Kofun output in a page. Wider language coverage should be tracked
 independently rather than implied here.
 
-`spec/wasi-command-profile-v1.md` now reserves
-`wasm32-wasi-command1` and makes its command-capability boundary executable as
-a reference model. That is an implementation input, not an emitted profile:
-this backend continues to reject the target with no artifact, imports no
-`wasi_snapshot_preview1` function, and claims no WASI capability.
+`spec/wasi-command-profile-v1.md` reserves `wasm32-wasi-command1` and makes
+its command-capability boundary executable as a reference model, and
+`spec/wasi-command-projection-v1/PROFILE.md` decides which checked source
+operation reaches which import. This backend emits the command shape and the
+command-memory carriers described above, imports no
+`wasi_snapshot_preview1` function, refuses every host operation at its span,
+and claims no WASI capability.
 
 When linear-memory objects do arrive, their byte layout is already decided:
 `spec/aggregate-layout-v1.md` defines the `wasm32` target with 4-byte

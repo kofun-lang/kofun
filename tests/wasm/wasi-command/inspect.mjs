@@ -47,6 +47,22 @@ while (i < bytes.length) {
     const size = uleb()
     const end = i + size
     out.push(`section ${SECTIONS[id] ?? id}`)
+    if (id === 5) {
+        // #1297: the limits are the page ceiling the manifest declared, so
+        // they are a fact worth one line each rather than a byte to trust.
+        const count = uleb()
+        for (let entry = 0; entry < count; entry += 1) {
+            const flags = bytes[i]
+            i += 1
+            const min = uleb()
+            if (flags & 0x01) {
+                const max = uleb()
+                out.push(`memory min ${min} max ${max}`)
+            } else {
+                out.push(`memory min ${min}`)
+            }
+        }
+    }
     if (id === 7) {
         const count = uleb()
         for (let entry = 0; entry < count; entry += 1) {

@@ -70,6 +70,10 @@ try {
     )
     process.stdout.write(`imports ${result.imports.length}\n`)
     process.stdout.write(`granted ${result.grantedButUnused.length}/${CAPABILITIES.length}\n`)
+    // #1297. The page ceiling reaches the emitter through this line: the
+    // driver reads it back rather than parsing the manifest a second time,
+    // so the number the module declares is the number the model accepted.
+    process.stdout.write(`memoryPages ${result.memoryPages}\n`)
 } catch (error) {
     if (error instanceof Refusal) {
         // `Refusal.message` already begins with the code — writing both
