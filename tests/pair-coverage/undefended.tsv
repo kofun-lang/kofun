@@ -24,58 +24,90 @@
 # So: before writing a fixture to retire a row, check whether anything can
 # reach it. A green fixture is not evidence that it could.
 #
-#   measured at   80e45fc781eadcc853e5fb4f13f2060c23d515cd
+#   measured at   78e75b4190168758949e720f3d0f85e884520a52
 #   gcc           gcc (GCC) 16.2.1 20260810
 #   clang         clang version 22.1.8
-#   basis         the union of the 159 driver rows and 1320 pinned *.kofun
+#   basis         the union of the 172 driver rows and 1329 pinned *.kofun
 #                 inputs that drivers.tsv and inputs.tsv held at that commit
-#   totals        1964 untaken under gcc, 1871 under clang, across 367 functions
-#   rows sha256   17232cc0b1cd33dee64a2aad2eea6d09ad75c23d76b1bd065afc3b7671000ca3
+#   totals        1987 untaken under gcc, 1892 under clang, across 370 functions
+#   rows sha256   65a45f99e90e7ef7f1c665b366d4106d4541351cc8ea394d84cbbc6dfc8b3ffb
 #
-# WHAT MOVED. The implementation commit changes compiler.c and its pinned
-# basis together, so the direction of every count has to be recorded rather
-# than attributed to code or coverage alone. Three old rows became fully
-# covered or ceased to exist, eleven new helper rows entered, and seven
-# existing rows changed count:
+# WHAT MOVED, AND WHAT THIS MEASUREMENT CANNOT SAY ABOUT IT. The previous
+# basis was 80e45fc7 (#1614, 2026-08-24). Between it and this one compiler.c
+# changed five times: 7990f13c, 86908e4b, 6316f8ca and 63eea23f on 2026-09-06
+# (#1540, #1581, #1515 and the record-edit diagnostics), none of which
+# re-measured this file, and #1483's d1a9dc8f, which raised the lexical use
+# budget from 256 to 4096 in build_scope_hir_mode and was measured twice. A
+# single measurement over the whole span cannot attribute a row to one commit,
+# so the split below is what the two #1483 runs isolate and no more. Two rows
+# became fully covered, five entered, three changed count:
 #
-#   left: call_slot_carried, lower_body, unsupported_lowering_error
-#   entered: binding_has_use, bytes_mutation_required_access,
-#            bytes_named_carrier_binding,
-#            bytes_private_result_is_discarded_statement,
-#            bytes_private_result_previous_completes_statement,
-#            bytes_private_result_statement_boundary,
-#            declared_bytes_argument_identity_error, function_parameter_name,
-#            lower_body_with_workspace, unused_parameter_discards,
-#            validate_bytes_private_results
+#   left:    hir_binding_declaration_start, lambda_binding_open
+#            (both functions still exist; nothing untaken remains in them)
+#   entered: move_positional_binding, move_positional_owner,
+#            move_same_binding, move_straight_line_position,
+#            validate_move_record_modes
+#   changed: call_argument_parameter_property   gcc 13 -> 15, clang 11 -> 13
+#            declared_bytes_argument_identity_error   gcc 9 -> 8, clang 8 -> 7
+#            move_call_binding   clang 0 -> 1
 #
-# `lower_body` becoming a small public wrapper and
-# `lower_body_with_workspace` owning the growable cleanup/failure buffers is
-# the largest structural move. The new Bytes rows split named identity,
-# mutation access, and discarded-private-result rules out of their former
-# combined paths. Long self-host identifiers move HIR/name branches, and the
-# inferred enum-return fixture moves call validation and emission branches.
-# The measurement, not that explanation, is the authority for every row.
+# The five entered rows are the positional-move slice of #1540, the only one
+# of those commits that introduced functions by these names; the three
+# changed rows sit in the call-argument and Bytes-identity paths that
+# 7990f13c and 86908e4b rewrote. That is an attribution by name, not by
+# measurement, and the rows are the authority.
+#
+# NOT IN THIS BASIS: 63eea23f (#1515, PR #1640), merged at 14:27Z while this
+# run was in progress and brought in under it by a merge commit rather than a
+# rebase, so that the SHA above stays a real ancestor. It adds three C
+# functions and four pinned inputs. #1640 said in as many words that whoever
+# lands last regenerates this file; that is the run after this one, and it
+# also owes mirror.tsv rows for those functions.
+#
+# What #1483 did to this ledger is measured exactly, because it ran twice.
+# At 7beeebec, with the budget raised and nothing else, build_scope_hir_mode
+# read 28 under both hosts against the 27 recorded here: the resolved-use
+# refusal `use_count > 4096` had gone untaken. It had been covered by
+# accident -- the pair's own bootstrap/stage2/compiler.kofun is a pinned
+# corpus input and tripped that guard at line 906 on every run -- and the
+# raised budget removed the accident. 78e75b41 adds a fixture that reaches
+# it on purpose (tests/conformance/modules/lexical-scopes,
+# `resolved-uses-4097`), and this run reads 27 again. Every other row is
+# identical between the two #1483 runs, so the budget change itself moved
+# nothing else.
 #
 # COST, measured on this run rather than estimated -- it is the number the
 # `verify`-or-not argument in tooling/gate-reachability/unreachable.tsv rests
 # on, and the reason that file rather than the verify list is where this gate
 # is accounted for:
-#   gcc    drivers  4834s + corpus  750s =   93 min, drivers are 87% of it
-#   clang  drivers  4227s + corpus  837s =   84 min, drivers are 83% of it
-#   both   drivers  9061s + corpus 1587s =  177 min for the pair
+#   gcc    drivers  4663s + corpus 1530s =  103 min, drivers are 75% of it
+#   clang  drivers  5060s + corpus 1609s =  111 min, drivers are 76% of it
+#   both   drivers  9723s + corpus 3139s =  214 min for the pair
+#
+# THE CORPUS DOUBLED, AND ONE INPUT IS WHY. Against the previous run's 750s
+# and 837s, the corpus phase is now 1530s and 1609s: compiler.kofun in `.c`
+# mode ran 371s under the instrumented build when it refused at line 906 and
+# runs about 1080s now that the whole scope-HIR stage precedes the
+# `is_xid_start` refusal (#1513). measure.sh's per-input limit moved from
+# 600s to 2400s for it, and tooling/machine-dependent/ledger.tsv records why.
+# The first #1483 attempt timed that input out at 600s and this harness
+# refused to report, as it is written to.
 #
 # READ THE PHASE SPLIT, NOT THE ABSOLUTE. These wall-clock figures are
 # observations from one shared-machine run, not a clean-machine cost or a
 # controlled cross-host comparison. No load sampler ran, so no same-contention
 # claim is made or inferred from the two compiler timings.
 #
-# RETRIES. On each host `discovery` failed with exit=201 and was retried on
-# attempts 1 through 3, then passed, matching the pinned driver-failures.tsv
-# policy. Neither host recorded a corpus timeout.
+# RETRIES. On each host `discovery` failed with exit=201 on all four attempts
+# and is recorded as an expected failure in driver-failures.tsv, whose reason
+# (the harness's instrumented compiler makes its two artifacts differ by
+# construction) this run did not re-check. Neither host recorded a corpus
+# timeout.
 #
 # DETERMINISM (#1408 criterion 5). This basis has one fresh two-compiler
-# measurement: the run recorded above. Historical repeated-basis measurements
-# validate the harness, not this basis; do not claim a repeat for these rows.
+# measurement: the run recorded above. The 7beeebec run is a different basis
+# by one fixture and one driver and is cited only for the build_scope_hir_mode
+# row it isolates; do not read it as a repeat of these rows.
 #
 # Regenerate with:
 #
@@ -116,18 +148,22 @@
 12	11	bytes_private_result_previous_completes_statement
 2	2	bytes_private_result_statement_boundary
 17	17	bytes_producer_refusal
-1	1	c_identifier_name
-13	11	call_argument_parameter_property
-6	4	call_argument_position
-4	4	call_arity
-4	4	call_has_labelled_argument
 1	1	callable_c_declarator
 2	2	callable_parameter_type_start
 4	4	callable_type_arity
 8	8	callable_type_end
+15	13	call_argument_parameter_property
+6	4	call_argument_position
+4	4	call_arity
+4	4	call_has_labelled_argument
+1	1	c_identifier_name
 1	1	coalescing_expression_end
 1	0	compile_file
 1	1	condition_end
+1	1	constant_declaration_count
+9	9	constant_declaration_end
+1	1	constant_name
+1	1	constant_value_text
 1	1	const_argument_of
 2	2	const_argument_over_budget
 2	2	const_digit_greater
@@ -135,10 +171,6 @@
 6	6	const_generic_refusal
 1	1	const_instantiation_at
 3	3	const_parameter_name
-1	1	constant_declaration_count
-9	9	constant_declaration_end
-1	1	constant_name
-1	1	constant_value_text
 4	4	constructed_list_type_end
 1	1	constructed_list_type_text
 3	2	copy_type
@@ -146,7 +178,7 @@
 10	10	core_parameters
 1	1	decimal_rounding_c_name
 4	4	decimal_value
-9	8	declared_bytes_argument_identity_error
+8	7	declared_bytes_argument_identity_error
 6	6	emit_argument
 8	7	emit_arithmetic_expression
 1	1	emit_bytes_mutation_call
@@ -181,8 +213,8 @@
 1	0	enum_constructor_index
 1	1	enum_constructor_owner
 3	3	enum_constructor_payload_arity
-1	1	enum_constructor_token_end
 2	1	enum_constructors_covered
+1	1	enum_constructor_token_end
 2	2	enum_declaration_names
 1	1	enum_declaration_start
 2	2	enum_match_end
@@ -205,7 +237,6 @@
 4	4	function_return_type_at
 2	2	function_return_type_containing
 3	3	generic_binder_open
-1	1	hir_binding_declaration_start
 5	5	hir_field
 6	6	hir_index_add
 1	1	hir_index_grow
@@ -227,7 +258,6 @@
 4	4	io_functions_round
 7	7	labelled_argument_slot
 2	2	labelled_argument_value
-1	1	lambda_binding_open
 3	2	lambda_captures
 1	1	lambda_declaration_syntax_token
 19	15	lambda_fn_keyword_before
@@ -256,11 +286,15 @@
 4	3	move_assertion_head
 15	15	move_assertion_read_is_alias_free
 5	5	move_assertion_scope_reaches
-1	0	move_call_binding
+1	1	move_call_binding
 3	3	move_finding_keep
+5	3	move_positional_binding
+3	2	move_positional_owner
+1	1	move_same_binding
 1	1	move_statement_end
 4	4	move_statement_head
 1	1	move_statement_partial
+12	12	move_straight_line_position
 1	1	move_use_position
 2	2	next_constant_start
 2	2	next_function_start
@@ -291,11 +325,6 @@
 9	7	optional_int_value
 10	10	pair_sha256_absorb
 14	14	pair_sha256_of_message
-2	2	par_loop_block_open
-7	7	par_production_error
-4	4	par_scope_rule_error
-11	10	par_spawn_bound_handle
-5	5	par_spawn_site_within
 2	2	parameter_count
 1	1	parameter_external_start
 5	5	parameter_internal_start
@@ -303,15 +332,20 @@
 1	1	parameter_list_type_text
 1	1	parameter_open
 3	3	parameter_type_start
+2	2	par_loop_block_open
+7	7	par_production_error
+4	4	par_scope_rule_error
 25	25	parse_pattern_atomic
 12	11	parse_pattern_or
-8	7	parse_pattern_trees
 1	1	parse_patterns_file
+8	7	parse_pattern_trees
 26	25	parse_program
 3	3	parse_value_arm
 29	26	parse_value_enum_match
 13	13	parse_value_if
 19	19	parse_value_match
+11	10	par_spawn_bound_handle
+5	5	par_spawn_site_within
 3	3	pattern_duplicate_binding_error
 2	2	pattern_error
 1	1	pattern_first_error
@@ -346,6 +380,7 @@
 1	1	scope_depth_for_open
 4	4	scoped_parallel_member
 5	5	selfhost_compile_file
+4	4	sha256_selftest
 1	1	sh_bind
 1	1	sh_emit_expr
 1	1	sh_emit_stmt
@@ -363,7 +398,6 @@
 1	1	sh_scope_open
 1	1	sh_text_literal_field
 1	1	sh_type_id_key
-4	4	sha256_selftest
 1	1	skip_trivia
 1	1	sl_binding
 2	2	sl_binding_type
@@ -375,8 +409,8 @@
 8	8	sl_emit_function
 17	16	sl_emit_statement
 1	1	sl_fail
-1	1	sl_fail_name
 1	1	sl_failed_check
+1	1	sl_fail_name
 2	2	sl_field
 3	2	sl_list_parameter
 9	9	sl_load
@@ -433,6 +467,7 @@
 2	2	validate_list_int_annotations
 4	4	validate_list_int_lambda_uses
 18	18	validate_move_assertions
+3	3	validate_move_record_modes
 5	5	validate_move_uses
 2	2	validate_numeric_annotations
 4	4	validate_numeric_conversions
