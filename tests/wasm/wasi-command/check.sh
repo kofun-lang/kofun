@@ -3,10 +3,20 @@
 #
 # #1296 says the focused gate "must execute the module, inspect its binary
 # sections independently, mutate manifest/import/profile bytes, and assert no
-# artifact for every refusal; source-text grep is insufficient." This slice
-# covers the no-host-operation path, so there is no manifest to mutate yet — but
-# the other three clauses apply in full, and the section reader below decodes
-# the module rather than trusting the emitter's own account of it.
+# artifact for every refusal; source-text grep is insufficient." All four
+# clauses apply: the section reader below decodes the module rather than
+# trusting the emitter's own account of it, the manifest is mutated four ways
+# (three of #1293's refusals and one non-canonical spelling), and every refusal
+# -- including a forced LATE write failure and an output path that is a
+# directory -- is shown to leave no artifact, not merely to exit non-zero.
+#
+# WHAT THIS DOES NOT COVER, because the profile says it cannot yet: a program
+# that reaches a checked operation. #1293 §"The binding constraint" has `build`
+# refuse the root/environment carrier until #1242-#1246 exist, so every host
+# operation is refused here, at the operation's span, and the import projection
+# for reachable operations is the adapter issues' (#1297-#1301) once that
+# carrier lands. A gate that accepted a `print` today would be accepting the
+# ambient-builtin Option B the contract rejected.
 #
 # The load-bearing assertion is the *absence* of an import section. #1293's
 # projection contract states that a program reaching no checked operation emits
@@ -30,7 +40,10 @@ rm -rf "$WORK"
 mkdir -p "$WORK"
 
 printf 'fn main() {\n    let unused: Int = 1 + 1\n}\n' >"$WORK/command.kofun"
-printf 'fn main() {\n    print(42)\n}\n' >"$WORK/prints.kofun"
+# The print is on line 3 on purpose: the refusal has to name the operation's
+# span (#1293 §5), and a fixture whose only print is on line 1 cannot tell
+# "line 1" from "the operation's line".
+printf 'fn main() {\n    let unused: Int = 1\n    print(42)\n}\n' >"$WORK/prints.kofun"
 
 "$ROOT/bin/kofun" build "$WORK/command.kofun" \
     --target wasm32-wasi-command1 -o "$WORK/command.wasm" >/dev/null
@@ -96,7 +109,44 @@ set -e
 assert_num "a host operation is refused in this slice" "$prints_status" -ne 0
 assert_grep "the refusal says what to do" -F "no host operations in this slice" \
     "$WORK/prints.stderr"
+assert_grep "the refusal is at the operation's span, not line 1" -F "line 3:" \
+    "$WORK/prints.stderr"
 assert_absent "no artifact from a refused build" "$WORK/prints.wasm"
+
+# Late-failure atomicity, #1296's sixth criterion, in the two shapes a write
+# can fail. Both used to leave something behind: the directory case moved a
+# COMPLETE module into the directory under its temporary name and exited 0.
+#
+# First, an output path that is a directory. Refused by name before anything
+# is written, and the directory stays empty.
+mkdir -p "$WORK/taken.wasm"
+set +e
+"$ROOT/bin/kofun" build "$WORK/command.kofun" \
+    --target wasm32-wasi-command1 -o "$WORK/taken.wasm" \
+    >"$WORK/taken.stdout" 2>"$WORK/taken.stderr"
+taken_status=$?
+set -e
+assert_num "an output path that is a directory is refused" "$taken_status" -ne 0
+assert_grep "the refusal names the shape" -F "is a directory" "$WORK/taken.stderr"
+assert_num "nothing was moved into the directory" \
+    "$(find "$WORK/taken.wasm" -mindepth 1 | wc -l | tr -d ' ')" -eq 0
+
+# Second, a failure AFTER lowering, during the write itself -- the only way to
+# prove that is to force one, so the emitter carries an announced seam that
+# writes half the module and fails. No module, and no temporary either: the
+# driver's trap and the emitter's own cleanup are both exercised.
+set +e
+KOFUN_WASM_CORE_FAULT=write "$ROOT/bin/kofun" build "$WORK/command.kofun" \
+    --target wasm32-wasi-command1 -o "$WORK/faulted.wasm" \
+    >"$WORK/faulted.stdout" 2>"$WORK/faulted.stderr"
+faulted_status=$?
+set -e
+assert_num "a forced late write failure is a failure" "$faulted_status" -ne 0
+assert_grep "the seam announced itself" -F "KOFUN_WASM_CORE_FAULT=write is set" \
+    "$WORK/faulted.stderr"
+assert_absent "no partial artifact from a late failure" "$WORK/faulted.wasm"
+assert_num "no temporary survives a late failure" \
+    "$(find "$WORK" -maxdepth 1 -name 'faulted.wasm.tmp.*' | wc -l | tr -d ' ')" -eq 0
 
 # The manifest. #1296 asks for "malformed/unknown manifest data" to be refused
 # before publication, and the refusals are #1293's vocabulary by name — a caller
@@ -108,18 +158,26 @@ assert_absent "no artifact from a refused build" "$WORK/prints.wasm"
 node -e '
 const fs = require("node:fs");
 import("'"$ROOT"'/spec/wasi-command-profile-v1/model.mjs").then((m) => {
+    // Every manifest is written with the model function `canonical()`: #1293
+    // section 4 byte-freezes the format, and the validator refuses any other
+    // spelling, so a pretty-printed fixture here would be refused for the
+    // wrong reason and the case it was meant to prove would never be reached.
     const manifest = m.makeManifest([]);
     manifest.memoryPages = 16;
-    fs.writeFileSync("'"$WORK"'/manifest.json", JSON.stringify(manifest, null, 2) + "\n");
+    fs.writeFileSync("'"$WORK"'/manifest.json", m.canonical(manifest));
     const unknown = JSON.parse(JSON.stringify(manifest));
     unknown.capabilities.telepathy = true;
-    fs.writeFileSync("'"$WORK"'/unknown.json", JSON.stringify(unknown, null, 2));
+    fs.writeFileSync("'"$WORK"'/unknown.json", m.canonical(unknown));
     const incomplete = JSON.parse(JSON.stringify(manifest));
     delete incomplete.capabilities.random;
-    fs.writeFileSync("'"$WORK"'/incomplete.json", JSON.stringify(incomplete, null, 2));
+    fs.writeFileSync("'"$WORK"'/incomplete.json", m.canonical(incomplete));
     const pages = JSON.parse(JSON.stringify(manifest));
     pages.memoryPages = 0;
-    fs.writeFileSync("'"$WORK"'/pages.json", JSON.stringify(pages, null, 2));
+    fs.writeFileSync("'"$WORK"'/pages.json", m.canonical(pages));
+    // The same manifest, spelled differently. Its SHA-256 binds into the
+    // artifact, so two spellings of one set of grants would be two artifact
+    // identities; the only honest answer is to refuse the second spelling.
+    fs.writeFileSync("'"$WORK"'/pretty.json", JSON.stringify(manifest, null, 2) + "\n");
 });
 '
 
@@ -135,7 +193,7 @@ node "$ROOT/tests/wasm/wasi-command/validate.mjs" "$WORK/granted.wasm" >/dev/nul
 
 # Each refusal by its own name, and none of them writes a module. Two refusals
 # sharing a message would mean the tool cannot tell the two mistakes apart.
-for case in unknown:UnknownCapabilityKey incomplete:IncompleteManifest pages:InvalidMemoryCeiling; do
+for case in unknown:UnknownCapabilityKey incomplete:IncompleteManifest pages:InvalidMemoryCeiling pretty:NonCanonicalManifest; do
     name=${case%%:*}
     code=${case#*:}
     set +e
@@ -162,10 +220,10 @@ const fs = require("node:fs");
 import(process.env.KOFUN_ROOT + "/spec/wasi-command-profile-v1/model.mjs").then((m) => {
     const none = m.makeManifest([]);
     none.memoryPages = 16;
-    fs.writeFileSync(process.env.KOFUN_WORK + "/grant-none.json", JSON.stringify(none, null, 2) + "\n");
+    fs.writeFileSync(process.env.KOFUN_WORK + "/grant-none.json", m.canonical(none));
     const stdout = m.makeManifest(["stdout"]);
     stdout.memoryPages = 16;
-    fs.writeFileSync(process.env.KOFUN_WORK + "/grant-stdout.json", JSON.stringify(stdout, null, 2) + "\n");
+    fs.writeFileSync(process.env.KOFUN_WORK + "/grant-stdout.json", m.canonical(stdout));
 });
 '
 
@@ -208,4 +266,4 @@ assert_grep "wasm32 still imports its host functions" -Fx "section import" \
     "$WORK/legacy.txt"
 
 printf '%s\n' \
-    "PASS: a wasm32-wasi-command1 command satisfies #1098's normative validator, imports nothing, runs on a Preview 1 host, and refuses each malformed manifest by name, and binds the manifest into its bytes"
+    "PASS: a wasm32-wasi-command1 command satisfies #1098's normative validator, imports nothing, runs on a Preview 1 host, refuses each malformed or non-canonical manifest by name, refuses a host operation at its span, leaves no artifact on a late write failure, and binds the manifest into its bytes"

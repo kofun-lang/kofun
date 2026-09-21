@@ -111,6 +111,24 @@ assert_grep \
 cmp "$fixtures/mutable.stdout" "$work/mutable.stdout"
 assert_file_empty "mutable runtime stderr" "$work/mutable.stderr"
 
+# #1515. One terminal comma in a literal, a parameter list, or an argument
+# list separates nothing: the element count, the arity, and the argument
+# count are the members the source wrote, and the program runs. Before this,
+# the literal was refused as `E2S12 invalid Int expression` at its `[`, and
+# the declaration counted three parameters for a two-argument call.
+compile_success terminal_comma "$fixtures/terminal_comma.kofun"
+assert_grep \
+    "a two-element literal with a terminal comma reaches typed HIR as List[Int]" \
+    -Fq "|values|immutable|List[Int]|gc|initialized|" \
+    "$work/terminal_comma.ir"
+assert_grep \
+    "a declaration with a terminal comma has the arity it wrote" \
+    -Fq "function|add|2|" \
+    "$work/terminal_comma.ir"
+"$work/terminal_comma" >"$work/terminal_comma.stdout" 2>"$work/terminal_comma.stderr"
+cmp "$fixtures/terminal_comma.stdout" "$work/terminal_comma.stdout"
+assert_file_empty "terminal_comma runtime stderr" "$work/terminal_comma.stderr"
+
 # Exercise the new write path under the host sanitizers when the selected C11
 # compiler supports them. Unsupported sanitizer flags are not a product
 # failure, but a supported instrumented build must run byte-identically.

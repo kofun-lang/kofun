@@ -172,6 +172,11 @@ typedef struct {
     int main_index;
     size_t block_nesting;
     size_t print_count;
+    /* The line of the first `print`, kept because the wasm32-wasi-command1
+     * refusal below has to name the operation's span: #1293's projection
+     * contract says a reachable operation without its grant is "a compile-time
+     * refusal at that operation's span", and `line 1` is not a span. */
+    size_t first_print_line;
     size_t expression_nesting;
 } Parser;
 
@@ -1067,6 +1072,7 @@ static int parse_binding_statement(Parser *parser) {
 }
 
 static int parse_print_statement(Parser *parser) {
+    if (parser->print_count == 0) parser->first_print_line = parser->line;
     if (!expect(parser, TOKEN_LEFT_PAREN,
                 "expected `(` after print in wasm32 Core")) {
         return -1;
@@ -2239,9 +2245,13 @@ static Buffer emit_profile_module(void) {
  */
 #define KOFUN_WASI_COMMAND_PROFILE_VERSION 1
 
+#define KOFUN_WASM_WASI_COMMAND_MEMORY_EMITTER
+#include "wasi_command_memory.h"
+
 static Buffer emit_wasi_command_module(
     const Parser *parser,
-    const char *manifest_digest
+    const char *manifest_digest,
+    uint32_t memory_pages
 ) {
     (void)parser;
     Buffer module = {0};
@@ -2267,11 +2277,17 @@ static Buffer emit_wasi_command_module(
     uleb(&functions, 0);
     section(&module, 3, &functions);
 
+    /* One page to start, and the manifest's page ceiling as the maximum
+     * (#1293 §7: "the page ceiling is declared in the manifest and
+     * enforced"). The engine enforces the maximum, so the command-memory
+     * allocator's growth cannot exceed it even if the allocator were wrong.
+     * Without a manifest there is no declared ceiling and the module keeps
+     * the fixed single page it always had. */
     Buffer memory = {0};
     uleb(&memory, 1);
-    byte(&memory, 0x01); /* min and max both present: this slice never grows. */
+    byte(&memory, 0x01); /* min and max both present */
     uleb(&memory, 1);
-    uleb(&memory, 1);
+    uleb(&memory, memory_pages == 0 ? 1 : memory_pages);
     section(&module, 5, &memory);
 
     /* #1098's validator requires an immutable i32 global carrying the profile
@@ -2347,8 +2363,22 @@ static bool write_module(const char *path, const Buffer *module) {
                 path, strerror(errno));
         return false;
     }
+    /* #1296 asks that a forced LATE failure -- after lowering, during the
+     * write -- leave no partial artifact. The only way to prove that is to
+     * force one, so this seam writes half the module and then fails. It
+     * ANNOUNCES itself on every use: a seam that silently failed writes
+     * would turn every build into a coin toss nobody could see. */
+    const char *fault = getenv("KOFUN_WASM_CORE_FAULT");
+    bool forced = fault != NULL && strcmp(fault, "write") == 0;
+    size_t to_write = forced ? module->length / 2 : module->length;
+    if (forced) {
+        fprintf(stderr,
+                "NOTE: kofun wasm32: KOFUN_WASM_CORE_FAULT=write is set; "
+                "failing the write after %zu of %zu bytes\n",
+                to_write, module->length);
+    }
     bool okay =
-        fwrite(module->data, 1, module->length, file) == module->length;
+        fwrite(module->data, 1, to_write, file) == module->length;
     if (fclose(file) != 0) okay = false;
     if (!okay) {
         remove(path);
@@ -2357,20 +2387,60 @@ static bool write_module(const char *path, const Buffer *module) {
     return okay;
 }
 
+/* A wasm32 page count from the command line: 1..65536, digits only. */
+static bool parse_memory_pages(const char *text, uint32_t *pages) {
+    if (*text == '\0') return false;
+    uint64_t value = 0;
+    for (const char *at = text; *at != '\0'; ++at) {
+        if (*at < '0' || *at > '9') return false;
+        value = value * 10 + (uint64_t)(*at - '0');
+        if (value > 65536) return false;
+    }
+    if (value == 0) return false;
+    *pages = (uint32_t)value;
+    return true;
+}
+
 int main(int argc, char **argv) {
     bool profile = argc == 4 && strcmp(argv[1], "--hostabi1") == 0;
     bool wasi_command = argc >= 4 && strcmp(argv[1], "--wasi-command1") == 0;
+    bool memory_probe =
+        argc == 4 && strcmp(argv[1], "--wasi-command1-memory-probe") == 0;
     const char *wasi_manifest_digest =
-        (wasi_command && argc == 5) ? argv[4] : NULL;
+        (wasi_command && argc >= 5) ? argv[4] : NULL;
     bool flagged = profile || wasi_command;
+    if (memory_probe) {
+        /* #1297. The command-memory runtime under a real engine: the probe
+         * exports the runtime beside the command shape so the gate can drive
+         * it with canaries. `build` never takes this path. */
+        uint32_t pages = 0;
+        if (!parse_memory_pages(argv[3], &pages)) {
+            fprintf(stderr,
+                    "kofun wasm32: memory probe pages must be 1..65536, got %s\n",
+                    argv[3]);
+            return 2;
+        }
+        Buffer probe = emit_wasi_command_memory_probe_module(pages);
+        bool probe_written = write_module(argv[2], &probe);
+        free(probe.data);
+        return probe_written ? 0 : 1;
+    }
     if ((!flagged && argc != 3) ||
         (profile && argc != 4) ||
-        (wasi_command && argc != 4 && argc != 5)) {
+        (wasi_command && (argc < 4 || argc > 6))) {
         fprintf(
             stderr,
             "usage: kofun-wasm-core [--hostabi1] INPUT.kofun OUTPUT.wasm\n"
-            "       kofun-wasm-core --wasi-command1 INPUT.kofun OUTPUT.wasm [MANIFEST_SHA256]\n"
+            "       kofun-wasm-core --wasi-command1 INPUT.kofun OUTPUT.wasm [MANIFEST_SHA256 [MEMORY_PAGES]]\n"
+            "       kofun-wasm-core --wasi-command1-memory-probe OUTPUT.wasm MEMORY_PAGES\n"
         );
+        return 2;
+    }
+    uint32_t wasi_memory_pages = 0;
+    if (wasi_command && argc == 6 && !parse_memory_pages(argv[5], &wasi_memory_pages)) {
+        fprintf(stderr,
+                "kofun wasm32: wasm32-wasi-command1 memory pages must be 1..65536, got %s\n",
+                argv[5]);
         return 2;
     }
 
@@ -2400,15 +2470,20 @@ int main(int argc, char **argv) {
             return 1;
         }
         if (command_parser->print_count != 0) {
-            fprintf(stderr, "kofun wasm32: line 1: %s\n",
+            /* At the operation's span, per #1293 §5. The carrier that would
+             * let a checked operation name its authority is #1242-#1246; until
+             * it exists every host operation is refused here, and the refusal
+             * has to point at the operation rather than at the file. */
+            fprintf(stderr, "kofun wasm32: line %zu: %s\n",
+                    command_parser->first_print_line,
                     "wasm32-wasi-command1 has no host operations in this slice; "
                     "remove the print, or use --target wasm32");
             free(command_parser);
             free(source);
             return 1;
         }
-        Buffer command_module =
-            emit_wasi_command_module(command_parser, wasi_manifest_digest);
+        Buffer command_module = emit_wasi_command_module(
+            command_parser, wasi_manifest_digest, wasi_memory_pages);
         bool command_written = write_module(output, &command_module);
         free(command_module.data);
         free(command_parser);

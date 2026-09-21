@@ -866,6 +866,17 @@ tasks:
     cmds:
       - "sh tests/wasm/wasi-command/check.sh"
 
+  # #1297. The adapter-private command memory the WASI operation slices hand
+  # to Preview 1: byte sequences, pointer and iovec vectors, checked UTF-8
+  # conversion, and the command-lifetime allocator. The gate drives the
+  # runtime under a real engine with canaries, computes the layout three ways,
+  # and shows each of four emitter seams caught by its own property. Not a
+  # capability and not the public Bytes identity; no operation is implemented.
+  wasi-command-memory:
+    desc: "Verify the wasm32-wasi-command1 command-memory carriers, allocator, and UTF-8 conversion under the engine"
+    cmds:
+      - "sh tests/wasm/wasi-command-memory/check.sh"
+
   wasi-command-profile:
     desc: "Verify the reserved WASI command capability profile and reference host"
     cmds:
@@ -1532,6 +1543,7 @@ tasks:
             wasm-host-profile \
             wasi-command-profile \
             wasi-command-backend-shell \
+            wasi-command-memory \
             adt-match-v2-contract \
             wasi-host-matrix-policy \
             wasi-command-projection-contract \

@@ -1,11 +1,12 @@
 #!/bin/sh
-# Every structural obligation a new task or fixture carries, reported at once
-# (#1523).
+# Every structural obligation a new task, script, or fixture carries, reported
+# at once (#1523).
 #
-# Adding one `task` target and one diagnostic fixture obliges seven other files,
+# Adding one `task` target, its script, and one diagnostic fixture obliges
+# eight other files,
 # each enforced by a different gate — and each discoverable only after the
 # previous one is satisfied, because the gate that finds it does not run until
-# the gate before it passes. Two of the seven are twelve lines apart in one file
+# the gate before it passes. Two of the eight are twelve lines apart in one file
 # and still fail one at a time.
 #
 # This target exists to collapse that schedule into one run of a few seconds.
@@ -31,7 +32,7 @@
 #   sh tests/preflight/check.sh             report every obligation
 #   sh tests/preflight/check.sh --prove     demonstrate each check can refuse
 #
-# NOT IN `task verify`, deliberately. Six of these eight checks are the fast
+# NOT IN `task verify`, deliberately. Seven of these nine checks are the fast
 # half of gates `verify` already runs; adding them there would pay for each
 # twice and slow the thing this speeds up. Recorded in
 # `tooling/gate-reachability/unreachable.tsv` with that reason.
@@ -41,7 +42,7 @@ set -u
 ROOT=$(CDPATH= cd -P -- "$(dirname -- "$0")/../.." && pwd)
 
 # Seams, so `--prove` can point one check at a mutated copy without disturbing
-# the tree, and so the four delegating checks can be shown to propagate a
+# the tree, and so the five delegating checks can be shown to propagate a
 # failure rather than swallow it.
 EVENTS=${KOFUN_PREFLIGHT_EVENTS:-"$ROOT/tests/typed-sidecar/stage2-events.sh"}
 INPUTS=${KOFUN_PREFLIGHT_INPUTS:-"$ROOT/tests/pair-coverage/inputs.tsv"}
@@ -50,6 +51,7 @@ TASK_HELP=${KOFUN_PREFLIGHT_TASK_HELP:-"node $ROOT/tooling/task-help.mjs --check
 CENSUS=${KOFUN_PREFLIGHT_CENSUS:-"node $ROOT/tooling/forbidden-requirements/check.mjs"}
 EVIDENCE=${KOFUN_PREFLIGHT_EVIDENCE:-"node $ROOT/tests/release/validate-claims.mjs"}
 DRIVERS=${KOFUN_PREFLIGHT_DRIVERS:-"sh $ROOT/tests/pair-coverage/measure.sh --check-drivers"}
+ASSERTIONS=${KOFUN_PREFLIGHT_ASSERTIONS:-"sh $ROOT/tests/assertions/check.sh"}
 
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/kofun-preflight.XXXXXX")
 trap 'rm -rf "$WORK"' 0 1 2 15
@@ -251,6 +253,21 @@ check_pinned_drivers() {
          }' "$WORK/drivers.err" >&2
 }
 
+# 9. Every shell script is at its recorded silent-assertion budget. The owner
+#    is 2.4s, so it runs rather than being reimplemented. It is here because a
+#    new script passed the eight checks above and was then refused by `Kofun
+#    verification` for exactly this — one full CI lane to learn a fact a
+#    two-second gate already knew (#1632, found landing #1539).
+check_assertion_budget() {
+    if $ASSERTIONS >"$WORK/assertions.out" 2>"$WORK/assertions.err"; then
+        ok 'every script is at its silent-assertion budget'
+        return
+    fi
+    fail "$(grep -h -m 1 . "$WORK/assertions.err" "$WORK/assertions.out" 2>/dev/null |
+        sed -n '1p')" \
+        'tests/assertions/budget.tsv — or fix the assertion; counts from: sh tests/assertions/check.sh --count'
+}
+
 if test "${1:-}" = "--prove"; then
     # The directory defaults to this run's own scratch space. A fixed path
     # under `build/` would be the shape of #1518: two gates recursively
@@ -319,7 +336,7 @@ if test "${1:-}" = "--prove"; then
     prove golden-bound 'exceed the 8-byte detail bound' \
         "KOFUN_PREFLIGHT_HEADER=$PROVE/header-tight.h"
 
-    # The four delegating checks add exactly one thing to their owner: they
+    # The five delegating checks add exactly one thing to their owner: they
     # propagate its failure instead of swallowing it. That is what is proved,
     # and the needle is the file each one sends the reader to.
     printf '#!/bin/sh\nexit 1\n' >"$PROVE/refuses"
@@ -332,6 +349,8 @@ if test "${1:-}" = "--prove"; then
         "KOFUN_PREFLIGHT_EVIDENCE=$PROVE/refuses"
     prove delegated-drivers 'edit tests/pair-coverage/drivers.tsv' \
         "KOFUN_PREFLIGHT_DRIVERS=$PROVE/refuses"
+    prove delegated-assertions 'edit tests/assertions/budget.tsv' \
+        "KOFUN_PREFLIGHT_ASSERTIONS=$PROVE/refuses"
 
     # And the delegated rule itself, not only its propagation, because check 8
     # is a basis check like check 6 rather than a wrapper: one row short of the
@@ -370,6 +389,7 @@ check_corpus_counters
 check_pinned_inputs
 check_pinned_drivers
 check_golden_bound
+check_assertion_budget
 
 if test "$failures" -eq 0; then
     printf 'PASS: every structural obligation is satisfied\n'

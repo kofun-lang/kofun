@@ -1130,6 +1130,9 @@ tests/diagnostics/stage2/e2s17_sentinel_conversion.kofun
 tests/diagnostics/stage2/e2s17_sentinel_core_call.kofun
 tests/diagnostics/stage2/e2s17_sentinel_numeric_member.kofun
 tests/diagnostics/stage2/e2s180_bytes_wrapper_owner_identity.kofun
+tests/diagnostics/stage2/e2s182_argument_empty.kofun
+tests/diagnostics/stage2/e2s182_list_empty.kofun
+tests/diagnostics/stage2/e2s182_parameter_empty.kofun
 tests/diagnostics/stage2/e2s18_malformed_if.kofun
 tests/diagnostics/stage2/e2s19_missing_return.kofun
 tests/diagnostics/stage2/e2s20_ownership_shape.kofun
@@ -1282,6 +1285,7 @@ tests/stage2/list-int-values/oversized.kofun
 tests/stage2/list-int-values/reassignment.kofun
 tests/stage2/list-int-values/reassignment_type_mismatch.kofun
 tests/stage2/list-int-values/reference.kofun
+tests/stage2/list-int-values/terminal_comma.kofun
 tests/stage2/list-int-values/unsupported_annotation.kofun
 tests/stage2/list-int-values/unsupported_element.kofun
 tests/stage2/record-values/annotated_binding.kofun

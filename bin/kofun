@@ -14,6 +14,7 @@ WASM_SEED_C="$ROOT/bootstrap/wasm/compiler.c"
 WASM_OBJECT_ARENA_H="$ROOT/bootstrap/wasm/object_arena.h"
 WASM_TEXT_PROFILE_H="$ROOT/bootstrap/wasm/text_profile.h"
 WASM_LIST_PROFILE_H="$ROOT/bootstrap/wasm/list_profile.h"
+WASM_WASI_MEMORY_H="$ROOT/bootstrap/wasm/wasi_command_memory.h"
 WASM_COMPILER="$WASM_BUILD_DIR/kofun-wasm-core"
 STAGE2_BUILD_DIR=${KOFUN_STAGE2_BUILD_DIR:-"$ROOT/build/stage2"}
 STAGE2_SEED_C="$ROOT/bootstrap/stage2/compiler.c"
@@ -153,7 +154,8 @@ ensure_wasm_compiler() {
        [ "$WASM_SEED_C" -nt "$WASM_COMPILER" ] ||
        [ "$WASM_OBJECT_ARENA_H" -nt "$WASM_COMPILER" ] ||
        [ "$WASM_TEXT_PROFILE_H" -nt "$WASM_COMPILER" ] ||
-       [ "$WASM_LIST_PROFILE_H" -nt "$WASM_COMPILER" ]
+       [ "$WASM_LIST_PROFILE_H" -nt "$WASM_COMPILER" ] ||
+       [ "$WASM_WASI_MEMORY_H" -nt "$WASM_COMPILER" ]
     then
         "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
             "$WASM_SEED_C" -o "$WASM_COMPILER"
@@ -1016,6 +1018,15 @@ build_native_file() (
 
 build_wasm_file() (
     ensure_wasm_compiler
+    # #1296: a forced late write failure must leave no artifact. `mv` of the
+    # temporary onto a path that is a directory does not fail -- it moves the
+    # module INTO the directory under its temporary name and exits 0, which is a
+    # complete artifact where nothing expects one, reported as success. Refuse
+    # the shape before anything is written, and check the landing after.
+    if test -d "$2"; then
+        printf 'kofun: output %s is a directory\n' "$2" >&2
+        exit 1
+    fi
     temporary="$2.tmp.$$"
     trap 'rm -f "$temporary"' 0 1 2 15
     if test "$3" = hostabi1; then
@@ -1024,9 +1035,10 @@ build_wasm_file() (
         # $4, when present, is the manifest's SHA-256. It binds into the module
         # so the artifact says which grants it was built against — a module and
         # a manifest that were never checked together are the pair a reader
-        # cannot otherwise tell from a matching one.
+        # cannot otherwise tell from a matching one. $5 is the manifest's page
+        # ceiling (#1297), which becomes the module's memory maximum.
         if test -n "${4:-}"; then
-            "$WASM_COMPILER" --wasi-command1 "$1" "$temporary" "$4"
+            "$WASM_COMPILER" --wasi-command1 "$1" "$temporary" "$4" "$5"
         else
             "$WASM_COMPILER" --wasi-command1 "$1" "$temporary"
         fi
@@ -1035,6 +1047,10 @@ build_wasm_file() (
     fi
     test -s "$temporary"
     mv "$temporary" "$2"
+    test -f "$2" || {
+        printf 'kofun: output %s was not written as a file\n' "$2" >&2
+        exit 1
+    }
 )
 
 build_cli_file() (
@@ -1401,20 +1417,28 @@ $2"
                     # emitted: a refusal must leave no artifact, and a module
                     # written first and deleted after is a file some other step
                     # can read in between.
+                    manifest_digest=
+                    manifest_pages=
                     if test -n "$wasi_manifest"; then
                         command -v node >/dev/null 2>&1 || {
                             printf '%s\n' \
                                 "kofun: --wasi-manifest requires node" >&2
                             exit 2
                         }
-                        node "$ROOT/tooling/wasi-command/validate-manifest.mjs" \
-                            "$wasi_manifest" >/dev/null || exit 1
-                    fi
-                    manifest_digest=
-                    if test -n "$wasi_manifest"; then
+                        # The validator reports the page ceiling it accepted;
+                        # the module's memory maximum is that number (#1297).
+                        manifest_report=$(node "$ROOT/tooling/wasi-command/validate-manifest.mjs" \
+                            "$wasi_manifest") || exit 1
+                        manifest_pages=$(printf '%s\n' "$manifest_report" |
+                            awk '$1 == "memoryPages" { print $2 }')
+                        test -n "$manifest_pages" || {
+                            printf '%s\n' \
+                                "kofun: manifest validation reported no memoryPages" >&2
+                            exit 1
+                        }
                         manifest_digest=$("$ROOT/bin/kofun-digest" "$wasi_manifest" | awk '{ print $1 }')
                     fi
-                    build_wasm_file "$input" "$output" wasi-command1 "$manifest_digest"
+                    build_wasm_file "$input" "$output" wasi-command1 "$manifest_digest" "$manifest_pages"
                     ;;
                 x86_64-linux|aarch64-linux)
                     build_native_file "$input" "$output" "$target" "$debug"

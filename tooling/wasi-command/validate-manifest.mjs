@@ -17,6 +17,7 @@
 import { readFileSync } from 'node:fs'
 
 import { CAPABILITIES } from '../../spec/wasi-command-profile-v1/contract.mjs'
+import { canonical } from '../../spec/wasi-command-profile-v1/model.mjs'
 import { Refusal, project } from '../../spec/wasi-command-projection-v1/model.mjs'
 
 const path = process.argv[2]
@@ -25,11 +26,26 @@ if (path === undefined) {
     process.exit(2)
 }
 
+let bytes
 let parsed
 try {
-    parsed = JSON.parse(readFileSync(path, 'utf8'))
+    bytes = readFileSync(path, 'utf8')
+    parsed = JSON.parse(bytes)
 } catch (error) {
     process.stderr.write(`MalformedManifest: ${path}: ${error.message}\n`)
+    process.exit(1)
+}
+
+// The manifest is byte-frozen (#1293 §4), and its SHA-256 binds into the
+// artifact. Two spellings of one manifest would therefore yield two artifact
+// identities for one set of grants, so a spelling other than the model's own
+// `canonical()` -- compact JSON and one trailing newline -- is refused rather
+// than normalised. Normalising would make the digest a digest of something the
+// caller did not write.
+if (bytes !== canonical(parsed)) {
+    process.stderr.write(
+        `NonCanonicalManifest: ${path}: bytes differ from the model's canonical spelling; write it with canonical() from spec/wasi-command-profile-v1/model.mjs\n`,
+    )
     process.exit(1)
 }
 
@@ -54,6 +70,10 @@ try {
     )
     process.stdout.write(`imports ${result.imports.length}\n`)
     process.stdout.write(`granted ${result.grantedButUnused.length}/${CAPABILITIES.length}\n`)
+    // #1297. The page ceiling reaches the emitter through this line: the
+    // driver reads it back rather than parsing the manifest a second time,
+    // so the number the module declares is the number the model accepted.
+    process.stdout.write(`memoryPages ${result.memoryPages}\n`)
 } catch (error) {
     if (error instanceof Refusal) {
         // `Refusal.message` already begins with the code — writing both
