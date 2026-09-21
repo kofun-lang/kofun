@@ -173,6 +173,29 @@ generate_uses() {
     } >"$output"
 }
 
+# The use counter has three guard sites in build_scope_hir_mode -- a resolved
+# use, an unresolved assignment, and a preserved pattern candidate -- and
+# `generate_uses` above reaches only the second. The first is the one the
+# compiler's own source used to trip at line 906 (#1483); with the budget at
+# 4096 nothing in the tree reaches it by accident, so this reaches it on
+# purpose: one binding, 4096 resolved assignments, and a read that is the
+# 4097th use. tests/pair-coverage/undefended.tsv is where its absence showed.
+generate_resolved_uses() {
+    output=$1
+    count=$2
+    {
+        printf '%s\n' 'fn main() {'
+        printf '%s\n' 'let mut x = 0'
+        index=0
+        while test "$index" -lt "$count"; do
+            printf '%s\n' 'x = 1'
+            index=$((index + 1))
+        done
+        printf '%s\n' 'print(x)'
+        printf '%s\n' '}'
+    } >"$output"
+}
+
 expect_budget_failure() {
     name=$1
     expected=$2
@@ -229,6 +252,10 @@ expect_budget_failure uses-4096 \
 generate_uses "$WORK/uses-4097.kofun" 4097
 expect_budget_failure uses-4097 \
     'error[E2S35]: lexical use limit is 4096 per function at byte 49164'
+# 12 + 14 + 4096 * 6 + 6 is the `x` inside `print(`, the 4097th resolved use.
+generate_resolved_uses "$WORK/resolved-uses-4097.kofun" 4096
+expect_budget_failure resolved-uses-4097 \
+    'error[E2S35]: lexical use limit is 4096 per function at byte 24608'
 
 printf '%s\n' \
     'PASS: lexical ScopeId/BindingId resolution, lowering, and diagnostics'
