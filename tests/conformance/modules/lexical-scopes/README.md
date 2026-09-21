@@ -22,8 +22,14 @@ that gave `if` a scope and a loop none would otherwise pass every other
 negative here.
 
 The bounded resolver accepts at most 32 lexical levels, 256 scopes, 256
-bindings, and 256 binding uses per function. `run.sh` exercises every accepted
-boundary and its first rejected value. It also recompiles identical source from
+bindings, and 4096 binding uses per function. `run.sh` exercises every accepted
+boundary and its first rejected value. The use budget is the one that differs,
+and it is a budget on time rather than a capacity: `bootstrap/stage2/compiler.c`
+says beside `use_count` why it is 4096 and what a use costs (#1483). That cost
+is visible here — the two use cases take about 40 seconds between them where
+the other six boundary cases take about one — and it is the price of exercising
+the boundary the compiler actually enforces rather than a cheaper one it does
+not. It also recompiles identical source from
 a remapped path and requires byte-identical C, token tape, and scope HIR.
 
 Run `sh tests/conformance/modules/lexical-scopes/run.sh`.

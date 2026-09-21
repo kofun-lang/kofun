@@ -19246,6 +19246,21 @@ static char *build_scope_hir_mode(
             cursor = skip_trivia(source, token_end(source, cursor));
         }
 
+        /*
+         * The use budget is 4096 where the other three lexical budgets are
+         * 256 (#1483). It backs no array: the counter only gates how many
+         * `use|` records this walk appends to a growable buffer. What it caps
+         * is time. Each use re-scans the function from `function_open`
+         * through the classification helpers below (`lambda_scope_open`,
+         * `parent_block_open`, `const_parameter_of_type`, ...), so the walk
+         * is quadratic in a function's uses: 4096 unresolved assignments
+         * cost 12s on an 8-core x86-64 Linux box where 256 cost 0.05s.
+         * Raised because this file's own `lower_body` needs 1345 (six
+         * functions over 256, measured 2026-08-25) and splitting six
+         * functions to fit a budget that backs nothing but that walk would
+         * be an arbitrary cut; 4096 is three times that peak and the
+         * `USE_LIMIT` hm_levels_frontend.c chose for the same count.
+         */
         int64_t use_count = 0;
         bool unresolved_assignment = false;
         cursor = skip_trivia(source, token_end(source, function_open));
@@ -19395,13 +19410,13 @@ static char *build_scope_hir_mode(
                         "assign" : "read";
                     if (binding_id[0] != '\0') {
                         ++use_count;
-                        if (use_count > 256) {
+                        if (use_count > 4096) {
                             free(name);
                             free(scope_id);
                             free(binding_id);
                             return scope_hir_error(
                                 &hir,
-                                "lexical use limit is 256 per function",
+                                "lexical use limit is 4096 per function",
                                 cursor
                             );
                         }
@@ -19417,14 +19432,14 @@ static char *build_scope_hir_mode(
                         stage2_scope_prefix_observe(&hir);
                     } else if (strcmp(role, "assign") == 0) {
                         ++use_count;
-                        if (use_count > 256) {
+                        if (use_count > 4096) {
                             free(name);
                             free(scope_id);
                             free(binding_id);
                             free(hir.data);
                             return lower_error(
                                 "E2S35",
-                                "lexical use limit is 256 per function",
+                                "lexical use limit is 4096 per function",
                                 cursor
                             );
                         }
@@ -19442,13 +19457,13 @@ static char *build_scope_hir_mode(
                         !token_equal(source, after, "(")
                     ) {
                         ++use_count;
-                        if (use_count > 256) {
+                        if (use_count > 4096) {
                             free(name);
                             free(scope_id);
                             free(binding_id);
                             return scope_hir_error(
                                 &hir,
-                                "lexical use limit is 256 per function",
+                                "lexical use limit is 4096 per function",
                                 cursor
                             );
                         }

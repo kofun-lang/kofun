@@ -220,12 +220,15 @@ generate_bindings "$WORK/bindings-257.kofun" 257
 expect_budget_failure bindings-257 \
     'error[E2S35]: lexical binding limit is 256 per function at byte 4909'
 
-generate_uses "$WORK/uses-256.kofun" 256
-expect_budget_failure uses-256 \
+# The use budget is 4096 where the other three are 256: bootstrap/stage2/
+# compiler.c says why beside `use_count`, and 12 + 4096 * 12 is the byte of the
+# 4097th `missing = 1` (#1483).
+generate_uses "$WORK/uses-4096.kofun" 4096
+expect_budget_failure uses-4096 \
     'error[E2S22]: unknown assignment target `missing` at byte 12; declare it before assignment'
-generate_uses "$WORK/uses-257.kofun" 257
-expect_budget_failure uses-257 \
-    'error[E2S35]: lexical use limit is 256 per function at byte 3084'
+generate_uses "$WORK/uses-4097.kofun" 4097
+expect_budget_failure uses-4097 \
+    'error[E2S35]: lexical use limit is 4096 per function at byte 49164'
 
 printf '%s\n' \
     'PASS: lexical ScopeId/BindingId resolution, lowering, and diagnostics'
