@@ -5,7 +5,7 @@
 # bootstrap/stage2/compiler.c, how many branches nothing this repository runs
 # ever takes -- #1401's work-list of places a divergence between the two halves
 # can hide. THAT FRAMING ASSUMES BOTH HALVES IMPLEMENT THE FUNCTION. For 24 of
-# the 367 they do not, and for 68 more the counterpart is there under a
+# the 370 they do not, and for 68 more the counterpart is there under a
 # different name, which a reader triaging the ledger cannot see.
 #
 # So this file answers one question per ledger row, and only that question:
@@ -171,7 +171,6 @@ function_parameter_type_at	other-name	function_parameter_type	same precedence an
 function_return_type_at	other-name	function_return_type	the Kofun half inlines the same body in the same order, callable then optional then list
 function_return_type_containing	same-name	function_return_type_containing	-
 generic_binder_open	same-name	generic_binder_open	-
-hir_binding_declaration_start	same-name	hir_binding_declaration_start	-
 hir_field	same-name	hir_field	-
 hir_index_add	c-only	-	FNV line index; the C section comment says the index can be dropped without changing an output byte
 hir_index_grow	c-only	-	same index
@@ -193,7 +192,6 @@ int_bit_postfix_end	same-name	int_bit_postfix_end	-
 io_functions_round	same-name	io_functions_round	-
 labelled_argument_slot	same-name	labelled_argument_slot	-
 labelled_argument_value	same-name	labelled_argument_value	-
-lambda_binding_open	same-name	lambda_binding_open	-
 lambda_captures	same-name	lambda_captures	-
 lambda_declaration_syntax_token	same-name	lambda_declaration_syntax_token	-
 lambda_fn_keyword_before	same-name	lambda_fn_keyword_before	-
@@ -224,9 +222,13 @@ move_assertion_read_is_alias_free	c-only	-	compiler.ensure_move; E2S146 has no o
 move_assertion_scope_reaches	c-only	-	compiler.ensure_move; the scope kinds exist in Kofun HIR, the walk over them does not
 move_call_binding	same-name	move_call_binding	-
 move_finding_keep	other-name	(inlined in validate_move_uses)	same tie-break rule; the rationale paragraph is duplicated verbatim
+move_positional_binding	same-name	move_positional_binding	-
+move_positional_owner	same-name	move_positional_owner	-
+move_same_binding	same-name	move_same_binding	-
 move_statement_end	same-name	move_statement_end	-
 move_statement_head	same-name	move_statement_head	-
 move_statement_partial	same-name	move_statement_partial	-
+move_straight_line_position	same-name	move_straight_line_position	-
 move_use_position	same-name	move_use_position	-
 next_constant_start	same-name	next_constant_start	-
 next_function_start	same-name	next_function_start	-
@@ -399,6 +401,7 @@ validate_fractional_operators	same-name	validate_fractional_operators	-
 validate_list_int_annotations	same-name	validate_list_int_annotations	-
 validate_list_int_lambda_uses	same-name	validate_list_int_lambda_uses	-
 validate_move_assertions	c-only	-	compiler.ensure_move; compiler.kofun:17128 "lives in the C seed only"
+validate_move_record_modes	same-name	validate_move_record_modes	-
 validate_move_uses	same-name	validate_move_uses	-
 validate_numeric_annotations	same-name	validate_numeric_annotations	-
 validate_numeric_conversions	same-name	validate_numeric_conversions	-
