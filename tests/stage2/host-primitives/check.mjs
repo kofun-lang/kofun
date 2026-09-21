@@ -108,13 +108,14 @@ const modes=[
   ['--lower-selfhost-c11','lower_selfhost_c11_file','selfhost-C11',false],
   ['--selfhost-compile','selfhost_compile_file','selfhost-compile',true],
   ['--emit-scope-hir','emit_scope_hir_file','scope-HIR',false],
+  ['--parse-patterns','parse_patterns_file','patterns',false],
 ];
 const digest='0'.repeat(64);
 const input=path.join(work,'input.kofun'), output=path.join(work,'output'), hard=path.join(work,'hard'), link=path.join(work,'link');
 const source='fn main() -> Int { return 0 }\n';
 fs.writeFileSync(input,source);fs.linkSync(input,hard);fs.symlinkSync(input,link);fs.mkdirSync(path.join(work,'dir'));
 const aliases=[input,hard,link,`${work}/./input.kofun`,`${work}/dir/../input.kofun`,path.relative(root,input)];
-function invokeKofun(pair,mode,left,right,{fault,invalidDigest=false,writeProbe}={}) {
+function invokeKofun(pair,mode,left,right,{fault,invalidDigest=false,writeProbe,extra=[]}={}) {
   let printed='';
   const stat=p=> { if(text(p)===fault) { const error=new Error('injected lookup');error.code='EACCES';throw error; } return fs.statSync(text(p),{bigint:true}); };
   const side=loadCompiler({source:pair,stat,print:value=>{printed+=text(value)+'\n';}, validate(value){
@@ -122,7 +123,7 @@ function invokeKofun(pair,mode,left,right,{fault,invalidDigest=false,writeProbe}
     const result=run(native,['--pair-validate',p]);assert.equal(result.status,0);return bytes(result.stdout.trimEnd());
   },...(writeProbe ? {write:writeProbe}: {})});
   try {
-    const args=[bytes(left),bytes(right)];if(mode[3])args.push(invalidDigest?'bad':digest);
+    const args=[bytes(left),bytes(right),...extra.map(bytes)];if(mode[3])args.push(invalidDigest?'bad':digest);
     const result=side[mode[1]](...args);
     return {status:typeof result==='boolean' ? result?0:1 : Number(result),stdout:printed};
   } catch(error) {
@@ -130,8 +131,8 @@ function invokeKofun(pair,mode,left,right,{fault,invalidDigest=false,writeProbe}
     return {status:2,stdout:printed+error.message+'\n'};
   }
 }
-function invokeC(binary,mode,left,right,{fault,invalidDigest=false}={}) {
-  return run(binary,[mode[0],left,right,...(mode[3]?[invalidDigest?'bad':digest]:[])],{env:{...process.env,...(fault?{KOFUN_PAIR_STAT_FAULT:fault}:{})}});
+function invokeC(binary,mode,left,right,{fault,invalidDigest=false,extra=[]}={}) {
+  return run(binary,[mode[0],left,right,...extra,...(mode[3]?[invalidDigest?'bad':digest]:[])],{env:{...process.env,...(fault?{KOFUN_PAIR_STAT_FAULT:fault}:{})}});
 }
 for(const mode of modes) {
   for(const alias of aliases) {
@@ -151,6 +152,28 @@ for(const mode of modes) {
     const result=side==='C'?invokeC(native,mode,input,output,options):invokeKofun(pairSource,mode,input,output,options);
     assert.equal(result.status,2);assert.match(result.stdout,/stage2_same_file: file lookup failed before output open/);
     assert.equal(fs.readFileSync(input,'utf8'),source);assert.equal(fs.readFileSync(output,'utf8'),'preserve output');
+  }
+}
+// The ordinary driver has three outputs. Refuse aliases and failed lookups
+// at any one of them before publishing even an earlier, safe destination.
+const compileMode=['--compile-outcome','compile_file','compiler',false];
+const outputs=['compiler-output.c','compiler.ir','compiler.tokens'].map(name=>path.join(work,name));
+for(let target=0;target<outputs.length;target++) {
+  for(const alias of aliases) for(const side of ['C','Kofun']) {
+    fs.writeFileSync(input,source);
+    for(const destination of outputs)fs.writeFileSync(destination,'preserve artifact');
+    const destinations=outputs.map((destination,index)=>index===target?alias:destination);
+    const options={extra:destinations.slice(1)};
+    const result=side==='C'?invokeC(native,compileMode,input,destinations[0],options):invokeKofun(pairSource,compileMode,input,destinations[0],options);
+    assert.equal(result.status,2);assert.equal(result.stdout,'error[E2S35]: compiler input and output must be distinct\n');
+    assert.equal(fs.readFileSync(input,'utf8'),source);
+    for(const destination of outputs)assert.equal(fs.readFileSync(destination,'utf8'),'preserve artifact');
+  }
+  for(const side of ['C','Kofun']) {
+    const options={fault:outputs[target],extra:outputs.slice(1)};
+    const result=side==='C'?invokeC(native,compileMode,input,outputs[0],options):invokeKofun(pairSource,compileMode,input,outputs[0],options);
+    assert.equal(result.status,2);assert.match(result.stdout,/stage2_same_file: file lookup failed before output open/);
+    for(const destination of outputs)assert.equal(fs.readFileSync(destination,'utf8'),'preserve artifact');
   }
 }
 // A missing input must not borrow the missing-output exception, and all other
@@ -177,7 +200,7 @@ for(const code of ['EACCES','EIO','EOVERFLOW','EPERM','ENOTDIR','ELOOP']) {
     return fs.statSync(text(p),{bigint:true});
   }),error=>error instanceof HostOperationError && error.kind==='lookup');
 }
-console.log('PASS: four writer guards, six alias spellings, absent output, and lookup-error precedence without writes');
+console.log('PASS: every writer and all three compiler outputs, six aliases, absent output, and lookup-error precedence without writes');
 
 function changeOnce(source,needle,replacement) {
   assert(source.includes(needle),`mutation anchor missing: ${needle}`);

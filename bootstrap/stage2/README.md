@@ -24,8 +24,9 @@ execution path does not claim native self-compilation of the Stage 2 compiler
 
 The pair gate compares complete C output and runs the emitted programs across
 all identifier escaping funnels, including parameters, function values,
-constants, fields, and const-specialized records. It also checks the four
-file-writer guards against object aliases and lookup failures. Both sides are
+constants, fields, and const-specialized records. It also checks every
+file-writer guard, including all three ordinary compiler outputs, against
+object aliases and lookup failures. Both sides are
 mutated independently to prove those comparisons can fail. Unicode XID tables
 are projected from the pinned Unicode 17 C tables with
 `node bootstrap/stage2/generate-xid.mjs`; `--check` verifies their exact bytes.

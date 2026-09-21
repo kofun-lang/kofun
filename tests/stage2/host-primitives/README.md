@@ -25,8 +25,8 @@ nor an ordinary source program gains numeric byte access.
 `stage2_same_file` yields Same (1), Different (0), or a typed lookup refusal.
 Text equality comes first, then input `stat`, then output `stat`. Only ENOENT
 on the output means Different. Final symlinks are followed, and device/inode
-values are compared without narrowing. The gate covers all four existing
-writer guards, including identity and lookup refusal precedence over digest
+values are compared without narrowing. The gate covers every writer, including all three ordinary compiler output
+paths, and identity and lookup refusal precedence over digest
 validation and source reads. A missing output is written successfully through
 the real HIR writer. Failed lookups and aliases preserve the input and any
 existing output bytes.

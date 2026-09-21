@@ -29952,6 +29952,20 @@ static int compile_file(
     const char *ir_output,
     const char *tokens_output
 ) {
+    /* Check every destination before the first IR/token write: a safe C path
+     * cannot authorize truncating the input through an auxiliary artifact. */
+    const char *outputs[] = {output, ir_output, tokens_output};
+    for (size_t index = 0; index < sizeof(outputs) / sizeof(outputs[0]); ++index) {
+        Stage2FileIdentity identity = stage2_same_file(input, outputs[index]);
+        if (identity == STAGE2_FILE_LOOKUP_ERROR) {
+            stage2_host_lookup_error();
+            return 2;
+        }
+        if (identity == STAGE2_FILE_SAME) {
+            puts("error[E2S35]: compiler input and output must be distinct");
+            return 2;
+        }
+    }
     char *source = read_file(input);
     char *tokens = lex_source(source);
     if (strncmp(tokens, "error[", 6) == 0) {
@@ -30100,6 +30114,15 @@ static int check_ownership_file(const char *path) {
 }
 
 static int parse_patterns_file(const char *input, const char *output) {
+    Stage2FileIdentity identity = stage2_same_file(input, output);
+    if (identity == STAGE2_FILE_LOOKUP_ERROR) {
+        stage2_host_lookup_error();
+        return 2;
+    }
+    if (identity == STAGE2_FILE_SAME) {
+        puts("error[E2S35]: patterns input and output must be distinct");
+        return 1;
+    }
     char *source = read_file(input);
     char *tokens = lex_source(source);
     if (strncmp(tokens, "error[", 6) == 0) {

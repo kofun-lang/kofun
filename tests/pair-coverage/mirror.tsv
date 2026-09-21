@@ -305,7 +305,7 @@ record_syntax_token	same-name	record_syntax_token	-
 removed_callable_rewrite	same-name	removed_callable_rewrite	-
 reserved_type_name	same-name	reserved_type_name	-
 return_move_at	same-name	return_move_at	-
-same_file	other-name	(stage2_same_file driver binding)	historical coverage name; #1513 replaces same_file with the private stage2_same_file operation and tests all four writer guards in both halves
+same_file	other-name	(stage2_same_file driver binding)	historical coverage name; #1513 replaces same_file with the private stage2_same_file operation and tests every writer guard in both halves
 scan_optional_int_annotation	same-name	scan_optional_int_annotation	-
 scope_depth_for_open	same-name	scope_depth_for_open	-
 scoped_parallel_member	same-name	scoped_parallel_member	-

@@ -19705,6 +19705,13 @@ fn compile_file(
     ir_path: Text,
     tokens_path: Text
 ) -> Int {
+    # All destinations are checked before the first artifact is written.
+    if stage2_same_file(input_path, output_path) == 1 ||
+       stage2_same_file(input_path, ir_path) == 1 ||
+       stage2_same_file(input_path, tokens_path) == 1 {
+        print("error[E2S35]: compiler input and output must be distinct")
+        return 2
+    }
     let source = read_text(input_path)
     let tokens = lex(source)
     if starts_with(tokens, "error[") {
@@ -19782,6 +19789,10 @@ fn compile_file(
 }
 
 fn parse_patterns_file(input_path: Text, output_path: Text) -> Bool {
+    if stage2_same_file(input_path, output_path) == 1 {
+        print("error[E2S35]: patterns input and output must be distinct")
+        return false
+    }
     let source = read_text(input_path)
     let tokens = lex(source)
     if starts_with(tokens, "error[") {
