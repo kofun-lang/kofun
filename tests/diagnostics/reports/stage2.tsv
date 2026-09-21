@@ -37,6 +37,7 @@ E2S178	stage2	stdout	1	required	not-applicable	forbidden
 E2S179	stage2	stdout	1	required	not-applicable	forbidden
 E2S18	stage2	stdout	1	required	not-applicable	forbidden
 E2S180	stage2	stdout	1	required	not-applicable	forbidden
+E2S182	stage2	stdout	1	required	not-applicable	forbidden
 E2S19	stage2	stdout	1	required	not-applicable	forbidden
 E2S20	stage2	stdout	1	debt(stage2-no-source-position)	not-applicable	forbidden
 E2S21	stage2	stdout	1	debt(stage2-no-source-position)	not-applicable	forbidden

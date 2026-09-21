@@ -129,6 +129,38 @@ context. Call-arguments v1 remains narrower: only the canonical `fn(...)`
 spelling may follow a closed ordinary call. No new lambda spelling is
 introduced by this amendment.
 
+### Amendment: one terminal comma (#1515)
+
+The grammar below originally admitted no comma after the last parameter or
+the last argument, and the surface corpus pinned `fn f(a: Int,)` and
+`replace(in: a, from: b, to: c,)` as `trailing-comma` refusals. Measured on
+2026-09-21 against `origin/main@18548526523600549d89584c6d9d4d1167787683`,
+that rule described neither the language's other contracts nor its own
+sources:
+
+- `spec/records-v1.md` accepts a terminal comma in record declaration and
+  construction, and `spec/grammar.ebnf` already admitted one in `arguments`,
+  `elements`, and callable-domain lists — the parameter production was the
+  one outlier;
+- 40 tracked `.kofun` sources end a multi-line parameter or argument list
+  with a comma, among them `bootstrap/native/encoder.kofun` (107 sites, and
+  the native gate round-trips it through Stage 2), `tests/ffi/c_abi.kofun`,
+  and most of `stdlib/`;
+- the Stage 2 pair neither accepted nor refused the form: `parameter_count`
+  counted the comma as a member, so `fn add(a: Int, b: Int,)` called as
+  `add(1, 2)` reported `E2S17 expects 3 arguments, got 2` — an arity the
+  source never had — while the other frontends accepted it silently.
+
+Issue #1515 chooses to admit exactly one terminal comma in a parameter list
+and in an argument list, as the record and list productions already do. A
+terminal comma separates nothing: it is not a member, it changes no arity,
+and the canonical form omits it. A comma with nothing before it — `(,` or
+`,,` — remains a refusal, now by name (`E2S182`) at that comma. The two
+corpus entries moved from `reject`/`rejectDeclarations` to the accepted
+forms with their canonical spellings; the one-element parenthesised-type
+refusal is untouched, because `(Int,)` versus `(Int)` is a tuple question,
+not a delimiter one.
+
 Primary comparisons:
 
 - Gleam labelled arguments separate the external label from the internal name,
@@ -146,8 +178,9 @@ Primary comparisons:
 ```text
 parameter           = [ ownership-mode ], [ external-label ], internal-name,
                       ":", type
+parameter-list      = [ parameter, { ",", parameter }, [ "," ] ]
 external-label      = identifier
-ordinary-call       = callee, "(", [ argument-list ], ")"
+ordinary-call       = callee, "(", [ argument-list, [ "," ] ], ")"
 argument-list       = positional-argument, { ",", positional-argument },
                       [ ",", labelled-argument,
                         { ",", labelled-argument } ]

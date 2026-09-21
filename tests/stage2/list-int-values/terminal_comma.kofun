@@ -1,0 +1,28 @@
+# #1515. One terminal comma separates nothing: it is not an element, not a
+# parameter, and not an argument, so every count below is the count of members
+# the source wrote. The formatter's canonical form omits it; the compiler
+# accepts it.
+fn add(
+    left: Int,
+    right: Int,
+) -> Int {
+    return left + right
+}
+
+fn main() -> Int {
+    let values: List[Int] = [
+        40,
+        2,
+    ]
+    let one = [7,]
+    let counted = add(
+        len(values),
+        len(one),
+    )
+    print(len(values))
+    print(values[0] + values[1])
+    print(len(one))
+    print(counted)
+    print(add(1, 2,))
+    return 0
+}

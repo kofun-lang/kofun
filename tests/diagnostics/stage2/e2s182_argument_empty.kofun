@@ -1,0 +1,13 @@
+# diagnostic-mode: compile
+# expect-code: E2S182
+# expect-span: byte 319
+# #1515. The refusal is at the second comma of the argument list, not at the
+# call head, and it names the argument list rather than an Int expression.
+fn f(a: Int, b: Int) -> Int {
+    return a + b
+}
+
+fn main() -> Int {
+    let total: Int = f(1,, 2)
+    return total
+}

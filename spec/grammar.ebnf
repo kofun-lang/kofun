@@ -72,7 +72,8 @@ function_tail    = identifier, "(", parameters, ")",
                    [ "->", type_ref ],
                    ( "=", expression | block ) ;
 
-parameters       = [ parameter, { separators, ",", separators, parameter } ] ;
+parameters       = [ parameter, { separators, ",", separators, parameter },
+                   [ separators, "," ] ] ;
 parameter        = [ "read" | "edit" | "take" ], identifier,
                    [ ":", type_ref ] ;
 
