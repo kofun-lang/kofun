@@ -1,0 +1,10 @@
+# #1322. A Text lowers to a NUL-terminated `const char *`, so a NUL inside
+# the range cannot become Text: it is refused by name rather than silently
+# truncating the value at the first zero byte.
+fn main() -> Int {
+    let bytes = stage2_bytes_empty()
+    stage2_bytes_assign_text(bytes, "kofun")
+    stage2_bytes_byte_set(bytes, 2, 0)
+    print(stage2_bytes_text(bytes, 0, 5))
+    return 0
+}

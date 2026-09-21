@@ -424,6 +424,12 @@ tests/conformance/bytes-read-file/byte_at_out_of_range.kofun
 tests/conformance/bytes-read-file/read_cannot_allocate.kofun
 tests/conformance/bytes-read-file/read_missing_path.kofun
 tests/conformance/bytes-read-file/read_over_bound.kofun
+tests/conformance/bytes-text/assign_text_value.kofun
+tests/conformance/bytes-text/bridge.kofun
+tests/conformance/bytes-text/text_contains_nul.kofun
+tests/conformance/bytes-text/text_not_utf8.kofun
+tests/conformance/bytes-text/text_out_of_range.kofun
+tests/conformance/bytes-text/text_over_limit.kofun
 tests/conformance/call-arguments/assigned_lambda.kofun
 tests/conformance/call-arguments/block_lambda_argument_position.kofun
 tests/conformance/call-arguments/block_lambda_let_position.kofun

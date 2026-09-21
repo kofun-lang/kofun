@@ -5252,6 +5252,21 @@ fn bytes_mutation_builtin(name: Text) -> Bool {
     name == "stage2_bytes_read_file"
 }
 
+# #1322. The Text bridge is its own family, not two more names in
+# `bytes_mutation_builtin`: `bytes-mutation` derives the mutation vocabulary
+# from that function and asserts that no mutation operation emits a
+# Text-bridge tag, and the bridge is exactly the code that emits them. The
+# two families lower through the same call shape, so `bytes_family_builtin`
+# is what the dispatch sites read.
+fn bytes_text_builtin(name: Text) -> Bool {
+    return name == "stage2_bytes_assign_text" ||
+    name == "stage2_bytes_text"
+}
+
+fn bytes_family_builtin(name: Text) -> Bool {
+    return bytes_mutation_builtin(name) || bytes_text_builtin(name)
+}
+
 # #1560. Whether a direct call spelling denotes a compiler builtin after the
 # same precedence the validator applies. Scope HIR records lexical callable
 # resolution, including shadowing, and the current-file declaration table is
@@ -5274,6 +5289,7 @@ fn call_resolves_to_builtin(
 # read a file into a carrier needs one way to hold a byte it read.
 fn bytes_private_result_builtin(name: Text) -> Bool {
     return name == "stage2_bytes_assign_zeroed" ||
+    name == "stage2_bytes_assign_text" ||
     (bytes_mutation_builtin(name) &&
      name != "stage2_bytes_len" &&
      name != "stage2_bytes_capacity" &&
@@ -5427,7 +5443,7 @@ fn bytes_mutation_carriers(name: Text) -> Int {
     if name == "stage2_bytes_append_range" {
         return 2
     }
-    if bytes_mutation_builtin(name) {
+    if bytes_family_builtin(name) {
         return 1
     }
     return 0
@@ -5440,7 +5456,8 @@ fn bytes_mutation_carriers(name: Text) -> Int {
 fn bytes_mutation_required_access(name: Text, index: Int) -> Text {
     if name == "stage2_bytes_len" ||
        name == "stage2_bytes_capacity" ||
-       name == "stage2_bytes_byte_at" {
+       name == "stage2_bytes_byte_at" ||
+       name == "stage2_bytes_text" {
         return "read"
     }
     if name == "stage2_bytes_append_range" {
@@ -5454,7 +5471,8 @@ fn bytes_mutation_required_access(name: Text, index: Int) -> Text {
        name == "stage2_bytes_reserve" ||
        name == "stage2_bytes_append" ||
        name == "stage2_bytes_append_self" ||
-       name == "stage2_bytes_read_file" {
+       name == "stage2_bytes_read_file" ||
+       name == "stage2_bytes_assign_text" {
         return "edit"
     }
     return ""
@@ -6821,7 +6839,7 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
         # takes, and for the same reason: a builtin has no source declaration
         # for `emit_argument` to read a mode from.
         if open < end && token_text(source, open) == "(" &&
-           bytes_mutation_builtin(name) &&
+           bytes_family_builtin(name) &&
            call_resolves_to_builtin(source, hir, cursor, name) {
             return emit_bytes_mutation_call(source, hir, name, cursor, open)
         }
@@ -7499,6 +7517,14 @@ fn builtin_arity(name: Text) -> Int {
        name == "stage2_bytes_append" || name == "stage2_bytes_read_file" {
         return 2
     }
+    # #1322. The Text bridge: `assign_text` takes the carrier and a `Text`,
+    # `text` the carrier and a byte range.
+    if name == "stage2_bytes_assign_text" {
+        return 2
+    }
+    if name == "stage2_bytes_text" {
+        return 3
+    }
     if name == "stage2_bytes_byte_set" ||
        name == "stage2_bytes_append_self" {
         return 3
@@ -7540,11 +7566,13 @@ fn builtin_parameter_types(name: Text) -> Text {
        name == "stage2_bytes_append" {
         return "Bytes|Int"
     }
-    if name == "stage2_bytes_read_file" {
+    if name == "stage2_bytes_read_file" ||
+       name == "stage2_bytes_assign_text" {
         return "Bytes|Text"
     }
     if name == "stage2_bytes_byte_set" ||
-       name == "stage2_bytes_append_self" {
+       name == "stage2_bytes_append_self" ||
+       name == "stage2_bytes_text" {
         return "Bytes|Int|Int"
     }
     if name == "stage2_bytes_append_range" {
@@ -8597,7 +8625,7 @@ fn validate_core_calls(source: Text, hir: Text) -> Text {
                        name == "to_text" ||
                        name == "stage2_bytes_empty" ||
                        name == "stage2_bytes_assign_zeroed" ||
-                       bytes_mutation_builtin(name) {
+                       bytes_family_builtin(name) {
                         expected = builtin_expected
                     } else {
                         return "error[E2S10]: unsupported Core builtin call `" +
@@ -12789,6 +12817,18 @@ fn builtin_return_type(name: Text) -> Text {
     # compiler owns has no declaration site to be found at.
     if bytes_mutation_builtin(name) {
         return "Void"
+    }
+    # #1322. `assign_text` is private-status like the mutations it sits
+    # beside. `text` returns the `Text` a program asked for, and its range,
+    # limit, NUL, and UTF-8 failures are runtime diagnostics with an empty
+    # result -- the shape `byte_at` took across the same boundary. The exact
+    # tag/detail contract lives in the emitted `stage2_bytes_text_check` and
+    # is proved by the `bytes-text` driver.
+    if name == "stage2_bytes_assign_text" {
+        return "Void"
+    }
+    if name == "stage2_bytes_text" {
+        return "Text"
     }
     return ""
 }
@@ -18020,6 +18060,93 @@ fn bytes_carrier_prelude() -> Text {
 # greps emitted C for `malloc|calloc|realloc` to prove label lowering needs no
 # runtime machinery -- and an allocator in every emitted program is real
 # degradation whether or not a gate names it.
+# #1322. The Text bridge, after the Text helpers because `text` hands its
+# result out in a Text temporary slot, and after the mutation family because
+# it is the one place tags 6..8 are produced -- `bytes-mutation` extracts its
+# prelude up to `read_file` and asserts none of those tags appear in it.
+#
+# `assign_text` is transactional through `kofun_bytes_grow`: the only
+# reachable failure is allocation, and grow swaps the buffer in only after
+# the fresh one is filled. A valid Text is at most 255 bytes, so the capacity
+# bound is unreachable here and no check pretends it is.
+#
+# `text_check` is the whole of the issue's contract, in its precedence: range
+# (the shared rule: a negative offset or count reports that value, an offset
+# past the length reports the offset, a count past `length - offset` reports
+# the count and never evaluates the sum), then the 255-byte Text limit with
+# the requested count as detail, then one left-to-right scan in which the
+# earliest NUL or ill-formed sequence wins. Every content detail is an
+# absolute offset into the carrier: a NUL or an invalid lead byte name that
+# byte; a continuation byte that is not one names itself; truncation, an
+# overlong form, a surrogate, and a scalar above U+10FFFF name the lead byte
+# of their sequence. Nothing is normalized. `text` is the source-facing half:
+# the same check, then a runtime diagnostic per failure kind with an empty
+# result, or a copy into a Text slot.
+fn bytes_text_bridge_prelude() -> Text {
+    return "static inline KofunBytesStatus stage2_bytes_text_check(\n" +
+    "    const KofunBytesValue *value, int64_t offset, int64_t count) {\n" +
+    "    if (offset < 0) return kofun_bytes_status(KOFUN_BYTES_RANGE_OUT_OF_BOUNDS, offset);\n" +
+    "    if (count < 0) return kofun_bytes_status(KOFUN_BYTES_RANGE_OUT_OF_BOUNDS, count);\n" +
+    "    if ((uint64_t)offset > value->length) return kofun_bytes_status(KOFUN_BYTES_RANGE_OUT_OF_BOUNDS, offset);\n" +
+    "    if ((uint64_t)count > value->length - (uint64_t)offset) return kofun_bytes_status(KOFUN_BYTES_RANGE_OUT_OF_BOUNDS, count);\n" +
+    "    if (count > 255) return kofun_bytes_status(KOFUN_BYTES_TEXT_LIMIT_EXCEEDED, count);\n" +
+    "    const unsigned char *bytes = value->data + offset;\n" +
+    "    int64_t at = 0;\n" +
+    "    while (at < count) {\n" +
+    "        unsigned char lead = bytes[at];\n" +
+    "        int64_t need; unsigned char low = 0x80, high = 0xBF;\n" +
+    "        if (lead == 0) return kofun_bytes_status(KOFUN_BYTES_TEXT_CONTAINS_NUL, offset + at);\n" +
+    "        if (lead < 0x80) { at += 1; continue; }\n" +
+    "        if (lead >= 0xC2 && lead <= 0xDF) { need = 1; }\n" +
+    "        else if (lead == 0xE0) { need = 2; low = 0xA0; }\n" +
+    "        else if ((lead >= 0xE1 && lead <= 0xEC) || lead == 0xEE || lead == 0xEF) { need = 2; }\n" +
+    "        else if (lead == 0xED) { need = 2; high = 0x9F; }\n" +
+    "        else if (lead == 0xF0) { need = 3; low = 0x90; }\n" +
+    "        else if (lead >= 0xF1 && lead <= 0xF3) { need = 3; }\n" +
+    "        else if (lead == 0xF4) { need = 3; high = 0x8F; }\n" +
+    "        else return kofun_bytes_status(KOFUN_BYTES_INVALID_UTF8, offset + at);\n" +
+    "        if (count - at - 1 < need) return kofun_bytes_status(KOFUN_BYTES_INVALID_UTF8, offset + at);\n" +
+    "        unsigned char second = bytes[at + 1];\n" +
+    "        if (second < 0x80 || second > 0xBF) return kofun_bytes_status(KOFUN_BYTES_INVALID_UTF8, offset + at + 1);\n" +
+    "        if (second < low || second > high) return kofun_bytes_status(KOFUN_BYTES_INVALID_UTF8, offset + at);\n" +
+    "        for (int64_t extra = 2; extra <= need; ++extra) {\n" +
+    "            unsigned char next = bytes[at + extra];\n" +
+    "            if (next < 0x80 || next > 0xBF) return kofun_bytes_status(KOFUN_BYTES_INVALID_UTF8, offset + at + extra);\n" +
+    "        }\n" +
+    "        at += need + 1;\n" +
+    "    }\n" +
+    "    return kofun_bytes_status(KOFUN_BYTES_SUCCEEDED, 0);\n" +
+    "}\n" +
+    "static inline KofunBytesStatus stage2_bytes_assign_text(\n" +
+    "    KofunBytesValue *value, const char *text) {\n" +
+    "    size_t width = strlen(text);\n" +
+    "    KofunBytesStatus grown = kofun_bytes_grow(value, (int64_t)width);\n" +
+    "    if (grown.tag != KOFUN_BYTES_SUCCEEDED) return grown;\n" +
+    "    if (width > 0) memcpy(value->data, text, width);\n" +
+    "    value->length = (uint64_t)width;\n" +
+    "    return kofun_bytes_status(KOFUN_BYTES_SUCCEEDED, 0);\n" +
+    "}\n" +
+    "static inline const char *stage2_bytes_text(\n" +
+    "    const KofunBytesValue *value, int64_t offset, int64_t count) {\n" +
+    "    KofunBytesStatus checked = stage2_bytes_text_check(value, offset, count);\n" +
+    "    if (checked.tag == KOFUN_BYTES_RANGE_OUT_OF_BOUNDS) {\n" +
+    "        kofun_error(\"error[R029]: bounded Bytes text range out of range\"); return \"\";\n" +
+    "    }\n" +
+    "    if (checked.tag == KOFUN_BYTES_TEXT_LIMIT_EXCEEDED) {\n" +
+    "        kofun_error(\"error[R030]: bounded Bytes text exceeds 255 bytes\"); return \"\";\n" +
+    "    }\n" +
+    "    if (checked.tag == KOFUN_BYTES_TEXT_CONTAINS_NUL) {\n" +
+    "        kofun_error(\"error[R031]: bounded Bytes text contains NUL\"); return \"\";\n" +
+    "    }\n" +
+    "    if (checked.tag != KOFUN_BYTES_SUCCEEDED) {\n" +
+    "        kofun_error(\"error[R032]: bounded Bytes text is not UTF-8\"); return \"\";\n" +
+    "    }\n" +
+    "    char *slot = kofun_text_temporary(); if (slot == NULL) return \"\";\n" +
+    "    if (count > 0) memcpy(slot, value->data + offset, (size_t)count);\n" +
+    "    slot[count] = '\\0'; return slot;\n" +
+    "}\n"
+}
+
 fn source_uses_bytes(source: Text, hir: Text) -> Bool {
     let mut cursor = skip_trivia(source, 0)
     while cursor < len(source) {
@@ -18029,7 +18156,7 @@ fn source_uses_bytes(source: Text, hir: Text) -> Bool {
         }
         let bytes_builtin = token == "stage2_bytes_empty" ||
             token == "stage2_bytes_assign_zeroed" ||
-            bytes_mutation_builtin(token)
+            bytes_family_builtin(token)
         let open = skip_trivia(source, token_end(source, cursor))
         if bytes_builtin && open < len(source) &&
            token_text(source, open) == "(" &&
@@ -18301,6 +18428,11 @@ fn count_text_sites(bodies: Text) -> Int {
         } else if cursor + 18 <= len(bodies) &&
                   text_slice(bodies, cursor, cursor + 18) ==
                   "kofun_text_concat(" {
+            count = count + 1
+            cursor = cursor + 18
+        } else if cursor + 18 <= len(bodies) &&
+                  text_slice(bodies, cursor, cursor + 18) ==
+                  "stage2_bytes_text(" {
             count = count + 1
             cursor = cursor + 18
         } else {
@@ -18783,9 +18915,11 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     # only for a source that can reach them. `calloc`/`free` in every program
     # is degradation the call-arguments gate correctly refuses.
     let mut bytes_prelude = ""
+    let mut bytes_text_prelude = ""
     let mut bytes_include = ""
     if source_uses_bytes(source, hir) {
         bytes_prelude = bytes_carrier_prelude()
+        bytes_text_prelude = bytes_text_bridge_prelude()
         bytes_include = "#include <stdlib.h>\n"
     }
     # A mixed-type expression is reported before operator lowering, so
@@ -19146,7 +19280,7 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     "    int64_t r = a % b;\n" +
     "    if (r != 0 && ((r < 0) != (b < 0))) { r += b; }\n" +
     "    return r;\n" +
-    "}\n" + emit_int_bit_c_runtime() +
+    "}\n" + bytes_text_prelude + emit_int_bit_c_runtime() +
     "\n" + optional_declarations + emit_record_c_declarations(source) +
     prototypes + "\n" + bodies
 }

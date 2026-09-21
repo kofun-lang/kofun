@@ -1120,12 +1120,21 @@ tasks:
     cmds:
       - "sh tests/conformance/bytes-read-file/run.sh"
 
+  # #1322. The Text bridge over the carrier: a Text in as its exact bytes, a
+  # checked range out as Text, with range, limit, NUL, and UTF-8 refusals
+  # named at runtime and the exact tag/detail contract proved in the emitted C.
+  bytes-text:
+    desc: "Verify the Bytes[65536] Text bridge: exact assignment, checked UTF-8 range conversion, and its four named refusals"
+    cmds:
+      - "sh tests/conformance/bytes-text/run.sh"
+
   bounded-bytes:
-    desc: "Verify the fixture-bounded Bytes[65536] carrier, mutation, and file-read checkpoint"
+    desc: "Verify the fixture-bounded Bytes[65536] carrier, mutation, file-read, and Text-bridge checkpoint"
     cmds:
       - task: bytes-carrier
       - task: bytes-mutation
       - task: bytes-read-file
+      - task: bytes-text
 
   call-arguments:
     desc: "Verify labelled-call binding and source order across C11, native, and wasm32"

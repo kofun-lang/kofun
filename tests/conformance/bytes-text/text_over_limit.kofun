@@ -1,0 +1,14 @@
+# #1322. A Text is at most 255 bytes, so a 256-byte range is refused before
+# its bytes are inspected -- this carrier holds only valid ASCII, and the
+# limit is still the first thing the conversion says.
+fn main() -> Int {
+    let bytes = stage2_bytes_empty()
+    stage2_bytes_reserve(bytes, 300)
+    let mut count = 0
+    while count < 300 {
+        stage2_bytes_append(bytes, 65)
+        count = count + 1
+    }
+    print(stage2_bytes_text(bytes, 0, 256))
+    return 0
+}

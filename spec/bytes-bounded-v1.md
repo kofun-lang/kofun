@@ -124,14 +124,16 @@ declaration order and the values are the contract:
 | 3 | invalid byte | the offending value |
 | 4 | capacity exceeded | the requested final length |
 | 5 | allocation failed | the requested allocation capacity |
-| 6 | invalid UTF-8 | *unused; reserved for #1322* |
-| 7 | text contains NUL | *unused; reserved for #1322* |
-| 8 | text limit exceeded | *unused; reserved for #1322* |
+| 6 | invalid UTF-8 | the absolute offset of the decisive byte (§6.7) |
+| 7 | text contains NUL | the absolute offset of the NUL |
+| 8 | text limit exceeded | the requested range byte count |
 | 9 | file unreadable | 0 when the path did not open, 1 when it opened and did not read (#1499) |
 
 There is no consumed tag, and `bytes-mutation` refuses one. Tags 6 to 8 belong
-to the Text bridge and no operation in this document may emit one; the gate
-extracts the operations' own text and checks it.
+to the Text bridge (§6.7, #1322) and no mutation operation may emit one; that
+gate extracts the operations' own text and checks it, and `bytes-text` checks
+the complement: the bridge is emitted after the mutation family and is the
+only producer of those three tags.
 
 Reading a byte has no carrier. `byte_at` returns the byte 0..255 as an `Int`,
 and an offset outside `0..length-1` is the runtime diagnostic `R025` with a
@@ -261,10 +263,49 @@ the missing path, and a spent allocator. It does not establish reading a file
 in chunks, a file longer than the ceiling in any form, or a path that has
 crossed an attenuated filesystem authority (§8).
 
+### 6.7 The Text bridge
+
+Two operations (#1322) connect the carrier to `Text`, and neither is the
+public `Bytes` identity or a generic `Result`.
+
+`assign_text(edit destination, read value: Text)` replaces the carrier's bytes
+and length with the Text's exact UTF-8 bytes and no terminator. A valid Text
+is at most 255 bytes, so the capacity ceiling is unreachable; the one
+reachable failure is allocation (5, the growth target), and it is
+transactional through the same growth path `append` uses: length, capacity,
+pointer, and bytes are exactly as they were. Like the mutations beside it,
+its status is private and a source program uses it only as a discarded
+statement (E2S179 otherwise).
+
+`text(read source, offset: Int, count: Int) -> Text` converts a byte range to
+a Text, in this precedence:
+
+1. **range**, by the shared rule of §6.2: a negative offset or count reports
+   that value; an offset past the length reports the offset; a count beyond
+   `length - offset` reports the count, and `offset + count` is never
+   evaluated;
+2. **the Text limit**: a count over 255 reports the count (tag 8) before any
+   byte of the range is inspected, so a >255-byte range that also holds a
+   NUL or an ill-formed sequence reports the limit;
+3. **one left-to-right scan**, in which the earliest NUL (tag 7) or
+   ill-formed sequence (tag 6) wins. Every content detail is an absolute
+   offset into the whole carrier: a NUL or an invalid lead byte names that
+   byte; a continuation byte that is not one names itself; truncation at the
+   end of the range, an overlong form, a surrogate scalar, and a scalar above
+   U+10FFFF name the lead byte of their sequence. Nothing is normalized.
+
+The source-facing half returns the Text, or an empty Text with a runtime
+diagnostic — `R029` range, `R030` limit, `R031` NUL, `R032` UTF-8 — the shape
+`byte_at` gave a byte read (§7). The exact tag/detail contract is the emitted
+`stage2_bytes_text_check`, and `task bytes-text` proves it with a driver
+compiled against the prelude of a program the compiler just emitted, across
+every UTF-8 family, both precedence orders, and a spent allocator.
+
 ## 7. What a source program can observe
 
 For calls resolved to these builtins in the gated source forms, `len`,
-`capacity`, and `byte_at` return `Int`. The supported form for every other
+`capacity`, and `byte_at` return `Int`, and `text` returns `Text` (§6.7). The
+supported form for every other
 operation is a complete discarded expression statement: the status is private
 to the emitted C. `task bytes-mutation` proves those direct supported forms
 with a driver compiled against a prelude extracted from a program the compiler
@@ -301,6 +342,12 @@ works is the kind of published promise this repository gates against:
 - **A file read is whole-file and at most 65,536 bytes.** There is no chunked
   read over an open handle, so a file longer than the ceiling cannot be
   digested by a compiled program at all; it is refused by name (§6.6).
+- **The Text bridge is one Text at a time and at most 255 bytes each way.**
+  It is the bounded Text profile's limit, not a new one, and it is why the
+  exact tag/detail statuses stay private: surfacing them would need a
+  compiler-owned outcome type, which §7 explains Stage 2 cannot declare.
+  Nothing Bytes-bearing crosses in a record, an ADT, a list, an optional, or
+  a generic `Result` (#1315).
 
 - **Positional move checking remains a bounded source-order rule**, not a
   general CFG, alias, lifetime or cleanup analysis. #1540 closes the direct,
