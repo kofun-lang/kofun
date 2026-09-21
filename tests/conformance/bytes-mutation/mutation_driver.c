@@ -1,6 +1,7 @@
 /*
- * #1321. The bounded mutation surface is private to the emitted C, so it is
- * proved where it lives — the same arrangement #1315 made for the status, and
+ * #1321. The bounded mutation surface is private to the emitted C (all but
+ * `len`, `capacity`, and -- since #1499 -- `byte_at`), so it is proved where
+ * it lives — the same arrangement #1315 made for the status, and
  * for the same reason: surfacing it would add language surface this child is
  * explicitly not for.
  *
@@ -36,14 +37,54 @@ static void expect_status(const char *what, KofunBytesStatus s,
     }
 }
 
-static void expect_read(const char *what, Stage2ByteRead r,
-                        long long tag, long long detail) {
-    if (r.tag != tag || r.detail != detail) {
-        printf("FAIL: %s: got tag %lld detail %lld, want tag %lld detail %lld\n",
-            what, (long long)r.tag, (long long)r.detail, tag, detail);
+/* #1499. A byte read is an `Int`, and an offset outside the carrier is the
+ * runtime diagnostic R025 plus a zero result rather than a private carrier.
+ * This driver includes the prelude, so `kofun_failed` is the flag the read
+ * raised; reading it back and resetting it is how one driver observes several
+ * refusals, and the harness compares the diagnostics they printed. */
+static void expect_clean(const char *what) {
+    if (kofun_failed) {
+        printf("FAIL: %s: a succeeding operation raised the runtime flag\n",
+            what);
+        ++failures;
+        kofun_failed = false;
+    }
+}
+
+static void expect_refused(const char *what) {
+    if (!kofun_failed) {
+        printf("FAIL: %s: a refused operation raised no runtime flag\n", what);
+        ++failures;
+    }
+    kofun_failed = false;
+}
+
+static void expect_byte(const char *what, long long got, long long want) {
+    expect_clean(what);
+    expect(what, got, want);
+}
+
+static void expect_read_refused(const char *what, long long got) {
+    expect_refused(what);
+    expect(what, got, 0);
+}
+
+#ifndef KOFUN_BYTES_INJECT_ALLOC_BUDGET
+/* A path that cannot be opened reports detail 0; one that opened and then
+ * failed to read (a directory, on the hosts that let `fopen` open one)
+ * reports 1. Which of the two a directory takes is the host's choice, so the
+ * driver pins the tag and accepts either detail. The budget build never
+ * reaches a path, so it has no use for this. */
+static void expect_unreadable(const char *what, KofunBytesStatus s) {
+    if (s.tag != KOFUN_BYTES_FILE_UNREADABLE ||
+        (s.detail != 0 && s.detail != 1)) {
+        printf("FAIL: %s: got tag %lld detail %lld, want tag %d detail 0 or 1\n",
+            what, (long long)s.tag, (long long)s.detail,
+            (int)KOFUN_BYTES_FILE_UNREADABLE);
         ++failures;
     }
 }
+#endif
 
 /* The three fields and the bytes, all of them. `expect_intact` in the #1315
  * driver checks the first byte; a mutation surface can corrupt the last one
@@ -163,8 +204,8 @@ int main(void) {
                     long long at = spots[p];
                     expect_status("byte_set",
                         stage2_bytes_byte_set(&v, at, values[b]), 0, 0);
-                    expect_read("byte_at", stage2_bytes_byte_at(&v, at),
-                        KOFUN_BYTE_VALUE, values[b]);
+                    expect_byte("byte_at", stage2_bytes_byte_at(&v, at),
+                        values[b]);
                 }
                 /* The same bytes survive a copy into a second carrier. */
                 KofunBytesValue copy = KOFUN_BYTES_EMPTY;
@@ -188,9 +229,8 @@ int main(void) {
                     ++matrix_successes;
                     expect("matrix append len", stage2_bytes_len(&v),
                         length + 1);
-                    expect_read("matrix appended byte",
-                        stage2_bytes_byte_at(&v, length),
-                        KOFUN_BYTE_VALUE, values[b]);
+                    expect_byte("matrix appended byte",
+                        stage2_bytes_byte_at(&v, length), values[b]);
                 } else {
                     remember(&v);
                     expect_status("matrix append at ceiling",
@@ -209,28 +249,101 @@ int main(void) {
         expect("matrix refusal count", matrix_refusals, 4);
     }
 
-    /* ------------------------------------------------ the read carrier */
+    /* ------------------------------------------------ the byte read
+     *
+     * Four refusals, each printing R025 once (the harness counts them), each
+     * yielding 0, and each leaving the carrier as it was. */
     {
         KofunBytesValue v = KOFUN_BYTES_EMPTY;
         if (seeded("read", &v, 4)) {
-            expect_read("read negative", stage2_bytes_byte_at(&v, -1),
-                KOFUN_BYTE_READ_NEGATIVE_OFFSET, -1);
+            expect_read_refused("read negative", stage2_bytes_byte_at(&v, -1));
             expect_unchanged("read negative", &v, 4, 4);
-            expect_read("read at length", stage2_bytes_byte_at(&v, 4),
-                KOFUN_BYTE_READ_OUT_OF_BOUNDS, 4);
+            expect_read_refused("read at length", stage2_bytes_byte_at(&v, 4));
             expect_unchanged("read at length", &v, 4, 4);
-            expect_read("read past length", stage2_bytes_byte_at(&v, 99),
-                KOFUN_BYTE_READ_OUT_OF_BOUNDS, 99);
+            expect_read_refused("read past length",
+                stage2_bytes_byte_at(&v, 99));
             expect_unchanged("read past length", &v, 4, 4);
+            /* The refusal is a diagnostic, not a poisoned carrier: the next
+             * in-range read answers, and raises nothing. */
+            expect_byte("read after refusal", stage2_bytes_byte_at(&v, 1),
+                (1 * 7 + 3) & 0xff);
         }
         kofun_bytes_release(&v);
-        /* An empty carrier has no byte 0, and says so with the offset it was
-         * asked about rather than with a negative-offset tag. */
+        /* An empty carrier has no byte 0. */
         KofunBytesValue e = KOFUN_BYTES_EMPTY;
         remember(&e);
-        expect_read("read empty", stage2_bytes_byte_at(&e, 0),
-            KOFUN_BYTE_READ_OUT_OF_BOUNDS, 0);
+        expect_read_refused("read empty", stage2_bytes_byte_at(&e, 0));
         expect_unchanged("read empty", &e, 0, 0);
+    }
+
+    /* ------------------------------------------------ the file read
+     *
+     * The harness prepares the files under KOFUN_BYTES_MUTATION_READ_DIR.
+     * Three refusals, each also its named diagnostic (R026, R026, R027) and
+     * each leaving the seeded carrier exactly as it was; then three reads that
+     * replace the bytes and the length, growing capacity as append would, and
+     * an empty file that leaves the allocation in place. */
+    {
+        const char *dir = getenv("KOFUN_BYTES_MUTATION_READ_DIR");
+        if (dir == NULL) {
+            printf("FAIL: KOFUN_BYTES_MUTATION_READ_DIR is not set\n");
+            ++failures;
+        }
+        KofunBytesValue v = KOFUN_BYTES_EMPTY;
+        char path[4096];
+        if (dir != NULL && seeded("read_file", &v, 4)) {
+            snprintf(path, sizeof path, "%s/missing.bin", dir);
+            expect_status("read_file missing path",
+                stage2_bytes_read_file(&v, path),
+                KOFUN_BYTES_FILE_UNREADABLE, 0);
+            expect_refused("read_file missing path");
+            expect_unchanged("read_file missing path", &v, 4, 4);
+            snprintf(path, sizeof path, "%s/directory", dir);
+            expect_unreadable("read_file directory",
+                stage2_bytes_read_file(&v, path));
+            expect_refused("read_file directory");
+            expect_unchanged("read_file directory", &v, 4, 4);
+            snprintf(path, sizeof path, "%s/over.bin", dir);
+            expect_status("read_file over the ceiling",
+                stage2_bytes_read_file(&v, path),
+                KOFUN_BYTES_CAPACITY_EXCEEDED, KOFUN_BYTES_CAPACITY_LIMIT + 1);
+            expect_refused("read_file over the ceiling");
+            expect_unchanged("read_file over the ceiling", &v, 4, 4);
+
+            snprintf(path, sizeof path, "%s/small.bin", dir);
+            expect_status("read_file small",
+                stage2_bytes_read_file(&v, path), 0, 0);
+            expect_clean("read_file small");
+            expect("read_file small len", stage2_bytes_len(&v), 5);
+            expect("read_file small capacity", stage2_bytes_capacity(&v),
+                KOFUN_BYTES_GROWTH_FLOOR);
+            expect_byte("read_file small first byte",
+                stage2_bytes_byte_at(&v, 0), 'H');
+            expect_byte("read_file small last byte",
+                stage2_bytes_byte_at(&v, 4), 'o');
+            expect_read_refused("read_file small past the end",
+                stage2_bytes_byte_at(&v, 5));
+
+            snprintf(path, sizeof path, "%s/exact.bin", dir);
+            expect_status("read_file at the ceiling",
+                stage2_bytes_read_file(&v, path), 0, 0);
+            expect_clean("read_file at the ceiling");
+            expect("read_file at the ceiling len", stage2_bytes_len(&v),
+                KOFUN_BYTES_CAPACITY_LIMIT);
+            expect("read_file at the ceiling capacity",
+                stage2_bytes_capacity(&v), KOFUN_BYTES_CAPACITY_LIMIT);
+            expect_byte("read_file at the ceiling last byte",
+                stage2_bytes_byte_at(&v, KOFUN_BYTES_CAPACITY_LIMIT - 1), 'b');
+
+            snprintf(path, sizeof path, "%s/empty.bin", dir);
+            expect_status("read_file empty",
+                stage2_bytes_read_file(&v, path), 0, 0);
+            expect_clean("read_file empty");
+            expect("read_file empty len", stage2_bytes_len(&v), 0);
+            expect("read_file empty capacity", stage2_bytes_capacity(&v),
+                KOFUN_BYTES_CAPACITY_LIMIT);
+        }
+        kofun_bytes_release(&v);
     }
 
     /* ------------------------------------- byte_set precedence and refusals
@@ -259,8 +372,7 @@ int main(void) {
                 KOFUN_BYTES_INVALID_BYTE, 256);
             expect_unchanged("set invalid byte high", &v, 4, 4);
             expect_status("set 255", stage2_bytes_byte_set(&v, 1, 255), 0, 0);
-            expect_read("set 255 reads back", stage2_bytes_byte_at(&v, 1),
-                KOFUN_BYTE_VALUE, 255);
+            expect_byte("set 255 reads back", stage2_bytes_byte_at(&v, 1), 255);
         }
         kofun_bytes_release(&v);
     }
@@ -617,9 +729,32 @@ int main(void) {
                 stage2_bytes_append_self(&v, 0, 8),
                 KOFUN_BYTES_ALLOCATION_FAILED, 16);
             expect_unchanged("self append under a spent budget", &v, 8, 8);
-            /* A read needs no allocator, so it still answers. */
-            expect_read("read under a spent budget",
-                stage2_bytes_byte_at(&v, 0), KOFUN_BYTE_VALUE, 3);
+            /* A read needs no allocator, so it still answers -- and still
+             * refuses, since the refusal allocates nothing either. */
+            expect_byte("read under a spent budget",
+                stage2_bytes_byte_at(&v, 0), 3);
+            expect_read_refused("read past length under a spent budget",
+                stage2_bytes_byte_at(&v, 8));
+            expect_unchanged("read past length under a spent budget", &v, 8, 8);
+            /* A file read takes its window before touching the carrier, so
+             * a spent budget refuses it whole: R028, status 5, and every
+             * field and byte as it was. The path need not exist for that --
+             * it is never opened when there is no window -- but the harness
+             * prepares one anyway so the refusal is the allocator's alone. */
+            const char *dir = getenv("KOFUN_BYTES_MUTATION_READ_DIR");
+            if (dir == NULL) {
+                printf("FAIL: KOFUN_BYTES_MUTATION_READ_DIR is not set\n");
+                ++failures;
+            } else {
+                char path[4096];
+                snprintf(path, sizeof path, "%s/small.bin", dir);
+                expect_status("read_file under a spent budget",
+                    stage2_bytes_read_file(&v, path),
+                    KOFUN_BYTES_ALLOCATION_FAILED,
+                    KOFUN_BYTES_CAPACITY_LIMIT + 1);
+                expect_refused("read_file under a spent budget");
+                expect_unchanged("read_file under a spent budget", &v, 8, 8);
+            }
         }
         kofun_bytes_release(&v);
     }

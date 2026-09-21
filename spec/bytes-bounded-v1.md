@@ -27,9 +27,10 @@ It is **not**:
 - convertible to or from `Text` — there is no bridge, and the three status tags
   reserved for one are unused (§5). That is #1322;
 - atomically replaceable in a bound target — that is #1323 and #1324;
-- reliably observable from source beyond `len` and `capacity` — every other
-  operation has a compiler-private emitted-C outcome, and Stage 2 refuses the
-  source value contexts that try to consume it (#1559, §7);
+- reliably observable from source beyond `len`, `capacity`, and the byte
+  `byte_at` reads (#1499) — every other operation has a compiler-private
+  emitted-C outcome, and Stage 2 refuses the source value contexts that try
+  to consume it (#1559, §7);
 - available on any backend but C11 Stage 2.
 
 ## 2. The carrier
@@ -112,7 +113,7 @@ outside those fixture shapes.
 
 ## 5. Status
 
-Operations that can fail report a tag and a detail. The nine tags are frozen in
+Operations that can fail report a tag and a detail. The ten tags are frozen in
 declaration order and the values are the contract:
 
 | tag | name | detail carries |
@@ -126,19 +127,21 @@ declaration order and the values are the contract:
 | 6 | invalid UTF-8 | *unused; reserved for #1322* |
 | 7 | text contains NUL | *unused; reserved for #1322* |
 | 8 | text limit exceeded | *unused; reserved for #1322* |
+| 9 | file unreadable | 0 when the path did not open, 1 when it opened and did not read (#1499) |
 
 There is no consumed tag, and `bytes-mutation` refuses one. Tags 6 to 8 belong
 to the Text bridge and no operation in this document may emit one; the gate
 extracts the operations' own text and checks it.
 
-Reading a byte uses a **separate** carrier with three tags in declaration order
-— value, negative offset, out of bounds — where success carries the byte 0..255
-and both failures carry the offending offset. It is emitted exactly once, and
-the gate asserts that.
+Reading a byte has no carrier. `byte_at` returns the byte 0..255 as an `Int`,
+and an offset outside `0..length-1` is the runtime diagnostic `R025` with a
+zero result — the shape a `List[Int]` index outside its list already has
+(`R023`). #1499 retired the three-tag read carrier that used to hold those
+outcomes, and `bytes-mutation` asserts it is no longer emitted.
 
 ## 6. Operations
 
-The checkpoint covers nine direct call shapes that resolve to these compiler
+The checkpoint covers ten direct call shapes that resolve to these compiler
 builtins. A current-file declaration or a lexical callable with the same
 `stage2_bytes_*` spelling outranks that recognition, and an undeclared control
 retains it (#1560). Their leading arguments are carriers:
@@ -147,13 +150,14 @@ retains it (#1560). Their leading arguments are carriers:
 | --- | --- | --- |
 | `stage2_bytes_len` | carrier | `Int` |
 | `stage2_bytes_capacity` | carrier | `Int` |
-| `stage2_bytes_byte_at` | carrier, offset | read carrier (§5) |
+| `stage2_bytes_byte_at` | carrier, offset | `Int` (§5, §7) |
 | `stage2_bytes_byte_set` | carrier, offset, byte | status |
 | `stage2_bytes_clear` | carrier | none |
 | `stage2_bytes_reserve` | carrier, capacity | status |
 | `stage2_bytes_append` | carrier, byte | status |
 | `stage2_bytes_append_range` | destination, source, offset, count | status |
 | `stage2_bytes_append_self` | carrier, offset, count | status |
+| `stage2_bytes_read_file` | carrier, path | status (§6.6) |
 
 `clear` sets length to zero and preserves capacity and the allocation.
 `reserve` may raise capacity and never changes length or bytes.
@@ -228,27 +232,75 @@ named direct cases, not every source-level ownership, alias, call, or exit
 shape. The checkpoint therefore publishes no universal transactionality or
 memory-safety promise.
 
+### 6.6 Reading a file
+
+`read_file` (#1499) replaces the carrier's bytes and length with a file's,
+named by a `Text` path. Capacity grows exactly as `append` would grow it to
+the file's length, and an empty file leaves the allocation in place with
+length 0. The file is read into a private window one byte wider than the
+ceiling *before* anything about the carrier changes, so every failure leaves
+length, capacity, pointer, and bytes as they were:
+
+| failure | status | runtime diagnostic |
+| --- | --- | --- |
+| the path does not open, or opened and does not read | 9, detail 0 or 1 | `R026` |
+| the file is longer than 65,536 bytes | 4, detail 65,537 | `R027` |
+| the window, or the carrier's growth, cannot be allocated | 5 | `R028` |
+
+The over-the-ceiling detail is 65,537 and not the file's length: the read
+stops one byte past the ceiling and never learns the rest, because a size
+query (`ftell`) answers nothing useful for a pipe and `fstat` is not C11.
+
+Every one of these failures is **also** a runtime diagnostic, which no other
+operation in this document is. The others hand a private status to a driver;
+a compiled program has no driver, and a read that failed silently would leave
+it digesting the carrier it started with as if it were the file. The file read
+is therefore the one operation whose refusal a program meets as a named exit,
+and `task bytes-read-file` proves each of the three by supplying the file,
+the missing path, and a spent allocator. It does not establish reading a file
+in chunks, a file longer than the ceiling in any form, or a path that has
+crossed an attenuated filesystem authority (§8).
+
 ## 7. What a source program can observe
 
-For calls resolved to these builtins in the gated source forms, `len` and
-`capacity` return `Int`. The supported form for every other operation is a
-complete discarded expression statement: the status and read carriers are
-private to the emitted C. `task bytes-mutation` proves those direct supported
-forms with a driver compiled against a prelude extracted from a program the
-compiler just emitted. All eight compiler-private outcomes are accepted only
-as complete discarded expression statements; every other operation and value
-context in that matrix refuses as `E2S179` and commits no C (#1559).
+For calls resolved to these builtins in the gated source forms, `len`,
+`capacity`, and `byte_at` return `Int`. The supported form for every other
+operation is a complete discarded expression statement: the status is private
+to the emitted C. `task bytes-mutation` proves those direct supported forms
+with a driver compiled against a prelude extracted from a program the compiler
+just emitted. All eight compiler-private outcomes — `assign_zeroed`,
+`byte_set`, `clear`, `reserve`, `append`, `append_range`, `append_self`, and
+`read_file` — are accepted only as complete discarded expression statements;
+every other operation and value context in that matrix refuses as `E2S179` and
+commits no C (#1559), and the same matrix accepts `byte_at` in each of those
+contexts and prints the byte (#1499).
 
 This is a deliberate boundary and it is the largest one in this document.
-Surfacing either carrier to source needs a compiler-owned enum declaration, and
+Surfacing the status to source needs a compiler-owned enum declaration, and
 Stage 2 resolves an enum by scanning the source for its `type` declaration — a
 type the compiler owns has no declaration site to be found at. The consumer
-that needs a byte in source is #1499.
+that needed a byte in source was #1499, and that is why `byte_at` crossed the
+boundary as an `Int` with a runtime diagnostic rather than as a carrier: the
+value it needed already has a shape (a `List[Int]` element) and so does the
+failure (`R023`). `task bytes-read-file` proves a compiled program reads a
+file into a carrier and digests it with the pair's own `sha256_*` functions,
+matching `bin/kofun-digest` on the same file.
 
 ## 8. Known gaps
 
 Stated here rather than omitted, because a specification that lists only what
 works is the kind of published promise this repository gates against:
+
+- **A file read takes a bare `Text` path and no authority.** RFC-0014 rejects
+  ambient cwd and a broad path-string capability, and RFC-0018 requires source
+  and package reads to cross an attenuated filesystem authority; `read_file`
+  does neither, and Stage 2 has no `DirectoryAuthority` or authority-derived
+  file handle for it to take. #1499's thread records that prerequisite as
+  unowned. Until it lands, the read is a bounded host-boundary operation of
+  the C11 backend, not a capability of the language.
+- **A file read is whole-file and at most 65,536 bytes.** There is no chunked
+  read over an open handle, so a file longer than the ceiling cannot be
+  digested by a compiled program at all; it is refused by name (§6.6).
 
 - **Positional move checking remains a bounded source-order rule**, not a
   general CFG, alias, lifetime or cleanup analysis. #1540 closes the direct,

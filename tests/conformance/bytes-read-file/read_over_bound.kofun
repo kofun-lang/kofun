@@ -1,0 +1,9 @@
+# #1499. A file over the carrier's 65,536-byte ceiling fails by name rather
+# than truncating: the carrier is left as it was and the program ends, so the
+# length below is never printed. The gate supplies a 65,537-byte file.
+fn main() -> Int {
+    let bytes = stage2_bytes_empty()
+    stage2_bytes_read_file(bytes, "over_bound.bin")
+    print(stage2_bytes_len(bytes))
+    return 0
+}

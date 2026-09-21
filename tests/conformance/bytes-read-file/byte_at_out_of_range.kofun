@@ -1,0 +1,9 @@
+# #1499. A byte read outside the carrier is a runtime diagnostic, the shape a
+# `List[Int]` index outside its list already has (R023): named, exit 1, and
+# nothing printed after it, because the failure ends the program.
+fn main() -> Int {
+    let bytes = stage2_bytes_empty()
+    stage2_bytes_append(bytes, 7)
+    print(stage2_bytes_byte_at(bytes, 1))
+    return 0
+}

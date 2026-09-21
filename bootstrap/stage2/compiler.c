@@ -10688,14 +10688,16 @@ static int64_t builtin_arity(const char *name) {
         {"stage2_bytes_assign_zeroed", 2},
         /* #1321. The bounded mutation surface. `len` and `capacity` answer
          * about the carrier and `clear` empties it; `byte_at`, `reserve`, and
-         * `append` take one `Int` beside it, `byte_set` and `append_self`
-         * take two, and `append_range` takes a second carrier and two. */
+         * `append` take one `Int` beside it, `read_file` a `Text` path,
+         * `byte_set` and `append_self` take two, and `append_range` takes a
+         * second carrier and two. */
         {"stage2_bytes_len", 1},
         {"stage2_bytes_capacity", 1},
         {"stage2_bytes_clear", 1},
         {"stage2_bytes_byte_at", 2},
         {"stage2_bytes_reserve", 2},
         {"stage2_bytes_append", 2},
+        {"stage2_bytes_read_file", 2},
         {"stage2_bytes_byte_set", 3},
         {"stage2_bytes_append_self", 3},
         {"stage2_bytes_append_range", 4},
@@ -10774,6 +10776,7 @@ static const char *builtin_parameter_types(const char *name) {
         {"stage2_bytes_byte_at", "Bytes|Int"},
         {"stage2_bytes_reserve", "Bytes|Int"},
         {"stage2_bytes_append", "Bytes|Int"},
+        {"stage2_bytes_read_file", "Bytes|Text"},
         {"stage2_bytes_byte_set", "Bytes|Int|Int"},
         {"stage2_bytes_append_self", "Bytes|Int|Int"},
         {"stage2_bytes_append_range", "Bytes|Bytes|Int|Int"},
@@ -12386,9 +12389,10 @@ static char *malformed_core_parameters_error(void) {
 }
 
 /*
- * #1321. The nine operations of the bounded mutation surface, named once so
+ * #1321. The ten operations of the bounded mutation surface, named once so
  * the lowering, the three builtin tables, and `source_uses_bytes` cannot
- * drift into four vocabularies of the same set.
+ * drift into four vocabularies of the same set. #1499 added `read_file`, the
+ * one operation whose non-carrier argument is a `Text` path.
  */
 static const char *const kofun_bytes_mutation_operations[] = {
     "stage2_bytes_len",
@@ -12400,6 +12404,7 @@ static const char *const kofun_bytes_mutation_operations[] = {
     "stage2_bytes_append",
     "stage2_bytes_append_range",
     "stage2_bytes_append_self",
+    "stage2_bytes_read_file",
 };
 #define KOFUN_BYTES_MUTATION_OPERATION_COUNT \
     (sizeof(kofun_bytes_mutation_operations) / \
@@ -12440,15 +12445,18 @@ static bool call_resolves_to_builtin(
 
 /*
  * #1559. These eight outcomes are implementation carriers, not Kofun values.
- * `len` and `capacity` deliberately stay outside: their Int result is the
- * source-visible observation surface of the bounded Bytes bridge.
+ * `len`, `capacity`, and `byte_at` deliberately stay outside: their Int
+ * result is the source-visible observation surface of the bounded Bytes
+ * bridge. #1499 moved `byte_at` out of this set, because a program that can
+ * read a file into a carrier needs one way to hold a byte it read.
  */
 static bool bytes_private_result_builtin(const char *name) {
     return strcmp(name, "stage2_bytes_assign_zeroed") == 0 ||
            (
                bytes_mutation_builtin(name) &&
                strcmp(name, "stage2_bytes_len") != 0 &&
-               strcmp(name, "stage2_bytes_capacity") != 0
+               strcmp(name, "stage2_bytes_capacity") != 0 &&
+               strcmp(name, "stage2_bytes_byte_at") != 0
            );
 }
 
@@ -12657,7 +12665,8 @@ static const char *bytes_mutation_required_access(
         strcmp(name, "stage2_bytes_clear") == 0 ||
         strcmp(name, "stage2_bytes_reserve") == 0 ||
         strcmp(name, "stage2_bytes_append") == 0 ||
-        strcmp(name, "stage2_bytes_append_self") == 0
+        strcmp(name, "stage2_bytes_append_self") == 0 ||
+        strcmp(name, "stage2_bytes_read_file") == 0
     ) return "edit";
     return "";
 }
@@ -12846,10 +12855,10 @@ static char *bytes_distinct_carriers_error(
 
 /*
  * #1321. The whole family lowers through one function, because the shape of
- * the call is the same for all nine: the leading `bytes_mutation_carriers`
- * arguments become carrier addresses and the rest are ordinary `Int`
- * expressions. A tenth operation needs a row in the tables, not a tenth
- * branch.
+ * the call is the same for all ten: the leading `bytes_mutation_carriers`
+ * arguments become carrier addresses and the rest are ordinary expressions
+ * (`Int`, or the `Text` path of `read_file`). An eleventh operation needs a
+ * row in the tables, not an eleventh branch.
  */
 static char *emit_bytes_mutation_call(
     const char *source,
@@ -17050,20 +17059,22 @@ static const char *builtin_return_type(const char *name) {
          * storage. */
         {"stage2_bytes_empty", "Bytes"},
         {"stage2_bytes_assign_zeroed", "Void"},
-        /* #1321. `len` and `capacity` are the two operations whose result is
-         * an ordinary `Int`, so they are the two a source program can use.
-         * The rest are `Void` for the same reason
-         * `stage2_bytes_assign_zeroed` is: the status and the
-         * `Stage2ByteRead` carrier are private to the emitted C and are
-         * proved there. Surfacing either needs a compiler-owned enum
-         * declaration, and Stage 2 resolves an enum by scanning the source
-         * for its `type` declaration — a type the compiler owns has no
-         * declaration site to be found at. The consumer that needs the byte
-         * in source is #1499, and it is where that mechanism belongs. */
+        /* #1321. `len` and `capacity` are the operations whose result is an
+         * ordinary `Int`, so they are the ones a source program can use.
+         * #1499 added `byte_at`: a checked read that fails as a runtime
+         * diagnostic rather than as a private carrier, so the byte is a
+         * value a program can hold, compare, and hand to a digest. The rest
+         * are `Void` for the same reason `stage2_bytes_assign_zeroed` is:
+         * the status is private to the emitted C and is proved there.
+         * Surfacing it needs a compiler-owned enum declaration, and Stage 2
+         * resolves an enum by scanning the source for its `type`
+         * declaration — a type the compiler owns has no declaration site to
+         * be found at. */
         {"stage2_bytes_len", "Int"},
         {"stage2_bytes_capacity", "Int"},
+        {"stage2_bytes_byte_at", "Int"},
         {"stage2_bytes_clear", "Void"},
-        {"stage2_bytes_byte_at", "Void"},
+        {"stage2_bytes_read_file", "Void"},
         {"stage2_bytes_byte_set", "Void"},
         {"stage2_bytes_reserve", "Void"},
         {"stage2_bytes_append", "Void"},
@@ -28477,7 +28488,7 @@ static char *lower_c_body(
      * deliberately indistinguishable at runtime, so use-after-take stays
      * compile-time E2S123 and no runtime tag is inferred from zero fields.
      *
-     * The nine status tags are frozen in declaration order 0..8 so the
+     * The ten status tags are frozen in declaration order 0..9 so the
      * bounded-mutation and Text-bridge children cannot renumber them. */
     if (uses_bytes) {
     buffer_append(
@@ -28503,7 +28514,8 @@ static char *lower_c_body(
         "    KOFUN_BYTES_ALLOCATION_FAILED = 5,\n"
         "    KOFUN_BYTES_INVALID_UTF8 = 6,\n"
         "    KOFUN_BYTES_TEXT_CONTAINS_NUL = 7,\n"
-        "    KOFUN_BYTES_TEXT_LIMIT_EXCEEDED = 8\n"
+        "    KOFUN_BYTES_TEXT_LIMIT_EXCEEDED = 8,\n"
+        "    KOFUN_BYTES_FILE_UNREADABLE = 9\n"
         "};\n"
         "static inline KofunBytesStatus kofun_bytes_status(int64_t tag, int64_t detail) {\n"
         "    KofunBytesStatus status; status.tag = tag; status.detail = detail; return status;\n"
@@ -28605,37 +28617,27 @@ static char *lower_c_body(
      * filled before the old pointer is released, so every failure leaves
      * length, capacity, pointer, and bytes exactly as it found them.
      *
-     * The read carrier is emitted exactly once, here, with its three tags
-     * in declaration order 0..2. It is a separate outcome from the 0..8
-     * status above and carries no consumed tag; #1322's Text bridge extends
-     * that status and must not redeclare either. */
+     * #1499. A byte read is an `Int` the source can hold, and an offset
+     * outside `0..length-1` is the same kind of failure a `List[Int]` index
+     * is: a runtime diagnostic (`R023` there, `R025` here) and a zero
+     * result, never a silent sentinel. The separate `Stage2ByteRead`
+     * carrier that used to hold the three outcomes is retired with it --
+     * there is no longer anything private to carry. */
     buffer_append(
         &output,
         "enum { KOFUN_BYTES_GROWTH_FLOOR = 16 };\n"
-        "typedef struct { int64_t tag; int64_t detail; } Stage2ByteRead;\n"
-        "enum {\n"
-        "    KOFUN_BYTE_VALUE = 0,\n"
-        "    KOFUN_BYTE_READ_NEGATIVE_OFFSET = 1,\n"
-        "    KOFUN_BYTE_READ_OUT_OF_BOUNDS = 2\n"
-        "};\n"
-        "static inline Stage2ByteRead kofun_byte_read(int64_t tag, int64_t detail) {\n"
-        "    Stage2ByteRead read; read.tag = tag; read.detail = detail; return read;\n"
-        "}\n"
         "static inline int64_t stage2_bytes_len(const KofunBytesValue *value) {\n"
         "    return (int64_t)value->length;\n"
         "}\n"
         "static inline int64_t stage2_bytes_capacity(const KofunBytesValue *value) {\n"
         "    return (int64_t)value->capacity;\n"
         "}\n"
-        "static inline Stage2ByteRead stage2_bytes_byte_at(\n"
+        "static inline int64_t stage2_bytes_byte_at(\n"
         "    const KofunBytesValue *value, int64_t offset) {\n"
-        "    if (offset < 0) {\n"
-        "        return kofun_byte_read(KOFUN_BYTE_READ_NEGATIVE_OFFSET, offset);\n"
+        "    if (offset < 0 || (uint64_t)offset >= value->length) {\n"
+        "        kofun_error(\"error[R025]: bounded Bytes byte read out of range\"); return 0;\n"
         "    }\n"
-        "    if ((uint64_t)offset >= value->length) {\n"
-        "        return kofun_byte_read(KOFUN_BYTE_READ_OUT_OF_BOUNDS, offset);\n"
-        "    }\n"
-        "    return kofun_byte_read(KOFUN_BYTE_VALUE, (int64_t)value->data[offset]);\n"
+        "    return (int64_t)value->data[offset];\n"
         "}\n"
         "static inline KofunBytesStatus stage2_bytes_byte_set(\n"
         "    KofunBytesValue *value, int64_t offset, int64_t item) {\n"
@@ -28763,6 +28765,61 @@ static char *lower_c_body(
         "        memmove(value->data + length, value->data + offset, (size_t)count);\n"
         "    }\n"
         "    value->length = (uint64_t)(length + count);\n"
+        "    return kofun_bytes_status(KOFUN_BYTES_SUCCEEDED, 0);\n"
+        "}\n"
+    );
+    /* #1499. The input operation: replace the carrier's bytes with a file's.
+     * The file is read into a private window one byte wider than the ceiling
+     * *before* anything about the carrier changes, so a file over the bound,
+     * an unreadable path, and an allocation failure each leave length,
+     * capacity, pointer, and bytes exactly as they were. A window rather
+     * than a size query, because `ftell` answers nothing useful for a pipe
+     * and `fstat` is not C11.
+     *
+     * Every failure is also a runtime diagnostic, which no other operation
+     * in this family is. The others hand a private status to a driver; a
+     * compiled program has no driver, and a read that failed silently would
+     * leave it digesting the carrier it started with as if it were the
+     * file. */
+    buffer_append(
+        &output,
+        "static inline KofunBytesStatus stage2_bytes_read_file(\n"
+        "    KofunBytesValue *value, const char *path) {\n"
+        "    FILE *file = fopen(path, \"rb\");\n"
+        "    if (file == NULL) {\n"
+        "        kofun_error(\"error[R026]: bounded Bytes file read cannot read path\");\n"
+        "        return kofun_bytes_status(KOFUN_BYTES_FILE_UNREADABLE, 0);\n"
+        "    }\n"
+        "    unsigned char *window = kofun_bytes_allocate((size_t)KOFUN_BYTES_CAPACITY_LIMIT + 1);\n"
+        "    if (window == NULL) {\n"
+        "        fclose(file);\n"
+        "        kofun_error(\"error[R028]: bounded Bytes file read cannot allocate\");\n"
+        "        return kofun_bytes_status(KOFUN_BYTES_ALLOCATION_FAILED, KOFUN_BYTES_CAPACITY_LIMIT + 1);\n"
+        "    }\n"
+        "    size_t got = fread(window, 1, (size_t)KOFUN_BYTES_CAPACITY_LIMIT + 1, file);\n"
+        "    int unreadable = ferror(file);\n"
+        "    fclose(file);\n"
+        "    if (unreadable) {\n"
+        "        free(window);\n"
+        "        kofun_error(\"error[R026]: bounded Bytes file read cannot read path\");\n"
+        "        return kofun_bytes_status(KOFUN_BYTES_FILE_UNREADABLE, 1);\n"
+        "    }\n"
+        "    if (got > (size_t)KOFUN_BYTES_CAPACITY_LIMIT) {\n"
+        "        free(window);\n"
+        "        kofun_error(\"error[R027]: bounded Bytes file read exceeds 65536 bytes\");\n"
+        "        return kofun_bytes_status(KOFUN_BYTES_CAPACITY_EXCEEDED, KOFUN_BYTES_CAPACITY_LIMIT + 1);\n"
+        "    }\n"
+        "    KofunBytesStatus grown = kofun_bytes_grow(value, (int64_t)got);\n"
+        "    if (grown.tag != KOFUN_BYTES_SUCCEEDED) {\n"
+        "        free(window);\n"
+        "        kofun_error(\"error[R028]: bounded Bytes file read cannot allocate\");\n"
+        "        return grown;\n"
+        "    }\n"
+        "    if (got > 0) {\n"
+        "        memcpy(value->data, window, got);\n"
+        "    }\n"
+        "    value->length = (uint64_t)got;\n"
+        "    free(window);\n"
         "    return kofun_bytes_status(KOFUN_BYTES_SUCCEEDED, 0);\n"
         "}\n"
     );
