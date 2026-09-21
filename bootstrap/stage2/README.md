@@ -12,11 +12,27 @@ bootstrap subset already exercised by the Stage 1 seed:
 - `args`, `read_text`, `write_text`, `chars`, `len`, `text_slice`,
   `contains`, `starts_with`, `is_digit`, `is_space`, and `to_text`.
 
-The future compiler-private Unicode-scalar and same-file host operations are
-specified separately in
+The compiler-private `stage2_unicode_scalar_at` and `stage2_same_file`
+operations follow
 [`stage2-pair-host-primitives-v1`](../../spec/stage2-pair-host-primitives-v1/PROFILE.md).
-That decision adds no builtin to ordinary programs and is not implemented by
-the canonical pair yet.
+They are driver bindings, separate from ordinary-source builtin resolution.
+`host-driver.mjs` executes the trusted Kofun compiler's bootstrap subset for
+`task stage2-pair-host-primitives`; program source is passed to those compiler
+functions as data and receives no host-operation authority. This bounded
+execution path does not claim native self-compilation of the Stage 2 compiler
+(the remaining owner is #1483).
+
+The pair gate compares complete C output and runs the emitted programs across
+all identifier escaping funnels, including parameters, function values,
+constants, fields, and const-specialized records. It also checks the four
+file-writer guards against object aliases and lookup failures. Both sides are
+mutated independently to prove those comparisons can fail. Unicode XID tables
+are projected from the pinned Unicode 17 C tables with
+`node bootstrap/stage2/generate-xid.mjs`; `--check` verifies their exact bytes.
+
+After a serialized pair change, run `task stage2-pair-refresh`
+to regenerate the pair checksums and manifest seed digest, then run the
+regression gates and `task release-evidence`.
 
 The frontend performs five concrete operations:
 

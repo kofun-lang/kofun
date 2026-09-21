@@ -45,10 +45,8 @@
 # branches, 8%.
 # The other 92% is a real pair surface.
 #
-# ONE C-ONLY ROW IS A LIVE DIVERGENCE rather than a documented omission:
-# `c_identifier_name` escapes non-ASCII identifiers to `k_uXXXXXX` at 12 sites
-# in the C half and has no counterpart, so the two halves emit different C for
-# the same input. Filed as #1513.
+# #1513 closes the c_identifier_name divergence with an executable pair gate.
+# Identifier classification now consumes whole scalars in both halves too.
 #
 # `sh tests/pair-coverage/mirror.sh` holds this exact in both directions: a
 # ledger function with no row is refused, a row naming a function the ledger
@@ -90,7 +88,7 @@ call_argument_parameter_property	same-name	call_argument_parameter_property	-
 call_argument_position	same-name	call_argument_position	-
 call_arity	same-name	call_arity	-
 call_has_labelled_argument	same-name	call_has_labelled_argument	-
-c_identifier_name	c-only	-	non-ASCII identifier escaping; `k_u` has no occurrence in compiler.kofun — a live divergence, #1513
+c_identifier_name	same-name	c_identifier_name	#1513; executable two-sided host-primitives gate covers every escaping funnel
 coalescing_expression_end	same-name	coalescing_expression_end	-
 compile_file	same-name	compile_file	-
 condition_end	same-name	condition_end	-
@@ -179,8 +177,8 @@ hir_index_refresh	c-only	-	FNV line index; compiler.kofun:8533 "canonical Kofun 
 hir_index_split	c-only	-	feeds hir_index_refresh; `hir_index` has no occurrence in compiler.kofun
 hir_pending_declaration	same-name	hir_pending_declaration	-
 hir_scope_root	same-name	hir_scope_root	-
-identifier_continue_at	other-name	identifier_continue	same predicate; the `_at` half is byte-offset plumbing chars() removes
-identifier_start_at	other-name	identifier_start	same `_` or XID_Start predicate; the three C call sites land in the matching Kofun functions
+identifier_continue_at	same-name	identifier_continue_at	#1513; private scalar decoding and pinned Unicode XID_Continue ranges
+identifier_start_at	same-name	identifier_start_at	#1513; private scalar decoding and pinned Unicode XID_Start ranges
 if_has_else	same-name	if_has_else	-
 if_statement_end	same-name	if_statement_end	-
 if_then_branch_end	same-name	if_then_branch_end	-
@@ -307,7 +305,7 @@ record_syntax_token	same-name	record_syntax_token	-
 removed_callable_rewrite	same-name	removed_callable_rewrite	-
 reserved_type_name	same-name	reserved_type_name	-
 return_move_at	same-name	return_move_at	-
-same_file	other-name	(the input == output guards)	four call sites, four E2S35 "input and output must be distinct"; the stat()/inode half is C-only
+same_file	other-name	(stage2_same_file driver binding)	historical coverage name; #1513 replaces same_file with the private stage2_same_file operation and tests all four writer guards in both halves
 scan_optional_int_annotation	same-name	scan_optional_int_annotation	-
 scope_depth_for_open	same-name	scope_depth_for_open	-
 scoped_parallel_member	same-name	scoped_parallel_member	-

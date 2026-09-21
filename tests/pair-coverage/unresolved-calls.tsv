@@ -22,4 +22,5 @@
 #                           half never wrote the counterpart
 #
 # name	kind	reason
-is_xid_start	missing-builtin	bootstrap/stage2/compiler.kofun:15, inside the file's own lexer: `fn identifier_start(symbol: Text) -> Bool { return symbol == "_" || is_xid_start(symbol) }`. Measured on 2026-08-20 at f42cfdd3: `git grep -n 'is_xid_start' -- '*.kofun' '*.md' 'spec/**'` finds this one line and nothing else, and the C half's builtin table has `is_xid_continue` and no `is_xid_start`. The C half's counterpart does not go through a builtin at all -- `identifier_start_at` decodes a UTF-8 scalar and tests `kofun_unicode_is_xid_start` from unicode/kofun_unicode.c. So the fix is a DECISION, not a transliteration, and it is bigger than the missing name: `chars()` is byte-wise (`kofun_rt_chars` emits one 1-byte string per byte), so the Kofun half inspects a single BYTE where the C half decodes a whole scalar. A byte-wise `is_xid_start` would resolve this row and still not agree with the C half on a non-ASCII identifier, which the C half accepts today -- `let 日本 = 41` lexes as one identifier token spanning bytes 27..33. Whoever fixes this owns both halves of that.
+# #1513 resolves the final row through driver-private scalar decoding and
+# pinned XID tables in the canonical compiler; no public builtin was added.

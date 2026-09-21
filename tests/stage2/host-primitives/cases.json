@@ -1,0 +1,85 @@
+{
+  "schema": "kofun.stage2-host-operation-fixture/v1",
+  "cases": [
+    {
+      "name": "functions-parameters-locals",
+      "covers": [
+        "function-prototype",
+        "function-body",
+        "function-reference",
+        "direct-call",
+        "parameter",
+        "local-binding"
+      ],
+      "source": "fn 合計(幅: Int, 高さ: Int) -> Int {\n    let 結果 = 幅 + 高さ\n    return 結果\n}\nfn 未使用() -> Int { return 1 }\nfn main() -> Int { print(合計(40, 2))\n return 0\n}\n",
+      "output": "42\n"
+    },
+    {
+      "name": "module-constants",
+      "covers": [
+        "constant-declaration",
+        "constant-reference",
+        "constant-argument"
+      ],
+      "source": "let 基準 = 40\nfn 加算(値: Int) -> Int { return 値 + 基準 }\nfn main() -> Int { print(加算(基準))\nreturn 0\n}\n",
+      "output": "80\n"
+    },
+    {
+      "name": "function-value",
+      "covers": [
+        "function-value-argument"
+      ],
+      "source": "fn 適用(操作: Int -> Int, 値: Int) -> Int { return 操作(値) }\nfn 増加(値: Int) -> Int { return 値 + 1 }\nfn main() -> Int { print(適用(増加, 41))\nreturn 0\n}\n",
+      "output": "42\n"
+    },
+    {
+      "name": "labelled-call",
+      "covers": [
+        "fixed-slot-call",
+        "labelled-parameter"
+      ],
+      "source": "fn 合計(横 幅: Int, 縦 高さ: Int) -> Int { return 幅 + 高さ }\nfn main() -> Int { print(合計(縦: 2, 横: 40))\nreturn 0\n}\n",
+      "output": "42\n"
+    },
+    {
+      "name": "records",
+      "covers": [
+        "record-type",
+        "record-field",
+        "record-field-reference",
+        "record-parameter",
+        "record-return"
+      ],
+      "source": "type 荷物 = { 数: Int, 有効: Bool, }\nfn 読む(箱: 荷物) -> Int { if 箱.有効 { return 箱.数 }\n return 0\n}\nfn 作る(数: Int) -> 荷物 { let 箱: 荷物 = 荷物(有効: true, 数: 数)\nreturn 箱\n}\nfn main() -> Int { let 箱: 荷物 = 作る(42)\nprint(読む(箱))\nreturn 0\n}\n",
+      "output": "42\n"
+    },
+    {
+      "name": "scalar-widths",
+      "covers": [
+        "two-byte-scalar",
+        "three-byte-scalar",
+        "four-byte-scalar",
+        "mixed-ascii-name",
+        "combining-continue"
+      ],
+      "source": "fn café(q́: Int) -> Int { return q́ + 1 }\nfn 日本(値: Int) -> Int { return café(値) }\nfn 𐐀(値: Int) -> Int { return 日本(値) }\nfn main() -> Int { print(𐐀(41))\nreturn 0\n}\n",
+      "output": "42\n"
+    },
+    {
+      "name": "private-spelling-declarations",
+      "covers": [
+        "ordinary-shadowing"
+      ],
+      "source": "fn stage2_unicode_scalar_at(値: Int) -> Int { return 値 + 1 }\nfn stage2_same_file(値: Int) -> Int { return 値 + 1 }\nfn main() -> Int { print(stage2_same_file(stage2_unicode_scalar_at(40)))\nreturn 0\n}\n",
+      "output": "42\n"
+    },
+    {
+      "name": "const-record",
+      "covers": [
+        "const-record-specialization"
+      ],
+      "source": "type 固定[const 桁: Int] = { 数: Int, }\nfn 保持(値: 固定[2]) -> 固定[2] { return 値 }\nfn main() -> Int { let 値: 固定[2] = 固定[2](数: 42)\nlet 結果: 固定[2] = 保持(値)\nprint(結果.数)\nreturn 0\n}\n",
+      "output": "42\n"
+    }
+  ]
+}

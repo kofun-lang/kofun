@@ -535,6 +535,21 @@ inside && /\{"/ {
 ' "$C_HALF" | sort -u >"$WORK/builtins.txt"
 require_nonempty "builtin names" "$WORK/builtins.txt"
 
+# Private host operations are resolved only inside the trusted compiler. Keep
+# their authority separate from ordinary-source builtin_arity; the executable
+# host-primitives gate proves these spellings cannot leak into a program.
+awk '
+/stage2_host_operations\[\] =/ { inside = 1; next }
+inside && /^};/ { inside = 0 }
+inside && /\{"/ {
+    line = $0
+    while (match(line, /\{"[a-z_][A-Za-z0-9_]*"/)) {
+        print substr(line, RSTART + 2, RLENGTH - 3)
+        line = substr(line, RSTART + RLENGTH)
+    }
+}
+' "$C_HALF" | sort -u >"$WORK/host-operations.txt"
+
 # `int_bit_method_arity`'s table: the `.name(...)` methods on Int.
 awk '
 /^static int64_t int_bit_method_arity\(const char \*name\)/ { inside = 1; next }
@@ -581,7 +596,7 @@ else
 fi
 
 sort -u "$WORK/defined.txt" "$WORK/builtins.txt" "$WORK/bit-methods.txt" \
-    "$WORK/keywords.txt" "$WORK/statement-forms.txt" >"$WORK/resolved.txt"
+    "$WORK/keywords.txt" "$WORK/statement-forms.txt" "$WORK/host-operations.txt" >"$WORK/resolved.txt"
 
 comm -23 "$WORK/called.txt" "$WORK/resolved.txt" >"$WORK/unresolved.txt"
 
