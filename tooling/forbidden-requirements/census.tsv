@@ -227,6 +227,7 @@ cc	invoke	5	required-today	required	tests/unicode/run.sh
 cc	invoke	1	required-today	required	tests/usability/check.sh
 cc	invoke	2	required-today	required	tests/wasm-list-v1/check.sh
 cc	invoke	2	required-today	required	tests/wasm-text-v1/check.sh
+cc	invoke	3	required-today	required	tests/wasm/wasi-command-memory/check.sh
 cc	invoke	5	required-today	required	tooling/bindgen-c/bindgen-c.mjs
 cc	invoke	1	required-today	required	tooling/kotest/run.sh
 cc	invoke	1	required-today	required	tooling/lsp/build-semantic-bundle.sh
@@ -320,6 +321,7 @@ node	invoke	4	required-today	required	tests/typed-sidecar/producer-races.sh
 node	invoke	4	required-today	required	tests/typed-sidecar/stage2-projector.sh
 node	invoke	6	required-today	required	tests/wasm-list-v1/check.sh
 node	invoke	4	required-today	required	tests/wasm-text-v1/check.sh
+node	invoke	9	required-today	required	tests/wasm/wasi-command-memory/check.sh
 node	invoke	8	required-today	required	tests/wasm/wasi-command/check.sh
 node	invoke	6	required-today	required	tooling/compile-census/check.sh
 node	invoke	6	required-today	required	tooling/machine-dependent/check.sh
@@ -447,6 +449,7 @@ node	source	1	required-today	required	tests/typed-sidecar/producer_races_test.mj
 node	source	1	required-today	required	tests/typed-sidecar/stage2_projector_test.mjs
 node	source	1	required-today	required	tests/wasm-list-v1/run.mjs
 node	source	1	required-today	required	tests/wasm-text-v1/run.mjs
+node	source	1	required-today	required	tests/wasm/wasi-command-memory/memory_check.mjs
 node	source	1	required-today	required	tests/wasm/wasi-command/inspect.mjs
 node	source	1	required-today	required	tests/wasm/wasi-command/run.mjs
 node	source	1	required-today	required	tests/wasm/wasi-command/validate.mjs
@@ -759,6 +762,7 @@ shell-build-driver	source	1	required-today	required	tests/unicode/run.sh
 shell-build-driver	source	1	required-today	required	tests/usability/check.sh
 shell-build-driver	source	1	required-today	required	tests/wasm-list-v1/check.sh
 shell-build-driver	source	1	required-today	required	tests/wasm-text-v1/check.sh
+shell-build-driver	source	1	required-today	required	tests/wasm/wasi-command-memory/check.sh
 shell-build-driver	source	1	required-today	required	tests/wasm/wasi-command/check.sh
 shell-build-driver	source	1	required-today	required	tooling/compile-census/check.sh
 shell-build-driver	source	1	required-today	required	tooling/kotest/run.sh

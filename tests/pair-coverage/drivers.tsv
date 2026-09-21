@@ -168,6 +168,7 @@ visibility-filtering
 visibility-spec
 visibility-syntax
 wasi-command-backend-shell
+wasi-command-memory
 wasi-command-profile
 wasi-command-projection-contract
 wasi-host-matrix-policy
