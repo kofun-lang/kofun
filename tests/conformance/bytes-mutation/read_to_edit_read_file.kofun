@@ -1,0 +1,11 @@
+# #1499. A read-only destination may not reach read_file: filling a carrier
+# from a path is an edit, however the bytes arrive.
+fn misuse(read destination: Bytes) -> Int {
+    stage2_bytes_read_file(destination, "missing.bin")
+    return 0
+}
+
+fn main() -> Int {
+    let owned = stage2_bytes_empty()
+    return misuse(owned)
+}

@@ -1,11 +1,11 @@
 #!/usr/bin/env sh
 # #1321. The bounded mutation surface over #1315's Managed Bytes carrier.
 #
-# The status and the read carrier are private to the emitted C, so most of
-# this gate is a driver compiled against a prelude extracted from a program
-# the compiler just emitted -- the shipped bytes, not a copy of them kept in
-# step by hand. What a source program can observe is `len` and `capacity`, and
-# those are proved by fixtures with goldens.
+# The status is private to the emitted C, so most of this gate is a driver
+# compiled against a prelude extracted from a program the compiler just
+# emitted -- the shipped bytes, not a copy of them kept in step by hand. What
+# a source program can observe is `len`, `capacity`, and (since #1499) the
+# byte `byte_at` reads, and those are proved by fixtures with goldens.
 #
 # The operation vocabulary is derived from the compiler pair rather than
 # listed here. A name added to the builtin tables and not to the runtime, or
@@ -120,11 +120,11 @@ grep -q 'kofun_fn_relay(&((k_b' "$WORK/parenthesized_carrier.c" ||
 # Extracted from the program the compiler just emitted, ending at the last
 # operation the runtime defines.
 prelude_end=$(
-    awk '/^static inline KofunBytesStatus stage2_bytes_append_self/ {found = 1}
+    awk '/^static inline KofunBytesStatus stage2_bytes_read_file/ {found = 1}
          found && /^\}$/ {print NR; exit}' "$WORK/mutation.c"
 )
 test -n "$prelude_end" ||
-    fail 'the emitted C carries no stage2_bytes_append_self to extract'
+    fail 'the emitted C carries no stage2_bytes_read_file to extract'
 sed -n "1,${prelude_end}p" "$WORK/mutation.c" >"$WORK/prelude.h"
 
 # The vocabulary, derived from each half of the pair and from the runtime, and
@@ -157,28 +157,26 @@ do
         fail "$operation is defined $defined times in the emitted runtime"
 done <"$WORK/vocabulary.kofun"
 
-# The read carrier: one declaration, three tags in declaration order 0..2, and
-# no consumed tag. The status above it keeps its own 0..8 and is not extended
-# here -- tags 6..8 belong to #1322's Text bridge, and no mutation operation
-# may reach them.
-test "$(grep -c 'Stage2ByteRead;$' "$WORK/prelude.h")" -eq 1 ||
-    fail 'the read carrier is not declared exactly once'
-grep -q 'KOFUN_BYTE_VALUE = 0' "$WORK/prelude.h" ||
-    fail 'the read carrier has no ByteValue tag 0'
-grep -q 'KOFUN_BYTE_READ_NEGATIVE_OFFSET = 1' "$WORK/prelude.h" ||
-    fail 'the read carrier has no negative-offset tag 1'
-grep -q 'KOFUN_BYTE_READ_OUT_OF_BOUNDS = 2' "$WORK/prelude.h" ||
-    fail 'the read carrier has no out-of-bounds tag 2'
-grep -q 'KOFUN_BYTE_READ_CONSUMED' "$WORK/prelude.h" &&
-    fail 'the read carrier declares an impossible consumed tag'
+# #1499. The byte read is an `Int`, and the separate read carrier that used to
+# hold its three outcomes is gone with it: no declaration, no tags, no
+# constructor. The status keeps its declaration order and gains tag 9 for a
+# path the file read could not open or read; tags 6..8 still belong to #1322's
+# Text bridge, and no mutation operation may reach them.
+grep -q '^static inline int64_t stage2_bytes_byte_at(' "$WORK/prelude.h" ||
+    fail 'the byte read does not return int64_t'
+grep -qE 'Stage2ByteRead|KOFUN_BYTE_VALUE|KOFUN_BYTE_READ_|kofun_byte_read' \
+    "$WORK/prelude.h" &&
+    fail 'the retired read carrier is still emitted'
 test "$(grep -c 'KOFUN_BYTES_SUCCEEDED = 0' "$WORK/prelude.h")" -eq 1 ||
-    fail 'the 0..8 status declaration is no longer emitted exactly once'
+    fail 'the 0..9 status declaration is no longer emitted exactly once'
+test "$(grep -c 'KOFUN_BYTES_FILE_UNREADABLE = 9' "$WORK/prelude.h")" -eq 1 ||
+    fail 'the status has no unreadable-file tag 9'
 test "$(grep -c '} KofunBytesValue;' "$WORK/prelude.h")" -eq 1 ||
     fail 'the carrier is no longer declared exactly once'
 
 # No mutation operation reaches the Text bridge's three tags. Checked over the
 # operations' own text rather than the whole prelude, because the status
-# declaration legitimately names all nine.
+# declaration legitimately names all ten.
 sed -n "/^static inline .*stage2_bytes_len(/,\$p" "$WORK/prelude.h" \
     >"$WORK/operations.c"
 if grep -qE 'KOFUN_BYTES_(INVALID_UTF8|TEXT_CONTAINS_NUL|TEXT_LIMIT_EXCEEDED)' \
@@ -191,13 +189,43 @@ fi
 # Values, ranges, growth, precedence, and transactionality. Built with the
 # ordinary allocator and again with the Nth allocation made to fail, because
 # the injected-failure edge is where a transactional helper stops being one.
+#
+# #1499. The file read needs files. Prepared here, once, at the sizes the
+# bound is stated in: one byte over the ceiling, exactly at it, five bytes,
+# none, and a directory. `missing.bin` is the one that must not exist.
+KOFUN_BYTES_MUTATION_READ_DIR="$WORK/read"
+export KOFUN_BYTES_MUTATION_READ_DIR
+mkdir -p "$KOFUN_BYTES_MUTATION_READ_DIR/directory"
+head -c 65537 /dev/zero | tr '\0' 'a' >"$KOFUN_BYTES_MUTATION_READ_DIR/over.bin"
+head -c 65536 /dev/zero | tr '\0' 'b' >"$KOFUN_BYTES_MUTATION_READ_DIR/exact.bin"
+printf 'Hello' >"$KOFUN_BYTES_MUTATION_READ_DIR/small.bin"
+: >"$KOFUN_BYTES_MUTATION_READ_DIR/empty.bin"
+rm -f "$KOFUN_BYTES_MUTATION_READ_DIR/missing.bin"
+test "$(wc -c <"$KOFUN_BYTES_MUTATION_READ_DIR/over.bin" | tr -d ' ')" -eq 65537 ||
+    fail 'the over-the-ceiling file is not 65537 bytes'
+
+# Every read refusal the driver provokes is also a named runtime diagnostic
+# on stderr, printed once each because the driver resets the flag between
+# them. Their order is the driver's, and the list is exact: an extra line is
+# a refusal nobody asked for, a missing one is a silent failure.
+{
+    printf 'error[R025]: bounded Bytes byte read out of range\n'
+    printf 'error[R025]: bounded Bytes byte read out of range\n'
+    printf 'error[R025]: bounded Bytes byte read out of range\n'
+    printf 'error[R025]: bounded Bytes byte read out of range\n'
+    printf 'error[R026]: bounded Bytes file read cannot read path\n'
+    printf 'error[R026]: bounded Bytes file read cannot read path\n'
+    printf 'error[R027]: bounded Bytes file read exceeds 65536 bytes\n'
+    printf 'error[R025]: bounded Bytes byte read out of range\n'
+} >"$WORK/driver.expected.stderr"
 for level in 0 2
 do
     "${CC:-cc}" -std=c11 "-O$level" -Wall -Wextra -Werror -pedantic \
         -I "$WORK" -I "$ROOT/unicode" "$CASES/mutation_driver.c" \
         -o "$WORK/driver.O$level" 2>"$WORK/driver.O$level.cc" ||
         fail "the mutation driver did not build at -O$level"
-    "$WORK/driver.O$level" >"$WORK/driver.O$level.out" 2>&1 ||
+    "$WORK/driver.O$level" >"$WORK/driver.O$level.out" \
+        2>"$WORK/driver.O$level.stderr" ||
         fail "the mutation contract failed at -O$level: $(head -n 1 "$WORK/driver.O$level.out")"
 done
 printf 'ok\n' >"$WORK/driver.expected"
@@ -205,6 +233,8 @@ for required_level in 0 2
 do
     cmp "$WORK/driver.expected" "$WORK/driver.O$required_level.out" ||
         fail "the exact strict -O$required_level driver result is absent"
+    cmp "$WORK/driver.expected.stderr" "$WORK/driver.O$required_level.stderr" ||
+        fail "the strict -O$required_level driver's read refusals are not exactly the named diagnostics"
 done
 
 # The pointer assertion is executable, not merely present in the driver. This
@@ -228,8 +258,14 @@ grep -q 'reserve negative: the carrier pointer changed' \
     -I "$WORK" -I "$ROOT/unicode" "$CASES/mutation_driver.c" \
     -o "$WORK/driver.oom" 2>"$WORK/driver.oom.cc" ||
     fail 'the allocation-failure driver did not build'
-"$WORK/driver.oom" >"$WORK/driver.oom.out" 2>&1 ||
+"$WORK/driver.oom" >"$WORK/driver.oom.out" 2>"$WORK/driver.oom.stderr" ||
     fail "the allocation-failure contract failed: $(head -n 1 "$WORK/driver.oom.out")"
+{
+    printf 'error[R025]: bounded Bytes byte read out of range\n'
+    printf 'error[R028]: bounded Bytes file read cannot allocate\n'
+} >"$WORK/driver.oom.expected.stderr"
+cmp "$WORK/driver.oom.expected.stderr" "$WORK/driver.oom.stderr" ||
+    fail 'the spent-budget file read is not exactly its named diagnostic'
 
 # The append_range OOM result and both carrier witnesses are meaningful only
 # if the real operation ran. Omit that call in a proof build; the counter,
@@ -338,7 +374,7 @@ refuses wrapper_conflict_type \
 # #1517. Each mutating destination owns one exact refusal. Keeping one fixture
 # per operation prevents the first failing call in a combined program from
 # disguising an unchecked sibling, while the read append_range source remains
-# executable in borrowed_carrier above.
+# executable in borrowed_carrier above. #1499's `read_file` is the eighth.
 for operation in \
     assign_zeroed \
     byte_set \
@@ -346,7 +382,8 @@ for operation in \
     reserve \
     append \
     append_range \
-    append_self
+    append_self \
+    read_file
 do
     stem=read_to_edit_$operation
     refuses "$stem" \
@@ -373,6 +410,11 @@ refuses read_to_edit_pipeline_hold \
 # operation accepts that row and commits C. The second loop holds the contexts
 # independently, including comparison, whose enclosing expression is Bool and
 # therefore cannot be caught by changing only builtin return inference.
+#
+# #1499 moved `byte_at` out of this set and `read_file` into it, so the set is
+# still eight, and the context matrix now rides on `reserve`. The first matrix
+# also proves the other direction for `byte_at`: a binding of it is accepted
+# and prints the byte.
 refuses_private_generated() {
     stem=$1
     operation=$2
@@ -416,7 +458,7 @@ do
     refuses_private_generated "$stem" "$operation"
 done <<'EOF'
 stage2_bytes_assign_zeroed|stage2_bytes_assign_zeroed(bytes, 4)
-stage2_bytes_byte_at|stage2_bytes_byte_at(bytes, 0)
+stage2_bytes_read_file|stage2_bytes_read_file(bytes, "missing.bin")
 stage2_bytes_byte_set|stage2_bytes_byte_set(bytes, 0, 1)
 stage2_bytes_clear|stage2_bytes_clear(bytes)
 stage2_bytes_reserve|stage2_bytes_reserve(bytes, 4)
@@ -439,25 +481,25 @@ do
         printf '    %b\n' "$body"
         printf '%s\n' '    return 0' '}'
     } >"$WORK/$stem.kofun"
-    refuses_private_generated "$stem" stage2_bytes_byte_at
+    refuses_private_generated "$stem" stage2_bytes_reserve
 done <<'EOF'
-inferred-binding|let value = stage2_bytes_byte_at(bytes, 0)
-multiline-binding|let value =\nstage2_bytes_byte_at(bytes, 0)
-annotated-binding|let value: Int = stage2_bytes_byte_at(bytes, 0)
-print|print(stage2_bytes_byte_at(bytes, 0))
-return|return stage2_bytes_byte_at(bytes, 0)
-argument|print(identity(stage2_bytes_byte_at(bytes, 0)))
-arithmetic|print(stage2_bytes_byte_at(bytes, 0) + 1)
-condition|if stage2_bytes_byte_at(bytes, 0) {\n        print(1)\n    }
-multiline-condition|if\nstage2_bytes_byte_at(bytes, 0) {\n        print(1)\n    }
-comparison|print(stage2_bytes_byte_at(bytes, 0) == stage2_bytes_byte_at(bytes, 0))
+inferred-binding|let value = stage2_bytes_reserve(bytes, 4)
+multiline-binding|let value =\nstage2_bytes_reserve(bytes, 4)
+annotated-binding|let value: Int = stage2_bytes_reserve(bytes, 4)
+print|print(stage2_bytes_reserve(bytes, 4))
+return|return stage2_bytes_reserve(bytes, 4)
+argument|print(identity(stage2_bytes_reserve(bytes, 4)))
+arithmetic|print(stage2_bytes_reserve(bytes, 4) + 1)
+condition|if stage2_bytes_reserve(bytes, 4) {\n        print(1)\n    }
+multiline-condition|if\nstage2_bytes_reserve(bytes, 4) {\n        print(1)\n    }
+comparison|print(stage2_bytes_reserve(bytes, 4) == stage2_bytes_reserve(bytes, 4))
 EOF
 
 final_stem=private-context-final-expression
 {
     printf '%s\n' \
         'fn private_final(edit bytes: Bytes) -> Int {' \
-        '    stage2_bytes_byte_at(bytes, 0)' \
+        '    stage2_bytes_reserve(bytes, 4)' \
         '}' \
         '' \
         'fn main() -> Int {' \
@@ -466,7 +508,48 @@ final_stem=private-context-final-expression
         '    return 0' \
         '}'
 } >"$WORK/$final_stem.kofun"
-refuses_private_generated "$final_stem" stage2_bytes_byte_at
+refuses_private_generated "$final_stem" stage2_bytes_reserve
+
+# #1499. The same binding shape that refuses every private operation accepts
+# the byte read, in every context the matrix above refuses, and the program
+# prints the byte. Generated beside the refusals so the two directions of one
+# predicate are held by one file.
+value_stem=byte-at-source-value
+{
+    printf '%s\n' \
+        'fn identity(value: Int) -> Int {' \
+        '    return value' \
+        '}' \
+        '' \
+        'fn last(read bytes: Bytes) -> Int {' \
+        '    stage2_bytes_byte_at(bytes, stage2_bytes_len(bytes) - 1)' \
+        '}' \
+        '' \
+        'fn main() -> Int {' \
+        '    let bytes = stage2_bytes_empty()' \
+        '    stage2_bytes_append(bytes, 7)' \
+        '    stage2_bytes_append(bytes, 200)' \
+        '    let value = stage2_bytes_byte_at(bytes, 0)' \
+        '    let annotated: Int = stage2_bytes_byte_at(bytes, 1)' \
+        '    print(value)' \
+        '    print(annotated)' \
+        '    print(identity(stage2_bytes_byte_at(bytes, 1)) + 1)' \
+        '    if stage2_bytes_byte_at(bytes, 0) == 7 {' \
+        '        print(1)' \
+        '    }' \
+        '    print(last(bytes))' \
+        '    return 0' \
+        '}'
+} >"$WORK/$value_stem.kofun"
+"$ROOT/bin/kofun" build "$WORK/$value_stem.kofun" -o "$WORK/$value_stem.bin" \
+    --emit-c "$WORK/$value_stem.c" >"$WORK/$value_stem.stdout" \
+    2>"$WORK/$value_stem.stderr" ||
+    fail "a byte_at source value was refused: $(head -n 1 "$WORK/$value_stem.stderr")"
+"$WORK/$value_stem.bin" >"$WORK/$value_stem.out" 2>&1 ||
+    fail 'the byte_at source-value program did not run'
+printf '7\n200\n201\n1\n200\n' >"$WORK/$value_stem.expected"
+cmp "$WORK/$value_stem.expected" "$WORK/$value_stem.out" ||
+    fail 'the byte_at source-value program printed the wrong bytes'
 
 
 # The two reasons are distinct sentences. One reason for both shapes would let
@@ -599,9 +682,11 @@ EOF
     }
     prove_binary_assertion 1 ordinary \
         'same_carrier committed a binary'
-    prove_binary_assertion 26 first-repeat \
+    # #1499 added one refusal (`read_to_edit_read_file`) ahead of the repeat
+    # loop, so the first repeated refusal is the 27th build the child sees.
+    prove_binary_assertion 27 first-repeat \
         'the first repeated refusal committed a binary'
-    prove_binary_assertion 27 second-repeat \
+    prove_binary_assertion 28 second-repeat \
         'the second repeated refusal committed a binary'
 fi
 for operation in \
@@ -611,7 +696,8 @@ for operation in \
     reserve \
     append \
     append_range \
-    append_self
+    append_self \
+    read_file
 do
     stem=read_to_edit_$operation
     printf 'stale\n' >"$WORK/$stem.repeat.c"
@@ -671,11 +757,12 @@ printf '%s\n' \
     'PASS: read/read sharing and distinct owners through one- and two-level wrappers execute, while edit/read, edit/edit, take/read, and take/edit sharing refuse as E2S180 without C or binary artifacts; arity diagnostics retain precedence' \
     'PASS: complete nested parentheses preserve one named Bytes BindingId through mutation builtins and a declared relay; the direct same-owner reason remains E2S177 and parenthesized temporaries remain unnamed' \
     'PASS: the operations the two halves of the pair admit and the ones the emitted runtime defines are one set, each defined exactly once' \
-    'PASS: the read carrier is declared once with tags 0..2 and no consumed tag; the 0..8 status and the carrier are still declared once each' \
+    'PASS: the byte read returns int64_t and the retired read carrier is not emitted; the 0..9 status and the carrier are still declared once each' \
+    'PASS: every byte_at refusal, missing, unreadable, and over-the-ceiling file read is exactly one named runtime diagnostic with the carrier preserved; small, ceiling-sized, and empty files replace the bytes, and a spent budget refuses the read whole' \
     'PASS: no mutation operation reaches a Text-bridge status tag' \
     'PASS: current-file declarations and lexical callables named stage2_bytes_* outrank special builtin lowering, while undeclared controls retain it' \
     'PASS: exact bytes 0x00/0x7f/0x80/0xff are append-attempted at lengths 0, 1, 255, 16384, and 65536 under strict O0/O2 and ASan/UBSan, succeeding below the ceiling and preserving it on refusal; every named range, byte, and capacity refusal preserves the named carrier pointers and bytes' \
     'PASS: growth 0->16, every doubling edge, the ceiling, one over it, reserve, and clear-capacity preservation hold; the injected-OOM append_range call is live-proved and preserves pointer and bytes for source and destination too' \
     'PASS: one value in both positions of append_range, an unresolved identity, and a temporary in a carrier slot are refused as E2S177, commit no C and are mutation-proved to commit no binary, fit the sidecar detail bound, and the same-carrier refusal reports identically on a second run' \
-    'PASS: read-to-edit is refused as E2S178 for all seven mutating destinations before C or binary publication, with bounded deterministic detail; append_range still accepts its read source' \
-    'PASS: all eight compiler-private Bytes outcomes are accepted only as complete discarded expression statements; every operation and value context refuses as E2S179 with no C or binary artifact'
+    'PASS: read-to-edit is refused as E2S178 for all eight mutating destinations before C or binary publication, with bounded deterministic detail; append_range still accepts its read source' \
+    'PASS: all eight compiler-private Bytes outcomes are accepted only as complete discarded expression statements; every operation and value context refuses as E2S179 with no C or binary artifact, while byte_at is accepted in each of those contexts and prints the byte'

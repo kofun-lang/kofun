@@ -18,6 +18,7 @@ round-tripping the Kofun file does not execute its lowering logic.
 | A lambda binding used as a value | `emit_primary` selects its lifted function symbol | `task unused-function hm-levels call-arguments` |
 | Whole-carrier Bytes return | `emit_bytes_return` owns failure cleanup, transfer, then success cleanup | `task bytes-carrier bytes-mutation` |
 | A temporary passed to a Bytes parameter | `emit_argument` requires `bytes_named_carrier_binding` before taking an address | `task bytes-carrier` |
+| A file read into a Bytes carrier, and a byte read out of one | `emit_bytes_mutation_call` lowers `read_file` like the rest of the family; the emitted `stage2_bytes_read_file` fills a window before touching the carrier, and `stage2_bytes_byte_at` returns `int64_t` with `R025` on an out-of-range offset | `task bytes-mutation bytes-read-file` |
 | Which positional calls consume a binding | `call_argument_parameter_property` resolves the slot; `move_positional_binding` and `move_positional_owner` bound direct calls and owning types | `task move-call-crossings` |
 | Whether a later name is the moved value | `move_same_binding` compares HIR BindingIds for every move spelling | `task move-call-crossings records call-arguments` |
 | Trivial-record `edit` in the by-value ABI | `move_trivial_record` defines the shared type bound; `validate_move_record_modes` refuses the declaration | `task move-call-crossings` |

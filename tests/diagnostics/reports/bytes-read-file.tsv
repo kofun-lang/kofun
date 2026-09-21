@@ -1,0 +1,5 @@
+# code	adapter	channel	exit	primary-span	secondary-span	artifact
+R025	bytes-read-file	stderr	1	not-applicable	not-applicable	required
+R026	bytes-read-file	stderr	1	not-applicable	not-applicable	required
+R027	bytes-read-file	stderr	1	not-applicable	not-applicable	required
+R028	bytes-read-file	stderr	1	not-applicable	not-applicable	required

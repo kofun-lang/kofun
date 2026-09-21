@@ -1,12 +1,13 @@
 # diagnostic-mode: compile
 # expect-code: E2S179
-# expect-span: byte 360
-# #1559. A compiler-private byte-read carrier is not a Kofun source value.
-# Binding it must be refused before C exists; the Bytes mutation gate covers
-# the other seven operations and the remaining value contexts.
+# expect-span: byte 442
+# #1559. A compiler-private status is not a Kofun source value. Binding it
+# must be refused before C exists; the Bytes mutation gate covers the other
+# seven private operations and the remaining value contexts. #1499 moved the
+# fixture from `byte_at`, which now produces the byte, to `reserve`.
 fn main() -> Int {
     let bytes = stage2_bytes_empty()
-    let value = stage2_bytes_byte_at(bytes, 0)
+    let value = stage2_bytes_reserve(bytes, 4)
     print(value)
     return 0
 }

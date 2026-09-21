@@ -1115,11 +1115,17 @@ tasks:
     cmds:
       - "sh tests/conformance/bytes-mutation/run.sh"
 
+  bytes-read-file:
+    desc: "Verify a compiled program reads a file into Bytes[65536] and digests it, refusing over-bound and unreadable paths by name"
+    cmds:
+      - "sh tests/conformance/bytes-read-file/run.sh"
+
   bounded-bytes:
-    desc: "Verify the fixture-bounded Bytes[65536] carrier and mutation checkpoint"
+    desc: "Verify the fixture-bounded Bytes[65536] carrier, mutation, and file-read checkpoint"
     cmds:
       - task: bytes-carrier
       - task: bytes-mutation
+      - task: bytes-read-file
 
   call-arguments:
     desc: "Verify labelled-call binding and source order across C11, native, and wasm32"

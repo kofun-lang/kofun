@@ -138,6 +138,7 @@ cc	invoke	1	required-today	required	tests/conformance/backends/c11-stage1.sh
 cc	invoke	1	required-today	required	tests/conformance/backends/c11-stage2.sh
 cc	invoke	6	required-today	required	tests/conformance/bytes-carrier/run.sh
 cc	invoke	7	required-today	required	tests/conformance/bytes-mutation/run.sh
+cc	invoke	2	required-today	required	tests/conformance/bytes-read-file/run.sh
 cc	invoke	2	required-today	required	tests/conformance/call-arguments/run.sh
 cc	invoke	5	required-today	required	tests/conformance/codegen/dense-enum-dispatch/run.sh
 cc	invoke	6	required-today	required	tests/conformance/const-generics/run.sh
@@ -605,6 +606,7 @@ shell-build-driver	source	1	required-today	unknown	tests/conformance/backends/na
 shell-build-driver	source	1	required-today	unknown	tests/conformance/backends/wasm32-node.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/bytes-carrier/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/bytes-mutation/run.sh
+shell-build-driver	source	1	required-today	required	tests/conformance/bytes-read-file/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/call-arguments/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/capabilities_test.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/check-capabilities.sh

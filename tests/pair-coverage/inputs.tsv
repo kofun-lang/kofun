@@ -406,6 +406,7 @@ tests/conformance/bytes-mutation/read_to_edit_long_slot.kofun
 tests/conformance/bytes-mutation/read_to_edit_ordinary.kofun
 tests/conformance/bytes-mutation/read_to_edit_ordinary_parenthesized.kofun
 tests/conformance/bytes-mutation/read_to_edit_pipeline_hold.kofun
+tests/conformance/bytes-mutation/read_to_edit_read_file.kofun
 tests/conformance/bytes-mutation/read_to_edit_reserve.kofun
 tests/conformance/bytes-mutation/same_carrier.kofun
 tests/conformance/bytes-mutation/same_name_declarations.kofun
@@ -419,6 +420,10 @@ tests/conformance/bytes-mutation/wrapper_conflict_take_edit.kofun
 tests/conformance/bytes-mutation/wrapper_conflict_take_read.kofun
 tests/conformance/bytes-mutation/wrapper_conflict_type.kofun
 tests/conformance/bytes-mutation/wrapper_identity.kofun
+tests/conformance/bytes-read-file/byte_at_out_of_range.kofun
+tests/conformance/bytes-read-file/read_cannot_allocate.kofun
+tests/conformance/bytes-read-file/read_missing_path.kofun
+tests/conformance/bytes-read-file/read_over_bound.kofun
 tests/conformance/call-arguments/assigned_lambda.kofun
 tests/conformance/call-arguments/block_lambda_argument_position.kofun
 tests/conformance/call-arguments/block_lambda_let_position.kofun
