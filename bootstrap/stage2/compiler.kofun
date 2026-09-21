@@ -19,7 +19,8 @@ fn identifier_continue(symbol: Text) -> Bool {
     return symbol == "_" || is_xid_continue(symbol)
 }
 
-fn skip_trivia(source: Text, start: Int) -> Int {
+# Whitespace and comments: what the token tape steps over.
+fn skip_lexical_trivia(source: Text, start: Int) -> Int {
     let symbols = chars(source)
     let mut cursor = start
     while cursor < len(symbols) {
@@ -31,6 +32,31 @@ fn skip_trivia(source: Text, start: Int) -> Int {
             }
         } else {
             return cursor
+        }
+    }
+    return cursor
+}
+
+# What every reader of the source steps over: lexical trivia, and — #1515 —
+# one comma standing directly before `)` or `]`. Such a comma separates
+# nothing; the accepted contracts (`spec/syntax/call-arguments-v1.md` as
+# amended, `spec/records-v1.md`, the list production of `spec/grammar.ebnf`)
+# admit exactly one, and treating it as trivia here is what makes every
+# parameter, argument, and element walker count members rather than commas.
+# Before this, `fn add(a: Int, b: Int,)` was three parameters to
+# `parameter_count` and the author was told `expects 3 arguments, got 2`.
+#
+# The token tape does not use this: a comma is a token, and the tape records
+# tokens. `,,` is not trivia either — nothing stands before the second comma —
+# and `validate_delimiter_surface` refuses it by name.
+fn skip_trivia(source: Text, start: Int) -> Int {
+    let symbols = chars(source)
+    let cursor = skip_lexical_trivia(source, start)
+    if cursor < len(symbols) && symbols[cursor] == "," {
+        let probe = skip_lexical_trivia(source, cursor + 1)
+        if probe < len(symbols) &&
+           (symbols[probe] == ")" || symbols[probe] == "]") {
+            return probe
         }
     }
     return cursor
@@ -388,7 +414,9 @@ fn lex(source: Text) -> Text {
         return unicode_error
     }
     let mut tape = "kofun-token-tape/v1\n"
-    let mut cursor = skip_trivia(source, 0)
+    # Lexical trivia only: a terminal comma is a token the tape records even
+    # though every other reader steps over it.
+    let mut cursor = skip_lexical_trivia(source, 0)
     while cursor < len(source) {
         let end = token_end(source, cursor)
         if end <= cursor {
@@ -404,7 +432,7 @@ fn lex(source: Text) -> Text {
         tape = tape + token_kind(source, cursor) + "|" +
         to_text(cursor) + "|" + to_text(end) + "|" +
         to_text(line_at(source, cursor)) + "\n"
-        cursor = skip_trivia(source, end)
+        cursor = skip_lexical_trivia(source, end)
     }
     return tape
 }
@@ -542,8 +570,12 @@ fn pattern_stop_token(source: Text, start: Int) -> Bool {
     token == ")" || token == "}" || token == "if"
 }
 
+# The pattern parser below steps over lexical trivia only: the Pattern IR is a
+# lossless projection that records every payload comma as a delimiter (#1515
+# made a terminal comma trivia to every other reader), and `Present(value,)`
+# already parsed as one payload before that.
 fn pattern_recovery_end(source: Text, start: Int) -> Int {
-    let mut cursor = skip_trivia(source, start)
+    let mut cursor = skip_lexical_trivia(source, start)
     let mut parens = 0
     let mut brackets = 0
     while cursor < len(source) {
@@ -575,7 +607,7 @@ fn pattern_recovery_end(source: Text, start: Int) -> Int {
             }
             brackets = brackets - 1
         }
-        cursor = skip_trivia(source, token_end(source, cursor))
+        cursor = skip_lexical_trivia(source, token_end(source, cursor))
     }
     return cursor
 }
@@ -589,7 +621,7 @@ fn parse_pattern_or_result(
     errors: Int,
     limit_id: Int
 ) -> Text {
-    let cursor = skip_trivia(source, start)
+    let cursor = skip_lexical_trivia(source, start)
     let token = token_text(source, cursor)
     if token == "|" || token == "||" {
         let mut reason = "leading-or"
@@ -608,7 +640,7 @@ fn parse_pattern_or_result(
     if pattern_result_field(first, 5) == "1" {
         return first
     }
-    let mut separator = skip_trivia(
+    let mut separator = skip_lexical_trivia(
         source,
         pattern_result_int(first, 0)
     )
@@ -644,7 +676,7 @@ fn parse_pattern_or_result(
         records = records + "separator|OrPattern|" + to_text(cursor) +
         "|" + to_text(alternatives - 1) + "|" + to_text(separator) +
         "|" + to_text(token_end(source, separator)) + "\n"
-        let next = skip_trivia(source, token_end(source, separator))
+        let next = skip_lexical_trivia(source, token_end(source, separator))
         if token_text(source, next) == "|" ||
            token_text(source, next) == "||" {
             return pattern_error_result(
@@ -673,7 +705,7 @@ fn parse_pattern_or_result(
         current_limit = pattern_result_int(alternative, 7)
         alternatives = alternatives + 1
         end = pattern_result_int(alternative, 0)
-        separator = skip_trivia(source, end)
+        separator = skip_lexical_trivia(source, end)
     }
     if token_text(source, separator) == "||" {
         return pattern_error_result(
@@ -716,7 +748,7 @@ fn parse_pattern_atomic_result(
     errors: Int,
     limit_id: Int
 ) -> Text {
-    let cursor = skip_trivia(source, start)
+    let cursor = skip_lexical_trivia(source, start)
     if nodes >= pattern_node_limit() {
         return pattern_limit_result(
             source, cursor, next_id, nodes, errors, limit_id
@@ -761,13 +793,13 @@ fn parse_pattern_atomic_result(
 
     if token == "(" {
         let inner = parse_pattern_or_result(
-            source, skip_trivia(source, token_finish), depth + 1,
+            source, skip_lexical_trivia(source, token_finish), depth + 1,
             next_id, nodes, errors, limit_id
         )
         if pattern_result_field(inner, 5) == "1" {
             return inner
         }
-        let close = skip_trivia(source, pattern_result_int(inner, 0))
+        let close = skip_lexical_trivia(source, pattern_result_int(inner, 0))
         if token_text(source, close) != ")" {
             return pattern_error_result(
                 cursor, pattern_recovery_end(source, close),
@@ -833,7 +865,7 @@ fn parse_pattern_atomic_result(
         )
     }
 
-    let after_name = skip_trivia(source, token_finish)
+    let after_name = skip_lexical_trivia(source, token_finish)
     if token_text(source, after_name) == "{" {
         let close = balanced_end(source, after_name, "{", "}")
         let mut end = close
@@ -856,7 +888,7 @@ fn parse_pattern_atomic_result(
     }
 
     let open = after_name
-    let mut payload = skip_trivia(source, token_end(source, open))
+    let mut payload = skip_lexical_trivia(source, token_end(source, open))
     if token_text(source, payload) == ")" {
         return pattern_error_result(
             cursor, token_end(source, payload), "empty-constructor-payload",
@@ -889,7 +921,7 @@ fn parse_pattern_atomic_result(
         current_errors = pattern_result_int(child, 4)
         current_limit = pattern_result_int(child, 7)
         payload_count = payload_count + 1
-        let separator = skip_trivia(
+        let separator = skip_lexical_trivia(
             source,
             pattern_result_int(child, 0)
         )
@@ -898,7 +930,7 @@ fn parse_pattern_atomic_result(
             to_text(cursor) + "|payload-comma|" +
             to_text(payload_count - 1) + "|" + to_text(separator) +
             "|" + to_text(token_end(source, separator)) + "\n"
-            payload = skip_trivia(source, token_end(source, separator))
+            payload = skip_lexical_trivia(source, token_end(source, separator))
             if token_text(source, payload) == ")" {
                 close = payload
             }
@@ -948,7 +980,7 @@ fn parse_pattern_atomic_result(
 }
 
 fn pattern_match_open(source: Text, match_start: Int) -> Int {
-    let mut cursor = skip_trivia(source, token_end(source, match_start))
+    let mut cursor = skip_lexical_trivia(source, token_end(source, match_start))
     let mut parens = 0
     let mut brackets = 0
     while cursor < len(source) {
@@ -970,13 +1002,13 @@ fn pattern_match_open(source: Text, match_start: Int) -> Int {
         } else if token == "}" && parens == 0 && brackets == 0 {
             return -1
         }
-        cursor = skip_trivia(source, token_end(source, cursor))
+        cursor = skip_lexical_trivia(source, token_end(source, cursor))
     }
     return -1
 }
 
 fn pattern_arm_arrow(source: Text, start: Int, match_close: Int) -> Int {
-    let mut cursor = skip_trivia(source, start)
+    let mut cursor = skip_lexical_trivia(source, start)
     let mut parens = 0
     let mut brackets = 0
     while cursor < match_close {
@@ -1002,7 +1034,7 @@ fn pattern_arm_arrow(source: Text, start: Int, match_close: Int) -> Int {
         } else if token == "{" && parens == 0 && brackets == 0 {
             return -1
         }
-        cursor = skip_trivia(source, token_end(source, cursor))
+        cursor = skip_lexical_trivia(source, token_end(source, cursor))
     }
     return -1
 }
@@ -1010,7 +1042,7 @@ fn pattern_arm_arrow(source: Text, start: Int, match_close: Int) -> Int {
 fn parse_pattern_trees(source: Text) -> Text {
     let mut tree = "kofun-pattern-tree/v1\n" +
     "limits|depth|32|nodes-per-compilation|256\n"
-    let mut cursor = skip_trivia(source, 0)
+    let mut cursor = skip_lexical_trivia(source, 0)
     let mut match_id = 0
     let mut next_id = 0
     let mut nodes = 0
@@ -1027,7 +1059,7 @@ fn parse_pattern_trees(source: Text) -> Text {
             if open >= 0 && match_end >= 0 {
                 let close = match_end - 1
                 let mut arms = ""
-                let mut arm_cursor = skip_trivia(
+                let mut arm_cursor = skip_lexical_trivia(
                     source,
                     token_end(source, open)
                 )
@@ -1042,7 +1074,7 @@ fn parse_pattern_trees(source: Text) -> Text {
                         source, arm_cursor, 1, next_id, nodes,
                         errors, limit_id
                     )
-                    let after_pattern = skip_trivia(
+                    let after_pattern = skip_lexical_trivia(
                         source,
                         pattern_result_int(pattern, 0)
                     )
@@ -1090,13 +1122,13 @@ fn parse_pattern_trees(source: Text) -> Text {
                         budget_exhausted = true
                         arm_cursor = close
                     } else if arrow < 0 {
-                        let recovery = skip_trivia(
+                        let recovery = skip_lexical_trivia(
                             source,
                             pattern_result_int(pattern, 0)
                         )
                         if recovery < close &&
                            token_text(source, recovery) == "," {
-                            arm_cursor = skip_trivia(
+                            arm_cursor = skip_lexical_trivia(
                                 source,
                                 token_end(source, recovery)
                             )
@@ -1104,7 +1136,7 @@ fn parse_pattern_trees(source: Text) -> Text {
                             arm_cursor = close
                         }
                     } else {
-                        let body = skip_trivia(
+                        let body = skip_lexical_trivia(
                             source,
                             token_end(source, arrow)
                         )
@@ -1120,12 +1152,12 @@ fn parse_pattern_trees(source: Text) -> Text {
                             if body_end < 0 {
                                 arm_cursor = close
                             } else {
-                                arm_cursor = skip_trivia(source, body_end)
+                                arm_cursor = skip_lexical_trivia(source, body_end)
                             }
                         }
                         if arm_cursor < close &&
                            token_text(source, arm_cursor) == "," {
-                            arm_cursor = skip_trivia(
+                            arm_cursor = skip_lexical_trivia(
                                 source,
                                 token_end(source, arm_cursor)
                             )
@@ -1140,7 +1172,7 @@ fn parse_pattern_trees(source: Text) -> Text {
                 match_id = match_id + 1
             }
         }
-        cursor = skip_trivia(source, token_end(source, cursor))
+        cursor = skip_lexical_trivia(source, token_end(source, cursor))
     }
     return tree + "match-count|" + to_text(match_id) + "\n"
 }
@@ -2959,12 +2991,151 @@ fn validate_pipeline_shapes(source: Text) -> Text {
     return ""
 }
 
+# #1515. A comma with nothing before it — `(,` or `,,` — separates nothing and
+# is not the one terminal comma the contracts admit, so it is refused by name
+# at that comma, ahead of every count. Left to the counts, `fn f(a: Int,, b:
+# Int)` was `E2S35 malformed parameter head` and `f(1,, 2)` was `E2S12 invalid
+# Int expression` at the call head — true statements about the wrong construct.
+#
+# Only the surfaces the contracts own are touched: a `fn` declaration's
+# parameter list, the argument list of a call whose callee is a declared
+# function, a builtin, or `print`, and a `List[Int]` literal. Record
+# construction and constructor patterns are their own surfaces, and a lambda's
+# parameter list is #882's — none of those heads reach `delimiter_fault`.
+fn delimiter_refusal(message: Text, comma: Int) -> Text {
+    return "error[E2S182]: " + message + " at byte " + to_text(comma)
+}
+
+# Walk one delimited list from `open` to the `close` that balances it and name
+# the first comma with no member before it. This walker steps over lexical
+# trivia only, so unlike every other reader it sees a terminal comma — which is
+# fine after a member and an empty member when it is the first thing in the
+# list. Nested parentheses and brackets are stepped over, so a lambda or a call
+# inside the list is its own list.
+#
+# Returns the comma's byte offset, or -1 when nothing is wrong or the list does
+# not close — an unclosed list is some other diagnostic's to name.
+fn delimiter_fault(source: Text, open: Int, close: Text) -> Int {
+    let mut cursor = skip_lexical_trivia(source, token_end(source, open))
+    let mut paren_depth = 0
+    let mut bracket_depth = 0
+    let mut members = 0
+    let mut pending = false
+    while cursor < len(source) {
+        let token = token_text(source, cursor)
+        let nested = paren_depth > 0 || bracket_depth > 0
+        if !nested && token == close {
+            return -1
+        }
+        if !nested && token == "," {
+            if pending || members == 0 {
+                return cursor
+            }
+            pending = true
+        } else if !nested {
+            if pending || members == 0 {
+                members = members + 1
+            }
+            pending = false
+        }
+        if token == "(" {
+            paren_depth = paren_depth + 1
+        } else if token == ")" {
+            if paren_depth == 0 {
+                return -1
+            }
+            paren_depth = paren_depth - 1
+        } else if token == "[" {
+            bracket_depth = bracket_depth + 1
+        } else if token == "]" {
+            if bracket_depth == 0 {
+                return -1
+            }
+            bracket_depth = bracket_depth - 1
+        }
+        cursor = skip_lexical_trivia(source, token_end(source, cursor))
+    }
+    return -1
+}
+
+fn validate_delimiter_surface(source: Text) -> Text {
+    # Almost every source has a comma, so this guard rarely saves the walk; it
+    # exists so a comma-free source pays nothing at all.
+    if !contains(source, ",") {
+        return ""
+    }
+    let mut cursor = skip_trivia(source, 0)
+    let mut previous = ""
+    let mut previous_kind = ""
+    while cursor < len(source) {
+        let kind = token_kind(source, cursor)
+        if token_text(source, cursor) == "[" {
+            # A literal, not an index or a type argument: nothing that could be
+            # indexed or parameterised stands before it.
+            let literal = previous_kind != "identifier" &&
+                previous != "]" && previous != ")"
+            if literal {
+                let fault = delimiter_fault(source, cursor, "]")
+                if fault >= 0 {
+                    return delimiter_refusal(
+                        "List[Int] literal has an empty element at this comma",
+                        fault
+                    )
+                }
+            }
+        } else if kind == "identifier" {
+            let open = skip_trivia(source, token_end(source, cursor))
+            if open < len(source) && token_text(source, open) == "(" {
+                if previous == "fn" {
+                    let fault = delimiter_fault(source, open, ")")
+                    if fault >= 0 {
+                        return delimiter_refusal(
+                            "parameter list has an empty parameter at this comma",
+                            fault
+                        )
+                    }
+                } else if previous != "." {
+                    let fault = delimiter_fault(source, open, ")")
+                    # The callee is classified only once a fault is found:
+                    # `function_arity` walks every declaration, and paying
+                    # that at every call for a list that is fine would be the
+                    # cost of a defect nobody wrote.
+                    if fault >= 0 {
+                        let name = token_text(source, cursor)
+                        let declared = function_arity(source, name)
+                        let callee = name == "print" ||
+                            builtin_arity(name) >= 0 ||
+                            declared >= 0 ||
+                            declared == -2
+                        if callee {
+                            return delimiter_refusal(
+                                "argument list has an empty argument at this comma",
+                                fault
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        previous = token_text(source, cursor)
+        previous_kind = kind
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return ""
+}
+
 fn parse_program(source: Text) -> Text {
     # #882 owns attachment/lowering; refuse before ordinary call analysis can
     # reinterpret the trailing lambda as a separate expression.
     let surface_check = validate_trailing_lambda_surface(source)
     if starts_with(surface_check, "error[") {
         return surface_check
+    }
+    # #1515: a comma that separates nothing, refused at the comma before any
+    # count can report it as a member.
+    let delimiter_check = validate_delimiter_surface(source)
+    if starts_with(delimiter_check, "error[") {
+        return delimiter_check
     }
     # #1190: pipeline shapes outside the recognized production, refused before
     # scope construction can report a bare callee as an unknown binding.
