@@ -2,44 +2,25 @@
 # The Stage 2 pair's undefended-branch ledger, held exact in both directions and
 # under both host compilers. (#1408, parent #1401)
 #
-# `undefended.tsv` records, per function of `bootstrap/stage2/compiler.c`, how
-# many of its branches nothing this repository runs ever takes -- once under
-# each compiler of the diverse pair. That set is where a divergence between
-# `compiler.kofun` and its hand-maintained `compiler.c` transliteration can
-# hide: a divergence on a taken branch changes emitted C, and
-# `selfhost-generations` and `selfhost-fixed-point` compare that. #1315's leak
-# lived in `lower_body`, still the largest untaken region in the file.
+# `undefended.tsv` records branches in the instrumented
+# `bootstrap/stage2/compiler.c` not taken by the pinned drivers and corpus,
+# under each host compiler. A row identifies measured reach, not a defect or
+# semantic agreement with compiler.kofun. The ledger header records the exact
+# source, basis, toolchains and scope of its measurement.
 #
-# THE LEDGER RECORDS A HIDING PLACE, NOT A DEFECT. A listed function is not
-# wrong; it is unwatched.
+# A SECOND EXECUTION PATH DOES NOT MAKE THIS A WHOLE-PAIR EQUIVALENCE CHECK.
+# The fixed-point chain names stage1/compiler.kofun as canonical source and
+# stage2/compiler.c as trusted seed. Stage 2's structural round trip alone
+# does not run the maintained Kofun compiler's semantics. #1513 now executes
+# selected canonical Kofun bodies through a bounded trusted driver and
+# compares complete emitted C for its fixture inventory; this is executable
+# evidence for those paths, not native self-compilation or whole-file proof.
+# The public C fixture honors the coverage hook. Private scalar/fault probes
+# use an isolated translation unit and do not add hits to this main profile.
 #
-# AND IT IS NOT THE ONLY HIDING PLACE. The sentence above says a divergence on a
-# taken branch changes emitted C and is caught. That is true of the C half. It
-# overstates what happens to the Kofun half, and the difference was measured by
-# the session working #1315, who found it the right way -- a byte count that did
-# not move after adding ~480 lines to what they believed was the input.
-#
-# `bootstrap/manifest.json` names the fixed-point chain's inputs:
-#
-#     canonical_source  bootstrap/stage1/compiler.kofun
-#     trusted_seed      bootstrap/stage2/compiler.c
-#
-# `bootstrap/stage2/compiler.kofun` is neither. Checked here rather than taken
-# on trust: it IS processed -- `bootstrap/stage2/check.sh:592` round-trips it
-# through `kofun-stage2`, byte-compares the identity projection against the
-# source, and produces an IR -- but that IR is only asserted NON-EMPTY and to
-# carry a version header. Its contents are compared to nothing, and nothing
-# compiles it to C or runs the result.
-#
-# So the Kofun half is checked for syntax and for structure -- matching function
-# names and counts, asserted string literals, the per-name dispatch minimums in
-# `list-int-signatures`, `optional-pair` and `sha256-pair`. A logic error that
-# preserved all of those would be invisible to every gate in this repository,
-# whether or not the corresponding C branch is ever taken.
-#
-# THIS LEDGER DOES NOT MEASURE THAT LARGER SET, and saying so is the point: a
-# ledger that implied it covered the whole risk would be worse than one that
-# names its own edge.
+# THIS LEDGER DOES NOT MEASURE THAT LARGER SET. A Kofun logic error outside
+# those fixtures can survive even if its C counterpart has a nonzero count.
+# A shorter ledger is not a proof of a smaller semantic risk.
 #
 # A SECOND EDGE, and the sharper one, because coverage cannot see it even in
 # principle: A BRANCH CAN BE TAKEN AND STILL BE WRONG. #1315 found
@@ -54,8 +35,8 @@
 # was missing was a second caller, not a second execution.
 #
 # So the two things outside this ledger are the two things worth stating: the
-# Kofun half is never semantically compiled, and a covered branch may still be
-# wrong when a sibling caller papers over it. Neither is an argument against
+# complete Kofun half is not natively self-compiled, and a covered branch may
+# still be wrong when a sibling caller papers over it. Neither argues against
 # measuring the untaken set. Both are arguments against reading a short ledger
 # as a small risk.
 #

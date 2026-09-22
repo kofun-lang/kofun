@@ -6,14 +6,12 @@
 # is a fix that was not recorded. The second direction is the one that is
 # usually missing, and it is what makes this file shrink.
 #
-# A ROW IS A DEFECT, NOT AN EXEMPTION. Neither row below is a case the checker
-# should learn to accept: both are places where the Kofun half of the Stage 2
-# pair names a function that does not exist, which nothing else in this
-# repository can see, because nothing semantically compiles that half --
-# `bootstrap/manifest.json` names `bootstrap/stage1/compiler.kofun` as the
-# canonical source and `bootstrap/stage2/compiler.c` as the trusted seed, and
-# `bootstrap/stage2/check.sh` only round-trips this file's text and asserts its
-# IR is non-empty.
+# A ROW IS A DEFECT, NOT AN EXEMPTION. The original is_xid_start and
+# ends_with rows exposed calls that structural round-trip gates did not
+# resolve. Both are now fixed. #1513 supplies scalar decoding through the
+# approved private host boundary and pinned XID tables, with executable
+# canonical-Kofun fixtures; this does not add an ordinary Core builtin or
+# establish native compilation of the complete Kofun compiler.
 #
 # kind   `missing-builtin`  the name could only be a builtin of the language the
 #                           C half implements, and `builtin_arity` in
@@ -22,4 +20,5 @@
 #                           half never wrote the counterpart
 #
 # name	kind	reason
-is_xid_start	missing-builtin	bootstrap/stage2/compiler.kofun:15, inside the file's own lexer: `fn identifier_start(symbol: Text) -> Bool { return symbol == "_" || is_xid_start(symbol) }`. Measured on 2026-08-20 at f42cfdd3: `git grep -n 'is_xid_start' -- '*.kofun' '*.md' 'spec/**'` finds this one line and nothing else, and the C half's builtin table has `is_xid_continue` and no `is_xid_start`. The C half's counterpart does not go through a builtin at all -- `identifier_start_at` decodes a UTF-8 scalar and tests `kofun_unicode_is_xid_start` from unicode/kofun_unicode.c. So the fix is a DECISION, not a transliteration, and it is bigger than the missing name: `chars()` is byte-wise (`kofun_rt_chars` emits one 1-byte string per byte), so the Kofun half inspects a single BYTE where the C half decodes a whole scalar. A byte-wise `is_xid_start` would resolve this row and still not agree with the C half on a non-ASCII identifier, which the C half accepts today -- `let 日本 = 41` lexes as one identifier token spanning bytes 27..33. Whoever fixes this owns both halves of that.
+# #1513 resolves the final row through driver-private scalar decoding and
+# pinned XID tables in the canonical compiler; no public builtin was added.
