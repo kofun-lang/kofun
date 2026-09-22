@@ -229,5 +229,15 @@ for(const call of calls) {
   assert(fixture.cases.some(test=>kofunLower(side,test)!==expected.get(test.name)),`unexercised escape funnel at byte ${call.index}`);
 }
 console.log(`PASS: removing either scalar path or identity guard fails; all ${calls.length} Kofun escape dispatch mutations detected`);
+// Prove the C dispatch inventory independently too: agreement alone could
+// miss a fixture that never passes through one of the maintained C funnels.
+const cCalls=[...cSource.matchAll(/\bc_identifier_name\(/g)].filter(m=>!cSource.slice(Math.max(0,m.index-13),m.index).endsWith('static char *'));
+for(const [index,call] of cCalls.entries()) {
+  const mutated=(cSource.slice(0,call.index)+'pair_unescaped('+cSource.slice(call.index+'c_identifier_name('.length))
+    .replace('static char *c_identifier_name(', 'static char *pair_unescaped(const char *identifier) { return owned_text(identifier); }\nstatic char *c_identifier_name(');
+  const binary=buildNative(`c-escape-${index}`,mutated);
+  assert(fixture.cases.some(test=>nativeLower(binary,test)!==expected.get(test.name)),`unexercised C escape funnel at byte ${call.index}`);
+}
+console.log(`PASS: all ${cCalls.length} C escape dispatch mutations detected`);
 console.log(`PASS: Stage 2 host-primitives pair (${work})`);
 fs.rmSync(work,{recursive:true});

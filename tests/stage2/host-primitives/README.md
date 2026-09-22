@@ -34,9 +34,9 @@ existing output bytes.
 The native fixture injects lookup failures only inside its own translation
 unit; production code has no environment-controlled failure or guard bypass.
 The same versioned fixture runs on each half. Independent production-source
-mutations remove C and Kofun scalar handling and identity guards. Each Kofun
-escaping dispatch is then bypassed separately to prove that the fixture set
-covers every route. Mutation builds must compile successfully before a behavior
+mutations remove C and Kofun scalar handling and identity guards. Each
+escaping dispatch in both halves is then bypassed separately to prove that the
+fixture set covers every route. Mutation builds must compile successfully before a behavior
 comparison can count as detecting a defect.
 
 The pair comparison also exposed two small prerequisites: the Kofun C prelude

@@ -340,10 +340,15 @@ if test "${1:-}" = "--prove"; then
     prove_case now-mirrored 1 "$HERE/mirror.tsv" "$PROVE/now-mirrored.kofun" \
         buffer_format
 
-    # 5. A verdict with no evidence.
-    sed 's/^c_identifier_name\tc-only\t-\t.*/c_identifier_name\tc-only\t-\t/' \
+    # 5. A verdict with no evidence. Select a live C-only row: #1513 gave
+    # c_identifier_name a counterpart, so that historical anchor no longer
+    # mutated anything and made the proof fail for an already-fixed defect.
+    unmarked=$(awk -F '\t' '$2 == "c-only" { print $1; exit }' "$HERE/mirror.tsv")
+    test -n "$unmarked" || { echo "mirror.sh: no C-only proof row" >&2; exit 1; }
+    awk -F '\t' -v OFS='\t' -v name="$unmarked" \
+        '$1 == name { $4 = "" } { print }' \
         "$HERE/mirror.tsv" >"$PROVE/no-mark.tsv"
-    prove_case no-mark 1 "$PROVE/no-mark.tsv" "$SRC" c_identifier_name
+    prove_case no-mark 1 "$PROVE/no-mark.tsv" "$SRC" "$unmarked"
 
     # 6. The committed map against the committed tree, which must pass -- a
     #    proof harness that only ever refuses would pass on a gate that refuses

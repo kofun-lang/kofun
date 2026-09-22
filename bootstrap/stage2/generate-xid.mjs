@@ -3,6 +3,9 @@
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('../../', import.meta.url));
+if (process.argv.length !== 2 && !(process.argv.length === 3 && process.argv[2] === '--check')) {
+  throw new Error('usage: generate-xid.mjs [--check]');
+}
 const tables = fs.readFileSync(`${root}unicode/kofun_unicode_tables.inc`, 'utf8');
 const path = `${root}bootstrap/stage2/compiler.kofun`;
 let generated = '# BEGIN GENERATED XID RANGES\n# Unicode 17.0.0; regenerate with node bootstrap/stage2/generate-xid.mjs.\n';
@@ -22,8 +25,13 @@ for (const kind of ['start', 'continue']) {
 }
 generated += '# END GENERATED XID RANGES';
 const source = fs.readFileSync(path, 'utf8');
+for (const marker of ['# BEGIN GENERATED XID RANGES', '# END GENERATED XID RANGES']) {
+  if (source.split(marker).length !== 2) throw new Error(`expected exactly one ${marker}`);
+}
+if (source.indexOf('# BEGIN GENERATED XID RANGES') >= source.indexOf('# END GENERATED XID RANGES')) {
+  throw new Error('XID generation markers are out of order');
+}
 const updated = source.replace(/# BEGIN GENERATED XID RANGES[\s\S]*?# END GENERATED XID RANGES/, generated);
 if (process.argv[2] === '--check') {
   if (source !== updated) throw new Error('Kofun XID tables differ from the pinned Unicode authority');
-} else if (process.argv.length === 2) fs.writeFileSync(path, updated);
-else throw new Error('usage: generate-xid.mjs [--check]');
+} else fs.writeFileSync(path, updated);

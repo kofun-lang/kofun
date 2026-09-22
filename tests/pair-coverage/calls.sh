@@ -549,6 +549,7 @@ inside && /\{"/ {
     }
 }
 ' "$C_HALF" | sort -u >"$WORK/host-operations.txt"
+require_nonempty "private host operation names" "$WORK/host-operations.txt"
 
 # `int_bit_method_arity`'s table: the `.name(...)` methods on Int.
 awk '
