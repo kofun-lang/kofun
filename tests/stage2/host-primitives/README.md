@@ -33,6 +33,10 @@ existing output bytes.
 
 The native fixture injects lookup failures only inside its own translation
 unit; production code has no environment-controlled failure or guard bypass.
+The public C driver also compiles every identifier fixture and exercises all
+writer aliases and real lookup failures. It honors `KOFUN_STAGE2_COMPILER`, so
+the coverage harness observes those production paths; private scalar/fault
+probes continue to use the isolated fixture.
 The same versioned fixture runs on each half. Independent production-source
 mutations remove C and Kofun scalar handling and identity guards. Each
 escaping dispatch in both halves is then bypassed separately to prove that the

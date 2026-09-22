@@ -33,6 +33,10 @@ function buildNative(name, source) {
   return binary;
 }
 const native = buildNative('native');
+// The coverage harness collects the supplied production compiler's profile.
+// Exercise its public entry points too; private fault probes still belong to
+// the isolated fixture and must never require a production fault switch.
+const production = process.env.KOFUN_STAGE2_COMPILER || native;
 const compiler = loadCompiler();
 // The driver must preserve the compiler's Int/list semantics too. Exercise
 // the canonical SHA-256 functions against the maintained C vectors.
@@ -45,6 +49,19 @@ function nativeLower(binary,test) {
   const input=path.join(work,`${test.name}.kofun`);fs.writeFileSync(input,test.source);
   const result=run(binary,['--pair-lower',input]);
   assert.equal(result.status,0,result.stderr);
+  if(binary===native) {
+    const output=path.join(work,`${test.name}.production.c`);
+    fs.rmSync(output,{force:true});
+    const compiled=run(production,['--compile-outcome',input,output,`${output}.ir`,`${output}.tokens`]);
+    if(result.stdout.startsWith('error[')) {
+      assert.notEqual(compiled.status,0,`public compiler must refuse ${test.name}`);
+      assert.equal(compiled.stdout.trimEnd(),result.stdout.trimEnd());
+      assert(!fs.existsSync(output),`refused ${test.name} published C`);
+    } else {
+      assert.equal(compiled.status,0,`${test.name}: ${compiled.stdout}${compiled.stderr}`);
+      assert.equal(fs.readFileSync(output,'utf8'),result.stdout,`public compiler output: ${test.name}`);
+    }
+  }
   return result.stdout;
 }
 function kofunLower(side,test) {
@@ -132,7 +149,8 @@ function invokeKofun(pair,mode,left,right,{fault,invalidDigest=false,writeProbe,
   }
 }
 function invokeC(binary,mode,left,right,{fault,invalidDigest=false,extra=[]}={}) {
-  return run(binary,[mode[0],left,right,...extra,...(mode[3]?[invalidDigest?'bad':digest]:[])],{env:{...process.env,...(fault?{KOFUN_PAIR_STAT_FAULT:fault}:{})}});
+  const executable=binary===native && !fault ? production : binary;
+  return run(executable,[mode[0],left,right,...extra,...(mode[3]?[invalidDigest?'bad':digest]:[])],{env:{...process.env,...(fault?{KOFUN_PAIR_STAT_FAULT:fault}:{})}});
 }
 for(const mode of modes) {
   for(const alias of aliases) {
@@ -150,6 +168,14 @@ for(const mode of modes) {
     fs.writeFileSync(output,'preserve output');
     const options={fault,invalidDigest:true};
     const result=side==='C'?invokeC(native,mode,input,output,options):invokeKofun(pairSource,mode,input,output,options);
+    assert.equal(result.status,2);assert.match(result.stdout,/stage2_same_file: file lookup failed before output open/);
+    assert.equal(fs.readFileSync(input,'utf8'),source);assert.equal(fs.readFileSync(output,'utf8'),'preserve output');
+  }
+  // Reach real lookup failures through the public driver as well, including
+  // during instrumented coverage. Neither case relies on fault injection.
+  for(const [left,right] of [[`${work}/absent-input.kofun`,output],[input,`${input}/child`]]) for(const side of ['C','Kofun']) {
+    const options={invalidDigest:true};
+    const result=side==='C'?invokeC(native,mode,left,right,options):invokeKofun(pairSource,mode,left,right,options);
     assert.equal(result.status,2);assert.match(result.stdout,/stage2_same_file: file lookup failed before output open/);
     assert.equal(fs.readFileSync(input,'utf8'),source);assert.equal(fs.readFileSync(output,'utf8'),'preserve output');
   }
@@ -173,6 +199,14 @@ for(let target=0;target<outputs.length;target++) {
     const options={fault:outputs[target],extra:outputs.slice(1)};
     const result=side==='C'?invokeC(native,compileMode,input,outputs[0],options):invokeKofun(pairSource,compileMode,input,outputs[0],options);
     assert.equal(result.status,2);assert.match(result.stdout,/stage2_same_file: file lookup failed before output open/);
+    for(const destination of outputs)assert.equal(fs.readFileSync(destination,'utf8'),'preserve artifact');
+  }
+  for(const side of ['C','Kofun']) {
+    const destinations=outputs.map((destination,index)=>index===target?`${input}/child`:destination);
+    const options={extra:destinations.slice(1)};
+    const result=side==='C'?invokeC(native,compileMode,input,destinations[0],options):invokeKofun(pairSource,compileMode,input,destinations[0],options);
+    assert.equal(result.status,2);assert.match(result.stdout,/stage2_same_file: file lookup failed before output open/);
+    assert.equal(fs.readFileSync(input,'utf8'),source);
     for(const destination of outputs)assert.equal(fs.readFileSync(destination,'utf8'),'preserve artifact');
   }
 }
