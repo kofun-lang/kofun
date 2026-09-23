@@ -649,6 +649,11 @@ tasks:
     cmds:
       - "node tests/concurrency/hir/check.mjs"
 
+  concurrency-places:
+    desc: "Verify compiler-resolved checked places, slice bounds and explicit unknowns"
+    cmds:
+      - "node tests/concurrency/places/check.mjs"
+
   concurrency-capture-contract:
     desc: "Verify the versioned scoped-capture HIR, KSE2, and sidecar contract"
     cmds:
@@ -1554,6 +1559,7 @@ tasks:
             scoped-parallelism \
             concurrency-capture-contract \
             concurrency-hir \
+            concurrency-places \
             schedule-trace \
             type-reduction-trace \
             affine-resumption \

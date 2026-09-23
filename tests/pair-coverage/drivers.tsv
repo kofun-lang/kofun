@@ -40,6 +40,7 @@ cli-framework
 clock-adapters
 concurrency-capture-contract
 concurrency-hir
+concurrency-places
 const-generics
 date-time
 decimal

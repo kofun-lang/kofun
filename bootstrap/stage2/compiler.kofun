@@ -24537,6 +24537,794 @@ fn emit_scope_hir_v2_file(input: Text, output: Text, logical_path: Text) -> Bool
     return true
 }
 
+fn checked_place_option(value: Text) -> Int {
+    if len(value) == 0 || len(value) > 10 { return -1 }
+    if len(value) > 1 && text_slice(value, 0, 1) == "0" { return -1 }
+    let number = decimal_value(value)
+    if number < 0 || number > 4294967295 { return -1 }
+    if to_text(number) != value { return -1 }
+    return number
+}
+
+fn emit_place_hir_v2_file(input: Text, output: Text, logical_path: Text, task_text: Text, start_text: Text, end_text: Text) -> Bool {
+    if stage2_same_file(input, output) == 1 {
+        print("error[E2S35]: scope-HIR input and output must be distinct")
+        return false
+    }
+    let task_index = checked_place_option(task_text)
+    let start = checked_place_option(start_text)
+    let end = checked_place_option(end_text)
+    if task_index < 0 || start < 0 || end < 0 {
+        print("error[E2S35]: checked place indices must be canonical unsigned u32 decimal")
+        return false
+    }
+    if !scoped_hir_logical_path(logical_path) {
+        print("error[E2S35]: scope-HIR logical path must be canonical relative UTF-8 (1..4096 bytes)")
+        return false
+    }
+    let source = read_text(input)
+    if len(source) > 4294967295 {
+        print("error[E2S35]: scope-HIR source span exceeds u32")
+        return false
+    }
+    let tokens = lex(source)
+    if starts_with(tokens, "error[") {
+        print(tokens)
+        return false
+    }
+    let tree = parse_pattern_trees(source)
+    let pattern_error = pattern_first_error(tree)
+    if len(pattern_error) > 0 {
+        print(pattern_error)
+        return false
+    }
+    let hir = build_scope_hir_analysis_mode(source, true, true)
+    if starts_with(hir, "error[") {
+        print(hir)
+        return false
+    }
+    let facts = scoped_hir_observations(source, hir)
+    if starts_with(facts, "error[") {
+        print(facts)
+        return false
+    }
+    let document = checked_place_render(source, hir, facts, logical_path, task_index, start, end)
+    if starts_with(document, "error[") {
+        print(document)
+        return false
+    }
+    write_text(output, document)
+    return true
+}
+
+# #1221 analysis-only checked places. Private rows retain source spans and
+# checked types; the public JSON vocabulary is the frozen scope-HIR v2 schema.
+fn checked_place_error(message: Text, at: Int) -> Text {
+    return scoped_hir_error("checked place: " + message, at)
+}
+
+fn checked_place_trim_end(source: Text, start: Int, end: Int) -> Int {
+    let mut cursor = skip_trivia(source, start)
+    let mut last = start
+    while cursor < end {
+        last = token_end(source, cursor)
+        if last <= cursor || last > end { return -1 }
+        cursor = skip_trivia(source, last)
+    }
+    return last
+}
+
+# This node belongs to the analysis expression graph, not the KSE1 node-kind
+# enumeration. Distinct occurrences never collapse by spelling or BindingId.
+fn checked_place_expression_id(file: Text, start: Int, end: Int) -> Text {
+    return scoped_hir_hash_frame("kofun.stage2.analysis-expression/v1", file,
+        scoped_hir_hex(start, 8) + scoped_hir_hex(end, 8), "", "")
+}
+
+fn checked_place_type_id(path: Text, name: Text) -> Text {
+    let package = "kofun.package-id/v1\nkind=anonymous-single-file\nlogical-source=" + path + "\n"
+    let module = scoped_hir_hash_frame("kofun.id.module/v1", scoped_hir_text_hex(
+        "kofun.module-id-input/v1\npackage-payload-begin\n" + package +
+        "package-payload-end\nkind=synthetic-root\n"), "", "", "")
+    let namespace_payload = "kofun.namespace-id/v1\ntag=1\nname=type\n"
+    let namespace = scoped_hir_hash_frame("kofun.id.namespace/v1",
+        scoped_hir_text_hex(namespace_payload), "", "", "")
+    let payload = "800100000020" + module + "800200000020" + namespace +
+        "8003000000067265636f7264" + "8004" + scoped_hir_hex(len(name), 8) + scoped_hir_text_hex(name)
+    return scoped_hir_hash_frame("kofun.id.symbol/v1", payload, "", "", "")
+}
+
+fn checked_place_normalize_type(type: Text) -> Text {
+    if type == "List[Text]" { return "List" }
+    return type
+}
+
+fn checked_place_type_known(catalog: Text, name: Text) -> Bool {
+    return name == "Int" || name == "Bool" || name == "Text" ||
+        name == "List[Int]" || name == "List" ||
+        scoped_hir_fact(catalog, "type", 1, name) >= 0
+}
+
+# Check raw commas before skip_trivia applies the single trailing-comma rule.
+# This also runs for recursively checked initializers, not only selections.
+fn checked_place_delimiters(source: Text, open: Int, close: Text) -> Text {
+    let fault = delimiter_fault(source, open, close)
+    if fault < 0 { return "" }
+    if token_text(source, open) == "[" {
+        return delimiter_refusal("List[Int] literal has an empty element at this comma", fault)
+    }
+    return delimiter_refusal("argument list has an empty argument at this comma", fault)
+}
+
+# A declaration graph for analysis, independent of flat runtime record layout.
+# All declarations are collected before edges are checked, admitting forward
+# nominal references while refusing duplicate names, fields and unknown types.
+fn checked_place_catalog(source: Text) -> Text {
+    let mut result = "checked-place-types/v1\n"
+    let mut cursor = after_optional_module_header(source, 0)
+    let mut types = 0
+    while cursor < len(source) {
+        let declaration = type_declaration_start(source, cursor)
+        if declaration >= 0 && record_declaration_at(source, declaration) {
+            let name = type_name(source, declaration)
+            if scoped_hir_fact(result, "type", 1, name) >= 0 {
+                return checked_place_error("duplicate record type", declaration)
+            }
+            if types >= 64 { return checked_place_error("record type limit is 64", declaration) }
+            result = result + "type|" + name + "\n"
+            types = types + 1
+            let mut open = skip_trivia(source, token_end(source, declaration))
+            while open < len(source) && token_text(source, open) != "{" {
+                open = skip_trivia(source, token_end(source, open))
+            }
+            let close = balanced_end(source, open, "{", "}")
+            if close < 0 { return checked_place_error("malformed record declaration", declaration) }
+            let mut field = skip_trivia(source, token_end(source, open))
+            let mut ordinal = 0
+            let mut names = "|"
+            while field < close - 1 {
+                let field_name = token_text(source, field)
+                let colon = skip_trivia(source, token_end(source, field))
+                if token_kind(source, field) != "identifier" || token_text(source, colon) != ":" ||
+                    contains(names, "|" + field_name + "|") {
+                    return checked_place_error("malformed or duplicate field", field)
+                }
+                if ordinal >= 64 { return checked_place_error("record field limit is 64", field) }
+                names = names + field_name + "|"
+                let typed = skip_trivia(source, token_end(source, colon))
+                let end = record_field_type_end(source, typed, close - 1)
+                let mut type = token_text(source, typed)
+                if type == "List" {
+                    let list_type = parameter_list_type_text(source, typed, close - 1)
+                    if list_type == "List[Int]" { type = "List[Int]" }
+                    else if list_type != "List[Text]" { return checked_place_error("unresolved field type", typed) }
+                }
+                if end <= typed || end > close - 1 {
+                    return checked_place_error("malformed field type", typed)
+                }
+                result = result + "field|" + name + "|" + to_text(ordinal) + "|" +
+                    field_name + "|" + type + "|" + to_text(field) + "\n"
+                ordinal = ordinal + 1
+                field = skip_trivia(source, end)
+                if field < close - 1 {
+                    if token_text(source, field) != "," {
+                        return checked_place_error("expected field separator", field)
+                    }
+                    field = skip_trivia(source, token_end(source, field))
+                }
+            }
+        }
+        let end = top_level_end(source, cursor)
+        if end <= cursor { return checked_place_error("malformed top-level declaration", cursor) }
+        cursor = skip_trivia(source, end)
+    }
+    let mut row = hir_record_start(result, "field", 0)
+    while row >= 0 {
+        if !checked_place_type_known(result, hir_field(result, row, 4)) {
+            return checked_place_error("unresolved field type", decimal_value(hir_field(result, row, 5)))
+        }
+        row = hir_record_start(result, "field", row + 1)
+    }
+    return result
+}
+
+fn checked_place_field(catalog: Text, owner: Text, name: Text) -> Int {
+    let mut row = hir_record_start(catalog, "field", 0)
+    while row >= 0 {
+        if hir_field(catalog, row, 1) == owner && hir_field(catalog, row, 3) == name { return row }
+        row = hir_record_start(catalog, "field", row + 1)
+    }
+    return -1
+}
+
+# Return a canonical decimal literal, empty for a non-literal, error for an
+# out-of-range literal. Negative accumulation admits MIN without negating it.
+fn checked_place_constant(source: Text, start: Int, end: Int) -> Text {
+    let mut at = start
+    let mut negative = false
+    if token_text(source, at) == "-" || token_text(source, at) == "+" {
+        negative = token_text(source, at) == "-"
+        at = skip_trivia(source, token_end(source, at))
+    }
+    if token_kind(source, at) != "integer" || token_end(source, at) != end { return "" }
+    if numeric_underscore_error(source, at, end) { return checked_place_error("invalid integer bound", start) }
+    let literal = token_text(source, at)
+    let mut raw = ""
+    let mut digit_at = 0
+    while digit_at < len(literal) {
+        let symbol = text_slice(literal, digit_at, digit_at + 1)
+        if symbol != "_" { raw = raw + symbol }
+        digit_at = digit_at + 1
+    }
+    let mut number = 0
+    let mut index = 0
+    while index < len(raw) {
+        let symbol = text_slice(raw, index, index + 1)
+        if !is_digit(symbol) { return checked_place_error("invalid integer bound", start) }
+        let digit = decimal_value(symbol)
+        let mut last = 7
+        if negative { last = 8 }
+        if number < -922337203685477580 || (number == -922337203685477580 && digit > last) {
+            return checked_place_error("integer bound exceeds signed i64", start)
+        }
+        number = number * 10 - digit
+        index = index + 1
+    }
+    if negative { return to_text(number) }
+    return to_text(0 - number)
+}
+
+fn checked_place_signed_hex(value: Text) -> Text {
+    let mut number = 0
+    if !starts_with(value, "-") { number = decimal_value(value) }
+    if starts_with(value, "-") {
+        # decimal_value deliberately reads only unsigned text elsewhere.
+        number = 0
+        let mut at = 1
+        while at < len(value) {
+            number = number * 10 - decimal_value(text_slice(value, at, at + 1))
+            at = at + 1
+        }
+    }
+    # Bit shifts preserve the full two's-complement representation of MIN.
+    let digits = chars("0123456789abcdef")
+    let mut result = ""
+    let mut index = 0
+    while index < 16 {
+        result = digits[number.and(15)] + result
+        number = number.shr(4)
+        index = index + 1
+    }
+    return result
+}
+
+fn checked_place_constant_after(left: Text, right: Text) -> Bool {
+    let left_negative = starts_with(left, "-")
+    let right_negative = starts_with(right, "-")
+    if left_negative && !right_negative { return false }
+    if !left_negative && right_negative { return true }
+    if len(left) != len(right) {
+        if left_negative { return len(left) < len(right) }
+        return len(left) > len(right)
+    }
+    let mut at = 0
+    if left_negative { at = 1 }
+    while at < len(left) {
+        let a = decimal_value(text_slice(left, at, at + 1))
+        let b = decimal_value(text_slice(right, at, at + 1))
+        if a != b {
+            if left_negative { return a < b }
+            return a > b
+        }
+        at = at + 1
+    }
+    return false
+}
+
+# Closed expression type checker: literals, resolved places, parentheses,
+# arithmetic and declared direct calls. No default-to-Int inference is used.
+fn checked_place_expression_type(source: Text, hir: Text, catalog: Text,
+    start: Int, end: Int, depth: Int) -> Text {
+    if depth > 64 { return checked_place_error("expression depth limit is 64", start) }
+    let first = skip_trivia(source, start)
+    let last = checked_place_trim_end(source, first, end)
+    if first >= last { return checked_place_error("empty expression", first) }
+    let literal = checked_place_constant(source, first, last)
+    if starts_with(literal, "error[") { return literal }
+    if len(literal) > 0 { return "Int" }
+    if token_text(source, first) == "(" && balanced_end(source, first, "(", ")") == last {
+        return checked_place_expression_type(source, hir, catalog,
+            token_end(source, first), last - 1, depth + 1)
+    }
+    # Split complete binary expressions only at depth zero. Unary signs do
+    # not manufacture an empty left operand, and all operands are checked.
+    let mut cursor = first
+    let mut prior_operator = true
+    while cursor < last {
+        let token = token_text(source, cursor)
+        if token == "(" || token == "[" {
+            let mut closing = ")"
+            if token == "[" { closing = "]" }
+            let close = balanced_end(source, cursor, token, closing)
+            if close < 0 || close > last { return checked_place_error("unbalanced expression", cursor) }
+            cursor = skip_trivia(source, close)
+            prior_operator = false
+        } else {
+            if arithmetic_operator(token) && !prior_operator {
+                let left = checked_place_expression_type(source, hir, catalog, first, cursor, depth + 1)
+                let right = checked_place_expression_type(source, hir, catalog,
+                    token_end(source, cursor), last, depth + 1)
+                if starts_with(left, "error[") { return left }
+                if starts_with(right, "error[") { return right }
+                if left == "Int" && right == "Int" && token != "/" { return "Int" }
+                return ""
+            }
+            prior_operator = arithmetic_operator(token)
+            cursor = skip_trivia(source, token_end(source, cursor))
+        }
+    }
+    if token_text(source, first) == "+" || token_text(source, first) == "-" {
+        let typed = checked_place_expression_type(source, hir, catalog,
+            token_end(source, first), last, depth + 1)
+        if typed == "Int" || starts_with(typed, "error[") { return typed }
+        return ""
+    }
+    if token_text(source, first) == "fn" {
+        return checked_place_error("lambda literals require checked-body analysis", first)
+    }
+    if token_end(source, first) == last {
+        if token_kind(source, first) == "decimal" { return "Decimal" }
+        if token_kind(source, first) == "float" { return "Float" }
+        if token_text(source, first) == "true" || token_text(source, first) == "false" { return "Bool" }
+        if token_kind(source, first) == "string" { return "Text" }
+    }
+    let next = skip_trivia(source, token_end(source, first))
+    let list = token_text(source, first) == "[" && balanced_end(source, first, "[", "]") == last
+    let call = token_kind(source, first) == "identifier" && token_text(source, next) == "(" &&
+        balanced_end(source, next, "(", ")") == last
+    if list || call {
+        let name = token_text(source, first)
+        if call && len(hir_use_binding_id(hir, first)) > 0 { return "" }
+        let constructor = scoped_hir_fact(catalog, "type", 1, name) >= 0
+        let mut returned = checked_place_normalize_type(function_return_type(source, name))
+        let mut open = next
+        if list { open = first }
+        let mut closing = ")"
+        if list { closing = "]" }
+        let delimiters = checked_place_delimiters(source, open, closing)
+        if len(delimiters) > 0 { return delimiters }
+        if constructor { returned = name }
+        if !list && len(returned) == 0 { return "" }
+        let mut arg = skip_trivia(source, token_end(source, open))
+        let mut count = 0
+        let mut element = ""
+        let mut field_row = hir_record_start(catalog, "field", 0)
+        while field_row >= 0 && hir_field(catalog, field_row, 1) != name {
+            field_row = hir_record_start(catalog, "field", field_row + 1)
+        }
+        while arg < last - 1 {
+            let mut stop = arg
+            while stop < last - 1 && token_text(source, stop) != "," {
+                let token = token_text(source, stop)
+                if token == "(" || token == "[" {
+                    let mut closing = ")"
+                    if token == "[" { closing = "]" }
+                    let close = balanced_end(source, stop, token, closing)
+                    if close <= stop || close > last - 1 { return checked_place_error("malformed call argument", stop) }
+                    stop = skip_trivia(source, close)
+                } else { stop = skip_trivia(source, token_end(source, stop)) }
+            }
+            let actual = checked_place_expression_type(source, hir, catalog, arg, stop, depth + 1)
+            if starts_with(actual, "error[") { return actual }
+            if len(actual) == 0 { return "" }
+            if list {
+                if actual != "Int" && actual != "Text" { return "" }
+                if len(element) > 0 && element != actual { return "" }
+                element = actual
+                if count >= 64 { return checked_place_error("list literal limit is 64", arg) }
+            } else if constructor {
+                if field_row < 0 || hir_field(catalog, field_row, 1) != name { return "" }
+                let expected = hir_field(catalog, field_row, 4)
+                if actual != expected && !(actual == "List[?]" && (expected == "List[Int]" || expected == "List")) { return "" }
+                field_row = hir_record_start(catalog, "field", field_row + 1)
+            } else if actual != checked_place_normalize_type(function_parameter_type(source, name, count)) { return "" }
+            count = count + 1
+            arg = stop
+            if arg < last - 1 { arg = skip_trivia(source, token_end(source, arg)) }
+        }
+        if list {
+            if element == "Int" { return "List[Int]" }
+            if element == "Text" { return "List" }
+            return "List[?]"
+        }
+        if constructor {
+            if field_row >= 0 && hir_field(catalog, field_row, 1) == name { return "" }
+        } else if count != function_arity(source, name) { return "" }
+        return returned
+    }
+    let place = checked_place_walk(source, hir, catalog, first, last, "", depth + 1)
+    if starts_with(place, "error[") { return place }
+    if starts_with(place, "place|") || starts_with(place, "unnameable|") { return hir_field(place, 0, 2) }
+    return ""
+}
+
+fn checked_place_shape_operator(token: Text) -> Bool {
+    return arithmetic_operator(token) || token == "==" || token == "!=" ||
+        token == "<" || token == ">" || token == "<=" || token == ">=" ||
+        token == "&&" || token == "||" || token == "??"
+}
+
+fn checked_place_arguments_shape(source: Text, start: Int, end: Int, depth: Int) -> Text {
+    # Every caller supplies token_end(open) and the matching closing byte.
+    let delimiters = checked_place_delimiters(source, start - 1, token_text(source, end))
+    if len(delimiters) > 0 { return delimiters }
+    let mut cursor = skip_trivia(source, start)
+    while cursor < end {
+        let mut stop = cursor
+        while stop < end && token_text(source, stop) != "," {
+            let token = token_text(source, stop)
+            if token == "(" || token == "[" || token == "{" {
+                let mut closing = ")"
+                if token == "[" { closing = "]" }
+                if token == "{" { closing = "}" }
+                let close = balanced_end(source, stop, token, closing)
+                if close <= stop || close > end { return checked_place_error("malformed expression", stop) }
+                stop = skip_trivia(source, close)
+            } else { stop = skip_trivia(source, token_end(source, stop)) }
+        }
+        let error = checked_place_shape(source, cursor, stop, depth + 1)
+        if len(error) > 0 { return error }
+        cursor = stop
+        if cursor < end { cursor = skip_trivia(source, token_end(source, cursor)) }
+    }
+    return ""
+}
+
+fn checked_place_shape(source: Text, start: Int, end: Int, depth: Int) -> Text {
+    if depth > 64 { return checked_place_error("expression depth limit is 64", start) }
+    let first = skip_trivia(source, start)
+    let last = checked_place_trim_end(source, first, end)
+    if first >= last { return checked_place_error("malformed expression", first) }
+    let mut cursor = first
+    let mut unary = true
+    while cursor < last {
+        let token = token_text(source, cursor)
+        if token == "(" || token == "[" || token == "{" {
+            let mut closing = ")"
+            if token == "[" { closing = "]" }
+            if token == "{" { closing = "}" }
+            let close = balanced_end(source, cursor, token, closing)
+            if close <= cursor || close > last { return checked_place_error("malformed expression", cursor) }
+            cursor = skip_trivia(source, close)
+            unary = false
+        } else {
+            if checked_place_shape_operator(token) && !unary {
+                let left = checked_place_shape(source, first, cursor, depth + 1)
+                if len(left) > 0 { return left }
+                return checked_place_shape(source, token_end(source, cursor), last, depth + 1)
+            }
+            unary = checked_place_shape_operator(token) || token == "!"
+            cursor = skip_trivia(source, token_end(source, cursor))
+        }
+    }
+    let token = token_text(source, first)
+    if token == "+" || token == "-" || token == "!" {
+        return checked_place_shape(source, token_end(source, first), last, depth + 1)
+    }
+    cursor = token_end(source, first)
+    if token == "(" || token == "[" {
+        let mut closing = ")"
+        if token == "[" { closing = "]" }
+        cursor = balanced_end(source, first, token, closing)
+        let mut error = ""
+        if token == "(" { error = checked_place_shape(source, token_end(source, first), cursor - 1, depth + 1) }
+        else { error = checked_place_arguments_shape(source, token_end(source, first), cursor - 1, depth + 1) }
+        if len(error) > 0 { return error }
+    } else if token == "fn" {
+        let parameters = skip_trivia(source, token_end(source, first))
+        cursor = lambda_parameters_end(source, -1, parameters)
+        if cursor <= parameters || cursor > last { return checked_place_error("malformed expression", first) }
+    } else {
+        let kind = token_kind(source, first)
+        if kind != "identifier" && kind != "integer" && kind != "string" &&
+            kind != "decimal" && kind != "float" && token != "true" && token != "false" {
+            return checked_place_error("selection is not an expression", first)
+        }
+    }
+    cursor = skip_trivia(source, cursor)
+    let mut projections = 0
+    while cursor < last {
+        let member = token_text(source, cursor)
+        if member == "." {
+            let name = skip_trivia(source, token_end(source, cursor))
+            if token_kind(source, name) != "identifier" || token_end(source, name) > last {
+                return checked_place_error("malformed field projection", name)
+            }
+            cursor = skip_trivia(source, token_end(source, name))
+            projections = projections + 1
+        } else if member == "(" {
+            let close = balanced_end(source, cursor, "(", ")")
+            if close <= cursor || close > last { return checked_place_error("malformed expression", cursor) }
+            let error = checked_place_arguments_shape(source, token_end(source, cursor), close - 1, depth + 1)
+            if len(error) > 0 { return error }
+            cursor = skip_trivia(source, close)
+        } else if member == "[" {
+            let close = balanced_end(source, cursor, "[", "]")
+            if close <= cursor || close > last { return checked_place_error("malformed slice", cursor) }
+            let begin = skip_trivia(source, token_end(source, cursor))
+            let mut walk = begin
+            let mut separator = -1
+            while walk < close - 1 {
+                let token = token_text(source, walk)
+                if token == "(" || token == "[" {
+                    let mut closing = ")"
+                    if token == "[" { closing = "]" }
+                    walk = skip_trivia(source, balanced_end(source, walk, token, closing))
+                } else {
+                    if token == ".." {
+                        if separator >= 0 { return checked_place_error("multiple slice separators", walk) }
+                        separator = walk
+                    }
+                    walk = skip_trivia(source, token_end(source, walk))
+                }
+            }
+            let mut error = ""
+            if separator < 0 { error = checked_place_shape(source, begin, close - 1, depth + 1) }
+            else {
+                let upper = skip_trivia(source, token_end(source, separator))
+                if begin == separator || upper >= close - 1 { return checked_place_error("empty slice bound", cursor) }
+                error = checked_place_shape(source, begin, separator, depth + 1)
+                if len(error) == 0 { error = checked_place_shape(source, upper, close - 1, depth + 1) }
+            }
+            if len(error) > 0 { return error }
+            cursor = skip_trivia(source, close)
+            projections = projections + 1
+        } else { return checked_place_error("selection must cover one complete expression", cursor) }
+        if projections > 64 { return checked_place_error("candidate projection limit is 64", cursor) }
+    }
+    return ""
+}
+
+# The ordinary resolver records inferred types, including its historic Int
+# fallback. Recheck local initializers before using a binding in a checked
+# place or bound. Parameters and pattern bindings keep their resolved type.
+fn checked_place_binding_type(source: Text, hir: Text, catalog: Text,
+    binding: Text, depth: Int) -> Text {
+    if depth > 64 { return checked_place_error("expression depth limit is 64", 0) }
+    let type = checked_place_normalize_type(hir_binding_field(hir, binding, 5))
+    let name = decimal_value(hir_binding_field(hir, binding, 8))
+    let mut after = skip_trivia(source, token_end(source, name))
+    if token_text(source, after) == ":" {
+        let annotation = skip_trivia(source, token_end(source, after))
+        let mut end = parameter_list_type_end(source, annotation, len(source))
+        if end < 0 { end = annotation_type_end(source, annotation) }
+        after = skip_trivia(source, end)
+    }
+    if token_text(source, after) != "=" { return type }
+    let start = skip_trivia(source, token_end(source, after))
+    let end = decimal_value(hir_binding_field(hir, binding, 10))
+    let actual = checked_place_expression_type(source, hir, catalog, start, end, depth + 1)
+    if starts_with(actual, "error[") { return actual }
+    if actual == "List[?]" && (type == "List[Int]" || type == "List") { return type }
+    if actual != type { return "" }
+    return type
+}
+
+# Internal result: place|binding-number|checked-type|depth|projection-hex|JSON.
+# Every projection is checked even after depth eight; only serialization is
+# replaced with an explicit unknown, never a silently truncated known prefix.
+fn checked_place_walk(source: Text, hir: Text, catalog: Text, start: Int,
+    end: Int, path: Text, recursion: Int) -> Text {
+    if recursion > 64 { return checked_place_error("expression depth limit is 64", start) }
+    let mut binding = ""
+    let mut type = ""
+    let mut nameable = true
+    let mut cursor = skip_trivia(source, token_end(source, start))
+    let mut count = 0
+    let mut raw = ""
+    let mut json = ""
+    if token_text(source, start) == "(" {
+        let close = balanced_end(source, start, "(", ")")
+        if close <= start || close > end { return checked_place_error("malformed grouped place", start) }
+        let inner_start = skip_trivia(source, token_end(source, start))
+        let inner_end = checked_place_trim_end(source, inner_start, close - 1)
+        let inner = checked_place_walk(source, hir, catalog, inner_start, inner_end, path, recursion + 1)
+        if starts_with(inner, "error[") { return inner }
+        if !starts_with(inner, "place|") && !starts_with(inner, "unnameable|") {
+            return "unknown|" + to_text(start) + "|" + to_text(end) + "\n"
+        }
+        binding = hir_field(inner, 0, 1)
+        type = hir_field(inner, 0, 2)
+        count = decimal_value(hir_field(inner, 0, 3))
+        raw = hir_field(inner, 0, 4)
+        json = hir_field(inner, 0, 5)
+        nameable = starts_with(inner, "place|")
+        cursor = skip_trivia(source, close)
+    } else {
+        if token_kind(source, start) != "identifier" { return "unknown|" + to_text(start) + "|" + to_text(end) + "\n" }
+        binding = hir_use_binding_id(hir, start)
+        if len(binding) == 0 { return "unknown|" + to_text(start) + "|" + to_text(end) + "\n" }
+        type = checked_place_binding_type(source, hir, catalog, binding, recursion + 1)
+        if starts_with(type, "error[") { return type }
+        if len(type) == 0 { return checked_place_error("binding initializer is not well typed", start) }
+        if !checked_place_type_known(catalog, type) && type != "Float" && type != "Decimal" &&
+            type != "Fn" && type != "Bytes" && !authority_type_name(type) {
+            return checked_place_error("binding type is unavailable", start)
+        }
+    }
+    while cursor < end {
+        if count >= 64 { return checked_place_error("candidate projection limit is 64", cursor) }
+        let token = token_text(source, cursor)
+        if token == "." {
+            let field = skip_trivia(source, token_end(source, cursor))
+            if token_kind(source, field) != "identifier" || token_end(source, field) > end {
+                return checked_place_error("malformed field projection", field)
+            }
+            let resolved = checked_place_field(catalog, type, token_text(source, field))
+            if resolved < 0 { return checked_place_error("field does not resolve for checked owner type", field) }
+            if count < 8 && len(path) > 0 {
+                let owner = checked_place_type_id(path, type)
+                let ordinal = hir_field(catalog, resolved, 2)
+                raw = raw + "01" + owner + scoped_hir_hex(decimal_value(ordinal), 8)
+                if len(json) > 0 { json = json + "," }
+                json = json + "{\"display\":" + scoped_hir_display(source, field) +
+                    ",\"kind\":\"field\",\"ordinal\":" + ordinal + ",\"owner_type_id\":\"" + owner + "\"}"
+            }
+            type = hir_field(catalog, resolved, 4)
+            cursor = skip_trivia(source, token_end(source, field))
+        } else if token == "[" {
+            if type != "List[Int]" && type != "List" { return checked_place_error("slice receiver must be a checked list", cursor) }
+            let close = balanced_end(source, cursor, "[", "]")
+            if close < 0 || close > end { return checked_place_error("malformed slice", cursor) }
+            let lower = skip_trivia(source, token_end(source, cursor))
+            let mut separator = lower
+            while separator < close - 1 && token_text(source, separator) != ".." {
+                if token_text(source, separator) == "(" || token_text(source, separator) == "[" {
+                    let mut closing = ")"
+                    if token_text(source, separator) == "[" { closing = "]" }
+                    let next = balanced_end(source, separator, token_text(source, separator), closing)
+                    if next <= separator || next > close - 1 { return checked_place_error("malformed slice bound", separator) }
+                    separator = skip_trivia(source, next)
+                } else { separator = skip_trivia(source, token_end(source, separator)) }
+            }
+            if separator >= close - 1 {
+                let index_type = checked_place_expression_type(source, hir, catalog, lower, close - 1, recursion + 1)
+                if starts_with(index_type, "error[") { return index_type }
+                if index_type != "Int" { return checked_place_error("index must have checked Int type", lower) }
+                if type == "List[Int]" { type = "Int" } else { type = "Text" }
+                nameable = false
+                cursor = skip_trivia(source, close)
+                count = count + 1
+                continue
+            }
+            let upper = skip_trivia(source, token_end(source, separator))
+            let lower_end = checked_place_trim_end(source, lower, separator)
+            let upper_end = checked_place_trim_end(source, upper, close - 1)
+            if lower >= lower_end || upper >= upper_end { return checked_place_error("empty slice bound", cursor) }
+            let lower_type = checked_place_expression_type(source, hir, catalog, lower, lower_end, recursion + 1)
+            let upper_type = checked_place_expression_type(source, hir, catalog, upper, upper_end, recursion + 1)
+            if starts_with(lower_type, "error[") { return lower_type }
+            if starts_with(upper_type, "error[") { return upper_type }
+            if lower_type != "Int" || upper_type != "Int" { return checked_place_error("slice bounds must have checked Int type", lower) }
+            let low = checked_place_constant(source, lower, lower_end)
+            let high = checked_place_constant(source, upper, upper_end)
+            if len(low) > 0 && len(high) > 0 && checked_place_constant_after(low, high) {
+                return checked_place_error("constant lower bound exceeds upper bound", lower)
+            }
+            if count < 8 && len(path) > 0 {
+                let file = scoped_hir_file_id(path)
+                let low_node = checked_place_expression_id(file, lower, lower_end)
+                let high_node = checked_place_expression_id(file, upper, upper_end)
+                let mut low_raw = "02" + low_node
+                let mut high_raw = "02" + high_node
+                let mut low_json = "{\"kind\":\"node\",\"node_id\":\"" + low_node + "\"}"
+                let mut high_json = "{\"kind\":\"node\",\"node_id\":\"" + high_node + "\"}"
+                if len(low) > 0 {
+                    low_raw = "01" + checked_place_signed_hex(low)
+                    low_json = "{\"kind\":\"constant\",\"value\":\"" + low + "\"}"
+                }
+                if len(high) > 0 {
+                    high_raw = "01" + checked_place_signed_hex(high)
+                    high_json = "{\"kind\":\"constant\",\"value\":\"" + high + "\"}"
+                }
+                raw = raw + "02" + low_raw + high_raw
+                if len(json) > 0 { json = json + "," }
+                json = json + "{\"kind\":\"slice\",\"lower\":" + low_json + ",\"upper\":" + high_json + "}"
+            }
+            cursor = skip_trivia(source, close)
+        } else { return "unknown|" + to_text(start) + "|" + to_text(end) + "\n" }
+        count = count + 1
+    }
+    if cursor < end { return checked_place_error("incomplete expression", cursor) }
+    let mut kind = "place"
+    if !nameable { kind = "unnameable" }
+    return kind + "|" + binding + "|" + type + "|" + to_text(count) + "|" + raw + "|" + json + "|" + to_text(start) + "|" + to_text(end) + "\n"
+}
+
+fn checked_place_candidate(source: Text, hir: Text, catalog: Text, start: Int, end: Int, path: Text) -> Text {
+    # Malformed initializer delimiters can shorten the resolver's initializer
+    # range. Check their original tokens before trusting that private range.
+    let delimiters = validate_delimiter_surface(source)
+    if len(delimiters) > 0 { return delimiters }
+    let shape = checked_place_shape(source, start, end, 0)
+    if len(shape) > 0 { return shape }
+    let type = checked_place_expression_type(source, hir, catalog, start, end, 0)
+    if starts_with(type, "error[") { return type }
+    if len(type) == 0 { return checked_place_error("expression does not have a checked type", start) }
+    return checked_place_walk(source, hir, catalog, start, end, path, 0)
+}
+
+fn checked_place_render(source: Text, hir: Text, facts: Text, path: Text,
+    task_index: Int, start: Int, end: Int) -> Text {
+    let mut task = hir_record_start(facts, "task", 0)
+    let mut index = 0
+    while task >= 0 && index < task_index {
+        task = hir_record_start(facts, "task", task + 1)
+        index = index + 1
+    }
+    if task_index < 0 || task < 0 { return checked_place_error("task index is outside the document", 0) }
+    let lambda = decimal_value(hir_field(facts, task, 5))
+    let lambda_end = decimal_value(hir_field(facts, task, 6))
+    let parameters = skip_trivia(source, token_end(source, lambda))
+    let after = balanced_end(source, parameters, "(", ")")
+    let mut body = skip_trivia(source, after)
+    let mut body_end = lambda_end
+    if token_text(source, body) == "=>" { body = skip_trivia(source, token_end(source, body)) }
+    else {
+        if token_text(source, body) == "->" {
+            body = skip_trivia(source, token_end(source, body))
+            body = skip_trivia(source, annotation_type_end(source, body))
+        }
+        if token_text(source, body) != "{" { return checked_place_error("unresolved lambda body", body) }
+        body = skip_trivia(source, token_end(source, body))
+        body_end = lambda_end - 1
+    }
+    if start < body || end > body_end || start >= end || start < 0 || end > len(source) {
+        return checked_place_error("selection is outside the task body", start)
+    }
+    # Walk from a known token boundary: a byte within a multibyte identifier,
+    # string or comment cannot masquerade as an independently resolved node.
+    let mut at = body
+    while at < start { at = skip_trivia(source, token_end(source, at)) }
+    if at != start || checked_place_trim_end(source, start, end) != end {
+        return checked_place_error("selection must use complete token boundaries", start)
+    }
+    let shape = checked_place_shape(source, start, end, 0)
+    if len(shape) > 0 { return shape }
+    let catalog = checked_place_catalog(source)
+    if starts_with(catalog, "error[") { return catalog }
+    let place = checked_place_candidate(source, hir, catalog, start, end, path)
+    if starts_with(place, "error[") { return place }
+    let file = scoped_hir_file_id(path)
+    let witness = checked_place_expression_id(file, start, end)
+    let task_id = scoped_hir_task_id(file, facts, task)
+    let mut record = ""
+    if starts_with(place, "place|") && decimal_value(hir_field(place, 0, 3)) <= 8 {
+        let binding = scoped_hir_named_id(file, "binding", hir_field(place, 0, 1))
+        let raw = "4b504c0002" + binding + scoped_hir_hex(decimal_value(hir_field(place, 0, 3)), 2) + hir_field(place, 0, 4)
+        let id = scoped_hir_hash_frame("kofun.scope-hir.place/v2", raw, "", "", "")
+        record = "{\"base_binding_id\":\"" + binding + "\",\"canonical_bytes\":\"" + raw +
+            "\",\"display\":" + scoped_hir_display(source, hir_binding_declaration_start(hir, hir_field(place, 0, 1))) + ",\"id\":\"" + id +
+            "\",\"projections\":[" + hir_field(place, 0, 5) + "],\"record\":\"place\"}"
+    } else {
+        let mut reason = "unnameable-place"
+        let mut tag = "03"
+        if starts_with(place, "place|") { reason = "projection-depth-exceeded"
+            tag = "02" }
+        let raw = "4b554e0002" + task_id + tag + witness
+        let id = scoped_hir_hash_frame("kofun.scope-hir.unknown/v2", task_id, tag, witness, "")
+        record = "{\"canonical_bytes\":\"" + raw + "\",\"id\":\"" + id +
+            "\",\"reason\":\"" + reason + "\",\"record\":\"unknown\",\"task_id\":\"" +
+            task_id + "\",\"witness_node_id\":\"" + witness + "\"}"
+    }
+    let prefix = scoped_hir_render(source, facts, path)
+    if starts_with(prefix, "error[") { return prefix }
+    let split = find(prefix, "],\"root_scope_id\":")
+    let document = text_slice(prefix, 0, split) + "," + record + text_slice(prefix, split, len(prefix))
+    if len(document) > 16777216 { return checked_place_error("document limit is 16777216 bytes", start) }
+    return document
+}
+
 # ---------------------------------------------------------------- Scoped identity framing
 # #1220: frame bytes are streamed into one SHA block. Raw IDs travel as hex
 # fragments internally, and are decoded to bytes here, never hashed as text.
@@ -25060,6 +25848,11 @@ fn main() -> Int {
         }
         return 0
     }
+    if len(arguments) == 7 && arguments[0] == "--emit-place-hir-v2" {
+        if !emit_place_hir_v2_file(arguments[1], arguments[2], arguments[3],
+            arguments[4], arguments[5], arguments[6]) { return 1 }
+        return 0
+    }
     if len(arguments) == 4 && arguments[0] == "--emit-scope-hir-v2" {
         if !emit_scope_hir_v2_file(arguments[1], arguments[2], arguments[3]) {
             return 1
@@ -25097,6 +25890,7 @@ fn main() -> Int {
             "       kofun-stage2 --parse-patterns INPUT.kofun OUTPUT.patterns\n" +
             "       kofun-stage2 --emit-scope-hir INPUT.kofun OUTPUT.scope-hir\n" +
             "       kofun-stage2 --emit-scope-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n" +
+            "       kofun-stage2 --emit-place-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH TASK-INDEX START END\n" +
             "       kofun-stage2 --emit-selfhost-hir INPUT.kofun OUTPUT.hir SOURCE-SHA256\n" +
             "       kofun-stage2 --lower-selfhost-c11 INPUT.hir OUTPUT.c\n" +
             "       kofun-stage2 --selfhost-compile INPUT.kofun OUTPUT.c SOURCE-SHA256"
