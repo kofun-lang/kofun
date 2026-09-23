@@ -171,6 +171,23 @@ for (const name of positiveNames) {
 const minimal = positives.get("minimal.json");
 const typical = positives.get("typical.json");
 const maximum = positives.get("maximum.json");
+// Noncanonical decimals must not acquire an integer value through the host
+// JSON parser's binary64 rounding. The byte decoder's semantics are exact.
+const minimalWire = fs.readFileSync(path.join(POSITIVE, "minimal.json"), "utf8");
+for (const [number, code] of [
+  ["1e-400", "BR003"],
+  ["-1e-400", "BR003"],
+  ["1.00000000000000001", "BR003"],
+  ["9007199254740990.9", "BR003"],
+  ["0e9999", "BR002"],
+  ["0.0", "BR002"],
+  ["-0", "BR002"],
+  ["1e9999", "BR004"],
+]) {
+  expectReportError(`exact JSON number ${number}`, code, () => decodeReport(
+    Buffer.from(minimalWire.replace('"samples":[0]', `"samples":[${number}]`)),
+  ));
+}
 assert.equal(Object.hasOwn(minimal.identity, "parameter"), false, "minimal optional parameter must be omitted");
 assert.equal(typical.identity.parameter, "café-サイズ大", "present optional parameter drifted");
 assert.deepEqual(typical.samples, [41, 7, 19, 3, 23, 11, 29, 17], "raw order was repaired");

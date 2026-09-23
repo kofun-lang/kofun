@@ -1,0 +1,1860 @@
+# Integer predicates fit the current Stage 2 executable condition profile.
+# Operands here are total bounded byte/scalar observations.
+fn codec_or(left: Int, right: Int) -> Int {
+    if left != 0 { return 1 }
+    return right
+}
+fn codec_and(left: Int, right: Int) -> Int {
+    if left == 0 { return 0 }
+    return right
+}
+fn codec_eq(left: Int, right: Int) -> Int {
+    if left == right { return 1 }
+    return 0
+}
+fn codec_ne(left: Int, right: Int) -> Int {
+    if left != right { return 1 }
+    return 0
+}
+fn codec_ge(left: Int, right: Int) -> Int {
+    if left >= right { return 1 }
+    return 0
+}
+fn codec_le(left: Int, right: Int) -> Int {
+    if left <= right { return 1 }
+    return 0
+}
+fn codec_gt(left: Int, right: Int) -> Int {
+    if left > right { return 1 }
+    return 0
+}
+fn codec_lt(left: Int, right: Int) -> Int {
+    if left < right { return 1 }
+    return 0
+}
+
+# Pure bounded benchmark-report/v1 codec (#1312).
+# Concatenate with ../benchmark-report-model/model.kofun on C11 Stage 2.
+# The scanner retains byte offsets, never Text slices or borrowed views.
+
+type CodecScalar = { next: Int, value: Int }
+type CodecNumber = { status: Int, value: Int }
+
+fn codec_byte(read source: Bytes, at: Int) -> Int {
+    if codec_lt(at, 0) == 1 { return -1 }
+    if codec_ge(at, stage2_bytes_len(source)) == 1 { return -1 }
+    return stage2_bytes_byte_at(source, at)
+}
+
+fn codec_space(read source: Bytes, start: Int) -> Int {
+    let mut at = start
+    let mut more = 1
+    while codec_eq(more, 1) == 1 {
+        let byte = codec_byte(source, at)
+        if codec_or(codec_eq(byte, 32), codec_or(codec_eq(byte, 9), codec_or(codec_eq(byte, 10), codec_eq(byte, 13)))) == 1 {
+            at = at + 1
+        } else { more = 0 }
+    }
+    return at
+}
+
+fn codec_digit(byte: Int) -> Int { return codec_and(codec_ge(byte, 48), codec_le(byte, 57)) }
+
+fn codec_hex(byte: Int) -> Int {
+    if codec_and(codec_ge(byte, 48), codec_le(byte, 57)) == 1 { return byte - 48 }
+    if codec_and(codec_ge(byte, 65), codec_le(byte, 70)) == 1 { return byte - 55 }
+    if codec_and(codec_ge(byte, 97), codec_le(byte, 102)) == 1 { return byte - 87 }
+    return -1
+}
+
+fn codec_hex4(read source: Bytes, at: Int) -> Int {
+    let mut value = 0
+    let mut i = 0
+    while codec_lt(i, 4) == 1 {
+        let digit = codec_hex(codec_byte(source, at + i))
+        if codec_lt(digit, 0) == 1 { return -1 }
+        value = value * 16 + digit
+        i = i + 1
+    }
+    return value
+}
+
+# Invalid UTF-8 is BR001, even in a document that also exceeds depth 16.
+fn codec_utf8(read source: Bytes) -> Int {
+    let mut at = 0
+    while codec_lt(at, stage2_bytes_len(source)) == 1 {
+        let first = codec_byte(source, at)
+        let mut count = 1
+        let mut scalar = first
+        let mut minimum = 0
+        if codec_ge(first, 128) == 1 {
+            if codec_and(codec_ge(first, 194), codec_le(first, 223)) == 1 {
+                count = 2
+                scalar = first - 192
+                minimum = 128
+            } else {
+                if codec_and(codec_ge(first, 224), codec_le(first, 239)) == 1 {
+                    count = 3
+                    scalar = first - 224
+                    minimum = 2048
+                } else {
+                    if codec_and(codec_ge(first, 240), codec_le(first, 244)) == 1 {
+                        count = 4
+                        scalar = first - 240
+                        minimum = 65536
+                    } else { return 1 }
+                }
+            }
+            let mut i = 1
+            while codec_lt(i, count) == 1 {
+                let byte = codec_byte(source, at + i)
+                if codec_or(codec_lt(byte, 128), codec_gt(byte, 191)) == 1 { return 1 }
+                scalar = scalar * 64 + byte - 128
+                i = i + 1
+            }
+            if codec_or(codec_lt(scalar, minimum), codec_gt(scalar, 1114111)) == 1 { return 1 }
+            if codec_and(codec_ge(scalar, 55296), codec_le(scalar, 57343)) == 1 { return 1 }
+        }
+        at = at + count
+    }
+    return 0
+}
+
+# JSON itself permits escaped unpaired surrogates. Preserve them here so the
+# identity policy reports BR005 only after the whole syntax/depth/key pass.
+fn codec_scalar(read source: Bytes, at: Int) -> CodecScalar {
+    let byte = codec_byte(source, at)
+    let mut next = at + 1
+    let mut value = byte
+    if codec_eq(byte, 92) == 1 {
+        let escape = codec_byte(source, next)
+        next = next + 1
+        value = -1
+        if codec_or(codec_eq(escape, 34), codec_or(codec_eq(escape, 92), codec_eq(escape, 47))) == 1 { value = escape }
+        if codec_eq(escape, 98) == 1 { value = 8 }
+        if codec_eq(escape, 102) == 1 { value = 12 }
+        if codec_eq(escape, 110) == 1 { value = 10 }
+        if codec_eq(escape, 114) == 1 { value = 13 }
+        if codec_eq(escape, 116) == 1 { value = 9 }
+        if codec_eq(escape, 117) == 1 {
+            value = codec_hex4(source, next)
+            next = next + 4
+            if codec_and(codec_ge(value, 55296), codec_le(value, 56319)) == 1 {
+                if codec_and(codec_eq(codec_byte(source, next), 92), codec_eq(codec_byte(source, next + 1), 117)) == 1 {
+                    let low = codec_hex4(source, next + 2)
+                    if codec_and(codec_ge(low, 56320), codec_le(low, 57343)) == 1 {
+                        value = 65536 + (value - 55296) * 1024 + low - 56320
+                        next = next + 6
+                    }
+                }
+            }
+        }
+    } else {
+        if codec_ge(byte, 128) == 1 {
+            let mut count = 2
+            value = byte - 192
+            if codec_ge(byte, 224) == 1 { count = 3
+                value = byte - 224 }
+            if codec_ge(byte, 240) == 1 { count = 4
+                value = byte - 240 }
+            let mut i = 1
+            while codec_lt(i, count) == 1 {
+                value = value * 64 + codec_byte(source, at + i) - 128
+                i = i + 1
+            }
+            next = at + count
+        }
+    }
+    let result: CodecScalar = CodecScalar(next: next, value: value)
+    return result
+}
+
+fn codec_string_end(read source: Bytes, start: Int) -> Int {
+    let mut at = start + 1
+    while codec_lt(at, stage2_bytes_len(source)) == 1 {
+        let byte = codec_byte(source, at)
+        if codec_eq(byte, 34) == 1 { return at + 1 }
+        if codec_lt(byte, 32) == 1 { return -1 }
+        let scalar: CodecScalar = codec_scalar(source, at)
+        if codec_lt(scalar.value, 0) == 1 { return -1 }
+        at = scalar.next
+    }
+    return -1
+}
+
+fn codec_number_end(read source: Bytes, start: Int) -> Int {
+    let mut at = start
+    if codec_eq(codec_byte(source, at), 45) == 1 { at = at + 1 }
+    if codec_eq(codec_byte(source, at), 48) == 1 {
+        at = at + 1
+    } else {
+        if codec_eq(codec_digit(codec_byte(source, at)), 0) == 1 { return -1 }
+        while codec_digit(codec_byte(source, at)) == 1 { at = at + 1 }
+    }
+    if codec_eq(codec_byte(source, at), 46) == 1 {
+        at = at + 1
+        if codec_eq(codec_digit(codec_byte(source, at)), 0) == 1 { return -1 }
+        while codec_digit(codec_byte(source, at)) == 1 { at = at + 1 }
+    }
+    let exponent = codec_byte(source, at)
+    if codec_or(codec_eq(exponent, 69), codec_eq(exponent, 101)) == 1 {
+        at = at + 1
+        let sign = codec_byte(source, at)
+        if codec_or(codec_eq(sign, 43), codec_eq(sign, 45)) == 1 { at = at + 1 }
+        if codec_eq(codec_digit(codec_byte(source, at)), 0) == 1 { return -1 }
+        while codec_digit(codec_byte(source, at)) == 1 { at = at + 1 }
+    }
+    return at
+}
+
+fn codec_matches(read source: Bytes, at: Int, read word: Bytes) -> Int {
+    let mut i = 0
+    while codec_lt(i, stage2_bytes_len(word)) == 1 {
+        if codec_ne(codec_byte(source, at + i), codec_byte(word, i)) == 1 { return 0 }
+        i = i + 1
+    }
+    return 1
+}
+
+fn codec_literal_end(read source: Bytes, at: Int) -> Int {
+    let byte = codec_byte(source, at)
+    if codec_eq(byte, 116) == 1 {
+        if codec_and(codec_eq(codec_byte(source, at + 1), 114), codec_and(codec_eq(codec_byte(source, at + 2), 117), codec_eq(codec_byte(source, at + 3), 101))) == 1 { return at + 4 }
+    }
+    if codec_eq(byte, 102) == 1 {
+        if codec_and(codec_eq(codec_byte(source, at + 1), 97), codec_and(codec_eq(codec_byte(source, at + 2), 108), codec_and(codec_eq(codec_byte(source, at + 3), 115), codec_eq(codec_byte(source, at + 4), 101)))) == 1 { return at + 5 }
+    }
+    if codec_eq(byte, 110) == 1 {
+        if codec_and(codec_eq(codec_byte(source, at + 1), 117), codec_and(codec_eq(codec_byte(source, at + 2), 108), codec_eq(codec_byte(source, at + 3), 108))) == 1 { return at + 4 }
+    }
+    return -1
+}
+
+fn codec_put16(edit buffer: Bytes, at: Int, value: Int) -> Int {
+    stage2_bytes_byte_set(buffer, at, value % 256)
+    stage2_bytes_byte_set(buffer, at + 1, value // 256)
+    return 0
+}
+
+fn codec_get16(read buffer: Bytes, at: Int) -> Int {
+    return codec_byte(buffer, at) + codec_byte(buffer, at + 1) * 256
+}
+
+fn codec_end(read ends: Bytes, at: Int) -> Int {
+    return codec_get16(ends, at * 2)
+}
+
+# A byte offset indexes the token's exclusive end. The explicit stack has one
+# three-byte slot per possible opener, so even near-wire-limit nesting cannot
+# recurse on the host stack. Syntax is completed before depth is reported.
+fn codec_scan(read source: Bytes, edit ends: Bytes) -> Int {
+    let length = stage2_bytes_len(source)
+    if codec_gt(length, 16384) == 1 { return 4 }
+    if codec_and(codec_eq(codec_byte(source, 0), 239), codec_and(codec_eq(codec_byte(source, 1), 187), codec_eq(codec_byte(source, 2), 191))) == 1 { return 1 }
+    if codec_ne(codec_utf8(source), 0) == 1 { return 1 }
+    if codec_eq(length, 0) == 1 { return 1 }
+    stage2_bytes_assign_zeroed(ends, length * 2)
+    if codec_ne(stage2_bytes_len(ends), length * 2) == 1 { return 12 }
+    let stack = stage2_bytes_empty()
+    stage2_bytes_assign_zeroed(stack, length * 3)
+    if codec_ne(stage2_bytes_len(stack), length * 3) == 1 { return 12 }
+    let mut at = codec_space(source, 0)
+    let mut depth = 0
+    let mut maximum = 0
+    let mut root_done = 0
+    let mut done = 0
+    while codec_eq(done, 0) == 1 {
+        at = codec_space(source, at)
+        let byte = codec_byte(source, at)
+        let mut value = 0
+        if codec_eq(depth, 0) == 1 {
+            if codec_eq(root_done, 1) == 1 { done = 1 } else {
+                value = 1
+                root_done = 1
+            }
+        } else {
+            let slot = (depth - 1) * 3
+            let state = codec_byte(stack, slot + 2)
+            let mut close = 0
+            if codec_or(codec_eq(state, 0), codec_eq(state, 1)) == 1 {
+                if codec_and(codec_eq(state, 0), codec_eq(byte, 93)) == 1 { close = 1 } else {
+                    value = 1
+                    stage2_bytes_byte_set(stack, slot + 2, 2)
+                }
+            }
+            if codec_or(codec_eq(state, 2), codec_eq(state, 7)) == 1 {
+                let mut delimiter = 93
+                let mut following = 1
+                if codec_eq(state, 7) == 1 { delimiter = 125
+                following = 4 }
+                if codec_eq(byte, delimiter) == 1 { close = 1 } else {
+                    if codec_ne(byte, 44) == 1 { return 1 }
+                    stage2_bytes_byte_set(stack, slot + 2, following)
+                    at = at + 1
+                }
+            }
+            if codec_or(codec_eq(state, 3), codec_eq(state, 4)) == 1 {
+                if codec_and(codec_eq(state, 3), codec_eq(byte, 125)) == 1 { close = 1 } else {
+                    if codec_ne(byte, 34) == 1 { return 1 }
+                    let end = codec_string_end(source, at)
+                    if codec_lt(end, 0) == 1 { return 1 }
+                    codec_put16(ends, at * 2, end)
+                    at = end
+                    stage2_bytes_byte_set(stack, slot + 2, 5)
+                }
+            }
+            if codec_eq(state, 5) == 1 {
+                if codec_ne(byte, 58) == 1 { return 1 }
+                at = at + 1
+                stage2_bytes_byte_set(stack, slot + 2, 6)
+            }
+            if codec_eq(state, 6) == 1 {
+                value = 1
+                stage2_bytes_byte_set(stack, slot + 2, 7)
+            }
+            if codec_eq(close, 1) == 1 {
+                let open = codec_get16(stack, slot)
+                codec_put16(ends, open * 2, at + 1)
+                at = at + 1
+                depth = depth - 1
+            }
+        }
+        if codec_eq(value, 1) == 1 {
+            if codec_or(codec_eq(byte, 123), codec_eq(byte, 91)) == 1 {
+                codec_put16(stack, depth * 3, at)
+                let mut state = 0
+                if codec_eq(byte, 123) == 1 { state = 3 }
+                stage2_bytes_byte_set(stack, depth * 3 + 2, state)
+                depth = depth + 1
+                if codec_gt(depth, maximum) == 1 { maximum = depth }
+                at = at + 1
+            } else {
+                let mut end = -1
+                if codec_eq(byte, 34) == 1 { end = codec_string_end(source, at) } else {
+                    if codec_or(codec_eq(byte, 45), codec_digit(byte)) == 1 {
+                        end = codec_number_end(source, at)
+                    } else { end = codec_literal_end(source, at) }
+                }
+                if codec_lt(end, 0) == 1 { return 1 }
+                codec_put16(ends, at * 2, end)
+                at = end
+            }
+        }
+    }
+    if codec_ne(at, length) == 1 { return 1 }
+    if codec_gt(maximum, 17) == 1 { return 4 }
+    return 0
+}
+
+fn codec_key_equal(read source: Bytes, left: Int, right: Int) -> Int {
+    let mut a = left + 1
+    let mut b = right + 1
+    while codec_and(codec_ne(codec_byte(source, a), 34), codec_ne(codec_byte(source, b), 34)) == 1 {
+        let first: CodecScalar = codec_scalar(source, a)
+        let second: CodecScalar = codec_scalar(source, b)
+        if codec_ne(first.value, second.value) == 1 { return 0 }
+        a = first.next
+        b = second.next
+    }
+    return codec_eq(codec_byte(source, a), codec_byte(source, b))
+}
+
+fn codec_value_at(read source: Bytes, read ends: Bytes, key: Int) -> Int {
+    return codec_space(source, codec_space(source, codec_end(ends, key)) + 1)
+}
+
+fn codec_next_key(read source: Bytes, read ends: Bytes, key: Int) -> Int {
+    let value = codec_value_at(source, ends, key)
+    let after = codec_space(source, codec_end(ends, value))
+    if codec_eq(codec_byte(source, after), 125) == 1 { return -1 }
+    return codec_space(source, after + 1)
+}
+
+fn codec_duplicates(read source: Bytes, read ends: Bytes) -> Int {
+    let mut at = 0
+    while codec_lt(at, stage2_bytes_len(source)) == 1 {
+        # Only token starts have an end; braces inside strings are not tokens.
+        if codec_and(codec_eq(codec_byte(source, at), 123), codec_gt(codec_end(ends, at), 0)) == 1 {
+            let mut key = codec_space(source, at + 1)
+            if codec_eq(codec_byte(source, key), 125) == 1 { key = -1 }
+            while codec_ge(key, 0) == 1 {
+                let mut other = codec_next_key(source, ends, key)
+                while codec_ge(other, 0) == 1 {
+                    if codec_key_equal(source, key, other) == 1 { return 2 }
+                    other = codec_next_key(source, ends, other)
+                }
+                key = codec_next_key(source, ends, key)
+            }
+        }
+        at = at + 1
+    }
+    return 0
+}
+
+type CodecText = { status: Int, value: Text }
+type CodecCounter = { status: Int, available: Bool, value: Int }
+type CodecAvailableText = { status: Int, available: Bool, value: Text }
+type CodecPresence = { value: Bool }
+type CodecSeries = { status: Int, first: List[Int], second: List[Int] }
+
+fn codec_presence(at: Int) -> CodecPresence {
+    if at < 0 {
+        let result: CodecPresence = CodecPresence(value: false)
+        return result
+    }
+    let result: CodecPresence = CodecPresence(value: true)
+    return result
+}
+
+fn codec_key_word(read source: Bytes, key: Int, read word: Bytes, start: Int, length: Int) -> Int {
+    let mut at = key + 1
+    let mut i = 0
+    while i < length {
+        if codec_byte(source, at) == 34 { return 0 }
+        let scalar: CodecScalar = codec_scalar(source, at)
+        if scalar.value != codec_byte(word, start + i) { return 0 }
+        at = scalar.next
+        i = i + 1
+    }
+    return codec_eq(codec_byte(source, at), 34)
+}
+
+fn codec_is(read source: Bytes, at: Int, name: Text) -> Int {
+    if codec_byte(source, at) != 34 { return 0 }
+    let word = stage2_bytes_empty()
+    stage2_bytes_assign_text(word, name)
+    if stage2_bytes_len(word) != len(name) { return -12 }
+    return codec_key_word(source, at, word, 0, len(name))
+}
+
+# The names are a comma-separated closed ASCII vocabulary, not input Text.
+fn codec_fields(read source: Bytes, read ends: Bytes, at: Int, names: Text) -> Int {
+    if codec_byte(source, at) != 123 { return 3 }
+    let word = stage2_bytes_empty()
+    stage2_bytes_assign_text(word, names)
+    if stage2_bytes_len(word) != len(names) { return 12 }
+    let mut key = codec_space(source, at + 1)
+    if codec_byte(source, key) == 125 { return 0 }
+    while key >= 0 {
+        let mut start = 0
+        let mut found = 0
+        while start < len(names) {
+            let mut end = start
+            while codec_and(codec_lt(end, len(names)), codec_ne(codec_byte(word, end), 44)) == 1 {
+                end = end + 1
+            }
+            if codec_key_word(source, key, word, start, end - start) == 1 { found = 1 }
+            start = end + 1
+        }
+        if found == 0 { return 3 }
+        key = codec_next_key(source, ends, key)
+    }
+    return 0
+}
+
+fn codec_field(read source: Bytes, read ends: Bytes, object: Int, name: Text) -> Int {
+    if codec_byte(source, object) != 123 { return -1 }
+    let word = stage2_bytes_empty()
+    stage2_bytes_assign_text(word, name)
+    if stage2_bytes_len(word) != len(name) { return -12 }
+    let mut key = codec_space(source, object + 1)
+    if codec_byte(source, key) == 125 { return -1 }
+    while key >= 0 {
+        if codec_key_word(source, key, word, 0, len(name)) == 1 {
+            return codec_value_at(source, ends, key)
+        }
+        key = codec_next_key(source, ends, key)
+    }
+    return -1
+}
+
+fn codec_emit_scalar(edit destination: Bytes, scalar: Int) -> Int {
+    let before = stage2_bytes_len(destination)
+    let mut width = 1
+    if scalar < 128 {
+        stage2_bytes_append(destination, scalar)
+    } else {
+        if scalar < 2048 {
+            width = 2
+            stage2_bytes_append(destination, 192 + scalar // 64)
+            stage2_bytes_append(destination, 128 + scalar % 64)
+        } else {
+            if scalar < 65536 {
+                width = 3
+                stage2_bytes_append(destination, 224 + scalar // 4096)
+                stage2_bytes_append(destination, 128 + scalar // 64 % 64)
+                stage2_bytes_append(destination, 128 + scalar % 64)
+            } else {
+                width = 4
+                stage2_bytes_append(destination, 240 + scalar // 262144)
+                stage2_bytes_append(destination, 128 + scalar // 4096 % 64)
+                stage2_bytes_append(destination, 128 + scalar // 64 % 64)
+                stage2_bytes_append(destination, 128 + scalar % 64)
+            }
+        }
+    }
+    if stage2_bytes_len(destination) != before + width { return 12 }
+    return 0
+}
+
+# policy: 0 nonempty identity, 1 noise (TAB/LF/CR admitted), 2 hex digest.
+# Only a fully validated, non-NUL, <=255-byte scalar string reaches the bridge.
+fn codec_text(read source: Bytes, at: Int, maximum: Int, policy: Int) -> CodecText {
+    let mut status = 0
+    if codec_byte(source, at) != 34 {
+        status = 3
+        if policy == 2 { status = 5 }
+        let result: CodecText = CodecText(status: status, value: "")
+        return result
+    }
+    let buffer = stage2_bytes_empty()
+    stage2_bytes_reserve(buffer, 256)
+    if stage2_bytes_capacity(buffer) < 256 { let result: CodecText = CodecText(status: 12, value: "")
+        return result }
+    let mut cursor = at + 1
+    let mut length = 0
+    while codec_byte(source, cursor) != 34 {
+        let scalar: CodecScalar = codec_scalar(source, cursor)
+        let value = scalar.value
+        let mut width = 1
+        if value >= 128 { width = 2 }
+        if value >= 2048 { width = 3 }
+        if value >= 65536 { width = 4 }
+        length = length + width
+        if codec_and(codec_ge(value, 55296), codec_le(value, 57343)) == 1 { status = first_failure(status, 5) }
+        if codec_or(codec_le(value, 31), codec_eq(value, 127)) == 1 {
+            let allowed = codec_and(codec_eq(policy, 1), codec_or(codec_eq(value, 9), codec_or(codec_eq(value, 10), codec_eq(value, 13))))
+            if allowed == 0 { status = first_failure(status, 5) }
+        }
+        if policy == 2 {
+            if codec_or(codec_and(codec_ge(value, 48), codec_le(value, 57)), codec_and(codec_ge(value, 97), codec_le(value, 102))) == 0 {
+                status = first_failure(status, 5)
+            }
+        }
+        if codec_and(codec_le(length, maximum), codec_eq(status, 0)) == 1 {
+            let emitted = codec_emit_scalar(buffer, value)
+            if emitted != 0 { let result: CodecText = CodecText(status: emitted, value: "")
+        return result }
+        }
+        cursor = scalar.next
+    }
+    if policy == 2 {
+        if length != 64 { status = 5 }
+    } else {
+        if length > maximum { status = first_failure(status, 4) }
+        if codec_and(codec_eq(length, 0), codec_eq(policy, 0)) == 1 { status = first_failure(status, 4) }
+    }
+    if status != 0 { let result: CodecText = CodecText(status: status, value: "")
+        return result }
+    let value = stage2_bytes_text(buffer, 0, length)
+    let result: CodecText = CodecText(status: 0, value: value)
+        return result
+}
+
+# Decimal JSON number -> exact integer, without binary floating point or an
+# overflowing intermediate. Trailing zeroes may be removed by a negative
+# exponent; a nonzero fractional remainder is a schema error.
+fn codec_integer(read source: Bytes, read ends: Bytes, at: Int, minimum: Int, maximum: Int) -> CodecNumber {
+    let byte = codec_byte(source, at)
+    if codec_or(codec_digit(byte), codec_eq(byte, 45)) == 0 { let result: CodecNumber = CodecNumber(status: 3, value: 0)
+        return result }
+    let end = codec_end(ends, at)
+    let mut cursor = at
+    let mut negative = 0
+    if byte == 45 { negative = 1
+        cursor = cursor + 1 }
+    let mut digits = 0
+    let mut fraction = 0
+    let mut after_dot = 0
+    let mut first = -1
+    let mut last = -1
+    let mantissa = cursor
+    while codec_or(codec_digit(codec_byte(source, cursor)), codec_eq(codec_byte(source, cursor), 46)) == 1 {
+        let current = codec_byte(source, cursor)
+        if current == 46 { after_dot = 1 } else {
+            if current != 48 {
+                if first < 0 { first = digits }
+                last = digits
+            }
+            digits = digits + 1
+            if after_dot == 1 { fraction = fraction + 1 }
+        }
+        cursor = cursor + 1
+    }
+    let mantissa_end = cursor
+    let mut exponent = 0
+    let mut exponent_negative = 0
+    if cursor < end {
+        cursor = cursor + 1
+        if codec_byte(source, cursor) == 45 { exponent_negative = 1 }
+        if codec_or(codec_eq(codec_byte(source, cursor), 45), codec_eq(codec_byte(source, cursor), 43)) == 1 { cursor = cursor + 1 }
+        while cursor < end {
+            # Saturation is above every possible wire digit count.
+            if exponent < 100000 { exponent = exponent * 10 + codec_byte(source, cursor) - 48 }
+            cursor = cursor + 1
+        }
+    }
+    if exponent_negative == 1 { exponent = 0 - exponent }
+    let decimal = digits - fraction + exponent
+    let mut value = 0
+    if first >= 0 {
+        if decimal <= last { let result: CodecNumber = CodecNumber(status: 3, value: 0)
+        return result }
+        if decimal - first > 16 { let result: CodecNumber = CodecNumber(status: 4, value: 0)
+        return result }
+        cursor = mantissa
+        let mut index = 0
+        while cursor < mantissa_end {
+            let digit = codec_byte(source, cursor)
+            if digit != 46 {
+                if codec_and(codec_ge(index, first), codec_lt(index, decimal)) == 1 {
+                    value = value * 10 + digit - 48
+                }
+                index = index + 1
+            }
+            cursor = cursor + 1
+        }
+        while index < decimal {
+            value = value * 10
+            index = index + 1
+        }
+    }
+    if value > 9007199254740991 { let result: CodecNumber = CodecNumber(status: 4, value: 0)
+        return result }
+    if negative == 1 { value = 0 - value }
+    if value < minimum { let result: CodecNumber = CodecNumber(status: 6, value: 0)
+        return result }
+    if value > maximum { let result: CodecNumber = CodecNumber(status: 4, value: 0)
+        return result }
+    let result: CodecNumber = CodecNumber(status: 0, value: value)
+        return result
+}
+
+fn codec_tag(read source: Bytes, at: Int, choices: Text) -> CodecNumber {
+    if codec_byte(source, at) != 34 { let result: CodecNumber = CodecNumber(status: 3, value: 0)
+        return result }
+    let word = stage2_bytes_empty()
+    stage2_bytes_assign_text(word, choices)
+    if stage2_bytes_len(word) != len(choices) { let result: CodecNumber = CodecNumber(status: 12, value: 0)
+        return result }
+    let mut start = 0
+    let mut tag = 0
+    while start < len(choices) {
+        let mut end = start
+        while codec_and(codec_lt(end, len(choices)), codec_ne(codec_byte(word, end), 44)) == 1 { end = end + 1 }
+        if codec_key_word(source, at, word, start, end - start) == 1 { let result: CodecNumber = CodecNumber(status: 0, value: tag)
+        return result }
+        start = end + 1
+        tag = tag + 1
+    }
+    let result: CodecNumber = CodecNumber(status: 3, value: 0)
+        return result
+}
+
+fn codec_counter(read source: Bytes, read ends: Bytes, at: Int) -> CodecCounter {
+    let shape = codec_fields(source, ends, at, "state,value")
+    if shape != 0 { let result: CodecCounter = CodecCounter(status: shape, available: false, value: 0)
+        return result }
+    let state = codec_field(source, ends, at, "state")
+    let value = codec_field(source, ends, at, "value")
+    if codec_or(codec_eq(state, -12), codec_eq(value, -12)) == 1 { let result: CodecCounter = CodecCounter(status: 12, available: false, value: 0)
+        return result }
+    let tag: CodecNumber = codec_tag(source, state, "unavailable,available")
+    if tag.status != 0 { let result: CodecCounter = CodecCounter(status: tag.status, available: false, value: 0)
+        return result }
+    if tag.value == 0 {
+        if value >= 0 { let result: CodecCounter = CodecCounter(status: 3, available: false, value: 0)
+        return result }
+        let result: CodecCounter = CodecCounter(status: 0, available: false, value: 0)
+        return result
+    }
+    let integer: CodecNumber = codec_integer(source, ends, value, 0, 9007199254740991)
+    if integer.status != 0 { let result: CodecCounter = CodecCounter(status: integer.status, available: false, value: 0)
+        return result }
+    let result: CodecCounter = CodecCounter(status: 0, available: true, value: integer.value)
+        return result
+}
+
+fn codec_available_text(read source: Bytes, read ends: Bytes, at: Int) -> CodecAvailableText {
+    let shape = codec_fields(source, ends, at, "state,value")
+    if shape != 0 { let result: CodecAvailableText = CodecAvailableText(status: shape, available: false, value: "")
+        return result }
+    let state = codec_field(source, ends, at, "state")
+    let value = codec_field(source, ends, at, "value")
+    if codec_or(codec_eq(state, -12), codec_eq(value, -12)) == 1 { let result: CodecAvailableText = CodecAvailableText(status: 12, available: false, value: "")
+        return result }
+    let tag: CodecNumber = codec_tag(source, state, "unavailable,available")
+    if tag.status != 0 { let result: CodecAvailableText = CodecAvailableText(status: tag.status, available: false, value: "")
+        return result }
+    if tag.value == 0 {
+        if value >= 0 { let result: CodecAvailableText = CodecAvailableText(status: 3, available: false, value: "")
+        return result }
+        let result: CodecAvailableText = CodecAvailableText(status: 0, available: false, value: "")
+        return result
+    }
+    let text: CodecText = codec_text(source, value, 128, 0)
+    if text.status != 0 { let result: CodecAvailableText = CodecAvailableText(status: text.status, available: false, value: "")
+        return result }
+    let result: CodecAvailableText = CodecAvailableText(status: 0, available: true, value: text.value)
+        return result
+}
+
+fn codec_series_error(status: Int) -> CodecSeries {
+    let first: List[Int] = []
+    let second: List[Int] = []
+    let result: CodecSeries = CodecSeries(status: status, first: first, second: second)
+        return result
+}
+
+fn codec_series(read source: Bytes, read ends: Bytes, at: Int, flags: Int) -> CodecSeries {
+    if codec_byte(source, at) != 91 { return codec_series_error(3) }
+    let mut cursor = codec_space(source, at + 1)
+    let mut count = 0
+    while codec_byte(source, cursor) != 93 {
+        count = count + 1
+        cursor = codec_space(source, codec_end(ends, cursor))
+        if codec_byte(source, cursor) == 44 { cursor = codec_space(source, cursor + 1) }
+    }
+    if count > 100 { return codec_series_error(4) }
+    let mut first_count = count
+    if first_count > 64 { first_count = 64 }
+    let mut first: List[Int] = codec_zero_segment(first_count)
+    let mut second: List[Int] = codec_zero_segment(count - first_count)
+    cursor = codec_space(source, at + 1)
+    let mut index = 0
+    let mut status = 0
+    while index < count {
+        let mut value = 0
+        if flags == 0 {
+            let integer: CodecNumber = codec_integer(source, ends, cursor, 0, 9007199254740991)
+            status = first_failure(status, integer.status)
+            value = integer.value
+        } else {
+            let byte = codec_byte(source, cursor)
+            if byte == 116 { value = 1 } else {
+                if byte != 102 { status = first_failure(status, 3) }
+            }
+        }
+        if index < 64 { first[index] = value } else { second[index - 64] = value }
+        index = index + 1
+        cursor = codec_space(source, codec_end(ends, cursor))
+        if codec_byte(source, cursor) == 44 { cursor = codec_space(source, cursor + 1) }
+    }
+    if status != 0 { return codec_series_error(status) }
+    let result: CodecSeries = CodecSeries(status: 0, first: first, second: second)
+        return result
+}
+
+# The frozen List[Int] ABI has no dynamic append/resize operation.
+# Select a bounded literal length first, then fill its existing slots.
+fn codec_zero_segment(count: Int) -> List[Int] {
+    if count == 1 {
+        let value: List[Int] = [0]
+        return value
+    }
+    if count == 2 {
+        let value: List[Int] = [0, 0]
+        return value
+    }
+    if count == 3 {
+        let value: List[Int] = [0, 0, 0]
+        return value
+    }
+    if count == 4 {
+        let value: List[Int] = [0, 0, 0, 0]
+        return value
+    }
+    if count == 5 {
+        let value: List[Int] = [0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 6 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 7 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 8 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 9 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 10 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 11 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 12 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 13 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 14 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 15 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 16 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 17 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 18 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 19 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 20 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 21 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 22 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 23 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 24 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 25 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 26 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 27 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 28 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 29 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 30 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 31 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 32 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 33 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 34 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 35 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 36 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 37 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 38 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 39 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 40 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 41 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 42 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 43 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 44 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 45 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 46 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 47 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 48 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 49 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 50 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 51 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 52 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 53 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 54 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 55 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 56 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 57 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 58 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 59 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 60 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 61 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 62 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 63 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    if count == 64 {
+        let value: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        return value
+    }
+    let empty: List[Int] = []
+    return empty
+}
+
+
+# Revalidate public model fields before encoding; derived fields are checked,
+# never repaired. The model computes summaries over copies of raw samples.
+fn codec_report_status(report: BenchReport) -> Int {
+    let identity: ReportIdentity = ReportIdentity(
+        suite: report.suite,
+        case: report.case,
+        parameter_present: report.parameter_present,
+        parameter: report.parameter,
+        metric: report.metric,
+        direction_tag: report.direction_tag
+    )
+    let schedule: ReportSchedule = ReportSchedule(
+        clock_tag: report.clock_tag,
+        warmup_cap_ns: report.warmup_cap_ns,
+        sampling_cap_ns: report.sampling_cap_ns,
+        sample_cap: report.sample_cap,
+        warmup_iterations: report.warmup_iterations,
+        warmup_stop_tag: report.warmup_stop_tag,
+        iterations_per_sample: report.iterations_per_sample,
+        sample_count: report.sample_count,
+        sampling_stop_tag: report.sampling_stop_tag,
+        harness_overhead_ns: report.harness_overhead_ns
+    )
+    let counters: ReportCounters = ReportCounters(
+        allocated_bytes_available: report.allocated_bytes_available,
+        allocated_bytes_value: report.allocated_bytes_value,
+        allocation_count_available: report.allocation_count_available,
+        allocation_count_value: report.allocation_count_value,
+        gc_collections_available: report.gc_collections_available,
+        gc_collections_value: report.gc_collections_value,
+        vm_peak_bytes_available: report.vm_peak_bytes_available,
+        vm_peak_bytes_value: report.vm_peak_bytes_value,
+        cpu_cycles_available: report.cpu_cycles_available,
+        cpu_cycles_value: report.cpu_cycles_value
+    )
+    let digests: ReportDigests = ReportDigests(
+        toolchain_sha256: report.toolchain_sha256,
+        source_sha256: report.source_sha256,
+        artifact_sha256: report.artifact_sha256
+    )
+    let host: ReportHost = ReportHost(
+        host_id_sha256: report.host_id_sha256,
+        host_os: report.host_os,
+        host_arch: report.host_arch,
+        host_cpu: report.host_cpu,
+        host_affinity_available: report.host_affinity_available,
+        host_affinity: report.host_affinity,
+        host_frequency_hz_available: report.host_frequency_hz_available,
+        host_frequency_hz: report.host_frequency_hz,
+        host_noise: report.host_noise
+    )
+    let expected: BenchReport = produce_report(identity, schedule, counters, digests, host, report.sample_segment0, report.sample_segment1)
+    if expected.status_tag != 0 { return expected.status_tag }
+    if report.summary_minimum != expected.summary_minimum { return 6 }
+    if report.summary_maximum != expected.summary_maximum { return 6 }
+    if report.summary_median != expected.summary_median { return 6 }
+    if report.summary_p25 != expected.summary_p25 { return 6 }
+    if report.summary_p75 != expected.summary_p75 { return 6 }
+    if report.summary_median_absolute_deviation != expected.summary_median_absolute_deviation { return 6 }
+    if len(report.outlier_segment0) != len(expected.outlier_segment0) { return 6 }
+    let mut index = 0
+    while index < len(expected.outlier_segment0) {
+        if report.outlier_segment0[index] != expected.outlier_segment0[index] { return 6 }
+        index = index + 1
+    }
+    if len(report.outlier_segment1) != len(expected.outlier_segment1) { return 6 }
+    let mut index1 = 0
+    while index1 < len(expected.outlier_segment1) {
+        if report.outlier_segment1[index1] != expected.outlier_segment1[index1] { return 6 }
+        index1 = index1 + 1
+    }
+    return 0
+}
+
+fn codec_decode_model(read source: Bytes, read ends: Bytes) -> BenchReport {
+    let root = codec_space(source, 0)
+    let mut status = 0
+    let shape_root = codec_fields(source, ends, root, "schema,identity,clock,budget,measurement,samples,outliers,summary,counters,digests,host")
+    if shape_root == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, shape_root)
+    let identity = codec_field(source, ends, root, "identity")
+    if identity == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let shape_identity = codec_fields(source, ends, identity, "suite,case,parameter,metric,unit,direction")
+    if shape_identity == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, shape_identity)
+    let budget = codec_field(source, ends, root, "budget")
+    if budget == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let shape_budget = codec_fields(source, ends, budget, "warmup_cap_ns,sampling_cap_ns,sample_cap")
+    if shape_budget == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, shape_budget)
+    let measurement = codec_field(source, ends, root, "measurement")
+    if measurement == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let shape_measurement = codec_fields(source, ends, measurement, "warmup_iterations,warmup_stop,iterations_per_sample,sample_count,sampling_stop,harness_overhead_ns")
+    if shape_measurement == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, shape_measurement)
+    let summary = codec_field(source, ends, root, "summary")
+    if summary == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let shape_summary = codec_fields(source, ends, summary, "minimum,maximum,median,p25,p75,median_absolute_deviation")
+    if shape_summary == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, shape_summary)
+    let counters = codec_field(source, ends, root, "counters")
+    if counters == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let shape_counters = codec_fields(source, ends, counters, "allocated_bytes,allocation_count,gc_collections,vm_peak_bytes,cpu_cycles")
+    if shape_counters == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, shape_counters)
+    let digests = codec_field(source, ends, root, "digests")
+    if digests == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let shape_digests = codec_fields(source, ends, digests, "toolchain_sha256,source_sha256,artifact_sha256")
+    if shape_digests == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, shape_digests)
+    let host = codec_field(source, ends, root, "host")
+    if host == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let shape_host = codec_fields(source, ends, host, "host_id_sha256,os,arch,cpu,affinity,frequency_hz,noise")
+    if shape_host == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, shape_host)
+    let at_schema_value = codec_field(source, ends, root, "schema")
+    if at_schema_value == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let schema_value: CodecNumber = codec_tag(source, at_schema_value, "kofun.bench-report/v1")
+    if schema_value.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, schema_value.status)
+    let at_unit_value = codec_field(source, ends, identity, "unit")
+    if at_unit_value == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let unit_value: CodecNumber = codec_tag(source, at_unit_value, "ns")
+    if unit_value.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, unit_value.status)
+    let at_suite = codec_field(source, ends, identity, "suite")
+    if at_suite == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let suite: CodecText = codec_text(source, at_suite, 96, 0)
+    if suite.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, suite.status)
+    let at_case = codec_field(source, ends, identity, "case")
+    if at_case == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let case: CodecText = codec_text(source, at_case, 96, 0)
+    if case.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, case.status)
+    let at_metric = codec_field(source, ends, identity, "metric")
+    if at_metric == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let metric: CodecText = codec_text(source, at_metric, 96, 0)
+    if metric.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, metric.status)
+    let parameter_at = codec_field(source, ends, identity, "parameter")
+    if parameter_at == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let parameter_presence: CodecPresence = codec_presence(parameter_at)
+    let parameter: CodecText = codec_optional_parameter(source, parameter_at)
+    if parameter.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, parameter.status)
+    let at_direction_tag = codec_field(source, ends, identity, "direction")
+    if at_direction_tag == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let direction_tag: CodecNumber = codec_tag(source, at_direction_tag, "lower-is-better,higher-is-better")
+    if direction_tag.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, direction_tag.status)
+    let at_clock_tag = codec_field(source, ends, root, "clock")
+    if at_clock_tag == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let clock_tag: CodecNumber = codec_tag(source, at_clock_tag, "monotonic,process-cpu,wall")
+    if clock_tag.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, clock_tag.status)
+    let at_warmup_stop_tag = codec_field(source, ends, measurement, "warmup_stop")
+    if at_warmup_stop_tag == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let warmup_stop_tag: CodecNumber = codec_tag(source, at_warmup_stop_tag, "disabled,steady,time-cap")
+    if warmup_stop_tag.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, warmup_stop_tag.status)
+    let at_sampling_stop_tag = codec_field(source, ends, measurement, "sampling_stop")
+    if at_sampling_stop_tag == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let sampling_stop_tag: CodecNumber = codec_tag(source, at_sampling_stop_tag, "sample-cap,time-cap")
+    if sampling_stop_tag.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, sampling_stop_tag.status)
+    let at_warmup_cap_ns = codec_field(source, ends, budget, "warmup_cap_ns")
+    if at_warmup_cap_ns == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let warmup_cap_ns: CodecNumber = codec_integer(source, ends, at_warmup_cap_ns, 0, 500000000)
+    if warmup_cap_ns.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, warmup_cap_ns.status)
+    let at_sampling_cap_ns = codec_field(source, ends, budget, "sampling_cap_ns")
+    if at_sampling_cap_ns == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let sampling_cap_ns: CodecNumber = codec_integer(source, ends, at_sampling_cap_ns, 1, 3000000000)
+    if sampling_cap_ns.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, sampling_cap_ns.status)
+    let at_sample_cap = codec_field(source, ends, budget, "sample_cap")
+    if at_sample_cap == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let sample_cap: CodecNumber = codec_integer(source, ends, at_sample_cap, 1, 100)
+    if sample_cap.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, sample_cap.status)
+    let at_warmup_iterations = codec_field(source, ends, measurement, "warmup_iterations")
+    if at_warmup_iterations == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let warmup_iterations: CodecNumber = codec_integer(source, ends, at_warmup_iterations, 0, 9007199254740991)
+    if warmup_iterations.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, warmup_iterations.status)
+    let at_iterations_per_sample = codec_field(source, ends, measurement, "iterations_per_sample")
+    if at_iterations_per_sample == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let iterations_per_sample: CodecNumber = codec_integer(source, ends, at_iterations_per_sample, 1, 9007199254740991)
+    if iterations_per_sample.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, iterations_per_sample.status)
+    let at_sample_count = codec_field(source, ends, measurement, "sample_count")
+    if at_sample_count == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let sample_count: CodecNumber = codec_integer(source, ends, at_sample_count, 1, 100)
+    if sample_count.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, sample_count.status)
+    let at_harness_overhead_ns = codec_field(source, ends, measurement, "harness_overhead_ns")
+    if at_harness_overhead_ns == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let harness_overhead_ns: CodecNumber = codec_integer(source, ends, at_harness_overhead_ns, 0, 9007199254740991)
+    if harness_overhead_ns.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, harness_overhead_ns.status)
+    let at_summary_minimum = codec_field(source, ends, summary, "minimum")
+    if at_summary_minimum == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let summary_minimum: CodecNumber = codec_integer(source, ends, at_summary_minimum, 0, 9007199254740991)
+    if summary_minimum.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, summary_minimum.status)
+    let at_summary_maximum = codec_field(source, ends, summary, "maximum")
+    if at_summary_maximum == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let summary_maximum: CodecNumber = codec_integer(source, ends, at_summary_maximum, 0, 9007199254740991)
+    if summary_maximum.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, summary_maximum.status)
+    let at_summary_median = codec_field(source, ends, summary, "median")
+    if at_summary_median == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let summary_median: CodecNumber = codec_integer(source, ends, at_summary_median, 0, 9007199254740991)
+    if summary_median.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, summary_median.status)
+    let at_summary_p25 = codec_field(source, ends, summary, "p25")
+    if at_summary_p25 == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let summary_p25: CodecNumber = codec_integer(source, ends, at_summary_p25, 0, 9007199254740991)
+    if summary_p25.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, summary_p25.status)
+    let at_summary_p75 = codec_field(source, ends, summary, "p75")
+    if at_summary_p75 == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let summary_p75: CodecNumber = codec_integer(source, ends, at_summary_p75, 0, 9007199254740991)
+    if summary_p75.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, summary_p75.status)
+    let at_summary_median_absolute_deviation = codec_field(source, ends, summary, "median_absolute_deviation")
+    if at_summary_median_absolute_deviation == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let summary_median_absolute_deviation: CodecNumber = codec_integer(source, ends, at_summary_median_absolute_deviation, 0, 9007199254740991)
+    if summary_median_absolute_deviation.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, summary_median_absolute_deviation.status)
+    let at_allocated_bytes = codec_field(source, ends, counters, "allocated_bytes")
+    if at_allocated_bytes == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let allocated_bytes: CodecCounter = codec_counter(source, ends, at_allocated_bytes)
+    if allocated_bytes.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, allocated_bytes.status)
+    let at_allocation_count = codec_field(source, ends, counters, "allocation_count")
+    if at_allocation_count == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let allocation_count: CodecCounter = codec_counter(source, ends, at_allocation_count)
+    if allocation_count.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, allocation_count.status)
+    let at_gc_collections = codec_field(source, ends, counters, "gc_collections")
+    if at_gc_collections == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let gc_collections: CodecCounter = codec_counter(source, ends, at_gc_collections)
+    if gc_collections.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, gc_collections.status)
+    let at_vm_peak_bytes = codec_field(source, ends, counters, "vm_peak_bytes")
+    if at_vm_peak_bytes == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let vm_peak_bytes: CodecCounter = codec_counter(source, ends, at_vm_peak_bytes)
+    if vm_peak_bytes.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, vm_peak_bytes.status)
+    let at_cpu_cycles = codec_field(source, ends, counters, "cpu_cycles")
+    if at_cpu_cycles == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let cpu_cycles: CodecCounter = codec_counter(source, ends, at_cpu_cycles)
+    if cpu_cycles.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, cpu_cycles.status)
+    let at_toolchain_sha256 = codec_field(source, ends, digests, "toolchain_sha256")
+    if at_toolchain_sha256 == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let toolchain_sha256: CodecText = codec_text(source, at_toolchain_sha256, 64, 2)
+    if toolchain_sha256.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, toolchain_sha256.status)
+    let at_source_sha256 = codec_field(source, ends, digests, "source_sha256")
+    if at_source_sha256 == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let source_sha256: CodecText = codec_text(source, at_source_sha256, 64, 2)
+    if source_sha256.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, source_sha256.status)
+    let at_artifact_sha256 = codec_field(source, ends, digests, "artifact_sha256")
+    if at_artifact_sha256 == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let artifact_sha256: CodecText = codec_text(source, at_artifact_sha256, 64, 2)
+    if artifact_sha256.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, artifact_sha256.status)
+    let at_host_id_sha256 = codec_field(source, ends, host, "host_id_sha256")
+    if at_host_id_sha256 == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let host_id_sha256: CodecText = codec_text(source, at_host_id_sha256, 64, 2)
+    if host_id_sha256.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, host_id_sha256.status)
+    let at_host_os = codec_field(source, ends, host, "os")
+    if at_host_os == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let host_os: CodecText = codec_text(source, at_host_os, 128, 0)
+    if host_os.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, host_os.status)
+    let at_host_arch = codec_field(source, ends, host, "arch")
+    if at_host_arch == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let host_arch: CodecText = codec_text(source, at_host_arch, 128, 0)
+    if host_arch.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, host_arch.status)
+    let at_host_cpu = codec_field(source, ends, host, "cpu")
+    if at_host_cpu == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let host_cpu: CodecText = codec_text(source, at_host_cpu, 128, 0)
+    if host_cpu.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, host_cpu.status)
+    let at_host_noise = codec_field(source, ends, host, "noise")
+    if at_host_noise == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let host_noise: CodecText = codec_text(source, at_host_noise, 255, 1)
+    if host_noise.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, host_noise.status)
+    let at_host_affinity = codec_field(source, ends, host, "affinity")
+    if at_host_affinity == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let host_affinity: CodecAvailableText = codec_available_text(source, ends, at_host_affinity)
+    if host_affinity.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, host_affinity.status)
+    let at_host_frequency_hz = codec_field(source, ends, host, "frequency_hz")
+    if at_host_frequency_hz == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let host_frequency_hz: CodecCounter = codec_counter(source, ends, at_host_frequency_hz)
+    if host_frequency_hz.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, host_frequency_hz.status)
+    let at_samples = codec_field(source, ends, root, "samples")
+    if at_samples == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let samples: CodecSeries = codec_series(source, ends, at_samples, 0)
+    if samples.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, samples.status)
+    let sample_segment0: List[Int] = samples.first
+    let sample_segment1: List[Int] = samples.second
+    let at_outliers = codec_field(source, ends, root, "outliers")
+    if at_outliers == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let outliers: CodecSeries = codec_series(source, ends, at_outliers, 1)
+    if outliers.status == 12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    status = first_failure(status, outliers.status)
+    let outlier_segment0: List[Int] = outliers.first
+    let outlier_segment1: List[Int] = outliers.second
+    if status != 0 { let refused: BenchReport = neutral_report(status)
+        return refused }
+    let report: BenchReport = BenchReport(
+        status_tag: 0,
+        suite: suite.value,
+        case: case.value,
+        parameter_present: parameter_presence.value,
+        parameter: parameter.value,
+        metric: metric.value,
+        direction_tag: direction_tag.value,
+        clock_tag: clock_tag.value,
+        warmup_cap_ns: warmup_cap_ns.value,
+        sampling_cap_ns: sampling_cap_ns.value,
+        sample_cap: sample_cap.value,
+        warmup_iterations: warmup_iterations.value,
+        warmup_stop_tag: warmup_stop_tag.value,
+        iterations_per_sample: iterations_per_sample.value,
+        sample_count: sample_count.value,
+        sampling_stop_tag: sampling_stop_tag.value,
+        harness_overhead_ns: harness_overhead_ns.value,
+        sample_segment0: sample_segment0,
+        sample_segment1: sample_segment1,
+        outlier_segment0: outlier_segment0,
+        outlier_segment1: outlier_segment1,
+        summary_minimum: summary_minimum.value,
+        summary_maximum: summary_maximum.value,
+        summary_median: summary_median.value,
+        summary_p25: summary_p25.value,
+        summary_p75: summary_p75.value,
+        summary_median_absolute_deviation: summary_median_absolute_deviation.value,
+        allocated_bytes_available: allocated_bytes.available,
+        allocated_bytes_value: allocated_bytes.value,
+        allocation_count_available: allocation_count.available,
+        allocation_count_value: allocation_count.value,
+        gc_collections_available: gc_collections.available,
+        gc_collections_value: gc_collections.value,
+        vm_peak_bytes_available: vm_peak_bytes.available,
+        vm_peak_bytes_value: vm_peak_bytes.value,
+        cpu_cycles_available: cpu_cycles.available,
+        cpu_cycles_value: cpu_cycles.value,
+        toolchain_sha256: toolchain_sha256.value,
+        source_sha256: source_sha256.value,
+        artifact_sha256: artifact_sha256.value,
+        host_id_sha256: host_id_sha256.value,
+        host_os: host_os.value,
+        host_arch: host_arch.value,
+        host_cpu: host_cpu.value,
+        host_affinity_available: host_affinity.available,
+        host_affinity: host_affinity.value,
+        host_frequency_hz_available: host_frequency_hz.available,
+        host_frequency_hz: host_frequency_hz.value,
+        host_noise: host_noise.value
+    )
+    let checked = codec_report_status(report)
+    if checked != 0 { let refused: BenchReport = neutral_report(checked)
+        return refused }
+    return report
+}
+
+fn codec_optional_parameter(read source: Bytes, at: Int) -> CodecText {
+    if at < 0 {
+        let empty: CodecText = CodecText(status: 0, value: "")
+        return empty
+    }
+    let value: CodecText = codec_text(source, at, 96, 0)
+    return value
+}
+
+fn codec_check_text(value: Text, maximum: Int, note: Int) -> Int {
+    if len(value) > maximum { return 4 }
+    if codec_and(codec_eq(len(value), 0), codec_eq(note, 0)) == 1 { return 4 }
+    let bytes = stage2_bytes_empty()
+    stage2_bytes_assign_text(bytes, value)
+    if stage2_bytes_len(bytes) != len(value) { return 12 }
+    if codec_utf8(bytes) != 0 { return 5 }
+    let mut i = 0
+    while i < len(value) {
+        let byte = codec_byte(bytes, i)
+        if codec_or(codec_le(byte, 31), codec_eq(byte, 127)) == 1 {
+            if codec_and(codec_eq(note, 1), codec_or(codec_eq(byte, 9), codec_or(codec_eq(byte, 10), codec_eq(byte, 13)))) == 0 { return 5 }
+        }
+        i = i + 1
+    }
+    return 0
+}
+
+fn codec_raw(edit destination: Bytes, text: Text) -> Int {
+    let word = stage2_bytes_empty()
+    stage2_bytes_assign_text(word, text)
+    if stage2_bytes_len(word) != len(text) { return 12 }
+    let length = stage2_bytes_len(destination)
+    stage2_bytes_append_range(destination, word, 0, len(text))
+    if stage2_bytes_len(destination) != length + len(text) { return 12 }
+    return 0
+}
+
+fn codec_hex_digit(value: Int) -> Int {
+    if value < 10 { return 48 + value }
+    return 87 + value
+}
+
+fn codec_quoted(edit destination: Bytes, text: Text) -> Int {
+    let word = stage2_bytes_empty()
+    stage2_bytes_assign_text(word, text)
+    if stage2_bytes_len(word) != len(text) { return 12 }
+    let mut expected = stage2_bytes_len(destination) + 2
+    stage2_bytes_append(destination, 34)
+    let mut i = 0
+    while i < len(text) {
+        let byte = codec_byte(word, i)
+        let mut escape = 0
+        if byte == 8 { escape = 98 }
+        if byte == 9 { escape = 116 }
+        if byte == 10 { escape = 110 }
+        if byte == 12 { escape = 102 }
+        if byte == 13 { escape = 114 }
+        if codec_or(codec_eq(byte, 34), codec_eq(byte, 92)) == 1 { escape = byte }
+        if escape != 0 {
+            stage2_bytes_append(destination, 92)
+            stage2_bytes_append(destination, escape)
+            expected = expected + 2
+        } else {
+            if byte < 32 {
+                stage2_bytes_append(destination, 92)
+                stage2_bytes_append(destination, 117)
+                stage2_bytes_append(destination, 48)
+                stage2_bytes_append(destination, 48)
+                stage2_bytes_append(destination, codec_hex_digit(byte // 16))
+                stage2_bytes_append(destination, codec_hex_digit(byte % 16))
+                expected = expected + 6
+            } else {
+                stage2_bytes_append(destination, byte)
+                expected = expected + 1
+            }
+        }
+        i = i + 1
+    }
+    stage2_bytes_append(destination, 34)
+    if stage2_bytes_len(destination) != expected { return 12 }
+    return 0
+}
+
+fn codec_emit_integer(edit destination: Bytes, value: Int) -> Int {
+    let mut digits: List[Int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let mut count = 0
+    let mut number = value
+    while number > 0 {
+        digits[count] = number % 10
+        count = count + 1
+        number = number // 10
+    }
+    if count == 0 { count = 1 }
+    let expected = stage2_bytes_len(destination) + count
+    while count > 0 {
+        count = count - 1
+        stage2_bytes_append(destination, 48 + digits[count])
+    }
+    if stage2_bytes_len(destination) != expected { return 12 }
+    return 0
+}
+
+fn codec_emit_counter(edit destination: Bytes, counter: CodecCounter) -> Int {
+    if counter.available {
+        if codec_raw(destination, "{\"state\":\"available\",\"value\":") != 0 { return 12 }
+        if codec_emit_integer(destination, counter.value) != 0 { return 12 }
+        return codec_raw(destination, "}")
+    }
+    return codec_raw(destination, "{\"state\":\"unavailable\"}")
+}
+
+fn codec_emit_available_text(edit destination: Bytes, text: CodecAvailableText) -> Int {
+    if text.available {
+        if codec_raw(destination, "{\"state\":\"available\",\"value\":") != 0 { return 12 }
+        if codec_quoted(destination, text.value) != 0 { return 12 }
+        return codec_raw(destination, "}")
+    }
+    return codec_raw(destination, "{\"state\":\"unavailable\"}")
+}
+
+fn codec_emit_series(edit destination: Bytes, first: List[Int], second: List[Int], flags: Int) -> Int {
+    if codec_raw(destination, "[") != 0 { return 12 }
+    let mut i = 0
+    while i < len(first) + len(second) {
+        if i > 0 {
+            if codec_raw(destination, ",") != 0 { return 12 }
+        }
+        let mut value = 0
+        if i < len(first) { value = first[i] } else { value = second[i - len(first)] }
+        if flags == 0 {
+            if codec_emit_integer(destination, value) != 0 { return 12 }
+        } else {
+            if value == 0 {
+                if codec_raw(destination, "false") != 0 { return 12 }
+            } else {
+                if codec_raw(destination, "true") != 0 { return 12 }
+            }
+        }
+        i = i + 1
+    }
+    return codec_raw(destination, "]")
+}
+
+# All validation and private allocation finish before this commit step.
+# A failed reserve retains pointer/capacity/length/bytes. After success every
+# following operation is in bounds and needs no allocation, so it cannot fail.
+fn codec_install(edit destination: Bytes, read complete: Bytes) -> Int {
+    let length = stage2_bytes_len(complete)
+    stage2_bytes_reserve(destination, length)
+    if stage2_bytes_capacity(destination) < length { return 12 }
+    stage2_bytes_clear(destination)
+    stage2_bytes_append_range(destination, complete, 0, length)
+    return 0
+}
+
+
+# Fixed schema order. No host serializer participates in production.
+fn codec_encode_body(report: BenchReport, edit destination: Bytes) -> Int {
+    if codec_raw(destination, "{\"schema\":\"kofun.bench-report/v1\",\"identity\":{\"suite\":") != 0 { return 12 }
+    if codec_quoted(destination, report.suite) != 0 { return 12 }
+    if codec_raw(destination, ",\"case\":") != 0 { return 12 }
+    if codec_quoted(destination, report.case) != 0 { return 12 }
+    if report.parameter_present {
+    if codec_raw(destination, ",\"parameter\":") != 0 { return 12 }
+    if codec_quoted(destination, report.parameter) != 0 { return 12 }
+    }
+    if codec_raw(destination, ",\"metric\":") != 0 { return 12 }
+    if codec_quoted(destination, report.metric) != 0 { return 12 }
+    if codec_raw(destination, ",\"unit\":\"ns\",\"direction\":") != 0 { return 12 }
+    if report.direction_tag == 0 {
+    if codec_raw(destination, "\"lower-is-better\"") != 0 { return 12 }
+    }
+    if report.direction_tag == 1 {
+    if codec_raw(destination, "\"higher-is-better\"") != 0 { return 12 }
+    }
+    if codec_raw(destination, "},\"clock\":") != 0 { return 12 }
+    if report.clock_tag == 0 {
+    if codec_raw(destination, "\"monotonic\"") != 0 { return 12 }
+    }
+    if report.clock_tag == 1 {
+    if codec_raw(destination, "\"process-cpu\"") != 0 { return 12 }
+    }
+    if report.clock_tag == 2 {
+    if codec_raw(destination, "\"wall\"") != 0 { return 12 }
+    }
+    if codec_raw(destination, ",\"budget\":{") != 0 { return 12 }
+    if codec_raw(destination, "\"warmup_cap_ns\":") != 0 { return 12 }
+    if codec_emit_integer(destination, report.warmup_cap_ns) != 0 { return 12 }
+    if codec_raw(destination, ",") != 0 { return 12 }
+    if codec_raw(destination, "\"sampling_cap_ns\":") != 0 { return 12 }
+    if codec_emit_integer(destination, report.sampling_cap_ns) != 0 { return 12 }
+    if codec_raw(destination, ",") != 0 { return 12 }
+    if codec_raw(destination, "\"sample_cap\":") != 0 { return 12 }
+    if codec_emit_integer(destination, report.sample_cap) != 0 { return 12 }
+    if codec_raw(destination, "},\"measurement\":{") != 0 { return 12 }
+    if codec_raw(destination, "\"warmup_iterations\":") != 0 { return 12 }
+    if codec_emit_integer(destination, report.warmup_iterations) != 0 { return 12 }
+    if codec_raw(destination, ",") != 0 { return 12 }
+    if codec_raw(destination, "\"warmup_stop\":") != 0 { return 12 }
+    if report.warmup_stop_tag == 0 {
+    if codec_raw(destination, "\"disabled\"") != 0 { return 12 }
+    }
+    if report.warmup_stop_tag == 1 {
+    if codec_raw(destination, "\"steady\"") != 0 { return 12 }
+    }
+    if report.warmup_stop_tag == 2 {
+    if codec_raw(destination, "\"time-cap\"") != 0 { return 12 }
+    }
+    if codec_raw(destination, ",") != 0 { return 12 }
+    if codec_raw(destination, "\"iterations_per_sample\":") != 0 { return 12 }
+    if codec_emit_integer(destination, report.iterations_per_sample) != 0 { return 12 }
+    if codec_raw(destination, ",") != 0 { return 12 }
+    if codec_raw(destination, "\"sample_count\":") != 0 { return 12 }
+    if codec_emit_integer(destination, report.sample_count) != 0 { return 12 }
+    if codec_raw(destination, ",") != 0 { return 12 }
+    if codec_raw(destination, "\"sampling_stop\":") != 0 { return 12 }
+    if report.sampling_stop_tag == 0 {
+    if codec_raw(destination, "\"sample-cap\"") != 0 { return 12 }
+    }
+    if report.sampling_stop_tag == 1 {
+    if codec_raw(destination, "\"time-cap\"") != 0 { return 12 }
+    }
+    if codec_raw(destination, ",") != 0 { return 12 }
+    if codec_raw(destination, "\"harness_overhead_ns\":") != 0 { return 12 }
+    if codec_emit_integer(destination, report.harness_overhead_ns) != 0 { return 12 }
+    if codec_raw(destination, "},\"samples\":") != 0 { return 12 }
+    if codec_emit_series(destination, report.sample_segment0, report.sample_segment1, 0) != 0 { return 12 }
+    if codec_raw(destination, ",\"outliers\":") != 0 { return 12 }
+    if codec_emit_series(destination, report.outlier_segment0, report.outlier_segment1, 1) != 0 { return 12 }
+    if codec_raw(destination, ",\"summary\":{") != 0 { return 12 }
+    if codec_raw(destination, "\"minimum\":") != 0 { return 12 }
+    if codec_emit_integer(destination, report.summary_minimum) != 0 { return 12 }
+    if codec_raw(destination, ",") != 0 { return 12 }
+    if codec_raw(destination, "\"maximum\":") != 0 { return 12 }
+    if codec_emit_integer(destination, report.summary_maximum) != 0 { return 12 }
+    if codec_raw(destination, ",") != 0 { return 12 }
+    if codec_raw(destination, "\"median\":") != 0 { return 12 }
+    if codec_emit_integer(destination, report.summary_median) != 0 { return 12 }
+    if codec_raw(destination, ",") != 0 { return 12 }
+    if codec_raw(destination, "\"p25\":") != 0 { return 12 }
+    if codec_emit_integer(destination, report.summary_p25) != 0 { return 12 }
+    if codec_raw(destination, ",") != 0 { return 12 }
+    if codec_raw(destination, "\"p75\":") != 0 { return 12 }
+    if codec_emit_integer(destination, report.summary_p75) != 0 { return 12 }
+    if codec_raw(destination, ",") != 0 { return 12 }
+    if codec_raw(destination, "\"median_absolute_deviation\":") != 0 { return 12 }
+    if codec_emit_integer(destination, report.summary_median_absolute_deviation) != 0 { return 12 }
+    if codec_raw(destination, "},\"counters\":{") != 0 { return 12 }
+    if codec_raw(destination, "\"allocated_bytes\":") != 0 { return 12 }
+    let allocated_bytes: CodecCounter = CodecCounter(status: 0, available: report.allocated_bytes_available, value: report.allocated_bytes_value)
+    if codec_emit_counter(destination, allocated_bytes) != 0 { return 12 }
+    if codec_raw(destination, ",") != 0 { return 12 }
+    if codec_raw(destination, "\"allocation_count\":") != 0 { return 12 }
+    let allocation_count: CodecCounter = CodecCounter(status: 0, available: report.allocation_count_available, value: report.allocation_count_value)
+    if codec_emit_counter(destination, allocation_count) != 0 { return 12 }
+    if codec_raw(destination, ",") != 0 { return 12 }
+    if codec_raw(destination, "\"gc_collections\":") != 0 { return 12 }
+    let gc_collections: CodecCounter = CodecCounter(status: 0, available: report.gc_collections_available, value: report.gc_collections_value)
+    if codec_emit_counter(destination, gc_collections) != 0 { return 12 }
+    if codec_raw(destination, ",") != 0 { return 12 }
+    if codec_raw(destination, "\"vm_peak_bytes\":") != 0 { return 12 }
+    let vm_peak_bytes: CodecCounter = CodecCounter(status: 0, available: report.vm_peak_bytes_available, value: report.vm_peak_bytes_value)
+    if codec_emit_counter(destination, vm_peak_bytes) != 0 { return 12 }
+    if codec_raw(destination, ",") != 0 { return 12 }
+    if codec_raw(destination, "\"cpu_cycles\":") != 0 { return 12 }
+    let cpu_cycles: CodecCounter = CodecCounter(status: 0, available: report.cpu_cycles_available, value: report.cpu_cycles_value)
+    if codec_emit_counter(destination, cpu_cycles) != 0 { return 12 }
+    if codec_raw(destination, "},\"digests\":{") != 0 { return 12 }
+    if codec_raw(destination, "\"toolchain_sha256\":") != 0 { return 12 }
+    if codec_quoted(destination, report.toolchain_sha256) != 0 { return 12 }
+    if codec_raw(destination, ",") != 0 { return 12 }
+    if codec_raw(destination, "\"source_sha256\":") != 0 { return 12 }
+    if codec_quoted(destination, report.source_sha256) != 0 { return 12 }
+    if codec_raw(destination, ",") != 0 { return 12 }
+    if codec_raw(destination, "\"artifact_sha256\":") != 0 { return 12 }
+    if codec_quoted(destination, report.artifact_sha256) != 0 { return 12 }
+    if codec_raw(destination, "},\"host\":{") != 0 { return 12 }
+    if codec_raw(destination, "\"host_id_sha256\":") != 0 { return 12 }
+    if codec_quoted(destination, report.host_id_sha256) != 0 { return 12 }
+    if codec_raw(destination, ",") != 0 { return 12 }
+    if codec_raw(destination, "\"os\":") != 0 { return 12 }
+    if codec_quoted(destination, report.host_os) != 0 { return 12 }
+    if codec_raw(destination, ",") != 0 { return 12 }
+    if codec_raw(destination, "\"arch\":") != 0 { return 12 }
+    if codec_quoted(destination, report.host_arch) != 0 { return 12 }
+    if codec_raw(destination, ",") != 0 { return 12 }
+    if codec_raw(destination, "\"cpu\":") != 0 { return 12 }
+    if codec_quoted(destination, report.host_cpu) != 0 { return 12 }
+    if codec_raw(destination, ",\"affinity\":") != 0 { return 12 }
+    let affinity: CodecAvailableText = CodecAvailableText(status: 0, available: report.host_affinity_available, value: report.host_affinity)
+    if codec_emit_available_text(destination, affinity) != 0 { return 12 }
+    if codec_raw(destination, ",\"frequency_hz\":") != 0 { return 12 }
+    let frequency: CodecCounter = CodecCounter(status: 0, available: report.host_frequency_hz_available, value: report.host_frequency_hz)
+    if codec_emit_counter(destination, frequency) != 0 { return 12 }
+    if codec_raw(destination, ",\"noise\":") != 0 { return 12 }
+    if codec_quoted(destination, report.host_noise) != 0 { return 12 }
+    if codec_raw(destination, "}}\n") != 0 { return 12 }
+    return 0
+}
+
+fn encode_report(report: BenchReport, edit destination: Bytes) -> Int {
+    if report.status_tag < 0 { return 3 }
+    if report.status_tag > 12 { return 3 }
+    if report.status_tag != 0 { return report.status_tag }
+    let mut status = codec_report_status(report)
+
+    let check_suite = codec_check_text(report.suite, 96, 0)
+    if check_suite == 12 { return 12 }
+    status = first_failure(status, check_suite)
+    let check_case = codec_check_text(report.case, 96, 0)
+    if check_case == 12 { return 12 }
+    status = first_failure(status, check_case)
+    if report.parameter_present {
+    let check_parameter = codec_check_text(report.parameter, 96, 0)
+    if check_parameter == 12 { return 12 }
+    status = first_failure(status, check_parameter)
+    }
+    let check_metric = codec_check_text(report.metric, 96, 0)
+    if check_metric == 12 { return 12 }
+    status = first_failure(status, check_metric)
+    let check_host_os = codec_check_text(report.host_os, 128, 0)
+    if check_host_os == 12 { return 12 }
+    status = first_failure(status, check_host_os)
+    let check_host_arch = codec_check_text(report.host_arch, 128, 0)
+    if check_host_arch == 12 { return 12 }
+    status = first_failure(status, check_host_arch)
+    let check_host_cpu = codec_check_text(report.host_cpu, 128, 0)
+    if check_host_cpu == 12 { return 12 }
+    status = first_failure(status, check_host_cpu)
+    if report.host_affinity_available {
+    let check_host_affinity = codec_check_text(report.host_affinity, 128, 0)
+    if check_host_affinity == 12 { return 12 }
+    status = first_failure(status, check_host_affinity)
+    }
+    let check_host_noise = codec_check_text(report.host_noise, 255, 1)
+    if check_host_noise == 12 { return 12 }
+    status = first_failure(status, check_host_noise)
+    if status != 0 { return status }
+    let scratch = stage2_bytes_empty()
+    let encoded = codec_encode_body(report, scratch)
+    if encoded != 0 { return encoded }
+    if stage2_bytes_len(scratch) > 16384 { return 4 }
+    return codec_install(destination, scratch)
+}
+
+fn decode_report(read source: Bytes) -> BenchReport {
+    let ends = stage2_bytes_empty()
+    let scanned = codec_scan(source, ends)
+    if scanned != 0 {
+        let refused: BenchReport = neutral_report(scanned)
+        return refused
+    }
+    let duplicate = codec_duplicates(source, ends)
+    if duplicate != 0 {
+        let refused: BenchReport = neutral_report(duplicate)
+        return refused
+    }
+    let report: BenchReport = codec_decode_model(source, ends)
+    if report.status_tag != 0 { return report }
+    let canonical = stage2_bytes_empty()
+    let encoded = codec_encode_body(report, canonical)
+    if encoded != 0 {
+        let refused: BenchReport = neutral_report(encoded)
+        return refused
+    }
+    if stage2_bytes_len(canonical) != stage2_bytes_len(source) {
+        let refused: BenchReport = neutral_report(2)
+        return refused
+    }
+    if codec_matches(source, 0, canonical) == 0 {
+        let refused: BenchReport = neutral_report(2)
+        return refused
+    }
+    return report
+}

@@ -214,6 +214,7 @@ cc	invoke	4	required-today	required	tests/stage2/record-values/run.sh
 cc	invoke	1	required-today	required	tests/stage2/sha256-pair/check.sh
 cc	invoke	4	required-today	required	tests/stage2/text-escapes/run.sh
 cc	invoke	5	required-today	required	tests/stage2/unused-function/run.sh
+cc	invoke	2	required-today	required	tests/stdlib/benchmark-report-codec/check.sh
 cc	invoke	5	required-today	required	tests/stdlib/benchmark-report-model/check.sh
 cc	invoke	4	required-today	required	tests/stdlib/benchmark-report-model/compare.sh
 cc	invoke	1	required-today	required	tests/stdlib/clock-adapters/check-linux-x86_64.sh
@@ -310,6 +311,7 @@ node	invoke	11	required-today	required	tests/rfc/check-registry.sh
 node	invoke	2	required-today	required	tests/stage2/list-int-signatures/run.sh
 node	invoke	4	required-today	required	tests/stage2/list-int-values/run.sh
 node	invoke	2	required-today	required	tests/stage2/optional-pair/run.sh
+node	invoke	4	required-today	required	tests/stdlib/benchmark-report-codec/check.sh
 node	invoke	5	required-today	required	tests/stdlib/benchmark-report-model/check.sh
 node	invoke	6	required-today	required	tests/stdlib/benchmark-report-model/compare.sh
 node	invoke	4	required-today	required	tests/stdlib/kofun-digest-model/check.sh
@@ -445,6 +447,7 @@ node	source	1	required-today	required	tests/stage2/host-primitives/check.mjs
 node	source	1	required-today	required	tests/stage2/list-int-signatures/check-pair.mjs
 node	source	1	required-today	required	tests/stage2/list-int-values/layout-check.mjs
 node	source	1	required-today	required	tests/stage2/optional-pair/check.mjs
+node	source	1	required-today	required	tests/stdlib/benchmark-report-codec/fixtures.mjs
 node	source	1	required-today	required	tests/stdlib/benchmark-report-model/oracle.mjs
 node	source	1	required-today	required	tests/stdlib/kofun-digest-model/corpus.mjs
 node	source	1	required-today	required	tests/tooling/ownership-view/ownership_view_test.mjs
@@ -741,6 +744,7 @@ shell-build-driver	source	1	required-today	required	tests/stage2/text-escapes/ru
 shell-build-driver	source	1	required-today	required	tests/stage2/unused-function/run.sh
 shell-build-driver	source	1	required-today	required	tests/stage2/while-list-int/run.sh
 shell-build-driver	source	1	required-today	required	tests/stdlib/alloc/check.sh
+shell-build-driver	source	1	required-today	required	tests/stdlib/benchmark-report-codec/check.sh
 shell-build-driver	source	1	required-today	required	tests/stdlib/benchmark-report-model/check.sh
 shell-build-driver	source	1	required-today	required	tests/stdlib/benchmark-report-model/compare.sh
 shell-build-driver	source	1	required-today	required	tests/stdlib/benchmark-summary/check.sh
