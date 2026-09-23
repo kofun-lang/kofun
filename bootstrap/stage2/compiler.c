@@ -34702,6 +34702,38 @@ static bool capture_fn_compatible(CheckedPlaceArena *a, const char * v_source, c
 static bool capture_terminal(CheckedPlaceArena *a, const char * v_result);
 static const char * capture_join_state(CheckedPlaceArena *a, const char * v_left, const char * v_right);
 
+static const char * capture_render_checked(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_facts, const char * v_accesses, const char * v_path);
+static const char * summary_replace(CheckedPlaceArena *a, const char * v_value, const char * v_needle, const char * v_replacement);
+static bool summary_enabled(CheckedPlaceArena *a, const char * v_catalog);
+static const char * summary_error(CheckedPlaceArena *a, const char * v_message, int64_t v_at);
+static const char * summary_parameters(CheckedPlaceArena *a, const char * v_source, const char * v_hir, int64_t v_open);
+static int64_t summary_parameter_slot(CheckedPlaceArena *a, const char * v_parameters, int64_t v_open, const char * v_binding);
+static const char * summary_callable_row(CheckedPlaceArena *a, const char * v_source, const char * v_hir, int64_t v_open, int64_t v_end, const char * v_kind);
+static const char * summary_callables(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_facts);
+static const char * summary_all_parameters(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_callables);
+static const char * summary_calls(CheckedPlaceArena *a, const char * v_facts);
+static int64_t summary_argument(CheckedPlaceArena *a, const char * v_facts, int64_t v_call_start, int64_t v_slot);
+static const char * summary_mode(CheckedPlaceArena *a, const char * v_left, const char * v_right);
+static const char * summary_effect(CheckedPlaceArena *a, int64_t v_open, int64_t v_slot, const char * v_kind, const char * v_mode, int64_t v_depth, const char * v_raw, const char * v_json, const char * v_type);
+static const char * summary_merge(CheckedPlaceArena *a, const char * v_effects, const char * v_candidate);
+static int64_t summary_bare_formal(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_parameters, int64_t v_open, int64_t v_start, int64_t v_end);
+static const char * summary_bound(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_parameters, int64_t v_open, int64_t v_start, int64_t v_end, const char * v_path);
+static int64_t summary_slice_separator(CheckedPlaceArena *a, const char * v_source, int64_t v_start, int64_t v_end);
+static const char * summary_projection(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_parameters, int64_t v_owner, int64_t v_start, int64_t v_end, const char * v_path, const char * v_place);
+static const char * summary_actual(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_catalog, int64_t v_start, int64_t v_end, const char * v_path);
+static bool summary_constant_pairs(CheckedPlaceArena *a, const char * v_json);
+static const char * summary_substitute_bounds(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_parameters, int64_t v_owner, const char * v_facts, int64_t v_call_start, const char * v_path, int64_t v_depth, const char * v_raw, const char * v_json);
+static const char * summary_callable_seeds(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_parameters, const char * v_facts, const char * v_calls, const char * v_path, int64_t v_open, int64_t v_end, const char * v_scope, bool v_lambda);
+static const char * summary_seeds(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_parameters, const char * v_callables, const char * v_facts, const char * v_calls, const char * v_path);
+static const char * summary_instance(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_catalog, const char * v_parameters, int64_t v_owner, const char * v_facts, int64_t v_call_start, const char * v_path, const char * v_effects, int64_t v_effect);
+static const char * summary_solve(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_catalog, const char * v_parameters, const char * v_callables, const char * v_facts, const char * v_calls, const char * v_path);
+static const char * summary_instance_key(CheckedPlaceArena *a, const char * v_instances, int64_t v_row);
+static const char * summary_instance_merge(CheckedPlaceArena *a, const char * v_instances, const char * v_candidate);
+static const char * summary_call_instances(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_catalog, const char * v_parameters, const char * v_facts, const char * v_effects, int64_t v_callee, int64_t v_start, const char * v_path, const char * v_task_scope);
+static int64_t summary_direct_count(CheckedPlaceArena *a, const char * v_hir, const char * v_checked, int64_t v_start, int64_t v_end, const char * v_scope);
+static const char * summary_expand(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_catalog, const char * v_lifecycle, const char * v_checked, const char * v_path);
+static const char * summary_render(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_facts, const char * v_path);
+
 static char *cp_walk(CheckedPlaceArena *, const char *, const char *, const char *, int64_t, int64_t, const char *, int64_t);
 static char *cp_expression_type(CheckedPlaceArena *a, const char *source, const char *hir, const char *catalog, int64_t start, int64_t end, int64_t depth) {
     if (depth > 64) return cp_error(a, "expression depth limit is 64", start);
@@ -34970,7 +35002,7 @@ static char *cp_walk(CheckedPlaceArena *a, const char *source, const char *hir, 
             if (!cp_kind(a, source, field, "identifier") || token_end(source, field) > end) return cp_error(a, "malformed field projection", field);
             int64_t resolved = cp_resolve_field(a, catalog, type, cp_keep(a, token_copy(source, field)));
             if (resolved < 0) return cp_error(a, "field does not resolve for checked owner type", field);
-            if (count < 8 && *path) {
+            if ((count < 8 || summary_enabled(a, catalog)) && *path) {
                 char *owner = cp_type_id(a, path, type), *ordinal = cp_field(a, catalog, resolved, 2);
                 raw = cp_format(a, "%s01%s%08" PRIx64, raw, owner, (uint64_t)decimal_value(ordinal));
                 char *display = cp_keep(a, scoped_hir_display(source, field));
@@ -35007,7 +35039,7 @@ static char *cp_walk(CheckedPlaceArena *a, const char *source, const char *hir, 
             if (strcmp(lower_type, "Int") != 0 || strcmp(upper_type, "Int") != 0) return cp_error(a, "slice bounds must have checked Int type", lower);
             char *low = cp_constant(a, source, lower, lower_end), *high = cp_constant(a, source, upper, upper_end);
             if (*low && *high && strtoll(low, NULL, 10) > strtoll(high, NULL, 10)) return cp_error(a, "constant lower bound exceeds upper bound", lower);
-            if (count < 8 && *path) {
+            if ((count < 8 || summary_enabled(a, catalog)) && *path) {
                 char *file = cp_keep(a, scoped_hir_file_id(path));
                 char *low_node = cp_expression_id(a, file, lower, lower_end), *high_node = cp_expression_id(a, file, upper, upper_end);
                 char *low_raw = cp_format(a, "02%s", low_node), *high_raw = cp_format(a, "02%s", high_node);
@@ -35409,6 +35441,16 @@ static const char * capture_latent(CheckedPlaceArena *a, const char * v_facts) {
         v_result = capture_append(a, &builder_result, v_result, cp_format(a, "%s%s%s", "access|1|", cp_keep(a, source_slice(v_facts, (v_row + 9), v_end)), "\n"));
         v_row = capture_record_start(a, v_facts, "access", (v_row + 1));
     }
+    v_row = capture_record_start(a, v_facts, "call", 0);
+    while (v_row >= 0) {
+        v_result = capture_append(a, &builder_result, v_result, cp_format(a, "%s%s%s", "call|1|", cp_keep(a, source_slice(v_facts, (v_row + 7), capture_line_end(a, v_facts, v_row))), "\n"));
+        v_row = capture_record_start(a, v_facts, "call", (v_row + 1));
+    }
+    v_row = capture_record_start(a, v_facts, "argument", 0);
+    while (v_row >= 0) {
+        v_result = capture_append(a, &builder_result, v_result, cp_format(a, "%s%s", cp_keep(a, source_slice(v_facts, v_row, capture_line_end(a, v_facts, v_row))), "\n"));
+        v_row = capture_record_start(a, v_facts, "argument", (v_row + 1));
+    }
     return capture_return_text(a, mark, v_result);
 }
 
@@ -35491,6 +35533,7 @@ static const char * capture_call(CheckedPlaceArena *a, const char * v_source, co
     CheckedPlaceText *builder_facts = NULL;
     const char * v_facts = "";
     bool v_builtin = false;
+    int64_t v_callee = (-2);
     if (((int64_t)strlen(v_binding)) > 0) {
         const char * v_place = cp_walk(a, v_source, v_hir, v_catalog, v_first, token_end(v_source, v_first), v_path, (v_depth + 1));
         if (strncmp(v_place, "error[", strlen("error[")) == 0) {
@@ -35501,6 +35544,7 @@ static const char * capture_call(CheckedPlaceArena *a, const char * v_source, co
         }
         v_facts = capture_access(a, v_place, "read", v_first, token_end(v_source, v_first));
         int64_t v_lambda = lambda_binding_open_mode(v_source, v_hir, v_binding, true);
+        v_callee = v_lambda;
         if (v_lambda < 0) {
             int64_t v_signature = callable_parameter_type_start(v_source, v_hir, v_binding);
             int64_t v_arity = callable_type_arity(v_source, v_signature);
@@ -35524,7 +35568,8 @@ static const char * capture_call(CheckedPlaceArena *a, const char * v_source, co
     } else {
         int64_t v_declaration = function_start_named(v_source, v_name);
         if (v_declaration >= 0) {
-            v_parameters = capture_parameters(a, v_source, parameter_open(v_source, v_declaration));
+            v_callee = parameter_open(v_source, v_declaration);
+            v_parameters = capture_parameters(a, v_source, v_callee);
             v_returned = cp_normalize_type((char *)cp_keep(a, function_return_type(v_source, v_name)));
         } else {
             const char * v_owner = cp_keep(a, enum_constructor_owner(v_source, v_name));
@@ -35624,6 +35669,9 @@ static const char * capture_call(CheckedPlaceArena *a, const char * v_source, co
             return capture_return_text(a, mark, capture_error(a, "E2S12", "callable argument signature mismatch", v_value));
         }
         v_facts = capture_append(a, &builder_facts, v_facts, capture_tail(a, v_checked));
+        if (summary_enabled(a, v_catalog)) {
+            v_facts = capture_append(a, &builder_facts, v_facts, cp_format(a, "%s%s%s%s%s%s%s%s%s", "argument|", cp_format(a, "%" PRId64, v_first), "|", v_slot, "|", cp_format(a, "%" PRId64, v_value), "|", cp_format(a, "%" PRId64, v_stop), "\n"));
+        }
         v_ordinal = (v_ordinal + 1);
         v_arg = v_stop;
         if (v_arg < (v_end - 1)) {
@@ -35636,6 +35684,9 @@ static const char * capture_call(CheckedPlaceArena *a, const char * v_source, co
             return capture_return_text(a, mark, capture_error(a, "E2S164", "missing argument", v_first));
         }
         v_row = capture_record_start(a, v_parameters, "formal", (v_row + 1));
+    }
+    if (summary_enabled(a, v_catalog)) {
+        v_facts = capture_append(a, &builder_facts, v_facts, cp_format(a, "%s%s%s%s%s%s%s", "call|0|", cp_format(a, "%" PRId64, v_callee), "|", cp_format(a, "%" PRId64, v_first), "|", cp_format(a, "%" PRId64, v_end), "\n"));
     }
     return capture_return_text(a, mark, capture_value(a, v_returned, v_facts));
 }
@@ -36450,7 +36501,7 @@ static const char * capture_task_observations(CheckedPlaceArena *a, const char *
         int64_t v_start = decimal_value(cp_field(a, v_accesses, v_row, 8));
         int64_t v_stop = decimal_value(cp_field(a, v_accesses, v_row, 9));
         const char * v_binding = cp_field(a, v_accesses, v_row, 3);
-        if (((v_start > v_parameters) && (v_stop <= v_end)) && (!capture_local(a, v_hir, v_binding, v_scope))) {
+        if (((v_start > v_parameters) && (v_stop <= v_end)) && ((((int64_t)strlen(v_binding)) == 0) || (!capture_local(a, v_hir, v_binding, v_scope)))) {
             v_count = (v_count + 1);
             if (v_count > 256) {
                 return capture_return_text(a, mark, capture_error(a, "E2S154", "retained observation limit is 256 per task", v_start));
@@ -36473,6 +36524,10 @@ static const char * capture_task_observations(CheckedPlaceArena *a, const char *
                 if (strcmp(cp_field(a, v_accesses, v_row, 10), "place") == 0) {
                     v_tag = "02";
                     v_reason = "projection-depth-exceeded";
+                }
+                if (strcmp(cp_field(a, v_accesses, v_row, 10), "unavailable") == 0) {
+                    v_tag = "01";
+                    v_reason = "unresolved-call";
                 }
                 v_raw = cp_format(a, "%s%s%s%s", "4b554e0002", v_task_id, v_tag, v_witness);
                 v_id = cp_keep(a, scoped_hir_hash_frame("kofun.scope-hir.unknown/v2", v_task_id, v_tag, v_witness, ""));
@@ -36518,100 +36573,7 @@ static const char * capture_render(CheckedPlaceArena *a, const char * v_source, 
     if (strncmp(v_accesses, "error[", strlen("error[")) == 0) {
         return capture_return_text(a, mark, v_accesses);
     }
-    const char * v_prefix = cp_keep(a, scoped_hir_render(v_source, v_facts, v_path));
-    if (strncmp(v_prefix, "error[", strlen("error[")) == 0) {
-        return capture_return_text(a, mark, v_prefix);
-    }
-    CheckedPlaceText *builder_targets = NULL;
-    const char * v_targets = "";
-    CheckedPlaceText *builder_captures = NULL;
-    const char * v_captures = "";
-    int64_t v_task = hir_record_start(v_facts, "task", 0);
-    int64_t v_ordinal = 0;
-    int64_t v_records = 0;
-    while (v_task >= 0) {
-        const char * v_observations = capture_task_observations(a, v_source, v_hir, v_facts, v_accesses, v_path, v_task, v_ordinal);
-        if (strncmp(v_observations, "error[", strlen("error[")) == 0) {
-            return capture_return_text(a, mark, v_observations);
-        }
-        int64_t v_row = 0;
-        int64_t v_count = 0;
-        while (v_row < ((int64_t)strlen(v_observations))) {
-            const char * v_raw = cp_field(a, v_observations, v_row, 1);
-            const char * v_target = cp_field(a, v_observations, v_row, 2);
-            const char * v_kind = cp_field(a, v_observations, v_row, 3);
-            const char * v_task_id = cp_field(a, v_observations, v_row, 4);
-            const char * v_mode = cp_field(a, v_observations, v_row, 5);
-            int64_t v_after = (capture_line_end(a, v_observations, v_row) + 1);
-            while ((v_after < ((int64_t)strlen(v_observations))) && (strcmp(cp_field(a, v_observations, v_after, 1), v_raw) == 0)) {
-                const char * v_next = cp_field(a, v_observations, v_after, 5);
-                if ((strcmp(v_next, "take") == 0) || ((strcmp(v_next, "edit") == 0) && (strcmp(v_mode, "read") == 0))) {
-                    v_mode = v_next;
-                }
-                v_after = (capture_line_end(a, v_observations, v_after) + 1);
-            }
-            v_count = (v_count + 1);
-            if (v_count > 64) {
-                return capture_return_text(a, mark, capture_error(a, "E2S154", "capture limit is 64 per task", decimal_value(cp_field(a, v_observations, v_row, 7))));
-            }
-            v_targets = capture_append(a, &builder_targets, v_targets, cp_format(a, "%s%s%s%s%s", "target|", v_raw, "|", cp_field(a, v_observations, v_row, 9), "\n"));
-            const char * v_origins = capture_origin_rows(a, v_observations, v_row, v_after);
-            CheckedPlaceText *builder_rendered = NULL;
-            const char * v_rendered = "";
-            int64_t v_origin = 0;
-            const char * v_previous = "";
-            while (v_origin < ((int64_t)strlen(v_origins))) {
-                const char * v_key = cp_field(a, v_origins, v_origin, 1);
-                if (strcmp(v_key, v_previous) != 0) {
-                    if (((int64_t)strlen(v_rendered)) > 0) {
-                        v_rendered = capture_append(a, &builder_rendered, v_rendered, ",");
-                    }
-                    v_rendered = capture_append(a, &builder_rendered, v_rendered, cp_field(a, v_origins, v_origin, 2));
-                    v_previous = v_key;
-                }
-                v_origin = (capture_line_end(a, v_origins, v_origin) + 1);
-            }
-            const char * v_tag = "01";
-            if (strcmp(v_kind, "unknown") == 0) {
-                v_tag = "02";
-            }
-            const char * v_id = cp_keep(a, scoped_hir_hash_frame("kofun.scope-hir.capture/v2", v_task_id, v_tag, v_target, ""));
-            v_captures = capture_append(a, &builder_captures, v_captures, cp_format(a, "%s%s%s%s%s%s%s%s%s%s%s%s%s", ",{\"id\":\"", v_id, "\",\"mode\":\"", v_mode, "\",\"origins\":[", v_rendered, "],\"record\":\"capture\",\"target_id\":\"", v_target, "\",\"target_kind\":\"", v_kind, "\",\"task_id\":\"", v_task_id, "\"}"));
-            v_records = (v_records + 1);
-            v_row = v_after;
-        }
-        v_ordinal = (v_ordinal + 1);
-        v_task = hir_record_start(v_facts, "task", (v_task + 1));
-    }
-    const char * v_ordered = capture_sort(a, v_targets);
-    CheckedPlaceText *builder_rendered = NULL;
-    const char * v_rendered = "";
-    int64_t v_row = 0;
-    const char * v_previous = "";
-    while (v_row < ((int64_t)strlen(v_ordered))) {
-        const char * v_raw = cp_field(a, v_ordered, v_row, 1);
-        if (strcmp(v_raw, v_previous) != 0) {
-            v_rendered = capture_append(a, &builder_rendered, v_rendered, cp_format(a, "%s%s", ",", cp_field(a, v_ordered, v_row, 2)));
-            v_previous = v_raw;
-            v_records = (v_records + 1);
-        }
-        v_row = (capture_line_end(a, v_ordered, v_row) + 1);
-    }
-    int64_t v_par_row = hir_record_start(v_facts, "par", 0);
-    while (v_par_row >= 0) {
-        v_records = (v_records + 1);
-        v_par_row = hir_record_start(v_facts, "par", (v_par_row + 1));
-    }
-    v_records = (v_records + (v_ordinal * 2));
-    if (v_records > 8384) {
-        return capture_return_text(a, mark, capture_error(a, "E2S154", "record limit is 8384", 0));
-    }
-    int64_t v_split = text_find_from(v_prefix, "],\"root_scope_id\":", 0);
-    const char * v_document = cp_format(a, "%s%s%s%s", cp_keep(a, source_slice(v_prefix, 0, v_split)), v_rendered, v_captures, cp_keep(a, source_slice(v_prefix, v_split, ((int64_t)strlen(v_prefix)))));
-    if (((int64_t)strlen(v_document)) > 16777216) {
-        return capture_return_text(a, mark, capture_error(a, "E2S154", "document byte limit is 16777216", 0));
-    }
-    return capture_return_text(a, mark, v_document);
+    return capture_return_text(a, mark, capture_render_checked(a, v_source, v_hir, v_facts, v_accesses, v_path));
 }
 
 static bool capture_declared_type(CheckedPlaceArena *a, const char * v_source, const char * v_type) {
@@ -36744,6 +36706,1033 @@ static int emit_scope_hir_v2_file(const char *input, const char *output, const c
     return 0;
 }
 
+static const char * capture_render_checked(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_facts, const char * v_accesses, const char * v_path) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_source;
+    (void)v_hir;
+    (void)v_facts;
+    (void)v_accesses;
+    (void)v_path;
+    const char * v_prefix = cp_keep(a, scoped_hir_render(v_source, v_facts, v_path));
+    if (strncmp(v_prefix, "error[", strlen("error[")) == 0) {
+        return capture_return_text(a, mark, v_prefix);
+    }
+    CheckedPlaceText *builder_targets = NULL;
+    const char * v_targets = "";
+    CheckedPlaceText *builder_captures = NULL;
+    const char * v_captures = "";
+    int64_t v_task = hir_record_start(v_facts, "task", 0);
+    int64_t v_ordinal = 0;
+    int64_t v_records = 0;
+    while (v_task >= 0) {
+        const char * v_observations = capture_task_observations(a, v_source, v_hir, v_facts, v_accesses, v_path, v_task, v_ordinal);
+        if (strncmp(v_observations, "error[", strlen("error[")) == 0) {
+            return capture_return_text(a, mark, v_observations);
+        }
+        int64_t v_row = 0;
+        int64_t v_count = 0;
+        while (v_row < ((int64_t)strlen(v_observations))) {
+            const char * v_raw = cp_field(a, v_observations, v_row, 1);
+            const char * v_target = cp_field(a, v_observations, v_row, 2);
+            const char * v_kind = cp_field(a, v_observations, v_row, 3);
+            const char * v_task_id = cp_field(a, v_observations, v_row, 4);
+            const char * v_mode = cp_field(a, v_observations, v_row, 5);
+            int64_t v_after = (capture_line_end(a, v_observations, v_row) + 1);
+            while ((v_after < ((int64_t)strlen(v_observations))) && (strcmp(cp_field(a, v_observations, v_after, 1), v_raw) == 0)) {
+                const char * v_next = cp_field(a, v_observations, v_after, 5);
+                if ((strcmp(v_next, "take") == 0) || ((strcmp(v_next, "edit") == 0) && (strcmp(v_mode, "read") == 0))) {
+                    v_mode = v_next;
+                }
+                v_after = (capture_line_end(a, v_observations, v_after) + 1);
+            }
+            v_count = (v_count + 1);
+            if (v_count > 64) {
+                return capture_return_text(a, mark, capture_error(a, "E2S154", "capture limit is 64 per task", decimal_value(cp_field(a, v_observations, v_row, 7))));
+            }
+            v_targets = capture_append(a, &builder_targets, v_targets, cp_format(a, "%s%s%s%s%s", "target|", v_raw, "|", cp_field(a, v_observations, v_row, 9), "\n"));
+            const char * v_origins = capture_origin_rows(a, v_observations, v_row, v_after);
+            CheckedPlaceText *builder_rendered = NULL;
+            const char * v_rendered = "";
+            int64_t v_origin = 0;
+            const char * v_previous = "";
+            while (v_origin < ((int64_t)strlen(v_origins))) {
+                const char * v_key = cp_field(a, v_origins, v_origin, 1);
+                if (strcmp(v_key, v_previous) != 0) {
+                    if (((int64_t)strlen(v_rendered)) > 0) {
+                        v_rendered = capture_append(a, &builder_rendered, v_rendered, ",");
+                    }
+                    v_rendered = capture_append(a, &builder_rendered, v_rendered, cp_field(a, v_origins, v_origin, 2));
+                    v_previous = v_key;
+                }
+                v_origin = (capture_line_end(a, v_origins, v_origin) + 1);
+            }
+            const char * v_tag = "01";
+            if (strcmp(v_kind, "unknown") == 0) {
+                v_tag = "02";
+            }
+            const char * v_id = cp_keep(a, scoped_hir_hash_frame("kofun.scope-hir.capture/v2", v_task_id, v_tag, v_target, ""));
+            v_captures = capture_append(a, &builder_captures, v_captures, cp_format(a, "%s%s%s%s%s%s%s%s%s%s%s%s%s", ",{\"id\":\"", v_id, "\",\"mode\":\"", v_mode, "\",\"origins\":[", v_rendered, "],\"record\":\"capture\",\"target_id\":\"", v_target, "\",\"target_kind\":\"", v_kind, "\",\"task_id\":\"", v_task_id, "\"}"));
+            v_records = (v_records + 1);
+            v_row = v_after;
+        }
+        v_ordinal = (v_ordinal + 1);
+        v_task = hir_record_start(v_facts, "task", (v_task + 1));
+    }
+    const char * v_ordered = capture_sort(a, v_targets);
+    CheckedPlaceText *builder_rendered = NULL;
+    const char * v_rendered = "";
+    int64_t v_row = 0;
+    const char * v_previous = "";
+    while (v_row < ((int64_t)strlen(v_ordered))) {
+        const char * v_raw = cp_field(a, v_ordered, v_row, 1);
+        if (strcmp(v_raw, v_previous) != 0) {
+            v_rendered = capture_append(a, &builder_rendered, v_rendered, cp_format(a, "%s%s", ",", cp_field(a, v_ordered, v_row, 2)));
+            v_previous = v_raw;
+            v_records = (v_records + 1);
+        }
+        v_row = (capture_line_end(a, v_ordered, v_row) + 1);
+    }
+    int64_t v_par_row = hir_record_start(v_facts, "par", 0);
+    while (v_par_row >= 0) {
+        v_records = (v_records + 1);
+        v_par_row = hir_record_start(v_facts, "par", (v_par_row + 1));
+    }
+    v_records = (v_records + (v_ordinal * 2));
+    if (v_records > 8384) {
+        return capture_return_text(a, mark, capture_error(a, "E2S154", "record limit is 8384", 0));
+    }
+    int64_t v_split = text_find_from(v_prefix, "],\"root_scope_id\":", 0);
+    const char * v_document = cp_format(a, "%s%s%s%s", cp_keep(a, source_slice(v_prefix, 0, v_split)), v_rendered, v_captures, cp_keep(a, source_slice(v_prefix, v_split, ((int64_t)strlen(v_prefix)))));
+    if (((int64_t)strlen(v_document)) > 16777216) {
+        return capture_return_text(a, mark, capture_error(a, "E2S154", "document byte limit is 16777216", 0));
+    }
+    return capture_return_text(a, mark, v_document);
+}
+
+static const char * summary_replace(CheckedPlaceArena *a, const char * v_value, const char * v_needle, const char * v_replacement) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_value;
+    (void)v_needle;
+    (void)v_replacement;
+    CheckedPlaceText *builder_result = NULL;
+    const char * v_result = "";
+    int64_t v_start = 0;
+    int64_t v_found = text_find_from(v_value, v_needle, 0);
+    while (v_found >= 0) {
+        v_result = capture_append(a, &builder_result, v_result, cp_format(a, "%s%s", cp_keep(a, source_slice(v_value, v_start, v_found)), v_replacement));
+        v_start = (v_found + ((int64_t)strlen(v_needle)));
+        v_found = text_find_from(v_value, v_needle, v_start);
+    }
+    return capture_return_text(a, mark, cp_format(a, "%s%s", v_result, cp_keep(a, source_slice(v_value, v_start, ((int64_t)strlen(v_value))))));
+}
+
+static bool summary_enabled(CheckedPlaceArena *a, const char * v_catalog) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_catalog;
+    return capture_return_integer(a, mark, (strstr(v_catalog, "\nsummary-mode|complete-v1\n") != NULL));
+}
+
+static const char * summary_error(CheckedPlaceArena *a, const char * v_message, int64_t v_at) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_message;
+    (void)v_at;
+    return capture_return_text(a, mark, capture_error(a, "E2S154", cp_format(a, "%s%s", "call summary: ", v_message), v_at));
+}
+
+static const char * summary_parameters(CheckedPlaceArena *a, const char * v_source, const char * v_hir, int64_t v_open) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_source;
+    (void)v_hir;
+    (void)v_open;
+    int64_t v_end = balanced_end(v_source, v_open, "(", ")");
+    int64_t v_at = skip_trivia(v_source, token_end(v_source, v_open));
+    int64_t v_slot = 0;
+    CheckedPlaceText *builder_result = NULL;
+    const char * v_result = "";
+    while (v_at < (v_end - 1)) {
+        int64_t v_stop = capture_item_end(a, v_source, v_at, (v_end - 1));
+        if (v_stop <= v_at) {
+            return capture_return_text(a, mark, summary_error(a, "invalid checked formal range", v_at));
+        }
+        int64_t v_declaration = parameter_internal_start(v_source, v_at, v_stop);
+        const char * v_binding = cp_keep(a, hir_definition_id_at(v_hir, v_declaration));
+        if (((int64_t)strlen(v_binding)) == 0) {
+            return capture_return_text(a, mark, summary_error(a, "formal has no resolved binding", v_declaration));
+        }
+        v_result = capture_append(a, &builder_result, v_result, cp_format(a, "%s%s%s%s%s%s%s", "parameter|", cp_format(a, "%" PRId64, v_open), "|", cp_format(a, "%" PRId64, v_slot), "|", v_binding, "\n"));
+        v_slot = (v_slot + 1);
+        v_at = v_stop;
+        if (v_at < (v_end - 1)) {
+            v_at = skip_trivia(v_source, token_end(v_source, v_at));
+        }
+    }
+    return capture_return_text(a, mark, v_result);
+}
+
+static int64_t summary_parameter_slot(CheckedPlaceArena *a, const char * v_parameters, int64_t v_open, const char * v_binding) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_parameters;
+    (void)v_open;
+    (void)v_binding;
+    int64_t v_row = capture_record_start(a, v_parameters, "parameter", 0);
+    while (v_row >= 0) {
+        if ((strcmp(cp_field(a, v_parameters, v_row, 1), cp_format(a, "%" PRId64, v_open)) == 0) && (strcmp(cp_field(a, v_parameters, v_row, 3), v_binding) == 0)) {
+            return capture_return_integer(a, mark, decimal_value(cp_field(a, v_parameters, v_row, 2)));
+        }
+        v_row = capture_record_start(a, v_parameters, "parameter", (v_row + 1));
+    }
+    return capture_return_integer(a, mark, (-1));
+}
+
+static const char * summary_callable_row(CheckedPlaceArena *a, const char * v_source, const char * v_hir, int64_t v_open, int64_t v_end, const char * v_kind) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_source;
+    (void)v_hir;
+    (void)v_open;
+    (void)v_end;
+    (void)v_kind;
+    return capture_return_text(a, mark, cp_format(a, "%s%s%s%s%s%s%s%s%s%s%s", "callable|", cp_keep(a, scoped_hir_hex(v_open, 8)), "|", cp_format(a, "%" PRId64, v_open), "|", cp_format(a, "%" PRId64, v_end), "|", cp_keep(a, hir_scope_id_for_open(v_hir, v_open)), "|", v_kind, "\n"));
+}
+
+static const char * summary_callables(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_facts) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_source;
+    (void)v_hir;
+    (void)v_facts;
+    CheckedPlaceText *builder_result = NULL;
+    const char * v_result = "";
+    int64_t v_count = 0;
+    int64_t v_function = next_function_start(v_source, 0);
+    while (v_function < ((int64_t)strlen(v_source))) {
+        int64_t v_end = function_end(v_source, v_function);
+        if (v_end <= v_function) {
+            return capture_return_text(a, mark, summary_error(a, "invalid checked function range", v_function));
+        }
+        v_count = (v_count + 1);
+        if (v_count > 64) {
+            return capture_return_text(a, mark, summary_error(a, "callable-body limit is 64", v_function));
+        }
+        v_result = capture_append(a, &builder_result, v_result, summary_callable_row(a, v_source, v_hir, parameter_open(v_source, v_function), v_end, "named"));
+        v_function = next_function_start(v_source, v_end);
+    }
+    int64_t v_call = capture_record_start(a, v_facts, "call", 0);
+    while (v_call >= 0) {
+        int64_t v_open = decimal_value(cp_field(a, v_facts, v_call, 2));
+        if ((v_open >= 0) && (capture_fact(a, v_result, "callable", 2, cp_format(a, "%" PRId64, v_open)) < 0)) {
+            int64_t v_end = lambda_parameters_end_mode(v_source, (-1), v_open, true);
+            if (v_end <= v_open) {
+                return capture_return_text(a, mark, summary_error(a, "resolved callable body is unavailable", v_open));
+            }
+            v_count = (v_count + 1);
+            if (v_count > 64) {
+                return capture_return_text(a, mark, summary_error(a, "callable-body limit is 64", v_open));
+            }
+            v_result = capture_append(a, &builder_result, v_result, summary_callable_row(a, v_source, v_hir, v_open, v_end, "lambda"));
+        }
+        v_call = capture_record_start(a, v_facts, "call", (v_call + 1));
+    }
+    return capture_return_text(a, mark, capture_sort(a, v_result));
+}
+
+static const char * summary_all_parameters(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_callables) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_source;
+    (void)v_hir;
+    (void)v_callables;
+    CheckedPlaceText *builder_result = NULL;
+    const char * v_result = "";
+    int64_t v_row = capture_record_start(a, v_callables, "callable", 0);
+    while (v_row >= 0) {
+        const char * v_parameters = summary_parameters(a, v_source, v_hir, decimal_value(cp_field(a, v_callables, v_row, 2)));
+        if (strncmp(v_parameters, "error[", strlen("error[")) == 0) {
+            return capture_return_text(a, mark, v_parameters);
+        }
+        v_result = capture_append(a, &builder_result, v_result, v_parameters);
+        v_row = capture_record_start(a, v_callables, "callable", (v_row + 1));
+    }
+    return capture_return_text(a, mark, v_result);
+}
+
+static const char * summary_calls(CheckedPlaceArena *a, const char * v_facts) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_facts;
+    CheckedPlaceText *builder_result = NULL;
+    const char * v_result = "";
+    int64_t v_count = 0;
+    int64_t v_call = capture_record_start(a, v_facts, "call", 0);
+    while (v_call >= 0) {
+        v_count = (v_count + 1);
+        int64_t v_start = decimal_value(cp_field(a, v_facts, v_call, 3));
+        if (v_count > 1024) {
+            return capture_return_text(a, mark, summary_error(a, "checked-call-site limit is 1024", v_start));
+        }
+        v_result = capture_append(a, &builder_result, v_result, cp_format(a, "%s%s%s%s%s%s%s%s%s", "edge|", cp_keep(a, scoped_hir_hex(v_start, 8)), "|", cp_field(a, v_facts, v_call, 2), "|", cp_field(a, v_facts, v_call, 3), "|", cp_field(a, v_facts, v_call, 4), "\n"));
+        v_call = capture_record_start(a, v_facts, "call", (v_call + 1));
+    }
+    return capture_return_text(a, mark, capture_sort(a, v_result));
+}
+
+static int64_t summary_argument(CheckedPlaceArena *a, const char * v_facts, int64_t v_call_start, int64_t v_slot) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_facts;
+    (void)v_call_start;
+    (void)v_slot;
+    int64_t v_row = capture_record_start(a, v_facts, "argument", 0);
+    while (v_row >= 0) {
+        if ((strcmp(cp_field(a, v_facts, v_row, 1), cp_format(a, "%" PRId64, v_call_start)) == 0) && (strcmp(cp_field(a, v_facts, v_row, 2), cp_format(a, "%" PRId64, v_slot)) == 0)) {
+            return capture_return_integer(a, mark, v_row);
+        }
+        v_row = capture_record_start(a, v_facts, "argument", (v_row + 1));
+    }
+    return capture_return_integer(a, mark, (-1));
+}
+
+static const char * summary_mode(CheckedPlaceArena *a, const char * v_left, const char * v_right) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_left;
+    (void)v_right;
+    if ((strcmp(v_left, "take") == 0) || (strcmp(v_right, "take") == 0)) {
+        return capture_return_text(a, mark, "take");
+    }
+    if ((strcmp(v_left, "edit") == 0) || (strcmp(v_right, "edit") == 0)) {
+        return capture_return_text(a, mark, "edit");
+    }
+    return capture_return_text(a, mark, "read");
+}
+
+static const char * summary_effect(CheckedPlaceArena *a, int64_t v_open, int64_t v_slot, const char * v_kind, const char * v_mode, int64_t v_depth, const char * v_raw, const char * v_json, const char * v_type) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_open;
+    (void)v_slot;
+    (void)v_kind;
+    (void)v_mode;
+    (void)v_depth;
+    (void)v_raw;
+    (void)v_json;
+    (void)v_type;
+    if (v_depth > 64) {
+        return capture_return_text(a, mark, summary_error(a, "composed projection limit is 64", v_open));
+    }
+    const char * v_target_kind = v_kind;
+    if ((strcmp(v_target_kind, "place") == 0) && (v_depth > 8)) {
+        v_target_kind = "deep";
+    }
+    const char * v_target_raw = v_raw;
+    const char * v_target_json = v_json;
+    if ((strcmp(v_target_kind, "place") != 0) && (!(strstr(v_raw, "<p") != NULL))) {
+        v_target_raw = "";
+        v_target_json = "";
+    }
+    return capture_return_text(a, mark, cp_format(a, "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s", "effect|", cp_format(a, "%" PRId64, v_open), "|", cp_format(a, "%" PRId64, v_slot), "|", v_target_kind, "|", v_mode, "|", cp_format(a, "%" PRId64, v_depth), "|", v_target_raw, "|", v_target_json, "|", v_type, "\n"));
+}
+
+static const char * summary_merge(CheckedPlaceArena *a, const char * v_effects, const char * v_candidate) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_effects;
+    (void)v_candidate;
+    if (strncmp(v_candidate, "error[", strlen("error[")) == 0) {
+        return capture_return_text(a, mark, v_candidate);
+    }
+    if (((int64_t)strlen(v_candidate)) == 0) {
+        return capture_return_text(a, mark, v_effects);
+    }
+    const char * v_open = cp_field(a, v_candidate, 0, 1);
+    const char * v_slot = cp_field(a, v_candidate, 0, 2);
+    const char * v_kind = cp_field(a, v_candidate, 0, 3);
+    const char * v_key = cp_field(a, v_candidate, 0, 6);
+    int64_t v_count = 0;
+    int64_t v_row = capture_record_start(a, v_effects, "effect", 0);
+    while (v_row >= 0) {
+        if (strcmp(cp_field(a, v_effects, v_row, 1), v_open) == 0) {
+            v_count = (v_count + 1);
+            if (((strcmp(cp_field(a, v_effects, v_row, 2), v_slot) == 0) && (strcmp(cp_field(a, v_effects, v_row, 3), v_kind) == 0)) && (strcmp(cp_field(a, v_effects, v_row, 6), v_key) == 0)) {
+                if ((strcmp(cp_field(a, v_effects, v_row, 8), cp_field(a, v_candidate, 0, 8)) != 0) && (strcmp(v_kind, "place") == 0)) {
+                    return capture_return_text(a, mark, summary_error(a, "equal checked summary places disagree on type", decimal_value(v_open)));
+                }
+                const char * v_mode = summary_mode(a, cp_field(a, v_effects, v_row, 4), cp_field(a, v_candidate, 0, 4));
+                int64_t v_depth = decimal_value(cp_field(a, v_effects, v_row, 5));
+                int64_t v_proposed = decimal_value(cp_field(a, v_candidate, 0, 5));
+                if (v_proposed > v_depth) {
+                    v_depth = v_proposed;
+                }
+                if ((strcmp(v_mode, cp_field(a, v_effects, v_row, 4)) == 0) && (v_depth == decimal_value(cp_field(a, v_effects, v_row, 5)))) {
+                    return capture_return_text(a, mark, v_effects);
+                }
+                const char * v_joined = summary_effect(a, decimal_value(v_open), decimal_value(v_slot), v_kind, v_mode, v_depth, v_key, cp_field(a, v_effects, v_row, 7), cp_field(a, v_effects, v_row, 8));
+                if (strncmp(v_joined, "error[", strlen("error[")) == 0) {
+                    return capture_return_text(a, mark, v_joined);
+                }
+                return capture_return_text(a, mark, cp_format(a, "%s%s%s", cp_keep(a, source_slice(v_effects, 0, v_row)), v_joined, cp_keep(a, source_slice(v_effects, (capture_line_end(a, v_effects, v_row) + 1), ((int64_t)strlen(v_effects))))));
+            }
+        }
+        v_row = capture_record_start(a, v_effects, "effect", (v_row + 1));
+    }
+    if (v_count >= 256) {
+        return capture_return_text(a, mark, summary_error(a, "per-callable target limit is 256", decimal_value(v_open)));
+    }
+    return capture_return_text(a, mark, cp_format(a, "%s%s", v_effects, v_candidate));
+}
+
+static int64_t summary_bare_formal(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_parameters, int64_t v_open, int64_t v_start, int64_t v_end) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_source;
+    (void)v_hir;
+    (void)v_parameters;
+    (void)v_open;
+    (void)v_start;
+    (void)v_end;
+    int64_t v_first = skip_trivia(v_source, v_start);
+    int64_t v_last = checked_place_trim_end(v_source, v_first, v_end);
+    while ((strcmp(cp_keep(a, token_copy(v_source, v_first)), "(") == 0) && (balanced_end(v_source, v_first, "(", ")") == v_last)) {
+        v_first = skip_trivia(v_source, token_end(v_source, v_first));
+        v_last = checked_place_trim_end(v_source, v_first, (v_last - 1));
+    }
+    if ((strcmp(token_kind(v_source, v_first), "identifier") != 0) || (token_end(v_source, v_first) != v_last)) {
+        return capture_return_integer(a, mark, (-1));
+    }
+    return capture_return_integer(a, mark, summary_parameter_slot(a, v_parameters, v_open, cp_keep(a, hir_use_binding_id(v_hir, v_first))));
+}
+
+static const char * summary_bound(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_parameters, int64_t v_open, int64_t v_start, int64_t v_end, const char * v_path) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_source;
+    (void)v_hir;
+    (void)v_parameters;
+    (void)v_open;
+    (void)v_start;
+    (void)v_end;
+    (void)v_path;
+    int64_t v_first = skip_trivia(v_source, v_start);
+    int64_t v_last = checked_place_trim_end(v_source, v_first, v_end);
+    const char * v_constant = cp_constant(a, v_source, v_first, v_last);
+    if (strncmp(v_constant, "error[", strlen("error[")) == 0) {
+        return capture_return_text(a, mark, v_constant);
+    }
+    if (((int64_t)strlen(v_constant)) > 0) {
+        return capture_return_text(a, mark, cp_format(a, "%s%s%s%s%s", "bound|01", cp_signed_hex(a, v_constant), "|{\"kind\":\"constant\",\"value\":\"", v_constant, "\"}\n"));
+    }
+    const char * v_identity;
+    if (v_open >= 0) {
+        int64_t v_slot = summary_bare_formal(a, v_source, v_hir, v_parameters, v_open, v_first, v_last);
+        if (v_slot < 0) {
+            return capture_return_text(a, mark, "unavailable\n");
+        }
+        v_identity = cp_format(a, "%s%s%s", "<p", cp_format(a, "%" PRId64, v_slot), ">");
+    } else {
+        v_identity = cp_expression_id(a, cp_keep(a, scoped_hir_file_id(v_path)), v_first, v_last);
+    }
+    return capture_return_text(a, mark, cp_format(a, "%s%s%s%s%s", "bound|02", v_identity, "|{\"kind\":\"node\",\"node_id\":\"", v_identity, "\"}\n"));
+}
+
+static int64_t summary_slice_separator(CheckedPlaceArena *a, const char * v_source, int64_t v_start, int64_t v_end) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_source;
+    (void)v_start;
+    (void)v_end;
+    int64_t v_at = v_start;
+    while (v_at < v_end) {
+        const char * v_token = cp_keep(a, token_copy(v_source, v_at));
+        if (strcmp(v_token, "..") == 0) {
+            return capture_return_integer(a, mark, v_at);
+        }
+        if ((strcmp(v_token, "(") == 0) || (strcmp(v_token, "[") == 0)) {
+            const char * v_closing = ")";
+            if (strcmp(v_token, "[") == 0) {
+                v_closing = "]";
+            }
+            int64_t v_after = balanced_end(v_source, v_at, v_token, v_closing);
+            if ((v_after <= v_at) || (v_after > v_end)) {
+                return capture_return_integer(a, mark, (-1));
+            }
+            v_at = skip_trivia(v_source, v_after);
+        } else {
+            v_at = skip_trivia(v_source, token_end(v_source, v_at));
+        }
+    }
+    return capture_return_integer(a, mark, (-1));
+}
+
+static const char * summary_projection(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_parameters, int64_t v_owner, int64_t v_start, int64_t v_end, const char * v_path, const char * v_place) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_source;
+    (void)v_hir;
+    (void)v_parameters;
+    (void)v_owner;
+    (void)v_start;
+    (void)v_end;
+    (void)v_path;
+    (void)v_place;
+    int64_t v_depth = decimal_value(cp_field(a, v_place, 0, 3));
+    const char * v_kind = "place";
+    if (v_depth > 8) {
+        v_kind = "deep";
+    }
+    if (strcmp(cp_field(a, v_place, 0, 0), "unnameable") == 0) {
+        v_kind = "unnameable";
+    }
+    const char * v_raw = cp_field(a, v_place, 0, 4);
+    const char * v_json = cp_field(a, v_place, 0, 5);
+    const char * v_file = cp_keep(a, scoped_hir_file_id(v_path));
+    int64_t v_at = skip_trivia(v_source, v_start);
+    while (v_at < v_end) {
+        if (strcmp(cp_keep(a, token_copy(v_source, v_at)), "[") == 0) {
+            int64_t v_after = balanced_end(v_source, v_at, "[", "]");
+            int64_t v_lower = skip_trivia(v_source, token_end(v_source, v_at));
+            int64_t v_separator = summary_slice_separator(a, v_source, v_lower, (v_after - 1));
+            if (v_separator < 0) {
+                if (strcmp(v_kind, "unavailable") != 0) {
+                    v_kind = "unnameable";
+                }
+                v_at = skip_trivia(v_source, v_after);
+                continue;
+            }
+            int64_t v_upper = skip_trivia(v_source, token_end(v_source, v_separator));
+            int64_t v_bound_start = v_lower;
+            int64_t v_bound_end = checked_place_trim_end(v_source, v_lower, v_separator);
+            int64_t v_side = 0;
+            while (v_side < 2) {
+                const char * v_original = cp_constant(a, v_source, v_bound_start, v_bound_end);
+                if (strncmp(v_original, "error[", strlen("error[")) == 0) {
+                    return capture_return_text(a, mark, v_original);
+                }
+                if (((int64_t)strlen(v_original)) == 0) {
+                    const char * v_bound = summary_bound(a, v_source, v_hir, v_parameters, v_owner, v_bound_start, v_bound_end, v_path);
+                    if (strncmp(v_bound, "error[", strlen("error[")) == 0) {
+                        return capture_return_text(a, mark, v_bound);
+                    }
+                    if (strncmp(v_bound, "unavailable", strlen("unavailable")) == 0) {
+                        v_kind = "unavailable";
+                        v_bound = "bound|02<u>|{\"kind\":\"node\",\"node_id\":\"<u>\"}\n";
+                    }
+                    const char * v_node = cp_expression_id(a, v_file, v_bound_start, v_bound_end);
+                    v_raw = summary_replace(a, v_raw, cp_format(a, "%s%s", "02", v_node), cp_field(a, v_bound, 0, 1));
+                    v_json = summary_replace(a, v_json, cp_format(a, "%s%s%s", "{\"kind\":\"node\",\"node_id\":\"", v_node, "\"}"), cp_field(a, v_bound, 0, 2));
+                }
+                v_bound_start = v_upper;
+                v_bound_end = checked_place_trim_end(v_source, v_upper, (v_after - 1));
+                v_side = (v_side + 1);
+            }
+            v_at = skip_trivia(v_source, v_after);
+        } else {
+            v_at = skip_trivia(v_source, token_end(v_source, v_at));
+        }
+    }
+    return capture_return_text(a, mark, cp_format(a, "%s%s%s%s%s%s%s%s%s", "projection|", v_kind, "|", cp_format(a, "%" PRId64, v_depth), "|", v_raw, "|", v_json, "\n"));
+}
+
+static const char * summary_actual(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_catalog, int64_t v_start, int64_t v_end, const char * v_path) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_source;
+    (void)v_hir;
+    (void)v_catalog;
+    (void)v_start;
+    (void)v_end;
+    (void)v_path;
+    int64_t v_first = skip_trivia(v_source, v_start);
+    int64_t v_last = checked_place_trim_end(v_source, v_first, v_end);
+    if (strcmp(cp_keep(a, token_copy(v_source, v_first)), "take") == 0) {
+        v_first = skip_trivia(v_source, token_end(v_source, v_first));
+    }
+    return capture_return_text(a, mark, cp_walk(a, v_source, v_hir, v_catalog, v_first, v_last, v_path, 0));
+}
+
+static bool summary_constant_pairs(CheckedPlaceArena *a, const char * v_json) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_json;
+    const char * v_prefix = "{\"kind\":\"slice\",\"lower\":{\"kind\":\"constant\",\"value\":\"";
+    const char * v_middle = "\"},\"upper\":{\"kind\":\"constant\",\"value\":\"";
+    int64_t v_at = text_find_from(v_json, v_prefix, 0);
+    while (v_at >= 0) {
+        int64_t v_low_start = (v_at + ((int64_t)strlen(v_prefix)));
+        int64_t v_low_end = text_find_from(v_json, "\"", v_low_start);
+        if (v_low_end < 0) {
+            return capture_return_integer(a, mark, false);
+        }
+        if (strncmp(cp_keep(a, source_slice(v_json, v_low_end, ((int64_t)strlen(v_json)))), v_middle, strlen(v_middle)) == 0) {
+            int64_t v_high_start = (v_low_end + ((int64_t)strlen(v_middle)));
+            int64_t v_high_end = text_find_from(v_json, "\"", v_high_start);
+            if (v_high_end < 0) {
+                return capture_return_integer(a, mark, false);
+            }
+            if (strtoll(cp_keep(a, source_slice(v_json, v_low_start, v_low_end)), NULL, 10) > strtoll(cp_keep(a, source_slice(v_json, v_high_start, v_high_end)), NULL, 10)) {
+                return capture_return_integer(a, mark, false);
+            }
+        }
+        v_at = text_find_from(v_json, v_prefix, (v_low_end + 1));
+    }
+    return capture_return_integer(a, mark, true);
+}
+
+static const char * summary_substitute_bounds(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_parameters, int64_t v_owner, const char * v_facts, int64_t v_call_start, const char * v_path, int64_t v_depth, const char * v_raw, const char * v_json) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_source;
+    (void)v_hir;
+    (void)v_parameters;
+    (void)v_owner;
+    (void)v_facts;
+    (void)v_call_start;
+    (void)v_path;
+    (void)v_depth;
+    (void)v_raw;
+    (void)v_json;
+    const char * v_result_raw = v_raw;
+    const char * v_result_json = v_json;
+    const char * v_kind = "place";
+    int64_t v_at = text_find_from(v_result_raw, "<p", 0);
+    const char * v_remaining = v_raw;
+    while (v_at >= 0) {
+        int64_t v_end = text_find_from(v_remaining, ">", v_at);
+        if (v_end < 0) {
+            return capture_return_text(a, mark, summary_error(a, "malformed private bound template", v_call_start));
+        }
+        const char * v_marker = cp_keep(a, source_slice(v_remaining, v_at, (v_end + 1)));
+        int64_t v_slot = decimal_value(cp_keep(a, source_slice(v_remaining, (v_at + 2), v_end)));
+        int64_t v_argument = summary_argument(a, v_facts, v_call_start, v_slot);
+        if (v_argument < 0) {
+            return capture_return_text(a, mark, summary_error(a, "checked bound actual is absent", v_call_start));
+        }
+        const char * v_bound = summary_bound(a, v_source, v_hir, v_parameters, v_owner, decimal_value(cp_field(a, v_facts, v_argument, 3)), decimal_value(cp_field(a, v_facts, v_argument, 4)), v_path);
+        if (strncmp(v_bound, "error[", strlen("error[")) == 0) {
+            return capture_return_text(a, mark, v_bound);
+        }
+        if (strncmp(v_bound, "unavailable", strlen("unavailable")) == 0) {
+            v_kind = "unavailable";
+        }
+        const char * v_staged = cp_format(a, "%s%s%s", "<a", cp_format(a, "%" PRId64, v_slot), ">");
+        v_result_raw = summary_replace(a, v_result_raw, cp_format(a, "%s%s", "02", v_marker), v_staged);
+        v_result_json = summary_replace(a, v_result_json, cp_format(a, "%s%s%s", "{\"kind\":\"node\",\"node_id\":\"", v_marker, "\"}"), v_staged);
+        v_remaining = summary_replace(a, v_remaining, v_marker, "");
+        v_at = text_find_from(v_remaining, "<p", 0);
+    }
+    int64_t v_argument = capture_record_start(a, v_facts, "argument", 0);
+    while (v_argument >= 0) {
+        if (strcmp(cp_field(a, v_facts, v_argument, 1), cp_format(a, "%" PRId64, v_call_start)) == 0) {
+            const char * v_staged = cp_format(a, "%s%s%s", "<a", cp_field(a, v_facts, v_argument, 2), ">");
+            if (strstr(v_result_raw, v_staged) != NULL) {
+                const char * v_bound = summary_bound(a, v_source, v_hir, v_parameters, v_owner, decimal_value(cp_field(a, v_facts, v_argument, 3)), decimal_value(cp_field(a, v_facts, v_argument, 4)), v_path);
+                if (strncmp(v_bound, "error[", strlen("error[")) == 0) {
+                    return capture_return_text(a, mark, v_bound);
+                }
+                if (strncmp(v_bound, "unavailable", strlen("unavailable")) == 0) {
+                    v_kind = "unavailable";
+                    v_bound = "bound|02<u>|{\"kind\":\"node\",\"node_id\":\"<u>\"}\n";
+                }
+                v_result_raw = summary_replace(a, v_result_raw, v_staged, cp_field(a, v_bound, 0, 1));
+                v_result_json = summary_replace(a, v_result_json, v_staged, cp_field(a, v_bound, 0, 2));
+            }
+        }
+        v_argument = capture_record_start(a, v_facts, "argument", (v_argument + 1));
+    }
+    if (!summary_constant_pairs(a, v_result_json)) {
+        return capture_return_text(a, mark, summary_error(a, "instantiated constant lower bound exceeds upper bound", v_call_start));
+    }
+    return capture_return_text(a, mark, cp_format(a, "%s%s%s%s%s%s%s%s%s", "projection|", v_kind, "|", cp_format(a, "%" PRId64, v_depth), "|", v_result_raw, "|", v_result_json, "\n"));
+}
+
+static const char * summary_callable_seeds(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_parameters, const char * v_facts, const char * v_calls, const char * v_path, int64_t v_open, int64_t v_end, const char * v_scope, bool v_lambda) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_source;
+    (void)v_hir;
+    (void)v_parameters;
+    (void)v_facts;
+    (void)v_calls;
+    (void)v_path;
+    (void)v_open;
+    (void)v_end;
+    (void)v_scope;
+    (void)v_lambda;
+    const char * v_result = "";
+    int64_t v_row = capture_record_start(a, v_facts, "access", 0);
+    while (v_row >= 0) {
+        int64_t v_start = decimal_value(cp_field(a, v_facts, v_row, 8));
+        int64_t v_stop = decimal_value(cp_field(a, v_facts, v_row, 9));
+        if ((v_start > v_open) && (v_stop <= v_end)) {
+            const char * v_binding = cp_field(a, v_facts, v_row, 3);
+            int64_t v_slot = summary_parameter_slot(a, v_parameters, v_open, v_binding);
+            if ((v_slot >= 0) || (v_lambda && (!capture_local(a, v_hir, v_binding, v_scope)))) {
+                const char * v_place = cp_format(a, "%s%s%s%s%s%s%s%s%s%s%s%s", cp_field(a, v_facts, v_row, 10), "|", v_binding, "|", cp_field(a, v_facts, v_row, 4), "|", cp_field(a, v_facts, v_row, 5), "|", cp_field(a, v_facts, v_row, 6), "|", cp_field(a, v_facts, v_row, 7), "\n");
+                const char * v_projection = summary_projection(a, v_source, v_hir, v_parameters, v_open, v_start, v_stop, v_path, v_place);
+                if (strncmp(v_projection, "error[", strlen("error[")) == 0) {
+                    return capture_return_text(a, mark, v_projection);
+                }
+                const char * v_kind = cp_field(a, v_projection, 0, 1);
+                const char * v_mode = cp_field(a, v_facts, v_row, 2);
+                if (v_slot < 0) {
+                    v_kind = "unavailable";
+                    v_mode = "take";
+                }
+                v_result = summary_merge(a, v_result, summary_effect(a, v_open, v_slot, v_kind, v_mode, decimal_value(cp_field(a, v_projection, 0, 2)), cp_field(a, v_projection, 0, 3), cp_field(a, v_projection, 0, 4), cp_field(a, v_facts, v_row, 4)));
+            }
+            if (strncmp(v_result, "error[", strlen("error[")) == 0) {
+                return capture_return_text(a, mark, v_result);
+            }
+        }
+        v_row = capture_record_start(a, v_facts, "access", (v_row + 1));
+        v_result = capture_return_text(a, mark, v_result);
+    }
+    v_row = capture_record_start(a, v_calls, "edge", 0);
+    while (v_row >= 0) {
+        int64_t v_start = decimal_value(cp_field(a, v_calls, v_row, 3));
+        int64_t v_stop = decimal_value(cp_field(a, v_calls, v_row, 4));
+        if (((v_start > v_open) && (v_stop <= v_end)) && (strcmp(cp_field(a, v_calls, v_row, 2), "-1") == 0)) {
+            v_result = summary_merge(a, v_result, summary_effect(a, v_open, (-1), "unavailable", "take", 0, "", "", ""));
+            if (strncmp(v_result, "error[", strlen("error[")) == 0) {
+                return capture_return_text(a, mark, v_result);
+            }
+        }
+        v_row = capture_record_start(a, v_calls, "edge", (v_row + 1));
+        v_result = capture_return_text(a, mark, v_result);
+    }
+    return capture_return_text(a, mark, v_result);
+}
+
+static const char * summary_seeds(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_parameters, const char * v_callables, const char * v_facts, const char * v_calls, const char * v_path) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_source;
+    (void)v_hir;
+    (void)v_parameters;
+    (void)v_callables;
+    (void)v_facts;
+    (void)v_calls;
+    (void)v_path;
+    CheckedPlaceText *builder_result = NULL;
+    const char * v_result = "";
+    int64_t v_function = capture_record_start(a, v_callables, "callable", 0);
+    while (v_function >= 0) {
+        const char * v_partial = summary_callable_seeds(a, v_source, v_hir, v_parameters, v_facts, v_calls, v_path, decimal_value(cp_field(a, v_callables, v_function, 2)), decimal_value(cp_field(a, v_callables, v_function, 3)), cp_field(a, v_callables, v_function, 4), (strcmp(cp_field(a, v_callables, v_function, 5), "lambda") == 0));
+        if (strncmp(v_partial, "error[", strlen("error[")) == 0) {
+            return capture_return_text(a, mark, v_partial);
+        }
+        v_result = capture_append(a, &builder_result, v_result, v_partial);
+        v_function = capture_record_start(a, v_callables, "callable", (v_function + 1));
+    }
+    return capture_return_text(a, mark, v_result);
+}
+
+static const char * summary_instance(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_catalog, const char * v_parameters, int64_t v_owner, const char * v_facts, int64_t v_call_start, const char * v_path, const char * v_effects, int64_t v_effect) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_source;
+    (void)v_hir;
+    (void)v_catalog;
+    (void)v_parameters;
+    (void)v_owner;
+    (void)v_facts;
+    (void)v_call_start;
+    (void)v_path;
+    (void)v_effects;
+    (void)v_effect;
+    int64_t v_slot = decimal_value(cp_field(a, v_effects, v_effect, 2));
+    const char * v_mode = cp_field(a, v_effects, v_effect, 4);
+    const char * v_type = cp_field(a, v_effects, v_effect, 8);
+    const char * v_suffix = summary_substitute_bounds(a, v_source, v_hir, v_parameters, v_owner, v_facts, v_call_start, v_path, decimal_value(cp_field(a, v_effects, v_effect, 5)), cp_field(a, v_effects, v_effect, 6), cp_field(a, v_effects, v_effect, 7));
+    if (strncmp(v_suffix, "error[", strlen("error[")) == 0) {
+        return capture_return_text(a, mark, v_suffix);
+    }
+    if (v_slot < 0) {
+        return capture_return_text(a, mark, cp_format(a, "%s%s%s%s%s%s%s%s%s%s%s", "instance||unavailable|", v_mode, "|", cp_field(a, v_effects, v_effect, 5), "|", cp_field(a, v_suffix, 0, 3), "|", cp_field(a, v_suffix, 0, 4), "|", v_type, "\n"));
+    }
+    int64_t v_argument = summary_argument(a, v_facts, v_call_start, v_slot);
+    if (v_argument < 0) {
+        return capture_return_text(a, mark, summary_error(a, "checked actual slot is absent", v_call_start));
+    }
+    int64_t v_start = decimal_value(cp_field(a, v_facts, v_argument, 3));
+    int64_t v_end = decimal_value(cp_field(a, v_facts, v_argument, 4));
+    const char * v_actual = summary_actual(a, v_source, v_hir, v_catalog, v_start, v_end, v_path);
+    if (strncmp(v_actual, "error[", strlen("error[")) == 0) {
+        return capture_return_text(a, mark, v_actual);
+    }
+    if ((!(strncmp(v_actual, "place|", strlen("place|")) == 0)) && (!(strncmp(v_actual, "unnameable|", strlen("unnameable|")) == 0))) {
+        return capture_return_text(a, mark, "");
+    }
+    const char * v_prefix = summary_projection(a, v_source, v_hir, v_parameters, v_owner, v_start, v_end, v_path, v_actual);
+    if (strncmp(v_prefix, "error[", strlen("error[")) == 0) {
+        return capture_return_text(a, mark, v_prefix);
+    }
+    int64_t v_depth = (decimal_value(cp_field(a, v_prefix, 0, 2)) + decimal_value(cp_field(a, v_effects, v_effect, 5)));
+    if (v_depth > 64) {
+        return capture_return_text(a, mark, summary_error(a, "composed projection limit is 64", v_call_start));
+    }
+    const char * v_kind = cp_field(a, v_effects, v_effect, 3);
+    const char * v_prefix_kind = cp_field(a, v_prefix, 0, 1);
+    const char * v_raw = cp_format(a, "%s%s", cp_field(a, v_prefix, 0, 3), cp_field(a, v_suffix, 0, 3));
+    const char * v_json = cp_field(a, v_prefix, 0, 4);
+    if ((((int64_t)strlen(v_json)) > 0) && (((int64_t)strlen(cp_field(a, v_suffix, 0, 4))) > 0)) {
+        v_json = cp_format(a, "%s%s", v_json, ",");
+    }
+    v_json = cp_format(a, "%s%s", v_json, cp_field(a, v_suffix, 0, 4));
+    if (((strcmp(v_kind, "unavailable") == 0) || (strcmp(v_prefix_kind, "unavailable") == 0)) || (strcmp(cp_field(a, v_suffix, 0, 1), "unavailable") == 0)) {
+        v_kind = "unavailable";
+    } else {
+        if ((strcmp(v_kind, "unnameable") == 0) || (strcmp(v_prefix_kind, "unnameable") == 0)) {
+            v_kind = "unnameable";
+        } else {
+            if (((strcmp(v_kind, "deep") == 0) || (strcmp(v_prefix_kind, "deep") == 0)) || (v_depth > 8)) {
+                v_kind = "deep";
+            }
+        }
+    }
+    return capture_return_text(a, mark, cp_format(a, "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s", "instance|", cp_field(a, v_actual, 0, 1), "|", v_kind, "|", v_mode, "|", cp_format(a, "%" PRId64, v_depth), "|", v_raw, "|", v_json, "|", v_type, "\n"));
+}
+
+static const char * summary_solve(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_catalog, const char * v_parameters, const char * v_callables, const char * v_facts, const char * v_calls, const char * v_path) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_source;
+    (void)v_hir;
+    (void)v_catalog;
+    (void)v_parameters;
+    (void)v_callables;
+    (void)v_facts;
+    (void)v_calls;
+    (void)v_path;
+    const char * v_effects = summary_seeds(a, v_source, v_hir, v_parameters, v_callables, v_facts, v_calls, v_path);
+    if (strncmp(v_effects, "error[", strlen("error[")) == 0) {
+        return capture_return_text(a, mark, v_effects);
+    }
+    int64_t v_sweep = 0;
+    int64_t v_work = 0;
+    while (v_sweep < 256) {
+        const char * v_before = v_effects;
+        /* Keep the pass comparison and each transfer snapshot alive below
+         * their marks; discard prior result copies and scratch every step. */
+        CheckedPlaceText *pass_mark = a->texts;
+        int64_t v_function = capture_record_start(a, v_callables, "callable", 0);
+        while (v_function >= 0) {
+            int64_t v_open = decimal_value(cp_field(a, v_callables, v_function, 2));
+            int64_t v_end = decimal_value(cp_field(a, v_callables, v_function, 3));
+            int64_t v_call = capture_record_start(a, v_calls, "edge", 0);
+            while (v_call >= 0) {
+                int64_t v_start = decimal_value(cp_field(a, v_calls, v_call, 3));
+                int64_t v_stop = decimal_value(cp_field(a, v_calls, v_call, 4));
+                const char * v_callee = cp_field(a, v_calls, v_call, 2);
+                if (((v_start > v_open) && (v_stop <= v_end)) && (decimal_value(v_callee) >= 0)) {
+                    const char * v_snapshot = v_effects;
+                    CheckedPlaceText *edge_mark = a->texts;
+                    int64_t v_effect = capture_record_start(a, v_snapshot, "effect", 0);
+                    while (v_effect >= 0) {
+                        if (strcmp(cp_field(a, v_snapshot, v_effect, 1), v_callee) == 0) {
+                            v_work = (v_work + 1);
+                            if (v_work > 1048576) {
+                                return capture_return_text(a, mark, summary_error(a, "substitution work limit is 1048576", v_start));
+                            }
+                            const char * v_instance = summary_instance(a, v_source, v_hir, v_catalog, v_parameters, v_open, v_facts, v_start, v_path, v_snapshot, v_effect);
+                            if (strncmp(v_instance, "error[", strlen("error[")) == 0) {
+                                return capture_return_text(a, mark, v_instance);
+                            }
+                            if (((int64_t)strlen(v_instance)) > 0) {
+                                const char * v_binding = cp_field(a, v_instance, 0, 1);
+                                int64_t v_slot = summary_parameter_slot(a, v_parameters, v_open, v_binding);
+                                if ((((int64_t)strlen(v_binding)) == 0) || (v_slot >= 0)) {
+                                    v_effects = summary_merge(a, v_effects, summary_effect(a, v_open, v_slot, cp_field(a, v_instance, 0, 2), cp_field(a, v_instance, 0, 3), decimal_value(cp_field(a, v_instance, 0, 4)), cp_field(a, v_instance, 0, 5), cp_field(a, v_instance, 0, 6), cp_field(a, v_instance, 0, 7)));
+                                    if (strncmp(v_effects, "error[", strlen("error[")) == 0) {
+                                        return capture_return_text(a, mark, v_effects);
+                                    }
+                                }
+                            }
+                        }
+                        v_effect = capture_record_start(a, v_snapshot, "effect", (v_effect + 1));
+                        v_effects = capture_return_text(a, edge_mark, v_effects);
+                    }
+                }
+                v_call = capture_record_start(a, v_calls, "edge", (v_call + 1));
+                v_effects = capture_return_text(a, pass_mark, v_effects);
+            }
+            v_function = capture_record_start(a, v_callables, "callable", (v_function + 1));
+        }
+        if (strcmp(v_effects, v_before) == 0) {
+            return capture_return_text(a, mark, v_effects);
+        }
+        v_sweep = (v_sweep + 1);
+        v_effects = capture_return_text(a, mark, v_effects);
+    }
+    return capture_return_text(a, mark, summary_error(a, "fixed-point sweep limit is 256", 0));
+}
+
+static const char * summary_instance_key(CheckedPlaceArena *a, const char * v_instances, int64_t v_row) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_instances;
+    (void)v_row;
+    const char * v_kind = cp_field(a, v_instances, v_row, 2);
+    if (strcmp(v_kind, "place") != 0) {
+        return capture_return_text(a, mark, v_kind);
+    }
+    return capture_return_text(a, mark, cp_format(a, "%s%s%s%s", "place;", cp_field(a, v_instances, v_row, 1), ";", cp_field(a, v_instances, v_row, 5)));
+}
+
+static const char * summary_instance_merge(CheckedPlaceArena *a, const char * v_instances, const char * v_candidate) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_instances;
+    (void)v_candidate;
+    if (((int64_t)strlen(v_candidate)) == 0) {
+        return capture_return_text(a, mark, v_instances);
+    }
+    if (strncmp(v_candidate, "error[", strlen("error[")) == 0) {
+        return capture_return_text(a, mark, v_candidate);
+    }
+    const char * v_key = summary_instance_key(a, v_candidate, 0);
+    int64_t v_row = capture_record_start(a, v_instances, "instance", 0);
+    while (v_row >= 0) {
+        if (strcmp(summary_instance_key(a, v_instances, v_row), v_key) == 0) {
+            const char * v_mode = summary_mode(a, cp_field(a, v_instances, v_row, 3), cp_field(a, v_candidate, 0, 3));
+            int64_t v_depth = decimal_value(cp_field(a, v_instances, v_row, 4));
+            if (decimal_value(cp_field(a, v_candidate, 0, 4)) > v_depth) {
+                v_depth = decimal_value(cp_field(a, v_candidate, 0, 4));
+            }
+            const char * v_joined = cp_format(a, "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s", "instance|", cp_field(a, v_instances, v_row, 1), "|", cp_field(a, v_instances, v_row, 2), "|", v_mode, "|", cp_format(a, "%" PRId64, v_depth), "|", cp_field(a, v_instances, v_row, 5), "|", cp_field(a, v_instances, v_row, 6), "|", cp_field(a, v_instances, v_row, 7), "\n");
+            return capture_return_text(a, mark, cp_format(a, "%s%s%s", cp_keep(a, source_slice(v_instances, 0, v_row)), v_joined, cp_keep(a, source_slice(v_instances, (capture_line_end(a, v_instances, v_row) + 1), ((int64_t)strlen(v_instances))))));
+        }
+        v_row = capture_record_start(a, v_instances, "instance", (v_row + 1));
+    }
+    return capture_return_text(a, mark, cp_format(a, "%s%s", v_instances, v_candidate));
+}
+
+static const char * summary_call_instances(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_catalog, const char * v_parameters, const char * v_facts, const char * v_effects, int64_t v_callee, int64_t v_start, const char * v_path, const char * v_task_scope) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_source;
+    (void)v_hir;
+    (void)v_catalog;
+    (void)v_parameters;
+    (void)v_facts;
+    (void)v_effects;
+    (void)v_callee;
+    (void)v_start;
+    (void)v_path;
+    (void)v_task_scope;
+    if (v_callee == (-1)) {
+        return capture_return_text(a, mark, "instance||unavailable|take|0|||\n");
+    }
+    const char * v_result = "";
+    int64_t v_effect = capture_record_start(a, v_effects, "effect", 0);
+    while (v_effect >= 0) {
+        if (strcmp(cp_field(a, v_effects, v_effect, 1), cp_format(a, "%" PRId64, v_callee)) == 0) {
+            const char * v_instance = summary_instance(a, v_source, v_hir, v_catalog, v_parameters, (-1), v_facts, v_start, v_path, v_effects, v_effect);
+            if (strncmp(v_instance, "error[", strlen("error[")) == 0) {
+                return capture_return_text(a, mark, v_instance);
+            }
+            if (((int64_t)strlen(v_instance)) > 0) {
+                const char * v_binding = cp_field(a, v_instance, 0, 1);
+                if ((((int64_t)strlen(v_binding)) == 0) || (!capture_local(a, v_hir, v_binding, v_task_scope))) {
+                    if ((strcmp(cp_field(a, v_instance, 0, 2), "place") == 0) && (strstr(cp_field(a, v_instance, 0, 5), "<") != NULL)) {
+                        return capture_return_text(a, mark, summary_error(a, "uninstantiated bound cannot be published", v_start));
+                    }
+                    v_result = summary_instance_merge(a, v_result, v_instance);
+                }
+            }
+        }
+        v_effect = capture_record_start(a, v_effects, "effect", (v_effect + 1));
+        v_result = capture_return_text(a, mark, v_result);
+    }
+    return capture_return_text(a, mark, v_result);
+}
+
+static int64_t summary_direct_count(CheckedPlaceArena *a, const char * v_hir, const char * v_checked, int64_t v_start, int64_t v_end, const char * v_scope) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_hir;
+    (void)v_checked;
+    (void)v_start;
+    (void)v_end;
+    (void)v_scope;
+    int64_t v_count = 0;
+    int64_t v_row = capture_record_start(a, v_checked, "access", 0);
+    while (v_row >= 0) {
+        int64_t v_first = decimal_value(cp_field(a, v_checked, v_row, 8));
+        int64_t v_last = decimal_value(cp_field(a, v_checked, v_row, 9));
+        if (((v_first > v_start) && (v_last <= v_end)) && (!capture_local(a, v_hir, cp_field(a, v_checked, v_row, 3), v_scope))) {
+            v_count = (v_count + 1);
+        }
+        v_row = capture_record_start(a, v_checked, "access", (v_row + 1));
+    }
+    return capture_return_integer(a, mark, v_count);
+}
+
+static const char * summary_expand(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_catalog, const char * v_lifecycle, const char * v_checked, const char * v_path) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_source;
+    (void)v_hir;
+    (void)v_catalog;
+    (void)v_lifecycle;
+    (void)v_checked;
+    (void)v_path;
+    const char * v_callables = summary_callables(a, v_source, v_hir, v_checked);
+    if (strncmp(v_callables, "error[", strlen("error[")) == 0) {
+        return capture_return_text(a, mark, v_callables);
+    }
+    const char * v_parameters = summary_all_parameters(a, v_source, v_hir, v_callables);
+    if (strncmp(v_parameters, "error[", strlen("error[")) == 0) {
+        return capture_return_text(a, mark, v_parameters);
+    }
+    const char * v_calls = summary_calls(a, v_checked);
+    if (strncmp(v_calls, "error[", strlen("error[")) == 0) {
+        return capture_return_text(a, mark, v_calls);
+    }
+    const char * v_effects = summary_solve(a, v_source, v_hir, v_catalog, v_parameters, v_callables, v_checked, v_calls, v_path);
+    if (strncmp(v_effects, "error[", strlen("error[")) == 0) {
+        return capture_return_text(a, mark, v_effects);
+    }
+    CheckedPlaceText *builder_added = NULL;
+    const char * v_added = "";
+    int64_t v_task = hir_record_start(v_lifecycle, "task", 0);
+    while (v_task >= 0) {
+        int64_t v_lambda = decimal_value(cp_field(a, v_lifecycle, v_task, 5));
+        int64_t v_end = decimal_value(cp_field(a, v_lifecycle, v_task, 6));
+        int64_t v_open = skip_trivia(v_source, token_end(v_source, v_lambda));
+        const char * v_scope = cp_keep(a, hir_scope_id_for_open(v_hir, v_open));
+        int64_t v_count = summary_direct_count(a, v_hir, v_checked, v_open, v_end, v_scope);
+        if (v_count > 256) {
+            return capture_return_text(a, mark, capture_error(a, "E2S154", "retained observation limit is 256 per task", v_lambda));
+        }
+        int64_t v_call = capture_record_start(a, v_calls, "edge", 0);
+        while (v_call >= 0) {
+            int64_t v_start = decimal_value(cp_field(a, v_calls, v_call, 3));
+            int64_t v_stop = decimal_value(cp_field(a, v_calls, v_call, 4));
+            int64_t v_callee = decimal_value(cp_field(a, v_calls, v_call, 2));
+            if (((v_start > v_open) && (v_stop <= v_end)) && (v_callee != (-2))) {
+                const char * v_instances = summary_call_instances(a, v_source, v_hir, v_catalog, v_parameters, v_checked, v_effects, v_callee, v_start, v_path, v_scope);
+                if (strncmp(v_instances, "error[", strlen("error[")) == 0) {
+                    return capture_return_text(a, mark, v_instances);
+                }
+                int64_t v_instance = capture_record_start(a, v_instances, "instance", 0);
+                while (v_instance >= 0) {
+                    v_count = (v_count + 1);
+                    if (v_count > 256) {
+                        return capture_return_text(a, mark, capture_error(a, "E2S154", "retained observation limit is 256 per task", v_start));
+                    }
+                    const char * v_kind = cp_field(a, v_instances, v_instance, 2);
+                    if (strcmp(v_kind, "deep") == 0) {
+                        v_kind = "place";
+                    }
+                    v_added = capture_append(a, &builder_added, v_added, cp_format(a, "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s", "access|1|", cp_field(a, v_instances, v_instance, 3), "|", cp_field(a, v_instances, v_instance, 1), "|", cp_field(a, v_instances, v_instance, 7), "|", cp_field(a, v_instances, v_instance, 4), "|", cp_field(a, v_instances, v_instance, 5), "|", cp_field(a, v_instances, v_instance, 6), "|", cp_format(a, "%" PRId64, v_start), "|", cp_format(a, "%" PRId64, v_stop), "|", v_kind, "\n"));
+                    v_instance = capture_record_start(a, v_instances, "instance", (v_instance + 1));
+                }
+            }
+            v_call = capture_record_start(a, v_calls, "edge", (v_call + 1));
+        }
+        v_task = hir_record_start(v_lifecycle, "task", (v_task + 1));
+    }
+    return capture_return_text(a, mark, cp_format(a, "%s%s", v_checked, v_added));
+}
+
+static const char * summary_render(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_facts, const char * v_path) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_source;
+    (void)v_hir;
+    (void)v_facts;
+    (void)v_path;
+    const char * v_base_catalog = capture_catalog(a, v_source);
+    if (strncmp(v_base_catalog, "error[", strlen("error[")) == 0) {
+        return capture_return_text(a, mark, v_base_catalog);
+    }
+    const char * v_catalog = cp_format(a, "%s%s", v_base_catalog, "summary-mode|complete-v1\n");
+    const char * v_checked = capture_checked_source(a, v_source, v_hir, v_catalog, v_path);
+    if (strncmp(v_checked, "error[", strlen("error[")) == 0) {
+        return capture_return_text(a, mark, v_checked);
+    }
+    const char * v_accesses = summary_expand(a, v_source, v_hir, v_catalog, v_facts, v_checked, v_path);
+    if (strncmp(v_accesses, "error[", strlen("error[")) == 0) {
+        return capture_return_text(a, mark, v_accesses);
+    }
+    return capture_return_text(a, mark, capture_render_checked(a, v_source, v_hir, v_facts, v_accesses, v_path));
+}
+
 static int emit_capture_hir_v2_file(const char *input, const char *output, const char *logical_path) {
     Stage2FileIdentity identity = stage2_same_file(input, output);
     if (identity == STAGE2_FILE_LOOKUP_ERROR) { stage2_host_lookup_error(); return 2; }
@@ -36782,6 +37771,55 @@ static int emit_capture_hir_v2_file(const char *input, const char *output, const
     if (strncmp(facts, "error[", 6) == 0) { puts(facts); free(facts); free(hir); free(source); return 1; }
     CheckedPlaceArena arena = {0};
     const char *rendered = capture_render(&arena, source, hir, facts, logical_path);
+    char *document = owned_text(rendered);
+    capture_release(&arena, NULL);
+    free(hir);
+    free(facts); free(source);
+    if (strncmp(document, "error[", 6) == 0) { puts(document); free(document); return 1; }
+    bool written = write_file_transactional(output, document);
+    free(document);
+    if (!written) { puts("error[E2S35]: cannot commit scope-HIR output"); return 1; }
+    return 0;
+}
+
+static int emit_complete_capture_hir_v2_file(const char *input, const char *output, const char *logical_path) {
+    Stage2FileIdentity identity = stage2_same_file(input, output);
+    if (identity == STAGE2_FILE_LOOKUP_ERROR) { stage2_host_lookup_error(); return 2; }
+    if (identity == STAGE2_FILE_SAME) {
+        puts("error[E2S35]: scope-HIR input and output must be distinct"); return 1;
+    }
+    if (!scoped_hir_logical_path(logical_path)) {
+        puts("error[E2S35]: scope-HIR logical path must be canonical relative UTF-8 (1..4096 bytes)");
+        return 1;
+    }
+    size_t source_bytes = 0;
+    char *source = read_file_with_length(input, &source_bytes);
+    if (source_bytes > UINT32_MAX) {
+        puts("error[E2S35]: scope-HIR source span exceeds u32"); free(source); return 1;
+    }
+    /* Text's explicit length must reach the Unicode validator before the C
+     * string representation can discard an embedded NUL and its suffix. */
+    if (memchr(source, 0, source_bytes) != NULL) {
+        KofunUnicodeError error;
+        if (!kofun_unicode_validate_source((const uint8_t *)source, source_bytes, &error)) {
+            char message[1024];
+            kofun_unicode_format_error(&error, getenv("KOFUN_DIAGNOSTIC_LOCALE"), message, sizeof(message));
+            puts(message); free(source); return 1;
+        }
+    }
+    char *tokens = lex_source(source);
+    if (strncmp(tokens, "error[", 6) == 0) { puts(tokens); free(tokens); free(source); return 1; }
+    free(tokens);
+    char *tree = parse_pattern_trees(source), *pattern_error = pattern_first_error(tree);
+    free(tree);
+    if (pattern_error[0] != '\0') { puts(pattern_error); free(pattern_error); free(source); return 1; }
+    free(pattern_error);
+    char *hir = build_scope_hir_analysis_mode(source, false, true);
+    if (strncmp(hir, "error[", 6) == 0) { puts(hir); free(hir); free(source); return 1; }
+    char *facts = scoped_hir_observations(source, hir);
+    if (strncmp(facts, "error[", 6) == 0) { puts(facts); free(facts); free(hir); free(source); return 1; }
+    CheckedPlaceArena arena = {0};
+    const char *rendered = summary_render(&arena, source, hir, facts, logical_path);
     char *document = owned_text(rendered);
     capture_release(&arena, NULL);
     free(hir);
@@ -36955,6 +37993,9 @@ int main(int argc, char **argv) {
     if (argc == 5 && strcmp(argv[1], "--emit-capture-hir-v2") == 0) {
         return emit_capture_hir_v2_file(argv[2], argv[3], argv[4]);
     }
+    if (argc == 5 && strcmp(argv[1], "--emit-complete-capture-hir-v2") == 0) {
+        return emit_complete_capture_hir_v2_file(argv[2], argv[3], argv[4]);
+    }
     if (argc == 5 && strcmp(argv[1], "--emit-scope-hir-v2") == 0) {
         return emit_scope_hir_v2_file(argv[2], argv[3], argv[4]);
     }
@@ -36982,6 +38023,7 @@ int main(int argc, char **argv) {
             "       kofun-stage2 --emit-scope-hir INPUT.kofun OUTPUT.scope-hir\n"
             "       kofun-stage2 --emit-scope-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n"
             "       kofun-stage2 --emit-capture-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n"
+            "       kofun-stage2 --emit-complete-capture-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n"
                 "       kofun-stage2 --emit-place-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH TASK-INDEX START END\n"
             "       kofun-stage2 --emit-selfhost-hir INPUT.kofun OUTPUT.hir SOURCE-SHA256\n"
             "       kofun-stage2 --lower-selfhost-c11 INPUT.hir OUTPUT.c\n"
