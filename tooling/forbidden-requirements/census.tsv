@@ -293,7 +293,7 @@ node	invoke	5	required-today	required	tests/conformance/effects/pure-io/run.sh
 node	invoke	3	required-today	required	tests/conformance/int-bits/run.sh
 node	invoke	1	required-today	required	tests/conformance/move-call-crossings/run.sh
 node	invoke	3	required-today	required	tests/conformance/optional-construction/run.sh
-node	invoke	5	required-today	optional	tests/digest/check.sh
+node	invoke	7	required-today	optional	tests/digest/check.sh
 node	invoke	5	required-today	required	tests/docs/documentation-index.sh
 node	invoke	2	required-today	unknown	tests/fuzz/adapters/arithmetic-wasm32-node.sh
 node	invoke	2	required-today	required	tests/fuzz/pure_io.sh
@@ -310,7 +310,7 @@ node	invoke	11	required-today	required	tests/rfc/check-registry.sh
 node	invoke	2	required-today	required	tests/stage2/list-int-signatures/run.sh
 node	invoke	4	required-today	required	tests/stage2/list-int-values/run.sh
 node	invoke	2	required-today	required	tests/stage2/optional-pair/run.sh
-node	invoke	5	required-today	required	tests/stdlib/benchmark-report-model/check.sh
+node	invoke	8	required-today	required	tests/stdlib/benchmark-report-model/check.sh
 node	invoke	6	required-today	required	tests/stdlib/benchmark-report-model/compare.sh
 node	invoke	4	required-today	required	tests/stdlib/kofun-digest-model/check.sh
 node	invoke	3	required-today	required	tests/tooling/ownership-view/run.sh
