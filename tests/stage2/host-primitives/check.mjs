@@ -127,6 +127,7 @@ const modes=[
   ['--emit-scope-hir','emit_scope_hir_file','scope-HIR',false],
   ['--emit-scope-hir-v2','emit_scope_hir_v2_file','scope-HIR',false,'../invalid.kofun'],
   ['--emit-place-hir-v2','emit_place_hir_v2_file','scope-HIR',false,'../invalid.kofun','bad-index','bad-start','bad-end'],
+  ['--emit-capture-hir-v2','emit_capture_hir_v2_file','scope-HIR',false,'../invalid.kofun'],
   ['--parse-patterns','parse_patterns_file','patterns',false],
 ];
 const digest='0'.repeat(64);
