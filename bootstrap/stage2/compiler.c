@@ -35852,12 +35852,12 @@ static const char * capture_flow(CheckedPlaceArena *a, const char * v_source, co
     const char * v_moved = v_initial;
     int64_t v_row = capture_record_start(a, v_facts, "access", 0);
     while (v_row >= 0) {
+        const char * v_binding = cp_field(a, v_facts, v_row, 3);
+        int64_t v_at = decimal_value(cp_field(a, v_facts, v_row, 8));
+        if (strstr(v_moved, cp_format(a, "%s%s%s", ",", v_binding, ",")) != NULL) {
+            return capture_return_text(a, mark, capture_error(a, "E2S123", "use after take", v_at));
+        }
         if (strcmp(cp_field(a, v_facts, v_row, 1), "0") == 0) {
-            const char * v_binding = cp_field(a, v_facts, v_row, 3);
-            int64_t v_at = decimal_value(cp_field(a, v_facts, v_row, 8));
-            if (strstr(v_moved, cp_format(a, "%s%s%s", ",", v_binding, ",")) != NULL) {
-                return capture_return_text(a, mark, capture_error(a, "E2S123", "use after take", v_at));
-            }
             if (strcmp(cp_field(a, v_facts, v_row, 2), "take") == 0) {
                 const char * v_mode = cp_keep(a, hir_binding_field(v_hir, v_binding, 6));
                 if (!move_trivial_record(v_source, cp_field(a, v_facts, v_row, 4))) {

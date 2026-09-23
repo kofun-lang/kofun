@@ -25868,10 +25868,10 @@ fn capture_flow(source: Text, hir: Text, facts: Text, initial: Text, loop_start:
     let mut moved = initial
     let mut row = capture_record_start(facts, "access", 0)
     while row >= 0 {
+        let binding = hir_field(facts, row, 3)
+        let at = decimal_value(hir_field(facts, row, 8))
+        if contains(moved, "," + binding + ",") { return capture_error("E2S123", "use after take", at) }
         if hir_field(facts, row, 1) == "0" {
-            let binding = hir_field(facts, row, 3)
-            let at = decimal_value(hir_field(facts, row, 8))
-            if contains(moved, "," + binding + ",") { return capture_error("E2S123", "use after take", at) }
             if hir_field(facts, row, 2) == "take" {
                 let mode = hir_binding_field(hir, binding, 6)
                 if !move_trivial_record(source, hir_field(facts, row, 4)) {
