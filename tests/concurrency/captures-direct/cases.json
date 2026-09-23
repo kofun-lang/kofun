@@ -12222,6 +12222,20 @@
           ]
         }
       ]
+    },
+    {
+      "name": "ordinary-latent-take-does-not-move-parent",
+      "source": "type Token = { value: Int }\nfn inspect(read item: Token) -> Int { return item.value }\nfn consume(take item: Token) -> Int { return item.value }\nfn main() -> Int {\n let item: Token = Token(value: 11)\n let deferred = fn() => consume(item)\n return inspect(item)\n}\n",
+      "allocation_note": "There is no par or task: the independently expected lifecycle and capture record list is empty. The uninvoked lambda checks its own nominal take without executing that move in main; the parent read therefore remains valid.",
+      "pars": [],
+      "tasks": []
+    },
+    {
+      "name": "ordinary-shadow-does-not-inherit-move",
+      "source": "type Token = { value: Int }\nfn inspect(read item: Token) -> Int { return item.value }\nfn consume(take item: Token) -> Int { return item.value }\nfn main() -> Int {\n let item: Token = Token(value: 11)\n consume(item)\n if true {\n  let item: Token = Token(value: 23)\n  let deferred = fn() => inspect(item)\n }\n return 0\n}\n",
+      "allocation_note": "There is no par or task, so the complete record list is empty. Main item is binding2; block-local item is binding3 and deferred is binding4 after helper parameters0/1. The nested lambda reads the fresh local owner, not the already moved same-spelled outer binding.",
+      "pars": [],
+      "tasks": []
     }
   ],
   "negative": [

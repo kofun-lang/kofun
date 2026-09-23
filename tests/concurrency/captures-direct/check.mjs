@@ -54,6 +54,8 @@ assert.equal(records('whole-versus-field','capture').length,2);
 assert.equal(records('local-depth-nine-filtered','unknown').length,0);
 assert.equal(records('all-local-no-captures','capture').length,0);
 assert.deepEqual(JSON.parse(expected.get('lambda-before-take')).records,[]);
+assert.deepEqual(JSON.parse(expected.get('ordinary-latent-take-does-not-move-parent')).records,[]);
+assert.deepEqual(JSON.parse(expected.get('ordinary-shadow-does-not-inherit-move')).records,[]);
 assert.deepEqual(JSON.parse(expected.get('task-local-lambda-before-take')).records.map(record=>record.record),['par','task','join']);
 for(const name of ['arrow-task-tail-read','arrow-task-tail-binary','arrow-task-tail-field','arrow-task-tail-index','arrow-task-following-read-excluded']){
     const test=fixtures.positive.find(test=>test.name===name),end=test.tasks[0].lambda_span[1];

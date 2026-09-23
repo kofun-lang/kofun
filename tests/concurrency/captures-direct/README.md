@@ -65,6 +65,13 @@ These checks preserve the separate rule that validating a latent body's own
 take does not execute that move in its enclosing flow. They add no runtime
 parent/task conflict or nonlexical callee-summary claim.
 
+Two ordinary-function controls have no par and therefore require an empty
+complete record list. An uninvoked lambda may take a nominal owner while its
+parent subsequently reads that owner. After an outer owner is taken, a fresh
+block-local binding with the same spelling remains available to a nested
+lambda; moved state belongs to the resolved binding, not its name. Empty
+capture output does not excuse checking either ordinary function body.
+
 Arrow task lambdas include an access whose half-open end equals the lambda's
 end. Int-result controls cover a tail read, both occurrences in `outer + outer`,
 a field, a nominal read call and an indexed receiver. The indexed receiver
