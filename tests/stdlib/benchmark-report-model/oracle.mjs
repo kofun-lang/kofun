@@ -305,7 +305,7 @@ const PHYSICAL_INPUTS = new Set([
 ])
 const PHYSICAL_CASES = [...CORPUS.matchAll(/^# physical-case (.+)$/gm)]
     .map(([, fixture]) => JSON.parse(fixture))
-const PHYSICAL_GROUP_SIZE = 8
+const PHYSICAL_GROUP_SIZE = 73
 
 function physicalCases(group) {
     if (PHYSICAL_CASES.length !== 73 ||
@@ -335,7 +335,8 @@ function physicalInput({ changes }) {
     // raw input is rejected by the mapper before it observes these placeholders;
     // pre-validating it here would incorrectly steal an earlier physical error.
     let flags = samples.map(() => false)
-    if (samples.length > 0 && samples.every((value) => Number.isSafeInteger(value) && value >= 0)) {
+    if (samples.length > 0 && samples.length <= LIMITS.samples &&
+        samples.every((value) => Number.isSafeInteger(value) && value >= 0)) {
         const summary = summarize(samples)
         for (const [field, value] of Object.entries(summary)) source[`summary_${field}`] = value
         flags = outlierFlags(samples)

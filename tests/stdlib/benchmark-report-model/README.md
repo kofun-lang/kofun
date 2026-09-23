@@ -7,7 +7,7 @@ executable Stage 2 C11 profile, in Kofun (#1311).
 - `model.kofun` — the 49-field flat outcome, closed validation, the segmented
   summaries, and the outlier flags. It declares no `main`: it is a library.
 - `corpus.kofun` — the five original groups and the physical validation inputs
-  used to generate ten additional bounded groups.
+  used to generate one additional bounded group.
 - `oracle.mjs` — the independent expectation. It computes nothing itself; it
   calls `summarize`, `outlierFlags`, and the physical mapping from the merged
   #1310 oracle and reads the sample values out of `corpus.kofun`, so the two
@@ -57,7 +57,7 @@ generates both the Kofun input records and the expectation from those exact
 values, deriving summaries and flags with the independent oracle and obtaining
 every status through `fromStage2Outcome`. The generated program passes only
 the production constructor's five records and raw segments; it cannot inject
-an invalid derived summary or outlier flag. Every failure checks all 49 neutral
+an invalid derived summary or outlier flag. Every failure checks its status and all 48 neutral payload
 fields, and every group retains the checker, strict C11 at O0/O2, repeated
 execution, and reference-executor comparisons. No wire decoder participates.
 
@@ -70,8 +70,9 @@ change the output.
 ## Bounded execution and tooling
 
 The five original groups preserve their golden boundaries and independent
-runtime state. Generated physical groups carry at most eight cases each to
-keep programs small and failures focused. The Text runtime has 4,096 slots of
+runtime state. All 73 physical cases run in one generated program, measured
+to fit the compiler and runtime bounds while reducing repeated lowering.
+The Text runtime has 4,096 slots of
 256 bytes; #1359 added reuse of loop temporaries. It is not a 4,096-byte
 whole-process budget.
 

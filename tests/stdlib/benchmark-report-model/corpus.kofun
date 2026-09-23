@@ -464,8 +464,8 @@ fn run_group(group: Int) -> Int {
 # minimal physical outcome; derived flags/summaries come from the independent
 # oracle. Generated Kofun drivers pass only the five input records and raw
 # segments to produce_report, so no decoded-wire error order is substituted.
-# Eight cases per process keep failures focused and programs small. Keeping
-# inputs here makes both emitted source and expectation share each exact value.
+# One generated program runs the complete bounded matrix. Keeping inputs
+# here makes both emitted source and expectation share each exact value.
 # physical-case {"name":"physical-valid","changes":{}}
 # physical-case {"name":"empty-suite","changes":{"suite":""}}
 # physical-case {"name":"empty-case","changes":{"case":""}}
