@@ -1,0 +1,360 @@
+{
+  "schema": "kofun.scoped-hir-identity-fixtures/v1",
+  "logical_path": "src/scoped.kofun",
+  "cases": [
+    {
+      "name": "empty",
+      "source": "fn main() {}\n",
+      "pars": [],
+      "tasks": [],
+      "joins": [],
+      "normal_error_code": null
+    },
+    {
+      "name": "implicit",
+      "source": "fn main() {\n par |scope| {\n let left = scope.spawn(fn() => 1)\n }\n}\n",
+      "pars": [
+        [
+          0,
+          13,
+          64,
+          3,
+          0,
+          18
+        ]
+      ],
+      "tasks": [
+        [
+          0,
+          0,
+          39,
+          61,
+          51,
+          60,
+          1,
+          32
+        ]
+      ],
+      "joins": [],
+      "normal_error_code": "E2S154"
+    },
+    {
+      "name": "shadow",
+      "source": "fn main() {\n par |scope| {\n let work = scope.spawn(fn() => 1)\n {\n let work = scope.spawn(fn() => 2)\n work.join()\n }\n work.join()\n }\n par |other| {\n let last = other.spawn(fn() => 3)\n }\n}\n",
+      "pars": [
+        [
+          0,
+          13,
+          131,
+          3,
+          0,
+          18
+        ],
+        [
+          1,
+          133,
+          184,
+          7,
+          1,
+          138
+        ]
+      ],
+      "tasks": [
+        [
+          0,
+          0,
+          39,
+          61,
+          51,
+          60,
+          2,
+          32
+        ],
+        [
+          0,
+          1,
+          77,
+          99,
+          89,
+          98,
+          3,
+          70
+        ],
+        [
+          1,
+          0,
+          159,
+          181,
+          171,
+          180,
+          4,
+          152
+        ]
+      ],
+      "joins": [
+        [
+          3,
+          101,
+          112
+        ],
+        [
+          2,
+          117,
+          128
+        ]
+      ],
+      "normal_error_code": "E2S154"
+    },
+    {
+      "name": "block",
+      "source": "fn main() {\n par |scope| {\n let work = scope.spawn(fn() {\n let n = 1\n n\n })\n work.join()\n }\n}\n",
+      "pars": [
+        [
+          0,
+          13,
+          91,
+          3,
+          0,
+          18
+        ]
+      ],
+      "tasks": [
+        [
+          0,
+          0,
+          39,
+          75,
+          51,
+          74,
+          1,
+          32
+        ]
+      ],
+      "joins": [
+        [
+          1,
+          77,
+          88
+        ]
+      ],
+      "normal_error_code": "E2S158"
+    },
+    {
+      "name": "parameter",
+      "source": "fn example(value: Int) -> Int {\n par |scope| {\n let work = scope.spawn(fn() => value)\n work.join()\n }\n}\nfn main() {}\n",
+      "pars": [
+        [
+          0,
+          33,
+          101,
+          3,
+          1,
+          38
+        ]
+      ],
+      "tasks": [
+        [
+          0,
+          0,
+          59,
+          85,
+          71,
+          84,
+          2,
+          52
+        ]
+      ],
+      "joins": [
+        [
+          2,
+          87,
+          98
+        ]
+      ],
+      "normal_error_code": "E2S154"
+    },
+    {
+      "name": "unnamed-mixed-chain",
+      "source": "fn main() {\n par |scope| {\n  scope.spawn(fn() => 1)\n  let work = scope.spawn(fn() => 2)\n  scope.spawn(fn() => 3).join()\n  work.join()\n }\n}\n",
+      "pars": [
+        [
+          0,
+          13,
+          136,
+          3,
+          0,
+          18
+        ]
+      ],
+      "tasks": [
+        [
+          0,
+          0,
+          29,
+          51,
+          41,
+          50,
+          2,
+          -1
+        ],
+        [
+          0,
+          1,
+          65,
+          87,
+          77,
+          86,
+          1,
+          58
+        ],
+        [
+          0,
+          2,
+          90,
+          112,
+          102,
+          111,
+          3,
+          -1
+        ]
+      ],
+      "joins": [
+        [
+          1,
+          122,
+          133
+        ],
+        [
+          3,
+          90,
+          119
+        ]
+      ],
+      "normal_error_code": "E2S154"
+    },
+    {
+      "name": "unnamed-two",
+      "source": "fn main() {\n par |scope| {\n  scope.spawn(fn() => 1)\n  scope.spawn(fn() => 2)\n }\n}\n",
+      "pars": [
+        [
+          0,
+          13,
+          79,
+          3,
+          0,
+          18
+        ]
+      ],
+      "tasks": [
+        [
+          0,
+          0,
+          29,
+          51,
+          41,
+          50,
+          1,
+          -1
+        ],
+        [
+          0,
+          1,
+          54,
+          76,
+          66,
+          75,
+          2,
+          -1
+        ]
+      ],
+      "joins": [],
+      "normal_error_code": "E2S154"
+    },
+    {
+      "name": "unnamed-chain-initializer",
+      "source": "fn main() {\n par |scope| {\n  let answer = scope.spawn(fn() => 1).join()\n }\n}\n",
+      "pars": [
+        [
+          0,
+          13,
+          74,
+          3,
+          0,
+          18
+        ]
+      ],
+      "tasks": [
+        [
+          0,
+          0,
+          42,
+          64,
+          54,
+          63,
+          2,
+          -1
+        ]
+      ],
+      "joins": [
+        [
+          2,
+          42,
+          71
+        ]
+      ],
+      "normal_error_code": "E2S154"
+    },
+    {
+      "name": "unicode-comments-two-functions",
+      "source": "# 日本\nfn first() {\n if true {\n  # 海\n  par # 注\n  |scope| {\n   # 雪\n   let work = scope # 間\n     . spawn( # 空\n       fn() => 1)\n   # 山\n   work.join()\n  }\n }\n}\n# 月\nfn main() {\n par |scope| {\n  let work = scope.spawn(fn() => 2)\n }\n}\n",
+      "pars": [
+        [
+          0,
+          43,
+          165,
+          4,
+          0,
+          56
+        ],
+        [
+          1,
+          190,
+          242,
+          8,
+          2,
+          195
+        ]
+      ],
+      "tasks": [
+        [
+          0,
+          0,
+          88,
+          137,
+          127,
+          136,
+          1,
+          81
+        ],
+        [
+          1,
+          0,
+          217,
+          239,
+          229,
+          238,
+          3,
+          210
+        ]
+      ],
+      "joins": [
+        [
+          1,
+          150,
+          161
+        ]
+      ],
+      "normal_error_code": "E2S154"
+    }
+  ]
+}

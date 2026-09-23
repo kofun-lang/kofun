@@ -112,6 +112,7 @@ cc	invoke	1	required-today	required	bootstrap/stage2/build.sh
 cc	invoke	14	required-today	required	bootstrap/stage2/check.sh
 cc	invoke	1	required-today	required	bootstrap/stage2/fuzz-sanitizer-cc-wrapper.sh
 cc	invoke	2	required-today	required	bootstrap/stage2/fuzz-sanitizer-object.sh
+cc	invoke	1	required-today	required	bootstrap/stage2/generate-scoped-unicode.mjs
 cc	invoke	12	required-today	required	bootstrap/stage2/semantic-objects.sh
 cc	invoke	1	required-today	required	bootstrap/stage2/verify-cc-wrapper.sh
 cc	invoke	2	required-today	required	bootstrap/wasm/check.sh
@@ -130,6 +131,7 @@ cc	invoke	1	required-today	required	stdlib/entropy/tests/verify.sh
 cc	invoke	1	required-today	required	stdlib/random/tests/verify.sh
 cc	invoke	2	required-today	required	tests/artifact-qualification/check.sh
 cc	invoke	1	required-today	required	tests/build_system.sh
+cc	invoke	1	required-today	required	tests/concurrency/hir/check.mjs
 cc	invoke	5	required-today	optional	tests/conformance/adt-exhaustiveness/run.sh
 cc	invoke	7	required-today	optional	tests/conformance/adt-usefulness-v2/run.sh
 cc	invoke	4	required-today	required	tests/conformance/adt/run.sh
@@ -248,7 +250,7 @@ cargo	invoke	4	required-today	required	examples/rust-shim/check.sh
 cargo	invoke	2	required-today	required	tests/build_system.sh
 zig	-	0	-	-	-
 node	invoke	4	required-today	required	.github/workflows/pages.yml
-node	invoke	20	required-today	required	Taskfile.yml
+node	invoke	22	required-today	required	Taskfile.yml
 node	invoke	6	required-today	required	bin/kofun
 node	invoke	1	required-today	required	bootstrap/native/check-macho64-signed.sh
 node	invoke	1	required-today	required	bootstrap/native/check-macho64.sh
@@ -335,6 +337,7 @@ node	invoke	6	required-today	required	tooling/machine-dependent/check.sh
 node	source	1	required-today	required	bootstrap/native/macho64-check.mjs
 node	source	1	required-today	required	bootstrap/native/macho64-signed-check.mjs
 node	source	1	required-today	required	bootstrap/native/pe32plus-check.mjs
+node	source	1	required-today	required	bootstrap/stage2/generate-scoped-unicode.mjs
 node	source	1	required-today	required	bootstrap/stage2/generate-xid.mjs
 node	source	1	required-today	required	bootstrap/stage2/host-driver.mjs
 node	source	1	required-today	off-path	bootstrap/stage2/refresh-pair.mjs
@@ -411,6 +414,7 @@ node	source	1	required-today	required	tests/backlog/claim-refresh.mjs
 node	source	1	required-today	required	tests/backlog/extract-self-test.mjs
 node	source	1	required-today	required	tests/backlog/extract.mjs
 node	source	1	required-today	required	tests/backlog/refresh.mjs
+node	source	1	required-today	required	tests/concurrency/hir/check.mjs
 node	source	1	required-today	required	tests/conformance/aggregate-bridge/check-capability-truth.mjs
 node	source	1	required-today	required	tests/conformance/aggregate-bridge/check-layout.mjs
 node	source	1	required-today	required	tests/conformance/aggregate-bridge/check-production-field-access.mjs

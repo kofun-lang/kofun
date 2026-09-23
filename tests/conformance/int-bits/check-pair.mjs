@@ -42,8 +42,8 @@ function verifyPair(cText, kofunText) {
   const kClassifier = section(kofunText, "fn initializer_type_bounded(", "# Scope construction normally owns E2S35.", "Kofun");
   const cChain = section(cText, "static char *emit_int_bit_chain(", "static char *emit_primary(", "C");
   const kChain = section(kofunText, "fn emit_int_bit_chain(", "fn emit_primary(", "Kofun");
-  const cScope = section(cText, "static char *build_scope_hir_mode(", "static char *build_scope_hir(", "C");
-  const kScope = section(kofunText, "fn build_scope_hir_mode(", "fn build_scope_hir(", "Kofun");
+  const cScope = section(cText, "static char *build_scope_hir_analysis_mode(", "static char *build_scope_hir(", "C");
+  const kScope = section(kofunText, "fn build_scope_hir_analysis_mode(", "fn build_scope_hir(", "Kofun");
 
   for (const [side, optional] of [["C", cOptional], ["Kofun", kOptional]]) {
     if (!optional.includes("bit_expression")) failures.push(`${side} missing Optional bit-call deferral`);
@@ -171,7 +171,7 @@ if (mode === "self-test") {
     },
     {
       rule: "scope order",
-      functionName: "build_scope_hir_mode",
+      functionName: "build_scope_hir_analysis_mode",
       expected: "missing scope-order guard",
       C: ["if (bit_error != NULL)", "if (false)"],
       Kofun: ["if len(bit_error) > 0", "if false"],
@@ -241,7 +241,7 @@ if (mode === "self-test") {
       const ends = {
         validate_optional_uses: cStyle ? "static char *emit_condition_into(" : "fn emit_condition_into(",
         emit_int_bit_chain: cStyle ? "static char *emit_primary(" : "fn emit_primary(",
-        build_scope_hir_mode: cStyle ? "static char *build_scope_hir(" : "fn build_scope_hir(",
+        build_scope_hir_analysis_mode: cStyle ? "static char *build_scope_hir(" : "fn build_scope_hir(",
         int_bit_error_before_unresolved_in: cStyle ? "static char *int_bit_error_before_unresolved(" : "fn int_bit_error_before_unresolved(",
         initializer_type_bounded: cStyle ? "static char *optional_int_value(" : "# Scope construction normally owns E2S35.",
       };
