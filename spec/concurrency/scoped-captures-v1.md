@@ -14,11 +14,12 @@ identities, checked places, explicit unknowns, and derived task captures.
 
 This is **not** `kofun.selfhost-hir/v2`. It neither revises the frozen
 `kofun.selfhost-hir/v1` profile nor claims that the self-host frontend or C11
-backend consumes these records. It does not parse or accept `par`, derive a
-capture from production source, decide capture conflicts, start a task, lower a
-backend operation, or publish a release capability. Ordinary compilation must
-continue to refuse scoped parallelism with `E2S154` until the later integration
-children explicitly change that boundary.
+backend consumes these records. The schema and reference model do not parse
+source, decide capture conflicts, start a task, lower a backend operation or
+publish a release capability. The analysis-only production interfaces in
+§§11–13 separately derive the documented records from source. Ordinary
+compilation continues to refuse scoped parallelism with `E2S154`; runtime,
+backend and release acceptance remain outside #1220–#1225.
 
 The executable model takes already resolved synthetic observations. It is a
 pure reference for identity, normalization, merging, ordering, KSE2 capture
@@ -359,7 +360,7 @@ linker input.
 | `document_bytes` | 16,777,216 | canonical scope-HIR bytes and model input bytes |
 | `pars` | 64 | par records per document |
 | `tasks` | 64 | total task records per document |
-| `capture_observations_per_task` | 256 | pre-merge synthetic observations |
+| `capture_observations_per_task` | 256 | retained external observations before merging, from synthetic inputs or §13 checked source |
 | `captures_per_task` | 64 | normalized captures |
 | `origins_per_capture` | 256 | merged source origins |
 | `projection_depth` | 8 | known place projections |
@@ -561,3 +562,99 @@ collection, capture merging, effects, conflicts, KSE2 publication and runtime
 acceptance remain subsequent issues. `task concurrency-places` is the lasting
 compiler/identity/bytes/diagnostics gate; `task concurrency-hir` remains the
 independent lifecycle gate.
+
+## 13. Production direct lexical captures (#1222)
+
+```sh
+kofun-stage2 --emit-capture-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH
+```
+
+This analysis entry checks direct task bodies and emits the complete closed
+scope-HIR-v2 document. It inherits the lifecycle identities, logical-path
+validation and publication protections in §11 and the resolved place and
+analysis-expression identities in §12. All source checks and capture limits
+must succeed before the destination is replaced.
+
+The checker validates complete task statements, nested callable bodies and
+the declarations supplying their values. The bounded source profile includes
+Int/Bool/Text scalars, Int/Text lists, nominal-record values, enum payload
+patterns, declarations, whole and indexed assignments, whole transfers,
+returns, branches, while loops and nested lambdas. It checks initializer and
+annotation agreement, assignment mutability and types, conditions and returns,
+resolved call arguments and ownership modes, and local use after transfer.
+Nominal-record and callable bindings remain immutable. Owning transfers use
+the existing nominal carrier with Int/Bool fields; partial transfers and record
+edit formals retain their refusals.
+Unsupported source shapes refuse before publication. An invalid local-only
+operation still refuses.
+Resolver use rows and default inferred types are not checked-operation facts.
+The source profile includes checked nested nominal fields and Int/Text list
+places without requiring those analysis-only paths to fit ordinary C lowering.
+
+Direct means lexical may-access. Both branches and each lexical loop body
+contribute occurrences; nested lambda bodies contribute whether called or not.
+Each callable is checked in its own return and ownership context. A resolved
+base is task-local when its binding scope descends from the outer task's
+parameter scope, including nested callable parameters, block/pattern locals
+and later shadows. Those bases are excluded. An initializer such as
+`let x = x + 1` still reads the enclosing `x` before the new binding is visible.
+Callable-typed enclosing bindings are not omitted for a lowering convention.
+
+| Checked operation | Direct observation |
+| --- | --- |
+| Value use, including a read/copy call argument | `read` on the maximal target |
+| Valid whole assignment or edit actual | `edit` on its checked target |
+| Valid owning whole transfer or take actual | `take` on its checked target |
+| Dynamic bound, RHS, index or evaluated callee value | Its own checked operand observations |
+
+Calls use the resolved callee declaration and one formal-slot mapping, including
+labels, before assigning modes. A same-spelled shadow is a distinct callee.
+Callable arguments must match the fixed arity, read Int parameters and Int result
+of their declared callable signature. Passing a compound expression does not
+apply a formal mode to every operand.
+The checker preserves the existing ownership refusals, including partial take
+and borrowing-to-owning escalation. Continuing branches merge possible-taken
+bindings; taking a binding from outside the current loop body refuses. Checking
+a nested callable does not mark its enclosing execution state as already moved.
+Nonlexical callee effects, recursion and missing-summary propagation remain
+#1223; parent/task and cross-task conflicts remain #1162.
+
+Each field/slice access contributes only its maximal checked path. Its receiver
+prefix is not another capture, while dynamic bounds are visited independently.
+A checked element index is reason 3 (`unnameable-place`), because the frozen KPL
+vocabulary has no element projection. It is never rewritten as a one-element
+slice. A checked depth-9..64 path is reason 2. Both retain their resolved base
+internally so locality is tested before an unknown is materialized. Local deep
+or indexed receivers contribute no external unknown; their external bounds or
+indices still contribute. Invalid types, bounds or syntax refuse rather than
+becoming unknown. Depth above 64 refuses.
+
+An origin is the original maximal target's nonempty half-open UTF-8 byte span,
+including grouping and projections but excluding assignment/take syntax. Its
+NodeId uses §12's analysis-expression frame. Independent bound/RHS accesses
+have their own spans. The producer retains these source facts for later KSE2
+integration; this entry does not publish a semantic-event transaction.
+
+Normalization uses §6 exactly: one capture per task and exact target, strongest
+mode, unique origins ordered by start/end/raw NodeId, earliest-origin display,
+and canonical target-byte order. Overlapping but unequal places do not merge.
+Different unknown witnesses remain distinct. Displays never affect identity.
+
+The fixed limits in §9 apply. The observation count is 256 external checked
+occurrences per task after local-base exclusion and before exact-target merge.
+Each occurrence is visited once; local reads consume no capture-observation
+budget but still undergo source validation and resolver bounds. The limits are
+64 document-total tasks, 64 captures per task, 256 origins per capture, 8 known
+projections, 64 candidate projections, 128 display bytes, 8,384 records and
+16 MiB canonical document bytes. Source or limit failures leave the destination
+untouched and never publish truncated captures.
+
+`task concurrency-captures-direct` is the lasting source gate. It compares the
+maintained C CLI and canonical Kofun file entry with an independent complete
+document oracle, using authored resolver identities, source byte spans, mode
+facts and SHA/KPL/KUN preimages. It checks repeat/O0/O2/sanitizers, source
+refusals with absent and preexisting destinations, lexical filtering,
+projection and mode merging, and exact/over-limit boundaries. The independent
+`concurrency-hir`, `concurrency-places` and `scoped-parallelism` gates remain.
+Ordinary parallel compilation retains its existing refusal and no runtime or
+release capability is promoted by this analysis entry.
