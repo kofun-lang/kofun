@@ -65,7 +65,7 @@ assert_not_grep 'model reaches for Bytes, a codec, or a comparison' \
     -qE -- 'Bytes|encode|decode|compare_reports' "$WORK/model.code"
 
 # The model is a library: a `main` in it would make the corpus optional, and
-# the four groups exist precisely because one program cannot run every case.
+# the groups exist precisely because one program cannot run every case.
 assert_not_grep 'model declares its own main' -q -- '^fn main' "$model"
 
 # ------------------------------------------------------------------- census
@@ -96,6 +96,10 @@ done
 run_group() {
     group=$1
     stem="group$group"
+    golden="$CASES/$stem.stdout"
+    if test "$group" -eq 4; then
+        golden="$WORK/$stem.expected"
+    fi
     # `run_comparison_group(6)` matches no branch and runs nothing. It is here
     # because every function in the concatenated program must be *referenced*
     # or the build fails at `cc` with -Werror=unused-function (#1358), and the
@@ -157,12 +161,12 @@ run_group() {
     cmp "$WORK/$stem.stdout" "$WORK/$stem-O0.stdout" ||
         assert_fail "$stem differs between the toolchain binary and strict C11"
 
-    cmp "$CASES/$stem.stdout" "$WORK/$stem.stdout" ||
+    cmp "$golden" "$WORK/$stem.stdout" ||
         assert_fail "$stem differs from its golden"
 
     "$ROOT/bin/kofun" run "$WORK/$stem.kofun" >"$WORK/$stem.reference" 2>&1 ||
         assert_fail "$stem did not run under the reference executor"
-    cmp "$CASES/$stem.stdout" "$WORK/$stem.reference" ||
+    cmp "$golden" "$WORK/$stem.reference" ||
         assert_fail "$stem reference executor output differs from the golden"
 
     assert_not_grep "$stem emitted C reaches host time, file, network, or randomness" \
@@ -170,17 +174,22 @@ run_group() {
         "$WORK/$stem.c"
 }
 
-for group in 0 1 2 3
+# Summary groups and the frequency matrix join the independent oracle. The
+# frequency expectation is generated, including errors, through the normative
+# 49-field physical mapping; it has no separately maintained golden.
+for group in 0 1 4
+do
+    node "$oracle" group "$group" >"$WORK/group$group.expected"
+done
+
+for group in 0 1 2 3 4
 do
     run_group "$group"
 done
 
-# The two groups of valid reports are joined to the independent oracle. The
-# refusal groups have no oracle: their expectation is the contract's error
-# code, which the golden states and the mutations below defend.
-for group in 0 1
+# The older refusal groups retain their explicit contract-code goldens.
+for group in 0 1 4
 do
-    node "$oracle" group "$group" >"$WORK/group$group.expected"
     cmp "$WORK/group$group.expected" "$WORK/group$group.stdout" ||
         assert_fail "group $group disagrees with the benchmark-report-v1 oracle"
 done
@@ -236,7 +245,7 @@ mutation() {
         assert_fail "mutation $name does not build; it is testing the compiler rather than the model: $(head -1 "$WORK/mutant-$name.build.stderr")"
     "$WORK/mutant-$name.bin" >"$WORK/mutant-$name.stdout" \
         2>"$WORK/mutant-$name.stderr" || true
-    if cmp -s "$CASES/group$group.stdout" "$WORK/mutant-$name.stdout"
+    if cmp -s "$WORK/group$group.stdout" "$WORK/mutant-$name.stdout"
     then
         assert_fail "mutation $name produced the golden output; the gate does not bite"
     fi
@@ -266,9 +275,19 @@ mutation neutral-leak \
     's|        suite: "",|        suite: "leaked",|' \
     2
 
+# These must build and change the oracle-checked physical outcome, so neither
+# rejection of available zero nor a wrong non-neutral error code can return.
+mutation frequency-zero \
+    's|if host.host_frequency_hz < 0|if host.host_frequency_hz < 1|' \
+    4
+mutation frequency-nonneutral \
+    '/if host.host_frequency_hz != 0 {/,/}/s|status_invalid_invariant()|status_schema_shape()|' \
+    4
+
 printf '%s\n' \
     'PASS: the model constructs one 49-field outcome from four typed list locals in both constructors' \
     "PASS: segmented summaries and strict outliers agree with the benchmark-report-v1 oracle at counts: $counts" \
     'PASS: every refusal maps to its contract code and carries no field of a report' \
     'PASS: -O0, -O2, the reference executor, and a repeat execution agree' \
-    'PASS: four reintroduced defects are refused'
+    'PASS: host frequency availability, zero, signed values, and integer bounds agree with the physical oracle' \
+    'PASS: six reintroduced defects are refused'

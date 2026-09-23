@@ -784,8 +784,9 @@ fn host_status(host: ReportHost) -> Int {
         }
     }
 
+    # Available zero is distinct from unavailable, as for the counters.
     if host.host_frequency_hz_available {
-        if host.host_frequency_hz < 1 {
+        if host.host_frequency_hz < 0 {
             status = first_failure(status, status_invalid_invariant())
         }
         if host.host_frequency_hz > limit_integer() {
@@ -793,7 +794,7 @@ fn host_status(host: ReportHost) -> Int {
         }
     } else {
         if host.host_frequency_hz != 0 {
-            status = first_failure(status, status_schema_shape())
+            status = first_failure(status, status_invalid_invariant())
         }
     }
 

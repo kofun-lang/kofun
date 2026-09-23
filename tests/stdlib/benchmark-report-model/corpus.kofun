@@ -151,6 +151,57 @@ fn corpus_host() -> ReportHost {
     return value
 }
 
+fn corpus_frequency_host(available: Int, frequency: Int) -> ReportHost {
+    # Core carries Bool in record fields, not local variables or parameters.
+    if available == 0 {
+        let value: ReportHost = ReportHost(
+            host_id_sha256: "abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+            host_os: "linux",
+            host_arch: "x86_64",
+            host_cpu: "reference",
+            host_affinity_available: true,
+            host_affinity: "0-3",
+            host_frequency_hz_available: false,
+            host_frequency_hz: frequency,
+            host_noise: ""
+        )
+        return value
+    }
+    let value: ReportHost = ReportHost(
+        host_id_sha256: "abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+        host_os: "linux",
+        host_arch: "x86_64",
+        host_cpu: "reference",
+        host_affinity_available: true,
+        host_affinity: "0-3",
+        host_frequency_hz_available: true,
+        host_frequency_hz: frequency,
+        host_noise: ""
+    )
+    return value
+}
+
+fn run_frequency_case(name: Text, available: Int, frequency: Int) -> Int {
+    let identity: ReportIdentity = corpus_identity()
+    let schedule: ReportSchedule = corpus_schedule(1, 1, 0)
+    let counters: ReportCounters = corpus_counters()
+    let digests: ReportDigests = corpus_digests()
+    let host: ReportHost = corpus_frequency_host(available, frequency)
+    let samples0: List[Int] = [1000]
+    let samples1: List[Int] = []
+    let report: BenchReport = produce_report(
+        identity, schedule, counters, digests, host, samples0, samples1
+    )
+    let cases = print_case(name, report)
+    let mut actual_available = 0
+    if report.host_frequency_hz_available {
+        actual_available = 1
+    }
+    print(name + " frequency " + to_text(actual_available) + " " +
+        to_text(report.host_frequency_hz))
+    return cases
+}
+
 fn run_case(
     name: Text,
     samples0: List[Int],
@@ -391,6 +442,18 @@ fn run_group(group: Int) -> Int {
         cases = cases + run_digest_case("upperdigest",
             "0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef")
         cases = cases + run_counter_case("counterneutral", 7)
+    }
+
+    if group == 4 {
+        # Availability is independent of the numeric payload. The oracle
+        # validates these physical fields through fromStage2Outcome.
+        cases = cases + run_frequency_case("frequency-zero", 1, 0)
+        cases = cases + run_frequency_case("frequency-unavailable", 0, 0)
+        cases = cases + run_frequency_case("frequency-positive", 1, 2400000000)
+        cases = cases + run_frequency_case("frequency-negative", 1, -1)
+        cases = cases + run_frequency_case("frequency-limit", 1, 9007199254740991)
+        cases = cases + run_frequency_case("frequency-over-limit", 1, 9007199254740992)
+        cases = cases + run_frequency_case("frequency-nonneutral", 0, 1)
     }
 
     return cases

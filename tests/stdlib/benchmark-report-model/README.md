@@ -6,10 +6,11 @@ executable Stage 2 C11 profile, in Kofun (#1311).
 
 - `model.kofun` — the 49-field flat outcome, closed validation, the segmented
   summaries, and the outlier flags. It declares no `main`: it is a library.
-- `corpus.kofun` — the inputs and the four groups the gate runs.
+- `corpus.kofun` — the inputs and the five groups the gate runs.
 - `oracle.mjs` — the independent expectation. It computes nothing itself; it
-  calls `summarize` and `outlierFlags` from the merged #1310 oracle and reads
-  the sample values out of `corpus.kofun`, so the two sides cannot drift.
+  calls `summarize`, `outlierFlags`, and the physical mapping from the merged
+  #1310 oracle and reads the sample values out of `corpus.kofun`, so the two
+  sides cannot drift.
 - `group0..3.stdout` — the goldens.
 
 Run:
@@ -29,14 +30,21 @@ segment boundary, and the 100-sample ceiling. `KOFUN_BENCHMARK_REPORT_MODEL_SWEE
 runs every count from 1 to 100; the counts actually used are printed by the gate
 rather than assumed.
 
-The refusals have no oracle, because their expectation is the contract's error
-code. Four mutations defend them: truncating the nearest rank, admitting
+The original refusal groups retain explicit contract-code goldens. The host
+frequency group checks available zero, unavailable zero, a positive value,
+a negative value, the integer ceiling, one above it, and an unavailable
+nonzero payload against `fromStage2Outcome`. It also checks that success
+preserves both physical frequency fields and that every failure is neutral.
+
+Six mutations defend these checks: truncating the nearest rank, admitting
 equality at the Tukey fence, disarming the canonical-split guard, and leaking
-one Text field into a refused outcome. Each is required to change the output.
+one Text field into a refused outcome, rejecting available zero, and assigning
+the wrong error code to an unavailable nonzero frequency. Each must build and
+change the output.
 
 ## Three profile limits shaped this, not preference
 
-**The corpus runs in four processes.** The bounded Text arena is a whole-run
+**The corpus runs in five processes.** The bounded Text arena is a whole-run
 4096-byte budget that is never reclaimed (#1359), and validating four SHA-256
 digests costs 256 bytes of one-byte slices per report, so one program cannot
 construct every case. The groups are that split, and the gate's sweep driver is

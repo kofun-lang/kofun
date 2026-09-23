@@ -15,7 +15,10 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { summarize, outlierFlags, compareReports } from '../../../spec/benchmark-report-v1/model.mjs'
+import {
+    summarize, outlierFlags, compareReports, fromStage2Outcome, toStage2Outcome,
+    stage2ErrorOutcome, ReportError,
+} from '../../../spec/benchmark-report-v1/model.mjs'
 import { LIMITS } from '../../../spec/benchmark-report-v1/contract.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -112,6 +115,7 @@ function caseLines(name, count, provided) {
 }
 
 function expectGroup(group) {
+    if (group === 4) return frequencyGroup()
     const chosen = CASES.filter((entry) => entry.group === group)
     const lines = chosen.flatMap((entry) => caseLines(entry.name, entry.count, entry.samples))
     lines.push(`cases ${chosen.length}`)
@@ -233,6 +237,49 @@ function sweepExpect(counts) {
 
 const MINIMAL = JSON.parse(readFileSync(
     join(HERE, '..', '..', '..', 'spec/benchmark-report-v1/vectors/positive/minimal.json'), 'utf8'))
+
+function frequencyGroup() {
+    const cases = [...CORPUS.matchAll(
+        /cases = cases \+ run_frequency_case\("([^"]+)", ([01]), (-?\d+)\)/g,
+    )].map(([, name, available, value]) => [name, Number(available), Number(value)])
+    const required = [
+        ['frequency-zero', 1, 0],
+        ['frequency-unavailable', 0, 0],
+        ['frequency-positive', 1, 2400000000],
+        ['frequency-negative', 1, -1],
+        ['frequency-limit', 1, LIMITS.integer],
+        ['frequency-over-limit', 1, LIMITS.integer + 1],
+        ['frequency-nonneutral', 0, 1],
+    ]
+    if (JSON.stringify(cases) !== JSON.stringify(required)) {
+        throw new Error('frequency corpus must cover the complete availability and integer-bound matrix')
+    }
+    const lines = []
+    for (const [name, available, value] of cases) {
+        const source = {
+            ...toStage2Outcome(MINIMAL),
+            host_frequency_hz_available: available === 1,
+            host_frequency_hz: value,
+        }
+        let outcome
+        try {
+            const result = fromStage2Outcome(source)
+            outcome = toStage2Outcome(result.report)
+        } catch (error) {
+            if (!(error instanceof ReportError)) throw error
+            outcome = stage2ErrorOutcome(error.code)
+        }
+        if (outcome.status_tag === 0) {
+            lines.push(...caseLines(name, 1, [1000]))
+        } else {
+            lines.push(`${name} ${outcome.status_tag} 0 0 0 0 0 0 0`,
+                `${name} flags 0 0 0`, `${name} neutral 1`)
+        }
+        lines.push(`${name} frequency ${Number(outcome.host_frequency_hz_available)} ${outcome.host_frequency_hz}`)
+    }
+    lines.push(`cases ${cases.length}`)
+    return lines
+}
 
 const STATUS = Object.freeze({ BR006: 6, BR007: 7, BR008: 8, BR009: 9 })
 const RESULT = Object.freeze({ equivalent: 0, improved: 1, regressed: 2 })
