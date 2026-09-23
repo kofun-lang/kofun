@@ -153,10 +153,6 @@ function positive(test,logical=fixtures.logical_path,{full=false}={}){
 }
 for(const test of fixtures.positive)positive(test);
 console.log('PASS: complete C O0/O2/ASan/UBSan and canonical Kofun file output, repeated and independently framed');
-console.log('Checking the full8384 source boundary once each through C O0 and canonical Kofun.');
-const boundaryStarted=Date.now();
-positive(maximum,fixtures.logical_path,{full:true});
-console.log(`PASS: full64 pars/64 tasks/4096 unknowns/4096 captures in ${Date.now()-boundaryStarted}ms`);
 
 const sentinel='prior complete capture artifact\n';
 function negative(test,logical=fixtures.logical_path){
@@ -194,3 +190,9 @@ negative({name:'malformed-source',source:sample.source.slice(0,-4),reason:'Trunc
 for(const logical of ['', '../capture.kofun','https:captures.kofun','src/e\u0301.kofun'])negative({name:'logical-path',source:sample.source,reason:'Inherited logical-path contract'},logical);
 positive(sample,'src/capture:日本.kofun');
 console.log(`PASS: ${fixtures.negative.length} checked-body/limit refusals and inherited input failures preserve absent/existing destinations`);
+
+// Run the expensive boundary only after the complete smaller semantic corpus.
+console.log('Checking the full8384 source boundary once each through C O0 and canonical Kofun.');
+const boundaryStarted=Date.now();
+positive(maximum,fixtures.logical_path,{full:true});
+console.log(`PASS: full64 pars/64 tasks/4096 unknowns/4096 captures in ${Date.now()-boundaryStarted}ms`);
