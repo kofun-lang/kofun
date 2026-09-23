@@ -7,6 +7,13 @@ import {
   readTypedSidecar,
   writeTypedSidecarAtomic,
 } from "./codec.mjs";
+import {
+  KSE2_LIMITS,
+  decodeCaptureFrames,
+  encodeCaptureEvent,
+  projectSidecarV2,
+  validateCaptureStream,
+} from "./captures.mjs";
 
 export const STAGE2_SEMANTIC_EVENT_LIMITS = Object.freeze({
   events: 4096,
@@ -17,6 +24,20 @@ export const STAGE2_SEMANTIC_EVENT_LIMITS = Object.freeze({
 });
 
 const LIMITS = STAGE2_SEMANTIC_EVENT_LIMITS;
+export const STAGE2_SEMANTIC_EVENT_V2_LIMITS = Object.freeze({
+  events: KSE2_LIMITS.events,
+  payloadBytes: KSE2_LIMITS.event_bytes,
+  streamBytes: KSE2_LIMITS.event_bytes + 48,
+  textBytes: KSE2_LIMITS.field_bytes,
+  // Only capture origins use the successor's 256-ID relation bound.
+  relations: LIMITS.relations,
+});
+const V1_PROFILE = Object.freeze({ major: 1, limits: LIMITS });
+const V2_PROFILE = Object.freeze({ major: 2, limits: STAGE2_SEMANTIC_EVENT_V2_LIMITS });
+const V2_PHASE = Object.freeze({
+  1: 1, 2: 2, 3: 3, 8: 4, 9: 5, 10: 6, 11: 7, 12: 8, 13: 9,
+  4: 10, 5: 11, 6: 12, 7: 13,
+});
 const MAX_SAFE_INTEGER = BigInt(Number.MAX_SAFE_INTEGER);
 const ZERO_ID = "0".repeat(64);
 const PUBLIC_REASONS = new Set([
@@ -210,15 +231,15 @@ function readU32(bytes, offset) {
   return bytes.readUInt32BE(offset);
 }
 
-function decodeText(bytes, record, eventKind) {
-  if (bytes.length > LIMITS.textBytes) {
-    fail("ETS04", "semantic event text exceeds the v1 byte limit", {
+function decodeText(bytes, record, eventKind, limits = LIMITS) {
+  if (bytes.length > limits.textBytes) {
+    fail("ETS04", `semantic event text exceeds the v${limits === LIMITS ? 1 : 2} byte limit`, {
       record, eventKind,
     });
   }
   let text;
   try {
-    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: limits !== LIMITS }).decode(bytes);
   } catch {
     fail("ETS04", "semantic event text is not valid UTF-8", {
       record, eventKind,
@@ -270,7 +291,7 @@ function decodeU32s(bytes, record, eventKind) {
   return values;
 }
 
-function decodeRelated(bytes, record, eventKind) {
+function decodeRelated(bytes, record, eventKind, limits = LIMITS) {
   if (bytes.length < 2) {
     fail("ETS03", "truncated diagnostic related-location list", {
       record, eventKind,
@@ -300,7 +321,7 @@ function decodeRelated(bytes, record, eventKind) {
       cursor, labelLength, bytes.length, "ETS03",
       "truncated diagnostic related-location label", { record, eventKind },
     );
-    const label = decodeText(bytes.subarray(cursor, end), record, eventKind);
+    const label = decodeText(bytes.subarray(cursor, end), record, eventKind, limits);
     values.push(Object.freeze({ file_id: fileId, span, label }));
     cursor = end;
   }
@@ -312,7 +333,7 @@ function decodeRelated(bytes, record, eventKind) {
   return values;
 }
 
-function decodeEdits(bytes, record, eventKind) {
+function decodeEdits(bytes, record, eventKind, limits = LIMITS) {
   if (bytes.length < 2) {
     fail("ETS03", "truncated diagnostic edit list", { record, eventKind });
   }
@@ -342,7 +363,7 @@ function decodeEdits(bytes, record, eventKind) {
       "truncated diagnostic edit replacement", { record, eventKind },
     );
     const replacement = decodeText(
-      bytes.subarray(cursor, end), record, eventKind,
+      bytes.subarray(cursor, end), record, eventKind, limits,
     );
     values.push(Object.freeze({ remedy_id, file_id, span, replacement }));
     cursor = end;
@@ -355,11 +376,11 @@ function decodeEdits(bytes, record, eventKind) {
   return values;
 }
 
-function decodeField(field, record, eventKind) {
+function decodeField(field, record, eventKind, limits = LIMITS) {
   const { wire, bytes } = field;
   if ((wire === WIRE.bytes || wire === WIRE.utf8) &&
-      bytes.length > LIMITS.textBytes) {
-    fail("ETS04", "semantic event field exceeds the v1 byte limit", {
+      bytes.length > limits.textBytes) {
+    fail("ETS04", `semantic event field exceeds the v${limits === LIMITS ? 1 : 2} byte limit`, {
       record, eventKind,
     });
   }
@@ -387,7 +408,7 @@ function decodeField(field, record, eventKind) {
     case WIRE.bytes:
       return bytes;
     case WIRE.utf8:
-      return decodeText(bytes, record, eventKind);
+      return decodeText(bytes, record, eventKind, limits);
     case WIRE.id:
       return decodeId(bytes);
     case WIRE.u8:
@@ -447,8 +468,8 @@ function exactFieldSchema(kind, fields, record) {
   }
 }
 
-function recordFromFields(kind, fields, record) {
-  const value = (index) => decodeField(fields[index], record, kind);
+function recordFromFields(kind, fields, record, limits = LIMITS) {
+  const value = (index) => decodeField(fields[index], record, kind, limits);
   switch (kind) {
     case 1:
       return {
@@ -521,8 +542,8 @@ function recordFromFields(kind, fields, record) {
         affected_ids: value(8),
         remedy_ids: value(9),
         truncated: value(10),
-        related: decodeRelated(fields[11].bytes, record, kind),
-        edits: decodeEdits(fields[12].bytes, record, kind),
+        related: decodeRelated(fields[11].bytes, record, kind, limits),
+        edits: decodeEdits(fields[12].bytes, record, kind, limits),
       };
     case 7:
       return {
@@ -612,24 +633,25 @@ function validateLogicalPath(value, record, eventKind) {
   }
 }
 
-export function readStage2SemanticEvents(input) {
+function readSemanticEventBytes(input, profile) {
+  const limits = profile.limits;
   let bytes;
   try {
     bytes = byteView(input);
     if (bytes.length < 48) {
       fail("ETS04", "semantic event stream is truncated");
     }
-    if (bytes.length > LIMITS.streamBytes) {
-      fail("ETS04", "semantic event stream exceeds the v1 byte cap");
+    if (bytes.length > limits.streamBytes) {
+      fail("ETS04", `semantic event stream exceeds the v${profile.major} byte cap`);
     }
     if (!bytes.subarray(0, 4).equals(Buffer.from([0x4b, 0x53, 0x45, 0x00])) ||
-        readU16(bytes, 4) !== 1 || readU16(bytes, 6) !== 0) {
+        readU16(bytes, 4) !== profile.major || readU16(bytes, 6) !== 0) {
       fail("ETS03", "unknown KSE magic or version");
     }
     const eventCount = readU32(bytes, 8);
     const payloadBytes = readU32(bytes, 12);
-    if (eventCount < 2 || eventCount > LIMITS.events ||
-        payloadBytes > LIMITS.payloadBytes ||
+    if (eventCount < 2 || eventCount > limits.events ||
+        payloadBytes > limits.payloadBytes ||
         payloadBytes + 48 !== bytes.length) {
       fail("ETS04", "semantic event count or payload size is invalid");
     }
@@ -641,11 +663,13 @@ export function readStage2SemanticEvents(input) {
     }
     const events = [];
     let cursor = 16;
-    let previousKind = 0;
+    let previousPhase = 0;
+    let captureCount = 0;
     for (let record = 0; record < eventCount; record += 1) {
       if (payloadEnd - cursor < 8) {
         fail("ETS03", "truncated semantic event header", { record });
       }
+      const frameStart = cursor;
       const kind = bytes[cursor];
       const flags = bytes[cursor + 1];
       const fieldCount = readU16(bytes, cursor + 2);
@@ -666,40 +690,61 @@ export function readStage2SemanticEvents(input) {
         "semantic event frame exceeds the declared payload",
         { record, eventKind: kind },
       );
-      const fields = [];
-      let previousTag = 0;
-      for (let field = 0; field < fieldCount; field += 1) {
-        if (frameEnd - cursor < 8) {
-          fail("ETS03", "truncated semantic event field header", {
+      let event;
+      let fields;
+      if (profile.major === 2 && kind >= 8 && kind <= 13) {
+        captureCount += 1;
+        if (captureCount > KSE2_LIMITS.capture_events) {
+          fail("ETS04", "capture event count exceeds the v2 limit", { record, eventKind: kind });
+        }
+        checkCaptureFrameBounds(bytes, cursor, frameEnd, fieldCount, kind, record);
+        event = decodeCaptureFrames(bytes.subarray(frameStart, frameEnd))[0];
+        // The section codec is structural. Exact re-encoding additionally closes
+        // unknown fields, reserved bytes, tag order and fixed-width padding.
+        if (!encodeCaptureEvent(event).equals(bytes.subarray(frameStart, frameEnd))) {
+          fail("ETS03", "capture frame is not canonical", { record, eventKind: kind });
+        }
+        cursor = frameEnd;
+      } else {
+        fields = [];
+        let previousTag = 0;
+        for (let field = 0; field < fieldCount; field += 1) {
+          if (frameEnd - cursor < 8) {
+            fail("ETS03", "truncated semantic event field header", {
+              record, eventKind: kind,
+            });
+          }
+          const tag = bytes[cursor];
+          const wire = bytes[cursor + 1];
+          const reserved = readU16(bytes, cursor + 2);
+          const length = readU32(bytes, cursor + 4);
+          cursor += 8;
+          if (reserved !== 0 || tag <= previousTag || wire < 1 || wire > 9) {
+            fail("ETS03", "unknown, duplicate, or out-of-order event field", {
+              record, eventKind: kind,
+            });
+          }
+          previousTag = tag;
+          if (profile.major === 2 && length > limits.textBytes) {
+            fail("ETS04", "semantic event field exceeds the v2 byte limit", { record, eventKind: kind });
+          }
+          const fieldEnd = checkedEnd(
+            cursor, length, frameEnd, "ETS04",
+            "semantic event field exceeds its frame",
+            { record, eventKind: kind },
+          );
+          fields.push({ tag, wire, bytes: bytes.subarray(cursor, fieldEnd) });
+          cursor = fieldEnd;
+        }
+        if (cursor !== frameEnd) {
+          fail("ETS03", "semantic event frame has trailing bytes", {
             record, eventKind: kind,
           });
         }
-        const tag = bytes[cursor];
-        const wire = bytes[cursor + 1];
-        const reserved = readU16(bytes, cursor + 2);
-        const length = readU32(bytes, cursor + 4);
-        cursor += 8;
-        if (reserved !== 0 || tag <= previousTag || wire < 1 || wire > 9) {
-          fail("ETS03", "unknown, duplicate, or out-of-order event field", {
-            record, eventKind: kind,
-          });
-        }
-        previousTag = tag;
-        const fieldEnd = checkedEnd(
-          cursor, length, frameEnd, "ETS04",
-          "semantic event field exceeds its frame",
-          { record, eventKind: kind },
-        );
-        fields.push({ tag, wire, bytes: bytes.subarray(cursor, fieldEnd) });
-        cursor = fieldEnd;
+        exactFieldSchema(kind, fields, record);
       }
-      if (cursor !== frameEnd) {
-        fail("ETS03", "semantic event frame has trailing bytes", {
-          record, eventKind: kind,
-        });
-      }
-      exactFieldSchema(kind, fields, record);
-      if (kind < previousKind || (record === 0 && kind !== 1) ||
+      const phase = profile.major === 1 ? kind : V2_PHASE[kind];
+      if (!phase || phase < previousPhase || (record === 0 && kind !== 1) ||
           (record === eventCount - 1 && kind !== 7) ||
           (record !== 0 && kind === 1) ||
           (record !== eventCount - 1 && kind === 7)) {
@@ -707,9 +752,14 @@ export function readStage2SemanticEvents(input) {
           record, eventKind: kind,
         });
       }
-      previousKind = kind;
-      const event = recordFromFields(kind, fields, record);
-      basicRecordValidation(event, record, kind);
+      previousPhase = phase;
+      if (!event) {
+        event = recordFromFields(kind, fields, record, limits);
+        basicRecordValidation(event, record, kind);
+        if (profile.major === 2 && !encodeCommonEvent(event).equals(bytes.subarray(frameStart, frameEnd))) {
+          fail("ETS03", "common event frame is not canonical", { record, eventKind: kind });
+        }
+      }
       events.push(deepFreeze(event));
     }
     if (cursor !== payloadEnd) {
@@ -722,6 +772,10 @@ export function readStage2SemanticEvents(input) {
     if (error instanceof TypeError) throw error;
     return errorResult(error);
   }
+}
+
+export function readStage2SemanticEvents(input) {
+  return readSemanticEventBytes(input, V1_PROFILE);
 }
 
 function assertSortedUnique(values, label) {
@@ -988,12 +1042,12 @@ function mapDiagnostic(event, source, allRecordIds) {
   };
 }
 
-function semanticProjection(events) {
+function semanticProjection(events, limits = LIMITS) {
   if (!Array.isArray(events)) {
     throw new TypeError("Stage 2 semantic events must be an array");
   }
-  if (events.length < 2 || events.length > LIMITS.events) {
-    fail("ETS04", "semantic event count is outside the v1 profile");
+  if (events.length < 2 || events.length > limits.events) {
+    fail("ETS04", `semantic event count is outside the v${limits === LIMITS ? 1 : 2} profile`);
   }
   const source = events[0];
   const end = events[events.length - 1];
@@ -1406,7 +1460,7 @@ async function refreshedSourceDigest(context) {
   }
 }
 
-export async function emitStage2TypedSidecar(eventBytes, destination, context) {
+async function emitSemanticSidecar(eventBytes, destination, context, readEvents, projectEvents) {
   if (typeof destination !== "string" || destination.length === 0) {
     throw new TypeError("typed-sidecar destination must be a non-empty path string");
   }
@@ -1414,9 +1468,9 @@ export async function emitStage2TypedSidecar(eventBytes, destination, context) {
     throw new TypeError("Stage 2 sidecar emission context must be an object");
   }
   try {
-    const read = readStage2SemanticEvents(eventBytes);
+    const read = readEvents(eventBytes);
     if (!read.ok) return read;
-    const projected = projectStage2SemanticEvents(read.events);
+    const projected = projectEvents(read.events);
     if (!projected.ok) return projected;
     const sourceBytes = await currentSourceBytes(context);
     const digest = crypto.createHash("sha256").update(sourceBytes).digest("hex");
@@ -1456,5 +1510,357 @@ export async function emitStage2TypedSidecar(eventBytes, destination, context) {
   } catch (error) {
     if (error instanceof TypeError) throw error;
     return errorResult(error, "ETS06");
+  }
+}
+
+export async function emitStage2TypedSidecar(eventBytes, destination, context) {
+  return emitSemanticSidecar(eventBytes, destination, context,
+    readStage2SemanticEvents, projectStage2SemanticEvents);
+}
+
+// KSE2 is an explicit successor API. The old entrypoints above remain v1-only.
+const COMMON_RECORD_FIELDS = Object.freeze({
+  source: ["package_id", "module_id", "file_id", "logical_path", "source_bytes",
+    "source_sha256", "edition", "semantic_compatibility", "generation", "compiler_exit_class"],
+  node: ["id", "node_kind", "span", "status", "dependencies", "diagnostic_ids"],
+  identity: ["owner_node_id", "identity_kind", "value", "status"],
+  reference: ["id", "source_node_id", "namespace", "span", "status", "target_shape",
+    "target_kind", "target_value", "reason", "diagnostic_ids"],
+  fact: ["owner_node_id", "fact_kind", "status", "display", "reason", "dependencies", "diagnostic_ids"],
+  diagnostic: ["id", "code", "category", "severity", "template_id", "primary_file_id",
+    "primary_span", "fallback_text", "affected_ids", "remedy_ids", "truncated", "related", "edits"],
+  end: ["source_status", "completeness"],
+});
+const COMMON_RECORD_KIND = Object.freeze(Object.fromEntries(
+  Object.keys(COMMON_RECORD_FIELDS).map((kind, index) => [kind, index + 1]),
+));
+const CAPTURE_RECORD_FIELDS = Object.freeze({
+  par: ["par_id", "node_id", "scope_id", "parent_scope_id", "scope_token_binding_id", "lexical_index"],
+  task: ["task_id", "par_id", "spawn_node_id", "lambda_node_id", "handle_binding_id", "lexical_index"],
+  join: ["join_id", "task_id", "join_kind", "node_id"],
+  place: ["place_id", "base_binding_id", "canonical_bytes", "projections"],
+  unknown: ["unknown_id", "task_id", "witness_node_id", "reason", "canonical_bytes"],
+  capture: ["capture_id", "task_id", "target_kind", "target_id", "mode", "origin_node_ids"],
+});
+
+function exactRecord(value, keys) {
+  if (value === null || typeof value !== "object" || Array.isArray(value) ||
+      Object.keys(value).length !== keys.length ||
+      keys.some((key) => !Object.hasOwn(value, key))) {
+    fail("ETS03", "semantic record has unknown or missing fields");
+  }
+}
+
+function unsignedBytes(value, width) {
+  const maximum = width === 8 ? Number.MAX_SAFE_INTEGER : 2 ** (width * 8) - 1;
+  if (!Number.isSafeInteger(value) || value < 0 || value > maximum) {
+    fail("ETS03", "semantic integer is outside its wire range");
+  }
+  const bytes = Buffer.alloc(width);
+  if (width === 8) bytes.writeBigUInt64BE(BigInt(value));
+  else bytes.writeUIntBE(value, 0, width);
+  return bytes;
+}
+
+function idBytes(value) {
+  if (typeof value !== "string" || !/^[0-9a-f]{64}$/.test(value)) {
+    fail("ETS03", "semantic identity is not 32-byte lowercase hexadecimal");
+  }
+  return Buffer.from(value, "hex");
+}
+
+function textBytes(value) {
+  if (typeof value !== "string") fail("ETS03", "semantic text must be a string");
+  if (Buffer.byteLength(value, "utf8") > V2_PROFILE.limits.textBytes) {
+    fail("ETS04", "semantic event text exceeds the v2 byte limit");
+  }
+  const bytes = Buffer.from(value, "utf8");
+  if (decodeText(bytes, undefined, undefined, V2_PROFILE.limits) !== value) {
+    fail("ETS04", "semantic text contains an unpaired surrogate");
+  }
+  return bytes;
+}
+
+function spanBytes(value) {
+  exactRecord(value, ["start", "end"]);
+  return Buffer.concat([unsignedBytes(value.start, 4), unsignedBytes(value.end, 4)]);
+}
+
+function commonList(value) {
+  if (!Array.isArray(value)) fail("ETS03", "semantic relation must be an array");
+  if (value.length > LIMITS.relations) fail("ETS04", "common event relation exceeds 64 entries");
+  return value;
+}
+
+function nestedDiagnosticBytes(values, edits) {
+  const parts = [unsignedBytes(commonList(values).length, 2)];
+  let length = 2;
+  for (const item of values) {
+    exactRecord(item, edits ? ["remedy_id", "file_id", "span", "replacement"] :
+      ["file_id", "span", "label"]);
+    const text = textBytes(edits ? item.replacement : item.label);
+    const row = Buffer.concat([
+      ...(edits ? [unsignedBytes(item.remedy_id, 4)] : []),
+      idBytes(item.file_id), spanBytes(item.span), unsignedBytes(text.length, 2), text,
+    ]);
+    length += row.length;
+    if (length > V2_PROFILE.limits.textBytes) fail("ETS04", "nested diagnostic field exceeds v2 limit");
+    parts.push(row);
+  }
+  return Buffer.concat(parts, length);
+}
+
+function encodedField(tag, wire, value) {
+  let bytes;
+  switch (wire) {
+    case WIRE.bytes: bytes = value; break;
+    case WIRE.utf8: bytes = textBytes(value); break;
+    case WIRE.id: bytes = idBytes(value); break;
+    case WIRE.u8: bytes = unsignedBytes(value, 1); break;
+    case WIRE.u32: bytes = unsignedBytes(value, 4); break;
+    case WIRE.u64: bytes = unsignedBytes(value, 8); break;
+    case WIRE.span: bytes = spanBytes(value); break;
+    case WIRE.ids: bytes = Buffer.concat(commonList(value).map(idBytes)); break;
+    case WIRE.u32s:
+      bytes = Buffer.concat(commonList(value).map((item) => unsignedBytes(item, 4))); break;
+    default: fail("ETS03", "unknown semantic wire type");
+  }
+  if (bytes.length > V2_PROFILE.limits.textBytes) fail("ETS04", "semantic field exceeds v2 limit");
+  return Buffer.concat([Buffer.from([tag, wire, 0, 0]), unsignedBytes(bytes.length, 4), bytes]);
+}
+
+function encodeCommonEvent(event) {
+  const names = COMMON_RECORD_FIELDS[event?.kind];
+  if (!names) fail("ETS03", "unknown common semantic event");
+  exactRecord(event, ["kind", ...names]);
+  const kind = COMMON_RECORD_KIND[event.kind];
+  const schema = EVENT_FIELDS[kind];
+  const fields = schema.map(([tag, wire], index) => {
+    let value = event[names[index]];
+    if (kind === 6 && tag >= 12) value = nestedDiagnosticBytes(value, tag === 13);
+    return encodedField(tag, wire, value);
+  });
+  if (kind === 4) {
+    // The logical shape carries both fields; the frozen wire carries exactly one.
+    if (event.target_shape === 1) {
+      if (event.reason !== "") fail("ETS03", "visible reference cannot carry a reason");
+      fields.push(encodedField(8, WIRE.id, event.target_value));
+    } else {
+      if (event.target_value !== ZERO_ID) fail("ETS03", "hidden reference cannot carry a target");
+      fields.push(encodedField(9, WIRE.utf8, event.reason));
+    }
+    fields.push(encodedField(10, WIRE.ids, event.diagnostic_ids));
+  }
+  const payload = Buffer.concat(fields);
+  return Buffer.concat([Buffer.from([kind, 0]), unsignedBytes(fields.length, 2),
+    unsignedBytes(payload.length, 4), payload]);
+}
+
+function checkCaptureFrameBounds(bytes, cursor, end, count, kind, record) {
+  for (let index = 0; index < count; index += 1) {
+    if (end - cursor < 8) fail("ETS03", "truncated capture field header", { record, eventKind: kind });
+    const tag = bytes[cursor];
+    const length = readU32(bytes, cursor + 4);
+    if (length > KSE2_LIMITS.field_bytes ||
+        (kind === 13 && tag === 6 && length > KSE2_LIMITS.relations * 32)) {
+      fail("ETS04", "capture field or origin list exceeds the v2 limit", { record, eventKind: kind });
+    }
+    cursor = checkedEnd(cursor + 8, length, end, "ETS04",
+      "capture field exceeds its frame", { record, eventKind: kind });
+  }
+}
+
+function checkCaptureBounds(events) {
+  if (events.length > KSE2_LIMITS.capture_events) fail("ETS04", "capture event count exceeds the v2 limit");
+  let pars = 0;
+  let tasks = 0;
+  const perTask = new Map();
+  for (const event of events) {
+    if (event.event === "par" && ++pars > 64) fail("ETS04", "par count exceeds the v2 limit");
+    if (event.event === "task" && ++tasks > 64) fail("ETS04", "task count exceeds the v2 limit");
+    if (typeof event.canonical_bytes === "string" && event.canonical_bytes.length > KSE2_LIMITS.field_bytes * 2) {
+      fail("ETS04", "canonical capture bytes exceed the v2 field limit");
+    }
+    if (event.event === "capture") {
+      const count = (perTask.get(event.task_id) ?? 0) + 1;
+      if (count > 64) fail("ETS04", "captures per task exceed the v2 limit");
+      perTask.set(event.task_id, count);
+      if (Array.isArray(event.origin_node_ids) && event.origin_node_ids.length > KSE2_LIMITS.relations) {
+        fail("ETS04", "capture origin count exceeds the v2 limit");
+      }
+    }
+  }
+}
+
+function encodeV2Bytes(events) {
+  if (!Array.isArray(events)) throw new TypeError("Stage 2 semantic events must be an array");
+  if (events.length < 2 || events.length > V2_PROFILE.limits.events) {
+    fail("ETS04", "semantic event count is outside the v2 profile");
+  }
+  const captures = events.filter((event) => typeof event?.kind === "number");
+  if (captures.length > KSE2_LIMITS.capture_events) fail("ETS04", "capture event count exceeds the v2 limit");
+  for (const event of captures) {
+    const names = CAPTURE_RECORD_FIELDS[event.event];
+    if (!names) fail("ETS03", "unknown capture event");
+    exactRecord(event, ["event", "kind", ...names]);
+  }
+  checkCaptureBounds(captures);
+  validateCaptureStream(captures);
+  const frames = [];
+  let payloadLength = 0;
+  for (const event of events) {
+    const frame = typeof event?.kind === "number" ? encodeCaptureEvent(event) : encodeCommonEvent(event);
+    payloadLength += frame.length;
+    if (payloadLength > V2_PROFILE.limits.payloadBytes) fail("ETS04", "semantic event stream exceeds the v2 byte cap");
+    frames.push(frame);
+  }
+  const header = Buffer.concat([Buffer.from("KSE\0"), unsignedBytes(2, 2), unsignedBytes(0, 2),
+    unsignedBytes(events.length, 4), unsignedBytes(payloadLength, 4)]);
+  const digest = crypto.createHash("sha256").update(header);
+  for (const frame of frames) digest.update(frame);
+  return Buffer.concat([header, ...frames, digest.digest()], payloadLength + 48);
+}
+
+function projectV2Decoded(events) {
+  const captures = events.filter((event) => typeof event.kind === "number");
+  const common = events.filter((event) => typeof event.kind === "string");
+  const projected = semanticProjection(common, V2_PROFILE.limits);
+  const nodes = new Map(common.filter((event) => event.kind === "node").map((event) => [event.id, event]));
+  // Key by the actual kind/value pair, not a display label or an arbitrary owner.
+  const identities = new Map(common.filter((event) => event.kind === "identity")
+    .map((event) => [`${event.identity_kind}:${event.value}`, event]));
+  const node = (id) => {
+    const found = nodes.get(id);
+    if (!found) fail("ETS03", "capture names a node outside the committed node phase");
+    return found;
+  };
+  const identity = (kind, value) => {
+    const found = identities.get(`${kind}:${value}`);
+    if (!found || found.status !== 1 || !nodes.has(found.owner_node_id)) {
+      fail("ETS03", "capture names an identity outside the committed identity namespace");
+    }
+  };
+  checkCaptureBounds(captures);
+  validateCaptureStream(captures);
+  for (const event of captures) {
+    switch (event.event) {
+      case "par":
+        node(event.node_id);
+        identity(4, event.scope_id);
+        identity(4, event.parent_scope_id);
+        identity(5, event.scope_token_binding_id);
+        break;
+      case "task":
+        node(event.spawn_node_id);
+        node(event.lambda_node_id);
+        identity(5, event.handle_binding_id);
+        break;
+      case "join":
+        if (event.join_kind === "explicit") node(event.node_id);
+        break;
+      case "place":
+        identity(5, event.base_binding_id);
+        for (const projection of event.projections) {
+          if (projection.kind === "field") identity(8, projection.owner_type_id);
+          else for (const bound of [projection.lower, projection.upper]) {
+            if (bound.kind === "node") node(bound.node_id);
+          }
+        }
+        break;
+      case "unknown": node(event.witness_node_id); break;
+      case "capture": {
+        let previous;
+        for (const origin of event.origin_node_ids) {
+          const span = node(origin).span;
+          if (span.start >= span.end) fail("ETS03", "capture origin must have a nonempty source span");
+          const current = [span.start, span.end, origin];
+          if (previous && tupleCompare(previous, current) >= 0) {
+            fail("ETS03", "capture origins are not in committed source-span order");
+          }
+          previous = current;
+        }
+        break;
+      }
+      default: fail("ETS03", "unknown capture event");
+    }
+  }
+  const document = projectSidecarV2(projected.document, captures);
+  const encoded = encodeTypedSidecar(document);
+  if (!encoded.ok) fail(mapCodecError(encoded.error), "typed-sidecar v2 projection rejected");
+  const stable = readTypedSidecar(encoded.bytes);
+  if (!stable.ok) fail(mapCodecError(stable.error), "typed-sidecar v2 projection replay rejected");
+  return Object.freeze({ ok: true, document: stable.document,
+    compiler_exit_class: projected.compiler_exit_class });
+}
+
+function validatedV2(input) {
+  const read = readSemanticEventBytes(input, V2_PROFILE);
+  if (!read.ok) {
+    fail(read.error.code, read.error.message, { record: read.error.record, eventKind: read.error.event_kind });
+  }
+  return { events: read.events, projected: projectV2Decoded(read.events) };
+}
+
+export function readStage2SemanticEventsV2(input) {
+  // Invalid byte-container usage is a programmer error, as in the v1 API.
+  const bytes = byteView(input);
+  try {
+    return successResult("events", validatedV2(bytes).events);
+  } catch (error) {
+    return errorResult(error);
+  }
+}
+
+export function encodeStage2SemanticEventsV2(events) {
+  if (!Array.isArray(events)) throw new TypeError("Stage 2 semantic events must be an array");
+  try {
+    const bytes = encodeV2Bytes(events);
+    validatedV2(bytes);
+    return successResult("bytes", bytes);
+  } catch (error) {
+    return errorResult(error);
+  }
+}
+
+export function projectStage2SemanticEventsV2(events) {
+  if (!Array.isArray(events)) throw new TypeError("Stage 2 semantic events must be an array");
+  try {
+    // Logical callers get the same exact field/schema/encoding checks as bytes.
+    return validatedV2(encodeV2Bytes(events)).projected;
+  } catch (error) {
+    return errorResult(error);
+  }
+}
+
+export async function emitStage2TypedSidecarV2(eventBytes, destination, context) {
+  return emitSemanticSidecar(eventBytes, destination, context,
+    readStage2SemanticEventsV2, projectStage2SemanticEventsV2);
+}
+
+export function replayStage2SemanticEventsV2(input, onEvent) {
+  if (typeof onEvent !== "function") throw new TypeError("semantic replay requires an event callback");
+  const bytes = byteView(input);
+  let validated;
+  try {
+    // Validate the last record and every cross-link before the first callback.
+    validated = validatedV2(bytes);
+  } catch (error) {
+    return errorResult(error);
+  }
+  try {
+    for (const event of validated.events) {
+      const accepted = onEvent(event);
+      if (accepted === false) fail("ETS03", "semantic replay destination refused a record");
+      if (accepted && typeof accepted.then === "function") {
+        // This API is synchronous. Consume a rejected promise without leaking
+        // its possibly private exception, then refuse further delivery.
+        Promise.resolve(accepted).catch(() => {});
+        fail("ETS03", "semantic replay destination must be synchronous");
+      }
+    }
+    return Object.freeze({ ok: true, event_count: validated.events.length,
+      compiler_exit_class: validated.projected.compiler_exit_class });
+  } catch {
+    return errorResult(new ProjectionFailure("ETS03", "semantic replay destination refused a record"));
   }
 }
