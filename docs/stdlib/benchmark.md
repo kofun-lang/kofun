@@ -104,12 +104,40 @@ report bytes as success, and caller-threshold median comparison.
 model, JSON Schema, canonical positive reports, digest-pinned negative bytes,
 and comparison boundaries.
 
-That gate proves the contract only. Production Kofun values, the bounded
-alias-free Stage 2 storage slice for the Managed `Bytes` carrier, runner,
-clocks, and counter providers are separate implementation work. Filesystem
-publication adapters are independent downstream consumers, not report-codec
-prerequisites. In particular, passing the pure model is not a benchmark
-capability or release claim.
+That gate proves the contract. `task benchmark-report` additionally certifies
+the production Kofun model, canonical Bytes codec, and comparison together on
+the bounded C11 Stage 2 profile, using the independent committed oracle and
+strict emitted-C observations. `bin/kofun run` and emitted-C execution share
+the Stage 2 build path; they are not independent implementations.
+
+The production sources are
+[`model.kofun`](../../tests/stdlib/benchmark-report-model/model.kofun),
+[`codec.kofun`](../../tests/stdlib/benchmark-report-codec/codec.kofun), and
+[`compare.kofun`](../../tests/stdlib/benchmark-report-model/compare.kofun).
+The gate composes these sources in one program; this profile does not provide
+an importable `stdlib/benchmark` module. `produce_report` validates metadata
+and raw samples and returns the complete 49-field `BenchReport` outcome.
+`encode_report(report, edit destination)` writes canonical Bytes and returns
+a status tag; `decode_report(read source)` returns a `BenchReport` outcome.
+`compare_reports` compares validated reports using the caller's explicit
+basis-point threshold. Status tag zero means success; the closed BR001–BR012
+outcomes describe refusal, and a refused report has neutral payload fields.
+
+The profile retains at most 100 raw samples in 64+36 segments and preserves
+their acquisition order. Canonical reports contain at most 16,384 UTF-8 bytes
+inside the shared Managed `Bytes` carrier's 65,536-byte limit. The encoder
+requires a proven-unique destination and constructs its output privately:
+success replaces the destination with the complete report, while refusal,
+including allocation failure or a preexisting BR011 outcome, preserves its
+prior pointer, capacity, length, and bytes. The codec reads no cancellation
+source and performs no filesystem publication.
+
+The separate `benchmark-report-v1` capability covers this bounded deterministic
+model/codec/comparison only. The existing `benchmark-harness` contract remains
+unchanged: the live runner, clocks, counter providers, and other backends are
+separate implementation work. Filesystem publication adapters are independent
+downstream consumers. Neither this report capability nor the pure contract
+gate claims those facilities or statistical significance.
 
 ## Examples
 
