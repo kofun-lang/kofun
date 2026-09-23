@@ -165,7 +165,7 @@ function negative(test,logical=fixtures.logical_path){
             if(existing)fs.writeFileSync(output,sentinel);
             const result=run(binary,['--emit-capture-hir-v2',input,output,logical]);
             assert.notEqual(result.status,0,`${test.name}: unexpectedly accepted (${test.reason})`);
-            assert.equal(result.stderr,'');assert.match(result.stdout,/^error\[E(?:2S|UNICODE)[0-9]+\]:/);
+            assert.equal(result.stderr,'');assert.match(result.stdout,/^error\[(?:E2S[0-9]+\]:|EUNICODE[0-9]+\] at line [0-9]+, column [0-9]+ \(byte [0-9]+\):)/);
             if(test.diagnostic_code){
                 assert.match(test.diagnostic_code,/^E2S[0-9]+$/);
                 assert.match(result.stdout,new RegExp(`^error\\[${test.diagnostic_code}\\]:`),`${test.name}: established diagnostic class`);
