@@ -24470,9 +24470,9 @@ fn scoped_hir_par_id(file: Text, facts: Text, row: Int) -> Text {
 }
 
 fn scoped_hir_task_id(file: Text, facts: Text, row: Int) -> Text {
-    let par = scoped_hir_fact(facts, "par", 1, hir_field(facts, row, 1))
+    let par_row = scoped_hir_fact(facts, "par", 1, hir_field(facts, row, 1))
     return scoped_hir_hash_frame("kofun.scope-hir.task/v2",
-        scoped_hir_par_id(file, facts, par),
+        scoped_hir_par_id(file, facts, par_row),
         scoped_hir_hex(decimal_value(hir_field(facts, row, 2)), 8) +
         scoped_hir_node_id(file, 8, decimal_value(hir_field(facts, row, 3)),
             decimal_value(hir_field(facts, row, 4))),
@@ -24511,7 +24511,7 @@ fn scoped_hir_render(source: Text, facts: Text, path: Text) -> Text {
     }
     row = hir_record_start(facts, "task", 0)
     while row >= 0 {
-        let par = scoped_hir_fact(facts, "par", 1, hir_field(facts, row, 1))
+        let par_row = scoped_hir_fact(facts, "par", 1, hir_field(facts, row, 1))
         records = records + ",{\"display\":" +
         scoped_hir_display(source, decimal_value(hir_field(facts, row, 8))) +
         ",\"handle_binding_id\":\"" + scoped_hir_named_id(file, "binding", hir_field(facts, row, 7)) +
@@ -24519,7 +24519,7 @@ fn scoped_hir_render(source: Text, facts: Text, path: Text) -> Text {
         "\",\"lambda_node_id\":\"" + scoped_hir_node_id(file, 2,
             decimal_value(hir_field(facts, row, 5)), decimal_value(hir_field(facts, row, 6))) +
         "\",\"lexical_index\":" + hir_field(facts, row, 2) +
-        ",\"par_id\":\"" + scoped_hir_par_id(file, facts, par) +
+        ",\"par_id\":\"" + scoped_hir_par_id(file, facts, par_row) +
         "\",\"record\":\"task\",\"spawn_node_id\":\"" + scoped_hir_node_id(file, 8,
             decimal_value(hir_field(facts, row, 3)), decimal_value(hir_field(facts, row, 4))) + "\"}"
         row = hir_record_start(facts, "task", row + 1)
@@ -26410,9 +26410,9 @@ fn capture_render(source: Text, hir: Text, facts: Text, path: Text) -> Text {
         }
         row = capture_line_end(ordered, row) + 1
     }
-    let mut par = hir_record_start(facts, "par", 0)
-    while par >= 0 { records = records + 1
-        par = hir_record_start(facts, "par", par + 1) }
+    let mut par_row = hir_record_start(facts, "par", 0)
+    while par_row >= 0 { records = records + 1
+        par_row = hir_record_start(facts, "par", par_row + 1) }
     records = records + ordinal * 2
     if records > 8384 { return capture_error("E2S154", "record limit is 8384", 0) }
     let split = find(prefix, "],\"root_scope_id\":")
