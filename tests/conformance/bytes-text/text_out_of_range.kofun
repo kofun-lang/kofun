@@ -1,0 +1,9 @@
+# #1322. A range outside the carrier is a runtime diagnostic, the shape a
+# byte read outside it already has (R025): named, exit 1, and nothing printed
+# after it, because the failure ends the program.
+fn main() -> Int {
+    let bytes = stage2_bytes_empty()
+    stage2_bytes_assign_text(bytes, "kofun")
+    print(stage2_bytes_text(bytes, 2, 9))
+    return 0
+}

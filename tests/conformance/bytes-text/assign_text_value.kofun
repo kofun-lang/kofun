@@ -1,0 +1,8 @@
+# #1322. `assign_text` is private-status like the mutation family it sits
+# beside: its outcome is proved in the emitted C, and a source program may
+# use it only as a complete discarded expression statement (#1559).
+fn main() -> Int {
+    let bytes = stage2_bytes_empty()
+    let status = stage2_bytes_assign_text(bytes, "kofun")
+    return 0
+}

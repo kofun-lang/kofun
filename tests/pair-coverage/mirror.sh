@@ -4,10 +4,10 @@
 #
 # `undefended.tsv` is #1401's work-list: per function of
 # bootstrap/stage2/compiler.c, how many branches nothing takes. Its usefulness
-# rests on both halves implementing the function, and for 24 of the 367 they do
-# not -- while 68 more are mirrored under a different name, which is invisible
-# to anyone reading the ledger. `mirror.tsv` answers that one question per row
-# and this gate keeps the answer true.
+# rests on identifying which half implements the work. Some functions have no
+# counterpart, while others are mirrored under a different name. `mirror.tsv`
+# records the measured counts and answers that question per row; this gate
+# keeps the map current without asserting semantic agreement.
 #
 # WHAT IT CHECKS, and deliberately no more:
 #
@@ -340,10 +340,15 @@ if test "${1:-}" = "--prove"; then
     prove_case now-mirrored 1 "$HERE/mirror.tsv" "$PROVE/now-mirrored.kofun" \
         buffer_format
 
-    # 5. A verdict with no evidence.
-    sed 's/^c_identifier_name\tc-only\t-\t.*/c_identifier_name\tc-only\t-\t/' \
+    # 5. A verdict with no evidence. Select a live C-only row: #1513 gave
+    # c_identifier_name a counterpart, so that historical anchor no longer
+    # mutated anything and made the proof fail for an already-fixed defect.
+    unmarked=$(awk -F '\t' '$2 == "c-only" { print $1; exit }' "$HERE/mirror.tsv")
+    test -n "$unmarked" || { echo "mirror.sh: no C-only proof row" >&2; exit 1; }
+    awk -F '\t' -v OFS='\t' -v name="$unmarked" \
+        '$1 == name { $4 = "" } { print }' \
         "$HERE/mirror.tsv" >"$PROVE/no-mark.tsv"
-    prove_case no-mark 1 "$PROVE/no-mark.tsv" "$SRC" c_identifier_name
+    prove_case no-mark 1 "$PROVE/no-mark.tsv" "$SRC" "$unmarked"
 
     # 6. The committed map against the committed tree, which must pass -- a
     #    proof harness that only ever refuses would pass on a gate that refuses

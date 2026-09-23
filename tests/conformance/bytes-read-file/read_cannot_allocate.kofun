@@ -1,0 +1,11 @@
+# #1499. The read takes its window before touching the carrier, so when the
+# allocator refuses the window the whole read is refused by name. The gate
+# compiles this program's emitted C with the runtime's fault seam
+# (`KOFUN_BYTES_INJECT_ALLOC_BUDGET=0`) to reach that, and without it to prove
+# the same program reads its 43-byte file.
+fn main() -> Int {
+    let bytes = stage2_bytes_empty()
+    stage2_bytes_read_file(bytes, "message.bin")
+    print(stage2_bytes_len(bytes))
+    return 0
+}

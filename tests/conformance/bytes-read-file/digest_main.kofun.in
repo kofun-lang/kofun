@@ -1,0 +1,58 @@
+
+# ------------------------------------------------------------------ the main
+#
+# #1499. Appended by tests/conformance/bytes-read-file/run.sh to the SHA-256
+# block it extracts from bootstrap/stage2/compiler.kofun. The message is a
+# carrier rather than two lists, so the one thing written here is FIPS 180-4
+# section 5.1.1's padded byte at an absolute position, against `byte_at`;
+# the block, the schedule, the compression, and the hex are the pair's.
+
+fn carrier_padded_byte(read message: Bytes, length: Int, index: Int) -> Int {
+    if index < length {
+        return stage2_bytes_byte_at(message, index)
+    }
+    if index == length {
+        return 128
+    }
+    let padded = sha256_padded_length(length)
+    if index < padded - 8 {
+        return 0
+    }
+    let place = padded - 1 - index
+    return length.shl(3).shr(place * 8).and(255)
+}
+
+fn carrier_block_at(read message: Bytes, length: Int, block: Int) -> List[Int] {
+    let mut bytes: List[Int] = [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    ]
+    let base = block * 64
+    let mut offset = 0
+    while offset < 64 {
+        bytes[offset] = carrier_padded_byte(message, length, base + offset)
+        offset = offset + 1
+    }
+    return bytes
+}
+
+fn digest_of_carrier(read message: Bytes) -> List[Int] {
+    let length = stage2_bytes_len(message)
+    let mut state = sha256_initial_state()
+    let blocks = sha256_block_count(length)
+    let mut block = 0
+    while block < blocks {
+        state = sha256_absorb(state, carrier_block_at(message, length, block))
+        block = block + 1
+    }
+    return state
+}
+
+fn main() -> Int {
+    let message = stage2_bytes_empty()
+    stage2_bytes_read_file(message, "@@PATH@@")
+    print(sha256_hex(digest_of_carrier(message)))
+    return 0
+}

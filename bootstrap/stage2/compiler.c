@@ -5,6 +5,7 @@
  * active Kofun bootstrap path can lower the complete Stage 2 source.
  */
 #include <ctype.h>
+#include <errno.h>
 #include <inttypes.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -388,15 +389,105 @@ static void write_file(const char *path, const char *value) {
     if (fclose(file) != 0) fail("stage2 seed: cannot close output");
 }
 
-static bool same_file(const char *left, const char *right) {
+/* Driver-only host operations. This table is deliberately separate from
+ * builtin_arity: source programs cannot resolve, import, or lower these names.
+ * The pair driver binds only the trusted compiler's calls to these operations. */
+static const struct { const char *name; int64_t arity; } stage2_host_operations[] = {
+    {"stage2_unicode_scalar_at", 2},
+    {"stage2_same_file", 2},
+};
+
+typedef enum {
+    STAGE2_SCALAR_OK,
+    STAGE2_SCALAR_INDEX,
+    STAGE2_SCALAR_END,
+    STAGE2_SCALAR_CONTINUATION,
+    STAGE2_SCALAR_MALFORMED,
+    STAGE2_SCALAR_OVERLONG,
+    STAGE2_SCALAR_SURROGATE,
+    STAGE2_SCALAR_RANGE
+} Stage2ScalarStatus;
+
+typedef struct {
+    Stage2ScalarStatus status;
+    uint32_t value;
+    size_t width;
+} Stage2Scalar;
+
+static Stage2Scalar stage2_unicode_scalar_at(
+    const char *text, size_t length, int64_t offset
+) {
+    Stage2Scalar result = {STAGE2_SCALAR_OK, 0, 0};
+    if (offset < 0 || (uint64_t)offset > length) {
+        result.status = STAGE2_SCALAR_INDEX;
+        return result;
+    }
+    if ((uint64_t)offset == length) {
+        result.status = STAGE2_SCALAR_END;
+        return result;
+    }
+    const uint8_t *bytes = (const uint8_t *)text + offset;
+    uint8_t first = bytes[0];
+    if (first < 0x80) {
+        result.value = first;
+        result.width = 1;
+        return result;
+    }
+    if (first < 0xc0) result.status = STAGE2_SCALAR_CONTINUATION;
+    else if (first < 0xc2) result.status = STAGE2_SCALAR_OVERLONG;
+    else if (first >= 0xf5 && first <= 0xf7) result.status = STAGE2_SCALAR_RANGE;
+    else if (first > 0xf7) result.status = STAGE2_SCALAR_MALFORMED;
+    if (result.status != STAGE2_SCALAR_OK) return result;
+    size_t width = first < 0xe0 ? 2 : first < 0xf0 ? 3 : 4;
+    if (length - (size_t)offset < width) {
+        result.status = STAGE2_SCALAR_MALFORMED;
+        return result;
+    }
+    uint32_t value = first & (width == 2 ? 0x1f : width == 3 ? 0x0f : 0x07);
+    for (size_t index = 1; index < width; ++index) {
+        if ((bytes[index] & 0xc0) != 0x80) {
+            result.status = STAGE2_SCALAR_MALFORMED;
+            return result;
+        }
+        value = (value << 6) | (bytes[index] & 0x3f);
+    }
+    if (value < (width == 2 ? 0x80u : width == 3 ? 0x800u : 0x10000u))
+        result.status = STAGE2_SCALAR_OVERLONG;
+    else if (value >= 0xd800 && value <= 0xdfff)
+        result.status = STAGE2_SCALAR_SURROGATE;
+    else if (value > 0x10ffff)
+        result.status = STAGE2_SCALAR_RANGE;
+    if (result.status == STAGE2_SCALAR_OK) {
+        result.value = value;
+        result.width = width;
+    }
+    return result;
+}
+
+typedef enum {
+    STAGE2_FILE_DIFFERENT,
+    STAGE2_FILE_SAME,
+    STAGE2_FILE_LOOKUP_ERROR
+} Stage2FileIdentity;
+
+static Stage2FileIdentity stage2_same_file(const char *left, const char *right) {
     struct stat left_status;
     struct stat right_status;
-    if (strcmp(left, right) == 0) return true;
-    if (stat(left, &left_status) != 0 || stat(right, &right_status) != 0) {
-        return false;
+    if (strcmp(left, right) == 0) return STAGE2_FILE_SAME;
+    /* The input lookup precedes the absent-output exception. Never treat a
+     * permission, I/O, overflow, or indeterminate input as proof of safety. */
+    if (stat(left, &left_status) != 0) return STAGE2_FILE_LOOKUP_ERROR;
+    if (stat(right, &right_status) != 0) {
+        return errno == ENOENT ? STAGE2_FILE_DIFFERENT : STAGE2_FILE_LOOKUP_ERROR;
     }
     return left_status.st_dev == right_status.st_dev &&
-           left_status.st_ino == right_status.st_ino;
+           left_status.st_ino == right_status.st_ino
+        ? STAGE2_FILE_SAME : STAGE2_FILE_DIFFERENT;
+}
+
+static void stage2_host_lookup_error(void) {
+    printf("error[E2S35]: %s: file lookup failed before output open\n",
+           stage2_host_operations[1].name);
 }
 
 static bool write_file_transactional(const char *path, const char *value) {
@@ -443,18 +534,10 @@ static bool identifier_start_at(
     size_t *width
 ) {
     if (offset < 0 || (uint64_t)offset >= length) return false;
-    uint32_t codepoint = 0;
-    size_t scalar_width = 0;
-    if (!kofun_unicode_decode(
-            (const uint8_t *)source,
-            length,
-            (size_t)offset,
-            &codepoint,
-            &scalar_width)) {
-        return false;
-    }
-    if (width != NULL) *width = scalar_width;
-    return codepoint == '_' || kofun_unicode_is_xid_start(codepoint);
+    Stage2Scalar scalar = stage2_unicode_scalar_at(source, length, offset);
+    if (scalar.status != STAGE2_SCALAR_OK) return false;
+    if (width != NULL) *width = scalar.width;
+    return scalar.value == '_' || kofun_unicode_is_xid_start(scalar.value);
 }
 
 static bool identifier_continue_at(
@@ -464,18 +547,10 @@ static bool identifier_continue_at(
     size_t *width
 ) {
     if (offset < 0 || (uint64_t)offset >= length) return false;
-    uint32_t codepoint = 0;
-    size_t scalar_width = 0;
-    if (!kofun_unicode_decode(
-            (const uint8_t *)source,
-            length,
-            (size_t)offset,
-            &codepoint,
-            &scalar_width)) {
-        return false;
-    }
-    if (width != NULL) *width = scalar_width;
-    return codepoint == '_' || kofun_unicode_is_xid_continue(codepoint);
+    Stage2Scalar scalar = stage2_unicode_scalar_at(source, length, offset);
+    if (scalar.status != STAGE2_SCALAR_OK) return false;
+    if (width != NULL) *width = scalar.width;
+    return scalar.value == '_' || kofun_unicode_is_xid_continue(scalar.value);
 }
 
 /* Whitespace and comments: what the token tape steps over. */
@@ -5488,6 +5563,7 @@ static char *bytes_access_error(
  * is above the definitions; the set membership and the family lowering are
  * the two the call site needs. */
 static bool bytes_mutation_builtin(const char *name);
+static bool bytes_family_builtin(const char *name);
 static bool call_resolves_to_builtin(
     const char *source,
     const char *hir,
@@ -6552,6 +6628,10 @@ static char *call_argument_parameter_property(
                                     source,
                                     callee
                                 );
+                                if (declaration < 0) {
+                                    free(callee);
+                                    return owned_text("");
+                                }
                                 int64_t parameters = parameter_open(
                                     source,
                                     declaration
@@ -7533,19 +7613,13 @@ static char *c_identifier_name(const char *identifier) {
     size_t length = strlen(identifier);
     size_t cursor = 0;
     while (cursor < length) {
-        uint32_t codepoint = 0;
-        size_t width = 0;
-        if (!kofun_unicode_decode(
-                (const uint8_t *)identifier,
-                length,
-                cursor,
-                &codepoint,
-                &width)) {
+        Stage2Scalar scalar = stage2_unicode_scalar_at(identifier, length, (int64_t)cursor);
+        if (scalar.status != STAGE2_SCALAR_OK) {
             free(output.data);
-            return owned_text("k_invalid");
+            fail("error[E2S35]: stage2_unicode_scalar_at: invalid scalar boundary");
         }
-        buffer_format(&output, "_u%06" PRIX32, codepoint);
-        cursor += width;
+        buffer_format(&output, "_u%06" PRIX32, scalar.value);
+        cursor += scalar.width;
     }
     return output.data;
 }
@@ -9921,7 +9995,7 @@ static char *emit_primary(
          */
         if (
             open < end && token_equal(source, open, "(") &&
-            bytes_mutation_builtin(name) &&
+            bytes_family_builtin(name) &&
             call_resolves_to_builtin(source, hir, cursor, name)
         ) {
             char *call = emit_bytes_mutation_call(
@@ -10892,17 +10966,23 @@ static int64_t builtin_arity(const char *name) {
         {"stage2_bytes_assign_zeroed", 2},
         /* #1321. The bounded mutation surface. `len` and `capacity` answer
          * about the carrier and `clear` empties it; `byte_at`, `reserve`, and
-         * `append` take one `Int` beside it, `byte_set` and `append_self`
-         * take two, and `append_range` takes a second carrier and two. */
+         * `append` take one `Int` beside it, `read_file` a `Text` path,
+         * `byte_set` and `append_self` take two, and `append_range` takes a
+         * second carrier and two. */
         {"stage2_bytes_len", 1},
         {"stage2_bytes_capacity", 1},
         {"stage2_bytes_clear", 1},
         {"stage2_bytes_byte_at", 2},
         {"stage2_bytes_reserve", 2},
         {"stage2_bytes_append", 2},
+        {"stage2_bytes_read_file", 2},
         {"stage2_bytes_byte_set", 3},
         {"stage2_bytes_append_self", 3},
         {"stage2_bytes_append_range", 4},
+        /* #1322. The Text bridge: `assign_text` takes the carrier and a
+         * `Text`, `text` the carrier and a byte range. */
+        {"stage2_bytes_assign_text", 2},
+        {"stage2_bytes_text", 3},
         {"starts_with", 2},
         {"text_slice", 3},
         {"to_text", 1},
@@ -10978,9 +11058,12 @@ static const char *builtin_parameter_types(const char *name) {
         {"stage2_bytes_byte_at", "Bytes|Int"},
         {"stage2_bytes_reserve", "Bytes|Int"},
         {"stage2_bytes_append", "Bytes|Int"},
+        {"stage2_bytes_read_file", "Bytes|Text"},
         {"stage2_bytes_byte_set", "Bytes|Int|Int"},
         {"stage2_bytes_append_self", "Bytes|Int|Int"},
         {"stage2_bytes_append_range", "Bytes|Bytes|Int|Int"},
+        {"stage2_bytes_assign_text", "Bytes|Text"},
+        {"stage2_bytes_text", "Bytes|Int|Int"},
         {"starts_with", "Text|Text"},
         {"text_slice", "Text|Int|Int"},
         {"to_text", "Int"},
@@ -12472,7 +12555,7 @@ static char *validate_core_calls(const char *source, const char *hir) {
                         strcmp(name, "to_text") == 0 ||
                         strcmp(name, "stage2_bytes_empty") == 0 ||
                         strcmp(name, "stage2_bytes_assign_zeroed") == 0 ||
-                        bytes_mutation_builtin(name)
+                        bytes_family_builtin(name)
                     ) {
                         expected = builtin_expected;
                     } else {
@@ -12590,9 +12673,10 @@ static char *malformed_core_parameters_error(void) {
 }
 
 /*
- * #1321. The nine operations of the bounded mutation surface, named once so
+ * #1321. The ten operations of the bounded mutation surface, named once so
  * the lowering, the three builtin tables, and `source_uses_bytes` cannot
- * drift into four vocabularies of the same set.
+ * drift into four vocabularies of the same set. #1499 added `read_file`, the
+ * one operation whose non-carrier argument is a `Text` path.
  */
 static const char *const kofun_bytes_mutation_operations[] = {
     "stage2_bytes_len",
@@ -12604,6 +12688,7 @@ static const char *const kofun_bytes_mutation_operations[] = {
     "stage2_bytes_append",
     "stage2_bytes_append_range",
     "stage2_bytes_append_self",
+    "stage2_bytes_read_file",
 };
 #define KOFUN_BYTES_MUTATION_OPERATION_COUNT \
     (sizeof(kofun_bytes_mutation_operations) / \
@@ -12620,6 +12705,35 @@ static bool bytes_mutation_builtin(const char *name) {
         }
     }
     return false;
+}
+
+/*
+ * #1322. The Text bridge is its own family, not two more rows in the
+ * mutation table: `bytes-mutation` derives the mutation vocabulary from that
+ * table and asserts that no mutation operation emits a Text-bridge tag, and
+ * the bridge is exactly the code that emits them. The two families lower
+ * through the same call shape, so `bytes_family_builtin` is what the
+ * dispatch sites read.
+ */
+static const char *const kofun_bytes_text_operations[] = {
+    "stage2_bytes_assign_text",
+    "stage2_bytes_text",
+};
+#define KOFUN_BYTES_TEXT_OPERATION_COUNT \
+    (sizeof(kofun_bytes_text_operations) / \
+     sizeof(kofun_bytes_text_operations[0]))
+
+static bool bytes_text_builtin(const char *name) {
+    for (size_t index = 0; index < KOFUN_BYTES_TEXT_OPERATION_COUNT; ++index) {
+        if (strcmp(name, kofun_bytes_text_operations[index]) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool bytes_family_builtin(const char *name) {
+    return bytes_mutation_builtin(name) || bytes_text_builtin(name);
 }
 
 /*
@@ -12644,15 +12758,19 @@ static bool call_resolves_to_builtin(
 
 /*
  * #1559. These eight outcomes are implementation carriers, not Kofun values.
- * `len` and `capacity` deliberately stay outside: their Int result is the
- * source-visible observation surface of the bounded Bytes bridge.
+ * `len`, `capacity`, and `byte_at` deliberately stay outside: their Int
+ * result is the source-visible observation surface of the bounded Bytes
+ * bridge. #1499 moved `byte_at` out of this set, because a program that can
+ * read a file into a carrier needs one way to hold a byte it read.
  */
 static bool bytes_private_result_builtin(const char *name) {
     return strcmp(name, "stage2_bytes_assign_zeroed") == 0 ||
+           strcmp(name, "stage2_bytes_assign_text") == 0 ||
            (
                bytes_mutation_builtin(name) &&
                strcmp(name, "stage2_bytes_len") != 0 &&
-               strcmp(name, "stage2_bytes_capacity") != 0
+               strcmp(name, "stage2_bytes_capacity") != 0 &&
+               strcmp(name, "stage2_bytes_byte_at") != 0
            );
 }
 
@@ -12834,7 +12952,7 @@ static char *validate_bytes_private_results(
  */
 static int64_t bytes_mutation_carriers(const char *name) {
     if (strcmp(name, "stage2_bytes_append_range") == 0) return 2;
-    if (bytes_mutation_builtin(name)) return 1;
+    if (bytes_family_builtin(name)) return 1;
     return 0;
 }
 
@@ -12851,7 +12969,8 @@ static const char *bytes_mutation_required_access(
     if (
         strcmp(name, "stage2_bytes_len") == 0 ||
         strcmp(name, "stage2_bytes_capacity") == 0 ||
-        strcmp(name, "stage2_bytes_byte_at") == 0
+        strcmp(name, "stage2_bytes_byte_at") == 0 ||
+        strcmp(name, "stage2_bytes_text") == 0
     ) return "read";
     if (strcmp(name, "stage2_bytes_append_range") == 0) {
         return index == 1 ? "read" : "edit";
@@ -12861,7 +12980,9 @@ static const char *bytes_mutation_required_access(
         strcmp(name, "stage2_bytes_clear") == 0 ||
         strcmp(name, "stage2_bytes_reserve") == 0 ||
         strcmp(name, "stage2_bytes_append") == 0 ||
-        strcmp(name, "stage2_bytes_append_self") == 0
+        strcmp(name, "stage2_bytes_append_self") == 0 ||
+        strcmp(name, "stage2_bytes_read_file") == 0 ||
+        strcmp(name, "stage2_bytes_assign_text") == 0
     ) return "edit";
     return "";
 }
@@ -13050,10 +13171,10 @@ static char *bytes_distinct_carriers_error(
 
 /*
  * #1321. The whole family lowers through one function, because the shape of
- * the call is the same for all nine: the leading `bytes_mutation_carriers`
- * arguments become carrier addresses and the rest are ordinary `Int`
- * expressions. A tenth operation needs a row in the tables, not a tenth
- * branch.
+ * the call is the same for all ten: the leading `bytes_mutation_carriers`
+ * arguments become carrier addresses and the rest are ordinary expressions
+ * (`Int`, or the `Text` path of `read_file`). An eleventh operation needs a
+ * row in the tables, not an eleventh branch.
  */
 static char *emit_bytes_mutation_call(
     const char *source,
@@ -17254,25 +17375,36 @@ static const char *builtin_return_type(const char *name) {
          * storage. */
         {"stage2_bytes_empty", "Bytes"},
         {"stage2_bytes_assign_zeroed", "Void"},
-        /* #1321. `len` and `capacity` are the two operations whose result is
-         * an ordinary `Int`, so they are the two a source program can use.
-         * The rest are `Void` for the same reason
-         * `stage2_bytes_assign_zeroed` is: the status and the
-         * `Stage2ByteRead` carrier are private to the emitted C and are
-         * proved there. Surfacing either needs a compiler-owned enum
-         * declaration, and Stage 2 resolves an enum by scanning the source
-         * for its `type` declaration — a type the compiler owns has no
-         * declaration site to be found at. The consumer that needs the byte
-         * in source is #1499, and it is where that mechanism belongs. */
+        /* #1321. `len` and `capacity` are the operations whose result is an
+         * ordinary `Int`, so they are the ones a source program can use.
+         * #1499 added `byte_at`: a checked read that fails as a runtime
+         * diagnostic rather than as a private carrier, so the byte is a
+         * value a program can hold, compare, and hand to a digest. The rest
+         * are `Void` for the same reason `stage2_bytes_assign_zeroed` is:
+         * the status is private to the emitted C and is proved there.
+         * Surfacing it needs a compiler-owned enum declaration, and Stage 2
+         * resolves an enum by scanning the source for its `type`
+         * declaration — a type the compiler owns has no declaration site to
+         * be found at. */
         {"stage2_bytes_len", "Int"},
         {"stage2_bytes_capacity", "Int"},
+        {"stage2_bytes_byte_at", "Int"},
         {"stage2_bytes_clear", "Void"},
-        {"stage2_bytes_byte_at", "Void"},
+        {"stage2_bytes_read_file", "Void"},
         {"stage2_bytes_byte_set", "Void"},
         {"stage2_bytes_reserve", "Void"},
         {"stage2_bytes_append", "Void"},
         {"stage2_bytes_append_range", "Void"},
         {"stage2_bytes_append_self", "Void"},
+        /* #1322. `assign_text` is private-status like the mutations it sits
+         * beside. `text` returns the `Text` a program asked for, and its
+         * range, limit, NUL, and UTF-8 failures are runtime diagnostics with
+         * an empty result -- the shape `byte_at` took across the same
+         * boundary. The exact tag/detail contract lives in the emitted
+         * `stage2_bytes_text_check` and is proved by the `bytes-text`
+         * driver. */
+        {"stage2_bytes_assign_text", "Void"},
+        {"stage2_bytes_text", "Text"},
         {"starts_with", "Bool"},
         {"text_slice", "Text"},
         {"to_text", "Text"},
@@ -26645,7 +26777,7 @@ static bool source_uses_bytes(const char *source, const char *hir) {
         bool bytes_builtin =
             strcmp(token, "stage2_bytes_empty") == 0 ||
             strcmp(token, "stage2_bytes_assign_zeroed") == 0 ||
-            bytes_mutation_builtin(token);
+            bytes_family_builtin(token);
         int64_t open = skip_trivia(source, token_end(source, cursor));
         bool resolved =
             bytes_builtin && open < length && token_equal(source, open, "(") &&
@@ -28031,6 +28163,7 @@ static int64_t count_text_sites(const char *bodies) {
         "kofun_text_slice(",
         "kofun_to_text(",
         "kofun_text_concat(",
+        "stage2_bytes_text(",
     };
     int64_t site_count = 0;
     bool quoted = false;
@@ -28696,7 +28829,7 @@ static char *lower_c_body(
      * deliberately indistinguishable at runtime, so use-after-take stays
      * compile-time E2S123 and no runtime tag is inferred from zero fields.
      *
-     * The nine status tags are frozen in declaration order 0..8 so the
+     * The ten status tags are frozen in declaration order 0..9 so the
      * bounded-mutation and Text-bridge children cannot renumber them. */
     if (uses_bytes) {
     buffer_append(
@@ -28722,7 +28855,8 @@ static char *lower_c_body(
         "    KOFUN_BYTES_ALLOCATION_FAILED = 5,\n"
         "    KOFUN_BYTES_INVALID_UTF8 = 6,\n"
         "    KOFUN_BYTES_TEXT_CONTAINS_NUL = 7,\n"
-        "    KOFUN_BYTES_TEXT_LIMIT_EXCEEDED = 8\n"
+        "    KOFUN_BYTES_TEXT_LIMIT_EXCEEDED = 8,\n"
+        "    KOFUN_BYTES_FILE_UNREADABLE = 9\n"
         "};\n"
         "static inline KofunBytesStatus kofun_bytes_status(int64_t tag, int64_t detail) {\n"
         "    KofunBytesStatus status; status.tag = tag; status.detail = detail; return status;\n"
@@ -28824,37 +28958,27 @@ static char *lower_c_body(
      * filled before the old pointer is released, so every failure leaves
      * length, capacity, pointer, and bytes exactly as it found them.
      *
-     * The read carrier is emitted exactly once, here, with its three tags
-     * in declaration order 0..2. It is a separate outcome from the 0..8
-     * status above and carries no consumed tag; #1322's Text bridge extends
-     * that status and must not redeclare either. */
+     * #1499. A byte read is an `Int` the source can hold, and an offset
+     * outside `0..length-1` is the same kind of failure a `List[Int]` index
+     * is: a runtime diagnostic (`R023` there, `R025` here) and a zero
+     * result, never a silent sentinel. The separate `Stage2ByteRead`
+     * carrier that used to hold the three outcomes is retired with it --
+     * there is no longer anything private to carry. */
     buffer_append(
         &output,
         "enum { KOFUN_BYTES_GROWTH_FLOOR = 16 };\n"
-        "typedef struct { int64_t tag; int64_t detail; } Stage2ByteRead;\n"
-        "enum {\n"
-        "    KOFUN_BYTE_VALUE = 0,\n"
-        "    KOFUN_BYTE_READ_NEGATIVE_OFFSET = 1,\n"
-        "    KOFUN_BYTE_READ_OUT_OF_BOUNDS = 2\n"
-        "};\n"
-        "static inline Stage2ByteRead kofun_byte_read(int64_t tag, int64_t detail) {\n"
-        "    Stage2ByteRead read; read.tag = tag; read.detail = detail; return read;\n"
-        "}\n"
         "static inline int64_t stage2_bytes_len(const KofunBytesValue *value) {\n"
         "    return (int64_t)value->length;\n"
         "}\n"
         "static inline int64_t stage2_bytes_capacity(const KofunBytesValue *value) {\n"
         "    return (int64_t)value->capacity;\n"
         "}\n"
-        "static inline Stage2ByteRead stage2_bytes_byte_at(\n"
+        "static inline int64_t stage2_bytes_byte_at(\n"
         "    const KofunBytesValue *value, int64_t offset) {\n"
-        "    if (offset < 0) {\n"
-        "        return kofun_byte_read(KOFUN_BYTE_READ_NEGATIVE_OFFSET, offset);\n"
+        "    if (offset < 0 || (uint64_t)offset >= value->length) {\n"
+        "        kofun_error(\"error[R025]: bounded Bytes byte read out of range\"); return 0;\n"
         "    }\n"
-        "    if ((uint64_t)offset >= value->length) {\n"
-        "        return kofun_byte_read(KOFUN_BYTE_READ_OUT_OF_BOUNDS, offset);\n"
-        "    }\n"
-        "    return kofun_byte_read(KOFUN_BYTE_VALUE, (int64_t)value->data[offset]);\n"
+        "    return (int64_t)value->data[offset];\n"
         "}\n"
         "static inline KofunBytesStatus stage2_bytes_byte_set(\n"
         "    KofunBytesValue *value, int64_t offset, int64_t item) {\n"
@@ -28985,6 +29109,61 @@ static char *lower_c_body(
         "    return kofun_bytes_status(KOFUN_BYTES_SUCCEEDED, 0);\n"
         "}\n"
     );
+    /* #1499. The input operation: replace the carrier's bytes with a file's.
+     * The file is read into a private window one byte wider than the ceiling
+     * *before* anything about the carrier changes, so a file over the bound,
+     * an unreadable path, and an allocation failure each leave length,
+     * capacity, pointer, and bytes exactly as they were. A window rather
+     * than a size query, because `ftell` answers nothing useful for a pipe
+     * and `fstat` is not C11.
+     *
+     * Every failure is also a runtime diagnostic, which no other operation
+     * in this family is. The others hand a private status to a driver; a
+     * compiled program has no driver, and a read that failed silently would
+     * leave it digesting the carrier it started with as if it were the
+     * file. */
+    buffer_append(
+        &output,
+        "static inline KofunBytesStatus stage2_bytes_read_file(\n"
+        "    KofunBytesValue *value, const char *path) {\n"
+        "    FILE *file = fopen(path, \"rb\");\n"
+        "    if (file == NULL) {\n"
+        "        kofun_error(\"error[R026]: bounded Bytes file read cannot read path\");\n"
+        "        return kofun_bytes_status(KOFUN_BYTES_FILE_UNREADABLE, 0);\n"
+        "    }\n"
+        "    unsigned char *window = kofun_bytes_allocate((size_t)KOFUN_BYTES_CAPACITY_LIMIT + 1);\n"
+        "    if (window == NULL) {\n"
+        "        fclose(file);\n"
+        "        kofun_error(\"error[R028]: bounded Bytes file read cannot allocate\");\n"
+        "        return kofun_bytes_status(KOFUN_BYTES_ALLOCATION_FAILED, KOFUN_BYTES_CAPACITY_LIMIT + 1);\n"
+        "    }\n"
+        "    size_t got = fread(window, 1, (size_t)KOFUN_BYTES_CAPACITY_LIMIT + 1, file);\n"
+        "    int unreadable = ferror(file);\n"
+        "    fclose(file);\n"
+        "    if (unreadable) {\n"
+        "        free(window);\n"
+        "        kofun_error(\"error[R026]: bounded Bytes file read cannot read path\");\n"
+        "        return kofun_bytes_status(KOFUN_BYTES_FILE_UNREADABLE, 1);\n"
+        "    }\n"
+        "    if (got > (size_t)KOFUN_BYTES_CAPACITY_LIMIT) {\n"
+        "        free(window);\n"
+        "        kofun_error(\"error[R027]: bounded Bytes file read exceeds 65536 bytes\");\n"
+        "        return kofun_bytes_status(KOFUN_BYTES_CAPACITY_EXCEEDED, KOFUN_BYTES_CAPACITY_LIMIT + 1);\n"
+        "    }\n"
+        "    KofunBytesStatus grown = kofun_bytes_grow(value, (int64_t)got);\n"
+        "    if (grown.tag != KOFUN_BYTES_SUCCEEDED) {\n"
+        "        free(window);\n"
+        "        kofun_error(\"error[R028]: bounded Bytes file read cannot allocate\");\n"
+        "        return grown;\n"
+        "    }\n"
+        "    if (got > 0) {\n"
+        "        memcpy(value->data, window, got);\n"
+        "    }\n"
+        "    value->length = (uint64_t)got;\n"
+        "    free(window);\n"
+        "    return kofun_bytes_status(KOFUN_BYTES_SUCCEEDED, 0);\n"
+        "}\n"
+    );
     }
     buffer_append(
         &output,
@@ -29060,6 +29239,97 @@ static char *lower_c_body(
         "    return r;\n"
         "}\n"
     );
+    /* #1322. The Text bridge, after the Text helpers because `text` hands
+     * its result out in a Text temporary slot, and after the mutation family
+     * because it is the one place tags 6..8 are produced -- `bytes-mutation`
+     * extracts its prelude up to `read_file` and asserts none of those tags
+     * appear in it.
+     *
+     * `assign_text` is transactional through `kofun_bytes_grow`: the only
+     * reachable failure is allocation, and grow swaps the buffer in only
+     * after the fresh one is filled. A valid Text is at most 255 bytes, so
+     * the capacity bound is unreachable here and no check pretends it is.
+     *
+     * `text_check` is the whole of the issue's contract, in its precedence:
+     * range (the shared rule: a negative offset or count reports that value,
+     * an offset past the length reports the offset, a count past
+     * `length - offset` reports the count and never evaluates the sum), then
+     * the 255-byte Text limit with the requested count as detail, then one
+     * left-to-right scan in which the earliest NUL or ill-formed sequence
+     * wins. Every content detail is an absolute offset into the carrier: a
+     * NUL or an invalid lead byte name that byte; a continuation byte that
+     * is not one names itself; truncation, an overlong form, a surrogate, and
+     * a scalar above U+10FFFF name the lead byte of their sequence. Nothing
+     * is normalized. `text` is the source-facing half: the same check, then
+     * a runtime diagnostic per failure kind with an empty result, or a copy
+     * into a Text slot. */
+    if (uses_bytes) {
+        buffer_append(
+            &output,
+            "static inline KofunBytesStatus stage2_bytes_text_check(\n"
+            "    const KofunBytesValue *value, int64_t offset, int64_t count) {\n"
+            "    if (offset < 0) return kofun_bytes_status(KOFUN_BYTES_RANGE_OUT_OF_BOUNDS, offset);\n"
+            "    if (count < 0) return kofun_bytes_status(KOFUN_BYTES_RANGE_OUT_OF_BOUNDS, count);\n"
+            "    if ((uint64_t)offset > value->length) return kofun_bytes_status(KOFUN_BYTES_RANGE_OUT_OF_BOUNDS, offset);\n"
+            "    if ((uint64_t)count > value->length - (uint64_t)offset) return kofun_bytes_status(KOFUN_BYTES_RANGE_OUT_OF_BOUNDS, count);\n"
+            "    if (count > 255) return kofun_bytes_status(KOFUN_BYTES_TEXT_LIMIT_EXCEEDED, count);\n"
+            "    const unsigned char *bytes = value->data + offset;\n"
+            "    int64_t at = 0;\n"
+            "    while (at < count) {\n"
+            "        unsigned char lead = bytes[at];\n"
+            "        int64_t need; unsigned char low = 0x80, high = 0xBF;\n"
+            "        if (lead == 0) return kofun_bytes_status(KOFUN_BYTES_TEXT_CONTAINS_NUL, offset + at);\n"
+            "        if (lead < 0x80) { at += 1; continue; }\n"
+            "        if (lead >= 0xC2 && lead <= 0xDF) { need = 1; }\n"
+            "        else if (lead == 0xE0) { need = 2; low = 0xA0; }\n"
+            "        else if ((lead >= 0xE1 && lead <= 0xEC) || lead == 0xEE || lead == 0xEF) { need = 2; }\n"
+            "        else if (lead == 0xED) { need = 2; high = 0x9F; }\n"
+            "        else if (lead == 0xF0) { need = 3; low = 0x90; }\n"
+            "        else if (lead >= 0xF1 && lead <= 0xF3) { need = 3; }\n"
+            "        else if (lead == 0xF4) { need = 3; high = 0x8F; }\n"
+            "        else return kofun_bytes_status(KOFUN_BYTES_INVALID_UTF8, offset + at);\n"
+            "        if (count - at - 1 < need) return kofun_bytes_status(KOFUN_BYTES_INVALID_UTF8, offset + at);\n"
+            "        unsigned char second = bytes[at + 1];\n"
+            "        if (second < 0x80 || second > 0xBF) return kofun_bytes_status(KOFUN_BYTES_INVALID_UTF8, offset + at + 1);\n"
+            "        if (second < low || second > high) return kofun_bytes_status(KOFUN_BYTES_INVALID_UTF8, offset + at);\n"
+            "        for (int64_t extra = 2; extra <= need; ++extra) {\n"
+            "            unsigned char next = bytes[at + extra];\n"
+            "            if (next < 0x80 || next > 0xBF) return kofun_bytes_status(KOFUN_BYTES_INVALID_UTF8, offset + at + extra);\n"
+            "        }\n"
+            "        at += need + 1;\n"
+            "    }\n"
+            "    return kofun_bytes_status(KOFUN_BYTES_SUCCEEDED, 0);\n"
+            "}\n"
+            "static inline KofunBytesStatus stage2_bytes_assign_text(\n"
+            "    KofunBytesValue *value, const char *text) {\n"
+            "    size_t width = strlen(text);\n"
+            "    KofunBytesStatus grown = kofun_bytes_grow(value, (int64_t)width);\n"
+            "    if (grown.tag != KOFUN_BYTES_SUCCEEDED) return grown;\n"
+            "    if (width > 0) memcpy(value->data, text, width);\n"
+            "    value->length = (uint64_t)width;\n"
+            "    return kofun_bytes_status(KOFUN_BYTES_SUCCEEDED, 0);\n"
+            "}\n"
+            "static inline const char *stage2_bytes_text(\n"
+            "    const KofunBytesValue *value, int64_t offset, int64_t count) {\n"
+            "    KofunBytesStatus checked = stage2_bytes_text_check(value, offset, count);\n"
+            "    if (checked.tag == KOFUN_BYTES_RANGE_OUT_OF_BOUNDS) {\n"
+            "        kofun_error(\"error[R029]: bounded Bytes text range out of range\"); return \"\";\n"
+            "    }\n"
+            "    if (checked.tag == KOFUN_BYTES_TEXT_LIMIT_EXCEEDED) {\n"
+            "        kofun_error(\"error[R030]: bounded Bytes text exceeds 255 bytes\"); return \"\";\n"
+            "    }\n"
+            "    if (checked.tag == KOFUN_BYTES_TEXT_CONTAINS_NUL) {\n"
+            "        kofun_error(\"error[R031]: bounded Bytes text contains NUL\"); return \"\";\n"
+            "    }\n"
+            "    if (checked.tag != KOFUN_BYTES_SUCCEEDED) {\n"
+            "        kofun_error(\"error[R032]: bounded Bytes text is not UTF-8\"); return \"\";\n"
+            "    }\n"
+            "    char *slot = kofun_text_temporary(); if (slot == NULL) return \"\";\n"
+            "    if (count > 0) memcpy(slot, value->data + offset, (size_t)count);\n"
+            "    slot[count] = '\\0'; return slot;\n"
+            "}\n"
+        );
+    }
     char *bit_runtime = emit_int_bit_c_runtime();
     buffer_append(&output, bit_runtime);
     free(bit_runtime);
@@ -29837,6 +30107,20 @@ static int compile_file(
     const char *ir_output,
     const char *tokens_output
 ) {
+    /* Check every destination before the first IR/token write: a safe C path
+     * cannot authorize truncating the input through an auxiliary artifact. */
+    const char *outputs[] = {output, ir_output, tokens_output};
+    for (size_t index = 0; index < sizeof(outputs) / sizeof(outputs[0]); ++index) {
+        Stage2FileIdentity identity = stage2_same_file(input, outputs[index]);
+        if (identity == STAGE2_FILE_LOOKUP_ERROR) {
+            stage2_host_lookup_error();
+            return 2;
+        }
+        if (identity == STAGE2_FILE_SAME) {
+            puts("error[E2S35]: compiler input and output must be distinct");
+            return 2;
+        }
+    }
     char *source = read_file(input);
     char *tokens = lex_source(source);
     if (strncmp(tokens, "error[", 6) == 0) {
@@ -29985,6 +30269,15 @@ static int check_ownership_file(const char *path) {
 }
 
 static int parse_patterns_file(const char *input, const char *output) {
+    Stage2FileIdentity identity = stage2_same_file(input, output);
+    if (identity == STAGE2_FILE_LOOKUP_ERROR) {
+        stage2_host_lookup_error();
+        return 2;
+    }
+    if (identity == STAGE2_FILE_SAME) {
+        puts("error[E2S35]: patterns input and output must be distinct");
+        return 1;
+    }
     char *source = read_file(input);
     char *tokens = lex_source(source);
     if (strncmp(tokens, "error[", 6) == 0) {
@@ -31867,7 +32160,12 @@ static int emit_selfhost_hir_file(
     const char *output,
     const char *digest
 ) {
-    if (same_file(input, output)) {
+    Stage2FileIdentity identity = stage2_same_file(input, output);
+    if (identity == STAGE2_FILE_LOOKUP_ERROR) {
+        stage2_host_lookup_error();
+        return 2;
+    }
+    if (identity == STAGE2_FILE_SAME) {
         puts("error[E2S35]: selfhost-HIR input and output must be distinct");
         return 2;
     }
@@ -33306,7 +33604,12 @@ static void sl_free(SlDoc *doc) {
 }
 
 static int lower_selfhost_c11_file(const char *input, const char *output) {
-    if (same_file(input, output)) {
+    Stage2FileIdentity identity = stage2_same_file(input, output);
+    if (identity == STAGE2_FILE_LOOKUP_ERROR) {
+        stage2_host_lookup_error();
+        return 2;
+    }
+    if (identity == STAGE2_FILE_SAME) {
         puts("error[E2S35]: selfhost-C11 input and output must be distinct");
         return 2;
     }
@@ -33337,7 +33640,12 @@ static int selfhost_compile_file(
     const char *output,
     const char *digest
 ) {
-    if (same_file(input, output)) {
+    Stage2FileIdentity identity = stage2_same_file(input, output);
+    if (identity == STAGE2_FILE_LOOKUP_ERROR) {
+        stage2_host_lookup_error();
+        return 2;
+    }
+    if (identity == STAGE2_FILE_SAME) {
         puts("error[E2S35]: selfhost-compile input and output must be "
              "distinct");
         return 2;
@@ -33385,7 +33693,12 @@ static int selfhost_compile_file(
 }
 
 static int emit_scope_hir_file(const char *input, const char *output) {
-    if (same_file(input, output)) {
+    Stage2FileIdentity identity = stage2_same_file(input, output);
+    if (identity == STAGE2_FILE_LOOKUP_ERROR) {
+        stage2_host_lookup_error();
+        return 2;
+    }
+    if (identity == STAGE2_FILE_SAME) {
         puts(
             "error[E2S35]: scope-HIR input and output must be distinct"
         );

@@ -1,58 +1,33 @@
-# Which functions of the Stage 2 pair does the Kofun half mirror at all? (#1514,
-# parent #1401)
+# Which ledger functions does the Kofun half mirror? (#1514, parent #1401)
 #
-# `undefended.tsv` beside this file lists, per function of
-# bootstrap/stage2/compiler.c, how many branches nothing this repository runs
-# ever takes -- #1401's work-list of places a divergence between the two halves
-# can hide. THAT FRAMING ASSUMES BOTH HALVES IMPLEMENT THE FUNCTION. For 24 of
-# the 370 they do not, and for 68 more the counterpart is there under a
-# different name, which a reader triaging the ledger cannot see.
+# This map describes every row of undefended.tsv at its recorded measurement:
+# 372 functions; 283 same-name, 66 other-name, 23 c-only.
+# It answers whether the Kofun half does the work, and under what name.
+# It does NOT prove semantic agreement. A name match cannot prove behavior.
 #
-# So this file answers one question per ledger row, and only that question:
-# DOES THE KOFUN HALF DO THIS WORK, AND UNDER WHAT NAME?
+# same-name: compiler.kofun defines a fn of the same name.
+# other-name: the counterpart is named in column 3, or an inline/builtin/
+#             private driver binding is explicitly stated in parentheses.
+# c-only: the Kofun half does not implement that work.
+# Every other-name/c-only verdict carries evidence in column 4.
 #
-# WHAT A ROW DOES NOT SAY. It does not say the two implementations agree. A
-# `same-name` row means a function of that name exists in compiler.kofun, not
-# that it behaves the same -- deciding that is the regional classification work
-# of #1401's other children, and #1508 found two live asymmetries inside
-# functions that are mirrored by name. This file narrows the reading; it does
-# not do it.
+# Reconciled to the actual two-host measurement at 91d353f23722093a6c206863ce6cd02ca86dab83.
+# Rows absent from that measurement are removed even if the function remains
+# in the source. New exact-name counterparts were checked in compiler.kofun;
+# the new scalar operation is implemented by its approved private driver
+# binding, not an ordinary builtin. #1513's executable pair gate separately
+# covers its typed failures and all escaping funnels, including mutations.
 #
-# verdict     `same-name`   compiler.kofun defines a `fn` of the same name
-#             `other-name`  it does the same work under the name in column 3,
-#                           or inline / through a builtin, which column 3 states
-#                           in parentheses
-#             `c-only`      the Kofun half does not do this work at all
+# The 23 C-only rows contain 150/138 untaken branches (gcc/clang).
+# They include compiler.ensure_move, the seed's structured observation API,
+# allocation/cache plumbing, const_generic_refusal, and transactional writes.
+# Those rows, other-name mappings, and semantic agreement within mirrored
+# functions remain limits of the class gates. Class-first closure of #1401
+# does not classify every remaining branch as correct or unreachable.
 #
-# EVERY `other-name` AND `c-only` ROW CARRIES A MARK, and a mark is evidence
-# rather than a resemblance: a diagnostic code with identical message text, an
-# identical emitted record field order, a duplicated doc comment, or -- for
-# `c-only` -- the vocabulary that is absent, with the line of compiler.kofun
-# that already says so where one exists.
-#
-# THIS REBIND REMOVES THREE FULLY COVERED OR GONE ROWS and adds eleven functions
-# exposed by the same completed pair measurement. Ten additions retain an exact
-# name counterpart. `lower_body_with_workspace` maps to Kofun `lower_body`:
-# unbounded Text needs no seed-C workspace wrapper, but the lowering body is the
-# same work. The map describes the ledger, so functions with nothing unwatched
-# carry no row here even when they still exist in the compiler.
-#
-# WHAT THE C-ONLY ROWS AMOUNT TO, so a reader knows what is being set aside:
-# `compiler.ensure_move` (#572, #904) at 70 untaken branches; the
-# `Stage2AuthorityContext` embedder API and its observations at 47; memo,
-# capacity and allocator plumbing at 21; host-level file and identifier
-# handling at 7; and `const_generic_refusal` at 6. 151 of the ledger's 1964
-# branches, 8%.
-# The other 92% is a real pair surface.
-#
-# ONE C-ONLY ROW IS A LIVE DIVERGENCE rather than a documented omission:
-# `c_identifier_name` escapes non-ASCII identifiers to `k_uXXXXXX` at 12 sites
-# in the C half and has no counterpart, so the two halves emit different C for
-# the same input. Filed as #1513.
-#
-# `sh tests/pair-coverage/mirror.sh` holds this exact in both directions: a
-# ledger function with no row is refused, a row naming a function the ledger
-# does not carry is refused, a `same-name` or `other-name` counterpart that does
+# mirror.sh refuses missing/stale rows, absent named counterparts, a C-only
+# row whose counterpart now exists, and non-same-name verdicts without marks.
+# function	verdict	kofun counterpart	evidence
 admissible_payload_type_token	same-name	admissible_payload_type_token	-
 after_optional_module_header	same-name	after_optional_module_header	-
 allocate	c-only	-	the bootstrap subset has no allocator surface
@@ -82,22 +57,18 @@ bytes_private_result_is_discarded_statement	same-name	bytes_private_result_is_di
 bytes_private_result_previous_completes_statement	same-name	bytes_private_result_previous_completes_statement	-
 bytes_private_result_statement_boundary	same-name	bytes_private_result_statement_boundary	-
 bytes_producer_refusal	same-name	bytes_producer_refusal	-
-callable_c_declarator	same-name	callable_c_declarator	-
-callable_parameter_type_start	same-name	callable_parameter_type_start	-
-callable_type_arity	same-name	callable_type_arity	-
-callable_type_end	same-name	callable_type_end	-
+c_identifier_name	same-name	c_identifier_name	#1513; executable two-sided host-primitives gate covers every escaping funnel
 call_argument_parameter_property	same-name	call_argument_parameter_property	-
 call_argument_position	same-name	call_argument_position	-
 call_arity	same-name	call_arity	-
 call_has_labelled_argument	same-name	call_has_labelled_argument	-
-c_identifier_name	c-only	-	non-ASCII identifier escaping; `k_u` has no occurrence in compiler.kofun — a live divergence, #1513
+callable_c_declarator	same-name	callable_c_declarator	-
+callable_parameter_type_start	same-name	callable_parameter_type_start	-
+callable_type_arity	same-name	callable_type_arity	-
+callable_type_end	same-name	callable_type_end	-
 coalescing_expression_end	same-name	coalescing_expression_end	-
 compile_file	same-name	compile_file	-
 condition_end	same-name	condition_end	-
-constant_declaration_count	same-name	constant_declaration_count	-
-constant_declaration_end	same-name	constant_declaration_end	-
-constant_name	same-name	constant_name	-
-constant_value_text	same-name	constant_value_text	-
 const_argument_of	same-name	const_argument_of	-
 const_argument_over_budget	same-name	const_argument_over_budget	-
 const_digit_greater	same-name	const_digit_greater	-
@@ -105,6 +76,10 @@ const_generic_declaration_head	same-name	const_generic_declaration_head	-
 const_generic_refusal	c-only	-	exists only to feed stage2_diagnostic_set; the Kofun half emits the same text bare
 const_instantiation_at	same-name	const_instantiation_at	-
 const_parameter_name	same-name	const_parameter_name	-
+constant_declaration_count	same-name	constant_declaration_count	-
+constant_declaration_end	same-name	constant_declaration_end	-
+constant_name	same-name	constant_name	-
+constant_value_text	same-name	constant_value_text	-
 constructed_list_type_end	same-name	constructed_list_type_end	-
 constructed_list_type_text	same-name	constructed_list_type_text	-
 copy_type	same-name	copy_type	-
@@ -113,6 +88,7 @@ core_parameters	same-name	core_parameters	-
 decimal_rounding_c_name	same-name	decimal_rounding_c_name	-
 decimal_value	same-name	decimal_value	-
 declared_bytes_argument_identity_error	same-name	declared_bytes_argument_identity_error	-
+delimiter_fault	same-name	delimiter_fault	-
 emit_argument	same-name	emit_argument	-
 emit_arithmetic_expression	same-name	emit_arithmetic_expression	-
 emit_bytes_mutation_call	same-name	emit_bytes_mutation_call	-
@@ -147,8 +123,8 @@ enum_constructor_count	same-name	enum_constructor_count	-
 enum_constructor_index	same-name	enum_constructor_index	-
 enum_constructor_owner	same-name	enum_constructor_owner	-
 enum_constructor_payload_arity	same-name	enum_constructor_payload_arity	-
-enum_constructors_covered	same-name	enum_constructors_covered	-
 enum_constructor_token_end	same-name	enum_constructor_token_end	-
+enum_constructors_covered	same-name	enum_constructors_covered	-
 enum_declaration_names	same-name	enum_declaration_names	-
 enum_declaration_start	same-name	enum_declaration_start	-
 enum_match_end	same-name	enum_match_end	-
@@ -178,8 +154,8 @@ hir_index_refresh	c-only	-	FNV line index; compiler.kofun:8533 "canonical Kofun 
 hir_index_split	c-only	-	feeds hir_index_refresh; `hir_index` has no occurrence in compiler.kofun
 hir_pending_declaration	same-name	hir_pending_declaration	-
 hir_scope_root	same-name	hir_scope_root	-
-identifier_continue_at	other-name	identifier_continue	same predicate; the `_at` half is byte-offset plumbing chars() removes
-identifier_start_at	other-name	identifier_start	same `_` or XID_Start predicate; the three C call sites land in the matching Kofun functions
+identifier_continue_at	same-name	identifier_continue_at	#1513; private scalar decoding and pinned Unicode XID_Continue ranges
+identifier_start_at	same-name	identifier_start_at	#1513; private scalar decoding and pinned Unicode XID_Start ranges
 if_has_else	same-name	if_has_else	-
 if_statement_end	same-name	if_statement_end	-
 if_then_branch_end	same-name	if_then_branch_end	-
@@ -210,7 +186,6 @@ lower_body_with_workspace	other-name	lower_body	C owns growable scratch in a wra
 lower_c_body	same-name	lower_c_body	-
 lower_enum_match	same-name	lower_enum_match	-
 lower_record_binding	same-name	lower_record_binding	-
-lower_selfhost_c11_file	same-name	lower_selfhost_c11_file	-
 main	same-name	main	-
 malformed_numeric_literal	same-name	malformed_numeric_literal	-
 match_arm_pattern_start	same-name	match_arm_pattern_start	-
@@ -252,13 +227,18 @@ optional_int_declaration_count	same-name	optional_int_declaration_count	-
 optional_int_function_start	same-name	optional_int_function_start	-
 optional_int_null_context	same-name	optional_int_null_context	-
 optional_int_refined	same-name	optional_int_refined	-
+optional_int_result	same-name	optional_int_result	-
 optional_int_result_at	same-name	optional_int_result_at	-
 optional_int_result_containing	same-name	optional_int_result_containing	-
-optional_int_result	same-name	optional_int_result	-
 optional_int_type_end	same-name	optional_int_type_end	-
 optional_int_value	same-name	optional_int_value	-
 pair_sha256_absorb	other-name	sha256_absorb	the C header says it mirrors the Kofun side function for function; task sha256-pair compares both
 pair_sha256_of_message	other-name	sha256_of_message	same IV and the same 0x80 padding with a big-endian bit-length tail; task sha256-pair compares
+par_loop_block_open	same-name	par_loop_block_open	-
+par_production_error	same-name	par_production_error	-
+par_scope_rule_error	same-name	par_scope_rule_error	-
+par_spawn_bound_handle	same-name	par_spawn_bound_handle	-
+par_spawn_site_within	same-name	par_spawn_site_within	-
 parameter_count	same-name	parameter_count	-
 parameter_external_start	same-name	parameter_external_start	-
 parameter_internal_start	same-name	parameter_internal_start	-
@@ -266,20 +246,15 @@ parameter_list_type_end	same-name	parameter_list_type_end	-
 parameter_list_type_text	same-name	parameter_list_type_text	-
 parameter_open	same-name	parameter_open	-
 parameter_type_start	same-name	parameter_type_start	-
-par_loop_block_open	same-name	par_loop_block_open	-
-par_production_error	same-name	par_production_error	-
-par_scope_rule_error	same-name	par_scope_rule_error	-
 parse_pattern_atomic	other-name	parse_pattern_atomic_result	same records and the same node/depth limits; the Kofun half returns them Text-encoded
 parse_pattern_or	other-name	parse_pattern_or_result	same alternative walk and the same doubled-or/trailing-or refusals
-parse_patterns_file	same-name	parse_patterns_file	-
 parse_pattern_trees	same-name	parse_pattern_trees	-
+parse_patterns_file	same-name	parse_patterns_file	-
 parse_program	same-name	parse_program	-
 parse_value_arm	other-name	validate_value_arm	three E2S30 texts verbatim and in the same order
 parse_value_enum_match	other-name	validate_value_enum_match	eight shared E2S24/E2S26/E2S32 texts in the same order and the same covered-constructor accumulator
 parse_value_if	other-name	validate_value_if	shared E2S27 "value-position if requires `else`" and E2S28 in the same order
 parse_value_match	other-name	validate_value_match	ten shared E2S24/E2S26/E2S29/E2S30 texts in the same order, including "pattern after catch-all is unreachable"
-par_spawn_bound_handle	same-name	par_spawn_bound_handle	-
-par_spawn_site_within	same-name	par_spawn_site_within	-
 pattern_duplicate_binding_error	same-name	pattern_duplicate_binding_error	-
 pattern_error	other-name	pattern_error_result	byte-identical `node|…|ErrorPattern|…` and `pattern-diagnostic|E2S58|…` pair
 pattern_first_error	same-name	pattern_first_error	-
@@ -309,12 +284,10 @@ record_syntax_token	same-name	record_syntax_token	-
 removed_callable_rewrite	same-name	removed_callable_rewrite	-
 reserved_type_name	same-name	reserved_type_name	-
 return_move_at	same-name	return_move_at	-
-same_file	other-name	(the input == output guards)	four call sites, four E2S35 "input and output must be distinct"; the stat()/inode half is C-only
 scan_optional_int_annotation	same-name	scan_optional_int_annotation	-
 scope_depth_for_open	same-name	scope_depth_for_open	-
 scoped_parallel_member	same-name	scoped_parallel_member	-
 selfhost_compile_file	same-name	selfhost_compile_file	-
-sha256_selftest	same-name	sha256_selftest	-
 sh_bind	other-name	selfhost_bind_records	identical `symbol|` and `binding|` field order and the same 512 binding limit
 sh_emit_expr	other-name	selfhost_emit_expression	identical `node|` record and identical kind dispatch order
 sh_emit_stmt	other-name	selfhost_statement	identical `node|` field order including assign being the only `edit` ownership
@@ -332,6 +305,8 @@ sh_scope_close	other-name	(value semantics in selfhost_block)	same scope discipl
 sh_scope_open	other-name	(inlined in selfhost_block)	same six-field `scope|` record and the same three scope kinds at the same sites
 sh_text_literal_field	other-name	selfhost_text_literal_field	same decode with only \n special-cased, then the same re-escape
 sh_type_id_key	other-name	selfhost_type_require	same `type|ID|KEY` record and the same "selfhost-HIR type limit is 64"
+sha256_selftest	same-name	sha256_selftest	-
+skip_lexical_trivia	same-name	skip_lexical_trivia	-
 skip_trivia	same-name	skip_trivia	-
 sl_binding	other-name	selfhost_c11_binding_field	the two callers carry the identical comment and read the same symbol field
 sl_binding_type	other-name	selfhost_c11_binding_type	byte-identical doc comment; same two-hop symbol lookup
@@ -342,9 +317,9 @@ sl_emit_block	other-name	selfhost_c11_block	verbatim comment in both and the sam
 sl_emit_expr	other-name	selfhost_c11_expression	same node lookup failure and the same E2S10 unsupported family
 sl_emit_function	other-name	selfhost_c11_function	identical fail_return table, identical main prologue, same four diagnostics and exit codes
 sl_emit_statement	other-name	selfhost_c11_statement	same kind dispatch and the same emitted C, including `for (;;)` plus `if (!cond) break;` for while
-sl_failed_check	other-name	selfhost_c11_failed_check	byte-identical doc comment and byte-identical emitted C on both arms
-sl_fail_name	other-name	selfhost_c11_error	exit codes align call for call, nine against nine at class 3
 sl_fail	other-name	selfhost_c11_error	nine exit-class-3 sites on each side, first error wins in both
+sl_fail_name	other-name	selfhost_c11_error	exit codes align call for call, nine against nine at class 3
+sl_failed_check	other-name	selfhost_c11_failed_check	byte-identical doc comment and byte-identical emitted C on both arms
 sl_field	other-name	pattern_line_field	same out-of-range contract; one Kofun function serves both C readers
 sl_list_parameter	other-name	selfhost_c11_list_parameter	byte-identical doc comment in both files
 sl_load	other-name	(prologue of selfhost_c11_document)	three shared E2S35 texts in order; the SL_MAX_* capacity guards are C-only
@@ -370,6 +345,7 @@ stage2_diagnostic_set	c-only	-	structured sink; compiler.kofun:10618 "a seed-onl
 stage2_parse_prefix_observe	c-only	-	`parse_prefix` has no occurrence in compiler.kofun
 stage2_scope_prefix_observe	c-only	-	`scope_prefix` has no occurrence in compiler.kofun
 stage2_semantic_observe	c-only	-	compiler.kofun:7497 "This frontend checkpoint emits no semantic observations at all"
+stage2_unicode_scalar_at	other-name	(stage2_unicode_scalar_at driver binding)	#1513; host-driver.mjs binds scalarAt with the profile's typed UTF-8 failures; the two-sided gate exercises both implementations and proves scalar removal is refused
 string_end	same-name	string_end	-
 text_find_from	same-name	text_find_from	-
 text_literal_c_form	same-name	text_literal_c_form	-
@@ -395,6 +371,7 @@ validate_core_calls	same-name	validate_core_calls	-
 validate_core_types	same-name	validate_core_types	-
 validate_decimal_slice5_members	other-name	validate_numeric_conversions	the bare comment "# #1411, same sentinel." sits above the arity test in both
 validate_declared_call_arguments	same-name	validate_declared_call_arguments	-
+validate_delimiter_surface	same-name	validate_delimiter_surface	-
 validate_enum_uses	same-name	validate_enum_uses	-
 validate_executable_patterns	same-name	validate_executable_patterns	-
 validate_fractional_operators	same-name	validate_fractional_operators	-

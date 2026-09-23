@@ -1,0 +1,9 @@
+# #1322. A byte that is not UTF-8 cannot become Text. 0xFF is never a lead
+# byte, so the refusal names the range as ill-formed and prints nothing.
+fn main() -> Int {
+    let bytes = stage2_bytes_empty()
+    stage2_bytes_assign_text(bytes, "kofun")
+    stage2_bytes_byte_set(bytes, 1, 255)
+    print(stage2_bytes_text(bytes, 0, 5))
+    return 0
+}

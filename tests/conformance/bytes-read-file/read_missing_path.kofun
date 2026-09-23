@@ -1,0 +1,10 @@
+# #1499. A path that cannot be opened is a runtime diagnostic, not an empty
+# carrier: the length below is never printed, so a program cannot go on to
+# digest nothing as if it were the file. The gate runs this where no
+# `missing.bin` exists.
+fn main() -> Int {
+    let bytes = stage2_bytes_empty()
+    stage2_bytes_read_file(bytes, "missing.bin")
+    print(stage2_bytes_len(bytes))
+    return 0
+}
