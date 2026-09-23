@@ -23,6 +23,7 @@ atomic-write-authority-contract
 audited-claim
 authority-type-carrier
 backlog
+benchmark-report-codec
 benchmark-report-comparison
 benchmark-report-model
 benchmark-report-spec
