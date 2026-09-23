@@ -308,7 +308,7 @@ node	invoke	2	required-today	required	tests/interop/bindgen-c/check-fuzz.sh
 node	invoke	1	required-today	required	tests/interop/bindgen-c/check-sanitizers.sh
 node	invoke	7	required-today	required	tests/interop/bindgen-c/check.sh
 node	invoke	2	required-today	required	tests/interop/bindgen-c/import-boundary/run.sh
-node	invoke	14	required-today	required	tests/lsp/check.sh
+node	invoke	16	required-today	required	tests/lsp/check.sh
 node	invoke	5	required-today	required	tests/lsp/visibility.sh
 node	invoke	11	required-today	required	tests/release/check-claims.sh
 node	invoke	11	required-today	required	tests/rfc/check-registry.sh
@@ -462,6 +462,7 @@ node	source	1	required-today	required	tests/stdlib/kofun-digest-model/corpus.mjs
 node	source	1	required-today	required	tests/tooling/ownership-view/ownership_view_test.mjs
 node	source	1	required-today	required	tests/typed-sidecar/atomic_write_test.mjs
 node	source	1	required-today	required	tests/typed-sidecar/authority_boundary_test.mjs
+node	source	1	required-today	required	tests/typed-sidecar/capture_transactions_test.mjs
 node	source	1	required-today	required	tests/typed-sidecar/captures_test.mjs
 node	source	1	required-today	required	tests/typed-sidecar/codec_test.mjs
 node	source	1	required-today	required	tests/typed-sidecar/producer_races_test.mjs
