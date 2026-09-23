@@ -644,6 +644,11 @@ tasks:
     cmds:
       - "sh spec/concurrency/scoped-parallelism-v1/check.sh"
 
+  concurrency-hir:
+    desc: "Verify production scoped-parallel identities in the analysis-only HIR v2"
+    cmds:
+      - "node tests/concurrency/hir/check.mjs"
+
   concurrency-capture-contract:
     desc: "Verify the versioned scoped-capture HIR, KSE2, and sidecar contract"
     cmds:
@@ -953,6 +958,7 @@ tasks:
     desc: "Regenerate the Unicode projection, pair checksums, and manifest seed digest"
     cmds:
       - "node bootstrap/stage2/generate-xid.mjs"
+      - "node bootstrap/stage2/generate-scoped-unicode.mjs"
       - "node bootstrap/stage2/refresh-pair.mjs"
 
   stage2-pair-host-primitives:
@@ -1533,6 +1539,7 @@ tasks:
             clock-adapters \
             scoped-parallelism \
             concurrency-capture-contract \
+            concurrency-hir \
             schedule-trace \
             type-reduction-trace \
             affine-resumption \

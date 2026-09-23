@@ -41,6 +41,7 @@ check
 cli-framework
 clock-adapters
 concurrency-capture-contract
+concurrency-hir
 const-generics
 date-time
 decimal

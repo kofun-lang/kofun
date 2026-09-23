@@ -419,3 +419,71 @@ the new contract does not change the bytes emitted for any v1 input. The
 [typed-sidecar compatibility route](../tooling/typed-sidecar.md#compatibility-and-privacy)
 distinguishes values an existing schema already admits from changes that need
 a successor-owned definition or a DD-028 amendment.
+
+## 11. Production identity prefix (#1220)
+
+The canonical Stage 2 pair exposes an analysis-only entry:
+
+```sh
+kofun-stage2 --emit-scope-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH
+```
+
+It emits this closed v2 document with only the par, task and join phases. The
+scope resolver has an explicit file-enclosing scope, resolves each par token
+as a binding of its block, and retains the ordinary lexical scopes and binding
+visibility rules. The root identifies that file scope. A par identifies its
+resolved block and projects its parent to the file root; nested par remains a
+v1 refusal. Handle shadows resolve independently. A named join resolves to
+that exact spawn handle and may occur at most once. A standalone spawn gets a
+compiler-owned binding with empty spelling, unavailable type/ownership and a
+declaration span covering the spawn; no user identifier can resolve to it.
+Immediate `scope.spawn(fn() => value).join()` uses that hidden binding and an
+explicit join whose call span begins at the original scope receiver. This also
+applies when the completed result initializes a named let. Further chained
+member calls and joins with arguments refuse. Tasks without an explicit join
+have a scope-exit join.
+
+Resolver allocation is deterministic across the entire file. Scope 0 is the
+file root. Each function, in source order, allocates parameter/body scopes,
+then ordinary block and lambda scopes in lexical order. Its bindings allocate
+parameters, all par tokens, ordinary declarations (including lambda parameters
+and pattern bindings), then hidden spawn handles in source order. Hidden
+handles use the same binding counter and 256-bindings-per-function bound; they
+do not renumber earlier ordinary bindings. Task indices restart within each
+par, while the 64-task bound applies to the whole document. The observer is the
+source author: named displays are visible at at most 128 UTF-8 bytes; longer
+names and compiler-owned handles have hidden/null displays. Display text is
+never an identity input.
+
+`LOGICAL-PATH` is explicit valid UTF-8, 1–4096 bytes, already NFC, relative and
+slash-separated. Empty, `.` and `..` segments, NUL, Unicode Cc/Cf/Zl/Zp,
+backslashes, absolute paths and leading ASCII URI schemes
+(`^[A-Za-z][A-Za-z0-9+.-]*:`), including drive prefixes, are refused. A colon in
+a later component or after a leading digit is not a scheme. The maintained C
+predicate uses pinned utf8proc; the Kofun predicate uses generated canonical
+decomposition/combining/composition/category data from that same pinned
+Unicode 17 authority, with full canonical ordering and algorithmic Hangul.
+It compares NFC bytes without changing the supplied spelling. File-identity
+and lookup refusals precede logical-path/source processing and every output
+open. Physical input/output paths never enter an identity.
+The existing anonymous-single-file package/FileId payload in
+`bootstrap/stage2/semantic_producer.c:producer_prepare_source` is reused.
+FileId commits that logical identity, not source content. ScopeId and BindingId
+use the existing `kofun.stage2.scope/v1` and `kofun.stage2.binding/v1` frames over
+raw FileId plus the ASCII `hir-scope:<resolver-number>` or
+`hir-binding:<resolver-number>` key.
+
+NodeId uses the existing `kofun.sidecar.node/v1` preimage: raw FileId, one kind
+byte, then u32be start, end and occurrence. The par node is kind 4 (Scope),
+from `par` through the closing block brace. The lambda node is kind 2
+(Function), from `fn` through its complete expression/block body. Spawn and
+explicit join nodes are kind 8 (Call), from their receiver through the call's
+closing parenthesis. Each such kind/span pair is unique in this projection,
+so occurrence is zero. The test fixtures freeze exact half-open byte spans
+and independently recompute every identity. Par/Task/Join preimages remain §4.
+
+Ordinary v1 HIR and compilation retain their existing refusals. This entry
+validates lexical identities and lifecycle shape only; it does not check
+captures, call effects or conflicts, accept parallel execution, or publish a
+capability. The canonical source is executed through the existing bounded
+host driver for pair agreement. `task concurrency-hir` is the lasting gate.

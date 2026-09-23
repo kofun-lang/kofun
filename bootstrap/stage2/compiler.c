@@ -362,7 +362,7 @@ static void stage2_declaration_observe(const char *format, ...) {
     va_end(arguments);
 }
 
-static char *read_file(const char *path) {
+static char *read_file_with_length(const char *path, size_t *length) {
     FILE *file = fopen(path, "rb");
     if (file == NULL) fail("stage2 seed: cannot open input");
     if (fseek(file, 0, SEEK_END) != 0) fail("stage2 seed: cannot seek input");
@@ -376,7 +376,12 @@ static char *read_file(const char *path) {
     }
     source[size] = '\0';
     if (fclose(file) != 0) fail("stage2 seed: cannot close input");
+    if (length != NULL) *length = size;
     return source;
+}
+
+static char *read_file(const char *path) {
+    return read_file_with_length(path, NULL);
 }
 
 static void write_file(const char *path, const char *value) {
@@ -18524,9 +18529,14 @@ static char *scope_hir_error(
 /* #1160: defined below build_scope_hir_mode, which is its earliest user. */
 static char *par_production_error(const char *source, int64_t at);
 
-static char *build_scope_hir_mode(
+static int64_t scoped_parallel_member(const char *source, int64_t start);
+static char *scoped_hir_spawn_binding(const char *source, const char *hir, int64_t spawn);
+static int64_t scoped_hir_chained_join(const char *source, int64_t call_end);
+
+static char *build_scope_hir_analysis_mode(
     const char *source,
-    bool preserve_pattern_candidates
+    bool preserve_pattern_candidates,
+    bool scoped_analysis
 ) {
     hir_index_invalidate();
     int64_t length = source_length(source);
@@ -18541,10 +18551,25 @@ static char *build_scope_hir_mode(
     buffer_append(&hir, "kofun-scope-hir/v1\n");
     stage2_scope_prefix_observe(&hir);
     int64_t next_scope_id = 0;
+    if (scoped_analysis) {
+        buffer_format(&hir, "scope|0|-1|file|0|%" PRId64 "|-1\n", length);
+        stage2_scope_prefix_observe(&hir);
+        next_scope_id = 1;
+    }
     int64_t next_binding_id = 0;
     int64_t function_start = next_function_start(source, 0);
     while (function_start < length) {
         int64_t function_close = function_end(source, function_start);
+        if (scoped_analysis) {
+            char *name = function_name(source, function_start);
+            bool malformed = function_close < 0 || name[0] == '\0' ||
+                parameter_count(source, function_start) < 0;
+            free(name);
+            if (malformed) {
+                free(hir.data);
+                return lower_error("E2S03", "malformed function", function_start);
+            }
+        }
         int64_t parameters = parameter_open(source, function_start);
         int64_t parameters_close = balanced_end(
             source,
@@ -18568,7 +18593,7 @@ static char *build_scope_hir_mode(
         buffer_format(
             &hir,
             "hir-function|%" PRId64 "|%" PRId64 "|%" PRId64 "\n"
-            "scope|%" PRId64 "|-1|parameters|%" PRId64 "|%" PRId64
+            "scope|%" PRId64 "|%s|parameters|%" PRId64 "|%" PRId64
             "|0\n"
             "scope|%" PRId64 "|%" PRId64 "|function-body|%" PRId64
             "|%" PRId64 "|1\n",
@@ -18576,6 +18601,7 @@ static char *build_scope_hir_mode(
             parameter_scope,
             body_scope,
             parameter_scope,
+            scoped_analysis ? "0" : "-1",
             parameters,
             parameters_close,
             body_scope,
@@ -18902,6 +18928,41 @@ static char *build_scope_hir_mode(
                 );
             } else {
                 parameter_cursor = separator;
+            }
+        }
+
+        /* The analysis token is a resolved par-block binding, not a name
+         * guessed later by the identity renderer. */
+        if (scoped_analysis) {
+            cursor = skip_trivia(source, token_end(source, function_open));
+            while (cursor < function_close) {
+                if (token_equal(source, cursor, "par")) {
+                    char *fault = par_production_error(source, cursor);
+                    if (fault != NULL) {
+                        free(hir.data);
+                        return fault;
+                    }
+                    int64_t bar = skip_trivia(source, token_end(source, cursor));
+                    int64_t name = skip_trivia(source, token_end(source, bar));
+                    int64_t closing_bar = skip_trivia(source, token_end(source, name));
+                    int64_t block = skip_trivia(source, token_end(source, closing_bar));
+                    char *scope = hir_scope_id_for_open(hir.data, block);
+                    char *text = token_copy(source, name);
+                    if (++binding_count > 256) {
+                        free(scope);
+                        free(text);
+                        return scope_hir_error(&hir, "lexical binding limit is 256 per function", name);
+                    }
+                    buffer_format(&hir,
+                        "binding|%" PRId64 "|%s|%s|immutable|unavailable|unavailable|initialized|"
+                        "%" PRId64 "|%" PRId64 "|%" PRId64 "\n",
+                        next_binding_id++, scope, text, name, token_end(source, name),
+                        token_end(source, block));
+                    stage2_scope_prefix_observe(&hir);
+                    free(scope);
+                    free(text);
+                }
+                cursor = skip_trivia(source, token_end(source, cursor));
             }
         }
 
@@ -19582,6 +19643,32 @@ static char *build_scope_hir_mode(
             cursor = skip_trivia(source, token_end(source, cursor));
         }
 
+        /* Same allocator: hidden handles follow ordinary declarations, in
+         * source order, and have no user-resolvable spelling. */
+        if (scoped_analysis) {
+            cursor = skip_trivia(source, token_end(source, function_open));
+            while (cursor < function_close) {
+                int64_t member = scoped_parallel_member(source, cursor);
+                if (member >= 0 && token_equal(source, member, "spawn")) {
+                    int64_t open = skip_trivia(source, token_end(source, member));
+                    int64_t end = balanced_end(source, open, "(", ")");
+                    char *named = scoped_hir_spawn_binding(source, hir.data, cursor);
+                    bool hidden = named[0] == '\0' || scoped_hir_chained_join(source, end) >= 0;
+                    free(named);
+                    if (hidden) {
+                        if (++binding_count > 256) return scope_hir_error(&hir,
+                            "lexical binding limit is 256 per function", cursor);
+                        char *scope = hir_scope_id_for_open(hir.data, parent_block_open(source, function_open, cursor));
+                        buffer_format(&hir, "binding|%" PRId64 "|%s||immutable|unavailable|unavailable|initialized|%" PRId64 "|%" PRId64 "|%" PRId64 "\n",
+                            next_binding_id++, scope, cursor, end, end);
+                        free(scope);
+                        stage2_scope_prefix_observe(&hir);
+                    }
+                }
+                cursor = skip_trivia(source, token_end(source, cursor));
+            }
+        }
+
         /*
          * The use budget is 4096 where the other three lexical budgets are
          * 256 (#1483). It backs no array: the counter only gates how many
@@ -19623,23 +19710,29 @@ static char *build_scope_hir_mode(
                     free(hir.data);
                     return par_fault;
                 }
-                Buffer message;
-                buffer_init(&message);
-                buffer_format(
-                    &message,
-                    "error[E2S154]: scoped parallelism `par` is specified "
-                    "but not implemented at byte %" PRId64,
-                    cursor
-                );
-                stage2_diagnostic_set(
-                    "E2S154",
-                    cursor,
-                    token_end(source, cursor),
-                    true,
-                    message.data
-                );
-                free(hir.data);
-                return message.data;
+                if (!scoped_analysis) {
+                    Buffer message;
+                    buffer_init(&message);
+                    buffer_format(
+                        &message,
+                        "error[E2S154]: scoped parallelism `par` is specified "
+                        "but not implemented at byte %" PRId64,
+                        cursor
+                    );
+                    stage2_diagnostic_set(
+                        "E2S154",
+                        cursor,
+                        token_end(source, cursor),
+                        true,
+                        message.data
+                    );
+                    free(hir.data);
+                    return message.data;
+                }
+                int64_t bar = skip_trivia(source, token_end(source, cursor));
+                int64_t name = skip_trivia(source, token_end(source, bar));
+                int64_t closing_bar = skip_trivia(source, token_end(source, name));
+                cursor = skip_trivia(source, token_end(source, closing_bar));
             }
             if (strcmp(token_kind(source, cursor), "identifier") == 0) {
                 char *name = token_copy(source, cursor);
@@ -19971,6 +20064,10 @@ static char *build_scope_hir_mode(
         function_start = next_function_start(source, function_close);
     }
     return hir.data;
+}
+
+static char *build_scope_hir_mode(const char *source, bool preserve_pattern_candidates) {
+    return build_scope_hir_analysis_mode(source, preserve_pattern_candidates, false);
 }
 
 static char *build_scope_hir(const char *source) {
@@ -33852,6 +33949,551 @@ static void pair_sha256_absorb(uint32_t state[8], const uint8_t block[64]) {
     }
 }
 
+/* #1220: same framed byte stream as the canonical scoped_hir_* functions. */
+static int64_t scoped_hir_ascii(const char *symbol) {
+    const char *allowed = "abcdefghijklmnopqrstuvwxyz0123456789./-";
+    return symbol[0] != '\0' && symbol[1] == '\0' &&
+        strchr(allowed, symbol[0]) != NULL ? (unsigned char)symbol[0] : 0;
+}
+
+static int64_t scoped_hir_domain_byte(const char *domain, int64_t index) {
+    char symbol[2] = {domain[index], '\0'};
+    return scoped_hir_ascii(symbol);
+}
+
+static int64_t scoped_hir_hex_digit(const char *symbol) {
+    const char *alphabet = "0123456789abcdef";
+    const char *found = strchr(alphabet, symbol[0]);
+    return symbol[0] != '\0' && symbol[1] == '\0' && found != NULL ?
+        (int64_t)(found - alphabet) : 0;
+}
+
+static int64_t scoped_hir_hex_byte(const char *hex, int64_t at) {
+    char high[2] = {hex[at], '\0'};
+    char low[2] = {hex[at + 1], '\0'};
+    return scoped_hir_hex_digit(high) * 16 + scoped_hir_hex_digit(low);
+}
+
+static int64_t scoped_hir_payload_byte(
+    const char *first, const char *second, const char *third, const char *fourth,
+    int64_t index
+) {
+    int64_t at = index * 2;
+    if (at < (int64_t)strlen(first)) return scoped_hir_hex_byte(first, at);
+    at -= (int64_t)strlen(first);
+    if (at < (int64_t)strlen(second)) return scoped_hir_hex_byte(second, at);
+    at -= (int64_t)strlen(second);
+    if (at < (int64_t)strlen(third)) return scoped_hir_hex_byte(third, at);
+    at -= (int64_t)strlen(third);
+    return scoped_hir_hex_byte(fourth, at);
+}
+
+static int64_t scoped_hir_message_byte(
+    const char *domain, const char *first, const char *second,
+    const char *third, const char *fourth, int64_t index
+) {
+    static const uint8_t prefix[6] = {'K', 'O', 'F', 'U', 'N', 0};
+    if (index < 6) return prefix[index];
+    int64_t domain_length = (int64_t)strlen(domain);
+    if (index == 6) return (domain_length >> 8) & 255;
+    if (index == 7) return domain_length & 255;
+    int64_t at = index - 8;
+    if (at < domain_length) return scoped_hir_domain_byte(domain, at);
+    at -= domain_length;
+    int64_t payload_length = (int64_t)(strlen(first) + strlen(second) +
+        strlen(third) + strlen(fourth)) / 2;
+    if (at < 4) return (payload_length >> ((3 - at) * 8)) & 255;
+    return scoped_hir_payload_byte(first, second, third, fourth, at - 4);
+}
+
+static int64_t scoped_hir_padded_byte(
+    const char *domain, const char *first, const char *second,
+    const char *third, const char *fourth, int64_t length, int64_t index
+) {
+    if (index < length) return scoped_hir_message_byte(domain, first, second,
+        third, fourth, index);
+    if (index == length) return 128;
+    int64_t padded = ((length + 9 + 63) / 64) * 64;
+    if (index < padded - 8) return 0;
+    return (int64_t)(((uint64_t)length << 3) >> ((padded - 1 - index) * 8)) & 255;
+}
+
+static char *scoped_hir_hash_frame(
+    const char *domain, const char *first, const char *second,
+    const char *third, const char *fourth
+) {
+    int64_t length = 12 + (int64_t)strlen(domain) +
+        (int64_t)(strlen(first) + strlen(second) + strlen(third) + strlen(fourth)) / 2;
+    int64_t padded = ((length + 9 + 63) / 64) * 64;
+    uint32_t state[8] = {
+        0x6a09e667u, 0xbb67ae85u, 0x3c6ef372u, 0xa54ff53au,
+        0x510e527fu, 0x9b05688cu, 0x1f83d9abu, 0x5be0cd19u,
+    };
+    uint8_t block[64];
+    for (int64_t base = 0; base < padded; base += 64) {
+        for (int64_t index = 0; index < 64; ++index) {
+            block[index] = (uint8_t)scoped_hir_padded_byte(domain, first, second,
+                third, fourth, length, base + index);
+        }
+        pair_sha256_absorb(state, block);
+    }
+    Buffer result;
+    buffer_init(&result);
+    for (size_t index = 0; index < 8; ++index) {
+        buffer_format(&result, "%08" PRIx32, state[index]);
+    }
+    return result.data;
+}
+
+/* Analysis-only resolved facts; display spelling never substitutes for a key. */
+static char *scoped_hir_error(const char *message, int64_t at) {
+    return lower_error("E2S154", message, at);
+}
+
+static int64_t scoped_hir_fact(const char *facts, const char *kind, int64_t field,
+                               const char *value) {
+    int64_t row = hir_record_start(facts, kind, 0);
+    while (row >= 0) {
+        char *found = hir_field(facts, row, field);
+        bool match = strcmp(found, value) == 0;
+        free(found);
+        if (match) return row;
+        row = hir_record_start(facts, kind, row + 1);
+    }
+    return -1;
+}
+
+static int64_t scoped_hir_integer(const char *facts, int64_t row, int64_t field) {
+    char *value = hir_field(facts, row, field);
+    int64_t result = decimal_value(value);
+    free(value);
+    return result;
+}
+
+static int64_t scoped_hir_chained_join(const char *source, int64_t call_end) {
+    int64_t dot = skip_trivia(source, call_end);
+    if (!token_equal(source, dot, ".")) return -1;
+    int64_t member = skip_trivia(source, token_end(source, dot));
+    return token_equal(source, member, "join") ? member : -1;
+}
+
+static char *scoped_hir_spawn_binding(const char *source, const char *hir, int64_t spawn) {
+    char *hidden = hir_definition_id_at(hir, spawn);
+    if (hidden[0] != '\0') {
+        char *name = hir_binding_field(hir, hidden, 3);
+        bool unnamed = name[0] == '\0';
+        free(name);
+        if (unnamed) return hidden;
+    }
+    free(hidden);
+    int64_t row = hir_record_start(hir, "binding", 0);
+    while (row >= 0) {
+        int64_t name = scoped_hir_integer(hir, row, 8);
+        int64_t after = skip_trivia(source, token_end(source, name));
+        if (token_equal(source, after, ":")) {
+            int64_t annotation = skip_trivia(source, token_end(source, after));
+            after = skip_trivia(source, annotation_type_end(source, annotation));
+        }
+        if (token_equal(source, after, "=") &&
+            skip_trivia(source, token_end(source, after)) == spawn) {
+            return hir_field(hir, row, 1);
+        }
+        row = hir_record_start(hir, "binding", row + 1);
+    }
+    return owned_text("");
+}
+
+static char *scoped_hir_observations(const char *source, const char *hir) {
+    Buffer facts;
+    buffer_init(&facts);
+    buffer_append(&facts, "scoped-observations/v1\n");
+    int64_t par_index = 0, task_count = 0;
+    int64_t cursor = skip_trivia(source, 0);
+    const char *fault = NULL;
+    int64_t fault_at = 0;
+    char *scope = NULL, *token_binding = NULL;
+    while (cursor < source_length(source)) {
+        if (token_equal(source, cursor, "par")) {
+            if (par_index >= 64) {
+                fault = "scope-HIR par limit is 64"; fault_at = cursor; goto refused;
+            }
+            int64_t bar = skip_trivia(source, token_end(source, cursor));
+            int64_t name = skip_trivia(source, token_end(source, bar));
+            int64_t closing_bar = skip_trivia(source, token_end(source, name));
+            int64_t block = skip_trivia(source, token_end(source, closing_bar));
+            int64_t close = balanced_end(source, block, "{", "}");
+            scope = hir_scope_id_for_open(hir, block);
+            token_binding = hir_definition_id_at(hir, name);
+            if (scope[0] == '\0' || token_binding[0] == '\0' || close <= block) {
+                fault = "scope-HIR requires a resolved par block and token";
+                fault_at = cursor; goto refused;
+            }
+            buffer_format(&facts, "par|%" PRId64 "|%" PRId64 "|%" PRId64
+                "|%s|%s|%" PRId64 "\n", par_index, cursor, close, scope, token_binding, name);
+            int64_t task_index = 0;
+            int64_t walk = skip_trivia(source, token_end(source, block));
+            while (walk < close) {
+                int64_t member = scoped_parallel_member(source, walk);
+                if (member >= 0 && token_equal(source, member, "spawn")) {
+                    char *receiver = hir_use_binding_id(hir, walk);
+                    bool correct = strcmp(receiver, token_binding) == 0;
+                    free(receiver);
+                    if (!correct) {
+                        fault = "scope-HIR spawn receiver is not the resolved par token";
+                        fault_at = walk; goto refused;
+                    }
+                    if (task_count >= 64) {
+                        fault = "scope-HIR task limit is 64"; fault_at = walk; goto refused;
+                    }
+                    int64_t call_open = skip_trivia(source, token_end(source, member));
+                    int64_t call_end = balanced_end(source, call_open, "(", ")");
+                    int64_t lambda = skip_trivia(source, token_end(source, call_open));
+                    int64_t parameters = skip_trivia(source, token_end(source, lambda));
+                    int64_t lambda_end = lambda_parameters_end(source, -1, parameters);
+                    if (!token_equal(source, lambda, "fn") ||
+                        !token_equal(source, parameters, "(") ||
+                        lambda_end <= parameters || call_end <= lambda_end ||
+                        skip_trivia(source, lambda_end) != call_end - 1) {
+                        fault = "scope-HIR spawn requires one fn lambda"; fault_at = lambda; goto refused;
+                    }
+                    char *binding = scoped_hir_spawn_binding(source, hir, walk);
+                    if (binding[0] == '\0') {
+                        free(binding);
+                        fault = "scope-HIR spawn requires its own resolved handle binding";
+                        fault_at = walk; goto refused;
+                    }
+                    int64_t chained = scoped_hir_chained_join(source, call_end);
+                    if (chained < 0 && expression_end(source, walk) != call_end) {
+                        free(binding);
+                        fault = "scope-HIR handle initializer must be exactly its spawn";
+                        fault_at = walk; goto refused;
+                    }
+                    int64_t binding_start = hir_binding_declaration_start(hir, binding);
+                    char *binding_name = hir_binding_field(hir, binding, 3);
+                    if (binding_name[0] == '\0') binding_start = -1;
+                    free(binding_name);
+                    buffer_format(&facts, "task|%" PRId64 "|%" PRId64 "|%" PRId64
+                        "|%" PRId64 "|%" PRId64 "|%" PRId64 "|%s|%" PRId64 "\n",
+                        par_index, task_index, walk, call_end, lambda, lambda_end, binding, binding_start);
+                    if (chained >= 0) {
+                        int64_t open = skip_trivia(source, token_end(source, chained));
+                        int64_t end = balanced_end(source, open, "(", ")");
+                        if (!token_equal(source, open, "(") || skip_trivia(source, token_end(source, open)) != end - 1) {
+                            free(binding); fault = "scope-HIR join takes no arguments";
+                            fault_at = open; goto refused;
+                        }
+                        if (token_equal(source, skip_trivia(source, end), ".")) {
+                            free(binding); fault = "scope-HIR chained join must be the final member call";
+                            fault_at = end; goto refused;
+                        }
+                        buffer_format(&facts, "join|%s|%" PRId64 "|%" PRId64 "\n", binding, walk, end);
+                    }
+                    free(binding);
+                    ++task_count;
+                    ++task_index;
+                }
+                walk = skip_trivia(source, token_end(source, walk));
+            }
+            walk = skip_trivia(source, token_end(source, block));
+            while (walk < close) {
+                int64_t member = scoped_parallel_member(source, walk);
+                if (member >= 0 && token_equal(source, member, "join")) {
+                    char *binding = hir_use_binding_id(hir, walk);
+                    int64_t task = scoped_hir_fact(facts.data, "task", 7, binding);
+                    if (binding[0] == '\0' || task < 0 ||
+                        scoped_hir_integer(facts.data, task, 1) != par_index) {
+                        free(binding);
+                        fault = "scope-HIR join receiver is not this par's resolved handle";
+                        fault_at = walk; goto refused;
+                    }
+                    if (scoped_hir_fact(facts.data, "join", 1, binding) >= 0) {
+                        free(binding);
+                        fault = "scope-HIR handle may be explicitly joined at most once";
+                        fault_at = walk; goto refused;
+                    }
+                    int64_t open = skip_trivia(source, token_end(source, member));
+                    int64_t end = balanced_end(source, open, "(", ")");
+                    if (skip_trivia(source, token_end(source, open)) != end - 1) {
+                        free(binding);
+                        fault = "scope-HIR join takes no arguments"; fault_at = open; goto refused;
+                    }
+                    buffer_format(&facts, "join|%s|%" PRId64 "|%" PRId64 "\n", binding, walk, end);
+                    free(binding);
+                }
+                walk = skip_trivia(source, token_end(source, walk));
+            }
+            free(scope); scope = NULL;
+            free(token_binding); token_binding = NULL;
+            ++par_index;
+            cursor = close;
+        } else {
+            if (scoped_parallel_member(source, cursor) >= 0) {
+                fault = "scope-HIR spawn and join require an enclosing par";
+                fault_at = cursor; goto refused;
+            }
+            cursor = skip_trivia(source, token_end(source, cursor));
+        }
+        cursor = skip_trivia(source, cursor);
+    }
+    return facts.data;
+refused:
+    free(scope);
+    free(token_binding);
+    free(facts.data);
+    return scoped_hir_error(fault, fault_at);
+}
+
+static char *scoped_hir_hex(int64_t value, int64_t width) {
+    static const char digits[] = "0123456789abcdef";
+    char *result = allocate((size_t)width + 1);
+    for (int64_t index = width; index > 0; --index) {
+        result[index - 1] = digits[value % 16];
+        value /= 16;
+    }
+    result[width] = '\0';
+    return result;
+}
+
+static char *scoped_hir_text_hex(const char *text) {
+    Buffer output;
+    buffer_init(&output);
+    size_t length = strlen(text), at = 0;
+    while (at < length) {
+        Stage2Scalar scalar = stage2_unicode_scalar_at(text, length, (int64_t)at);
+        if (scalar.status != STAGE2_SCALAR_OK)
+            fail("error[E2S35]: stage2_unicode_scalar_at: invalid scalar boundary");
+        for (size_t byte = 0; byte < scalar.width; ++byte) {
+            char *hex = scoped_hir_hex((unsigned char)text[at + byte], 2);
+            buffer_append(&output, hex);
+            free(hex);
+        }
+        at += scalar.width;
+    }
+    return output.data;
+}
+
+static bool scoped_hir_logical_path_bytes(const char *path, size_t length) {
+    if (length == 0 || length > 4096 || memchr(path, 0, length)) return false;
+    utf8proc_uint8_t *normalized = NULL;
+    utf8proc_ssize_t normalized_length = utf8proc_map((const utf8proc_uint8_t *)path,
+        (utf8proc_ssize_t)length, &normalized, UTF8PROC_STABLE | UTF8PROC_COMPOSE);
+    bool nfc = normalized_length >= 0 && (size_t)normalized_length == length &&
+        memcmp(path, normalized, length) == 0;
+    free(normalized);
+    if (!nfc) return false;
+    size_t at = 0, segment = 0;
+    bool scheme = (path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z');
+    while (at < length) {
+        Stage2Scalar scalar = stage2_unicode_scalar_at(path, length, (int64_t)at);
+        if (scalar.status != STAGE2_SCALAR_OK) return false;
+        utf8proc_category_t category = utf8proc_category((utf8proc_int32_t)scalar.value);
+        if (category == UTF8PROC_CATEGORY_CC || category == UTF8PROC_CATEGORY_CF ||
+            category == UTF8PROC_CATEGORY_ZL || category == UTF8PROC_CATEGORY_ZP || scalar.value == 92)
+            return false;
+        if (scheme) {
+            if (scalar.value == 58) return false;
+            if (!((scalar.value >= 65 && scalar.value <= 90) || (scalar.value >= 97 && scalar.value <= 122) ||
+                  (scalar.value >= 48 && scalar.value <= 57) || scalar.value == 43 || scalar.value == 45 || scalar.value == 46)) scheme = false;
+        }
+        if (scalar.value == 47) {
+            size_t n = at - segment;
+            if (n == 0 || (n == 1 && path[segment] == '.') ||
+                (n == 2 && path[segment] == '.' && path[segment + 1] == '.')) return false;
+            segment = at + 1;
+        }
+        at += scalar.width;
+    }
+    size_t n = at - segment;
+    return n != 0 && !(n == 1 && path[segment] == '.') &&
+        !(n == 2 && path[segment] == '.' && path[segment + 1] == '.');
+}
+
+static bool scoped_hir_logical_path(const char *path) {
+    return scoped_hir_logical_path_bytes(path, strlen(path));
+}
+
+static char *scoped_hir_file_id(const char *path) {
+    Buffer payload;
+    buffer_init(&payload);
+    buffer_format(&payload,
+        "kofun.file-id-input/v1\npackage-payload-begin\n"
+        "kofun.package-id/v1\nkind=anonymous-single-file\nlogical-source=%s\n"
+        "package-payload-end\nlogical-path=%s\nsource-role=authored\nprovenance=explicit-source\n",
+        path, path);
+    char *hex = scoped_hir_text_hex(payload.data);
+    char *id = scoped_hir_hash_frame("kofun.id.file/v1", hex, "", "", "");
+    free(hex); free(payload.data);
+    return id;
+}
+
+static char *scoped_hir_named_id(const char *file, const char *kind, const char *number) {
+    Buffer domain, payload;
+    buffer_init(&domain); buffer_init(&payload);
+    buffer_format(&domain, "kofun.stage2.%s/v1", kind);
+    buffer_format(&payload, "hir-%s:%s", kind, number);
+    char *hex = scoped_hir_text_hex(payload.data);
+    char *id = scoped_hir_hash_frame(domain.data, file, hex, "", "");
+    free(hex); free(domain.data); free(payload.data);
+    return id;
+}
+
+static char *scoped_hir_node_id(const char *file, int64_t kind, int64_t start, int64_t end) {
+    char *tag = scoped_hir_hex(kind, 2), *low = scoped_hir_hex(start, 8), *high = scoped_hir_hex(end, 8);
+    Buffer payload;
+    buffer_init(&payload);
+    buffer_format(&payload, "%s%s%s00000000", tag, low, high);
+    char *id = scoped_hir_hash_frame("kofun.sidecar.node/v1", file, payload.data, "", "");
+    free(tag); free(low); free(high); free(payload.data);
+    return id;
+}
+
+static char *scoped_hir_par_id(const char *file, const char *facts, int64_t row) {
+    char *number = hir_field(facts, row, 4);
+    char *scope = scoped_hir_named_id(file, "scope", number);
+    char *node = scoped_hir_node_id(file, 4, scoped_hir_integer(facts, row, 2), scoped_hir_integer(facts, row, 3));
+    char *id = scoped_hir_hash_frame("kofun.scope-hir.par/v2", file, scope, node, "");
+    free(number); free(scope); free(node);
+    return id;
+}
+
+static char *scoped_hir_task_id(const char *file, const char *facts, int64_t row) {
+    char *par_index = hir_field(facts, row, 1);
+    int64_t par = scoped_hir_fact(facts, "par", 1, par_index);
+    char *parent = scoped_hir_par_id(file, facts, par);
+    char *index = scoped_hir_hex(scoped_hir_integer(facts, row, 2), 8);
+    char *spawn = scoped_hir_node_id(file, 8, scoped_hir_integer(facts, row, 3), scoped_hir_integer(facts, row, 4));
+    char *lambda = scoped_hir_node_id(file, 2, scoped_hir_integer(facts, row, 5), scoped_hir_integer(facts, row, 6));
+    char *number = hir_field(facts, row, 7);
+    char *binding = scoped_hir_named_id(file, "binding", number);
+    Buffer second;
+    buffer_init(&second); buffer_format(&second, "%s%s", index, spawn);
+    char *id = scoped_hir_hash_frame("kofun.scope-hir.task/v2", parent, second.data, lambda, binding);
+    free(par_index); free(parent); free(index); free(spawn); free(lambda); free(number); free(binding); free(second.data);
+    return id;
+}
+
+static char *scoped_hir_display(const char *source, int64_t at) {
+    if (at < 0) return owned_text("{\"disclosure\":\"hidden\",\"text\":null}");
+    char *name = token_copy(source, at);
+    Buffer output;
+    buffer_init(&output);
+    if (strlen(name) > 128) buffer_append(&output, "{\"disclosure\":\"hidden\",\"text\":null}");
+    else buffer_format(&output, "{\"disclosure\":\"visible\",\"text\":\"%s\"}", name);
+    free(name);
+    return output.data;
+}
+
+static char *scoped_hir_render(const char *source, const char *facts, const char *path) {
+    char *file = scoped_hir_file_id(path), *root = scoped_hir_named_id(file, "scope", "0");
+    Buffer records;
+    buffer_init(&records);
+    int64_t row = hir_record_start(facts, "par", 0);
+    while (row >= 0) {
+        char *display = scoped_hir_display(source, scoped_hir_integer(facts, row, 6));
+        char *id = scoped_hir_par_id(file, facts, row);
+        char *node = scoped_hir_node_id(file, 4, scoped_hir_integer(facts, row, 2), scoped_hir_integer(facts, row, 3));
+        char *scope_number = hir_field(facts, row, 4), *binding_number = hir_field(facts, row, 5);
+        char *scope = scoped_hir_named_id(file, "scope", scope_number);
+        char *binding = scoped_hir_named_id(file, "binding", binding_number);
+        if (records.length > 0) buffer_append(&records, ",");
+        buffer_format(&records, "{\"display\":%s,\"id\":\"%s\",\"lexical_index\":%" PRId64
+            ",\"node_id\":\"%s\",\"parent_scope_id\":\"%s\",\"record\":\"par\",\"scope_id\":\"%s\",\"scope_token_binding_id\":\"%s\"}",
+            display, id, scoped_hir_integer(facts, row, 1), node, root, scope, binding);
+        free(display); free(id); free(node); free(scope_number); free(binding_number); free(scope); free(binding);
+        row = hir_record_start(facts, "par", row + 1);
+    }
+    row = hir_record_start(facts, "task", 0);
+    while (row >= 0) {
+        char *par_index = hir_field(facts, row, 1);
+        int64_t par = scoped_hir_fact(facts, "par", 1, par_index);
+        char *display = scoped_hir_display(source, scoped_hir_integer(facts, row, 8));
+        char *number = hir_field(facts, row, 7), *binding = scoped_hir_named_id(file, "binding", number);
+        char *id = scoped_hir_task_id(file, facts, row);
+        char *lambda = scoped_hir_node_id(file, 2, scoped_hir_integer(facts, row, 5), scoped_hir_integer(facts, row, 6));
+        char *parent = scoped_hir_par_id(file, facts, par);
+        char *spawn = scoped_hir_node_id(file, 8, scoped_hir_integer(facts, row, 3), scoped_hir_integer(facts, row, 4));
+        buffer_format(&records, ",{\"display\":%s,\"handle_binding_id\":\"%s\",\"id\":\"%s\",\"lambda_node_id\":\"%s\",\"lexical_index\":%" PRId64
+            ",\"par_id\":\"%s\",\"record\":\"task\",\"spawn_node_id\":\"%s\"}",
+            display, binding, id, lambda, scoped_hir_integer(facts, row, 2), parent, spawn);
+        free(par_index); free(display); free(number); free(binding); free(id); free(lambda); free(parent); free(spawn);
+        row = hir_record_start(facts, "task", row + 1);
+    }
+    row = hir_record_start(facts, "task", 0);
+    while (row >= 0) {
+        char *task = scoped_hir_task_id(file, facts, row), *number = hir_field(facts, row, 7);
+        int64_t join = scoped_hir_fact(facts, "join", 1, number);
+        char *node = join >= 0 ? scoped_hir_node_id(file, 8, scoped_hir_integer(facts, join, 2), scoped_hir_integer(facts, join, 3)) : owned_text("");
+        const char *kind = join >= 0 ? "explicit" : "scope-exit";
+        char *id = scoped_hir_hash_frame("kofun.scope-hir.join/v2", task, join >= 0 ? "01" : "02", node, "");
+        buffer_format(&records, ",{\"id\":\"%s\",\"join_kind\":\"%s\",\"node_id\":", id, kind);
+        if (join >= 0) buffer_format(&records, "\"%s\"", node);
+        else buffer_append(&records, "null");
+        buffer_format(&records, ",\"record\":\"join\",\"task_id\":\"%s\"}", task);
+        free(task); free(number); free(node); free(id);
+        row = hir_record_start(facts, "task", row + 1);
+    }
+    Buffer document;
+    buffer_init(&document);
+    buffer_format(&document, "{\"file_id\":\"%s\",\"limits\":{"
+        "\"candidate_projection_depth\":64,\"capture_observations_per_task\":256,"
+        "\"captures_per_task\":64,\"display_bytes\":128,\"document_bytes\":16777216,"
+        "\"origins_per_capture\":256,\"pars\":64,\"projection_depth\":8,\"records\":8384,\"tasks\":64},"
+        "\"profile\":\"kofun.stage2-analysis/scoped-captures/v1\",\"records\":[%s],"
+        "\"root_scope_id\":\"%s\",\"schema\":\"kofun-scope-hir/v2\"}\n", file, records.data, root);
+    free(file); free(root); free(records.data);
+    if (document.length > 16777216) {
+        free(document.data);
+        return owned_text("error[E2S35]: scope-HIR document limit is 16777216 bytes");
+    }
+    return document.data;
+}
+
+static int emit_scope_hir_v2_file(const char *input, const char *output, const char *logical_path) {
+    Stage2FileIdentity identity = stage2_same_file(input, output);
+    if (identity == STAGE2_FILE_LOOKUP_ERROR) { stage2_host_lookup_error(); return 2; }
+    if (identity == STAGE2_FILE_SAME) {
+        puts("error[E2S35]: scope-HIR input and output must be distinct"); return 1;
+    }
+    if (!scoped_hir_logical_path(logical_path)) {
+        puts("error[E2S35]: scope-HIR logical path must be canonical relative UTF-8 (1..4096 bytes)");
+        return 1;
+    }
+    size_t source_bytes = 0;
+    char *source = read_file_with_length(input, &source_bytes);
+    if (source_bytes > UINT32_MAX) {
+        puts("error[E2S35]: scope-HIR source span exceeds u32"); free(source); return 1;
+    }
+    /* Text's explicit length must reach the Unicode validator before the C
+     * string representation can discard an embedded NUL and its suffix. */
+    if (memchr(source, 0, source_bytes) != NULL) {
+        KofunUnicodeError error;
+        if (!kofun_unicode_validate_source((const uint8_t *)source, source_bytes, &error)) {
+            char message[1024];
+            kofun_unicode_format_error(&error, getenv("KOFUN_DIAGNOSTIC_LOCALE"), message, sizeof(message));
+            puts(message); free(source); return 1;
+        }
+    }
+    char *tokens = lex_source(source);
+    if (strncmp(tokens, "error[", 6) == 0) { puts(tokens); free(tokens); free(source); return 1; }
+    free(tokens);
+    char *tree = parse_pattern_trees(source), *pattern_error = pattern_first_error(tree);
+    free(tree);
+    if (pattern_error[0] != '\0') { puts(pattern_error); free(pattern_error); free(source); return 1; }
+    free(pattern_error);
+    char *hir = build_scope_hir_analysis_mode(source, true, true);
+    if (strncmp(hir, "error[", 6) == 0) { puts(hir); free(hir); free(source); return 1; }
+    char *facts = scoped_hir_observations(source, hir);
+    free(hir);
+    if (strncmp(facts, "error[", 6) == 0) { puts(facts); free(facts); free(source); return 1; }
+    char *document = scoped_hir_render(source, facts, logical_path);
+    free(facts); free(source);
+    if (strncmp(document, "error[", 6) == 0) { puts(document); free(document); return 1; }
+    bool written = write_file_transactional(output, document);
+    free(document);
+    if (!written) { puts("error[E2S35]: cannot commit scope-HIR output"); return 1; }
+    return 0;
+}
+
 /*
  * The Kofun side carries a message as two 64-element lists because that is
  * what a `List[Int]` holds. Here the message is a byte pointer, which is C's
@@ -33947,6 +34589,9 @@ int main(int argc, char **argv) {
     if (argc == 4 && strcmp(argv[1], "--parse-patterns") == 0) {
         return parse_patterns_file(argv[2], argv[3]);
     }
+    if (argc == 5 && strcmp(argv[1], "--emit-scope-hir-v2") == 0) {
+        return emit_scope_hir_v2_file(argv[2], argv[3], argv[4]);
+    }
     if (argc == 4 && strcmp(argv[1], "--emit-scope-hir") == 0) {
         return emit_scope_hir_file(argv[2], argv[3]);
     }
@@ -33969,6 +34614,7 @@ int main(int argc, char **argv) {
             "       kofun-stage2 --check-ownership INPUT.kofun\n"
             "       kofun-stage2 --parse-patterns INPUT.kofun OUTPUT.patterns\n"
             "       kofun-stage2 --emit-scope-hir INPUT.kofun OUTPUT.scope-hir\n"
+            "       kofun-stage2 --emit-scope-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n"
             "       kofun-stage2 --emit-selfhost-hir INPUT.kofun OUTPUT.hir SOURCE-SHA256\n"
             "       kofun-stage2 --lower-selfhost-c11 INPUT.hir OUTPUT.c\n"
             "       kofun-stage2 --selfhost-compile INPUT.kofun OUTPUT.c SOURCE-SHA256\n"
