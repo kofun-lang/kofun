@@ -20,59 +20,31 @@
 # tests. It means those branches were not taken in THIS measured binary.
 # The bounded Kofun driver is not native self-compilation; #1483 owns that.
 #
-#   measured at   91d353f23722093a6c206863ce6cd02ca86dab83
+#   measured at   eff76476f8a73b384f45d467a811fe228914427b
 #   gcc           gcc (GCC) 16.2.1 20260810
 #   clang         clang version 22.1.8
-#   basis         173 pinned driver rows and 1338 pinned *.kofun inputs,
+#   basis         173 pinned driver rows and 1344 pinned *.kofun inputs,
 #                 as drivers.tsv and inputs.tsv held at that commit
-#   totals        2003 untaken under gcc, 1909 under clang, across 372 functions
-#   rows sha256   967d617207a291664ac74407573eb3f8cfe6868a4587e168156c623c44120160
+#   totals        2001 untaken under gcc, 1907 under clang, across 372 functions
+#   rows sha256   8b5372c5e9b5be9915b104b40a0c6fee5d0ba42616b4db98a5e8aadd2fcd6d9b
 #
-# WHAT MOVED since 80e45fc781eadcc853e5fb4f13f2060c23d515cd:
-# source and basis both moved, including intervening positional-move,
-# Bytes-identity and delimiter changes plus #1513. This measurement cannot
-# attribute the whole delta to one implementation or fixture addition.
-#   left:
-#     hir_binding_declaration_start
-#     lambda_binding_open
-#     lower_selfhost_c11_file
-#     same_file
-# The first three still exist and now have no untaken branch under either
-# host. same_file was replaced by stage2_same_file, whose production paths
-# also have no residual row in this measurement.
-#   entered:
-#     delimiter_fault
-#     move_positional_binding
-#     move_positional_owner
-#     move_same_binding
-#     move_straight_line_position
-#     skip_lexical_trivia
-#     stage2_unicode_scalar_at
-#     validate_delimiter_surface
-#     validate_move_record_modes
-#   changed (gcc/clang old -> new):
-#     call_argument_parameter_property: 13/11 -> 19/18
-#     declared_bytes_argument_identity_error: 9/8 -> 8/7
-#     emit_argument: 6/6 -> 5/5
-#     emit_scope_hir_file: 5/5 -> 4/4
-#     emit_selfhost_hir_file: 4/4 -> 3/3
-#     identifier_start_at: 1/1 -> 2/2
-#     move_call_binding: 1/0 -> 1/1
-#     selfhost_compile_file: 5/5 -> 4/4
-#     token_end: 3/3 -> 4/4
+# WHAT MOVED since 91d353f23722093a6c206863ce6cd02ca86dab83:
+# source and basis both moved, including the shared Bytes/Text bridge and
+# lexical use budget 256 -> 4096. This whole-run delta cannot be attributed
+# solely to one implementation or fixture addition. Counts are gcc/clang.
+#     bytes_private_result_previous_completes_statement: 12/11 -> 10/9
 #
 # COST, observed on this serialized two-host run:
-#   gcc    drivers 4597s + corpus 809s = 5406s
-#   clang  drivers 4597s + corpus 874s = 5471s
-#   both   drivers 9194s + corpus 1683s = 10877s
-#   UTC    2026-09-22T00:37:29Z through 2026-09-22T03:38:50Z
-# One-minute load sampled every 30s: min 0.25, median
-# 1.47, max 6.88. These are shared-machine observations,
-# not a controlled cross-host performance comparison. Raw profiles, driver
-# results, phase logs and load samples were retained by KEEP_WORK=1.
+#   gcc    drivers 4892s + corpus 1561s = 6453s
+#   clang  drivers 5340s + corpus 1776s = 7116s
+#   both   drivers 10232s + corpus 3337s = 13569s
+#   UTC    2026-09-23T08:47:30Z through 2026-09-23T12:33:42Z
+# No periodic load series was collected for this run. Times are shared-machine
+# observations, not a controlled cross-host performance comparison. Raw
+# profiles, driver results and phase logs were retained by KEEP_WORK=1.
 #
-# RETRIES. Each host attempted all 173 drivers. discovery alone finished
-# exit=201 after the configured retries, exactly matching driver-failures.tsv;
+# RETRIES. Both hosts attempted all 173 drivers. discovery alone finished
+# exit=201 after the configured retries, matching driver-failures.tsv;
 # neither host recorded a corpus timeout. No new exception was added.
 #
 # DETERMINISM (#1408 criterion 5). One fresh two-compiler measurement of this
@@ -80,8 +52,9 @@
 # basis; this record does not claim a second measurement of these rows.
 #
 # Regenerate: sh tests/pair-coverage/check.sh --count
-# The check holds both columns exact in both directions. A decrease is an
-# improvement that must be recorded, not slack for a later regression.
+# Both columns are held exact in both directions. A decrease is recorded,
+# rather than left as slack for a later regression. The source basis above is
+# explicit; later source changes do not silently become a new measurement.
 #
 # gcc	clang	function
 2	2	admissible_payload_type_token
@@ -110,7 +83,7 @@
 1	1	bytes_named_carrier_binding
 4	4	bytes_parameter_releases
 12	11	bytes_private_result_is_discarded_statement
-12	11	bytes_private_result_previous_completes_statement
+10	9	bytes_private_result_previous_completes_statement
 2	2	bytes_private_result_statement_boundary
 17	17	bytes_producer_refusal
 1	1	c_identifier_name
