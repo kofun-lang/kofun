@@ -34819,7 +34819,7 @@ static char *cp_binding_type(CheckedPlaceArena *a, const char *source, const cha
 
 static char *cp_walk(CheckedPlaceArena *a, const char *source, const char *hir, const char *catalog, int64_t start, int64_t end, const char *path, int64_t recursion) {
     if (recursion > 64) return cp_error(a, "expression depth limit is 64", start);
-    char *binding = "", *type = "";
+    char *binding, *type;
     bool nameable = true;
     int64_t cursor = skip_trivia(source, token_end(source, start)), count = 0;
     char *raw = "", *json = "";
