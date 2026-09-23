@@ -11204,6 +11204,23 @@
       "source": "type Token = { value: Int }\nfn observe(read item: Token) -> Int { return item.value }\nfn consume(take item: Token) -> Int { return item.value }\nfn probe(condition: Bool) {\n let item: Token = Token(value: 7)\n par |scope| {\n  scope.spawn(fn() {\n   if condition {\n    consume(item)\n   }\n   observe(item)\n  })\n }\n}\n",
       "reason": "Deleting only the terminal return leaves a continuing branch where the whole owned Token has been transferred. The later observe(item) is a possible use-after-take and must preserve E2S123 before capture publication.",
       "diagnostic_code": "E2S123"
+    },
+    {
+      "name": "mutable-nominal-record-explicit",
+      "source": "type Token = { value: Int }\nfn probe() {\n par |scope| {\n  scope.spawn(fn() {\n   let mut item: Token = Token(value: 7)\n   item.value\n  })\n }\n}\n",
+      "reason": "A task-local whole nominal Token binding is mutable despite its explicit type. Preserve the existing Stage 2 immutable-record binding boundary as E2S32 before capture filtering/publication.",
+      "diagnostic_code": "E2S32"
+    },
+    {
+      "name": "mutable-nominal-record-inferred",
+      "source": "type Token = { value: Int }\nfn probe() {\n par |scope| {\n  scope.spawn(fn() {\n   let mut item = Token(value: 7)\n   item.value\n  })\n }\n}\n",
+      "reason": "An inferred Token constructor does not permit a mutable nominal record binding. Require the same E2S32 as the explicitly typed counterpart, even though the receiver is task-local.",
+      "diagnostic_code": "E2S32"
+    },
+    {
+      "name": "mutable-callable-reassignment",
+      "source": "fn probe(outer: Int) {\n par |scope| {\n  scope.spawn(fn() {\n   let mut action = fn(value: Int) => value\n   action = fn(value: Int) => value + outer\n   action(1)\n  })\n }\n}\n",
+      "reason": "The selected callable profile resolves immutable declarations and does not track mutable function values. Refuse a mutable callable binding/reassignment even with the same Int-to-Int signature; do not apply the initializer signature or silently omit the reassigned body. Immutable callable controls remain positive."
     }
   ],
   "full_boundary": {

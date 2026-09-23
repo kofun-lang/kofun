@@ -55,6 +55,13 @@ makes the taken path continue to the read and requires `E2S123`. This checks
 the existing continuing-branch ownership rule without condition refinement
 or nonlexical callee-body propagation.
 
+Task-local mutable nominal records refuse as `E2S32` with either an explicit
+`Token` annotation or an inferred constructor. A mutable callable binding
+and reassignment also refuse under the declaration-based callable profile,
+even when both lambdas have the same signature. Existing immutable record
+and callable positives remain their controls; task-local capture filtering
+does not excuse either invalid declaration shape.
+
 Partial/use-after-take, duplicate nested parameters and label/arity failures
 assert their established E2S122/123/47/162/163/164 diagnostic classes. A valid
 `print(combine(...))` counterpart prevents blanket nested-call refusal from
