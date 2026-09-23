@@ -11221,6 +11221,18 @@
       "name": "mutable-callable-reassignment",
       "source": "fn probe(outer: Int) {\n par |scope| {\n  scope.spawn(fn() {\n   let mut action = fn(value: Int) => value\n   action = fn(value: Int) => value + outer\n   action(1)\n  })\n }\n}\n",
       "reason": "The selected callable profile resolves immutable declarations and does not track mutable function values. Refuse a mutable callable binding/reassignment even with the same Int-to-Int signature; do not apply the initializer signature or silently omit the reassigned body. Immutable callable controls remain positive."
+    },
+    {
+      "name": "duplicate-top-level-function",
+      "source": "fn value() -> Int { return 1 }\nfn value() -> Int { return 2 }\nfn probe() {\n par |scope| {\n  scope.spawn(fn() {\n   value()\n  })\n }\n}\n",
+      "reason": "Duplicate top-level functions cannot establish a unique checked callee; preserve the existing E2S16 refusal.",
+      "diagnostic_code": "E2S16"
+    },
+    {
+      "name": "unused-undeclared-formal-type",
+      "source": "fn probe(unused: Missing, outer: Int) {\n par |scope| {\n  scope.spawn(fn() {\n   outer\n  })\n }\n}\n",
+      "reason": "An unused formal still requires a declared source type; capturing a different valid formal must not hide Missing. Preserve E2S15.",
+      "diagnostic_code": "E2S15"
     }
   ],
   "full_boundary": {

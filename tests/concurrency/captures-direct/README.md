@@ -101,3 +101,8 @@ committed producer. It is not the lasting production gate's success result.
 This child covers checked lexical direct captures. Same-unit nonlexical call
 summary propagation belongs to #1223; conflict checking, runtime execution
 and real KSE2 source production remain separate children.
+
+The source-catalog regressions also refuse duplicate top-level function names
+(E2S16) and an unused formal whose type is undeclared (E2S15). Both were
+independently reproduced through the public entries; a different captured
+formal cannot hide an invalid signature.
