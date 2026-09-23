@@ -4,10 +4,10 @@ warmzero neutral 1
 warmiter 6 0 0 0 0 0 0 0
 warmiter flags 0 0 0
 warmiter neutral 1
-emptysuite 5 0 0 0 0 0 0 0
+emptysuite 4 0 0 0 0 0 0 0
 emptysuite flags 0 0 0
 emptysuite neutral 1
-absentparam 3 0 0 0 0 0 0 0
+absentparam 6 0 0 0 0 0 0 0
 absentparam flags 0 0 0
 absentparam neutral 1
 shortdigest 5 0 0 0 0 0 0 0
@@ -16,7 +16,7 @@ shortdigest neutral 1
 upperdigest 5 0 0 0 0 0 0 0
 upperdigest flags 0 0 0
 upperdigest neutral 1
-counterneutral 3 0 0 0 0 0 0 0
+counterneutral 6 0 0 0 0 0 0 0
 counterneutral flags 0 0 0
 counterneutral neutral 1
 cases 7

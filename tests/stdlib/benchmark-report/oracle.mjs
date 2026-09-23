@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {STAGE2_REPORT_FIELDS} from '../../../spec/benchmark-report-v1/contract.mjs';
 import {
-  encodeReport, summarize, outlierFlags, toStage2Outcome, stage2ErrorOutcome,
+  encodeReport, summarize, outlierFlags, toStage2Outcome, fromStage2Outcome, stage2ErrorOutcome,
   compareReports,
 } from '../../../spec/benchmark-report-v1/model.mjs';
 
@@ -59,10 +59,16 @@ const verdict = compareReports(baseline, candidate, 100);
 assert.equal(verdict.verdict, 'improved');
 assert.equal(verdict.change_bps, -5000);
 comparison(0, 1, verdict.change_bps, verdict.threshold_bps);
+// The producer's invalid physical direction maps before semantic report
+// validation. Derive its category independently instead of preserving the
+// superseded model's BR003 result.
+let modelError;
+try { fromStage2Outcome({...baseOutcome, direction_tag: 99}); assert.fail('invalid direction accepted'); }
+catch(error) { assert.equal(error.code, 'BR006'); modelError = Number(error.code.slice(2)); }
 line('decode refusal'); fields(stage2ErrorOutcome('BR001'));
-line('model refusal'); fields(stage2ErrorOutcome('BR003'));
+line('model refusal'); fields(stage2ErrorOutcome('BR006'));
 line('cancelled outcome'); fields(stage2ErrorOutcome('BR011'));
-line('refused comparisons'); comparison(1); comparison(3);
+line('refused comparisons'); comparison(1); comparison(modelError);
 line('refused encodes preserve complete prior wire');
-[1, 3, 11].forEach(line); wire(baseWire);
-line('empty destination remains empty'); line(3); wire(Buffer.alloc(0));
+[1, modelError, 11].forEach(line); wire(baseWire);
+line('empty destination remains empty'); line(modelError); wire(Buffer.alloc(0));

@@ -6,7 +6,7 @@ import crypto from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {STAGE2_REPORT_FIELDS} from '../../../spec/benchmark-report-v1/contract.mjs';
-import {decodeReport, encodeReport, toStage2Outcome, stage2ErrorOutcome, summarize, outlierFlags} from '../../../spec/benchmark-report-v1/model.mjs';
+import {decodeReport, encodeReport, fromStage2Outcome, toStage2Outcome, stage2ErrorOutcome, summarize, outlierFlags} from '../../../spec/benchmark-report-v1/model.mjs';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const POSITIVE = path.join(ROOT, 'spec/benchmark-report-v1/vectors/positive');
 function replaceOnce(bytes, search, replacement, label) {
@@ -88,6 +88,66 @@ function fieldsHeader() {
   return `static void print_fields(KofunRecord_BenchReport report) {\n${statements.join('\n')}\n}\n`;
 }
 
+// Forge only values representable by the existing physical carriers. These
+// expectations come from the normative mapper, independently of production.
+function physicalCases(base) {
+  const fields = STAGE2_REPORT_FIELDS.filter(({name}) => name !== 'status_tag');
+  const variants = {
+    Int: [-9007199254740992, -9007199254740991, -1, 0, 1, 2, 3, 64, 100, 101, 500000001, 3000000001, 9007199254740991, 9007199254740992],
+    Bool: [false, true],
+    Text: ['', 'x', '\t', '\n', '\u007f', 'é', 'e\u0301', '😀', 'x'.repeat(97), 'x'.repeat(129), 'x'.repeat(255)],
+    'List[Int]': [[], [-9007199254740992], [-1], [0], [1], [2], [9007199254740991], [9007199254740992], Array(37).fill(0), Array(64).fill(0)],
+  };
+  const result = [];
+  function add(changes) {
+    const value = {...structuredClone(base), ...changes};
+    let status = 0, bytes = '';
+    try {
+      const mapped = fromStage2Outcome(value);
+      assert.equal(mapped.kind, 'report');
+      bytes = Buffer.from(encodeReport(mapped.report)).toString('utf8');
+    } catch (error) {
+      assert.match(error.code ?? '', /^BR\d{3}$/);
+      status = Number(error.code.slice(2));
+    }
+    result.push({changes, status, bytes});
+  }
+  for (const {name, type} of fields) {
+    for (const value of variants[type]) add({[name]: value});
+  }
+  let seed = 0x131249;
+  function next(maximum) { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed % maximum; }
+  for (let i = 0; i < 1000; ++i) {
+    const changes = {};
+    for (let j = 0; j < 2; ++j) {
+      const {name, type} = fields[next(fields.length)];
+      changes[name] = variants[type][next(variants[type].length)];
+    }
+    add(changes);
+  }
+  return result;
+}
+
+function physicalHeader(cases) {
+  const types = new Map(STAGE2_REPORT_FIELDS.map(({name, type}) => [name, type]));
+  const blocks = cases.map(({changes}, index) => {
+    const lines = Object.entries(changes).map(([name, value]) => {
+      const field = `report->f_${name}`;
+      if (types.get(name) === 'Text') {
+        const bytes = [...Buffer.from(value)].map(byte => `\\x${byte.toString(16).padStart(2, '0')}`).join('');
+        return `${field} = "${bytes}";`;
+      }
+      if (types.get(name) === 'List[Int]') {
+        return `${field}.length = ${value.length};` + value.map((number, i) => `${field}.elements[${i}] = INT64_C(${number});`).join('');
+      }
+      if (types.get(name) === 'Bool') return `${field} = ${value};`;
+      return `${field} = INT64_C(${value});`;
+    });
+    return `case ${index}: ${lines.join(' ')} break;`;
+  });
+  return `static int apply_physical_case(KofunRecord_BenchReport *report, long index) {\n switch(index) {\n${blocks.join('\n')}\n default: return 0;\n } return 1;\n}\n`;
+}
+
 function prepare(work) {
   fs.mkdirSync(path.join(work, 'vectors'), {recursive: true});
   const cases = [];
@@ -141,6 +201,56 @@ function prepare(work) {
   for (const [name, bytes, status] of extra) add(name, bytes, status);
   const base = JSON.parse(fs.readFileSync(path.join(POSITIVE, 'minimal.json')));
   const minimalBytes = fs.readFileSync(path.join(POSITIVE, 'minimal.json'), 'utf8');
+  // Independent review regressions: complete single-field perturbations and a
+  // fixed seeded pair matrix exercise traversal order, not numeric code order.
+  const variants = [null, false, true, -1, 0, 1, 1.5, 9007199254740991, 9007199254740992, '', 'x', [], {}];
+  const paths = [];
+  function visit(value, parts = []) {
+    if (!value || typeof value !== 'object') return;
+    for (const key of Object.keys(value)) { paths.push([...parts, key]); visit(value[key], [...parts, key]); }
+  }
+  visit(base);
+  let reviewIndex = 0;
+  for (const parts of paths) {
+    for (const replacement of variants) {
+      const value = structuredClone(base);
+      let parent = value;
+      for (const part of parts.slice(0, -1)) parent = parent[part];
+      parent[parts.at(-1)] = replacement;
+      add(`review-single-${reviewIndex++}`, JSON.stringify(value) + '\n');
+    }
+    const value = structuredClone(base);
+    let parent = value;
+    for (const part of parts.slice(0, -1)) parent = parent[part];
+    delete parent[parts.at(-1)];
+    add(`review-missing-${reviewIndex++}`, JSON.stringify(value) + '\n');
+  }
+  for (const name of ['suite', 'case']) {
+    for (const replacement of ['\u0000', '\b', '\t', '\n', '\u007f', '\ud800', '\udc00', '😀', 'é'.repeat(49), 'x'.repeat(97) + '\ud800']) {
+      const value = structuredClone(base); value.identity[name] = replacement;
+      add(`review-unicode-${reviewIndex++}`, JSON.stringify(value) + '\n');
+    }
+  }
+  let reviewSeed = 0x13121320;
+  const next = maximum => { reviewSeed = (Math.imul(reviewSeed, 1664525) + 1013904223) >>> 0; return reviewSeed % maximum; };
+  const leaves = paths.filter(parts => {
+    let value = base; for (const part of parts) value = value[part];
+    return value === null || typeof value !== 'object';
+  });
+  for (let index = 0; index < 1000; index++) {
+    const value = structuredClone(base);
+    for (let mutation = 0; mutation < 2; mutation++) {
+      const parts = leaves[next(leaves.length)], replacement = variants[next(variants.length)];
+      let parent = value; for (const part of parts.slice(0, -1)) parent = parent[part];
+      parent[parts.at(-1)] = replacement;
+    }
+    add(`review-pair-${index}`, JSON.stringify(value) + '\n');
+  }
+  assert.equal(reviewIndex + 1000, 1790, 'independent review corpus size');
+  const zeroFrequency = structuredClone(base);
+  zeroFrequency.host.frequency_hz = {state: 'available', value: 0};
+  add('available-zero-frequency', encodeReport(zeroFrequency), 0);
+
   const unicode = structuredClone(base);
   unicode.identity.parameter = 'cafe\u0301-😀/\\"';
   unicode.host.cpu = '矢印→';
@@ -191,7 +301,9 @@ function prepare(work) {
     add(`samples-${count}`, encodeReport(report), 0);
   }
   fs.writeFileSync(path.join(work, 'cases.json'), JSON.stringify(cases));
-  fs.writeFileSync(path.join(work, 'fields.h'), fieldsHeader());
+  const physical = physicalCases(toStage2Outcome(base));
+  fs.writeFileSync(path.join(work, 'physical.json'), JSON.stringify(physical));
+  fs.writeFileSync(path.join(work, 'fields.h'), fieldsHeader() + physicalHeader(physical));
   fs.writeFileSync(path.join(work, 'main.kofun'), `
 fn main() -> Int {
     let input = stage2_bytes_empty()
@@ -226,6 +338,16 @@ function check(work, binary, faults) {
       assert.equal(bytes, fs.readFileSync(path.join(work, 'vectors', `${name}.json`), 'utf8'), `${name}: canonical bytes`);
     }
   }
+  const physical = JSON.parse(fs.readFileSync(path.join(work, 'physical.json')));
+  for (const [index, expected] of physical.entries()) {
+    // Both absent and pre-existing destination storage must be transactional.
+    for (const seed of [0, 32768]) {
+      const output = run('physical', 'minimal', index, seed);
+      assert.match(output, new RegExp(`^status ${expected.status}\\nallocations \\d+\\n`), `physical ${index}: ${JSON.stringify(expected.changes)}`);
+      assert.equal(output.replace(/^status \d+\nallocations \d+\n/, ''), expected.bytes, `physical ${index}: complete canonical bytes`);
+    }
+  }
+  console.log(`PASS: ${physical.length} independently mapped physical single/pair mutations, exact error order and destination preservation`);
   if (faults) {
     let encodeFaults = 0;
     let decodeFaults = 0;
@@ -244,10 +366,9 @@ function check(work, binary, faults) {
         for (let status = 1; status <= 12; ++status) {
           assert.equal(run('outcome', name, status, seed), `status ${status}\nallocations 0\n`, `prior BR${status}`);
         }
-        // A forged status-0 model is rechecked by #1311's producer, whose
-        // segment_values_status classifies a negative sample as BR004. The
-        // separately pinned wire-negative vector remains the decoder's BR006.
-        for (const [mutation, status] of [4, 5, 5, 3, 6, 6, 3, 4, 4].entries()) {
+        // Independently mapped physical errors follow fromStage2Outcome;
+        // prior model implementation categories are not the codec contract.
+        for (const [mutation, status] of [4, 5, 5, 6, 6, 6, 6, 6, 4].entries()) {
           assert.match(run('invalid', name, mutation, seed), new RegExp(`^status ${status}\\n`), `invalid model ${mutation}, seed ${seed}`);
         }
       }

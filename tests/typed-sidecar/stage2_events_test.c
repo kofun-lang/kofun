@@ -1387,7 +1387,25 @@ static void test_nested_diagnostic_list_limits(
 }
 
 static void test_text_limits(const Fixture *fixture) {
+    static const char *valid_paths[] = {
+        "src/main.kofun",
+        "src/name:value.kofun",
+        "1abc:main.kofun",
+        "1:main.kofun",
+        "-abc:main.kofun",
+        "-:main.kofun",
+        ":main.kofun",
+        "_abc:main.kofun",
+        "a_b:main.kofun",
+        "src/a+b:main.kofun",
+        "src/a:main.kofun",
+        "a/b:main.kofun",
+        "a",
+        "\xc3\xa9:main.kofun",
+        "a\xc3\xa9:main.kofun"
+    };
     static const char *invalid_paths[] = {
+        "",
         "/src/main.kofun",
         "C:/src/main.kofun",
         "src//main.kofun",
@@ -1397,6 +1415,17 @@ static void test_text_limits(const Fixture *fixture) {
         "src/main.kofun/",
         "src\\main.kofun",
         "file://main.kofun",
+        "https:remote.kofun",
+        "mailto:src.kofun",
+        "abc:main.kofun",
+        "git+ssh:main.kofun",
+        "a.b-c:main.kofun",
+        "a0:main.kofun",
+        "a:main.kofun",
+        "Z:main.kofun",
+        "A0+.-:main.kofun",
+        "a:",
+        "1://main.kofun",
         "src/\nmain.kofun"
     };
     static const uint8_t decomposed_path[] = {
@@ -1429,9 +1458,30 @@ static void test_text_limits(const Fixture *fixture) {
     {
         size_t index;
         for (index = 0u;
+             index < sizeof(valid_paths) / sizeof(valid_paths[0]);
+             index += 1u) {
+            const uint8_t *bytes;
+            size_t length;
+            source.logical_path = text(valid_paths[index]);
+            CHECK(kofun_semantic_validate_logical_path(source.logical_path));
+            stream = kofun_semantic_stream_create();
+            CHECK(stream != NULL);
+            sink = kofun_semantic_stream_sink(stream);
+            CHECK(kofun_semantic_begin(&sink, &source));
+            CHECK(kofun_semantic_end(
+                &sink, KOFUN_SOURCE_CHECKED, KOFUN_SEMANTIC_COMPLETE
+            ));
+            CHECK(kofun_semantic_stream_bytes(stream, &bytes, &length));
+            CHECK(kofun_semantic_validate_stream(bytes, length, NULL));
+            kofun_semantic_stream_destroy(stream);
+        }
+        for (index = 0u;
              index < sizeof(invalid_paths) / sizeof(invalid_paths[0]);
              index += 1u) {
+            const uint8_t *bytes = NULL;
+            size_t length = 0u;
             source.logical_path = text(invalid_paths[index]);
+            CHECK(!kofun_semantic_validate_logical_path(source.logical_path));
             stream = kofun_semantic_stream_create();
             CHECK(stream != NULL);
             sink = kofun_semantic_stream_sink(stream);
@@ -1440,6 +1490,8 @@ static void test_text_limits(const Fixture *fixture) {
                 kofun_semantic_stream_error(stream)->code,
                 "ETS03"
             ) == 0);
+            CHECK(!kofun_semantic_stream_bytes(stream, &bytes, &length));
+            CHECK(bytes == NULL && length == 0u);
             kofun_semantic_stream_destroy(stream);
         }
     }

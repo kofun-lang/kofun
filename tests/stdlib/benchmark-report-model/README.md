@@ -6,10 +6,12 @@ executable Stage 2 C11 profile, in Kofun (#1311).
 
 - `model.kofun` — the 49-field flat outcome, closed validation, the segmented
   summaries, and the outlier flags. It declares no `main`: it is a library.
-- `corpus.kofun` — the inputs and the four groups the gate runs.
+- `corpus.kofun` — the five original groups and the physical validation inputs
+  used to generate one additional bounded group.
 - `oracle.mjs` — the independent expectation. It computes nothing itself; it
-  calls `summarize` and `outlierFlags` from the merged #1310 oracle and reads
-  the sample values out of `corpus.kofun`, so the two sides cannot drift.
+  calls `summarize`, `outlierFlags`, and the physical mapping from the merged
+  #1310 oracle and reads the sample values out of `corpus.kofun`, so the two
+  sides cannot drift.
 - `group0..3.stdout` — the goldens.
 
 Run:
@@ -29,17 +31,50 @@ segment boundary, and the 100-sample ceiling. `KOFUN_BENCHMARK_REPORT_MODEL_SWEE
 runs every count from 1 to 100; the counts actually used are printed by the gate
 rather than assumed.
 
-The refusals have no oracle, because their expectation is the contract's error
-code. Four mutations defend them: truncating the nearest rank, admitting
+The original refusal groups retain explicit contract-code goldens. Three
+previously incorrect group 3 codes now agree with `fromStage2Outcome`: an empty
+required suite is BR004, an absent parameter with a nonempty payload is BR006,
+and an unavailable counter with a nonzero payload is BR006. Every original
+case, flag assertion, and neutral-payload assertion remains.
+
+The host
+frequency group checks available zero, unavailable zero, a positive value,
+a negative value, the integer ceiling, one above it, and an unavailable
+nonzero payload against `fromStage2Outcome`. It also checks that success
+preserves both physical frequency fields and that every failure is neutral.
+
+The 73-case physical matrix covers required empty Text, all four closed tag
+families, all five unavailable counters, lower and upper integer bounds,
+unsafe negative integers, count and segment limits, and 21 simultaneous-error
+cases. The latter distinguish the physical mapper's validation order from a
+global minimum error number: absent payloads and segmented shape are checked
+before semantic identity, and semantic fields are checked in contract order.
+For example, an invalid split plus an empty suite is BR006, while a forbidden
+suite control plus an excessive warmup budget is BR005.
+
+The JSON comments marked `physical-case` contain inputs only. `oracle.mjs`
+generates both the Kofun input records and the expectation from those exact
+values, deriving summaries and flags with the independent oracle and obtaining
+every status through `fromStage2Outcome`. The generated program passes only
+the production constructor's five records and raw segments; it cannot inject
+an invalid derived summary or outlier flag. Every failure checks its status and all 48 neutral payload
+fields, and every group retains the checker, strict C11 at O0/O2, repeated
+execution, and reference-executor comparisons. No wire decoder participates.
+
+Six mutations defend these checks: truncating the nearest rank, admitting
 equality at the Tukey fence, disarming the canonical-split guard, and leaking
-one Text field into a refused outcome. Each is required to change the output.
+one Text field into a refused outcome, rejecting available zero, and assigning
+the wrong error code to an unavailable nonzero frequency. Each must build and
+change the output.
 
 ## Bounded execution and tooling
 
-The committed corpus runs in four groups, preserving the original golden
-boundaries and giving each group independent runtime state. The Text runtime
-has 4,096 slots of 256 bytes; #1359 added reuse of loop temporaries. It is not
-a 4,096-byte whole-process budget.
+The five original groups preserve their golden boundaries and independent
+runtime state. All 73 physical cases run in one generated program, measured
+to fit the compiler and runtime bounds while reducing repeated lowering.
+The Text runtime has 4,096 slots of
+256 bytes; #1359 added reuse of loop temporaries. It is not a 4,096-byte
+whole-process budget.
 
 `model.kofun` declares no `main`; the corpus and gate supply the callers.
 The production emitter references declared functions, so an unused fixture
