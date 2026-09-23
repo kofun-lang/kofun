@@ -109,7 +109,7 @@ export const GROUPS = Object.freeze([
             'stdlib-partial-target-support-decision',
             'process-capture-carrier-decision', 'directory-enumeration-carrier-decision',
             'live-https-get-adapter-decision', 'atomic-publish-if-absent-decision',
-            'benchmark-summary', 'benchmark-report-spec', 'benchmark-report-model',
+            'benchmark-summary', 'benchmark-report', 'benchmark-report-spec', 'benchmark-report-model', 'benchmark-report-codec',
             'benchmark-report-comparison', 'kofun-digest-model',
             'capabilities'
         ]

@@ -1310,9 +1310,11 @@ tests/stage2/while-list-int/out_of_range.kofun
 tests/stage2/while-list-int/scan.kofun
 tests/stage2/while-list-int/text_condition.kofun
 tests/stdlib/alloc/alloc.kofun
+tests/stdlib/benchmark-report-codec/codec.kofun
 tests/stdlib/benchmark-report-model/compare.kofun
 tests/stdlib/benchmark-report-model/corpus.kofun
 tests/stdlib/benchmark-report-model/model.kofun
+tests/stdlib/benchmark-report/corpus.kofun
 tests/stdlib/benchmark-summary/summary.kofun
 tests/stdlib/clock-adapters/adapters.kofun
 tests/stdlib/clock-adapters/mixed_instants.kofun

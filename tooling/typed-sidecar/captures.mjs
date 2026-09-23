@@ -12,6 +12,8 @@
 // analysis is #1220-#1223; this slice reads records that already exist and
 // must refuse a malformed stream before anything is published.
 
+import { createHash } from 'node:crypto'
+
 const CAPTURE_KIND = Object.freeze({
     par: 8,
     task: 9,
@@ -485,12 +487,143 @@ export function decodeCanonicalPlaceBytes(input, path = '$place') {
 // capture naming a task no task event declared, two places with one identity,
 // an unknown target with two origins. These are the rules that need the whole
 // stream, so they run after decoding rather than inside it.
+//
+// This API consumes a complete capture section, not a raw mid-section prefix.
+// Its identities, links, phase/order and available section bounds are checked
+// here. A future transaction/prefix API still needs explicit context for
+// source-node membership, origin spans/order, root-scope provenance and which
+// failed/cancelled facts were committed. A partial/cancelled sidecar document
+// can carry a complete valid section; that is different from accepting a
+// truncated section. The frame codecs above deliberately remain structural.
+
+function sectionIdentity(value, path) {
+    identity(value, path)
+    if (/^0+$/.test(value)) fail(path, 'a capture-section identity must be nonzero')
+    return Buffer.from(value, 'hex')
+}
+
+function sectionIndex(value, path) {
+    if (!Number.isInteger(value) || value < 0 || value > 0xffffffff) {
+        fail(path, 'expected an unsigned 32-bit index')
+    }
+    return u32(value)
+}
+
+function sectionBytes(value, path) {
+    if (typeof value !== 'string' || !/^(?:[0-9a-f]{2})+$/.test(value)) {
+        fail(path, 'expected nonempty lowercase hexadecimal bytes')
+    }
+    if (value.length > KSE2_LIMITS.field_bytes * 2) fail(path, 'canonical bytes exceed the field limit')
+    return Buffer.from(value, 'hex')
+}
+
+function requireDerivedId(value, name, payload, path) {
+    sectionIdentity(value, path)
+    const domain = Buffer.from(`kofun.scope-hir.${name}/v2`, 'utf8')
+    const expected = createHash('sha256').update(Buffer.concat([
+        Buffer.from('KOFUN\0', 'utf8'), u16(domain.length), domain,
+        u32(payload.length), payload,
+    ])).digest('hex')
+    if (value !== expected) fail(path, `${name} identity preimage mismatch`)
+}
+
+// Compare the two JSON representations without making object key order part
+// of place equality, and without silently dropping extra projection fields.
+function sameStructure(left, right) {
+    if (left === right) return true
+    if (left === null || right === null ||
+        typeof left !== 'object' || typeof right !== 'object' ||
+        Array.isArray(left) !== Array.isArray(right)) return false
+    if (Array.isArray(left) && left.length !== right.length) return false
+    const keys = Object.keys(left).sort()
+    const other = Object.keys(right).sort()
+    return keys.length === other.length && keys.every((key, index) =>
+        key === other[index] && sameStructure(left[key], right[key]))
+}
+
+function validateSectionIdentity(event, path) {
+    if (event === null || typeof event !== 'object' ||
+        !Object.hasOwn(CAPTURE_KIND, event.event) ||
+        event.kind !== CAPTURE_KIND[event.event]) {
+        fail(path, 'unknown capture-section event or kind')
+    }
+    const id = (name) => sectionIdentity(event[name], `${path}.${name}`)
+    if (event.event === 'par') {
+        for (const name of ['par_id', 'node_id', 'scope_id', 'parent_scope_id', 'scope_token_binding_id']) id(name)
+        sectionIndex(event.lexical_index, `${path}.lexical_index`)
+        // ParId alone needs FileId, which is absent from a capture section.
+        // projectSidecarV2 supplies its base FileId and verifies it below.
+    } else if (event.event === 'task') {
+        requireDerivedId(event.task_id, 'task', Buffer.concat([
+            id('par_id'), sectionIndex(event.lexical_index, `${path}.lexical_index`),
+            id('spawn_node_id'), id('lambda_node_id'), id('handle_binding_id'),
+        ]), `${path}.task_id`)
+    } else if (event.event === 'join') {
+        if (!Object.hasOwn(JOIN_KIND_TAG, event.join_kind)) fail(path, 'unknown join kind')
+        const tag = JOIN_KIND_TAG[event.join_kind]
+        let node = Buffer.alloc(0)
+        if (event.join_kind === 'explicit') node = id('node_id')
+        else if (event.node_id !== null) fail(path, 'a scope-exit join carries no node')
+        requireDerivedId(event.join_id, 'join', Buffer.concat([
+            id('task_id'), Buffer.from([tag]), node,
+        ]), `${path}.join_id`)
+    } else if (event.event === 'place') {
+        const bytes = sectionBytes(event.canonical_bytes, `${path}.canonical_bytes`)
+        const place = decodeCanonicalPlaceBytes(bytes, path)
+        id('base_binding_id')
+        if (place.base_binding_id !== event.base_binding_id ||
+            !sameStructure(place.projections, event.projections)) {
+            fail(path, 'place bytes do not match the structured place')
+        }
+        if (place.projections.length > 8) fail(path, 'a known place exceeds eight projections')
+        for (const projection of place.projections) {
+            if (projection.kind === 'field') {
+                sectionIdentity(projection.owner_type_id, `${path}.owner_type_id`)
+            } else {
+                for (const bound of [projection.lower, projection.upper]) {
+                    if (bound.kind === 'node') sectionIdentity(bound.node_id, `${path}.bound.node_id`)
+                }
+                if (projection.lower.kind === 'constant' && projection.upper.kind === 'constant' &&
+                    BigInt(projection.lower.value) > BigInt(projection.upper.value)) {
+                    fail(path, 'a constant slice has inverted bounds')
+                }
+            }
+        }
+        requireDerivedId(event.place_id, 'place', bytes, `${path}.place_id`)
+    } else if (event.event === 'unknown') {
+        if (!Object.hasOwn(UNKNOWN_REASON_TAG, event.reason)) fail(path, 'unknown unavailable-place reason')
+        const tag = UNKNOWN_REASON_TAG[event.reason]
+        const payload = Buffer.concat([id('task_id'), Buffer.from([tag]), id('witness_node_id')])
+        const bytes = sectionBytes(event.canonical_bytes, `${path}.canonical_bytes`)
+        if (!bytes.equals(Buffer.concat([Buffer.from([0x4b, 0x55, 0x4e, 0, 2]), payload]))) {
+            fail(path, 'unknown bytes do not match task, reason and witness')
+        }
+        // KUN's format prefix belongs to its ordering bytes, not this digest.
+        requireDerivedId(event.unknown_id, 'unknown', payload, `${path}.unknown_id`)
+    } else {
+        const tag = event.target_kind === 'place' ? 1 : event.target_kind === 'unknown' ? 2 : 0
+        if (tag === 0 || !Object.hasOwn(MODE_TAG, event.mode)) fail(path, 'unknown capture target kind or mode')
+        if (!Array.isArray(event.origin_node_ids) || event.origin_node_ids.length === 0 ||
+            event.origin_node_ids.length > KSE2_LIMITS.relations) {
+            fail(path, 'a capture needs a bounded nonempty origin list')
+        }
+        for (const origin of event.origin_node_ids) sectionIdentity(origin, `${path}.origin_node_ids`)
+        if (new Set(event.origin_node_ids).size !== event.origin_node_ids.length) fail(path, 'origins repeat')
+        requireDerivedId(event.capture_id, 'capture', Buffer.concat([
+            id('task_id'), Buffer.from([tag]), id('target_id'),
+        ]), `${path}.capture_id`)
+    }
+}
 
 export function validateCaptureStream(events) {
+    if (!Array.isArray(events) || events.length > KSE2_LIMITS.capture_events) {
+        fail('$kse.events', 'expected a bounded capture-section event array')
+    }
     const declared = new Map()
+    const unknowns = new Map()
     for (const [index, event] of events.entries()) {
         const path = `$kse.events[${index}]`
-        const id = event.par_id ?? event.task_id_declared ?? null
+        validateSectionIdentity(event, path)
         if (event.event === 'par') register(declared, 'par', event.par_id, path)
         if (event.event === 'task') {
             register(declared, 'task', event.task_id, path)
@@ -504,29 +637,114 @@ export function validateCaptureStream(events) {
         if (event.event === 'unknown') {
             register(declared, 'unknown', event.unknown_id, path)
             requireDeclared(declared, 'task', event.task_id, path, 'unknown names a task')
+            unknowns.set(event.unknown_id, event)
         }
         if (event.event === 'capture') {
             register(declared, 'capture', event.capture_id, path)
             requireDeclared(declared, 'task', event.task_id, path, 'capture names a task')
             requireDeclared(declared, event.target_kind, event.target_id, path,
                 `capture names a ${event.target_kind}`)
-            if (event.target_kind === 'unknown' && event.origin_node_ids.length !== 1) {
-                fail(path, 'an unknown target carries exactly one origin')
+            if (event.target_kind === 'unknown') {
+                const unknown = unknowns.get(event.target_id)
+                if (unknown.task_id !== event.task_id) fail(path, 'unknown capture belongs to another task')
+                if (event.origin_node_ids.length !== 1 || event.origin_node_ids[0] !== unknown.witness_node_id) {
+                    fail(path, 'an unknown capture must name exactly its witness as its origin')
+                }
             }
         }
-        void id
     }
+    validateCompleteSection(events)
     return events
 }
 
+function validateCompleteSection(events) {
+    const phases = { par: [], task: [], join: [], place: [], unknown: [], capture: [] }
+    let previousKind = 0
+    for (const event of events) {
+        if (event.kind < previousKind) fail('$kse.events', 'capture-section phase order is noncanonical')
+        previousKind = event.kind
+        phases[event.event].push(event)
+    }
+    if (phases.par.length > 64) fail('$kse.events', 'par limit exceeded (64)')
+    if (phases.task.length > 64) fail('$kse.events', 'task limit exceeded (64)')
+    const parOrder = new Map()
+    // A complete section's first par has no earlier par parent: its parent
+    // is the sole possible external root. This proves the internal tree
+    // shape only; the compiler's actual enclosing scope needs its snapshot.
+    const rootScope = phases.par[0]?.parent_scope_id
+    const earlierScopes = new Set()
+    phases.par.forEach((par, index) => {
+        if (par.lexical_index !== index) fail('$kse.events', 'par indexes must be dense in canonical order')
+        if (par.scope_id === rootScope) fail('$kse.events', 'a par scope must not alias the section root scope')
+        if (earlierScopes.has(par.scope_id)) fail('$kse.events', 'duplicate par scope identity')
+        if (par.parent_scope_id !== rootScope && !earlierScopes.has(par.parent_scope_id)) {
+            fail('$kse.events', 'par parent must be the section root or an earlier par scope')
+        }
+        earlierScopes.add(par.scope_id)
+        parOrder.set(par.par_id, index)
+    })
+    const nextTaskIndex = new Map()
+    const taskOrder = new Map()
+    let previousPar = -1
+    phases.task.forEach((task, index) => {
+        const expected = nextTaskIndex.get(task.par_id) ?? 0
+        if (task.lexical_index !== expected) fail('$kse.events', 'per-par task indexes must be dense in canonical order')
+        const parent = parOrder.get(task.par_id)
+        if (parent < previousPar) fail('$kse.events', 'task order must follow par order')
+        previousPar = parent
+        nextTaskIndex.set(task.par_id, expected + 1)
+        taskOrder.set(task.task_id, index)
+    })
+    const joined = new Set()
+    for (const [index, join] of phases.join.entries()) {
+        if (joined.has(join.task_id)) fail('$kse.events', 'a task has duplicate joins')
+        joined.add(join.task_id)
+        if (phases.task[index]?.task_id !== join.task_id) fail('$kse.events', 'join order must follow task order')
+    }
+    if (joined.size !== phases.task.length) fail('$kse.events', 'every task must have exactly one join')
+    // Lowercase, even-length hex has the same order as its unsigned bytes.
+    const targets = new Map()
+    for (const kind of ['place', 'unknown']) {
+        let previous = null
+        for (const target of phases[kind]) {
+            if (previous !== null && target.canonical_bytes <= previous) {
+                fail('$kse.events', `${kind} order must follow unique canonical bytes`)
+            }
+            previous = target.canonical_bytes
+            targets.set(target[`${kind}_id`], target.canonical_bytes)
+        }
+    }
+    const captureCounts = new Map()
+    let previousCapture = null
+    for (const capture of phases.capture) {
+        const count = (captureCounts.get(capture.task_id) ?? 0) + 1
+        if (count > 64) fail('$kse.events', 'capture limit exceeded (64 per task)')
+        captureCounts.set(capture.task_id, count)
+        const current = {
+            task: taskOrder.get(capture.task_id),
+            bytes: targets.get(capture.target_id),
+            mode: MODE_TAG[capture.mode],
+        }
+        if (previousCapture !== null &&
+            (current.task < previousCapture.task ||
+             (current.task === previousCapture.task &&
+              (current.bytes < previousCapture.bytes ||
+               (current.bytes === previousCapture.bytes && current.mode <= previousCapture.mode))))) {
+            fail('$kse.events', 'capture order must follow task, target canonical bytes and mode')
+        }
+        previousCapture = current
+    }
+}
+
 function register(declared, kind, id, path) {
-    const key = `${kind}:${id}`
-    if (declared.has(key)) fail(path, `${kind} ${id} is declared twice`)
-    declared.set(key, true)
+    // Record identities are globally unique, including ParIds whose FileId
+    // preimage cannot be checked by the section-only entrypoint.
+    if (declared.has(id)) fail(path, `${kind} ${id} is declared twice`)
+    declared.set(id, kind)
 }
 
 function requireDeclared(declared, kind, id, path, what) {
-    if (!declared.has(`${kind}:${id}`)) fail(path, `${what} that no ${kind} event declared`)
+    if (declared.get(id) !== kind) fail(path, `${what} that no ${kind} event declared`)
 }
 
 // --------------------------------------------------------------- projection
@@ -566,6 +784,18 @@ export function projectSidecarV2(v1Document, events) {
         fail('$typed-v1.limits.profile', 'base document must use default-v1')
     }
     const captures = projectSidecarCaptures(events)
+    // Bind every represented par (and, through validated links/preimages, its
+    // descendants) to this base file. An empty section carries no FileId, so
+    // this does not claim empty-section provenance or full transaction proof.
+    for (const [index, event] of events.entries()) {
+        if (event.event === 'par') {
+            requireDerivedId(event.par_id, 'par', Buffer.concat([
+                sectionIdentity(v1Document.file?.file_id, '$typed-v1.file.file_id'),
+                sectionIdentity(event.scope_id, `$kse.events[${index}].scope_id`),
+                sectionIdentity(event.node_id, `$kse.events[${index}].node_id`),
+            ]), `$kse.events[${index}].par_id`)
+        }
+    }
     rejectDisplayLeak(captures, '$typed-v2.captures')
     const result = JSON.parse(JSON.stringify(v1Document))
     result.capture_profile = CAPTURE_PROFILE
