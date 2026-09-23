@@ -97,6 +97,9 @@ int main(int argc, char **argv) {
         if (mutation == 7) report.f_sample_segment0.elements[0] = -1;
         if (mutation == 8) report.f_harness_overhead_ns = INT64_MAX;
     }
+    if (strcmp(argv[1], "physical") == 0) {
+        if (!require(apply_physical_case(&report, strtol(argv[3], NULL, 10)), "unknown physical case")) return 1;
+    }
     if (strcmp(argv[1], "encode-oom") == 0) fail_allocation = strtol(argv[3], NULL, 10);
     allocation_count = 0;
     int64_t status = kofun_fn_encode_report(report, &output);
@@ -105,12 +108,12 @@ int main(int argc, char **argv) {
     if (!unchanged(&input, input_before, saved_input)) return 1;
     if (status != 0) {
         if (!unchanged(&output, before, saved)) return 1;
-    } else {
+    } else if (strcmp(argv[1], "physical") != 0) {
         if (!require(output.length == input.length && memcmp(output.data, input.data, (size_t)input.length) == 0,
                      "encoded bytes differ from canonical input")) return 1;
     }
     printf("status %" PRId64 "\nallocations %ld\n", status, allocation_count);
-    if (status == 0 && strcmp(argv[1], "roundtrip") == 0) {
+    if (status == 0 && (strcmp(argv[1], "roundtrip") == 0 || strcmp(argv[1], "physical") == 0)) {
         if (!require(fwrite(output.data, 1, (size_t)output.length, stdout) == output.length, "cannot print output")) return 1;
     }
     kofun_bytes_release(&output);

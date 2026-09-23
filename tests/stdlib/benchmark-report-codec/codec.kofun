@@ -428,13 +428,13 @@ fn codec_is(read source: Bytes, at: Int, name: Text) -> Int {
 }
 
 # The names are a comma-separated closed ASCII vocabulary, not input Text.
-fn codec_fields(read source: Bytes, read ends: Bytes, at: Int, names: Text) -> Int {
+fn codec_fields_optional(read source: Bytes, read ends: Bytes, at: Int, names: Text, optional_start: Int) -> Int {
     if codec_byte(source, at) != 123 { return 3 }
     let word = stage2_bytes_empty()
     stage2_bytes_assign_text(word, names)
     if stage2_bytes_len(word) != len(names) { return 12 }
     let mut key = codec_space(source, at + 1)
-    if codec_byte(source, key) == 125 { return 0 }
+    if codec_byte(source, key) == 125 { return 3 }
     while key >= 0 {
         let mut start = 0
         let mut found = 0
@@ -449,7 +449,29 @@ fn codec_fields(read source: Bytes, read ends: Bytes, at: Int, names: Text) -> I
         if found == 0 { return 3 }
         key = codec_next_key(source, ends, key)
     }
+    # Required presence belongs to object shape, before any member value.
+    let mut required_start = 0
+    while required_start < len(names) {
+        let mut required_end = required_start
+        while codec_and(codec_lt(required_end, len(names)), codec_ne(codec_byte(word, required_end), 44)) == 1 {
+            required_end = required_end + 1
+        }
+        if required_start != optional_start {
+            let mut present = 0
+            key = codec_space(source, at + 1)
+            while key >= 0 {
+                if codec_key_word(source, key, word, required_start, required_end - required_start) == 1 { present = 1 }
+                key = codec_next_key(source, ends, key)
+            }
+            if present == 0 { return 3 }
+        }
+        required_start = required_end + 1
+    }
     return 0
+}
+
+fn codec_fields(read source: Bytes, read ends: Bytes, at: Int, names: Text) -> Int {
+    return codec_fields_optional(source, ends, at, names, -1)
 }
 
 fn codec_field(read source: Bytes, read ends: Bytes, object: Int, name: Text) -> Int {
@@ -501,6 +523,7 @@ fn codec_emit_scalar(edit destination: Bytes, scalar: Int) -> Int {
 # Only a fully validated, non-NUL, <=255-byte scalar string reaches the bridge.
 fn codec_text(read source: Bytes, at: Int, maximum: Int, policy: Int) -> CodecText {
     let mut status = 0
+    let mut policy_status = 0
     if codec_byte(source, at) != 34 {
         status = 3
         if policy == 2 { status = 5 }
@@ -524,11 +547,11 @@ fn codec_text(read source: Bytes, at: Int, maximum: Int, policy: Int) -> CodecTe
         if codec_and(codec_ge(value, 55296), codec_le(value, 57343)) == 1 { status = first_failure(status, 5) }
         if codec_or(codec_le(value, 31), codec_eq(value, 127)) == 1 {
             let allowed = codec_and(codec_eq(policy, 1), codec_or(codec_eq(value, 9), codec_or(codec_eq(value, 10), codec_eq(value, 13))))
-            if allowed == 0 { status = first_failure(status, 5) }
+            if allowed == 0 { policy_status = 5 }
         }
         if policy == 2 {
             if codec_or(codec_and(codec_ge(value, 48), codec_le(value, 57)), codec_and(codec_ge(value, 97), codec_le(value, 102))) == 0 {
-                status = first_failure(status, 5)
+                policy_status = 5
             }
         }
         if codec_and(codec_le(length, maximum), codec_eq(status, 0)) == 1 {
@@ -538,6 +561,9 @@ fn codec_text(read source: Bytes, at: Int, maximum: Int, policy: Int) -> CodecTe
         }
         cursor = scalar.next
     }
+    # Scalar validity precedes byte length, which precedes control policy.
+    if status != 0 { let result: CodecText = CodecText(status: status, value: "")
+        return result }
     if policy == 2 {
         if length != 64 { status = 5 }
     } else {
@@ -545,6 +571,8 @@ fn codec_text(read source: Bytes, at: Int, maximum: Int, policy: Int) -> CodecTe
         if codec_and(codec_eq(length, 0), codec_eq(policy, 0)) == 1 { status = first_failure(status, 4) }
     }
     if status != 0 { let result: CodecText = CodecText(status: status, value: "")
+        return result }
+    if policy_status != 0 { let result: CodecText = CodecText(status: policy_status, value: "")
         return result }
     let value = stage2_bytes_text(buffer, 0, length)
     let result: CodecText = CodecText(status: 0, value: value)
@@ -652,7 +680,7 @@ fn codec_tag(read source: Bytes, at: Int, choices: Text) -> CodecNumber {
 }
 
 fn codec_counter(read source: Bytes, read ends: Bytes, at: Int) -> CodecCounter {
-    let shape = codec_fields(source, ends, at, "state,value")
+    let shape = codec_fields_optional(source, ends, at, "state,value", 6)
     if shape != 0 { let result: CodecCounter = CodecCounter(status: shape, available: false, value: 0)
         return result }
     let state = codec_field(source, ends, at, "state")
@@ -676,7 +704,7 @@ fn codec_counter(read source: Bytes, read ends: Bytes, at: Int) -> CodecCounter 
 }
 
 fn codec_available_text(read source: Bytes, read ends: Bytes, at: Int) -> CodecAvailableText {
-    let shape = codec_fields(source, ends, at, "state,value")
+    let shape = codec_fields_optional(source, ends, at, "state,value", 6)
     if shape != 0 { let result: CodecAvailableText = CodecAvailableText(status: shape, available: false, value: "")
         return result }
     let state = codec_field(source, ends, at, "state")
@@ -722,17 +750,16 @@ fn codec_series(read source: Bytes, read ends: Bytes, at: Int, flags: Int) -> Co
     let mut second: List[Int] = codec_zero_segment(count - first_count)
     cursor = codec_space(source, at + 1)
     let mut index = 0
-    let mut status = 0
     while index < count {
         let mut value = 0
         if flags == 0 {
             let integer: CodecNumber = codec_integer(source, ends, cursor, 0, 9007199254740991)
-            status = first_failure(status, integer.status)
+            if integer.status != 0 { return codec_series_error(integer.status) }
             value = integer.value
         } else {
             let byte = codec_byte(source, cursor)
             if byte == 116 { value = 1 } else {
-                if byte != 102 { status = first_failure(status, 3) }
+                if byte != 102 { return codec_series_error(3) }
             }
         }
         if index < 64 { first[index] = value } else { second[index - 64] = value }
@@ -740,7 +767,6 @@ fn codec_series(read source: Bytes, read ends: Bytes, at: Int, flags: Int) -> Co
         cursor = codec_space(source, codec_end(ends, cursor))
         if codec_byte(source, cursor) == 44 { cursor = codec_space(source, cursor + 1) }
     }
-    if status != 0 { return codec_series_error(status) }
     let result: CodecSeries = CodecSeries(status: 0, first: first, second: second)
         return result
 }
@@ -1009,422 +1035,531 @@ fn codec_zero_segment(count: Int) -> List[Int] {
 }
 
 
-# Revalidate public model fields before encoding; derived fields are checked,
-# never repaired. The model computes summaries over copies of raw samples.
-fn codec_report_status(report: BenchReport) -> Int {
-    let identity: ReportIdentity = ReportIdentity(
-        suite: report.suite,
-        case: report.case,
-        parameter_present: report.parameter_present,
-        parameter: report.parameter,
-        metric: report.metric,
-        direction_tag: report.direction_tag
-    )
-    let schedule: ReportSchedule = ReportSchedule(
-        clock_tag: report.clock_tag,
-        warmup_cap_ns: report.warmup_cap_ns,
-        sampling_cap_ns: report.sampling_cap_ns,
-        sample_cap: report.sample_cap,
-        warmup_iterations: report.warmup_iterations,
-        warmup_stop_tag: report.warmup_stop_tag,
-        iterations_per_sample: report.iterations_per_sample,
-        sample_count: report.sample_count,
-        sampling_stop_tag: report.sampling_stop_tag,
-        harness_overhead_ns: report.harness_overhead_ns
-    )
-    let counters: ReportCounters = ReportCounters(
-        allocated_bytes_available: report.allocated_bytes_available,
-        allocated_bytes_value: report.allocated_bytes_value,
-        allocation_count_available: report.allocation_count_available,
-        allocation_count_value: report.allocation_count_value,
-        gc_collections_available: report.gc_collections_available,
-        gc_collections_value: report.gc_collections_value,
-        vm_peak_bytes_available: report.vm_peak_bytes_available,
-        vm_peak_bytes_value: report.vm_peak_bytes_value,
-        cpu_cycles_available: report.cpu_cycles_available,
-        cpu_cycles_value: report.cpu_cycles_value
-    )
-    let digests: ReportDigests = ReportDigests(
-        toolchain_sha256: report.toolchain_sha256,
-        source_sha256: report.source_sha256,
-        artifact_sha256: report.artifact_sha256
-    )
-    let host: ReportHost = ReportHost(
-        host_id_sha256: report.host_id_sha256,
-        host_os: report.host_os,
-        host_arch: report.host_arch,
-        host_cpu: report.host_cpu,
-        host_affinity_available: report.host_affinity_available,
-        host_affinity: report.host_affinity,
-        host_frequency_hz_available: report.host_frequency_hz_available,
-        host_frequency_hz: report.host_frequency_hz,
-        host_noise: report.host_noise
-    )
-    let expected: BenchReport = produce_report(identity, schedule, counters, digests, host, report.sample_segment0, report.sample_segment1)
-    if expected.status_tag != 0 { return expected.status_tag }
-    if report.summary_minimum != expected.summary_minimum { return 6 }
-    if report.summary_maximum != expected.summary_maximum { return 6 }
-    if report.summary_median != expected.summary_median { return 6 }
-    if report.summary_p25 != expected.summary_p25 { return 6 }
-    if report.summary_p75 != expected.summary_p75 { return 6 }
-    if report.summary_median_absolute_deviation != expected.summary_median_absolute_deviation { return 6 }
-    if len(report.outlier_segment0) != len(expected.outlier_segment0) { return 6 }
+# Revalidate the physical representation first, then the semantic fields in
+# the same traversal as fromStage2Outcome/validateReport. Derived values are
+# compared with independent recomputation and never repaired.
+fn codec_model_integer(value: Int, minimum: Int, maximum: Int) -> Int {
+    if value < -9007199254740991 { return 4 }
+    if value > 9007199254740991 { return 4 }
+    if value < minimum { return 6 }
+    if value > maximum { return 4 }
+    return 0
+}
+
+fn codec_model_segment(values: List[Int], maximum_count: Int, flag: Int) -> Int {
+    if len(values) > maximum_count { return 6 }
     let mut index = 0
-    while index < len(expected.outlier_segment0) {
-        if report.outlier_segment0[index] != expected.outlier_segment0[index] { return 6 }
+    while index < len(values) {
+        if values[index] < -9007199254740991 { return 4 }
+        if values[index] > 9007199254740991 { return 4 }
+        if values[index] < 0 { return 6 }
+        if flag == 1 {
+            if values[index] > 1 { return 6 }
+        } else {
+            if values[index] > 9007199254740991 { return 4 }
+        }
         index = index + 1
-    }
-    if len(report.outlier_segment1) != len(expected.outlier_segment1) { return 6 }
-    let mut index1 = 0
-    while index1 < len(expected.outlier_segment1) {
-        if report.outlier_segment1[index1] != expected.outlier_segment1[index1] { return 6 }
-        index1 = index1 + 1
     }
     return 0
 }
 
+fn codec_report_status(report: BenchReport) -> Int {
+
+    if report.parameter_present { } else {
+        if len(report.parameter) != 0 { return 6 }
+    }
+    let check_sample_count = codec_model_integer(report.sample_count, 1, 100)
+    if check_sample_count != 0 { return check_sample_count }
+    let check_sample_segment0 = codec_model_segment(report.sample_segment0, 64, 0)
+    if check_sample_segment0 != 0 { return check_sample_segment0 }
+    let check_sample_segment1 = codec_model_segment(report.sample_segment1, 36, 0)
+    if check_sample_segment1 != 0 { return check_sample_segment1 }
+    let check_outlier_segment0 = codec_model_segment(report.outlier_segment0, 64, 1)
+    if check_outlier_segment0 != 0 { return check_outlier_segment0 }
+    let check_outlier_segment1 = codec_model_segment(report.outlier_segment1, 36, 1)
+    if check_outlier_segment1 != 0 { return check_outlier_segment1 }
+    if len(report.sample_segment0) != len(report.outlier_segment0) { return 6 }
+    if len(report.sample_segment1) != len(report.outlier_segment1) { return 6 }
+    if len(report.sample_segment0) + len(report.sample_segment1) != report.sample_count { return 6 }
+    if codec_and(codec_ne(len(report.sample_segment1), 0), codec_ne(len(report.sample_segment0), 64)) == 1 { return 6 }
+    if report.direction_tag < -9007199254740991 { return 4 }
+    if report.direction_tag > 9007199254740991 { return 4 }
+    if report.direction_tag < 0 { return 6 }
+    if report.direction_tag > 1 { return 6 }
+    if report.allocated_bytes_available { } else {
+        if report.allocated_bytes_value != 0 { return 6 }
+    }
+    if report.allocation_count_available { } else {
+        if report.allocation_count_value != 0 { return 6 }
+    }
+    if report.gc_collections_available { } else {
+        if report.gc_collections_value != 0 { return 6 }
+    }
+    if report.vm_peak_bytes_available { } else {
+        if report.vm_peak_bytes_value != 0 { return 6 }
+    }
+    if report.cpu_cycles_available { } else {
+        if report.cpu_cycles_value != 0 { return 6 }
+    }
+    if report.clock_tag < -9007199254740991 { return 4 }
+    if report.clock_tag > 9007199254740991 { return 4 }
+    if report.clock_tag < 0 { return 6 }
+    if report.clock_tag > 2 { return 6 }
+    if report.warmup_stop_tag < -9007199254740991 { return 4 }
+    if report.warmup_stop_tag > 9007199254740991 { return 4 }
+    if report.warmup_stop_tag < 0 { return 6 }
+    if report.warmup_stop_tag > 2 { return 6 }
+    if report.sampling_stop_tag < -9007199254740991 { return 4 }
+    if report.sampling_stop_tag > 9007199254740991 { return 4 }
+    if report.sampling_stop_tag < 0 { return 6 }
+    if report.sampling_stop_tag > 1 { return 6 }
+    if report.host_affinity_available { } else {
+        if len(report.host_affinity) != 0 { return 6 }
+    }
+    if report.host_frequency_hz_available { } else {
+        if report.host_frequency_hz != 0 { return 6 }
+    }
+    let check_suite = codec_check_text(report.suite, 96, 0)
+    if check_suite != 0 { return check_suite }
+    let check_case = codec_check_text(report.case, 96, 0)
+    if check_case != 0 { return check_case }
+    if report.parameter_present {
+    let check_parameter = codec_check_text(report.parameter, 96, 0)
+    if check_parameter != 0 { return check_parameter }
+    }
+    let check_metric = codec_check_text(report.metric, 96, 0)
+    if check_metric != 0 { return check_metric }
+    let check_warmup_cap_ns = codec_model_integer(report.warmup_cap_ns, 0, 500000000)
+    if check_warmup_cap_ns != 0 { return check_warmup_cap_ns }
+    let check_sampling_cap_ns = codec_model_integer(report.sampling_cap_ns, 1, 3000000000)
+    if check_sampling_cap_ns != 0 { return check_sampling_cap_ns }
+    let check_sample_cap = codec_model_integer(report.sample_cap, 1, 100)
+    if check_sample_cap != 0 { return check_sample_cap }
+    let check_warmup_iterations = codec_model_integer(report.warmup_iterations, 0, 9007199254740991)
+    if check_warmup_iterations != 0 { return check_warmup_iterations }
+    let check_iterations_per_sample = codec_model_integer(report.iterations_per_sample, 1, 9007199254740991)
+    if check_iterations_per_sample != 0 { return check_iterations_per_sample }
+    let check_harness_overhead_ns = codec_model_integer(report.harness_overhead_ns, 0, 9007199254740991)
+    if check_harness_overhead_ns != 0 { return check_harness_overhead_ns }
+    if codec_eq(report.warmup_cap_ns, 0) != codec_eq(report.warmup_stop_tag, 0) { return 6 }
+    if codec_eq(report.warmup_stop_tag, 0) != codec_eq(report.warmup_iterations, 0) { return 6 }
+    if report.sample_count > report.sample_cap { return 6 }
+    if codec_and(codec_eq(report.sampling_stop_tag, 0), codec_ne(report.sample_count, report.sample_cap)) == 1 { return 6 }
+    if codec_and(codec_eq(report.sampling_stop_tag, 1), codec_ge(report.sample_count, report.sample_cap)) == 1 { return 6 }
+    let expected: ReportSummary = summarize_segments(report.sample_segment0, report.sample_segment1)
+    let flags0: List[Int] = outlier_segment(report.sample_segment0, expected.p25, expected.p75)
+    let flags1: List[Int] = outlier_segment(report.sample_segment1, expected.p25, expected.p75)
+    let actual0: List[Int] = report.outlier_segment0
+    let actual1: List[Int] = report.outlier_segment1
+    let mut index0 = 0
+    while index0 < len(flags0) {
+        if flags0[index0] != actual0[index0] { return 6 }
+        index0 = index0 + 1
+    }
+    let mut index1 = 0
+    while index1 < len(flags1) {
+        if flags1[index1] != actual1[index1] { return 6 }
+        index1 = index1 + 1
+    }
+    let check_summary_minimum = codec_model_integer(report.summary_minimum, 0, 9007199254740991)
+    if check_summary_minimum != 0 { return check_summary_minimum }
+    let check_summary_maximum = codec_model_integer(report.summary_maximum, 0, 9007199254740991)
+    if check_summary_maximum != 0 { return check_summary_maximum }
+    let check_summary_median = codec_model_integer(report.summary_median, 0, 9007199254740991)
+    if check_summary_median != 0 { return check_summary_median }
+    let check_summary_p25 = codec_model_integer(report.summary_p25, 0, 9007199254740991)
+    if check_summary_p25 != 0 { return check_summary_p25 }
+    let check_summary_p75 = codec_model_integer(report.summary_p75, 0, 9007199254740991)
+    if check_summary_p75 != 0 { return check_summary_p75 }
+    let check_summary_median_absolute_deviation = codec_model_integer(report.summary_median_absolute_deviation, 0, 9007199254740991)
+    if check_summary_median_absolute_deviation != 0 { return check_summary_median_absolute_deviation }
+    if report.summary_minimum != expected.minimum { return 6 }
+    if report.summary_maximum != expected.maximum { return 6 }
+    if report.summary_median != expected.median { return 6 }
+    if report.summary_p25 != expected.p25 { return 6 }
+    if report.summary_p75 != expected.p75 { return 6 }
+    if report.summary_median_absolute_deviation != expected.median_absolute_deviation { return 6 }
+    if report.allocated_bytes_available {
+    let check_allocated_bytes_value = codec_model_integer(report.allocated_bytes_value, 0, 9007199254740991)
+    if check_allocated_bytes_value != 0 { return check_allocated_bytes_value }
+    }
+    if report.allocation_count_available {
+    let check_allocation_count_value = codec_model_integer(report.allocation_count_value, 0, 9007199254740991)
+    if check_allocation_count_value != 0 { return check_allocation_count_value }
+    }
+    if report.gc_collections_available {
+    let check_gc_collections_value = codec_model_integer(report.gc_collections_value, 0, 9007199254740991)
+    if check_gc_collections_value != 0 { return check_gc_collections_value }
+    }
+    if report.vm_peak_bytes_available {
+    let check_vm_peak_bytes_value = codec_model_integer(report.vm_peak_bytes_value, 0, 9007199254740991)
+    if check_vm_peak_bytes_value != 0 { return check_vm_peak_bytes_value }
+    }
+    if report.cpu_cycles_available {
+    let check_cpu_cycles_value = codec_model_integer(report.cpu_cycles_value, 0, 9007199254740991)
+    if check_cpu_cycles_value != 0 { return check_cpu_cycles_value }
+    }
+    if digest_ok(report.toolchain_sha256) == 0 { return 5 }
+    if digest_ok(report.source_sha256) == 0 { return 5 }
+    if digest_ok(report.artifact_sha256) == 0 { return 5 }
+    if digest_ok(report.host_id_sha256) == 0 { return 5 }
+    let check_host_os = codec_check_text(report.host_os, 128, 0)
+    if check_host_os != 0 { return check_host_os }
+    let check_host_arch = codec_check_text(report.host_arch, 128, 0)
+    if check_host_arch != 0 { return check_host_arch }
+    let check_host_cpu = codec_check_text(report.host_cpu, 128, 0)
+    if check_host_cpu != 0 { return check_host_cpu }
+    if report.host_affinity_available {
+    let check_host_affinity = codec_check_text(report.host_affinity, 128, 0)
+    if check_host_affinity != 0 { return check_host_affinity }
+    }
+    if report.host_frequency_hz_available {
+    let check_host_frequency_hz = codec_model_integer(report.host_frequency_hz, 0, 9007199254740991)
+    if check_host_frequency_hz != 0 { return check_host_frequency_hz }
+    }
+    let check_host_noise = codec_check_text(report.host_noise, 255, 1)
+    if check_host_noise != 0 { return check_host_noise }
+    return 0
+}
+
 fn codec_decode_model(read source: Bytes, read ends: Bytes) -> BenchReport {
+    # Semantic validation follows validateReport's field traversal, including
+    # each cross-field invariant at its defined point. Numeric error-code order
+    # is not an ordering of malformed semantic fields.
     let root = codec_space(source, 0)
-    let mut status = 0
     let shape_root = codec_fields(source, ends, root, "schema,identity,clock,budget,measurement,samples,outliers,summary,counters,digests,host")
-    if shape_root == 12 { let refused: BenchReport = neutral_report(12)
+    if shape_root != 0 { let refused: BenchReport = neutral_report(shape_root)
         return refused }
-    status = first_failure(status, shape_root)
-    let identity = codec_field(source, ends, root, "identity")
-    if identity == -12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    let shape_identity = codec_fields(source, ends, identity, "suite,case,parameter,metric,unit,direction")
-    if shape_identity == 12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    status = first_failure(status, shape_identity)
-    let budget = codec_field(source, ends, root, "budget")
-    if budget == -12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    let shape_budget = codec_fields(source, ends, budget, "warmup_cap_ns,sampling_cap_ns,sample_cap")
-    if shape_budget == 12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    status = first_failure(status, shape_budget)
-    let measurement = codec_field(source, ends, root, "measurement")
-    if measurement == -12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    let shape_measurement = codec_fields(source, ends, measurement, "warmup_iterations,warmup_stop,iterations_per_sample,sample_count,sampling_stop,harness_overhead_ns")
-    if shape_measurement == 12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    status = first_failure(status, shape_measurement)
-    let summary = codec_field(source, ends, root, "summary")
-    if summary == -12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    let shape_summary = codec_fields(source, ends, summary, "minimum,maximum,median,p25,p75,median_absolute_deviation")
-    if shape_summary == 12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    status = first_failure(status, shape_summary)
-    let counters = codec_field(source, ends, root, "counters")
-    if counters == -12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    let shape_counters = codec_fields(source, ends, counters, "allocated_bytes,allocation_count,gc_collections,vm_peak_bytes,cpu_cycles")
-    if shape_counters == 12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    status = first_failure(status, shape_counters)
-    let digests = codec_field(source, ends, root, "digests")
-    if digests == -12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    let shape_digests = codec_fields(source, ends, digests, "toolchain_sha256,source_sha256,artifact_sha256")
-    if shape_digests == 12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    status = first_failure(status, shape_digests)
-    let host = codec_field(source, ends, root, "host")
-    if host == -12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    let shape_host = codec_fields(source, ends, host, "host_id_sha256,os,arch,cpu,affinity,frequency_hz,noise")
-    if shape_host == 12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    status = first_failure(status, shape_host)
     let at_schema_value = codec_field(source, ends, root, "schema")
     if at_schema_value == -12 { let refused: BenchReport = neutral_report(12)
         return refused }
     let schema_value: CodecNumber = codec_tag(source, at_schema_value, "kofun.bench-report/v1")
-    if schema_value.status == 12 { let refused: BenchReport = neutral_report(12)
+    if schema_value.status != 0 { let refused: BenchReport = neutral_report(schema_value.status)
         return refused }
-    status = first_failure(status, schema_value.status)
-    let at_unit_value = codec_field(source, ends, identity, "unit")
-    if at_unit_value == -12 { let refused: BenchReport = neutral_report(12)
+    let identity = codec_field(source, ends, root, "identity")
+    if identity == -12 { let refused: BenchReport = neutral_report(12)
         return refused }
-    let unit_value: CodecNumber = codec_tag(source, at_unit_value, "ns")
-    if unit_value.status == 12 { let refused: BenchReport = neutral_report(12)
+    let shape_identity = codec_fields_optional(source, ends, identity, "suite,case,parameter,metric,unit,direction", 11)
+    if shape_identity != 0 { let refused: BenchReport = neutral_report(shape_identity)
         return refused }
-    status = first_failure(status, unit_value.status)
     let at_suite = codec_field(source, ends, identity, "suite")
     if at_suite == -12 { let refused: BenchReport = neutral_report(12)
         return refused }
     let suite: CodecText = codec_text(source, at_suite, 96, 0)
-    if suite.status == 12 { let refused: BenchReport = neutral_report(12)
+    if suite.status != 0 { let refused: BenchReport = neutral_report(suite.status)
         return refused }
-    status = first_failure(status, suite.status)
     let at_case = codec_field(source, ends, identity, "case")
     if at_case == -12 { let refused: BenchReport = neutral_report(12)
         return refused }
     let case: CodecText = codec_text(source, at_case, 96, 0)
-    if case.status == 12 { let refused: BenchReport = neutral_report(12)
+    if case.status != 0 { let refused: BenchReport = neutral_report(case.status)
         return refused }
-    status = first_failure(status, case.status)
-    let at_metric = codec_field(source, ends, identity, "metric")
-    if at_metric == -12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    let metric: CodecText = codec_text(source, at_metric, 96, 0)
-    if metric.status == 12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    status = first_failure(status, metric.status)
     let parameter_at = codec_field(source, ends, identity, "parameter")
     if parameter_at == -12 { let refused: BenchReport = neutral_report(12)
         return refused }
     let parameter_presence: CodecPresence = codec_presence(parameter_at)
     let parameter: CodecText = codec_optional_parameter(source, parameter_at)
-    if parameter.status == 12 { let refused: BenchReport = neutral_report(12)
+    if parameter.status != 0 { let refused: BenchReport = neutral_report(parameter.status)
         return refused }
-    status = first_failure(status, parameter.status)
+    let at_metric = codec_field(source, ends, identity, "metric")
+    if at_metric == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let metric: CodecText = codec_text(source, at_metric, 96, 0)
+    if metric.status != 0 { let refused: BenchReport = neutral_report(metric.status)
+        return refused }
+    let at_unit_value = codec_field(source, ends, identity, "unit")
+    if at_unit_value == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let unit_value: CodecNumber = codec_tag(source, at_unit_value, "ns")
+    if unit_value.status != 0 { let refused: BenchReport = neutral_report(unit_value.status)
+        return refused }
     let at_direction_tag = codec_field(source, ends, identity, "direction")
     if at_direction_tag == -12 { let refused: BenchReport = neutral_report(12)
         return refused }
     let direction_tag: CodecNumber = codec_tag(source, at_direction_tag, "lower-is-better,higher-is-better")
-    if direction_tag.status == 12 { let refused: BenchReport = neutral_report(12)
+    if direction_tag.status != 0 { let refused: BenchReport = neutral_report(direction_tag.status)
         return refused }
-    status = first_failure(status, direction_tag.status)
     let at_clock_tag = codec_field(source, ends, root, "clock")
     if at_clock_tag == -12 { let refused: BenchReport = neutral_report(12)
         return refused }
     let clock_tag: CodecNumber = codec_tag(source, at_clock_tag, "monotonic,process-cpu,wall")
-    if clock_tag.status == 12 { let refused: BenchReport = neutral_report(12)
+    if clock_tag.status != 0 { let refused: BenchReport = neutral_report(clock_tag.status)
         return refused }
-    status = first_failure(status, clock_tag.status)
-    let at_warmup_stop_tag = codec_field(source, ends, measurement, "warmup_stop")
-    if at_warmup_stop_tag == -12 { let refused: BenchReport = neutral_report(12)
+    let budget = codec_field(source, ends, root, "budget")
+    if budget == -12 { let refused: BenchReport = neutral_report(12)
         return refused }
-    let warmup_stop_tag: CodecNumber = codec_tag(source, at_warmup_stop_tag, "disabled,steady,time-cap")
-    if warmup_stop_tag.status == 12 { let refused: BenchReport = neutral_report(12)
+    let shape_budget = codec_fields(source, ends, budget, "warmup_cap_ns,sampling_cap_ns,sample_cap")
+    if shape_budget != 0 { let refused: BenchReport = neutral_report(shape_budget)
         return refused }
-    status = first_failure(status, warmup_stop_tag.status)
-    let at_sampling_stop_tag = codec_field(source, ends, measurement, "sampling_stop")
-    if at_sampling_stop_tag == -12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    let sampling_stop_tag: CodecNumber = codec_tag(source, at_sampling_stop_tag, "sample-cap,time-cap")
-    if sampling_stop_tag.status == 12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    status = first_failure(status, sampling_stop_tag.status)
     let at_warmup_cap_ns = codec_field(source, ends, budget, "warmup_cap_ns")
     if at_warmup_cap_ns == -12 { let refused: BenchReport = neutral_report(12)
         return refused }
     let warmup_cap_ns: CodecNumber = codec_integer(source, ends, at_warmup_cap_ns, 0, 500000000)
-    if warmup_cap_ns.status == 12 { let refused: BenchReport = neutral_report(12)
+    if warmup_cap_ns.status != 0 { let refused: BenchReport = neutral_report(warmup_cap_ns.status)
         return refused }
-    status = first_failure(status, warmup_cap_ns.status)
     let at_sampling_cap_ns = codec_field(source, ends, budget, "sampling_cap_ns")
     if at_sampling_cap_ns == -12 { let refused: BenchReport = neutral_report(12)
         return refused }
     let sampling_cap_ns: CodecNumber = codec_integer(source, ends, at_sampling_cap_ns, 1, 3000000000)
-    if sampling_cap_ns.status == 12 { let refused: BenchReport = neutral_report(12)
+    if sampling_cap_ns.status != 0 { let refused: BenchReport = neutral_report(sampling_cap_ns.status)
         return refused }
-    status = first_failure(status, sampling_cap_ns.status)
     let at_sample_cap = codec_field(source, ends, budget, "sample_cap")
     if at_sample_cap == -12 { let refused: BenchReport = neutral_report(12)
         return refused }
     let sample_cap: CodecNumber = codec_integer(source, ends, at_sample_cap, 1, 100)
-    if sample_cap.status == 12 { let refused: BenchReport = neutral_report(12)
+    if sample_cap.status != 0 { let refused: BenchReport = neutral_report(sample_cap.status)
         return refused }
-    status = first_failure(status, sample_cap.status)
+    let measurement = codec_field(source, ends, root, "measurement")
+    if measurement == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let shape_measurement = codec_fields(source, ends, measurement, "warmup_iterations,warmup_stop,iterations_per_sample,sample_count,sampling_stop,harness_overhead_ns")
+    if shape_measurement != 0 { let refused: BenchReport = neutral_report(shape_measurement)
+        return refused }
     let at_warmup_iterations = codec_field(source, ends, measurement, "warmup_iterations")
     if at_warmup_iterations == -12 { let refused: BenchReport = neutral_report(12)
         return refused }
     let warmup_iterations: CodecNumber = codec_integer(source, ends, at_warmup_iterations, 0, 9007199254740991)
-    if warmup_iterations.status == 12 { let refused: BenchReport = neutral_report(12)
+    if warmup_iterations.status != 0 { let refused: BenchReport = neutral_report(warmup_iterations.status)
         return refused }
-    status = first_failure(status, warmup_iterations.status)
+    let at_warmup_stop_tag = codec_field(source, ends, measurement, "warmup_stop")
+    if at_warmup_stop_tag == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let warmup_stop_tag: CodecNumber = codec_tag(source, at_warmup_stop_tag, "disabled,steady,time-cap")
+    if warmup_stop_tag.status != 0 { let refused: BenchReport = neutral_report(warmup_stop_tag.status)
+        return refused }
     let at_iterations_per_sample = codec_field(source, ends, measurement, "iterations_per_sample")
     if at_iterations_per_sample == -12 { let refused: BenchReport = neutral_report(12)
         return refused }
     let iterations_per_sample: CodecNumber = codec_integer(source, ends, at_iterations_per_sample, 1, 9007199254740991)
-    if iterations_per_sample.status == 12 { let refused: BenchReport = neutral_report(12)
+    if iterations_per_sample.status != 0 { let refused: BenchReport = neutral_report(iterations_per_sample.status)
         return refused }
-    status = first_failure(status, iterations_per_sample.status)
     let at_sample_count = codec_field(source, ends, measurement, "sample_count")
     if at_sample_count == -12 { let refused: BenchReport = neutral_report(12)
         return refused }
     let sample_count: CodecNumber = codec_integer(source, ends, at_sample_count, 1, 100)
-    if sample_count.status == 12 { let refused: BenchReport = neutral_report(12)
+    if sample_count.status != 0 { let refused: BenchReport = neutral_report(sample_count.status)
         return refused }
-    status = first_failure(status, sample_count.status)
+    let at_sampling_stop_tag = codec_field(source, ends, measurement, "sampling_stop")
+    if at_sampling_stop_tag == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let sampling_stop_tag: CodecNumber = codec_tag(source, at_sampling_stop_tag, "sample-cap,time-cap")
+    if sampling_stop_tag.status != 0 { let refused: BenchReport = neutral_report(sampling_stop_tag.status)
+        return refused }
     let at_harness_overhead_ns = codec_field(source, ends, measurement, "harness_overhead_ns")
     if at_harness_overhead_ns == -12 { let refused: BenchReport = neutral_report(12)
         return refused }
     let harness_overhead_ns: CodecNumber = codec_integer(source, ends, at_harness_overhead_ns, 0, 9007199254740991)
-    if harness_overhead_ns.status == 12 { let refused: BenchReport = neutral_report(12)
+    if harness_overhead_ns.status != 0 { let refused: BenchReport = neutral_report(harness_overhead_ns.status)
         return refused }
-    status = first_failure(status, harness_overhead_ns.status)
-    let at_summary_minimum = codec_field(source, ends, summary, "minimum")
-    if at_summary_minimum == -12 { let refused: BenchReport = neutral_report(12)
+    if codec_eq(warmup_cap_ns.value, 0) != codec_eq(warmup_stop_tag.value, 0) { let refused: BenchReport = neutral_report(6)
         return refused }
-    let summary_minimum: CodecNumber = codec_integer(source, ends, at_summary_minimum, 0, 9007199254740991)
-    if summary_minimum.status == 12 { let refused: BenchReport = neutral_report(12)
+    if codec_eq(warmup_stop_tag.value, 0) != codec_eq(warmup_iterations.value, 0) { let refused: BenchReport = neutral_report(6)
         return refused }
-    status = first_failure(status, summary_minimum.status)
-    let at_summary_maximum = codec_field(source, ends, summary, "maximum")
-    if at_summary_maximum == -12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    let summary_maximum: CodecNumber = codec_integer(source, ends, at_summary_maximum, 0, 9007199254740991)
-    if summary_maximum.status == 12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    status = first_failure(status, summary_maximum.status)
-    let at_summary_median = codec_field(source, ends, summary, "median")
-    if at_summary_median == -12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    let summary_median: CodecNumber = codec_integer(source, ends, at_summary_median, 0, 9007199254740991)
-    if summary_median.status == 12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    status = first_failure(status, summary_median.status)
-    let at_summary_p25 = codec_field(source, ends, summary, "p25")
-    if at_summary_p25 == -12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    let summary_p25: CodecNumber = codec_integer(source, ends, at_summary_p25, 0, 9007199254740991)
-    if summary_p25.status == 12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    status = first_failure(status, summary_p25.status)
-    let at_summary_p75 = codec_field(source, ends, summary, "p75")
-    if at_summary_p75 == -12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    let summary_p75: CodecNumber = codec_integer(source, ends, at_summary_p75, 0, 9007199254740991)
-    if summary_p75.status == 12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    status = first_failure(status, summary_p75.status)
-    let at_summary_median_absolute_deviation = codec_field(source, ends, summary, "median_absolute_deviation")
-    if at_summary_median_absolute_deviation == -12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    let summary_median_absolute_deviation: CodecNumber = codec_integer(source, ends, at_summary_median_absolute_deviation, 0, 9007199254740991)
-    if summary_median_absolute_deviation.status == 12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    status = first_failure(status, summary_median_absolute_deviation.status)
-    let at_allocated_bytes = codec_field(source, ends, counters, "allocated_bytes")
-    if at_allocated_bytes == -12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    let allocated_bytes: CodecCounter = codec_counter(source, ends, at_allocated_bytes)
-    if allocated_bytes.status == 12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    status = first_failure(status, allocated_bytes.status)
-    let at_allocation_count = codec_field(source, ends, counters, "allocation_count")
-    if at_allocation_count == -12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    let allocation_count: CodecCounter = codec_counter(source, ends, at_allocation_count)
-    if allocation_count.status == 12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    status = first_failure(status, allocation_count.status)
-    let at_gc_collections = codec_field(source, ends, counters, "gc_collections")
-    if at_gc_collections == -12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    let gc_collections: CodecCounter = codec_counter(source, ends, at_gc_collections)
-    if gc_collections.status == 12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    status = first_failure(status, gc_collections.status)
-    let at_vm_peak_bytes = codec_field(source, ends, counters, "vm_peak_bytes")
-    if at_vm_peak_bytes == -12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    let vm_peak_bytes: CodecCounter = codec_counter(source, ends, at_vm_peak_bytes)
-    if vm_peak_bytes.status == 12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    status = first_failure(status, vm_peak_bytes.status)
-    let at_cpu_cycles = codec_field(source, ends, counters, "cpu_cycles")
-    if at_cpu_cycles == -12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    let cpu_cycles: CodecCounter = codec_counter(source, ends, at_cpu_cycles)
-    if cpu_cycles.status == 12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    status = first_failure(status, cpu_cycles.status)
-    let at_toolchain_sha256 = codec_field(source, ends, digests, "toolchain_sha256")
-    if at_toolchain_sha256 == -12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    let toolchain_sha256: CodecText = codec_text(source, at_toolchain_sha256, 64, 2)
-    if toolchain_sha256.status == 12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    status = first_failure(status, toolchain_sha256.status)
-    let at_source_sha256 = codec_field(source, ends, digests, "source_sha256")
-    if at_source_sha256 == -12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    let source_sha256: CodecText = codec_text(source, at_source_sha256, 64, 2)
-    if source_sha256.status == 12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    status = first_failure(status, source_sha256.status)
-    let at_artifact_sha256 = codec_field(source, ends, digests, "artifact_sha256")
-    if at_artifact_sha256 == -12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    let artifact_sha256: CodecText = codec_text(source, at_artifact_sha256, 64, 2)
-    if artifact_sha256.status == 12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    status = first_failure(status, artifact_sha256.status)
-    let at_host_id_sha256 = codec_field(source, ends, host, "host_id_sha256")
-    if at_host_id_sha256 == -12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    let host_id_sha256: CodecText = codec_text(source, at_host_id_sha256, 64, 2)
-    if host_id_sha256.status == 12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    status = first_failure(status, host_id_sha256.status)
-    let at_host_os = codec_field(source, ends, host, "os")
-    if at_host_os == -12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    let host_os: CodecText = codec_text(source, at_host_os, 128, 0)
-    if host_os.status == 12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    status = first_failure(status, host_os.status)
-    let at_host_arch = codec_field(source, ends, host, "arch")
-    if at_host_arch == -12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    let host_arch: CodecText = codec_text(source, at_host_arch, 128, 0)
-    if host_arch.status == 12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    status = first_failure(status, host_arch.status)
-    let at_host_cpu = codec_field(source, ends, host, "cpu")
-    if at_host_cpu == -12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    let host_cpu: CodecText = codec_text(source, at_host_cpu, 128, 0)
-    if host_cpu.status == 12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    status = first_failure(status, host_cpu.status)
-    let at_host_noise = codec_field(source, ends, host, "noise")
-    if at_host_noise == -12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    let host_noise: CodecText = codec_text(source, at_host_noise, 255, 1)
-    if host_noise.status == 12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    status = first_failure(status, host_noise.status)
-    let at_host_affinity = codec_field(source, ends, host, "affinity")
-    if at_host_affinity == -12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    let host_affinity: CodecAvailableText = codec_available_text(source, ends, at_host_affinity)
-    if host_affinity.status == 12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    status = first_failure(status, host_affinity.status)
-    let at_host_frequency_hz = codec_field(source, ends, host, "frequency_hz")
-    if at_host_frequency_hz == -12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    let host_frequency_hz: CodecCounter = codec_counter(source, ends, at_host_frequency_hz)
-    if host_frequency_hz.status == 12 { let refused: BenchReport = neutral_report(12)
-        return refused }
-    status = first_failure(status, host_frequency_hz.status)
     let at_samples = codec_field(source, ends, root, "samples")
     if at_samples == -12 { let refused: BenchReport = neutral_report(12)
         return refused }
     let samples: CodecSeries = codec_series(source, ends, at_samples, 0)
-    if samples.status == 12 { let refused: BenchReport = neutral_report(12)
+    if samples.status != 0 { let refused: BenchReport = neutral_report(samples.status)
         return refused }
-    status = first_failure(status, samples.status)
     let sample_segment0: List[Int] = samples.first
     let sample_segment1: List[Int] = samples.second
+    let count = len(sample_segment0) + len(sample_segment1)
+    if count == 0 { let refused: BenchReport = neutral_report(6)
+        return refused }
+    if count != sample_count.value { let refused: BenchReport = neutral_report(6)
+        return refused }
+    if count > sample_cap.value { let refused: BenchReport = neutral_report(6)
+        return refused }
+    if codec_and(codec_eq(sampling_stop_tag.value, 0), codec_ne(count, sample_cap.value)) == 1 { let refused: BenchReport = neutral_report(6)
+        return refused }
+    if codec_and(codec_eq(sampling_stop_tag.value, 1), codec_ge(count, sample_cap.value)) == 1 { let refused: BenchReport = neutral_report(6)
+        return refused }
     let at_outliers = codec_field(source, ends, root, "outliers")
     if at_outliers == -12 { let refused: BenchReport = neutral_report(12)
         return refused }
     let outliers: CodecSeries = codec_series(source, ends, at_outliers, 1)
-    if outliers.status == 12 { let refused: BenchReport = neutral_report(12)
+    if outliers.status != 0 { let refused: BenchReport = neutral_report(outliers.status)
         return refused }
-    status = first_failure(status, outliers.status)
     let outlier_segment0: List[Int] = outliers.first
     let outlier_segment1: List[Int] = outliers.second
-    if status != 0 { let refused: BenchReport = neutral_report(status)
+    if len(outlier_segment0) + len(outlier_segment1) != count { let refused: BenchReport = neutral_report(6)
+        return refused }
+    let expected: ReportSummary = summarize_segments(sample_segment0, sample_segment1)
+    let flags0: List[Int] = outlier_segment(sample_segment0, expected.p25, expected.p75)
+    let flags1: List[Int] = outlier_segment(sample_segment1, expected.p25, expected.p75)
+    let mut flag_index0 = 0
+    while flag_index0 < len(flags0) {
+        if flags0[flag_index0] != outlier_segment0[flag_index0] { let refused: BenchReport = neutral_report(6)
+            return refused }
+        flag_index0 = flag_index0 + 1
+    }
+    let mut flag_index1 = 0
+    while flag_index1 < len(flags1) {
+        if flags1[flag_index1] != outlier_segment1[flag_index1] { let refused: BenchReport = neutral_report(6)
+            return refused }
+        flag_index1 = flag_index1 + 1
+    }
+    let summary = codec_field(source, ends, root, "summary")
+    if summary == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let shape_summary = codec_fields(source, ends, summary, "minimum,maximum,median,p25,p75,median_absolute_deviation")
+    if shape_summary != 0 { let refused: BenchReport = neutral_report(shape_summary)
+        return refused }
+    let at_summary_minimum = codec_field(source, ends, summary, "minimum")
+    if at_summary_minimum == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let summary_minimum: CodecNumber = codec_integer(source, ends, at_summary_minimum, 0, 9007199254740991)
+    if summary_minimum.status != 0 { let refused: BenchReport = neutral_report(summary_minimum.status)
+        return refused }
+    let at_summary_maximum = codec_field(source, ends, summary, "maximum")
+    if at_summary_maximum == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let summary_maximum: CodecNumber = codec_integer(source, ends, at_summary_maximum, 0, 9007199254740991)
+    if summary_maximum.status != 0 { let refused: BenchReport = neutral_report(summary_maximum.status)
+        return refused }
+    let at_summary_median = codec_field(source, ends, summary, "median")
+    if at_summary_median == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let summary_median: CodecNumber = codec_integer(source, ends, at_summary_median, 0, 9007199254740991)
+    if summary_median.status != 0 { let refused: BenchReport = neutral_report(summary_median.status)
+        return refused }
+    let at_summary_p25 = codec_field(source, ends, summary, "p25")
+    if at_summary_p25 == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let summary_p25: CodecNumber = codec_integer(source, ends, at_summary_p25, 0, 9007199254740991)
+    if summary_p25.status != 0 { let refused: BenchReport = neutral_report(summary_p25.status)
+        return refused }
+    let at_summary_p75 = codec_field(source, ends, summary, "p75")
+    if at_summary_p75 == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let summary_p75: CodecNumber = codec_integer(source, ends, at_summary_p75, 0, 9007199254740991)
+    if summary_p75.status != 0 { let refused: BenchReport = neutral_report(summary_p75.status)
+        return refused }
+    let at_summary_median_absolute_deviation = codec_field(source, ends, summary, "median_absolute_deviation")
+    if at_summary_median_absolute_deviation == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let summary_median_absolute_deviation: CodecNumber = codec_integer(source, ends, at_summary_median_absolute_deviation, 0, 9007199254740991)
+    if summary_median_absolute_deviation.status != 0 { let refused: BenchReport = neutral_report(summary_median_absolute_deviation.status)
+        return refused }
+    if summary_minimum.value != expected.minimum { let refused: BenchReport = neutral_report(6)
+        return refused }
+    if summary_maximum.value != expected.maximum { let refused: BenchReport = neutral_report(6)
+        return refused }
+    if summary_median.value != expected.median { let refused: BenchReport = neutral_report(6)
+        return refused }
+    if summary_p25.value != expected.p25 { let refused: BenchReport = neutral_report(6)
+        return refused }
+    if summary_p75.value != expected.p75 { let refused: BenchReport = neutral_report(6)
+        return refused }
+    if summary_median_absolute_deviation.value != expected.median_absolute_deviation { let refused: BenchReport = neutral_report(6)
+        return refused }
+    let counters = codec_field(source, ends, root, "counters")
+    if counters == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let shape_counters = codec_fields(source, ends, counters, "allocated_bytes,allocation_count,gc_collections,vm_peak_bytes,cpu_cycles")
+    if shape_counters != 0 { let refused: BenchReport = neutral_report(shape_counters)
+        return refused }
+    let at_allocated_bytes = codec_field(source, ends, counters, "allocated_bytes")
+    if at_allocated_bytes == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let allocated_bytes: CodecCounter = codec_counter(source, ends, at_allocated_bytes)
+    if allocated_bytes.status != 0 { let refused: BenchReport = neutral_report(allocated_bytes.status)
+        return refused }
+    let at_allocation_count = codec_field(source, ends, counters, "allocation_count")
+    if at_allocation_count == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let allocation_count: CodecCounter = codec_counter(source, ends, at_allocation_count)
+    if allocation_count.status != 0 { let refused: BenchReport = neutral_report(allocation_count.status)
+        return refused }
+    let at_gc_collections = codec_field(source, ends, counters, "gc_collections")
+    if at_gc_collections == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let gc_collections: CodecCounter = codec_counter(source, ends, at_gc_collections)
+    if gc_collections.status != 0 { let refused: BenchReport = neutral_report(gc_collections.status)
+        return refused }
+    let at_vm_peak_bytes = codec_field(source, ends, counters, "vm_peak_bytes")
+    if at_vm_peak_bytes == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let vm_peak_bytes: CodecCounter = codec_counter(source, ends, at_vm_peak_bytes)
+    if vm_peak_bytes.status != 0 { let refused: BenchReport = neutral_report(vm_peak_bytes.status)
+        return refused }
+    let at_cpu_cycles = codec_field(source, ends, counters, "cpu_cycles")
+    if at_cpu_cycles == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let cpu_cycles: CodecCounter = codec_counter(source, ends, at_cpu_cycles)
+    if cpu_cycles.status != 0 { let refused: BenchReport = neutral_report(cpu_cycles.status)
+        return refused }
+    let digests = codec_field(source, ends, root, "digests")
+    if digests == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let shape_digests = codec_fields(source, ends, digests, "toolchain_sha256,source_sha256,artifact_sha256")
+    if shape_digests != 0 { let refused: BenchReport = neutral_report(shape_digests)
+        return refused }
+    let at_toolchain_sha256 = codec_field(source, ends, digests, "toolchain_sha256")
+    if at_toolchain_sha256 == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let toolchain_sha256: CodecText = codec_text(source, at_toolchain_sha256, 64, 2)
+    if toolchain_sha256.status != 0 { let refused: BenchReport = neutral_report(toolchain_sha256.status)
+        return refused }
+    let at_source_sha256 = codec_field(source, ends, digests, "source_sha256")
+    if at_source_sha256 == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let source_sha256: CodecText = codec_text(source, at_source_sha256, 64, 2)
+    if source_sha256.status != 0 { let refused: BenchReport = neutral_report(source_sha256.status)
+        return refused }
+    let at_artifact_sha256 = codec_field(source, ends, digests, "artifact_sha256")
+    if at_artifact_sha256 == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let artifact_sha256: CodecText = codec_text(source, at_artifact_sha256, 64, 2)
+    if artifact_sha256.status != 0 { let refused: BenchReport = neutral_report(artifact_sha256.status)
+        return refused }
+    let host = codec_field(source, ends, root, "host")
+    if host == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let shape_host = codec_fields(source, ends, host, "host_id_sha256,os,arch,cpu,affinity,frequency_hz,noise")
+    if shape_host != 0 { let refused: BenchReport = neutral_report(shape_host)
+        return refused }
+    let at_host_id_sha256 = codec_field(source, ends, host, "host_id_sha256")
+    if at_host_id_sha256 == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let host_id_sha256: CodecText = codec_text(source, at_host_id_sha256, 64, 2)
+    if host_id_sha256.status != 0 { let refused: BenchReport = neutral_report(host_id_sha256.status)
+        return refused }
+    let at_host_os = codec_field(source, ends, host, "os")
+    if at_host_os == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let host_os: CodecText = codec_text(source, at_host_os, 128, 0)
+    if host_os.status != 0 { let refused: BenchReport = neutral_report(host_os.status)
+        return refused }
+    let at_host_arch = codec_field(source, ends, host, "arch")
+    if at_host_arch == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let host_arch: CodecText = codec_text(source, at_host_arch, 128, 0)
+    if host_arch.status != 0 { let refused: BenchReport = neutral_report(host_arch.status)
+        return refused }
+    let at_host_cpu = codec_field(source, ends, host, "cpu")
+    if at_host_cpu == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let host_cpu: CodecText = codec_text(source, at_host_cpu, 128, 0)
+    if host_cpu.status != 0 { let refused: BenchReport = neutral_report(host_cpu.status)
+        return refused }
+    let at_host_affinity = codec_field(source, ends, host, "affinity")
+    if at_host_affinity == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let host_affinity: CodecAvailableText = codec_available_text(source, ends, at_host_affinity)
+    if host_affinity.status != 0 { let refused: BenchReport = neutral_report(host_affinity.status)
+        return refused }
+    let at_host_frequency_hz = codec_field(source, ends, host, "frequency_hz")
+    if at_host_frequency_hz == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let host_frequency_hz: CodecCounter = codec_counter(source, ends, at_host_frequency_hz)
+    if host_frequency_hz.status != 0 { let refused: BenchReport = neutral_report(host_frequency_hz.status)
+        return refused }
+    let at_host_noise = codec_field(source, ends, host, "noise")
+    if at_host_noise == -12 { let refused: BenchReport = neutral_report(12)
+        return refused }
+    let host_noise: CodecText = codec_text(source, at_host_noise, 255, 1)
+    if host_noise.status != 0 { let refused: BenchReport = neutral_report(host_noise.status)
         return refused }
     let report: BenchReport = BenchReport(
         status_tag: 0,
@@ -1477,9 +1612,6 @@ fn codec_decode_model(read source: Bytes, read ends: Bytes) -> BenchReport {
         host_frequency_hz: host_frequency_hz.value,
         host_noise: host_noise.value
     )
-    let checked = codec_report_status(report)
-    if checked != 0 { let refused: BenchReport = neutral_report(checked)
-        return refused }
     return report
 }
 
@@ -1787,39 +1919,7 @@ fn encode_report(report: BenchReport, edit destination: Bytes) -> Int {
     if report.status_tag < 0 { return 3 }
     if report.status_tag > 12 { return 3 }
     if report.status_tag != 0 { return report.status_tag }
-    let mut status = codec_report_status(report)
-
-    let check_suite = codec_check_text(report.suite, 96, 0)
-    if check_suite == 12 { return 12 }
-    status = first_failure(status, check_suite)
-    let check_case = codec_check_text(report.case, 96, 0)
-    if check_case == 12 { return 12 }
-    status = first_failure(status, check_case)
-    if report.parameter_present {
-    let check_parameter = codec_check_text(report.parameter, 96, 0)
-    if check_parameter == 12 { return 12 }
-    status = first_failure(status, check_parameter)
-    }
-    let check_metric = codec_check_text(report.metric, 96, 0)
-    if check_metric == 12 { return 12 }
-    status = first_failure(status, check_metric)
-    let check_host_os = codec_check_text(report.host_os, 128, 0)
-    if check_host_os == 12 { return 12 }
-    status = first_failure(status, check_host_os)
-    let check_host_arch = codec_check_text(report.host_arch, 128, 0)
-    if check_host_arch == 12 { return 12 }
-    status = first_failure(status, check_host_arch)
-    let check_host_cpu = codec_check_text(report.host_cpu, 128, 0)
-    if check_host_cpu == 12 { return 12 }
-    status = first_failure(status, check_host_cpu)
-    if report.host_affinity_available {
-    let check_host_affinity = codec_check_text(report.host_affinity, 128, 0)
-    if check_host_affinity == 12 { return 12 }
-    status = first_failure(status, check_host_affinity)
-    }
-    let check_host_noise = codec_check_text(report.host_noise, 255, 1)
-    if check_host_noise == 12 { return 12 }
-    status = first_failure(status, check_host_noise)
+    let status = codec_report_status(report)
     if status != 0 { return status }
     let scratch = stage2_bytes_empty()
     let encoded = codec_encode_body(report, scratch)

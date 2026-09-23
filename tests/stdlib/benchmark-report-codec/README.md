@@ -11,7 +11,10 @@ The parser validates the whole UTF-8/JSON document before reporting nesting,
 then compares decoded keys before reading schema fields. Its stack and token
 ends are bounded Bytes buffers indexed by wire offsets. It does not recurse
 with input depth or accumulate temporary Text for keys. Text conversion occurs
-only after length, Unicode scalar, and control validation. Numeric validation
+only after Unicode scalar, byte-length, and control validation, in that order.
+Required/unknown fields and cross-field invariants follow the specification's
+semantic traversal; numeric BR codes do not define error priority. Encoding
+checks physical mapping invariants before that logical traversal. Numeric validation
 uses decimal integer arithmetic. The shipped list profile has no dynamic
 append or resize: `codec_zero_segment` selects a literal length 0–64 before
 filling it, and the decoder retains the required 64+36 split.
@@ -27,10 +30,16 @@ The codec reads no cancellation token, file, clock, or provider.
 emitted C at O0 and O2, plain and under ASan/UBSan. The independent specification
 oracle supplies all 49 expected fields, three canonical positives, 44
 digest-pinned negatives, combined precedence cases, an 8,000-deep input, and
-every sample count 1–100 (187 documents). Each positive repeats the full
-decode/encode path 128 times in one process. A C test seam fails each allocation
-in a fresh process (2,626 encoder and 941 decoder failure points per build)
-and compares input/destination pointer, capacity, length, and all prior bytes.
+every sample count 1–100. The 1,978-document corpus includes the independent
+review's 790 single/schema/scalar cases and 1,000 seeded paired mutations,
+plus canonical available-zero frequency. A separate 1,521-case physical-model corpus
+mutates every non-status field and 1,000 deterministic pairs; `fromStage2Outcome`
+and `encodeReport` supply independent statuses and complete canonical bytes.
+Each is exercised with both empty and pre-existing destination storage.
+The three contract positives repeat the full decode/encode path 128 times in
+one process. A C test seam fails every encoder/decoder allocation in a fresh
+process and compares input/destination pointer, capacity, length, and all prior
+bytes; all twelve preexisting error outcomes are propagated before allocation.
 Empty, short, equal-length, and larger destinations are exercised. This is
 codec evidence; it makes no filesystem publication or capability claim.
 
