@@ -24645,6 +24645,17 @@ fn checked_place_type_known(catalog: Text, name: Text) -> Bool {
         scoped_hir_fact(catalog, "type", 1, name) >= 0
 }
 
+# Check raw commas before skip_trivia applies the single trailing-comma rule.
+# This also runs for recursively checked initializers, not only selections.
+fn checked_place_delimiters(source: Text, open: Int, close: Text) -> Text {
+    let fault = delimiter_fault(source, open, close)
+    if fault < 0 { return "" }
+    if token_text(source, open) == "[" {
+        return delimiter_refusal("List[Int] literal has an empty element at this comma", fault)
+    }
+    return delimiter_refusal("argument list has an empty argument at this comma", fault)
+}
+
 # A declaration graph for analysis, independent of flat runtime record layout.
 # All declarations are collected before edges are checked, admitting forward
 # nominal references while refusing duplicate names, fields and unknown types.
@@ -24859,8 +24870,7 @@ fn checked_place_expression_type(source: Text, hir: Text, catalog: Text,
         return ""
     }
     if token_text(source, first) == "fn" {
-        let parameters = skip_trivia(source, token_end(source, first))
-        if lambda_parameters_end(source, -1, parameters) == last { return "Fn" }
+        return checked_place_error("lambda literals require checked-body analysis", first)
     }
     if token_end(source, first) == last {
         if token_kind(source, first) == "decimal" { return "Decimal" }
@@ -24879,6 +24889,10 @@ fn checked_place_expression_type(source: Text, hir: Text, catalog: Text,
         let mut returned = checked_place_normalize_type(function_return_type(source, name))
         let mut open = next
         if list { open = first }
+        let mut closing = ")"
+        if list { closing = "]" }
+        let delimiters = checked_place_delimiters(source, open, closing)
+        if len(delimiters) > 0 { return delimiters }
         if constructor { returned = name }
         if !list && len(returned) == 0 { return "" }
         let mut arg = skip_trivia(source, token_end(source, open))
@@ -24941,6 +24955,9 @@ fn checked_place_shape_operator(token: Text) -> Bool {
 }
 
 fn checked_place_arguments_shape(source: Text, start: Int, end: Int, depth: Int) -> Text {
+    # Every caller supplies token_end(open) and the matching closing byte.
+    let delimiters = checked_place_delimiters(source, start - 1, token_text(source, end))
+    if len(delimiters) > 0 { return delimiters }
     let mut cursor = skip_trivia(source, start)
     while cursor < end {
         let mut stop = cursor
@@ -25099,21 +25116,42 @@ fn checked_place_binding_type(source: Text, hir: Text, catalog: Text,
 fn checked_place_walk(source: Text, hir: Text, catalog: Text, start: Int,
     end: Int, path: Text, recursion: Int) -> Text {
     if recursion > 64 { return checked_place_error("expression depth limit is 64", start) }
-    if token_kind(source, start) != "identifier" { return "unknown|" + to_text(start) + "|" + to_text(end) + "\n" }
-    let binding = hir_use_binding_id(hir, start)
-    if len(binding) == 0 { return "unknown|" + to_text(start) + "|" + to_text(end) + "\n" }
-    let mut type = checked_place_binding_type(source, hir, catalog, binding, recursion + 1)
-    if starts_with(type, "error[") { return type }
-    if len(type) == 0 { return checked_place_error("binding initializer is not well typed", start) }
-    if !checked_place_type_known(catalog, type) && type != "Float" && type != "Decimal" &&
-        type != "Fn" && type != "Bytes" && !authority_type_name(type) {
-        return checked_place_error("binding type is unavailable", start)
-    }
+    let mut binding = ""
+    let mut type = ""
     let mut nameable = true
     let mut cursor = skip_trivia(source, token_end(source, start))
     let mut count = 0
     let mut raw = ""
     let mut json = ""
+    if token_text(source, start) == "(" {
+        let close = balanced_end(source, start, "(", ")")
+        if close <= start || close > end { return checked_place_error("malformed grouped place", start) }
+        let inner_start = skip_trivia(source, token_end(source, start))
+        let inner_end = checked_place_trim_end(source, inner_start, close - 1)
+        let inner = checked_place_walk(source, hir, catalog, inner_start, inner_end, path, recursion + 1)
+        if starts_with(inner, "error[") { return inner }
+        if !starts_with(inner, "place|") && !starts_with(inner, "unnameable|") {
+            return "unknown|" + to_text(start) + "|" + to_text(end) + "\n"
+        }
+        binding = hir_field(inner, 0, 1)
+        type = hir_field(inner, 0, 2)
+        count = decimal_value(hir_field(inner, 0, 3))
+        raw = hir_field(inner, 0, 4)
+        json = hir_field(inner, 0, 5)
+        nameable = starts_with(inner, "place|")
+        cursor = skip_trivia(source, close)
+    } else {
+        if token_kind(source, start) != "identifier" { return "unknown|" + to_text(start) + "|" + to_text(end) + "\n" }
+        binding = hir_use_binding_id(hir, start)
+        if len(binding) == 0 { return "unknown|" + to_text(start) + "|" + to_text(end) + "\n" }
+        type = checked_place_binding_type(source, hir, catalog, binding, recursion + 1)
+        if starts_with(type, "error[") { return type }
+        if len(type) == 0 { return checked_place_error("binding initializer is not well typed", start) }
+        if !checked_place_type_known(catalog, type) && type != "Float" && type != "Decimal" &&
+            type != "Fn" && type != "Bytes" && !authority_type_name(type) {
+            return checked_place_error("binding type is unavailable", start)
+        }
+    }
     while cursor < end {
         if count >= 64 { return checked_place_error("candidate projection limit is 64", cursor) }
         let token = token_text(source, cursor)
@@ -25204,6 +25242,10 @@ fn checked_place_walk(source: Text, hir: Text, catalog: Text, start: Int,
 }
 
 fn checked_place_candidate(source: Text, hir: Text, catalog: Text, start: Int, end: Int, path: Text) -> Text {
+    # Malformed initializer delimiters can shorten the resolver's initializer
+    # range. Check their original tokens before trusting that private range.
+    let delimiters = validate_delimiter_surface(source)
+    if len(delimiters) > 0 { return delimiters }
     let shape = checked_place_shape(source, start, end, 0)
     if len(shape) > 0 { return shape }
     let type = checked_place_expression_type(source, hir, catalog, start, end, 0)
@@ -25262,7 +25304,7 @@ fn checked_place_render(source: Text, hir: Text, facts: Text, path: Text,
         let raw = "4b504c0002" + binding + scoped_hir_hex(decimal_value(hir_field(place, 0, 3)), 2) + hir_field(place, 0, 4)
         let id = scoped_hir_hash_frame("kofun.scope-hir.place/v2", raw, "", "", "")
         record = "{\"base_binding_id\":\"" + binding + "\",\"canonical_bytes\":\"" + raw +
-            "\",\"display\":" + scoped_hir_display(source, start) + ",\"id\":\"" + id +
+            "\",\"display\":" + scoped_hir_display(source, hir_binding_declaration_start(hir, hir_field(place, 0, 1))) + ",\"id\":\"" + id +
             "\",\"projections\":[" + hir_field(place, 0, 5) + "],\"record\":\"place\"}"
     } else {
         let mut reason = "unnameable-place"

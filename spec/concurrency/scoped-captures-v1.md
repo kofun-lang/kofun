@@ -532,6 +532,17 @@ constants and reversed constant intervals refuse. All projections are checked; d
 9–64 produces `projection-depth-exceeded`, and depth above 64 refuses.
 Expression recursion is bounded at 64.
 
+Grouping preserves a checked place's resolved base and projections, including
+grouped receivers such as `(item).field`; its original complete source span
+is retained. The base display comes from the resolved binding, never the
+opening parenthesis. Grouped arithmetic and calls remain unnameable. Argument
+and list delimiters are checked before the single trailing-comma rule is
+applied: leading or duplicate commas are E2S182, including in initializers and
+dynamic bounds. One trailing comma after a member remains valid. A selected
+lambda literal is refused until checked-body analysis is available; shape
+alone cannot prove its body well typed. Resolved callable-typed parameter
+places remain valid.
+
 The private analysis expression graph allocates NodeId with the #303 frame,
 domain `kofun.stage2.analysis-expression/v1`, payload raw FileId followed by
 u32be start and end. One exact occurrence commits one complete source range;

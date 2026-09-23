@@ -93,6 +93,21 @@ function check(test,projections,reason=null) {
  return JSON.parse(want).records.at(-1);
 }
 const base=check(program('x'),[]);
+// Grouping preserves the resolved base, projection bytes and base display;
+// only occurrence spans (and dynamic-bound occurrence IDs) include grouping.
+for(const expr of ['(x)','((x))'])assert.equal(check(program(expr),[]).id,base.id);
+for(const expr of ['(x).a','(x.a)','((x)).a'])check(program(expr),[field('R',0,'a')]);
+check(program('((x).inner).a'),[field('R',1,'inner'),field('R',0,'a')]);
+for(const expr of ['(x.items)[lo .. hi]','((x.items[lo .. hi]))']) {
+ const t=program(expr);check(t,[field('R',2,'items'),slice(boundNode(t,'lo'),boundNode(t,'hi'))]);
+}
+for(const expr of ['(lo + 1)','(bound(lo))','((x.items[lo]))'])check(program(expr),null,'unnameable-place');
+check(program('(x'+'.inner'.repeat(9)+')'),null,'projection-depth-exceeded');
+const callable=program('(x)',{params:'x: Int -> Int, lo: Int, hi: Int'});
+check(callable,[]);
+check(program('bound(lo,)'),null,'unnameable-place');
+const trailingBound=program('x.items[bound(lo,) .. hi]');
+check(trailingBound,[field('R',2,'items'),slice(boundNode(trailingBound,'bound(lo,)'),boundNode(trailingBound,'hi',trailingBound.expr.indexOf('..')+2))]);
 check(program('x.a'),[field('R',0,'a')]);
 check(program('x.inner.a'),[field('R',1,'inner'),field('R',0,'a')]);
 check(program('x.inner.items[-9223372036854775808 .. 9223372036854775807]'),[field('R',1,'inner'),field('R',2,'items'),slice(constant('-9223372036854775808'),constant('9223372036854775807'))]);
@@ -139,6 +154,8 @@ for(const [init,projection] of [['R(1, x, [1, 2])',[field('R',0,'a')]],['R(1, x,
 for(const init of ['[1,2]','[]']) {
  const local=program('items[0 .. 1]',{locals:` let items = ${init}\n`});local.baseBinding=4;local.baseName='items';check(local,[slice(constant(0),constant(1))]);
 }
+const trailingList=program('items[0 .. 1]',{locals:' let items = [1,2,]\n'});
+trailingList.baseBinding=4;trailingList.baseName='items';check(trailingList,[slice(constant(0),constant(1))]);
 console.log('PASS: independent complete lifecycle/place/unknown identity and byte oracle; nested owner transitions, shadows, displays, dynamic occurrences, all i64 bytes and depth 8/9/64');
 function negative(test,pattern,{start=test.start,end=test.end,task='0',logicalPath=logical}={}) {
  const input=path.join(work,`${serial++}-refusal.kofun`);fs.writeFileSync(input,test.source);
@@ -153,6 +170,10 @@ function negative(test,pattern,{start=test.start,end=test.end,task='0',logicalPa
  if(task==='0'&&logicalPath===logical&&start===test.start&&end===test.end)assert.equal(direct(test)+'\n',message);
 }
 for(const expr of ['x + 1','x.missing','x.a.inner','x.items[true .. hi]','x.items[bound(true) .. hi]','x.items[lo / hi .. hi]','x.items[true]','x.items[1.0 .. hi]','x.items["bad"]'])negative(program(expr),/checked place:/);
+for(const expr of ['bound(,lo)','bound(lo,,)','bound(lo, # keep the comma visible\n ,)','bound(bound(lo,,))','x.items[bound(lo,,) .. hi]'])negative(program(expr),/error\[E2S182\]: argument list has an empty argument/);
+for(const init of ['bound(lo,,)','bound(,lo)'])negative(program('low',{locals:` let low = ${init}\n`}),/error\[E2S182\]: argument list has an empty argument/);
+for(const init of ['[,1]','[1,,]'])negative(program('items[0 .. 1]',{locals:` let items = ${init}\n`}),/error\[E2S182\]: List\[Int\] literal has an empty element/);
+for(const expr of ['fn() => bound(true)','fn() => lo','(fn() => bound(true))'])negative(program(expr),/lambda literals require checked-body analysis/);
 for(const init of ['bound(true)','true','bound(lo) + true'])negative(program('x.items[low .. hi]',{locals:` let low = ${init}\n`}),/checked place:/);
 negative(program('x'+'.inner'.repeat(65)),/candidate projection limit is 64/);
 negative(program('x.items[2 .. 1]'),/constant lower bound exceeds upper bound/);

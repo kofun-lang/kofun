@@ -34507,6 +34507,14 @@ static bool cp_type_known(const char *catalog, const char *name) {
     return strcmp(name, "Int") == 0 || strcmp(name, "Bool") == 0 || strcmp(name, "Text") == 0 ||
         strcmp(name, "List[Int]") == 0 || strcmp(name, "List") == 0 || scoped_hir_fact(catalog, "type", 1, name) >= 0;
 }
+static char *cp_delimiters(CheckedPlaceArena *a, const char *source, int64_t open, const char *close) {
+    int64_t fault = delimiter_fault(source, open, close);
+    if (fault < 0) return "";
+    const char *message = token_equal(source, open, "[") ?
+        "List[Int] literal has an empty element at this comma" :
+        "argument list has an empty argument at this comma";
+    return cp_keep(a, delimiter_refusal(source, message, fault));
+}
 static char *cp_catalog(CheckedPlaceArena *a, const char *source) {
     char *result = "checked-place-types/v1\n";
     int64_t cursor = after_optional_module_header(source, 0), types = 0;
@@ -34618,8 +34626,7 @@ static char *cp_expression_type(CheckedPlaceArena *a, const char *source, const 
         return strcmp(typed, "Int") == 0 || cp_error_p(typed) ? typed : "";
     }
     if (token_equal(source, first, "fn")) {
-        int64_t parameters = skip_trivia(source, token_end(source, first));
-        if (lambda_parameters_end(source, -1, parameters) == last) return "Fn";
+        return cp_error(a, "lambda literals require checked-body analysis", first);
     }
     if (token_end(source, first) == last) {
         if (cp_kind(a, source, first, "decimal")) return "Decimal";
@@ -34636,6 +34643,8 @@ static char *cp_expression_type(CheckedPlaceArena *a, const char *source, const 
         bool constructor = scoped_hir_fact(catalog, "type", 1, name) >= 0;
         char *returned = cp_normalize_type(cp_keep(a, function_return_type(source, name)));
         int64_t open = list ? first : next;
+        char *delimiters = cp_delimiters(a, source, open, list ? "]" : ")");
+        if (*delimiters) return delimiters;
         if (constructor) returned = name;
         if (!list && !*returned) return "";
         int64_t arg = skip_trivia(source, token_end(source, open)), count = 0;
@@ -34686,6 +34695,8 @@ static bool cp_shape_operator(const char *token) {
 }
 static char *cp_shape(CheckedPlaceArena *, const char *, int64_t, int64_t, int64_t);
 static char *cp_arguments_shape(CheckedPlaceArena *a, const char *source, int64_t start, int64_t end, int64_t depth) {
+    char *delimiters = cp_delimiters(a, source, start - 1, cp_keep(a, token_copy(source, end)));
+    if (*delimiters) return delimiters;
     int64_t cursor = skip_trivia(source, start);
     while (cursor < end) {
         int64_t stop = cursor;
@@ -34808,16 +34819,33 @@ static char *cp_binding_type(CheckedPlaceArena *a, const char *source, const cha
 
 static char *cp_walk(CheckedPlaceArena *a, const char *source, const char *hir, const char *catalog, int64_t start, int64_t end, const char *path, int64_t recursion) {
     if (recursion > 64) return cp_error(a, "expression depth limit is 64", start);
-    if (!cp_kind(a, source, start, "identifier")) return cp_format(a, "unknown|%" PRId64 "|%" PRId64 "\n", start, end);
-    char *binding = cp_keep(a, hir_use_binding_id(hir, start));
-    if (!*binding) return cp_format(a, "unknown|%" PRId64 "|%" PRId64 "\n", start, end);
-    char *type = cp_binding_type(a, source, hir, catalog, binding, recursion + 1);
-    if (cp_error_p(type)) return type;
-    if (!*type) return cp_error(a, "binding initializer is not well typed", start);
-    if (!cp_type_known(catalog, type) && strcmp(type, "Float") != 0 && strcmp(type, "Decimal") != 0 && strcmp(type, "Fn") != 0 && strcmp(type, "Bytes") != 0 && !authority_type_name(type)) return cp_error(a, "binding type is unavailable", start);
+    char *binding = "", *type = "";
     bool nameable = true;
     int64_t cursor = skip_trivia(source, token_end(source, start)), count = 0;
     char *raw = "", *json = "";
+    if (token_equal(source, start, "(")) {
+        int64_t close = balanced_end(source, start, "(", ")");
+        if (close <= start || close > end) return cp_error(a, "malformed grouped place", start);
+        int64_t inner_start = skip_trivia(source, token_end(source, start));
+        int64_t inner_end = checked_place_trim_end(source, inner_start, close - 1);
+        char *inner = cp_walk(a, source, hir, catalog, inner_start, inner_end, path, recursion + 1);
+        if (cp_error_p(inner)) return inner;
+        if (strncmp(inner, "place|", 6) != 0 && strncmp(inner, "unnameable|", 10) != 0)
+            return cp_format(a, "unknown|%" PRId64 "|%" PRId64 "\n", start, end);
+        binding = cp_field(a, inner, 0, 1); type = cp_field(a, inner, 0, 2);
+        count = scoped_hir_integer(inner, 0, 3);
+        raw = cp_field(a, inner, 0, 4); json = cp_field(a, inner, 0, 5);
+        nameable = strncmp(inner, "place|", 6) == 0;
+        cursor = skip_trivia(source, close);
+    } else {
+        if (!cp_kind(a, source, start, "identifier")) return cp_format(a, "unknown|%" PRId64 "|%" PRId64 "\n", start, end);
+        binding = cp_keep(a, hir_use_binding_id(hir, start));
+        if (!*binding) return cp_format(a, "unknown|%" PRId64 "|%" PRId64 "\n", start, end);
+        type = cp_binding_type(a, source, hir, catalog, binding, recursion + 1);
+        if (cp_error_p(type)) return type;
+        if (!*type) return cp_error(a, "binding initializer is not well typed", start);
+        if (!cp_type_known(catalog, type) && strcmp(type, "Float") != 0 && strcmp(type, "Decimal") != 0 && strcmp(type, "Fn") != 0 && strcmp(type, "Bytes") != 0 && !authority_type_name(type)) return cp_error(a, "binding type is unavailable", start);
+    }
     while (cursor < end) {
         if (count >= 64) return cp_error(a, "candidate projection limit is 64", cursor);
         if (token_equal(source, cursor, ".")) {
@@ -34887,6 +34915,8 @@ static char *cp_walk(CheckedPlaceArena *a, const char *source, const char *hir, 
     return cp_format(a, "%s|%s|%s|%" PRId64 "|%s|%s|%" PRId64 "|%" PRId64 "\n", nameable ? "place" : "unnameable", binding, type, count, raw, json, start, end);
 }
 static char *cp_candidate(CheckedPlaceArena *a, const char *source, const char *hir, const char *catalog, int64_t start, int64_t end, const char *path) {
+    char *delimiters = cp_keep(a, validate_delimiter_surface(source));
+    if (*delimiters) return delimiters;
     char *shape = cp_shape(a, source, start, end, 0);
     if (*shape) return shape;
     char *type = cp_expression_type(a, source, hir, catalog, start, end, 0);
@@ -34926,7 +34956,8 @@ static char *cp_render(CheckedPlaceArena *a, const char *source, const char *hir
         char *binding = cp_keep(a, scoped_hir_named_id(file, "binding", cp_field(a, place, 0, 1)));
         char *raw = cp_format(a, "4b504c0002%s%02" PRIx64 "%s", binding, (uint64_t)scoped_hir_integer(place, 0, 3), cp_field(a, place, 0, 4));
         char *id = cp_keep(a, scoped_hir_hash_frame("kofun.scope-hir.place/v2", raw, "", "", ""));
-        char *display = cp_keep(a, scoped_hir_display(source, start));
+        char *display = cp_keep(a, scoped_hir_display(source,
+            hir_binding_declaration_start(hir, cp_field(a, place, 0, 1))));
         record = cp_format(a, "{\"base_binding_id\":\"%s\",\"canonical_bytes\":\"%s\",\"display\":%s,\"id\":\"%s\",\"projections\":[%s],\"record\":\"place\"}", binding, raw, display, id, cp_field(a, place, 0, 5));
     } else {
         bool deep = strncmp(place, "place|", 6) == 0;
