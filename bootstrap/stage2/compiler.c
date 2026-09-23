@@ -36782,10 +36782,10 @@ static const char * capture_render_checked(CheckedPlaceArena *a, const char * v_
         }
         v_row = (capture_line_end(a, v_ordered, v_row) + 1);
     }
-    int64_t v_par = hir_record_start(v_facts, "par", 0);
-    while (v_par >= 0) {
+    int64_t v_par_row = hir_record_start(v_facts, "par", 0);
+    while (v_par_row >= 0) {
         v_records = (v_records + 1);
-        v_par = hir_record_start(v_facts, "par", (v_par + 1));
+        v_par_row = hir_record_start(v_facts, "par", (v_par_row + 1));
     }
     v_records = (v_records + (v_ordinal * 2));
     if (v_records > 8384) {

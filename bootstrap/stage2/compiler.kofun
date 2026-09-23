@@ -26435,9 +26435,9 @@ fn capture_render_checked(source: Text, hir: Text, facts: Text, accesses: Text, 
         }
         row = capture_line_end(ordered, row) + 1
     }
-    let mut par = hir_record_start(facts, "par", 0)
-    while par >= 0 { records = records + 1
-        par = hir_record_start(facts, "par", par + 1) }
+    let mut par_row = hir_record_start(facts, "par", 0)
+    while par_row >= 0 { records = records + 1
+        par_row = hir_record_start(facts, "par", par_row + 1) }
     records = records + ordinal * 2
     if records > 8384 { return capture_error("E2S154", "record limit is 8384", 0) }
     let split = find(prefix, "],\"root_scope_id\":")
