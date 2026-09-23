@@ -26121,7 +26121,25 @@ fn capture_checked_source(source: Text, hir: Text, catalog: Text, path: Text) ->
         }
         let close = balanced_end(source, open, "{", "}")
         if close <= open { return capture_error("E2S154", "function requires a checked body", open) }
-        let checked = capture_block(source, hir, catalog, token_end(source, open), close - 1, path,
+        # Keep declarations and row order, but resolve body uses within this
+        # complete named function. Nested lambdas still share its use view.
+        let mut body_hir = ""
+        let mut row = 0
+        while row < len(hir) {
+            let end = text_find_from(hir, "\n", row)
+            if end < 0 { return capture_error("E2S154", "incomplete checked HIR row", function) }
+            let mut keep = true
+            if text_slice(hir, row, row + 4) == "use|" {
+                let middle = text_find_from(hir, "|", row + 4)
+                let stop = text_find_from(hir, "|", middle + 1)
+                let begin = decimal_value(text_slice(hir, row + 4, middle))
+                let finish = decimal_value(text_slice(hir, middle + 1, stop))
+                keep = begin >= function && finish <= close
+            }
+            if keep { body_hir = body_hir + text_slice(hir, row, end + 1) }
+            row = end + 1
+        }
+        let checked = capture_block(source, body_hir, catalog, token_end(source, open), close - 1, path,
             checked_place_normalize_type(function_return_type(source, function_name(source, function))), ",", -1, 0)
         if starts_with(checked, "error[") { return checked }
         let expected = checked_place_normalize_type(function_return_type(source, function_name(source, function)))
