@@ -25370,14 +25370,25 @@ fn capture_catalog(source: Text) -> Text {
     let catalog = checked_place_catalog(source)
     if starts_with(catalog, "error[") { return catalog }
     let mut result = "checked-capture-types/v1\n" + capture_tail(catalog)
+    let mut functions = "|"
     let mut at = after_optional_module_header(source, 0)
     while at < len(source) {
         let declaration = type_declaration_start(source, at)
         if declaration < 0 && function_declaration_start(source, at) < 0 {
             return capture_error("E2S154", "expected a checked function or nominal type declaration", at)
         }
+        let function = function_declaration_start(source, at)
+        if function >= 0 {
+            let name = function_name(source, function)
+            if contains(functions, "|" + name + "|") { return capture_error("E2S16", "duplicate function declaration", function) }
+            functions = functions + name + "|"
+        }
         if declaration >= 0 && !record_declaration_at(source, declaration) {
-            result = result + "type|" + type_name(source, declaration) + "\n"
+            let name = type_name(source, declaration)
+            if enum_constructor_count(source, name) <= 0 || capture_fact(result, "type", 1, name) >= 0 {
+                return capture_error("E2S154", "expected a distinct checked enum declaration", declaration)
+            }
+            result = result + "type|" + name + "\n"
         }
         let end = top_level_end(source, at)
         if end <= at { return capture_error("E2S154", "malformed declaration", at) }
@@ -25467,13 +25478,18 @@ fn capture_parameters(source: Text, open: Int) -> Text {
         if ownership_mode_token(source, at) { mode = token_text(source, at) }
         if mode == "copy" { mode = "read" }
         let type = capture_type_at(source, typed)
+        if capture_type_end(source, typed) != checked_place_trim_end(source, at, stop) { return capture_error("E2S154", "malformed parameter type", typed) }
+        if !capture_declared_type(source, type) { return capture_error("E2S15", "parameter type is outside the checked profile", typed) }
+        if type == "Fn" && mode != "read" { return capture_error("E2S154", "callable parameters require an immutable read signature", at) }
         if mode == "edit" && record_declaration_start(source, type) >= 0 {
             return capture_error("E2S181", "nominal-record parameters cannot use edit", at)
         }
         if mode == "take" && !move_trivial_record(source, type) {
             return capture_error("E2S122", "take requires a checked owning record carrier", at)
         }
-        rows = rows + "formal|" + to_text(ordinal) + "|" + label + "|" + capture_type_at(source, typed) + "|" + mode + "\n"
+        let mut arity = -1
+        if type == "Fn" { arity = callable_type_arity(source, typed) }
+        rows = rows + "formal|" + to_text(ordinal) + "|" + label + "|" + type + "|" + mode + "|" + to_text(arity) + "\n"
         ordinal = ordinal + 1
         at = stop
         if at < end - 1 { at = skip_trivia(source, token_end(source, at)) }
@@ -25521,6 +25537,17 @@ fn capture_lambda(source: Text, hir: Text, catalog: Text, open: Int, path: Text,
         result = capture_block(source, hir, catalog, token_end(source, body), end - 1, path, expected, ",", -1, depth + 1)
     } else { return capture_error("E2S154", "malformed lambda body", body) }
     if starts_with(result, "error[") { return result }
+    let mut returned = capture_record_start(result, "return-type", 0)
+    let mut inferred = ""
+    while returned >= 0 {
+        let type = hir_field(result, returned, 1)
+        if len(inferred) > 0 && !capture_compatible(type, inferred) { return capture_error("E2S12", "inconsistent lambda return types", body) }
+        inferred = type
+        returned = capture_record_start(result, "return-type", returned + 1)
+    }
+    if len(inferred) > 0 && !capture_compatible(hir_field(result, 0, 1), inferred) {
+        return capture_error("E2S12", "lambda fallthrough result type mismatch", body)
+    }
     if len(expected) > 0 && !capture_compatible(hir_field(result, 0, 1), expected) {
         return capture_error("E2S12", "lambda result type mismatch", body)
     }
@@ -25622,6 +25649,10 @@ fn capture_call(source: Text, hir: Text, catalog: Text, first: Int, open: Int, e
                 return capture_error("E2S12", "print requires a scalar", value)
             }
         } else if !capture_compatible(actual, expected) { return capture_error("E2S12", "argument type mismatch", value) }
+        if expected == "Fn" && !capture_fn_compatible(source, hir, catalog, value, stop,
+            decimal_value(hir_field(parameters, row, 5)), depth + 1) {
+            return capture_error("E2S12", "callable argument signature mismatch", value)
+        }
         facts = facts + capture_tail(checked)
         ordinal = ordinal + 1
         arg = stop
@@ -25865,6 +25896,7 @@ fn capture_block(source: Text, hir: Text, catalog: Text, start: Int, end: Int, p
     let mut facts = ""
     let mut moved = initial
     let mut type = "Void"
+    let mut terminated = false
     while at < end {
         let token = token_text(source, at)
         if token == ";" { at = skip_trivia(source, token_end(source, at))
@@ -25879,7 +25911,8 @@ fn capture_block(source: Text, hir: Text, catalog: Text, start: Int, end: Int, p
             let state = capture_record_start(checked, "state", 0)
             moved = hir_field(checked, state, 1)
             facts = facts + capture_tail(capture_tail(checked))
-            type = "Void"
+            type = hir_field(checked, 0, 1)
+            if capture_terminal(checked) { terminated = true }
             at = skip_trivia(source, close)
             continue
         }
@@ -25906,7 +25939,9 @@ fn capture_block(source: Text, hir: Text, catalog: Text, start: Int, end: Int, p
             let left = capture_block(source, hir, catalog, token_end(source, open), close - 1, path, expected, moved, loop, depth + 1)
             if starts_with(left, "error[") { return left }
             facts = facts + capture_tail(capture_tail(left))
-            let mut union = hir_field(left, capture_record_start(left, "state", 0), 1)
+            let left_terminal = capture_terminal(left)
+            let mut union = moved
+            if !left_terminal { union = union + hir_field(left, capture_record_start(left, "state", 0), 1) }
             type = "Void"
             at = skip_trivia(source, close)
             if token == "if" && token_text(source, at) == "else" {
@@ -25915,10 +25950,16 @@ fn capture_block(source: Text, hir: Text, catalog: Text, start: Int, end: Int, p
                 if token_text(source, other) != "{" || after <= other || after > end { return capture_error("E2S154", "else requires a checked block", other) }
                 let right = capture_block(source, hir, catalog, token_end(source, other), after - 1, path, expected, moved, loop_start, depth + 1)
                 if starts_with(right, "error[") { return right }
-                if hir_field(left, 0, 1) != hir_field(right, 0, 1) { return capture_error("E2S12", "branch result type mismatch", other) }
+                let right_terminal = capture_terminal(right)
                 type = hir_field(left, 0, 1)
+                if left_terminal && !right_terminal { type = hir_field(right, 0, 1) }
+                if !left_terminal && !right_terminal && type != hir_field(right, 0, 1) {
+                    if skip_trivia(source, after) >= end { return capture_error("E2S12", "branch result type mismatch", other) }
+                    type = "Void"
+                }
                 facts = facts + capture_tail(capture_tail(right))
-                union = union + hir_field(right, capture_record_start(right, "state", 0), 1)
+                if !right_terminal { union = union + hir_field(right, capture_record_start(right, "state", 0), 1) }
+                if left_terminal && right_terminal { terminated = true }
                 at = skip_trivia(source, after)
             }
             moved = moved + union
@@ -25939,6 +25980,7 @@ fn capture_block(source: Text, hir: Text, catalog: Text, start: Int, end: Int, p
             let mut arm = skip_trivia(source, token_end(source, open))
             let mut covered = "|"
             let mut union = moved
+            let mut all_terminal = true
             type = ""
             while arm < close - 1 {
                 let summary = pattern_summary(source, arm)
@@ -25954,15 +25996,19 @@ fn capture_block(source: Text, hir: Text, catalog: Text, start: Int, end: Int, p
                 let branch = capture_block(source, hir, catalog, token_end(source, body), after - 1, path, expected, moved, loop_start, depth + 1)
                 if starts_with(branch, "error[") { return branch }
                 let actual = hir_field(branch, 0, 1)
-                if len(type) > 0 && type != actual { return capture_error("E2S12", "match result type mismatch", body) }
-                type = actual
-                union = union + hir_field(branch, capture_record_start(branch, "state", 0), 1)
+                if !capture_terminal(branch) {
+                    if len(type) > 0 && type != actual { return capture_error("E2S12", "match result type mismatch", body) }
+                    type = actual
+                    all_terminal = false
+                    union = union + hir_field(branch, capture_record_start(branch, "state", 0), 1)
+                }
                 facts = facts + capture_tail(capture_tail(branch))
                 arm = skip_trivia(source, after)
                 if token_text(source, arm) == "," { arm = skip_trivia(source, token_end(source, arm)) }
             }
             if !enum_constructors_covered(source, owner, covered) { return capture_error("E2S154", "match is not exhaustive", at) }
             moved = union
+            if all_terminal { terminated = true }
             at = skip_trivia(source, close)
             continue
         }
@@ -26015,14 +26061,31 @@ fn capture_block(source: Text, hir: Text, catalog: Text, start: Int, end: Int, p
             }
         }
         type = hir_field(checked, 0, 1)
-        if returning && (len(expected) == 0 || !capture_compatible(type, expected)) { return capture_error("E2S12", "return type mismatch", value) }
+        if declaration >= 0 {
+            let binding = hir_definition_id_at(hir, declaration)
+            if hir_binding_field(hir, binding, 4) == "mutable" {
+                if record_declaration_start(source, type) >= 0 { return capture_error("E2S32", "nominal-record bindings are immutable", declaration) }
+                if type == "Fn" { return capture_error("E2S154", "callable bindings require an immutable signature", declaration) }
+            }
+        }
+        if returning {
+            if len(expected) > 0 && !capture_compatible(type, expected) { return capture_error("E2S12", "return type mismatch", value) }
+            facts = facts + "return-type|" + type + "\n"
+            terminated = true
+        }
         moved = capture_flow(source, hir, capture_tail(checked), moved, loop_start)
         if starts_with(moved, "error[") { return moved }
         facts = facts + capture_tail(checked)
         if declaration >= 0 { type = "Void" }
         at = skip_trivia(source, stop)
     }
-    return capture_value(type, "state|" + moved + "\n" + facts)
+    let mut terminal = "false"
+    if terminated {
+        terminal = "true"
+        let returned = capture_record_start(facts, "return-type", 0)
+        if returned >= 0 { type = hir_field(facts, returned, 1) }
+    }
+    return capture_value(type, "state|" + moved + "\nterminal|" + terminal + "\n" + facts)
 }
 
 fn capture_checked_source(source: Text, hir: Text, catalog: Text, path: Text) -> Text {
@@ -26307,6 +26370,48 @@ fn emit_capture_hir_v2_file(input: Text, output: Text, logical_path: Text) -> Bo
         return false }
     write_text(output, document)
     return true
+}
+
+fn capture_declared_type(source: Text, type: Text) -> Bool {
+    return type == "Int" || type == "Bool" || type == "Text" || type == "List[Int]" || type == "List" || type == "Fn" ||
+        record_declaration_start(source, type) >= 0 || enum_constructor_count(source, type) > 0
+}
+
+fn capture_fn_compatible(source: Text, hir: Text, catalog: Text, start: Int, end: Int, arity: Int, depth: Int) -> Bool {
+    if depth > 64 { return false }
+    let mut first = skip_trivia(source, start)
+    let mut last = checked_place_trim_end(source, first, end)
+    while token_text(source, first) == "(" && balanced_end(source, first, "(", ")") == last {
+        first = skip_trivia(source, token_end(source, first))
+        last = checked_place_trim_end(source, first, last - 1)
+    }
+    let mut open = lambda_initializer_open(source, first)
+    if open < 0 && token_end(source, first) == last {
+        let binding = hir_use_binding_id(hir, first)
+        open = lambda_binding_open(source, hir, binding)
+        if open < 0 {
+            let signature = callable_parameter_type_start(source, hir, binding)
+            return signature >= 0 && callable_type_arity(source, signature) == arity
+        }
+    }
+    if open < 0 { return false }
+    let parameters = capture_parameters(source, open)
+    if starts_with(parameters, "error[") { return false }
+    let mut count = 0
+    let mut row = capture_record_start(parameters, "formal", 0)
+    while row >= 0 {
+        if hir_field(parameters, row, 3) != "Int" || hir_field(parameters, row, 4) != "read" { return false }
+        count = count + 1
+        row = capture_record_start(parameters, "formal", row + 1)
+    }
+    if count != arity { return false }
+    let checked = capture_lambda(source, hir, catalog, open, "", depth + 1)
+    return !starts_with(checked, "error[") && hir_field(checked, 0, 1) == "Int"
+}
+
+fn capture_terminal(result: Text) -> Bool {
+    let row = capture_record_start(result, "terminal", 0)
+    return row >= 0 && hir_field(result, row, 1) == "true"
 }
 
 # ---------------------------------------------------------------- Scoped identity framing

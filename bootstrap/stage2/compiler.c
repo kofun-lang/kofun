@@ -34623,6 +34623,9 @@ static const char * capture_sort(CheckedPlaceArena *a, const char * v_rows);
 static const char * capture_task_observations(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_facts, const char * v_accesses, const char * v_path, int64_t v_task, int64_t v_ordinal);
 static const char * capture_origin_rows(CheckedPlaceArena *a, const char * v_observations, int64_t v_start, int64_t v_end);
 static const char * capture_render(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_facts, const char * v_path);
+static bool capture_declared_type(CheckedPlaceArena *a, const char * v_source, const char * v_type);
+static bool capture_fn_compatible(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_catalog, int64_t v_start, int64_t v_end, int64_t v_arity, int64_t v_depth);
+static bool capture_terminal(CheckedPlaceArena *a, const char * v_result);
 
 static char *cp_walk(CheckedPlaceArena *, const char *, const char *, const char *, int64_t, int64_t, const char *, int64_t);
 static char *cp_expression_type(CheckedPlaceArena *a, const char *source, const char *hir, const char *catalog, int64_t start, int64_t end, int64_t depth) {
@@ -35113,14 +35116,27 @@ static const char * capture_catalog(CheckedPlaceArena *a, const char * v_source)
         return capture_return_text(a, mark, v_catalog);
     }
     const char * v_result = cp_format(a, "%s%s", "checked-capture-types/v1\n", capture_tail(a, v_catalog));
+    const char * v_functions = "|";
     int64_t v_at = after_optional_module_header(v_source, 0);
     while (v_at < ((int64_t)strlen(v_source))) {
         int64_t v_declaration = type_declaration_start(v_source, v_at);
         if ((v_declaration < 0) && (function_declaration_start(v_source, v_at) < 0)) {
             return capture_return_text(a, mark, capture_error(a, "E2S154", "expected a checked function or nominal type declaration", v_at));
         }
+        int64_t v_function = function_declaration_start(v_source, v_at);
+        if (v_function >= 0) {
+            const char * v_name = cp_keep(a, function_name(v_source, v_function));
+            if (strstr(v_functions, cp_format(a, "%s%s%s", "|", v_name, "|")) != NULL) {
+                return capture_return_text(a, mark, capture_error(a, "E2S16", "duplicate function declaration", v_function));
+            }
+            v_functions = cp_format(a, "%s%s%s", v_functions, v_name, "|");
+        }
         if ((v_declaration >= 0) && (!record_declaration_at(v_source, v_declaration))) {
-            v_result = cp_format(a, "%s%s%s%s", v_result, "type|", cp_keep(a, type_name(v_source, v_declaration)), "\n");
+            const char * v_name = cp_keep(a, type_name(v_source, v_declaration));
+            if ((enum_constructor_count(v_source, v_name) <= 0) || (capture_fact(a, v_result, "type", 1, v_name) >= 0)) {
+                return capture_return_text(a, mark, capture_error(a, "E2S154", "expected a distinct checked enum declaration", v_declaration));
+            }
+            v_result = cp_format(a, "%s%s%s%s", v_result, "type|", v_name, "\n");
         }
         int64_t v_end = top_level_end(v_source, v_at);
         if (v_end <= v_at) {
@@ -35269,13 +35285,26 @@ static const char * capture_parameters(CheckedPlaceArena *a, const char * v_sour
             v_mode = "read";
         }
         const char * v_type = capture_type_at(a, v_source, v_typed);
+        if (capture_type_end(a, v_source, v_typed) != checked_place_trim_end(v_source, v_at, v_stop)) {
+            return capture_return_text(a, mark, capture_error(a, "E2S154", "malformed parameter type", v_typed));
+        }
+        if (!capture_declared_type(a, v_source, v_type)) {
+            return capture_return_text(a, mark, capture_error(a, "E2S15", "parameter type is outside the checked profile", v_typed));
+        }
+        if ((strcmp(v_type, "Fn") == 0) && (strcmp(v_mode, "read") != 0)) {
+            return capture_return_text(a, mark, capture_error(a, "E2S154", "callable parameters require an immutable read signature", v_at));
+        }
         if ((strcmp(v_mode, "edit") == 0) && (record_declaration_start(v_source, v_type) >= 0)) {
             return capture_return_text(a, mark, capture_error(a, "E2S181", "nominal-record parameters cannot use edit", v_at));
         }
         if ((strcmp(v_mode, "take") == 0) && (!move_trivial_record(v_source, v_type))) {
             return capture_return_text(a, mark, capture_error(a, "E2S122", "take requires a checked owning record carrier", v_at));
         }
-        v_rows = capture_append(a, &builder_rows, v_rows, cp_format(a, "%s%s%s%s%s%s%s%s%s", "formal|", cp_format(a, "%" PRId64, v_ordinal), "|", v_label, "|", capture_type_at(a, v_source, v_typed), "|", v_mode, "\n"));
+        int64_t v_arity = (-1);
+        if (strcmp(v_type, "Fn") == 0) {
+            v_arity = callable_type_arity(v_source, v_typed);
+        }
+        v_rows = capture_append(a, &builder_rows, v_rows, cp_format(a, "%s%s%s%s%s%s%s%s%s%s%s", "formal|", cp_format(a, "%" PRId64, v_ordinal), "|", v_label, "|", v_type, "|", v_mode, "|", cp_format(a, "%" PRId64, v_arity), "\n"));
         v_ordinal = (v_ordinal + 1);
         v_at = v_stop;
         if (v_at < (v_end - 1)) {
@@ -35349,6 +35378,19 @@ static const char * capture_lambda(CheckedPlaceArena *a, const char * v_source, 
     }
     if (strncmp(v_result, "error[", strlen("error[")) == 0) {
         return capture_return_text(a, mark, v_result);
+    }
+    int64_t v_returned = capture_record_start(a, v_result, "return-type", 0);
+    const char * v_inferred = "";
+    while (v_returned >= 0) {
+        const char * v_type = cp_field(a, v_result, v_returned, 1);
+        if ((((int64_t)strlen(v_inferred)) > 0) && (!capture_compatible(a, v_type, v_inferred))) {
+            return capture_return_text(a, mark, capture_error(a, "E2S12", "inconsistent lambda return types", v_body));
+        }
+        v_inferred = v_type;
+        v_returned = capture_record_start(a, v_result, "return-type", (v_returned + 1));
+    }
+    if ((((int64_t)strlen(v_inferred)) > 0) && (!capture_compatible(a, cp_field(a, v_result, 0, 1), v_inferred))) {
+        return capture_return_text(a, mark, capture_error(a, "E2S12", "lambda fallthrough result type mismatch", v_body));
     }
     if ((((int64_t)strlen(v_expected)) > 0) && (!capture_compatible(a, cp_field(a, v_result, 0, 1), v_expected))) {
         return capture_return_text(a, mark, capture_error(a, "E2S12", "lambda result type mismatch", v_body));
@@ -35502,6 +35544,9 @@ static const char * capture_call(CheckedPlaceArena *a, const char * v_source, co
             if (!capture_compatible(a, v_actual, v_expected)) {
                 return capture_return_text(a, mark, capture_error(a, "E2S12", "argument type mismatch", v_value));
             }
+        }
+        if ((strcmp(v_expected, "Fn") == 0) && (!capture_fn_compatible(a, v_source, v_hir, v_catalog, v_value, v_stop, decimal_value(cp_field(a, v_parameters, v_row, 5)), (v_depth + 1)))) {
+            return capture_return_text(a, mark, capture_error(a, "E2S12", "callable argument signature mismatch", v_value));
         }
         v_facts = capture_append(a, &builder_facts, v_facts, capture_tail(a, v_checked));
         v_ordinal = (v_ordinal + 1);
@@ -35878,6 +35923,7 @@ static const char * capture_block(CheckedPlaceArena *a, const char * v_source, c
     const char * v_facts = "";
     const char * v_moved = v_initial;
     const char * v_type = "Void";
+    bool v_terminated = false;
     while (v_at < v_end) {
         const char * v_token = cp_keep(a, token_copy(v_source, v_at));
         if (strcmp(v_token, ";") == 0) {
@@ -35900,7 +35946,10 @@ static const char * capture_block(CheckedPlaceArena *a, const char * v_source, c
             int64_t v_state = capture_record_start(a, v_checked, "state", 0);
             v_moved = cp_field(a, v_checked, v_state, 1);
             v_facts = capture_append(a, &builder_facts, v_facts, capture_tail(a, capture_tail(a, v_checked)));
-            v_type = "Void";
+            v_type = cp_field(a, v_checked, 0, 1);
+            if (capture_terminal(a, v_checked)) {
+                v_terminated = true;
+            }
             v_at = skip_trivia(v_source, v_close);
             continue;
         }
@@ -35943,7 +35992,11 @@ static const char * capture_block(CheckedPlaceArena *a, const char * v_source, c
                 return capture_return_text(a, mark, v_left);
             }
             v_facts = capture_append(a, &builder_facts, v_facts, capture_tail(a, capture_tail(a, v_left)));
-            const char * v_union = cp_field(a, v_left, capture_record_start(a, v_left, "state", 0), 1);
+            bool v_left_terminal = capture_terminal(a, v_left);
+            const char * v_union = v_moved;
+            if (!v_left_terminal) {
+                v_union = cp_format(a, "%s%s", v_union, cp_field(a, v_left, capture_record_start(a, v_left, "state", 0), 1));
+            }
             v_type = "Void";
             v_at = skip_trivia(v_source, v_close);
             if ((strcmp(v_token, "if") == 0) && (strcmp(cp_keep(a, token_copy(v_source, v_at)), "else") == 0)) {
@@ -35956,12 +36009,24 @@ static const char * capture_block(CheckedPlaceArena *a, const char * v_source, c
                 if (strncmp(v_right, "error[", strlen("error[")) == 0) {
                     return capture_return_text(a, mark, v_right);
                 }
-                if (strcmp(cp_field(a, v_left, 0, 1), cp_field(a, v_right, 0, 1)) != 0) {
-                    return capture_return_text(a, mark, capture_error(a, "E2S12", "branch result type mismatch", v_other));
-                }
+                bool v_right_terminal = capture_terminal(a, v_right);
                 v_type = cp_field(a, v_left, 0, 1);
+                if (v_left_terminal && (!v_right_terminal)) {
+                    v_type = cp_field(a, v_right, 0, 1);
+                }
+                if (((!v_left_terminal) && (!v_right_terminal)) && (strcmp(v_type, cp_field(a, v_right, 0, 1)) != 0)) {
+                    if (skip_trivia(v_source, v_after) >= v_end) {
+                        return capture_return_text(a, mark, capture_error(a, "E2S12", "branch result type mismatch", v_other));
+                    }
+                    v_type = "Void";
+                }
                 v_facts = capture_append(a, &builder_facts, v_facts, capture_tail(a, capture_tail(a, v_right)));
-                v_union = cp_format(a, "%s%s", v_union, cp_field(a, v_right, capture_record_start(a, v_right, "state", 0), 1));
+                if (!v_right_terminal) {
+                    v_union = cp_format(a, "%s%s", v_union, cp_field(a, v_right, capture_record_start(a, v_right, "state", 0), 1));
+                }
+                if (v_left_terminal && v_right_terminal) {
+                    v_terminated = true;
+                }
                 v_at = skip_trivia(v_source, v_after);
             }
             v_moved = cp_format(a, "%s%s", v_moved, v_union);
@@ -35990,6 +36055,7 @@ static const char * capture_block(CheckedPlaceArena *a, const char * v_source, c
             int64_t v_arm = skip_trivia(v_source, token_end(v_source, v_open));
             const char * v_covered = "|";
             const char * v_union = v_moved;
+            bool v_all_terminal = true;
             v_type = "";
             while (v_arm < (v_close - 1)) {
                 PatternSummary v_summary = pattern_summary(v_source, v_arm);
@@ -36009,11 +36075,14 @@ static const char * capture_block(CheckedPlaceArena *a, const char * v_source, c
                     return capture_return_text(a, mark, v_branch);
                 }
                 const char * v_actual = cp_field(a, v_branch, 0, 1);
-                if ((((int64_t)strlen(v_type)) > 0) && (strcmp(v_type, v_actual) != 0)) {
-                    return capture_return_text(a, mark, capture_error(a, "E2S12", "match result type mismatch", v_body));
+                if (!capture_terminal(a, v_branch)) {
+                    if ((((int64_t)strlen(v_type)) > 0) && (strcmp(v_type, v_actual) != 0)) {
+                        return capture_return_text(a, mark, capture_error(a, "E2S12", "match result type mismatch", v_body));
+                    }
+                    v_type = v_actual;
+                    v_all_terminal = false;
+                    v_union = cp_format(a, "%s%s", v_union, cp_field(a, v_branch, capture_record_start(a, v_branch, "state", 0), 1));
                 }
-                v_type = v_actual;
-                v_union = cp_format(a, "%s%s", v_union, cp_field(a, v_branch, capture_record_start(a, v_branch, "state", 0), 1));
                 v_facts = capture_append(a, &builder_facts, v_facts, capture_tail(a, capture_tail(a, v_branch)));
                 v_arm = skip_trivia(v_source, v_after);
                 if (strcmp(cp_keep(a, token_copy(v_source, v_arm)), ",") == 0) {
@@ -36024,6 +36093,9 @@ static const char * capture_block(CheckedPlaceArena *a, const char * v_source, c
                 return capture_return_text(a, mark, capture_error(a, "E2S154", "match is not exhaustive", v_at));
             }
             v_moved = v_union;
+            if (v_all_terminal) {
+                v_terminated = true;
+            }
             v_at = skip_trivia(v_source, v_close);
             continue;
         }
@@ -36093,8 +36165,23 @@ static const char * capture_block(CheckedPlaceArena *a, const char * v_source, c
             }
         }
         v_type = cp_field(a, v_checked, 0, 1);
-        if (v_returning && ((((int64_t)strlen(v_expected)) == 0) || (!capture_compatible(a, v_type, v_expected)))) {
-            return capture_return_text(a, mark, capture_error(a, "E2S12", "return type mismatch", v_value));
+        if (v_declaration >= 0) {
+            const char * v_binding = cp_keep(a, hir_definition_id_at(v_hir, v_declaration));
+            if (strcmp(cp_keep(a, hir_binding_field(v_hir, v_binding, 4)), "mutable") == 0) {
+                if (record_declaration_start(v_source, v_type) >= 0) {
+                    return capture_return_text(a, mark, capture_error(a, "E2S32", "nominal-record bindings are immutable", v_declaration));
+                }
+                if (strcmp(v_type, "Fn") == 0) {
+                    return capture_return_text(a, mark, capture_error(a, "E2S154", "callable bindings require an immutable signature", v_declaration));
+                }
+            }
+        }
+        if (v_returning) {
+            if ((((int64_t)strlen(v_expected)) > 0) && (!capture_compatible(a, v_type, v_expected))) {
+                return capture_return_text(a, mark, capture_error(a, "E2S12", "return type mismatch", v_value));
+            }
+            v_facts = capture_append(a, &builder_facts, v_facts, cp_format(a, "%s%s%s", "return-type|", v_type, "\n"));
+            v_terminated = true;
         }
         v_moved = capture_flow(a, v_source, v_hir, capture_tail(a, v_checked), v_moved, v_loop_start);
         if (strncmp(v_moved, "error[", strlen("error[")) == 0) {
@@ -36106,7 +36193,15 @@ static const char * capture_block(CheckedPlaceArena *a, const char * v_source, c
         }
         v_at = skip_trivia(v_source, v_stop);
     }
-    return capture_return_text(a, mark, capture_value(a, v_type, cp_format(a, "%s%s%s%s", "state|", v_moved, "\n", v_facts)));
+    const char * v_terminal = "false";
+    if (v_terminated) {
+        v_terminal = "true";
+        int64_t v_returned = capture_record_start(a, v_facts, "return-type", 0);
+        if (v_returned >= 0) {
+            v_type = cp_field(a, v_facts, v_returned, 1);
+        }
+    }
+    return capture_return_text(a, mark, capture_value(a, v_type, cp_format(a, "%s%s%s%s%s%s", "state|", v_moved, "\nterminal|", v_terminal, "\n", v_facts)));
 }
 
 static const char * capture_checked_source(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_catalog, const char * v_path) {
@@ -36442,6 +36537,70 @@ static const char * capture_render(CheckedPlaceArena *a, const char * v_source, 
         return capture_return_text(a, mark, capture_error(a, "E2S154", "document byte limit is 16777216", 0));
     }
     return capture_return_text(a, mark, v_document);
+}
+
+static bool capture_declared_type(CheckedPlaceArena *a, const char * v_source, const char * v_type) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_source;
+    (void)v_type;
+    return capture_return_integer(a, mark, ((((((((strcmp(v_type, "Int") == 0) || (strcmp(v_type, "Bool") == 0)) || (strcmp(v_type, "Text") == 0)) || (strcmp(v_type, "List[Int]") == 0)) || (strcmp(v_type, "List") == 0)) || (strcmp(v_type, "Fn") == 0)) || (record_declaration_start(v_source, v_type) >= 0)) || (enum_constructor_count(v_source, v_type) > 0)));
+}
+
+static bool capture_fn_compatible(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_catalog, int64_t v_start, int64_t v_end, int64_t v_arity, int64_t v_depth) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_source;
+    (void)v_hir;
+    (void)v_catalog;
+    (void)v_start;
+    (void)v_end;
+    (void)v_arity;
+    (void)v_depth;
+    if (v_depth > 64) {
+        return capture_return_integer(a, mark, false);
+    }
+    int64_t v_first = skip_trivia(v_source, v_start);
+    int64_t v_last = checked_place_trim_end(v_source, v_first, v_end);
+    while ((strcmp(cp_keep(a, token_copy(v_source, v_first)), "(") == 0) && (balanced_end(v_source, v_first, "(", ")") == v_last)) {
+        v_first = skip_trivia(v_source, token_end(v_source, v_first));
+        v_last = checked_place_trim_end(v_source, v_first, (v_last - 1));
+    }
+    int64_t v_open = lambda_initializer_open(v_source, v_first);
+    if ((v_open < 0) && (token_end(v_source, v_first) == v_last)) {
+        const char * v_binding = cp_keep(a, hir_use_binding_id(v_hir, v_first));
+        v_open = lambda_binding_open(v_source, v_hir, v_binding);
+        if (v_open < 0) {
+            int64_t v_signature = callable_parameter_type_start(v_source, v_hir, v_binding);
+            return capture_return_integer(a, mark, ((v_signature >= 0) && (callable_type_arity(v_source, v_signature) == v_arity)));
+        }
+    }
+    if (v_open < 0) {
+        return capture_return_integer(a, mark, false);
+    }
+    const char * v_parameters = capture_parameters(a, v_source, v_open);
+    if (strncmp(v_parameters, "error[", strlen("error[")) == 0) {
+        return capture_return_integer(a, mark, false);
+    }
+    int64_t v_count = 0;
+    int64_t v_row = capture_record_start(a, v_parameters, "formal", 0);
+    while (v_row >= 0) {
+        if ((strcmp(cp_field(a, v_parameters, v_row, 3), "Int") != 0) || (strcmp(cp_field(a, v_parameters, v_row, 4), "read") != 0)) {
+            return capture_return_integer(a, mark, false);
+        }
+        v_count = (v_count + 1);
+        v_row = capture_record_start(a, v_parameters, "formal", (v_row + 1));
+    }
+    if (v_count != v_arity) {
+        return capture_return_integer(a, mark, false);
+    }
+    const char * v_checked = capture_lambda(a, v_source, v_hir, v_catalog, v_open, "", (v_depth + 1));
+    return capture_return_integer(a, mark, ((!(strncmp(v_checked, "error[", strlen("error[")) == 0)) && (strcmp(cp_field(a, v_checked, 0, 1), "Int") == 0)));
+}
+
+static bool capture_terminal(CheckedPlaceArena *a, const char * v_result) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_result;
+    int64_t v_row = capture_record_start(a, v_result, "terminal", 0);
+    return capture_return_integer(a, mark, ((v_row >= 0) && (strcmp(cp_field(a, v_result, v_row, 1), "true") == 0)));
 }
 
 static int emit_scope_hir_v2_file(const char *input, const char *output, const char *logical_path) {
