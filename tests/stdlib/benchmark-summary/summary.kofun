@@ -1,9 +1,10 @@
 # Deterministic benchmark-summary evidence for issue #859.
 #
-# Stage 2 cannot yet execute the canonical List[Int] report producer, so this
-# fixture uses exactly eight scaled integer observations. The record is an
-# evidence shape, not the public benchmark API. Sorting and all six summaries
-# are computed here; the gate does not substitute host-language statistics.
+# This small record regression retains a successful complete typed-sidecar
+# projection that the full report model exceeds. It uses eight scaled integer
+# observations and is not the public benchmark API. The production report
+# path is certified by task benchmark-report. Sorting and all six summaries
+# remain source-computed here for the original regression.
 
 type Samples8 = {
     sample0: Int,

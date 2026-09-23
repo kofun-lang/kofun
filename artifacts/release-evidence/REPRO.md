@@ -17,10 +17,10 @@ report a pass it did not observe.
 | Prerequisite | Claims that need it |
 |---|---|
 | `cargo` | `rust-crate-shim` |
-| `cc` | `affine-resource-handle`, `bindgen-c-stage1`, `bounded-bytes`, `bounded-tzdb-producer`, `c-abi-profile`, `c11-function-calls`, `c11-list-int-values`, `compiled-visibility-interfaces`, `compiler-seed`, `decimal-arithmetic-v1`, `deterministic-fuzzing`, `diverse-double-compilation`, `documentation-index`, `enum-matching`, `http-framework`, `macho64-ad-hoc-signing`, `macho64-image-writer`, `nominal-records`, `pe32plus-image-writer`, `positional-move-crossings`, `reproducible-bootstrap`, `self-recompile`, `stage2-core-lowering` |
-| `clang` | `bindgen-c-stage1`, `diverse-double-compilation` |
+| `cc` | `affine-resource-handle`, `benchmark-report-v1`, `bindgen-c-stage1`, `bounded-bytes`, `bounded-tzdb-producer`, `c-abi-profile`, `c11-function-calls`, `c11-list-int-values`, `compiled-visibility-interfaces`, `compiler-seed`, `decimal-arithmetic-v1`, `deterministic-fuzzing`, `diverse-double-compilation`, `documentation-index`, `enum-matching`, `http-framework`, `macho64-ad-hoc-signing`, `macho64-image-writer`, `nominal-records`, `pe32plus-image-writer`, `positional-move-crossings`, `reproducible-bootstrap`, `self-recompile`, `stage2-core-lowering` |
+| `clang` | `benchmark-report-v1`, `bindgen-c-stage1`, `diverse-double-compilation` |
 | `gcc` | `diverse-double-compilation` |
-| `node` | `bindgen-c-stage1`, `compiled-visibility-interfaces`, `documentation-index`, `macho64-ad-hoc-signing`, `macho64-image-writer`, `nominal-records`, `pe32plus-image-writer`, `positional-move-crossings`, `stage2-typed-sidecar`, `stdio-language-server`, `wasm32-arithmetic-core`, `wasm32-hostabi1-object-arena` |
+| `node` | `benchmark-report-v1`, `bindgen-c-stage1`, `compiled-visibility-interfaces`, `documentation-index`, `macho64-ad-hoc-signing`, `macho64-image-writer`, `nominal-records`, `pe32plus-image-writer`, `positional-move-crossings`, `stage2-typed-sidecar`, `stdio-language-server`, `wasm32-arithmetic-core`, `wasm32-hostabi1-object-arena` |
 | `qemu-aarch64` | `native-aarch64-function-calls`, `native-list-int-core`, `native-text-returning-calls`, `native-utf8-text-core`, `selfhost-native-corpus` |
 | `readelf` | `bindgen-c-stage1`, `macho64-image-writer`, `pe32plus-image-writer` |
 
@@ -30,6 +30,7 @@ report a pass it did not observe.
 |---|---|
 | `affine-resource-handle` | `task affine-resource-handle` |
 | `arithmetic-core` | `task test` |
+| `benchmark-report-v1` | `task benchmark-report` |
 | `bindgen-c-stage1` | `task bindgen-c` |
 | `borrowed-list-ownership` | `task stage2` |
 | `bounded-bytes` | `task bounded-bytes` |

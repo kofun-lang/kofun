@@ -1314,6 +1314,7 @@ tests/stdlib/benchmark-report-codec/codec.kofun
 tests/stdlib/benchmark-report-model/compare.kofun
 tests/stdlib/benchmark-report-model/corpus.kofun
 tests/stdlib/benchmark-report-model/model.kofun
+tests/stdlib/benchmark-report/corpus.kofun
 tests/stdlib/benchmark-summary/summary.kofun
 tests/stdlib/clock-adapters/adapters.kofun
 tests/stdlib/clock-adapters/mixed_instants.kofun

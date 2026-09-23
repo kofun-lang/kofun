@@ -34,22 +34,21 @@ code. Four mutations defend them: truncating the nearest rank, admitting
 equality at the Tukey fence, disarming the canonical-split guard, and leaking
 one Text field into a refused outcome. Each is required to change the output.
 
-## Three profile limits shaped this, not preference
+## Bounded execution and tooling
 
-**The corpus runs in four processes.** The bounded Text arena is a whole-run
-4096-byte budget that is never reclaimed (#1359), and validating four SHA-256
-digests costs 256 bytes of one-byte slices per report, so one program cannot
-construct every case. The groups are that split, and the gate's sweep driver is
-generated for the same reason.
+The committed corpus runs in four groups, preserving the original golden
+boundaries and giving each group independent runtime state. The Text runtime
+has 4,096 slots of 256 bytes; #1359 added reuse of loop temporaries. It is not
+a 4,096-byte whole-process budget.
 
-**No `main` in `model.kofun`, and `run_group` names every corpus function.** A
-declared-but-uncalled function fails the build at `cc` with
-`-Werror=unused-function` (#1358), so a driver that used part of the model
-would not compile.
+`model.kofun` declares no `main`; the corpus and gate supply the callers.
+The production emitter references declared functions, so an unused fixture
+helper no longer fails strict C compilation (#1358).
 
-**No typed-sidecar assertion.** On a program this size the projector prints
-`ok:`, writes `ETS04`, and exits 3 without producing a file (#1360). The
-assertion belongs here and returns when that is fixed.
+The full model still exceeds the typed-sidecar producer's declaration profile.
+Since #1360, the gate checks the located `ETS04` refusal, exit 3, empty stdout
+and absent sidecar. The small `benchmark-summary` regression separately keeps
+a positive complete projection; these are different tooling observations.
 
 ## What this child does not own
 

@@ -218,3 +218,15 @@ methodology.
 | Schema fixture | #646 fixed synthetic samples | byte-deterministic report and summaries |
 | Live smoke | bounded pure/allocation cases | nonzero samples, explicit available counters |
 | Charter matrix | `sh stdlib/check-capabilities.sh` | benchmark row cites this contract |
+
+## Executable report profile
+
+`task benchmark-report` gates the production Kofun `kofun.bench-report/v1`
+model, canonical Bytes codec, and deterministic caller-threshold comparison
+on C11 Stage 2. The [wire contract](../../spec/benchmark-report-v1.md) fixes
+49 fields, 100 samples in two bounded segments, and a 16,384-byte wire limit.
+The [composed fixture](../../tests/stdlib/benchmark-report/README.md) observes
+complete source-produced reports through encoding, decoding, and comparison.
+The `benchmark-report-v1` capability is separate from `benchmark-harness`:
+the live runner, clock/counter providers, filesystem publication, generic JSON,
+statistical significance, and other backends are outside this evidence.

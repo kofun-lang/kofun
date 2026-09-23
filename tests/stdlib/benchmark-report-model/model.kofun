@@ -1165,8 +1165,5 @@ fn print_case(name: Text, report: BenchReport) -> Int {
 #
 # This file declares no `main`. It is the model, and `corpus.kofun` plus one
 # generated driver complete a program; `check.sh` concatenates the three in
-# that order. The split is forced rather than stylistic: the bounded Text
-# arena is 4096 bytes for a whole run and is never reclaimed (#1359), so a
-# single program cannot construct every corpus report. Each group runs in its
-# own process, which is also why the model must not depend on state left by a
-# previous case.
+# that order. The original group boundaries and independent process state
+# are retained by the corpus; the Text runtime now reuses loop temporaries.

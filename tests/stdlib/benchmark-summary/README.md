@@ -2,8 +2,9 @@
 
 This is the executable summary slice tracked by
 [#859](https://github.com/kofun-lang/kofun/issues/859), split from #847. It proves
-the six v1 summary calculations without claiming that Stage 2 can already
-execute the canonical `List[Int]` and `Text` report producer.
+the six v1 summary calculations in a small record program. The complete
+production report model/codec/comparison is now gated by
+[`task benchmark-report`](../benchmark-report/README.md).
 
 The committed raw vector is deliberately unsorted:
 
@@ -24,10 +25,10 @@ nearest-rank rule in `docs/stdlib/benchmark.md`, the ascending vector
 | p75 | 23 | rank 6 |
 | MAD | 6 | rank 4 of sorted deviations `0, 2, 6, 6, 10, 12, 14, 24` |
 
-`Samples8` is a Stage 2 evidence record, not the public benchmark API. The
-canonical raw-sample codec and byte fixture remain blocked on one executable
-profile supporting records, `List[Int]`, and `Text`; #847 and #646 remain open
-for that boundary.
+`Samples8` is a compiler regression record, not the public benchmark API.
+This fixture remains because its complete typed-sidecar projection is a
+positive observation the full report model's declaration-limit refusal does
+not replace. Its sorting network is not used by the production report path.
 
 Run the focused gate with:
 
@@ -35,6 +36,9 @@ Run the focused gate with:
 sh tests/stdlib/benchmark-summary/check.sh
 ```
 
-The gate checks named golden fields, reference/C11 byte equality, typed-HIR
+The gate checks named golden fields, CLI/build byte equality, typed-HIR
 completeness, repeat determinism, and absence of ambient time, file, network,
-or randomness calls in the emitted program.
+or randomness calls in the emitted program. `bin/kofun run` and build use the
+same Stage 2 lowering; the two invocations are not independent semantics.
+The production report gates instead compare with the independent specification
+model and committed vectors.

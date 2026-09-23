@@ -2,11 +2,9 @@
 # gate runs.
 #
 # `check.sh` concatenates `model.kofun`, this file, and one generated `main`
-# per group. The groups exist because the bounded Text arena is a whole-run
-# 4096-byte budget that is never reclaimed (#1359): validating four SHA-256
-# digests costs 256 bytes of one-byte slices per report, so a single program
-# cannot construct every case. Every group is a separate process, and no case
-# depends on state from another.
+# per group. The four groups preserve independent runtime state and the
+# committed golden boundaries. The Text runtime reuses loop temporaries
+# (#1359); grouping is no longer a claim of a whole-run 4096-byte arena.
 #
 # The sample values are one arithmetic pattern with two planted extremes —
 # index 5 sits above the upper Tukey fence and index 40 below the lower one —
