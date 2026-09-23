@@ -34626,6 +34626,7 @@ static const char * capture_render(CheckedPlaceArena *a, const char * v_source, 
 static bool capture_declared_type(CheckedPlaceArena *a, const char * v_source, const char * v_type);
 static bool capture_fn_compatible(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_catalog, int64_t v_start, int64_t v_end, int64_t v_arity, int64_t v_depth);
 static bool capture_terminal(CheckedPlaceArena *a, const char * v_result);
+static const char * capture_join_state(CheckedPlaceArena *a, const char * v_left, const char * v_right);
 
 static char *cp_walk(CheckedPlaceArena *, const char *, const char *, const char *, int64_t, int64_t, const char *, int64_t);
 static char *cp_expression_type(CheckedPlaceArena *a, const char *source, const char *hir, const char *catalog, int64_t start, int64_t end, int64_t depth) {
@@ -35995,7 +35996,7 @@ static const char * capture_block(CheckedPlaceArena *a, const char * v_source, c
             bool v_left_terminal = capture_terminal(a, v_left);
             const char * v_union = v_moved;
             if (!v_left_terminal) {
-                v_union = cp_format(a, "%s%s", v_union, cp_field(a, v_left, capture_record_start(a, v_left, "state", 0), 1));
+                v_union = capture_join_state(a, v_union, cp_field(a, v_left, capture_record_start(a, v_left, "state", 0), 1));
             }
             v_type = "Void";
             v_at = skip_trivia(v_source, v_close);
@@ -36022,14 +36023,14 @@ static const char * capture_block(CheckedPlaceArena *a, const char * v_source, c
                 }
                 v_facts = capture_append(a, &builder_facts, v_facts, capture_tail(a, capture_tail(a, v_right)));
                 if (!v_right_terminal) {
-                    v_union = cp_format(a, "%s%s", v_union, cp_field(a, v_right, capture_record_start(a, v_right, "state", 0), 1));
+                    v_union = capture_join_state(a, v_union, cp_field(a, v_right, capture_record_start(a, v_right, "state", 0), 1));
                 }
                 if (v_left_terminal && v_right_terminal) {
                     v_terminated = true;
                 }
                 v_at = skip_trivia(v_source, v_after);
             }
-            v_moved = cp_format(a, "%s%s", v_moved, v_union);
+            v_moved = v_union;
             continue;
         }
         if (strcmp(v_token, "match") == 0) {
@@ -36081,7 +36082,7 @@ static const char * capture_block(CheckedPlaceArena *a, const char * v_source, c
                     }
                     v_type = v_actual;
                     v_all_terminal = false;
-                    v_union = cp_format(a, "%s%s", v_union, cp_field(a, v_branch, capture_record_start(a, v_branch, "state", 0), 1));
+                    v_union = capture_join_state(a, v_union, cp_field(a, v_branch, capture_record_start(a, v_branch, "state", 0), 1));
                 }
                 v_facts = capture_append(a, &builder_facts, v_facts, capture_tail(a, capture_tail(a, v_branch)));
                 v_arm = skip_trivia(v_source, v_after);
@@ -36601,6 +36602,26 @@ static bool capture_terminal(CheckedPlaceArena *a, const char * v_result) {
     (void)v_result;
     int64_t v_row = capture_record_start(a, v_result, "terminal", 0);
     return capture_return_integer(a, mark, ((v_row >= 0) && (strcmp(cp_field(a, v_result, v_row, 1), "true") == 0)));
+}
+
+static const char * capture_join_state(CheckedPlaceArena *a, const char * v_left, const char * v_right) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_left;
+    (void)v_right;
+    const char * v_result = v_left;
+    int64_t v_at = 1;
+    while (v_at < ((int64_t)strlen(v_right))) {
+        int64_t v_end = text_find_from(v_right, ",", v_at);
+        if (v_end < 0) {
+            return capture_return_text(a, mark, v_result);
+        }
+        const char * v_binding = cp_keep(a, source_slice(v_right, v_at, v_end));
+        if ((((int64_t)strlen(v_binding)) > 0) && (!(strstr(v_result, cp_format(a, "%s%s%s", ",", v_binding, ",")) != NULL))) {
+            v_result = cp_format(a, "%s%s%s", v_result, v_binding, ",");
+        }
+        v_at = (v_end + 1);
+    }
+    return capture_return_text(a, mark, v_result);
 }
 
 static int emit_scope_hir_v2_file(const char *input, const char *output, const char *logical_path) {

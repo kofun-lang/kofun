@@ -25958,7 +25958,7 @@ fn capture_block(source: Text, hir: Text, catalog: Text, start: Int, end: Int, p
             facts = facts + capture_tail(capture_tail(left))
             let left_terminal = capture_terminal(left)
             let mut union = moved
-            if !left_terminal { union = union + hir_field(left, capture_record_start(left, "state", 0), 1) }
+            if !left_terminal { union = capture_join_state(union, hir_field(left, capture_record_start(left, "state", 0), 1)) }
             type = "Void"
             at = skip_trivia(source, close)
             if token == "if" && token_text(source, at) == "else" {
@@ -25975,11 +25975,11 @@ fn capture_block(source: Text, hir: Text, catalog: Text, start: Int, end: Int, p
                     type = "Void"
                 }
                 facts = facts + capture_tail(capture_tail(right))
-                if !right_terminal { union = union + hir_field(right, capture_record_start(right, "state", 0), 1) }
+                if !right_terminal { union = capture_join_state(union, hir_field(right, capture_record_start(right, "state", 0), 1)) }
                 if left_terminal && right_terminal { terminated = true }
                 at = skip_trivia(source, after)
             }
-            moved = moved + union
+            moved = union
             continue
         }
         if token == "match" {
@@ -26017,7 +26017,7 @@ fn capture_block(source: Text, hir: Text, catalog: Text, start: Int, end: Int, p
                     if len(type) > 0 && type != actual { return capture_error("E2S12", "match result type mismatch", body) }
                     type = actual
                     all_terminal = false
-                    union = union + hir_field(branch, capture_record_start(branch, "state", 0), 1)
+                    union = capture_join_state(union, hir_field(branch, capture_record_start(branch, "state", 0), 1))
                 }
                 facts = facts + capture_tail(capture_tail(branch))
                 arm = skip_trivia(source, after)
@@ -26429,6 +26429,22 @@ fn capture_fn_compatible(source: Text, hir: Text, catalog: Text, start: Int, end
 fn capture_terminal(result: Text) -> Bool {
     let row = capture_record_start(result, "terminal", 0)
     return row >= 0 && hir_field(result, row, 1) == "true"
+}
+
+# Private ownership states are comma-delimited sets of resolved BindingIds.
+# Each operand is canonical; joining branches retains each id at most once,
+# independent of how many control-flow paths carry the same incoming state.
+fn capture_join_state(left: Text, right: Text) -> Text {
+    let mut result = left
+    let mut at = 1
+    while at < len(right) {
+        let end = text_find_from(right, ",", at)
+        if end < 0 { return result }
+        let binding = text_slice(right, at, end)
+        if len(binding) > 0 && !contains(result, "," + binding + ",") { result = result + binding + "," }
+        at = end + 1
+    }
+    return result
 }
 
 # ---------------------------------------------------------------- Scoped identity framing
