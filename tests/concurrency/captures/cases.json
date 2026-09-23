@@ -2205,7 +2205,7 @@
     {
       "name": "resolved-pure-callee-shadow-task-local",
       "source": "fn adjust(edit value: Int) -> Int { value = value + 1\n return value }\nfn probe() {\n let mut outer = 3\n par |scope| {\n  scope.spawn(fn() {\n   let adjust = fn(value: Int) => value\n   adjust(outer)\n  })\n }\n}\n",
-      "allocation_note": "Authored \u00a711 ordinals: top-level parameters, all par tokens, all lambda parameters, source-order lets, then hidden handles. The pure resolved lambda has only formal effects: no inherited declared edit and no unavailable environment.",
+      "allocation_note": "Authored §11 ordinals: top-level parameters, all par tokens, all lambda parameters, source-order lets, then hidden handles. The pure resolved lambda has only formal effects: no inherited declared edit and no unavailable environment.",
       "pars": [
         {
           "scope": 5,
@@ -2259,7 +2259,7 @@
     {
       "name": "resolved-pure-callee-shadow-enclosing",
       "source": "fn adjust(edit value: Int) -> Int { value = value + 1\n return value }\nfn probe() {\n let mut outer = 3\n let adjust = fn(value: Int) => value\n par |scope| {\n  scope.spawn(fn() {\n   adjust(outer)\n  })\n }\n}\n",
-      "allocation_note": "Authored \u00a711 ordinals: top-level parameters, all par tokens, all lambda parameters, source-order lets, then hidden handles. The pure resolved lambda has only formal effects: no inherited declared edit and no unavailable environment.",
+      "allocation_note": "Authored §11 ordinals: top-level parameters, all par tokens, all lambda parameters, source-order lets, then hidden handles. The pure resolved lambda has only formal effects: no inherited declared edit and no unavailable environment.",
       "pars": [
         {
           "scope": 6,
@@ -7082,6 +7082,601 @@
           ]
         }
       ]
+    },
+    {
+      "name": "deep-actual-prefix-valid-bounds",
+      "source": "fn cut(read p: List[Int], lo: Int, hi: Int) -> List[Int] { return p[lo .. hi] }\nfn main() {\n let outer: List[Int] = [1, 2, 3]\n par |scope| {\n  scope.spawn(fn() {\n   cut(outer[0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3], 0, 1)\n  })\n }\n}\n",
+      "allocation_note": "Independently authored: 1 helper bodies / 3 helper parameters, main par token before its one outer binding, then hidden handle; private deep templates never become public known prefixes.",
+      "pars": [
+        {
+          "scope": 5,
+          "token": 3,
+          "name": "scope",
+          "span": [
+            127,
+            253
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "par": 0,
+          "handle": 5,
+          "span": [
+            143,
+            250
+          ],
+          "lambda_span": [
+            155,
+            249
+          ],
+          "observations": [
+            {
+              "binding": 4,
+              "name": "outer",
+              "mode": "read",
+              "projections": [
+                {
+                  "kind": "slice",
+                  "lower": {
+                    "kind": "constant",
+                    "value": "0"
+                  },
+                  "upper": {
+                    "kind": "constant",
+                    "value": "3"
+                  }
+                },
+                {
+                  "kind": "slice",
+                  "lower": {
+                    "kind": "constant",
+                    "value": "0"
+                  },
+                  "upper": {
+                    "kind": "constant",
+                    "value": "3"
+                  }
+                },
+                {
+                  "kind": "slice",
+                  "lower": {
+                    "kind": "constant",
+                    "value": "0"
+                  },
+                  "upper": {
+                    "kind": "constant",
+                    "value": "3"
+                  }
+                },
+                {
+                  "kind": "slice",
+                  "lower": {
+                    "kind": "constant",
+                    "value": "0"
+                  },
+                  "upper": {
+                    "kind": "constant",
+                    "value": "3"
+                  }
+                },
+                {
+                  "kind": "slice",
+                  "lower": {
+                    "kind": "constant",
+                    "value": "0"
+                  },
+                  "upper": {
+                    "kind": "constant",
+                    "value": "3"
+                  }
+                },
+                {
+                  "kind": "slice",
+                  "lower": {
+                    "kind": "constant",
+                    "value": "0"
+                  },
+                  "upper": {
+                    "kind": "constant",
+                    "value": "3"
+                  }
+                },
+                {
+                  "kind": "slice",
+                  "lower": {
+                    "kind": "constant",
+                    "value": "0"
+                  },
+                  "upper": {
+                    "kind": "constant",
+                    "value": "3"
+                  }
+                },
+                {
+                  "kind": "slice",
+                  "lower": {
+                    "kind": "constant",
+                    "value": "0"
+                  },
+                  "upper": {
+                    "kind": "constant",
+                    "value": "3"
+                  }
+                }
+              ],
+              "span": [
+                169,
+                238
+              ],
+              "text": "outer[0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3]"
+            },
+            {
+              "reason": "projection-depth-exceeded",
+              "mode": "read",
+              "span": [
+                165,
+                245
+              ],
+              "text": "cut(outer[0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3], 0, 1)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "deep-seed-valid-bounds",
+      "source": "fn cut(read p: List[Int], lo: Int, hi: Int) -> List[Int] { return p[0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][lo .. hi] }\nfn main() {\n let outer: List[Int] = [1, 2, 3]\n par |scope| {\n  scope.spawn(fn() {\n   cut(outer, 0, 1)\n  })\n }\n}\n",
+      "allocation_note": "Independently authored: 1 helper bodies / 3 helper parameters, main par token before its one outer binding, then hidden handle; private deep templates never become public known prefixes.",
+      "pars": [
+        {
+          "scope": 5,
+          "token": 3,
+          "name": "scope",
+          "span": [
+            191,
+            253
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "par": 0,
+          "handle": 5,
+          "span": [
+            207,
+            250
+          ],
+          "lambda_span": [
+            219,
+            249
+          ],
+          "observations": [
+            {
+              "binding": 4,
+              "name": "outer",
+              "mode": "read",
+              "projections": [],
+              "span": [
+                233,
+                238
+              ],
+              "text": "outer"
+            },
+            {
+              "reason": "projection-depth-exceeded",
+              "mode": "read",
+              "span": [
+                229,
+                245
+              ],
+              "text": "cut(outer, 0, 1)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "deep-forwarded-valid-bounds",
+      "source": "fn cut(read p: List[Int], lo: Int, hi: Int) -> List[Int] { return p[lo .. hi] }\nfn relay(read p: List[Int], hi: Int, lo: Int) -> List[Int] { return cut(p[0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3], lo, hi) }\nfn main() {\n let outer: List[Int] = [1, 2, 3]\n par |scope| {\n  scope.spawn(fn() {\n   relay(outer, 1, 0)\n  })\n }\n}\n",
+      "allocation_note": "Independently authored: 2 helper bodies / 6 helper parameters, main par token before its one outer binding, then hidden handle; private deep templates never become public known prefixes.",
+      "pars": [
+        {
+          "scope": 7,
+          "token": 6,
+          "name": "scope",
+          "span": [
+            276,
+            340
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "par": 0,
+          "handle": 8,
+          "span": [
+            292,
+            337
+          ],
+          "lambda_span": [
+            304,
+            336
+          ],
+          "observations": [
+            {
+              "binding": 7,
+              "name": "outer",
+              "mode": "read",
+              "projections": [],
+              "span": [
+                320,
+                325
+              ],
+              "text": "outer"
+            },
+            {
+              "binding": 7,
+              "name": "outer",
+              "mode": "read",
+              "projections": [
+                {
+                  "kind": "slice",
+                  "lower": {
+                    "kind": "constant",
+                    "value": "0"
+                  },
+                  "upper": {
+                    "kind": "constant",
+                    "value": "3"
+                  }
+                },
+                {
+                  "kind": "slice",
+                  "lower": {
+                    "kind": "constant",
+                    "value": "0"
+                  },
+                  "upper": {
+                    "kind": "constant",
+                    "value": "3"
+                  }
+                },
+                {
+                  "kind": "slice",
+                  "lower": {
+                    "kind": "constant",
+                    "value": "0"
+                  },
+                  "upper": {
+                    "kind": "constant",
+                    "value": "3"
+                  }
+                },
+                {
+                  "kind": "slice",
+                  "lower": {
+                    "kind": "constant",
+                    "value": "0"
+                  },
+                  "upper": {
+                    "kind": "constant",
+                    "value": "3"
+                  }
+                },
+                {
+                  "kind": "slice",
+                  "lower": {
+                    "kind": "constant",
+                    "value": "0"
+                  },
+                  "upper": {
+                    "kind": "constant",
+                    "value": "3"
+                  }
+                },
+                {
+                  "kind": "slice",
+                  "lower": {
+                    "kind": "constant",
+                    "value": "0"
+                  },
+                  "upper": {
+                    "kind": "constant",
+                    "value": "3"
+                  }
+                },
+                {
+                  "kind": "slice",
+                  "lower": {
+                    "kind": "constant",
+                    "value": "0"
+                  },
+                  "upper": {
+                    "kind": "constant",
+                    "value": "3"
+                  }
+                },
+                {
+                  "kind": "slice",
+                  "lower": {
+                    "kind": "constant",
+                    "value": "0"
+                  },
+                  "upper": {
+                    "kind": "constant",
+                    "value": "3"
+                  }
+                }
+              ],
+              "span": [
+                314,
+                332
+              ],
+              "text": "relay(outer, 1, 0)"
+            },
+            {
+              "reason": "projection-depth-exceeded",
+              "mode": "read",
+              "span": [
+                314,
+                332
+              ],
+              "text": "relay(outer, 1, 0)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "unavailable-retains-other-valid-bounds",
+      "source": "fn cut(read p: List[Int], lo: Int, hi: Int, a: Int, b: Int) -> List[Int] { return p[lo + 1 .. hi][a .. b] }\nfn main() {\n let outer: List[Int] = [1, 2, 3]\n par |scope| {\n  scope.spawn(fn() {\n   cut(outer, 0, 3, 0, 1)\n  })\n }\n}\n",
+      "allocation_note": "Independently authored: 1 helper bodies / 5 helper parameters, main par token before its one outer binding, then hidden handle; private deep templates never become public known prefixes.",
+      "pars": [
+        {
+          "scope": 5,
+          "token": 5,
+          "name": "scope",
+          "span": [
+            155,
+            223
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "par": 0,
+          "handle": 7,
+          "span": [
+            171,
+            220
+          ],
+          "lambda_span": [
+            183,
+            219
+          ],
+          "observations": [
+            {
+              "binding": 6,
+              "name": "outer",
+              "mode": "read",
+              "projections": [],
+              "span": [
+                197,
+                202
+              ],
+              "text": "outer"
+            },
+            {
+              "reason": "unresolved-call",
+              "mode": "read",
+              "span": [
+                193,
+                215
+              ],
+              "text": "cut(outer, 0, 3, 0, 1)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "indexed-effect-valid-bounds",
+      "source": "fn cut(read p: List[Int], lo: Int, hi: Int) -> Int { return p[lo .. hi][0] }\nfn main() {\n let outer: List[Int] = [1, 2, 3]\n par |scope| {\n  scope.spawn(fn() {\n   cut(outer, 0, 1)\n  })\n }\n}\n",
+      "allocation_note": "Independently authored: 1 helper bodies / 3 helper parameters, main par token before its one outer binding, then hidden handle; private deep templates never become public known prefixes.",
+      "pars": [
+        {
+          "scope": 5,
+          "token": 3,
+          "name": "scope",
+          "span": [
+            124,
+            186
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "par": 0,
+          "handle": 5,
+          "span": [
+            140,
+            183
+          ],
+          "lambda_span": [
+            152,
+            182
+          ],
+          "observations": [
+            {
+              "binding": 4,
+              "name": "outer",
+              "mode": "read",
+              "projections": [],
+              "span": [
+                166,
+                171
+              ],
+              "text": "outer"
+            },
+            {
+              "reason": "unnameable-place",
+              "mode": "read",
+              "span": [
+                162,
+                178
+              ],
+              "text": "cut(outer, 0, 1)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "materialized-actual-valid-bounds",
+      "source": "fn cut(read p: List[Int], lo: Int, hi: Int) -> List[Int] { return p[lo .. hi] }\nfn main() {\n let outer: List[Int] = [1, 2, 3]\n par |scope| {\n  scope.spawn(fn() {\n   cut([1, 2, 3], 0, 1)\n  })\n }\n}\n",
+      "allocation_note": "Independently authored: 1 helper bodies / 3 helper parameters, main par token before its one outer binding, then hidden handle; private deep templates never become public known prefixes.",
+      "pars": [
+        {
+          "scope": 5,
+          "token": 3,
+          "name": "scope",
+          "span": [
+            127,
+            193
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "par": 0,
+          "handle": 5,
+          "span": [
+            143,
+            190
+          ],
+          "lambda_span": [
+            155,
+            189
+          ],
+          "observations": []
+        }
+      ]
+    },
+    {
+      "name": "forwarded-unavailable-valid-bounds",
+      "source": "fn cut(read p: List[Int], lo: Int, hi: Int, a: Int, b: Int) -> List[Int] { return p[lo .. hi][a .. b] }\nfn relay(read p: List[Int], lo: Int, hi: Int, a: Int, b: Int) -> List[Int] { return cut(p, lo + 1, hi, a, b) }\nfn main() {\n let outer: List[Int] = [1, 2, 3]\n par |scope| {\n  scope.spawn(fn() {\n   relay(outer, 0, 3, 0, 1)\n  })\n }\n}\n",
+      "allocation_note": "Independently authored: 2 helper bodies / 10 helper parameters, main par token before its one outer binding, then hidden handle; private deep templates never become public known prefixes.",
+      "pars": [
+        {
+          "scope": 7,
+          "token": 10,
+          "name": "scope",
+          "span": [
+            262,
+            332
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "par": 0,
+          "handle": 12,
+          "span": [
+            278,
+            329
+          ],
+          "lambda_span": [
+            290,
+            328
+          ],
+          "observations": [
+            {
+              "binding": 11,
+              "name": "outer",
+              "mode": "read",
+              "projections": [],
+              "span": [
+                306,
+                311
+              ],
+              "text": "outer"
+            },
+            {
+              "binding": 11,
+              "name": "outer",
+              "mode": "read",
+              "projections": [],
+              "span": [
+                300,
+                324
+              ],
+              "text": "relay(outer, 0, 3, 0, 1)"
+            },
+            {
+              "reason": "unresolved-call",
+              "mode": "read",
+              "span": [
+                300,
+                324
+              ],
+              "text": "relay(outer, 0, 3, 0, 1)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "resolved-arrow-index-unavailable-environment",
+      "source": "fn probe(values: List[Int]) {\n let f = fn(index: Int) => values[index]\n par |scope| {\n  scope.spawn(fn() {\n   f(0)\n  })\n }\n}\n",
+      "allocation_note": "Function parameter values=0; par token=1; nested lambda formal index=2; let f=3; hidden handle=4. The preceding arrow parameter scope places par at scope4. The formal index actual is materialized; the unrepresented free environment remains an unknown take.",
+      "pars": [
+        {
+          "scope": 4,
+          "token": 1,
+          "name": "scope",
+          "span": [
+            72,
+            122
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "par": 0,
+          "handle": 4,
+          "span": [
+            88,
+            119
+          ],
+          "lambda_span": [
+            100,
+            118
+          ],
+          "observations": [
+            {
+              "binding": 3,
+              "name": "f",
+              "mode": "read",
+              "projections": [],
+              "span": [
+                110,
+                111
+              ],
+              "text": "f"
+            },
+            {
+              "mode": "take",
+              "reason": "unresolved-call",
+              "span": [
+                110,
+                114
+              ],
+              "text": "f(0)"
+            }
+          ]
+        }
+      ]
     }
   ],
   "negative": [
@@ -7144,6 +7739,51 @@
       "source": "type Token = { value: Int }\nfn leaf(read p: Token) -> Int { return p.value }\nfn main(v32: Token, v0: Token, v1: Token, v2: Token, v3: Token, v4: Token, v5: Token, v6: Token, v7: Token, v8: Token, v9: Token, v10: Token, v11: Token, v12: Token, v13: Token, v14: Token, v15: Token, v16: Token, v17: Token, v18: Token, v19: Token, v20: Token, v21: Token, v22: Token, v23: Token, v24: Token, v25: Token, v26: Token, v27: Token, v28: Token, v29: Token, v30: Token, v31: Token) {\n par |scope| {\n  scope.spawn(fn() {\n   leaf(v32)\n   leaf(v0)\n   leaf(v1)\n   leaf(v2)\n   leaf(v3)\n   leaf(v4)\n   leaf(v5)\n   leaf(v6)\n   leaf(v7)\n   leaf(v8)\n   leaf(v9)\n   leaf(v10)\n   leaf(v11)\n   leaf(v12)\n   leaf(v13)\n   leaf(v14)\n   leaf(v15)\n   leaf(v16)\n   leaf(v17)\n   leaf(v18)\n   leaf(v19)\n   leaf(v20)\n   leaf(v21)\n   leaf(v22)\n   leaf(v23)\n   leaf(v24)\n   leaf(v25)\n   leaf(v26)\n   leaf(v27)\n   leaf(v28)\n   leaf(v29)\n   leaf(v30)\n   leaf(v31)\n  })\n }\n}\n",
       "diagnostic_code": "E2S154",
       "reason": "33 actual whole targets plus33 substituted field targets exceed64"
+    },
+    {
+      "name": "known-depth-eight-inverted-bounds",
+      "source": "fn cut(read p: List[Int], lo: Int, hi: Int) -> List[Int] { return p[lo .. hi] }\nfn main() {\n let outer: List[Int] = [1, 2, 3]\n par |scope| {\n  scope.spawn(fn() {\n   cut(outer[0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3], 2, 1)\n  })\n }\n}\n",
+      "diagnostic_code": "E2S154"
+    },
+    {
+      "name": "deep-actual-prefix-inverted-bounds",
+      "source": "fn cut(read p: List[Int], lo: Int, hi: Int) -> List[Int] { return p[lo .. hi] }\nfn main() {\n let outer: List[Int] = [1, 2, 3]\n par |scope| {\n  scope.spawn(fn() {\n   cut(outer[0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3], 2, 1)\n  })\n }\n}\n",
+      "diagnostic_code": "E2S154"
+    },
+    {
+      "name": "deep-seed-inverted-bounds",
+      "source": "fn cut(read p: List[Int], lo: Int, hi: Int) -> List[Int] { return p[0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][lo .. hi] }\nfn main() {\n let outer: List[Int] = [1, 2, 3]\n par |scope| {\n  scope.spawn(fn() {\n   cut(outer, 2, 1)\n  })\n }\n}\n",
+      "diagnostic_code": "E2S154"
+    },
+    {
+      "name": "deep-forwarded-inverted-bounds",
+      "source": "fn cut(read p: List[Int], lo: Int, hi: Int) -> List[Int] { return p[lo .. hi] }\nfn relay(read p: List[Int], hi: Int, lo: Int) -> List[Int] { return cut(p[0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3], lo, hi) }\nfn main() {\n let outer: List[Int] = [1, 2, 3]\n par |scope| {\n  scope.spawn(fn() {\n   relay(outer, 1, 2)\n  })\n }\n}\n",
+      "diagnostic_code": "E2S154"
+    },
+    {
+      "name": "deep-local-actual-inverted-bounds",
+      "source": "fn cut(read p: List[Int], lo: Int, hi: Int) -> List[Int] { return p[0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][0 .. 3][lo .. hi] }\nfn main() {\n let outer: List[Int] = [1, 2, 3]\n par |scope| {\n  scope.spawn(fn() {\n   let local: List[Int] = [1, 2, 3]\n   cut(local, 2, 1)\n  })\n }\n}\n",
+      "diagnostic_code": "E2S154"
+    },
+    {
+      "name": "unavailable-retains-other-inverted-bounds",
+      "source": "fn cut(read p: List[Int], lo: Int, hi: Int, a: Int, b: Int) -> List[Int] { return p[lo + 1 .. hi][a .. b] }\nfn main() {\n let outer: List[Int] = [1, 2, 3]\n par |scope| {\n  scope.spawn(fn() {\n   cut(outer, 0, 3, 2, 1)\n  })\n }\n}\n",
+      "diagnostic_code": "E2S154"
+    },
+    {
+      "name": "indexed-effect-inverted-bounds",
+      "source": "fn cut(read p: List[Int], lo: Int, hi: Int) -> Int { return p[lo .. hi][0] }\nfn main() {\n let outer: List[Int] = [1, 2, 3]\n par |scope| {\n  scope.spawn(fn() {\n   cut(outer, 2, 1)\n  })\n }\n}\n",
+      "diagnostic_code": "E2S154"
+    },
+    {
+      "name": "materialized-actual-inverted-bounds",
+      "source": "fn cut(read p: List[Int], lo: Int, hi: Int) -> List[Int] { return p[lo .. hi] }\nfn main() {\n let outer: List[Int] = [1, 2, 3]\n par |scope| {\n  scope.spawn(fn() {\n   cut([1, 2, 3], 2, 1)\n  })\n }\n}\n",
+      "diagnostic_code": "E2S154"
+    },
+    {
+      "name": "forwarded-unavailable-inverted-bounds",
+      "source": "fn cut(read p: List[Int], lo: Int, hi: Int, a: Int, b: Int) -> List[Int] { return p[lo .. hi][a .. b] }\nfn relay(read p: List[Int], lo: Int, hi: Int, a: Int, b: Int) -> List[Int] { return cut(p, lo + 1, hi, a, b) }\nfn main() {\n let outer: List[Int] = [1, 2, 3]\n par |scope| {\n  scope.spawn(fn() {\n   relay(outer, 0, 3, 2, 1)\n  })\n }\n}\n",
+      "diagnostic_code": "E2S154"
     }
   ]
 }

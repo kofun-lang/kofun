@@ -6,7 +6,7 @@
 `spec/concurrency/scoped-captures-v1.md` §14. This is an analysis entry; the
 programs containing cyclic calls or scoped tasks are never executed.
 
-The 44 positive fixtures contain complete authored source, resolver ordinals,
+The 52 positive fixtures contain complete authored source, resolver ordinals,
 literal byte spans, formal/actual effect expectations and whole lifecycle
 facts. The shared independent `../captures-direct/oracle.mjs` frames identities
 and normalizes those facts without importing compiler or model code. The gate
@@ -31,6 +31,13 @@ above64 rather than publishing a truncated fixed point. Element indices remain
 reason3, including a substituted unnameable actual. Arrow task tails retain
 both the direct actual read and the complete call origin.
 
+Deep bound controls retain private validation through an eight-slice actual
+prefix, an already-deep callee and reordered forwarding. Valid counterparts
+still publish reason2 unknowns. Inverted instantiated bounds refuse even for
+task-local or materialized actuals, indexed effects, and a separate slice whose
+neighboring bound is unavailable. A resolved arrow over a captured List
+parameter retains its complete range and explicit unavailable environment.
+
 Positive/negative boundaries cover64/65 callable bodies,1024/1025 checked call
 sites and256/257 per-callable target keys. The public observation budget counts
 both direct and instantiated effects:128 identity calls retain256 origins,
@@ -38,7 +45,7 @@ while129 calls refuse.32 distinct actuals plus their field effects produce64
 captures;33 refuse. Two formal effects aliased to one actual target at one
 call normalize before the observation charge.
 
-The ten source/summary refusals assert diagnostic classes and deterministic
+The nineteen source/summary refusals assert diagnostic classes and deterministic
 C/Kofun messages. All refusals, including Unicode/path/malformed input controls,
 check both absent and preexisting output destinations. Public writer alias,
 lookup-fault and transactional host behavior is also exercised through the

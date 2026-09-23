@@ -25232,7 +25232,7 @@ fn checked_place_walk(source: Text, hir: Text, catalog: Text, start: Int,
             }
             let resolved = checked_place_field(catalog, type, token_text(source, field))
             if resolved < 0 { return checked_place_error("field does not resolve for checked owner type", field) }
-            if count < 8 && len(path) > 0 {
+            if (count < 8 || summary_enabled(catalog)) && len(path) > 0 {
                 let owner = checked_place_type_id(path, type)
                 let ordinal = hir_field(catalog, resolved, 2)
                 raw = raw + "01" + owner + scoped_hir_hex(decimal_value(ordinal), 8)
@@ -25281,7 +25281,7 @@ fn checked_place_walk(source: Text, hir: Text, catalog: Text, start: Int,
             if len(low) > 0 && len(high) > 0 && checked_place_constant_after(low, high) {
                 return checked_place_error("constant lower bound exceeds upper bound", lower)
             }
-            if count < 8 && len(path) > 0 {
+            if (count < 8 || summary_enabled(catalog)) && len(path) > 0 {
                 let file = scoped_hir_file_id(path)
                 let low_node = checked_place_expression_id(file, lower, lower_end)
                 let high_node = checked_place_expression_id(file, upper, upper_end)
@@ -26607,18 +26607,14 @@ fn summary_mode(left: Text, right: Text) -> Text {
 }
 
 # effect|callable-open|formal-slot|kind|mode|depth|raw-template|JSON-template|type
-# Unknowns retain maximum depth but never treat their truncated raw prefix as
-# a known key. This makes recursive projection growth fail closed at 65.
+# Unknowns retain bounded private templates for later bound validation. These
+# are never published as known places; recursive growth still refuses at 65.
 fn summary_effect(open: Int, slot: Int, kind: Text, mode: Text, depth: Int, raw: Text, json: Text, type: Text) -> Text {
     if depth > 64 { return summary_error("composed projection limit is 64", open) }
     let mut target_kind = kind
-    let mut target_raw = raw
-    let mut target_json = json
-    if target_kind != "place" || depth > 8 { target_raw = ""
-        target_json = "" }
     if target_kind == "place" && depth > 8 { target_kind = "deep" }
     return "effect|" + to_text(open) + "|" + to_text(slot) + "|" + target_kind + "|" + mode + "|" +
-        to_text(depth) + "|" + target_raw + "|" + target_json + "|" + type + "\n"
+        to_text(depth) + "|" + raw + "|" + json + "|" + type + "\n"
 }
 
 fn summary_merge(effects: Text, candidate: Text) -> Text {
@@ -26704,8 +26700,9 @@ fn summary_slice_separator(source: Text, start: Int, end: Int) -> Int {
 # projection|kind|depth|raw-template|JSON-template
 fn summary_projection(source: Text, hir: Text, parameters: Text, owner: Int, start: Int, end: Int, path: Text, place: Text) -> Text {
     let depth = decimal_value(hir_field(place, 0, 3))
-    if hir_field(place, 0, 0) == "unnameable" { return "projection|unnameable|" + to_text(depth) + "||\n" }
-    if depth > 8 { return "projection|deep|" + to_text(depth) + "||\n" }
+    let mut kind = "place"
+    if depth > 8 { kind = "deep" }
+    if hir_field(place, 0, 0) == "unnameable" { kind = "unnameable" }
     let mut raw = hir_field(place, 0, 4)
     let mut json = hir_field(place, 0, 5)
     let file = scoped_hir_file_id(path)
@@ -26715,7 +26712,11 @@ fn summary_projection(source: Text, hir: Text, parameters: Text, owner: Int, sta
             let after = balanced_end(source, at, "[", "]")
             let lower = skip_trivia(source, token_end(source, at))
             let separator = summary_slice_separator(source, lower, after - 1)
-            if separator < 0 { return "projection|unnameable|" + to_text(depth) + "||\n" }
+            if separator < 0 {
+                if kind != "unavailable" { kind = "unnameable" }
+                at = skip_trivia(source, after)
+                continue
+            }
             let upper = skip_trivia(source, token_end(source, separator))
             let mut bound_start = lower
             let mut bound_end = checked_place_trim_end(source, lower, separator)
@@ -26724,9 +26725,12 @@ fn summary_projection(source: Text, hir: Text, parameters: Text, owner: Int, sta
                 let original = checked_place_constant(source, bound_start, bound_end)
                 if starts_with(original, "error[") { return original }
                 if len(original) == 0 {
-                    let bound = summary_bound(source, hir, parameters, owner, bound_start, bound_end, path)
+                    let mut bound = summary_bound(source, hir, parameters, owner, bound_start, bound_end, path)
                     if starts_with(bound, "error[") { return bound }
-                    if starts_with(bound, "unavailable") { return "projection|unavailable|" + to_text(depth) + "||\n" }
+                    if starts_with(bound, "unavailable") {
+                        kind = "unavailable"
+                        bound = "bound|02<u>|{\"kind\":\"node\",\"node_id\":\"<u>\"}\n"
+                    }
                     let node = checked_place_expression_id(file, bound_start, bound_end)
                     raw = summary_replace(raw, "02" + node, hir_field(bound, 0, 1))
                     json = summary_replace(json, "{\"kind\":\"node\",\"node_id\":\"" + node + "\"}", hir_field(bound, 0, 2))
@@ -26738,7 +26742,7 @@ fn summary_projection(source: Text, hir: Text, parameters: Text, owner: Int, sta
             at = skip_trivia(source, after)
         } else { at = skip_trivia(source, token_end(source, at)) }
     }
-    return "projection|place|" + to_text(depth) + "|" + raw + "|" + json + "\n"
+    return "projection|" + kind + "|" + to_text(depth) + "|" + raw + "|" + json + "\n"
 }
 
 fn summary_actual(source: Text, hir: Text, catalog: Text, start: Int, end: Int, path: Text) -> Text {
@@ -26774,6 +26778,7 @@ fn summary_substitute_bounds(source: Text, hir: Text, parameters: Text, owner: I
     path: Text, depth: Int, raw: Text, json: Text) -> Text {
     let mut result_raw = raw
     let mut result_json = json
+    let mut kind = "place"
     let mut at = find(result_raw, "<p")
     # A placeholder replacement can itself be a caller placeholder. Only the
     # original suffix is scanned; newly substituted slots are not rebound in
@@ -26789,7 +26794,7 @@ fn summary_substitute_bounds(source: Text, hir: Text, parameters: Text, owner: I
         let bound = summary_bound(source, hir, parameters, owner, decimal_value(hir_field(facts, argument, 3)),
             decimal_value(hir_field(facts, argument, 4)), path)
         if starts_with(bound, "error[") { return bound }
-        if starts_with(bound, "unavailable") { return "projection|unavailable|" + to_text(depth) + "||\n" }
+        if starts_with(bound, "unavailable") { kind = "unavailable" }
         # Stage replacements through a marker alphabet disjoint from both raw
         # hex and formal markers, so reordered slots cannot capture each other.
         let staged = "<a" + to_text(slot) + ">"
@@ -26803,10 +26808,13 @@ fn summary_substitute_bounds(source: Text, hir: Text, parameters: Text, owner: I
         if hir_field(facts, argument, 1) == to_text(call_start) {
             let staged = "<a" + hir_field(facts, argument, 2) + ">"
             if contains(result_raw, staged) {
-                let bound = summary_bound(source, hir, parameters, owner, decimal_value(hir_field(facts, argument, 3)),
+                let mut bound = summary_bound(source, hir, parameters, owner, decimal_value(hir_field(facts, argument, 3)),
                     decimal_value(hir_field(facts, argument, 4)), path)
                 if starts_with(bound, "error[") { return bound }
-                if starts_with(bound, "unavailable") { return "projection|unavailable|" + to_text(depth) + "||\n" }
+                if starts_with(bound, "unavailable") {
+                    kind = "unavailable"
+                    bound = "bound|02<u>|{\"kind\":\"node\",\"node_id\":\"<u>\"}\n"
+                }
                 result_raw = summary_replace(result_raw, staged, hir_field(bound, 0, 1))
                 result_json = summary_replace(result_json, staged, hir_field(bound, 0, 2))
             }
@@ -26814,7 +26822,7 @@ fn summary_substitute_bounds(source: Text, hir: Text, parameters: Text, owner: I
         argument = capture_record_start(facts, "argument", argument + 1)
     }
     if !summary_constant_pairs(result_json) { return summary_error("instantiated constant lower bound exceeds upper bound", call_start) }
-    return "projection|place|" + to_text(depth) + "|" + result_raw + "|" + result_json + "\n"
+    return "projection|" + kind + "|" + to_text(depth) + "|" + result_raw + "|" + result_json + "\n"
 }
 
 fn summary_callable_seeds(source: Text, hir: Text, parameters: Text, facts: Text, calls: Text, path: Text,
@@ -26879,6 +26887,11 @@ fn summary_instance(source: Text, hir: Text, catalog: Text, parameters: Text, ow
     if slot < 0 { return "instance||unavailable|" + mode + "|0|||\n" }
     let argument = summary_argument(facts, call_start, slot)
     if argument < 0 { return summary_error("checked actual slot is absent", call_start) }
+    # Validate substituted bounds even when the public target will be unknown
+    # or the actual is a materialized value rather than an escaping place.
+    let suffix = summary_substitute_bounds(source, hir, parameters, owner, facts, call_start, path,
+        decimal_value(hir_field(effects, effect, 5)), hir_field(effects, effect, 6), hir_field(effects, effect, 7))
+    if starts_with(suffix, "error[") { return suffix }
     let start = decimal_value(hir_field(facts, argument, 3))
     let end = decimal_value(hir_field(facts, argument, 4))
     let actual = summary_actual(source, hir, catalog, start, end, path)
@@ -26890,23 +26903,13 @@ fn summary_instance(source: Text, hir: Text, catalog: Text, parameters: Text, ow
     if depth > 64 { return summary_error("composed projection limit is 64", call_start) }
     let mut kind = hir_field(effects, effect, 3)
     let prefix_kind = hir_field(prefix, 0, 1)
-    let mut raw = ""
-    let mut json = ""
-    if kind == "unavailable" || prefix_kind == "unavailable" { kind = "unavailable" }
+    let raw = hir_field(prefix, 0, 3) + hir_field(suffix, 0, 3)
+    let mut json = hir_field(prefix, 0, 4)
+    if len(json) > 0 && len(hir_field(suffix, 0, 4)) > 0 { json = json + "," }
+    json = json + hir_field(suffix, 0, 4)
+    if kind == "unavailable" || prefix_kind == "unavailable" || hir_field(suffix, 0, 1) == "unavailable" { kind = "unavailable" }
     else if kind == "unnameable" || prefix_kind == "unnameable" { kind = "unnameable" }
     else if kind == "deep" || prefix_kind == "deep" || depth > 8 { kind = "deep" }
-    else {
-        let suffix = summary_substitute_bounds(source, hir, parameters, owner, facts, call_start, path,
-            decimal_value(hir_field(effects, effect, 5)), hir_field(effects, effect, 6), hir_field(effects, effect, 7))
-        if starts_with(suffix, "error[") { return suffix }
-        kind = hir_field(suffix, 0, 1)
-        if kind == "place" {
-            raw = hir_field(prefix, 0, 3) + hir_field(suffix, 0, 3)
-            json = hir_field(prefix, 0, 4)
-            if len(json) > 0 && len(hir_field(suffix, 0, 4)) > 0 { json = json + "," }
-            json = json + hir_field(suffix, 0, 4)
-        }
-    }
     return "instance|" + hir_field(actual, 0, 1) + "|" + kind + "|" + mode + "|" + to_text(depth) + "|" + raw + "|" + json + "|" + type + "\n"
 }
 

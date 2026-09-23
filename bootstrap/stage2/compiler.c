@@ -34992,7 +34992,7 @@ static char *cp_walk(CheckedPlaceArena *a, const char *source, const char *hir, 
             if (!cp_kind(a, source, field, "identifier") || token_end(source, field) > end) return cp_error(a, "malformed field projection", field);
             int64_t resolved = cp_resolve_field(a, catalog, type, cp_keep(a, token_copy(source, field)));
             if (resolved < 0) return cp_error(a, "field does not resolve for checked owner type", field);
-            if (count < 8 && *path) {
+            if ((count < 8 || summary_enabled(a, catalog)) && *path) {
                 char *owner = cp_type_id(a, path, type), *ordinal = cp_field(a, catalog, resolved, 2);
                 raw = cp_format(a, "%s01%s%08" PRIx64, raw, owner, (uint64_t)decimal_value(ordinal));
                 char *display = cp_keep(a, scoped_hir_display(source, field));
@@ -35029,7 +35029,7 @@ static char *cp_walk(CheckedPlaceArena *a, const char *source, const char *hir, 
             if (strcmp(lower_type, "Int") != 0 || strcmp(upper_type, "Int") != 0) return cp_error(a, "slice bounds must have checked Int type", lower);
             char *low = cp_constant(a, source, lower, lower_end), *high = cp_constant(a, source, upper, upper_end);
             if (*low && *high && strtoll(low, NULL, 10) > strtoll(high, NULL, 10)) return cp_error(a, "constant lower bound exceeds upper bound", lower);
-            if (count < 8 && *path) {
+            if ((count < 8 || summary_enabled(a, catalog)) && *path) {
                 char *file = cp_keep(a, scoped_hir_file_id(path));
                 char *low_node = cp_expression_id(a, file, lower, lower_end), *high_node = cp_expression_id(a, file, upper, upper_end);
                 char *low_raw = cp_format(a, "02%s", low_node), *high_raw = cp_format(a, "02%s", high_node);
@@ -37004,16 +37004,10 @@ static const char * summary_effect(CheckedPlaceArena *a, int64_t v_open, int64_t
         return capture_return_text(a, mark, summary_error(a, "composed projection limit is 64", v_open));
     }
     const char * v_target_kind = v_kind;
-    const char * v_target_raw = v_raw;
-    const char * v_target_json = v_json;
-    if ((strcmp(v_target_kind, "place") != 0) || (v_depth > 8)) {
-        v_target_raw = "";
-        v_target_json = "";
-    }
     if ((strcmp(v_target_kind, "place") == 0) && (v_depth > 8)) {
         v_target_kind = "deep";
     }
-    return capture_return_text(a, mark, cp_format(a, "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s", "effect|", cp_format(a, "%" PRId64, v_open), "|", cp_format(a, "%" PRId64, v_slot), "|", v_target_kind, "|", v_mode, "|", cp_format(a, "%" PRId64, v_depth), "|", v_target_raw, "|", v_target_json, "|", v_type, "\n"));
+    return capture_return_text(a, mark, cp_format(a, "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s", "effect|", cp_format(a, "%" PRId64, v_open), "|", cp_format(a, "%" PRId64, v_slot), "|", v_target_kind, "|", v_mode, "|", cp_format(a, "%" PRId64, v_depth), "|", v_raw, "|", v_json, "|", v_type, "\n"));
 }
 
 static const char * summary_merge(CheckedPlaceArena *a, const char * v_effects, const char * v_candidate) {
@@ -37153,11 +37147,12 @@ static const char * summary_projection(CheckedPlaceArena *a, const char * v_sour
     (void)v_path;
     (void)v_place;
     int64_t v_depth = decimal_value(cp_field(a, v_place, 0, 3));
-    if (strcmp(cp_field(a, v_place, 0, 0), "unnameable") == 0) {
-        return capture_return_text(a, mark, cp_format(a, "%s%s%s", "projection|unnameable|", cp_format(a, "%" PRId64, v_depth), "||\n"));
-    }
+    const char * v_kind = "place";
     if (v_depth > 8) {
-        return capture_return_text(a, mark, cp_format(a, "%s%s%s", "projection|deep|", cp_format(a, "%" PRId64, v_depth), "||\n"));
+        v_kind = "deep";
+    }
+    if (strcmp(cp_field(a, v_place, 0, 0), "unnameable") == 0) {
+        v_kind = "unnameable";
     }
     const char * v_raw = cp_field(a, v_place, 0, 4);
     const char * v_json = cp_field(a, v_place, 0, 5);
@@ -37169,7 +37164,11 @@ static const char * summary_projection(CheckedPlaceArena *a, const char * v_sour
             int64_t v_lower = skip_trivia(v_source, token_end(v_source, v_at));
             int64_t v_separator = summary_slice_separator(a, v_source, v_lower, (v_after - 1));
             if (v_separator < 0) {
-                return capture_return_text(a, mark, cp_format(a, "%s%s%s", "projection|unnameable|", cp_format(a, "%" PRId64, v_depth), "||\n"));
+                if (strcmp(v_kind, "unavailable") != 0) {
+                    v_kind = "unnameable";
+                }
+                v_at = skip_trivia(v_source, v_after);
+                continue;
             }
             int64_t v_upper = skip_trivia(v_source, token_end(v_source, v_separator));
             int64_t v_bound_start = v_lower;
@@ -37186,7 +37185,8 @@ static const char * summary_projection(CheckedPlaceArena *a, const char * v_sour
                         return capture_return_text(a, mark, v_bound);
                     }
                     if (strncmp(v_bound, "unavailable", strlen("unavailable")) == 0) {
-                        return capture_return_text(a, mark, cp_format(a, "%s%s%s", "projection|unavailable|", cp_format(a, "%" PRId64, v_depth), "||\n"));
+                        v_kind = "unavailable";
+                        v_bound = "bound|02<u>|{\"kind\":\"node\",\"node_id\":\"<u>\"}\n";
                     }
                     const char * v_node = cp_expression_id(a, v_file, v_bound_start, v_bound_end);
                     v_raw = summary_replace(a, v_raw, cp_format(a, "%s%s", "02", v_node), cp_field(a, v_bound, 0, 1));
@@ -37201,7 +37201,7 @@ static const char * summary_projection(CheckedPlaceArena *a, const char * v_sour
             v_at = skip_trivia(v_source, token_end(v_source, v_at));
         }
     }
-    return capture_return_text(a, mark, cp_format(a, "%s%s%s%s%s%s%s", "projection|place|", cp_format(a, "%" PRId64, v_depth), "|", v_raw, "|", v_json, "\n"));
+    return capture_return_text(a, mark, cp_format(a, "%s%s%s%s%s%s%s%s%s", "projection|", v_kind, "|", cp_format(a, "%" PRId64, v_depth), "|", v_raw, "|", v_json, "\n"));
 }
 
 static const char * summary_actual(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_catalog, int64_t v_start, int64_t v_end, const char * v_path) {
@@ -37261,6 +37261,7 @@ static const char * summary_substitute_bounds(CheckedPlaceArena *a, const char *
     (void)v_json;
     const char * v_result_raw = v_raw;
     const char * v_result_json = v_json;
+    const char * v_kind = "place";
     int64_t v_at = text_find_from(v_result_raw, "<p", 0);
     const char * v_remaining = v_raw;
     while (v_at >= 0) {
@@ -37279,7 +37280,7 @@ static const char * summary_substitute_bounds(CheckedPlaceArena *a, const char *
             return capture_return_text(a, mark, v_bound);
         }
         if (strncmp(v_bound, "unavailable", strlen("unavailable")) == 0) {
-            return capture_return_text(a, mark, cp_format(a, "%s%s%s", "projection|unavailable|", cp_format(a, "%" PRId64, v_depth), "||\n"));
+            v_kind = "unavailable";
         }
         const char * v_staged = cp_format(a, "%s%s%s", "<a", cp_format(a, "%" PRId64, v_slot), ">");
         v_result_raw = summary_replace(a, v_result_raw, cp_format(a, "%s%s", "02", v_marker), v_staged);
@@ -37297,7 +37298,8 @@ static const char * summary_substitute_bounds(CheckedPlaceArena *a, const char *
                     return capture_return_text(a, mark, v_bound);
                 }
                 if (strncmp(v_bound, "unavailable", strlen("unavailable")) == 0) {
-                    return capture_return_text(a, mark, cp_format(a, "%s%s%s", "projection|unavailable|", cp_format(a, "%" PRId64, v_depth), "||\n"));
+                    v_kind = "unavailable";
+                    v_bound = "bound|02<u>|{\"kind\":\"node\",\"node_id\":\"<u>\"}\n";
                 }
                 v_result_raw = summary_replace(a, v_result_raw, v_staged, cp_field(a, v_bound, 0, 1));
                 v_result_json = summary_replace(a, v_result_json, v_staged, cp_field(a, v_bound, 0, 2));
@@ -37308,7 +37310,7 @@ static const char * summary_substitute_bounds(CheckedPlaceArena *a, const char *
     if (!summary_constant_pairs(a, v_result_json)) {
         return capture_return_text(a, mark, summary_error(a, "instantiated constant lower bound exceeds upper bound", v_call_start));
     }
-    return capture_return_text(a, mark, cp_format(a, "%s%s%s%s%s%s%s", "projection|place|", cp_format(a, "%" PRId64, v_depth), "|", v_result_raw, "|", v_result_json, "\n"));
+    return capture_return_text(a, mark, cp_format(a, "%s%s%s%s%s%s%s%s%s", "projection|", v_kind, "|", cp_format(a, "%" PRId64, v_depth), "|", v_result_raw, "|", v_result_json, "\n"));
 }
 
 static const char * summary_callable_seeds(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_parameters, const char * v_facts, const char * v_calls, const char * v_path, int64_t v_open, int64_t v_end, const char * v_scope, bool v_lambda) {
@@ -37411,6 +37413,10 @@ static const char * summary_instance(CheckedPlaceArena *a, const char * v_source
     if (v_argument < 0) {
         return capture_return_text(a, mark, summary_error(a, "checked actual slot is absent", v_call_start));
     }
+    const char * v_suffix = summary_substitute_bounds(a, v_source, v_hir, v_parameters, v_owner, v_facts, v_call_start, v_path, decimal_value(cp_field(a, v_effects, v_effect, 5)), cp_field(a, v_effects, v_effect, 6), cp_field(a, v_effects, v_effect, 7));
+    if (strncmp(v_suffix, "error[", strlen("error[")) == 0) {
+        return capture_return_text(a, mark, v_suffix);
+    }
     int64_t v_start = decimal_value(cp_field(a, v_facts, v_argument, 3));
     int64_t v_end = decimal_value(cp_field(a, v_facts, v_argument, 4));
     const char * v_actual = summary_actual(a, v_source, v_hir, v_catalog, v_start, v_end, v_path);
@@ -37430,10 +37436,13 @@ static const char * summary_instance(CheckedPlaceArena *a, const char * v_source
     }
     const char * v_kind = cp_field(a, v_effects, v_effect, 3);
     const char * v_prefix_kind = cp_field(a, v_prefix, 0, 1);
-    const char * v_raw = "";
-    CheckedPlaceText *builder_json = NULL;
-    const char * v_json = "";
-    if ((strcmp(v_kind, "unavailable") == 0) || (strcmp(v_prefix_kind, "unavailable") == 0)) {
+    const char * v_raw = cp_format(a, "%s%s", cp_field(a, v_prefix, 0, 3), cp_field(a, v_suffix, 0, 3));
+    const char * v_json = cp_field(a, v_prefix, 0, 4);
+    if ((((int64_t)strlen(v_json)) > 0) && (((int64_t)strlen(cp_field(a, v_suffix, 0, 4))) > 0)) {
+        v_json = cp_format(a, "%s%s", v_json, ",");
+    }
+    v_json = cp_format(a, "%s%s", v_json, cp_field(a, v_suffix, 0, 4));
+    if (((strcmp(v_kind, "unavailable") == 0) || (strcmp(v_prefix_kind, "unavailable") == 0)) || (strcmp(cp_field(a, v_suffix, 0, 1), "unavailable") == 0)) {
         v_kind = "unavailable";
     } else {
         if ((strcmp(v_kind, "unnameable") == 0) || (strcmp(v_prefix_kind, "unnameable") == 0)) {
@@ -37441,20 +37450,6 @@ static const char * summary_instance(CheckedPlaceArena *a, const char * v_source
         } else {
             if (((strcmp(v_kind, "deep") == 0) || (strcmp(v_prefix_kind, "deep") == 0)) || (v_depth > 8)) {
                 v_kind = "deep";
-            } else {
-                const char * v_suffix = summary_substitute_bounds(a, v_source, v_hir, v_parameters, v_owner, v_facts, v_call_start, v_path, decimal_value(cp_field(a, v_effects, v_effect, 5)), cp_field(a, v_effects, v_effect, 6), cp_field(a, v_effects, v_effect, 7));
-                if (strncmp(v_suffix, "error[", strlen("error[")) == 0) {
-                    return capture_return_text(a, mark, v_suffix);
-                }
-                v_kind = cp_field(a, v_suffix, 0, 1);
-                if (strcmp(v_kind, "place") == 0) {
-                    v_raw = cp_format(a, "%s%s", cp_field(a, v_prefix, 0, 3), cp_field(a, v_suffix, 0, 3));
-                    v_json = cp_field(a, v_prefix, 0, 4);
-                    if ((((int64_t)strlen(v_json)) > 0) && (((int64_t)strlen(cp_field(a, v_suffix, 0, 4))) > 0)) {
-                        v_json = capture_append(a, &builder_json, v_json, ",");
-                    }
-                    v_json = capture_append(a, &builder_json, v_json, cp_field(a, v_suffix, 0, 4));
-                }
             }
         }
     }

@@ -722,10 +722,14 @@ source text at different outer occurrences therefore yields distinct bounds.
 Compound or callee-local bounds with no representable substitution produce
 reason1 (`unresolved-call`) with their checked mode; they do not reuse a callee
 NodeId as an invented actual expression. Instantiated constant lower/upper
-pairs are checked again and inverted intervals refuse.
+pairs are checked again and inverted intervals refuse. This validation also
+applies to unknown effects and materialized or task-local actuals. One
+unrepresentable bound does not discard another slice's validation obligation.
 
 Projection composition is exact through depth8. Depth9..64 becomes reason2
-with its resolved base and maximum candidate depth retained privately. Depth
+with its resolved base, candidate depth and bounded validation templates
+retained privately. Distinct private templates remain distinct solver keys
+even when final normalization gives them the same public unknown. Depth
 above64 refuses, including a recursive path that continues growing after it
 has become unknown. A checked element index remains reason3. Unavailable
 bodies/environments are reason1; when the effect mode itself is unavailable,
