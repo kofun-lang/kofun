@@ -5563,6 +5563,7 @@ static char *bytes_access_error(
  * is above the definitions; the set membership and the family lowering are
  * the two the call site needs. */
 static bool bytes_mutation_builtin(const char *name);
+static bool bytes_family_builtin(const char *name);
 static bool call_resolves_to_builtin(
     const char *source,
     const char *hir,
@@ -9994,7 +9995,7 @@ static char *emit_primary(
          */
         if (
             open < end && token_equal(source, open, "(") &&
-            bytes_mutation_builtin(name) &&
+            bytes_family_builtin(name) &&
             call_resolves_to_builtin(source, hir, cursor, name)
         ) {
             char *call = emit_bytes_mutation_call(
@@ -10978,6 +10979,10 @@ static int64_t builtin_arity(const char *name) {
         {"stage2_bytes_byte_set", 3},
         {"stage2_bytes_append_self", 3},
         {"stage2_bytes_append_range", 4},
+        /* #1322. The Text bridge: `assign_text` takes the carrier and a
+         * `Text`, `text` the carrier and a byte range. */
+        {"stage2_bytes_assign_text", 2},
+        {"stage2_bytes_text", 3},
         {"starts_with", 2},
         {"text_slice", 3},
         {"to_text", 1},
@@ -11057,6 +11062,8 @@ static const char *builtin_parameter_types(const char *name) {
         {"stage2_bytes_byte_set", "Bytes|Int|Int"},
         {"stage2_bytes_append_self", "Bytes|Int|Int"},
         {"stage2_bytes_append_range", "Bytes|Bytes|Int|Int"},
+        {"stage2_bytes_assign_text", "Bytes|Text"},
+        {"stage2_bytes_text", "Bytes|Int|Int"},
         {"starts_with", "Text|Text"},
         {"text_slice", "Text|Int|Int"},
         {"to_text", "Int"},
@@ -12548,7 +12555,7 @@ static char *validate_core_calls(const char *source, const char *hir) {
                         strcmp(name, "to_text") == 0 ||
                         strcmp(name, "stage2_bytes_empty") == 0 ||
                         strcmp(name, "stage2_bytes_assign_zeroed") == 0 ||
-                        bytes_mutation_builtin(name)
+                        bytes_family_builtin(name)
                     ) {
                         expected = builtin_expected;
                     } else {
@@ -12701,6 +12708,35 @@ static bool bytes_mutation_builtin(const char *name) {
 }
 
 /*
+ * #1322. The Text bridge is its own family, not two more rows in the
+ * mutation table: `bytes-mutation` derives the mutation vocabulary from that
+ * table and asserts that no mutation operation emits a Text-bridge tag, and
+ * the bridge is exactly the code that emits them. The two families lower
+ * through the same call shape, so `bytes_family_builtin` is what the
+ * dispatch sites read.
+ */
+static const char *const kofun_bytes_text_operations[] = {
+    "stage2_bytes_assign_text",
+    "stage2_bytes_text",
+};
+#define KOFUN_BYTES_TEXT_OPERATION_COUNT \
+    (sizeof(kofun_bytes_text_operations) / \
+     sizeof(kofun_bytes_text_operations[0]))
+
+static bool bytes_text_builtin(const char *name) {
+    for (size_t index = 0; index < KOFUN_BYTES_TEXT_OPERATION_COUNT; ++index) {
+        if (strcmp(name, kofun_bytes_text_operations[index]) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool bytes_family_builtin(const char *name) {
+    return bytes_mutation_builtin(name) || bytes_text_builtin(name);
+}
+
+/*
  * #1560. Whether a direct call spelling denotes a compiler builtin after the
  * same precedence the validator applies. Scope HIR records lexical callable
  * resolution, including shadowing, and the current-file declaration table is
@@ -12729,6 +12765,7 @@ static bool call_resolves_to_builtin(
  */
 static bool bytes_private_result_builtin(const char *name) {
     return strcmp(name, "stage2_bytes_assign_zeroed") == 0 ||
+           strcmp(name, "stage2_bytes_assign_text") == 0 ||
            (
                bytes_mutation_builtin(name) &&
                strcmp(name, "stage2_bytes_len") != 0 &&
@@ -12915,7 +12952,7 @@ static char *validate_bytes_private_results(
  */
 static int64_t bytes_mutation_carriers(const char *name) {
     if (strcmp(name, "stage2_bytes_append_range") == 0) return 2;
-    if (bytes_mutation_builtin(name)) return 1;
+    if (bytes_family_builtin(name)) return 1;
     return 0;
 }
 
@@ -12932,7 +12969,8 @@ static const char *bytes_mutation_required_access(
     if (
         strcmp(name, "stage2_bytes_len") == 0 ||
         strcmp(name, "stage2_bytes_capacity") == 0 ||
-        strcmp(name, "stage2_bytes_byte_at") == 0
+        strcmp(name, "stage2_bytes_byte_at") == 0 ||
+        strcmp(name, "stage2_bytes_text") == 0
     ) return "read";
     if (strcmp(name, "stage2_bytes_append_range") == 0) {
         return index == 1 ? "read" : "edit";
@@ -12943,7 +12981,8 @@ static const char *bytes_mutation_required_access(
         strcmp(name, "stage2_bytes_reserve") == 0 ||
         strcmp(name, "stage2_bytes_append") == 0 ||
         strcmp(name, "stage2_bytes_append_self") == 0 ||
-        strcmp(name, "stage2_bytes_read_file") == 0
+        strcmp(name, "stage2_bytes_read_file") == 0 ||
+        strcmp(name, "stage2_bytes_assign_text") == 0
     ) return "edit";
     return "";
 }
@@ -17357,6 +17396,15 @@ static const char *builtin_return_type(const char *name) {
         {"stage2_bytes_append", "Void"},
         {"stage2_bytes_append_range", "Void"},
         {"stage2_bytes_append_self", "Void"},
+        /* #1322. `assign_text` is private-status like the mutations it sits
+         * beside. `text` returns the `Text` a program asked for, and its
+         * range, limit, NUL, and UTF-8 failures are runtime diagnostics with
+         * an empty result -- the shape `byte_at` took across the same
+         * boundary. The exact tag/detail contract lives in the emitted
+         * `stage2_bytes_text_check` and is proved by the `bytes-text`
+         * driver. */
+        {"stage2_bytes_assign_text", "Void"},
+        {"stage2_bytes_text", "Text"},
         {"starts_with", "Bool"},
         {"text_slice", "Text"},
         {"to_text", "Text"},
@@ -26714,7 +26762,7 @@ static bool source_uses_bytes(const char *source, const char *hir) {
         bool bytes_builtin =
             strcmp(token, "stage2_bytes_empty") == 0 ||
             strcmp(token, "stage2_bytes_assign_zeroed") == 0 ||
-            bytes_mutation_builtin(token);
+            bytes_family_builtin(token);
         int64_t open = skip_trivia(source, token_end(source, cursor));
         bool resolved =
             bytes_builtin && open < length && token_equal(source, open, "(") &&
@@ -28100,6 +28148,7 @@ static int64_t count_text_sites(const char *bodies) {
         "kofun_text_slice(",
         "kofun_to_text(",
         "kofun_text_concat(",
+        "stage2_bytes_text(",
     };
     int64_t site_count = 0;
     bool quoted = false;
@@ -29175,6 +29224,97 @@ static char *lower_c_body(
         "    return r;\n"
         "}\n"
     );
+    /* #1322. The Text bridge, after the Text helpers because `text` hands
+     * its result out in a Text temporary slot, and after the mutation family
+     * because it is the one place tags 6..8 are produced -- `bytes-mutation`
+     * extracts its prelude up to `read_file` and asserts none of those tags
+     * appear in it.
+     *
+     * `assign_text` is transactional through `kofun_bytes_grow`: the only
+     * reachable failure is allocation, and grow swaps the buffer in only
+     * after the fresh one is filled. A valid Text is at most 255 bytes, so
+     * the capacity bound is unreachable here and no check pretends it is.
+     *
+     * `text_check` is the whole of the issue's contract, in its precedence:
+     * range (the shared rule: a negative offset or count reports that value,
+     * an offset past the length reports the offset, a count past
+     * `length - offset` reports the count and never evaluates the sum), then
+     * the 255-byte Text limit with the requested count as detail, then one
+     * left-to-right scan in which the earliest NUL or ill-formed sequence
+     * wins. Every content detail is an absolute offset into the carrier: a
+     * NUL or an invalid lead byte name that byte; a continuation byte that
+     * is not one names itself; truncation, an overlong form, a surrogate, and
+     * a scalar above U+10FFFF name the lead byte of their sequence. Nothing
+     * is normalized. `text` is the source-facing half: the same check, then
+     * a runtime diagnostic per failure kind with an empty result, or a copy
+     * into a Text slot. */
+    if (uses_bytes) {
+        buffer_append(
+            &output,
+            "static inline KofunBytesStatus stage2_bytes_text_check(\n"
+            "    const KofunBytesValue *value, int64_t offset, int64_t count) {\n"
+            "    if (offset < 0) return kofun_bytes_status(KOFUN_BYTES_RANGE_OUT_OF_BOUNDS, offset);\n"
+            "    if (count < 0) return kofun_bytes_status(KOFUN_BYTES_RANGE_OUT_OF_BOUNDS, count);\n"
+            "    if ((uint64_t)offset > value->length) return kofun_bytes_status(KOFUN_BYTES_RANGE_OUT_OF_BOUNDS, offset);\n"
+            "    if ((uint64_t)count > value->length - (uint64_t)offset) return kofun_bytes_status(KOFUN_BYTES_RANGE_OUT_OF_BOUNDS, count);\n"
+            "    if (count > 255) return kofun_bytes_status(KOFUN_BYTES_TEXT_LIMIT_EXCEEDED, count);\n"
+            "    const unsigned char *bytes = value->data + offset;\n"
+            "    int64_t at = 0;\n"
+            "    while (at < count) {\n"
+            "        unsigned char lead = bytes[at];\n"
+            "        int64_t need; unsigned char low = 0x80, high = 0xBF;\n"
+            "        if (lead == 0) return kofun_bytes_status(KOFUN_BYTES_TEXT_CONTAINS_NUL, offset + at);\n"
+            "        if (lead < 0x80) { at += 1; continue; }\n"
+            "        if (lead >= 0xC2 && lead <= 0xDF) { need = 1; }\n"
+            "        else if (lead == 0xE0) { need = 2; low = 0xA0; }\n"
+            "        else if ((lead >= 0xE1 && lead <= 0xEC) || lead == 0xEE || lead == 0xEF) { need = 2; }\n"
+            "        else if (lead == 0xED) { need = 2; high = 0x9F; }\n"
+            "        else if (lead == 0xF0) { need = 3; low = 0x90; }\n"
+            "        else if (lead >= 0xF1 && lead <= 0xF3) { need = 3; }\n"
+            "        else if (lead == 0xF4) { need = 3; high = 0x8F; }\n"
+            "        else return kofun_bytes_status(KOFUN_BYTES_INVALID_UTF8, offset + at);\n"
+            "        if (count - at - 1 < need) return kofun_bytes_status(KOFUN_BYTES_INVALID_UTF8, offset + at);\n"
+            "        unsigned char second = bytes[at + 1];\n"
+            "        if (second < 0x80 || second > 0xBF) return kofun_bytes_status(KOFUN_BYTES_INVALID_UTF8, offset + at + 1);\n"
+            "        if (second < low || second > high) return kofun_bytes_status(KOFUN_BYTES_INVALID_UTF8, offset + at);\n"
+            "        for (int64_t extra = 2; extra <= need; ++extra) {\n"
+            "            unsigned char next = bytes[at + extra];\n"
+            "            if (next < 0x80 || next > 0xBF) return kofun_bytes_status(KOFUN_BYTES_INVALID_UTF8, offset + at + extra);\n"
+            "        }\n"
+            "        at += need + 1;\n"
+            "    }\n"
+            "    return kofun_bytes_status(KOFUN_BYTES_SUCCEEDED, 0);\n"
+            "}\n"
+            "static inline KofunBytesStatus stage2_bytes_assign_text(\n"
+            "    KofunBytesValue *value, const char *text) {\n"
+            "    size_t width = strlen(text);\n"
+            "    KofunBytesStatus grown = kofun_bytes_grow(value, (int64_t)width);\n"
+            "    if (grown.tag != KOFUN_BYTES_SUCCEEDED) return grown;\n"
+            "    if (width > 0) memcpy(value->data, text, width);\n"
+            "    value->length = (uint64_t)width;\n"
+            "    return kofun_bytes_status(KOFUN_BYTES_SUCCEEDED, 0);\n"
+            "}\n"
+            "static inline const char *stage2_bytes_text(\n"
+            "    const KofunBytesValue *value, int64_t offset, int64_t count) {\n"
+            "    KofunBytesStatus checked = stage2_bytes_text_check(value, offset, count);\n"
+            "    if (checked.tag == KOFUN_BYTES_RANGE_OUT_OF_BOUNDS) {\n"
+            "        kofun_error(\"error[R029]: bounded Bytes text range out of range\"); return \"\";\n"
+            "    }\n"
+            "    if (checked.tag == KOFUN_BYTES_TEXT_LIMIT_EXCEEDED) {\n"
+            "        kofun_error(\"error[R030]: bounded Bytes text exceeds 255 bytes\"); return \"\";\n"
+            "    }\n"
+            "    if (checked.tag == KOFUN_BYTES_TEXT_CONTAINS_NUL) {\n"
+            "        kofun_error(\"error[R031]: bounded Bytes text contains NUL\"); return \"\";\n"
+            "    }\n"
+            "    if (checked.tag != KOFUN_BYTES_SUCCEEDED) {\n"
+            "        kofun_error(\"error[R032]: bounded Bytes text is not UTF-8\"); return \"\";\n"
+            "    }\n"
+            "    char *slot = kofun_text_temporary(); if (slot == NULL) return \"\";\n"
+            "    if (count > 0) memcpy(slot, value->data + offset, (size_t)count);\n"
+            "    slot[count] = '\\0'; return slot;\n"
+            "}\n"
+        );
+    }
     char *bit_runtime = emit_int_bit_c_runtime();
     buffer_append(&output, bit_runtime);
     free(bit_runtime);

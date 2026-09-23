@@ -1,0 +1,30 @@
+# #1322. The Text bridge, from source: a Text goes into a carrier as its exact
+# UTF-8 bytes with no terminator, a byte range comes back out as Text, and
+# both are counted in bytes. The Text limit is 255 bytes, so the last case is
+# the largest Text that can cross in either direction.
+fn measure(read view: Bytes) -> Int {
+    return stage2_bytes_len(view)
+}
+
+fn main() -> Int {
+    let bytes = stage2_bytes_empty()
+    stage2_bytes_assign_text(bytes, "aé古🌍")
+    print(measure(bytes))
+    print(stage2_bytes_text(bytes, 0, 10))
+    print(stage2_bytes_text(bytes, 1, 2))
+    print(stage2_bytes_text(bytes, 3, 3))
+    print(stage2_bytes_byte_at(bytes, 0))
+    print(stage2_bytes_byte_at(bytes, 9))
+    stage2_bytes_assign_text(bytes, "")
+    print(stage2_bytes_len(bytes))
+    print(len(stage2_bytes_text(bytes, 0, 0)))
+    stage2_bytes_assign_text(bytes, "kofun")
+    stage2_bytes_append(bytes, 33)
+    print(stage2_bytes_text(bytes, 0, 6))
+    print(len(stage2_bytes_text(bytes, 5, 0)))
+    let wide: Text = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    stage2_bytes_assign_text(bytes, wide)
+    print(stage2_bytes_len(bytes))
+    print(len(stage2_bytes_text(bytes, 0, 255)))
+    return 0
+}
