@@ -36376,7 +36376,7 @@ static const char * capture_task_observations(CheckedPlaceArena *a, const char *
         int64_t v_start = decimal_value(cp_field(a, v_accesses, v_row, 8));
         int64_t v_stop = decimal_value(cp_field(a, v_accesses, v_row, 9));
         const char * v_binding = cp_field(a, v_accesses, v_row, 3);
-        if (((v_start > v_parameters) && (v_stop < v_end)) && (!capture_local(a, v_hir, v_binding, v_scope))) {
+        if (((v_start > v_parameters) && (v_stop <= v_end)) && (!capture_local(a, v_hir, v_binding, v_scope))) {
             v_count = (v_count + 1);
             if (v_count > 256) {
                 return capture_return_text(a, mark, capture_error(a, "E2S154", "retained observation limit is 256 per task", v_start));

@@ -26224,7 +26224,7 @@ fn capture_task_observations(source: Text, hir: Text, facts: Text, accesses: Tex
         let start = decimal_value(hir_field(accesses, row, 8))
         let stop = decimal_value(hir_field(accesses, row, 9))
         let binding = hir_field(accesses, row, 3)
-        if start > parameters && stop < end && !capture_local(hir, binding, scope) {
+        if start > parameters && stop <= end && !capture_local(hir, binding, scope) {
             count = count + 1
             if count > 256 { return capture_error("E2S154", "retained observation limit is 256 per task", start) }
             let witness = checked_place_expression_id(file, start, stop)
