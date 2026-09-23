@@ -450,6 +450,7 @@ node	source	1	required-today	required	tests/stdlib/kofun-digest-model/corpus.mjs
 node	source	1	required-today	required	tests/tooling/ownership-view/ownership_view_test.mjs
 node	source	1	required-today	required	tests/typed-sidecar/atomic_write_test.mjs
 node	source	1	required-today	required	tests/typed-sidecar/authority_boundary_test.mjs
+node	source	1	required-today	required	tests/typed-sidecar/capture_transactions_test.mjs
 node	source	1	required-today	required	tests/typed-sidecar/captures_test.mjs
 node	source	1	required-today	required	tests/typed-sidecar/codec_test.mjs
 node	source	1	required-today	required	tests/typed-sidecar/producer_races_test.mjs
