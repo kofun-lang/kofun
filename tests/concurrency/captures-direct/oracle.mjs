@@ -151,13 +151,14 @@ export function sourceExpected(test,logical){
 }
 
 // A source constructor with closed, authored allocator arithmetic, not a
-// source resolver. Two functions keep each resolver use budget below4096.
+// source resolver. Separate functions keep the same full cardinality while
+// reducing the inherited resolver's quadratic work within each function.
 export function maximumRecordsFixture(shape){
-    if(shape.functions!==2||shape.pars_per_function!==32||shape.tasks_per_par!==1||shape.index_accesses_per_task!==64||shape.expected_records!==8384)refuse('full-boundary-shape')
+    if(shape.functions!==64||shape.pars_per_function!==1||shape.tasks_per_par!==1||shape.index_accesses_per_task!==64||shape.expected_records!==8384)refuse('full-boundary-shape')
     let source='';const pars=[],tasks=[]
-    for(let fn=0;fn<2;fn++){
+    for(let fn=0;fn<64;fn++){
         source+=`fn part${fn}(values: List[Int]) {\n`
-        for(let p=0;p<32;p++){
+        for(let p=0;p<1;p++){
             source+=' ';const parStart=source.length;source+='par |scope| {\n  '
             const spawn=source.length;source+='scope.spawn('
             const lambda=source.length;source+='fn() {\n'
@@ -168,10 +169,10 @@ export function maximumRecordsFixture(shape){
                 source+='\n'
             }
             source+='   0\n  }';const lambdaEnd=source.length;source+=')';const spawnEnd=source.length;source+='\n }';const parEnd=source.length;source+='\n'
-            tasks.push({par:pars.length,handle:fn*65+33+p,span:[spawn,spawnEnd],lambda_span:[lambda,lambdaEnd],observations})
-            pars.push({scope:fn*98+3+p*3,token:fn*65+1+p,name:'scope',span:[parStart,parEnd]})
+            tasks.push({par:pars.length,handle:fn*3+2,span:[spawn,spawnEnd],lambda_span:[lambda,lambdaEnd],observations})
+            pars.push({scope:fn*5+3,token:fn*3+1,name:'scope',span:[parStart,parEnd]})
         }
         source+='}\n'
     }
-    return{name:'full-8384-record-boundary',source,pars,tasks,allocation_note:'Each function: two initial scopes +32*(par,lambda-parameters,lambda-body); one parameter +32 tokens +32 hidden handles. All spans are ASCII byte positions authored while constructing source.'}
+    return{name:'full-8384-record-boundary',source,pars,tasks,allocation_note:'Each function: two initial scopes plus par/lambda-parameters/lambda-body; one parameter plus token/hidden handle. All spans are ASCII byte positions authored while constructing source.'}
 }

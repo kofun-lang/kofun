@@ -38,10 +38,18 @@ The source corpus covers:
   slices produce the full574-byte KPL; exact signed-i64 and empty slices.
 - UTF-8/grouped target spans, 128/129-byte display behavior,64/65 captures,
   256/257 observations, and64/65 tasks across separate pars.
+- More than256 task-local reads remain outside the observation budget;
+  local indexed receivers with256 enclosing index reads succeed, while257
+  retained enclosing reads refuse. Local receivers produce no unknowns.
 - Initializer/assignment/condition/call type and syntax failures, local-only
   invalid bodies, partial/borrowed takes, possible moves across branches,
   and outer moves in loops. Fresh loop-local moves and never-invoked nested
   moves have positive controls.
+
+Partial/use-after-take, duplicate nested parameters and label/arity failures
+assert their established E2S122/123/47/162/163/164 diagnostic classes. A valid
+`print(combine(...))` counterpart prevents blanket nested-call refusal from
+satisfying the labelled-call negative cases.
 
 The smaller positive corpus runs through strict C11 O0/O2, ASan/UBSan and
 canonical Kofun file entries, with repeated complete-byte equality checks.
@@ -52,14 +60,22 @@ source and logical-path refusals exercise the same publication boundary.
 binary; it never replaces the freshly built O0/O2/sanitized binaries.
 
 The full cardinality source is generated from the closed dimensions in
-`cases.json` without adding tracked `.kofun` files: two functions,32 pars per
+`cases.json` without adding tracked `.kofun` files:64 functions, one par per
 function, one task per par and64 distinct checked indexed accesses per task.
 Independent arithmetic requires64 pars,64 tasks,64 joins,4,096 unknowns and
 4,096 captures, exactly8,384 records with unique IDs. Splitting functions
-keeps each inherited lexical-use budget below4,096. This expensive boundary
-runs once in C O0 and once in canonical Kofun; the smaller boundaries already
-cover optimization, repetition and sanitizers. The gate prints its measured
-duration rather than silently skipping or truncating it.
+keeps each inherited lexical-use budget below4,096 and reduces the existing
+resolver's quadratic per-function work without reducing the required
+cardinality. This expensive boundary runs once in C O0 and once in canonical
+Kofun; the smaller boundaries already cover optimization, repetition and
+sanitizers. Only the full canonical case gets a dedicated subprocess so its
+synchronous interpreter call can be bounded; the ordinary corpus reuses one
+interpreter. A timeout fails the gate and indicates processing cost, not a
+language-semantic refusal. The gate prints its measured duration rather than
+silently skipping or truncating the source.
+The full canonical child has a600-second wall-time budget; native subprocesses
+retain120 seconds. These are explicit gate resource bounds, not changed
+language limits, and a timeout is never a pass or a skipped comparison.
 
 `--oracle-only` validates the authored expectations and full-cardinality
 model without compiling or invoking production. It explicitly reports that

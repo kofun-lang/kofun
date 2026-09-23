@@ -10,8 +10,27 @@ import {sourceExpected,identities,normalizeCaptures,raw,uint,framedHash,maximumR
 const root=fileURLToPath(new URL('../../../',import.meta.url));
 const fixtures=JSON.parse(fs.readFileSync(new URL('./cases.json',import.meta.url),'utf8'));
 assert.equal(fixtures.schema,'kofun.direct-capture-source-fixtures/v1');
+// The ordinary corpus shares one interpreter. Only the full-cardinality
+// call needs a child process because synchronous Kofun cannot self-timeout.
+if(process.argv[2]==='--full-canonical-child'){
+    assert.equal(process.argv.length,7);
+    const [input,output,logical,driver]=process.argv.slice(3);
+    let printed='';
+    const side=loadCompiler({print(value){printed+=text(value)+'\n';},validate(value){
+        const unicode=`${output}.unicode-input.kofun`;
+        fs.writeFileSync(unicode,Buffer.from(value,'latin1'));
+        const result=spawnSync(driver,['--validate',unicode],{cwd:root,encoding:'utf8',timeout:10000,maxBuffer:1024*1024});
+        if(result.error)throw result.error;
+        assert.equal(result.status,0,result.stderr);assert.equal(result.stderr,'');
+        return bytes(result.stdout.trimEnd());
+    }});
+    assert.equal(typeof side.emit_capture_hir_v2_file,'function');
+    const ok=side.emit_capture_hir_v2_file(bytes(input),bytes(output),bytes(logical));
+    process.stdout.write(printed);process.exit(ok?0:1);
+}
 assert(process.argv.slice(2).every(arg=>arg==='--oracle-only'),'unknown gate argument');
 const oracleOnly=process.argv.includes('--oracle-only');
+for(const [name,code] of [['take-partial-field','E2S122'],['use-after-take','E2S123'],['nested-duplicate-parameters','E2S47'],['call-unknown-label','E2S162'],['call-duplicate-label','E2S163'],['call-missing-argument','E2S164']])assert.equal(fixtures.negative.find(test=>test.name===name)?.diagnostic_code,code,`${name}: frozen diagnostic obligation`);
 const expected=new Map();
 for(const test of fixtures.positive){
     const {document,modelInput}=sourceExpected(test,fixtures.logical_path);
@@ -33,6 +52,10 @@ assert.equal(records('nominal-whole-read-take','capture')[0].mode,'take');
 assert.equal(records('whole-versus-field','capture').length,2);
 assert.equal(records('local-depth-nine-filtered','unknown').length,0);
 assert.equal(records('all-local-no-captures','capture').length,0);
+assert.equal(records('300-local-reads-zero-observations','capture').length,0);
+assert.equal(records('local-receivers-external-bounds-256','unknown').length,0);
+assert.equal(records('local-receivers-external-bounds-256','capture').length,1);
+assert.equal(records('local-receivers-external-bounds-256','capture')[0].origins.length,256);
 assert.equal(records('captures-64','capture').length,64);
 assert.equal(records('observations-256','capture')[0].origins.length,256);
 assert.equal(records('tasks-64-across-two-pars','task').length,64);
@@ -112,6 +135,15 @@ function positive(test,logical=fixtures.logical_path,{full=false}={}){
         }
     }
     const output=`${input}.kofun.json`;
+    if(full){
+        // This bounds the host-driver workload, not the language profile.
+        // The native command keeps its independent120-second deadline.
+        const result=run(process.execPath,[fileURLToPath(import.meta.url),'--full-canonical-child',input,output,logical,native],{timeout:600000});
+        assert.equal(result.status,0,`${test.name}: bounded canonical child: ${result.stdout}${result.stderr}`);
+        assert.equal(result.stdout,'');assert.equal(result.stderr,'');
+        checkOutput(output,want,`${test.name}: bounded canonical file entry`);
+        return;
+    }
     for(let repeat=0;repeat<(full?1:2);repeat++){
         const result=kofunEmit(input,output,logical);
         assert.equal(result.status,0,`${test.name}: ${result.stdout}`);
@@ -138,6 +170,10 @@ function negative(test,logical=fixtures.logical_path){
             const result=run(binary,['--emit-capture-hir-v2',input,output,logical]);
             assert.notEqual(result.status,0,`${test.name}: unexpectedly accepted (${test.reason})`);
             assert.equal(result.stderr,'');assert.match(result.stdout,/^error\[E(?:2S|UNICODE)[0-9]+\]:/);
+            if(test.diagnostic_code){
+                assert.match(test.diagnostic_code,/^E2S[0-9]+$/);
+                assert.match(result.stdout,new RegExp(`^error\\[${test.diagnostic_code}\\]:`),`${test.name}: established diagnostic class`);
+            }
             message??=result.stdout;assert.equal(result.stdout,message,`${test.name}: deterministic native refusal`);
             if(existing)assert.equal(fs.readFileSync(output,'utf8'),sentinel,`${test.name}: prior artifact`);
             else assert(!fs.existsSync(output),`${test.name}: no partial artifact`);
