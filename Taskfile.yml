@@ -679,6 +679,15 @@ tasks:
     cmds:
       - "sh tests/stdlib/benchmark-summary/check.sh"
 
+  benchmark-report:
+    desc: "Verify the bounded C11 benchmark report model, Bytes codec, comparison, and production composition"
+    cmds:
+      - task: benchmark-report-spec
+      - task: benchmark-report-model
+      - task: benchmark-report-codec
+      - task: benchmark-report-comparison
+      - "sh tests/stdlib/benchmark-report/check.sh"
+
   benchmark-report-spec:
     desc: "Verify the canonical benchmark-report v1 contract and vectors"
     cmds:
@@ -1544,10 +1553,7 @@ tasks:
             affine-resource-handle \
             example-law-evidence \
             benchmark-summary \
-            benchmark-report-spec \
-            benchmark-report-model \
-            benchmark-report-codec \
-            benchmark-report-comparison \
+            benchmark-report \
             kofun-digest-model \
             sha256-pair \
             move-assertion \

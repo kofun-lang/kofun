@@ -48,6 +48,7 @@ time-zone-data	module	specified	docs/stdlib/date-time.md	accepted contract (#639
 clock-adapters	adapter	implemented	task clock-adapters	explicit monotonic/system identities, affine handles, deterministic fake time and waiters; Linux x86-64 gate checks read/sleep units and errno behavior
 affine-resource-handle	portable	implemented	task affine-resource-handle	one bounded per-type read/write/drain/close/cancel table; E2S123 static moves and EARH01 generation backstop, not a general ownership pass
 benchmark-harness	portable	specified	docs/stdlib/benchmark.md	accepted contract (#640); raw-sample report schema slice is #646
+benchmark-report-v1	portable	implemented	task benchmark-report	bounded deterministic report model/codec/comparison on C11 Stage 2; 100 samples in 64+36 segments and canonical Bytes <=16384; no runner, providers, publication, generic JSON, or other backend
 concurrency	portable	planned	#1162 #1163	scoped parallelism only, after the runtime contract exists
 stream-protocol	portable	specified	docs/stdlib/stream-protocol.md	accepted protocol contract (#627); no operators, scheduler, or adapters implemented
 buffered-io	portable	implemented	task stdlib	line reader over an open File; capacity is the maximum line length including its terminator; no writer half until a consumer names one
