@@ -658,3 +658,105 @@ projection and mode merging, and exact/over-limit boundaries. The independent
 `concurrency-hir`, `concurrency-places` and `scoped-parallelism` gates remain.
 Ordinary parallel compilation retains its existing refusal and no runtime or
 release capability is promoted by this analysis entry.
+
+## 14. Complete checked capture producer
+
+The separate analysis-only entry
+`--emit-complete-capture-hir-v2 INPUT OUTPUT LOGICAL-PATH`, and canonical
+`emit_complete_capture_hir_v2_file(input, output, logical_path)`, extend §13's
+checked lexical facts with same-unit call summaries. The direct entry retains
+its independent semantics and gate. Both entries use the same closed v2 wire
+schema, framing, normalization, file/alias validation and transactional output
+boundary. Ordinary scoped-parallel compilation remains refused. This entry
+neither emits KSE2 transactions nor promotes a runtime capability.
+
+The complete entry first validates all source bodies under §13. A private call
+edge is recorded only after resolving the declaration or lexical callable,
+checking its signature/modes and assigning each actual expression to its
+formal slot, including labels. The edge retains the full call's half-open
+source span. Builtins/constructors with known local behavior have no additional
+callee effect; their checked operands remain direct facts. Missing names,
+invalid types, labels or ownership are source errors, not successful unknowns.
+A checked callable parameter whose body is unavailable is distinct from an
+unresolved source name.
+
+A summary contains effects on resolved formal BindingIds, with checked
+read/edit/take modes and field/slice paths. Named helpers resolve internal calls
+in their declaration context, independent of a caller's same-spelled local
+binding. A resolved lambda is summarized from its own formals and body. Its
+unreconstructed free environment produces an explicit unavailable effect;
+it never borrows a same-spelled named function's summary. Copying a scalar to
+a callee-local variable retains the initializer read, without treating later
+local edits as edits to the actual. Checked actual expressions materialized
+as scalar temporaries similarly retain their operand reads without exporting
+the temporary's edits. This profile performs no new points-to reconstruction.
+
+Propagation visits callables and edges in source order, unions exact target
+keys by strongest mode and repeats until unchanged. Each edge uses a frozen
+input snapshot, including self edges. Empty cycles converge; recursive SCCs
+propagate slot permutations and modes without accumulating call-stack origins.
+The implementation either converges deterministically or refuses the complete
+unpublished document at one of these explicit private analysis limits:
+
+| Resource | Limit |
+| --- | ---: |
+| Named and called resolved-lambda bodies | 64 |
+| Checked ordinary call sites, including known builtins/constructors | 1,024 |
+| Exact target keys per callable | 256 |
+| Fixed-point sweeps | 256 |
+| Attempted effect substitutions in the solver | 1,048,576 |
+
+Spawn lambdas are task bodies, not additional callable summaries unless they
+are themselves resolved ordinary call targets. Unused named bodies count
+because all named source bodies are checked. Limits apply before appending a
+new key/work item. No partial summary or truncated wire document is published.
+
+Instantiation uses the checked actual place's base and projection prefix,
+then appends the callee effect's suffix. Owner TypeIds, field ordinals and
+constant bound values retain their identity. A bare formal used as a callee
+slice bound substitutes its corresponding checked actual: a constant becomes
+the exact signed-i64 constant; at the outer task call a nonconstant uses that
+actual expression occurrence's real analysis NodeId. Intermediate forwarding
+preserves bare formal placeholders, including reordered argument slots. Equal
+source text at different outer occurrences therefore yields distinct bounds.
+Compound or callee-local bounds with no representable substitution produce
+reason1 (`unresolved-call`) with their checked mode; they do not reuse a callee
+NodeId as an invented actual expression. Instantiated constant lower/upper
+pairs are checked again and inverted intervals refuse.
+
+Projection composition is exact through depth8. Depth9..64 becomes reason2
+with its resolved base and maximum candidate depth retained privately. Depth
+above64 refuses, including a recursive path that continues growing after it
+has become unknown. A checked element index remains reason3. Unavailable
+bodies/environments are reason1; when the effect mode itself is unavailable,
+its conservative mode is `take`. A known checked mode is retained for an
+unrepresentable projection summary. Unknowns are never silently dropped or
+represented as known truncated prefixes.
+
+Every propagated observation uses the complete outer task call's span and
+analysis-expression NodeId as its origin. Unavailable effects are re-witnessed
+at that outer call. Multiple paths to the same unavailable reason at one call
+produce one unknown with one witness/origin; separate outer calls remain
+distinct. Original direct operations keep their own source origins. The
+collector remains a lexical may-access analysis, including latent nested
+bodies, rather than execution-path or task-conflict analysis.
+
+Actual substitution and its validity checks occur before local-base exclusion.
+Effects on a known task-local actual do not escape; their direct external
+operand/bound reads still do. Multiple formal effects that instantiate to the
+same target and outer-call origin normalize by strongest mode before counting
+that call's observations. The §9 limit of256 retained observations is shared
+by direct occurrences and these instantiated observations. Exact target merge,
+origin uniqueness/order, display choice and global canonical ordering then use
+§6 unchanged. The64-capture,8,384-record and16 MiB document limits remain in
+force in the shared final renderer.
+
+`task concurrency-captures` compares complete independent source expectations
+against both production entries and the accepted capture model, with native
+optimization/sanitizer and canonical repeats, source/limit refusals, public
+capacity boundaries and transactional preservation. Its paired defect controls
+exercise formal/actual resolution, missing unknowns and actual bound identity;
+forced work/sweep exhaustion proves fail-closed publication. The independent
+`concurrency-captures-direct`, `scoped-parallelism` and existing writer gates
+remain required. Successful analysis does not establish scheduling, liveness,
+conflict acceptance, parallel C lowering or execution.
