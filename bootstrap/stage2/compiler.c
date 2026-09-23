@@ -5,6 +5,7 @@
  * active Kofun bootstrap path can lower the complete Stage 2 source.
  */
 #include <ctype.h>
+#include <errno.h>
 #include <inttypes.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -388,15 +389,105 @@ static void write_file(const char *path, const char *value) {
     if (fclose(file) != 0) fail("stage2 seed: cannot close output");
 }
 
-static bool same_file(const char *left, const char *right) {
+/* Driver-only host operations. This table is deliberately separate from
+ * builtin_arity: source programs cannot resolve, import, or lower these names.
+ * The pair driver binds only the trusted compiler's calls to these operations. */
+static const struct { const char *name; int64_t arity; } stage2_host_operations[] = {
+    {"stage2_unicode_scalar_at", 2},
+    {"stage2_same_file", 2},
+};
+
+typedef enum {
+    STAGE2_SCALAR_OK,
+    STAGE2_SCALAR_INDEX,
+    STAGE2_SCALAR_END,
+    STAGE2_SCALAR_CONTINUATION,
+    STAGE2_SCALAR_MALFORMED,
+    STAGE2_SCALAR_OVERLONG,
+    STAGE2_SCALAR_SURROGATE,
+    STAGE2_SCALAR_RANGE
+} Stage2ScalarStatus;
+
+typedef struct {
+    Stage2ScalarStatus status;
+    uint32_t value;
+    size_t width;
+} Stage2Scalar;
+
+static Stage2Scalar stage2_unicode_scalar_at(
+    const char *text, size_t length, int64_t offset
+) {
+    Stage2Scalar result = {STAGE2_SCALAR_OK, 0, 0};
+    if (offset < 0 || (uint64_t)offset > length) {
+        result.status = STAGE2_SCALAR_INDEX;
+        return result;
+    }
+    if ((uint64_t)offset == length) {
+        result.status = STAGE2_SCALAR_END;
+        return result;
+    }
+    const uint8_t *bytes = (const uint8_t *)text + offset;
+    uint8_t first = bytes[0];
+    if (first < 0x80) {
+        result.value = first;
+        result.width = 1;
+        return result;
+    }
+    if (first < 0xc0) result.status = STAGE2_SCALAR_CONTINUATION;
+    else if (first < 0xc2) result.status = STAGE2_SCALAR_OVERLONG;
+    else if (first >= 0xf5 && first <= 0xf7) result.status = STAGE2_SCALAR_RANGE;
+    else if (first > 0xf7) result.status = STAGE2_SCALAR_MALFORMED;
+    if (result.status != STAGE2_SCALAR_OK) return result;
+    size_t width = first < 0xe0 ? 2 : first < 0xf0 ? 3 : 4;
+    if (length - (size_t)offset < width) {
+        result.status = STAGE2_SCALAR_MALFORMED;
+        return result;
+    }
+    uint32_t value = first & (width == 2 ? 0x1f : width == 3 ? 0x0f : 0x07);
+    for (size_t index = 1; index < width; ++index) {
+        if ((bytes[index] & 0xc0) != 0x80) {
+            result.status = STAGE2_SCALAR_MALFORMED;
+            return result;
+        }
+        value = (value << 6) | (bytes[index] & 0x3f);
+    }
+    if (value < (width == 2 ? 0x80u : width == 3 ? 0x800u : 0x10000u))
+        result.status = STAGE2_SCALAR_OVERLONG;
+    else if (value >= 0xd800 && value <= 0xdfff)
+        result.status = STAGE2_SCALAR_SURROGATE;
+    else if (value > 0x10ffff)
+        result.status = STAGE2_SCALAR_RANGE;
+    if (result.status == STAGE2_SCALAR_OK) {
+        result.value = value;
+        result.width = width;
+    }
+    return result;
+}
+
+typedef enum {
+    STAGE2_FILE_DIFFERENT,
+    STAGE2_FILE_SAME,
+    STAGE2_FILE_LOOKUP_ERROR
+} Stage2FileIdentity;
+
+static Stage2FileIdentity stage2_same_file(const char *left, const char *right) {
     struct stat left_status;
     struct stat right_status;
-    if (strcmp(left, right) == 0) return true;
-    if (stat(left, &left_status) != 0 || stat(right, &right_status) != 0) {
-        return false;
+    if (strcmp(left, right) == 0) return STAGE2_FILE_SAME;
+    /* The input lookup precedes the absent-output exception. Never treat a
+     * permission, I/O, overflow, or indeterminate input as proof of safety. */
+    if (stat(left, &left_status) != 0) return STAGE2_FILE_LOOKUP_ERROR;
+    if (stat(right, &right_status) != 0) {
+        return errno == ENOENT ? STAGE2_FILE_DIFFERENT : STAGE2_FILE_LOOKUP_ERROR;
     }
     return left_status.st_dev == right_status.st_dev &&
-           left_status.st_ino == right_status.st_ino;
+           left_status.st_ino == right_status.st_ino
+        ? STAGE2_FILE_SAME : STAGE2_FILE_DIFFERENT;
+}
+
+static void stage2_host_lookup_error(void) {
+    printf("error[E2S35]: %s: file lookup failed before output open\n",
+           stage2_host_operations[1].name);
 }
 
 static bool write_file_transactional(const char *path, const char *value) {
@@ -443,18 +534,10 @@ static bool identifier_start_at(
     size_t *width
 ) {
     if (offset < 0 || (uint64_t)offset >= length) return false;
-    uint32_t codepoint = 0;
-    size_t scalar_width = 0;
-    if (!kofun_unicode_decode(
-            (const uint8_t *)source,
-            length,
-            (size_t)offset,
-            &codepoint,
-            &scalar_width)) {
-        return false;
-    }
-    if (width != NULL) *width = scalar_width;
-    return codepoint == '_' || kofun_unicode_is_xid_start(codepoint);
+    Stage2Scalar scalar = stage2_unicode_scalar_at(source, length, offset);
+    if (scalar.status != STAGE2_SCALAR_OK) return false;
+    if (width != NULL) *width = scalar.width;
+    return scalar.value == '_' || kofun_unicode_is_xid_start(scalar.value);
 }
 
 static bool identifier_continue_at(
@@ -464,18 +547,10 @@ static bool identifier_continue_at(
     size_t *width
 ) {
     if (offset < 0 || (uint64_t)offset >= length) return false;
-    uint32_t codepoint = 0;
-    size_t scalar_width = 0;
-    if (!kofun_unicode_decode(
-            (const uint8_t *)source,
-            length,
-            (size_t)offset,
-            &codepoint,
-            &scalar_width)) {
-        return false;
-    }
-    if (width != NULL) *width = scalar_width;
-    return codepoint == '_' || kofun_unicode_is_xid_continue(codepoint);
+    Stage2Scalar scalar = stage2_unicode_scalar_at(source, length, offset);
+    if (scalar.status != STAGE2_SCALAR_OK) return false;
+    if (width != NULL) *width = scalar.width;
+    return scalar.value == '_' || kofun_unicode_is_xid_continue(scalar.value);
 }
 
 /* Whitespace and comments: what the token tape steps over. */
@@ -6553,6 +6628,10 @@ static char *call_argument_parameter_property(
                                     source,
                                     callee
                                 );
+                                if (declaration < 0) {
+                                    free(callee);
+                                    return owned_text("");
+                                }
                                 int64_t parameters = parameter_open(
                                     source,
                                     declaration
@@ -7534,19 +7613,13 @@ static char *c_identifier_name(const char *identifier) {
     size_t length = strlen(identifier);
     size_t cursor = 0;
     while (cursor < length) {
-        uint32_t codepoint = 0;
-        size_t width = 0;
-        if (!kofun_unicode_decode(
-                (const uint8_t *)identifier,
-                length,
-                cursor,
-                &codepoint,
-                &width)) {
+        Stage2Scalar scalar = stage2_unicode_scalar_at(identifier, length, (int64_t)cursor);
+        if (scalar.status != STAGE2_SCALAR_OK) {
             free(output.data);
-            return owned_text("k_invalid");
+            fail("error[E2S35]: stage2_unicode_scalar_at: invalid scalar boundary");
         }
-        buffer_format(&output, "_u%06" PRIX32, codepoint);
-        cursor += width;
+        buffer_format(&output, "_u%06" PRIX32, scalar.value);
+        cursor += scalar.width;
     }
     return output.data;
 }
@@ -30019,6 +30092,20 @@ static int compile_file(
     const char *ir_output,
     const char *tokens_output
 ) {
+    /* Check every destination before the first IR/token write: a safe C path
+     * cannot authorize truncating the input through an auxiliary artifact. */
+    const char *outputs[] = {output, ir_output, tokens_output};
+    for (size_t index = 0; index < sizeof(outputs) / sizeof(outputs[0]); ++index) {
+        Stage2FileIdentity identity = stage2_same_file(input, outputs[index]);
+        if (identity == STAGE2_FILE_LOOKUP_ERROR) {
+            stage2_host_lookup_error();
+            return 2;
+        }
+        if (identity == STAGE2_FILE_SAME) {
+            puts("error[E2S35]: compiler input and output must be distinct");
+            return 2;
+        }
+    }
     char *source = read_file(input);
     char *tokens = lex_source(source);
     if (strncmp(tokens, "error[", 6) == 0) {
@@ -30167,6 +30254,15 @@ static int check_ownership_file(const char *path) {
 }
 
 static int parse_patterns_file(const char *input, const char *output) {
+    Stage2FileIdentity identity = stage2_same_file(input, output);
+    if (identity == STAGE2_FILE_LOOKUP_ERROR) {
+        stage2_host_lookup_error();
+        return 2;
+    }
+    if (identity == STAGE2_FILE_SAME) {
+        puts("error[E2S35]: patterns input and output must be distinct");
+        return 1;
+    }
     char *source = read_file(input);
     char *tokens = lex_source(source);
     if (strncmp(tokens, "error[", 6) == 0) {
@@ -32049,7 +32145,12 @@ static int emit_selfhost_hir_file(
     const char *output,
     const char *digest
 ) {
-    if (same_file(input, output)) {
+    Stage2FileIdentity identity = stage2_same_file(input, output);
+    if (identity == STAGE2_FILE_LOOKUP_ERROR) {
+        stage2_host_lookup_error();
+        return 2;
+    }
+    if (identity == STAGE2_FILE_SAME) {
         puts("error[E2S35]: selfhost-HIR input and output must be distinct");
         return 2;
     }
@@ -33488,7 +33589,12 @@ static void sl_free(SlDoc *doc) {
 }
 
 static int lower_selfhost_c11_file(const char *input, const char *output) {
-    if (same_file(input, output)) {
+    Stage2FileIdentity identity = stage2_same_file(input, output);
+    if (identity == STAGE2_FILE_LOOKUP_ERROR) {
+        stage2_host_lookup_error();
+        return 2;
+    }
+    if (identity == STAGE2_FILE_SAME) {
         puts("error[E2S35]: selfhost-C11 input and output must be distinct");
         return 2;
     }
@@ -33519,7 +33625,12 @@ static int selfhost_compile_file(
     const char *output,
     const char *digest
 ) {
-    if (same_file(input, output)) {
+    Stage2FileIdentity identity = stage2_same_file(input, output);
+    if (identity == STAGE2_FILE_LOOKUP_ERROR) {
+        stage2_host_lookup_error();
+        return 2;
+    }
+    if (identity == STAGE2_FILE_SAME) {
         puts("error[E2S35]: selfhost-compile input and output must be "
              "distinct");
         return 2;
@@ -33567,7 +33678,12 @@ static int selfhost_compile_file(
 }
 
 static int emit_scope_hir_file(const char *input, const char *output) {
-    if (same_file(input, output)) {
+    Stage2FileIdentity identity = stage2_same_file(input, output);
+    if (identity == STAGE2_FILE_LOOKUP_ERROR) {
+        stage2_host_lookup_error();
+        return 2;
+    }
+    if (identity == STAGE2_FILE_SAME) {
         puts(
             "error[E2S35]: scope-HIR input and output must be distinct"
         );

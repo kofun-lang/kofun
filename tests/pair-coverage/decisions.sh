@@ -122,7 +122,7 @@ if test "${1:-}" = "--prove"; then
 
     # A site that stopped existing, in each half in turn. This is the case line
     # numbers cannot have: a moved anchor is loud here and silent there.
-    sed 's/is_xid_start/is_xid_absent/g' "$KOFUN_HALF" >"$PROVE/kofun-gone.kofun"
+    sed 's/stage2_unicode_scalar_at(source, offset)/missing_scalar(source, offset)/g' "$KOFUN_HALF" >"$PROVE/kofun-gone.kofun"
     prove kofun-site-gone 'The site is gone' \
         "KOFUN_PAIR_DECISIONS_KOFUN=$PROVE/kofun-gone.kofun"
 

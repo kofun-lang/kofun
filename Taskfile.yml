@@ -949,6 +949,18 @@ tasks:
     cmds:
       - "node spec/decision-profiles-v1/check.mjs directory-enumeration-carrier"
 
+  stage2-pair-refresh:
+    desc: "Regenerate the Unicode projection, pair checksums, and manifest seed digest"
+    cmds:
+      - "node bootstrap/stage2/generate-xid.mjs"
+      - "node bootstrap/stage2/refresh-pair.mjs"
+
+  stage2-pair-host-primitives:
+    desc: "Execute both Stage 2 halves across private Unicode and file-identity boundaries"
+    cmds:
+      - "node bootstrap/stage2/generate-xid.mjs --check"
+      - "node tests/stage2/host-primitives/check.mjs"
+
   stage2-pair-host-primitives-decision:
     desc: "Verify compiler-private Unicode scalar and file-identity host primitives"
     cmds:
@@ -1445,6 +1457,7 @@ tasks:
             stage2-pair-mirror \
             stage2-pair-decisions \
             stage2-pair-host-primitives-decision \
+            stage2-pair-host-primitives \
             patterns \
             adt \
             records \

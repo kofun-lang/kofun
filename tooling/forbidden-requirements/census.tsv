@@ -207,6 +207,7 @@ cc	invoke	3	required-today	unknown	tests/package_manager.sh
 cc	invoke	1	required-today	required	tests/pair-coverage/measure.sh
 cc	invoke	1	required-today	required	tests/security/module-interface-artifact.sh
 cc	invoke	1	required-today	required	tests/selfhost-hir-identifiers/check.sh
+cc	invoke	2	required-today	required	tests/stage2/host-primitives/check.mjs
 cc	invoke	8	required-today	required	tests/stage2/list-int-signatures/run.sh
 cc	invoke	8	required-today	required	tests/stage2/list-int-values/run.sh
 cc	invoke	4	required-today	required	tests/stage2/record-values/run.sh
@@ -245,7 +246,7 @@ cargo	invoke	4	required-today	required	examples/rust-shim/check.sh
 cargo	invoke	2	required-today	required	tests/build_system.sh
 zig	-	0	-	-	-
 node	invoke	4	required-today	required	.github/workflows/pages.yml
-node	invoke	16	required-today	required	Taskfile.yml
+node	invoke	20	required-today	required	Taskfile.yml
 node	invoke	6	required-today	required	bin/kofun
 node	invoke	1	required-today	required	bootstrap/native/check-macho64-signed.sh
 node	invoke	1	required-today	required	bootstrap/native/check-macho64.sh
@@ -330,6 +331,9 @@ node	invoke	6	required-today	required	tooling/machine-dependent/check.sh
 node	source	1	required-today	required	bootstrap/native/macho64-check.mjs
 node	source	1	required-today	required	bootstrap/native/macho64-signed-check.mjs
 node	source	1	required-today	required	bootstrap/native/pe32plus-check.mjs
+node	source	1	required-today	required	bootstrap/stage2/generate-xid.mjs
+node	source	1	required-today	required	bootstrap/stage2/host-driver.mjs
+node	source	1	required-today	off-path	bootstrap/stage2/refresh-pair.mjs
 node	source	1	required-today	required	bootstrap/wasm/object_arena_check.mjs
 node	source	1	required-today	required	bootstrap/wasm/run.mjs
 node	source	1	required-today	unknown	docs/tour/app.mjs
@@ -437,6 +441,7 @@ node	source	1	required-today	required	tests/release/procedure-blocks.mjs
 node	source	1	required-today	required	tests/release/validate-claims.mjs
 node	source	1	required-today	required	tests/rfc/make-invalid.mjs
 node	source	1	required-today	required	tests/rfc/validate-registry.mjs
+node	source	1	required-today	required	tests/stage2/host-primitives/check.mjs
 node	source	1	required-today	required	tests/stage2/list-int-signatures/check-pair.mjs
 node	source	1	required-today	required	tests/stage2/list-int-values/layout-check.mjs
 node	source	1	required-today	required	tests/stage2/optional-pair/check.mjs
