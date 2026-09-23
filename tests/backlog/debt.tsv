@@ -173,5 +173,4 @@
 # relabel first, then land the row deletion with the refreshed snapshot, and
 # keep the window short. The live lane runs on every push to `main`, so the
 # window is the minutes between.
-inert-claim	847	agent-claim:v1
 capability-blocker	1291	-
