@@ -52,6 +52,7 @@ assert.equal(records('nominal-whole-read-take','capture')[0].mode,'take');
 assert.equal(records('whole-versus-field','capture').length,2);
 assert.equal(records('local-depth-nine-filtered','unknown').length,0);
 assert.equal(records('all-local-no-captures','capture').length,0);
+assert.equal(records('32-sequential-branch-joins','capture')[0].origins.length,64);
 assert.equal(records('300-local-reads-zero-observations','capture').length,0);
 assert.equal(records('local-receivers-external-bounds-256','unknown').length,0);
 assert.equal(records('local-receivers-external-bounds-256','capture').length,1);

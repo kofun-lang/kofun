@@ -114,3 +114,8 @@ The source-catalog regressions also refuse duplicate top-level function names
 (E2S16) and an unused formal whose type is undeclared (E2S15). Both were
 independently reproduced through the public entries; a different captured
 formal cannot hide an invalid signature.
+
+A valid32-statement if/else chain retains all64 lexical origins while keeping
+its empty moved-binding set bounded. This catches repeated concatenation of
+identical branch states, which otherwise grows exponentially even without a
+single ownership transfer.

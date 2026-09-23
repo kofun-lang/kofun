@@ -11078,6 +11078,742 @@
           ]
         }
       ]
+    },
+    {
+      "name": "32-sequential-branch-joins",
+      "source": "fn main() {\n let outer = 3\n par |scope| {\n  scope.spawn(fn() {\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   if true { outer } else { outer }\n   0\n  })\n }\n}\n",
+      "allocation_note": "32 shallow sequential if/else joins keep an empty moved-binding set bounded. Each branch contributes its authored lexical read. Function scopes1/2, par3, task4/5, branch scopes6..69; par token0, outer let1, hidden handle2. No additional bindings.",
+      "pars": [
+        {
+          "scope": 3,
+          "token": 0,
+          "name": "scope",
+          "span": [
+            28,
+            1227
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "par": 0,
+          "handle": 2,
+          "span": [
+            44,
+            1224
+          ],
+          "lambda_span": [
+            56,
+            1223
+          ],
+          "observations": [
+            {
+              "mode": "read",
+              "span": [
+                76,
+                81
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                91,
+                96
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                112,
+                117
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                127,
+                132
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                148,
+                153
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                163,
+                168
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                184,
+                189
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                199,
+                204
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                220,
+                225
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                235,
+                240
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                256,
+                261
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                271,
+                276
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                292,
+                297
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                307,
+                312
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                328,
+                333
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                343,
+                348
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                364,
+                369
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                379,
+                384
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                400,
+                405
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                415,
+                420
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                436,
+                441
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                451,
+                456
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                472,
+                477
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                487,
+                492
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                508,
+                513
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                523,
+                528
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                544,
+                549
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                559,
+                564
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                580,
+                585
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                595,
+                600
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                616,
+                621
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                631,
+                636
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                652,
+                657
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                667,
+                672
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                688,
+                693
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                703,
+                708
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                724,
+                729
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                739,
+                744
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                760,
+                765
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                775,
+                780
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                796,
+                801
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                811,
+                816
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                832,
+                837
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                847,
+                852
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                868,
+                873
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                883,
+                888
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                904,
+                909
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                919,
+                924
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                940,
+                945
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                955,
+                960
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                976,
+                981
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                991,
+                996
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                1012,
+                1017
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                1027,
+                1032
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                1048,
+                1053
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                1063,
+                1068
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                1084,
+                1089
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                1099,
+                1104
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                1120,
+                1125
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                1135,
+                1140
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                1156,
+                1161
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                1171,
+                1176
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                1192,
+                1197
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                1207,
+                1212
+              ],
+              "text": "outer",
+              "binding": 1,
+              "name": "outer",
+              "projections": []
+            }
+          ]
+        }
+      ]
     }
   ],
   "negative": [
