@@ -14272,6 +14272,19 @@ fn build_scope_hir_mode(
             cursor = skip_trivia(source, token_end(source, cursor))
         }
 
+        # The use budget is 4096 where the other three lexical budgets are
+        # 256 (#1483). It backs no array: the counter only gates how many
+        # `use|` records this walk appends to a growable buffer. What it caps
+        # is time. Each use re-scans the function from `function_open`
+        # through the classification helpers below (`lambda_scope_open`,
+        # `parent_block_open`, `const_parameter_of_type`, ...), so the walk
+        # is quadratic in a function's uses: 4096 unresolved assignments
+        # cost 12s on an 8-core x86-64 Linux box where 256 cost 0.05s.
+        # Raised because this file's own `lower_body` needs 1345 (six
+        # functions over 256, measured 2026-08-25) and splitting six
+        # functions to fit a budget that backs nothing but that walk would
+        # be an arbitrary cut; 4096 is three times that peak and the
+        # `USE_LIMIT` hm_levels_frontend.c chose for the same count.
         let mut use_count = 0
         let mut unresolved_assignment = false
         cursor = skip_trivia(source, token_end(source, function_open))
@@ -14388,8 +14401,8 @@ fn build_scope_hir_mode(
                     }
                     if len(binding_id) > 0 {
                         use_count = use_count + 1
-                        if use_count > 256 {
-                            return "error[E2S35]: lexical use limit is 256 per function at byte " +
+                        if use_count > 4096 {
+                            return "error[E2S35]: lexical use limit is 4096 per function at byte " +
                             to_text(cursor)
                         }
                         hir = hir + "use|" + to_text(cursor) + "|" +
@@ -14397,8 +14410,8 @@ fn build_scope_hir_mode(
                         scope_id + "|" + binding_id + "|" + role + "\n"
                     } else if role == "assign" {
                         use_count = use_count + 1
-                        if use_count > 256 {
-                            return "error[E2S35]: lexical use limit is 256 per function at byte " +
+                        if use_count > 4096 {
+                            return "error[E2S35]: lexical use limit is 4096 per function at byte " +
                             to_text(cursor)
                         }
                         hir = hir + "use|" + to_text(cursor) + "|" +
@@ -14408,8 +14421,8 @@ fn build_scope_hir_mode(
                     } else if preserve_pattern_candidates &&
                               token_text(source, after) != "(" {
                         use_count = use_count + 1
-                        if use_count > 256 {
-                            return "error[E2S35]: lexical use limit is 256 per function at byte " +
+                        if use_count > 4096 {
+                            return "error[E2S35]: lexical use limit is 4096 per function at byte " +
                             to_text(cursor)
                         }
                         hir = hir + "candidate-use|" + to_text(cursor) + "|" +

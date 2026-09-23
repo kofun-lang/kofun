@@ -183,7 +183,16 @@ COVERAGE_CC=${KOFUN_PAIR_COVERAGE_CC:-cc}
 # -O0 because gcov's attribution under optimisation is not trustworthy. -w
 # because this build proves nothing about warnings.
 COVERAGE_FLAGS="-std=c11 -O0 --coverage -w"
-INPUT_TIMEOUT=${KOFUN_PAIR_COVERAGE_TIMEOUT:-600}
+# 2400, not the 600 this used to be, because the pinned corpus contains the
+# pair's own Kofun half and the instrumented build is the slowest thing that
+# ever lowers it. Until #1483 raised the lexical use budget the compiler refused
+# that input at line 906 -- 371s here under -O0 --coverage, so 600 held with
+# room. It now runs the whole scope-HIR stage before refusing at `is_xid_start`
+# (#1513): 1080s on the same 8-core x86-64 Linux box, measured 2026-09-21 with
+# another instrumented run sharing it for a third of that. 600 timed the input
+# out, which this harness rightly refuses to report over, since an input that
+# did not finish leaves its branches untaken. 2400 is the ~2x margin 600 had.
+INPUT_TIMEOUT=${KOFUN_PAIR_COVERAGE_TIMEOUT:-2400}
 
 SOURCE=${KOFUN_PAIR_COVERAGE_SOURCE:-$ROOT/bootstrap/stage2/compiler.c}
 if test "$SOURCE" != "$ROOT/bootstrap/stage2/compiler.c"; then
