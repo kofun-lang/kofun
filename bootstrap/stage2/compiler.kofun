@@ -12005,7 +12005,37 @@ fn lambda_fn_keyword_before(source: Text, open: Int) -> Bool {
     return true
 }
 
-fn lambda_parameters_end(source: Text, previous: Int, open: Int) -> Int {
+# Analysis spans checked expressions independently of lowering's List-local
+# admission rule. Shape and type checking still run on the original bytes.
+fn scoped_arrow_end(source: Text, start: Int) -> Int {
+    let mut at = start
+    let mut last = start
+    let mut previous = ""
+    while at < len(source) {
+        let token = token_text(source, at)
+        if token == ";" || token == "}" || token == ")" || token == "]" ||
+           token == "," || token == "=" { return last }
+        if at > start && contains(text_slice(source, last, at), "\n") &&
+            !checked_place_shape_operator(previous) && !checked_place_shape_operator(token) &&
+            token != "." && token != "(" && token != "[" && previous != "=>" {
+            return last
+        }
+        if token == "(" || token == "[" || token == "{" {
+            let mut closing = ")"
+            if token == "[" { closing = "]" }
+            if token == "{" { closing = "}" }
+            let after = balanced_end(source, at, token, closing)
+            if after <= at { return -1 }
+            last = after
+        } else { last = token_end(source, at) }
+        if last <= at { return -1 }
+        previous = token
+        at = skip_lexical_trivia(source, last)
+    }
+    return last
+}
+
+fn lambda_parameters_end_mode(source: Text, previous: Int, open: Int, scoped_analysis: Bool) -> Int {
     if token_text(source, open) != "(" {
         # The bare single-parameter form `x => e` decided in #547. It is a
         # lambda everywhere an arm pattern is not, which is why the arm check
@@ -12057,24 +12087,35 @@ fn lambda_parameters_end(source: Text, previous: Int, open: Int) -> Int {
     if token_text(source, arrow) != "=>" {
         return -1
     }
+    if scoped_analysis && lambda_fn_keyword_before(source, open) {
+        return scoped_arrow_end(source, skip_trivia(source, token_end(source, arrow)))
+    }
     return expression_end(source, skip_trivia(source, token_end(source, arrow)))
+}
+
+fn lambda_parameters_end(source: Text, previous: Int, open: Int) -> Int {
+    return lambda_parameters_end_mode(source, previous, open, false)
 }
 
 # The innermost arrow lambda whose parameters are in scope at `target`, keyed by
 # its `(` so `hir_scope_id_for_open` finds the scope record. -1 when `target` is
 # not inside one.
-fn lambda_scope_open(source: Text, function_open: Int, target: Int) -> Int {
+fn lambda_scope_open_mode(source: Text, function_open: Int, target: Int, scoped_analysis: Bool) -> Int {
     let mut cursor = function_open
     let mut previous = -1
     let mut found = -1
     while cursor < target {
-        if lambda_parameters_end(source, previous, cursor) > target {
+        if lambda_parameters_end_mode(source, previous, cursor, scoped_analysis) > target {
             found = cursor
         }
         previous = cursor
         cursor = skip_trivia(source, token_end(source, cursor))
     }
     return found
+}
+
+fn lambda_scope_open(source: Text, function_open: Int, target: Int) -> Int {
+    return lambda_scope_open_mode(source, function_open, target, false)
 }
 
 # Lifted lambdas still use the scalar capture ABI. Fail before C publication
@@ -12138,15 +12179,16 @@ fn validate_list_int_lambda_uses(source: Text, hir: Text) -> Text {
 # `target` is a parameter name or a parameter type inside an arrow lambda's
 # parameter list. The identifier pass must resolve neither: the name is a
 # declaration, and the type names no binding.
-fn lambda_declaration_syntax_token(
+fn lambda_declaration_syntax_token_mode(
     source: Text,
     function_open: Int,
-    target: Int
+    target: Int,
+    scoped_analysis: Bool
 ) -> Bool {
     let mut cursor = function_open
     let mut previous = -1
     while cursor <= target {
-        if lambda_parameters_end(source, previous, cursor) >= 0 {
+        if lambda_parameters_end_mode(source, previous, cursor, scoped_analysis) >= 0 {
             if token_text(source, cursor) != "(" {
                 # The bare form has no parameter list: the keying token is
                 # itself the parameter, so it is the only declaration.
@@ -12162,6 +12204,14 @@ fn lambda_declaration_syntax_token(
         cursor = skip_trivia(source, token_end(source, cursor))
     }
     return false
+}
+
+fn lambda_declaration_syntax_token(
+    source: Text,
+    function_open: Int,
+    target: Int
+) -> Bool {
+    return lambda_declaration_syntax_token_mode(source, function_open, target, false)
 }
 
 # `x: Int => e` annotates a lambda parameter without parentheses. #547 rejects
@@ -12556,22 +12606,26 @@ fn hir_binding_declaration_start(hir: Text, binding_id: Text) -> Int {
 # what precedes the parameter list is `=` or `fn` — never an identifier, which
 # is why -1 is the right `previous` for `lambda_parameters_end`: the
 # constructor-pattern ambiguity that argument guards against cannot arise here.
-fn lambda_initializer_open(source: Text, value_start: Int) -> Int {
+fn lambda_initializer_open_mode(source: Text, value_start: Int, scoped_analysis: Bool) -> Int {
     let mut cursor = skip_trivia(source, value_start)
     if token_text(source, cursor) == "fn" {
         cursor = skip_trivia(source, token_end(source, cursor))
     }
-    if lambda_parameters_end(source, -1, cursor) < 0 {
+    if lambda_parameters_end_mode(source, -1, cursor, scoped_analysis) < 0 {
         return -1
     }
     return cursor
+}
+
+fn lambda_initializer_open(source: Text, value_start: Int) -> Int {
+    return lambda_initializer_open_mode(source, value_start, false)
 }
 
 # The `(` of the lambda a binding holds, or -1 when that binding is not a
 # lambda. This is how a call site reaches the lifted function: the scope HIR
 # has already resolved the callee name to a binding, shadowing included, so the
 # lowering never repeats that resolution by name.
-fn lambda_binding_open(source: Text, hir: Text, binding_id: Text) -> Int {
+fn lambda_binding_open_mode(source: Text, hir: Text, binding_id: Text, scoped_analysis: Bool) -> Int {
     let declaration_start = hir_binding_declaration_start(hir, binding_id)
     if declaration_start < 0 {
         return -1
@@ -12580,8 +12634,12 @@ fn lambda_binding_open(source: Text, hir: Text, binding_id: Text) -> Int {
     if token_text(source, equals) != "=" {
         return -1
     }
-    return lambda_initializer_open(
-        source, skip_trivia(source, token_end(source, equals)))
+    return lambda_initializer_open_mode(
+        source, skip_trivia(source, token_end(source, equals)), scoped_analysis)
+}
+
+fn lambda_binding_open(source: Text, hir: Text, binding_id: Text) -> Int {
+    return lambda_binding_open_mode(source, hir, binding_id, false)
 }
 
 # The binding ids a lambda body reads from outside its own parameter list, in
@@ -13712,11 +13770,7 @@ fn build_scope_hir_analysis_mode(
                 "; write `(" + token_text(source, cursor) + ": " +
                 token_text(source, annotation) + ") =>`"
             } else {
-                let lambda_close = lambda_parameters_end(
-                    source,
-                    previous,
-                    cursor
-                )
+                let lambda_close = lambda_parameters_end_mode(source, previous, cursor, scoped_analysis)
                 if lambda_close >= 0 {
                     let lambda_open = cursor
                     let lambda_depth = block_depth_at(
@@ -13891,7 +13945,7 @@ fn build_scope_hir_analysis_mode(
         cursor = skip_trivia(source, token_end(source, function_open))
         previous = -1
         while cursor < function_close {
-            if lambda_parameters_end(source, previous, cursor) >= 0 {
+            if lambda_parameters_end_mode(source, previous, cursor, scoped_analysis) >= 0 {
                 let lambda_open = cursor
                 # The bare form has no parameter list to walk: the parameter is
                 # the keying token itself, so the walk below covers exactly that
@@ -14422,11 +14476,7 @@ fn build_scope_hir_analysis_mode(
                     function_open,
                     cursor
                 )
-                let lambda_token = lambda_declaration_syntax_token(
-                    source,
-                    function_open,
-                    cursor
-                )
+                let lambda_token = lambda_declaration_syntax_token_mode(source, function_open, cursor, scoped_analysis)
                 if !declaration_token && !record_token &&
                    !initializer_token &&
                    !pattern_token && !lambda_token &&
@@ -14436,11 +14486,7 @@ fn build_scope_hir_analysis_mode(
                    !optional_int_null_context(source, cursor) &&
                    !decimal_rounding_mode_name(name) &&
                    name != "print" && name != "_" {
-                    let mut scope_open = lambda_scope_open(
-                        source,
-                        function_open,
-                        cursor
-                    )
+                    let mut scope_open = lambda_scope_open_mode(source, function_open, cursor, scoped_analysis)
                     if scope_open >= 0 {
                         # A block-bodied lambda has a block scope *inside* its
                         # parameter scope (#1398), and a binding declared there
@@ -24092,7 +24138,7 @@ fn scoped_hir_observations(source: Text, hir: Text) -> Text {
                     let call_end = balanced_end(source, call_open, "(", ")")
                     let lambda = skip_trivia(source, token_end(source, call_open))
                     let parameters = skip_trivia(source, token_end(source, lambda))
-                    let lambda_end = lambda_parameters_end(source, -1, parameters)
+                    let lambda_end = lambda_parameters_end_mode(source, -1, parameters, true)
                     if token_text(source, lambda) != "fn" ||
                        token_text(source, parameters) != "(" ||
                        lambda_end <= parameters || call_end <= lambda_end ||
@@ -25039,7 +25085,7 @@ fn checked_place_shape(source: Text, start: Int, end: Int, depth: Int) -> Text {
         if len(error) > 0 { return error }
     } else if token == "fn" {
         let parameters = skip_trivia(source, token_end(source, first))
-        cursor = lambda_parameters_end(source, -1, parameters)
+        cursor = lambda_parameters_end_mode(source, -1, parameters, true)
         if cursor <= parameters || cursor > last { return checked_place_error("malformed expression", first) }
     } else {
         let kind = token_kind(source, first)
@@ -25430,7 +25476,7 @@ fn capture_binding_type(source: Text, hir: Text, catalog: Text, binding: Text, d
         return capture_error("E2S154", "binding has no checked source type", declaration)
     }
     let start = skip_trivia(source, token_end(source, at))
-    if lambda_initializer_open(source, start) >= 0 {
+    if lambda_initializer_open_mode(source, start, true) >= 0 {
         if len(annotation) > 0 && annotation != "Fn" { return capture_error("E2S12", "initializer type mismatch", start) }
         return "Fn"
     }
@@ -25535,7 +25581,7 @@ fn capture_lambda(source: Text, hir: Text, catalog: Text, open: Int, path: Text,
     if depth > 64 { return capture_error("E2S154", "callable nesting exceeds 64", open) }
     let parameters = capture_parameters(source, open)
     if starts_with(parameters, "error[") { return parameters }
-    let end = lambda_parameters_end(source, -1, open)
+    let end = lambda_parameters_end_mode(source, -1, open, true)
     let mut body = skip_trivia(source, balanced_end(source, open, "(", ")"))
     let mut expected = ""
     if token_text(source, body) == "->" {
@@ -25583,7 +25629,7 @@ fn capture_call(source: Text, hir: Text, catalog: Text, first: Int, open: Int, e
         if starts_with(place, "error[") { return place }
         if hir_field(place, 0, 2) != "Fn" { return capture_error("E2S154", "callee is not callable", first) }
         facts = capture_access(place, "read", first, token_end(source, first))
-        let lambda = lambda_binding_open(source, hir, binding)
+        let lambda = lambda_binding_open_mode(source, hir, binding, true)
         if lambda < 0 {
             let signature = callable_parameter_type_start(source, hir, binding)
             let arity = callable_type_arity(source, signature)
@@ -25692,9 +25738,9 @@ fn capture_expression(source: Text, hir: Text, catalog: Text, start: Int, end: I
     let literal = checked_place_constant(source, first, last)
     if starts_with(literal, "error[") { return literal }
     if len(literal) > 0 { return "value|Int\n" }
-    if token == "fn" || lambda_initializer_open(source, first) >= 0 {
-        let open = lambda_initializer_open(source, first)
-        if open < 0 || lambda_parameters_end(source, -1, open) != last { return capture_error("E2S154", "incomplete lambda", first) }
+    if token == "fn" || lambda_initializer_open_mode(source, first, true) >= 0 {
+        let open = lambda_initializer_open_mode(source, first, true)
+        if open < 0 || lambda_parameters_end_mode(source, -1, open, true) != last { return capture_error("E2S154", "incomplete lambda", first) }
         let body = capture_lambda(source, hir, catalog, open, path, depth + 1)
         if starts_with(body, "error[") { return body }
         return capture_value("Fn", capture_latent(capture_tail(body)))
@@ -26420,10 +26466,10 @@ fn capture_fn_compatible(source: Text, hir: Text, catalog: Text, start: Int, end
         first = skip_trivia(source, token_end(source, first))
         last = checked_place_trim_end(source, first, last - 1)
     }
-    let mut open = lambda_initializer_open(source, first)
+    let mut open = lambda_initializer_open_mode(source, first, true)
     if open < 0 && token_end(source, first) == last {
         let binding = hir_use_binding_id(hir, first)
-        open = lambda_binding_open(source, hir, binding)
+        open = lambda_binding_open_mode(source, hir, binding, true)
         if open < 0 {
             let signature = callable_parameter_type_start(source, hir, binding)
             return signature >= 0 && callable_type_arity(source, signature) == arity

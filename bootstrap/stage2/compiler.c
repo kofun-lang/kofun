@@ -16034,10 +16034,42 @@ static bool lambda_fn_keyword_before(const char *source, int64_t open) {
     return true;
 }
 
-static int64_t lambda_parameters_end(
+/* Analysis-only arrow spans; ordinary lowering retains its own grammar. */
+static bool cp_shape_operator(const char *token);
+static int64_t scoped_arrow_end(const char *source, int64_t start) {
+    int64_t at = start, last = start, length = source_length(source);
+    bool previous_operator = false, previous_arrow = false;
+    while (at < length) {
+        char *token = token_copy(source, at);
+        if (strcmp(token, ";") == 0 || strcmp(token, "}") == 0 ||
+            strcmp(token, ")") == 0 || strcmp(token, "]") == 0 ||
+            strcmp(token, ",") == 0 || strcmp(token, "=") == 0) {
+            free(token); return last;
+        }
+        bool operator = cp_shape_operator(token);
+        if (at > start && memchr(source + last, '\n', (size_t)(at - last)) &&
+            !previous_operator && !operator && strcmp(token, ".") != 0 &&
+            strcmp(token, "(") != 0 && strcmp(token, "[") != 0 && !previous_arrow) {
+            free(token); return last;
+        }
+        if (strcmp(token, "(") == 0 || strcmp(token, "[") == 0 || strcmp(token, "{") == 0) {
+            const char *closing = strcmp(token, "[") == 0 ? "]" : strcmp(token, "{") == 0 ? "}" : ")";
+            last = balanced_end(source, at, token, closing);
+        } else last = token_end(source, at);
+        previous_operator = operator;
+        previous_arrow = strcmp(token, "=>") == 0;
+        free(token);
+        if (last <= at) return -1;
+        at = skip_lexical_trivia(source, last);
+    }
+    return last;
+}
+
+static int64_t lambda_parameters_end_mode(
     const char *source,
     int64_t previous,
-    int64_t open
+    int64_t open,
+    bool scoped_analysis
 ) {
     int64_t length = source_length(source);
     if (!token_equal(source, open, "(")) {
@@ -16086,10 +16118,21 @@ static int64_t lambda_parameters_end(
         return balanced_end(source, arrow, "{", "}");
     }
     if (!token_equal(source, arrow, "=>")) return -1;
+    if (scoped_analysis && lambda_fn_keyword_before(source, open)) {
+        return scoped_arrow_end(source, skip_trivia(source, token_end(source, arrow)));
+    }
     return expression_end(
         source,
         skip_trivia(source, token_end(source, arrow))
     );
+}
+
+static int64_t lambda_parameters_end(
+    const char *source,
+    int64_t previous,
+    int64_t open
+) {
+    return lambda_parameters_end_mode(source, previous, open, false);
 }
 
 /*
@@ -16097,22 +16140,31 @@ static int64_t lambda_parameters_end(
  * by its `(` so `hir_scope_id_for_open` finds the scope record. -1 when
  * `target` is not inside one.
  */
-static int64_t lambda_scope_open(
+static int64_t lambda_scope_open_mode(
     const char *source,
     int64_t function_open,
-    int64_t target
+    int64_t target,
+    bool scoped_analysis
 ) {
     int64_t cursor = function_open;
     int64_t previous = -1;
     int64_t found = -1;
     while (cursor < target) {
-        if (lambda_parameters_end(source, previous, cursor) > target) {
+        if (lambda_parameters_end_mode(source, previous, cursor, scoped_analysis) > target) {
             found = cursor;
         }
         previous = cursor;
         cursor = skip_trivia(source, token_end(source, cursor));
     }
     return found;
+}
+
+static int64_t lambda_scope_open(
+    const char *source,
+    int64_t function_open,
+    int64_t target
+) {
+    return lambda_scope_open_mode(source, function_open, target, false);
 }
 
 static bool lambda_declaration_syntax_token(
@@ -16225,15 +16277,16 @@ static char *validate_list_int_lambda_uses(
  * parameter list. The identifier pass must resolve neither: the name is a
  * declaration, and the type names no binding.
  */
-static bool lambda_declaration_syntax_token(
+static bool lambda_declaration_syntax_token_mode(
     const char *source,
     int64_t function_open,
-    int64_t target
+    int64_t target,
+    bool scoped_analysis
 ) {
     int64_t cursor = function_open;
     int64_t previous = -1;
     while (cursor <= target) {
-        if (lambda_parameters_end(source, previous, cursor) >= 0) {
+        if (lambda_parameters_end_mode(source, previous, cursor, scoped_analysis) >= 0) {
             if (!token_equal(source, cursor, "(")) {
                 /* The bare form has no parameter list: the keying token is
                  * itself the parameter, so it is the only declaration. */
@@ -16249,6 +16302,14 @@ static bool lambda_declaration_syntax_token(
         cursor = skip_trivia(source, token_end(source, cursor));
     }
     return false;
+}
+
+static bool lambda_declaration_syntax_token(
+    const char *source,
+    int64_t function_open,
+    int64_t target
+) {
+    return lambda_declaration_syntax_token_mode(source, function_open, target, false);
 }
 
 /*
@@ -16972,16 +17033,24 @@ static int64_t hir_binding_declaration_start(
  * constructor-pattern ambiguity that argument guards against cannot arise
  * here.
  */
-static int64_t lambda_initializer_open(
+static int64_t lambda_initializer_open_mode(
     const char *source,
-    int64_t value_start
+    int64_t value_start,
+    bool scoped_analysis
 ) {
     int64_t cursor = skip_trivia(source, value_start);
     if (token_equal(source, cursor, "fn")) {
         cursor = skip_trivia(source, token_end(source, cursor));
     }
-    if (lambda_parameters_end(source, -1, cursor) < 0) return -1;
+    if (lambda_parameters_end_mode(source, -1, cursor, scoped_analysis) < 0) return -1;
     return cursor;
+}
+
+static int64_t lambda_initializer_open(
+    const char *source,
+    int64_t value_start
+) {
+    return lambda_initializer_open_mode(source, value_start, false);
 }
 
 /*
@@ -16990,10 +17059,11 @@ static int64_t lambda_initializer_open(
  * has already resolved the callee name to a binding, shadowing included, so
  * the lowering never repeats that resolution by name.
  */
-static int64_t lambda_binding_open(
+static int64_t lambda_binding_open_mode(
     const char *source,
     const char *hir,
-    const char *binding_id
+    const char *binding_id,
+    bool scoped_analysis
 ) {
     int64_t declaration_start = hir_binding_declaration_start(hir, binding_id);
     if (declaration_start < 0) return -1;
@@ -17002,10 +17072,16 @@ static int64_t lambda_binding_open(
         token_end(source, declaration_start)
     );
     if (!token_equal(source, equals, "=")) return -1;
-    return lambda_initializer_open(
-        source,
-        skip_trivia(source, token_end(source, equals))
-    );
+    return lambda_initializer_open_mode(
+        source, skip_trivia(source, token_end(source, equals)), scoped_analysis);
+}
+
+static int64_t lambda_binding_open(
+    const char *source,
+    const char *hir,
+    const char *binding_id
+) {
+    return lambda_binding_open_mode(source, hir, binding_id, false);
 }
 
 /*
@@ -18702,11 +18778,7 @@ static char *build_scope_hir_analysis_mode(
                 free(hir.data);
                 return error.data;
             } else {
-                int64_t lambda_close = lambda_parameters_end(
-                    source,
-                    previous,
-                    cursor
-                );
+                int64_t lambda_close = lambda_parameters_end_mode(source, previous, cursor, scoped_analysis);
                 if (lambda_close >= 0) {
                     int64_t lambda_open = cursor;
                     int64_t lambda_depth = block_depth_at(
@@ -18969,7 +19041,7 @@ static char *build_scope_hir_analysis_mode(
         cursor = skip_trivia(source, token_end(source, function_open));
         previous = -1;
         while (cursor < function_close) {
-            if (lambda_parameters_end(source, previous, cursor) >= 0) {
+            if (lambda_parameters_end_mode(source, previous, cursor, scoped_analysis) >= 0) {
                 int64_t lambda_open = cursor;
                 /* The bare form has no parameter list to walk: the parameter
                  * is the keying token itself, so the walk below covers exactly
@@ -19756,11 +19828,7 @@ static char *build_scope_hir_analysis_mode(
                     function_open,
                     cursor
                 );
-                bool lambda_token = lambda_declaration_syntax_token(
-                    source,
-                    function_open,
-                    cursor
-                );
+                bool lambda_token = lambda_declaration_syntax_token_mode(source, function_open, cursor, scoped_analysis);
                 if (
                     !declaration_token && !record_token &&
                     !initializer_token &&
@@ -19778,11 +19846,7 @@ static char *build_scope_hir_analysis_mode(
                     !token_equal(source, cursor, "print") &&
                     !token_equal(source, cursor, "_")
                 ) {
-                    int64_t scope_open = lambda_scope_open(
-                        source,
-                        function_open,
-                        cursor
-                    );
+                    int64_t scope_open = lambda_scope_open_mode(source, function_open, cursor, scoped_analysis);
                     if (scope_open >= 0) {
                         /*
                          * A block-bodied lambda has a block scope *inside* its
@@ -34149,7 +34213,7 @@ static char *scoped_hir_observations(const char *source, const char *hir) {
                     int64_t call_end = balanced_end(source, call_open, "(", ")");
                     int64_t lambda = skip_trivia(source, token_end(source, call_open));
                     int64_t parameters = skip_trivia(source, token_end(source, lambda));
-                    int64_t lambda_end = lambda_parameters_end(source, -1, parameters);
+                    int64_t lambda_end = lambda_parameters_end_mode(source, -1, parameters, true);
                     if (!token_equal(source, lambda, "fn") ||
                         !token_equal(source, parameters, "(") ||
                         lambda_end <= parameters || call_end <= lambda_end ||
@@ -34783,7 +34847,7 @@ static char *cp_shape(CheckedPlaceArena *a, const char *source, int64_t start, i
         if (*error) return error;
     } else if (strcmp(token, "fn") == 0) {
         int64_t parameters = skip_trivia(source, token_end(source, first));
-        cursor = lambda_parameters_end(source, -1, parameters);
+        cursor = lambda_parameters_end_mode(source, -1, parameters, true);
         if (cursor <= parameters || cursor > last) return cp_error(a, "malformed expression", first);
     } else {
         const char *kind = token_kind(source, first);
@@ -35174,7 +35238,7 @@ static const char * capture_binding_type(CheckedPlaceArena *a, const char * v_so
         return capture_return_text(a, mark, capture_error(a, "E2S154", "binding has no checked source type", v_declaration));
     }
     int64_t v_start = skip_trivia(v_source, token_end(v_source, v_at));
-    if (lambda_initializer_open(v_source, v_start) >= 0) {
+    if (lambda_initializer_open_mode(v_source, v_start, true) >= 0) {
         if ((((int64_t)strlen(v_annotation)) > 0) && (strcmp(v_annotation, "Fn") != 0)) {
             return capture_return_text(a, mark, capture_error(a, "E2S12", "initializer type mismatch", v_start));
         }
@@ -35353,7 +35417,7 @@ static const char * capture_lambda(CheckedPlaceArena *a, const char * v_source, 
     if (strncmp(v_parameters, "error[", strlen("error[")) == 0) {
         return capture_return_text(a, mark, v_parameters);
     }
-    int64_t v_end = lambda_parameters_end(v_source, (-1), v_open);
+    int64_t v_end = lambda_parameters_end_mode(v_source, (-1), v_open, true);
     int64_t v_body = skip_trivia(v_source, balanced_end(v_source, v_open, "(", ")"));
     const char * v_expected = "";
     if (strcmp(cp_keep(a, token_copy(v_source, v_body)), "->") == 0) {
@@ -35426,7 +35490,7 @@ static const char * capture_call(CheckedPlaceArena *a, const char * v_source, co
             return capture_return_text(a, mark, capture_error(a, "E2S154", "callee is not callable", v_first));
         }
         v_facts = capture_access(a, v_place, "read", v_first, token_end(v_source, v_first));
-        int64_t v_lambda = lambda_binding_open(v_source, v_hir, v_binding);
+        int64_t v_lambda = lambda_binding_open_mode(v_source, v_hir, v_binding, true);
         if (v_lambda < 0) {
             int64_t v_signature = callable_parameter_type_start(v_source, v_hir, v_binding);
             int64_t v_arity = callable_type_arity(v_source, v_signature);
@@ -35592,9 +35656,9 @@ static const char * capture_expression(CheckedPlaceArena *a, const char * v_sour
     if (((int64_t)strlen(v_literal)) > 0) {
         return capture_return_text(a, mark, "value|Int\n");
     }
-    if ((strcmp(v_token, "fn") == 0) || (lambda_initializer_open(v_source, v_first) >= 0)) {
-        int64_t v_open = lambda_initializer_open(v_source, v_first);
-        if ((v_open < 0) || (lambda_parameters_end(v_source, (-1), v_open) != v_last)) {
+    if ((strcmp(v_token, "fn") == 0) || (lambda_initializer_open_mode(v_source, v_first, true) >= 0)) {
+        int64_t v_open = lambda_initializer_open_mode(v_source, v_first, true);
+        if ((v_open < 0) || (lambda_parameters_end_mode(v_source, (-1), v_open, true) != v_last)) {
             return capture_return_text(a, mark, capture_error(a, "E2S154", "incomplete lambda", v_first));
         }
         const char * v_body = capture_lambda(a, v_source, v_hir, v_catalog, v_open, v_path, (v_depth + 1));
@@ -36565,10 +36629,10 @@ static bool capture_fn_compatible(CheckedPlaceArena *a, const char * v_source, c
         v_first = skip_trivia(v_source, token_end(v_source, v_first));
         v_last = checked_place_trim_end(v_source, v_first, (v_last - 1));
     }
-    int64_t v_open = lambda_initializer_open(v_source, v_first);
+    int64_t v_open = lambda_initializer_open_mode(v_source, v_first, true);
     if ((v_open < 0) && (token_end(v_source, v_first) == v_last)) {
         const char * v_binding = cp_keep(a, hir_use_binding_id(v_hir, v_first));
-        v_open = lambda_binding_open(v_source, v_hir, v_binding);
+        v_open = lambda_binding_open_mode(v_source, v_hir, v_binding, true);
         if (v_open < 0) {
             int64_t v_signature = callable_parameter_type_start(v_source, v_hir, v_binding);
             return capture_return_integer(a, mark, ((v_signature >= 0) && (callable_type_arity(v_source, v_signature) == v_arity)));
