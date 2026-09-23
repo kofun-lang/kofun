@@ -6,7 +6,7 @@
 `spec/concurrency/scoped-captures-v1.md` §14. This is an analysis entry; the
 programs containing cyclic calls or scoped tasks are never executed.
 
-The 52 positive fixtures contain complete authored source, resolver ordinals,
+The 54 positive fixtures contain complete authored source, resolver ordinals,
 literal byte spans, formal/actual effect expectations and whole lifecycle
 facts. The shared independent `../captures-direct/oracle.mjs` frames identities
 and normalizes those facts without importing compiler or model code. The gate
@@ -37,6 +37,8 @@ still publish reason2 unknowns. Inverted instantiated bounds refuse even for
 task-local or materialized actuals, indexed effects, and a separate slice whose
 neighboring bound is unavailable. A resolved arrow over a captured List
 parameter retains its complete range and explicit unavailable environment.
+Known formal bounds in that environment are validated at the resolved call,
+including reordered forwarding through a second resolved lambda.
 
 Positive/negative boundaries cover64/65 callable bodies,1024/1025 checked call
 sites and256/257 per-callable target keys. The public observation budget counts
@@ -45,7 +47,7 @@ while129 calls refuse.32 distinct actuals plus their field effects produce64
 captures;33 refuse. Two formal effects aliased to one actual target at one
 call normalize before the observation charge.
 
-The nineteen source/summary refusals assert diagnostic classes and deterministic
+The twenty-one source/summary refusals assert diagnostic classes and deterministic
 C/Kofun messages. All refusals, including Unicode/path/malformed input controls,
 check both absent and preexisting output destinations. Public writer alias,
 lookup-fault and transactional host behavior is also exercised through the

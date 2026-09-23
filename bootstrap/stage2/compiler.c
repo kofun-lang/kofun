@@ -37007,7 +37007,13 @@ static const char * summary_effect(CheckedPlaceArena *a, int64_t v_open, int64_t
     if ((strcmp(v_target_kind, "place") == 0) && (v_depth > 8)) {
         v_target_kind = "deep";
     }
-    return capture_return_text(a, mark, cp_format(a, "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s", "effect|", cp_format(a, "%" PRId64, v_open), "|", cp_format(a, "%" PRId64, v_slot), "|", v_target_kind, "|", v_mode, "|", cp_format(a, "%" PRId64, v_depth), "|", v_raw, "|", v_json, "|", v_type, "\n"));
+    const char * v_target_raw = v_raw;
+    const char * v_target_json = v_json;
+    if ((strcmp(v_target_kind, "place") != 0) && (!(strstr(v_raw, "<p") != NULL))) {
+        v_target_raw = "";
+        v_target_json = "";
+    }
+    return capture_return_text(a, mark, cp_format(a, "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s", "effect|", cp_format(a, "%" PRId64, v_open), "|", cp_format(a, "%" PRId64, v_slot), "|", v_target_kind, "|", v_mode, "|", cp_format(a, "%" PRId64, v_depth), "|", v_target_raw, "|", v_target_json, "|", v_type, "\n"));
 }
 
 static const char * summary_merge(CheckedPlaceArena *a, const char * v_effects, const char * v_candidate) {
@@ -37333,17 +37339,19 @@ static const char * summary_callable_seeds(CheckedPlaceArena *a, const char * v_
         if ((v_start > v_open) && (v_stop <= v_end)) {
             const char * v_binding = cp_field(a, v_facts, v_row, 3);
             int64_t v_slot = summary_parameter_slot(a, v_parameters, v_open, v_binding);
-            if (v_slot >= 0) {
+            if ((v_slot >= 0) || (v_lambda && (!capture_local(a, v_hir, v_binding, v_scope)))) {
                 const char * v_place = cp_format(a, "%s%s%s%s%s%s%s%s%s%s%s%s", cp_field(a, v_facts, v_row, 10), "|", v_binding, "|", cp_field(a, v_facts, v_row, 4), "|", cp_field(a, v_facts, v_row, 5), "|", cp_field(a, v_facts, v_row, 6), "|", cp_field(a, v_facts, v_row, 7), "\n");
                 const char * v_projection = summary_projection(a, v_source, v_hir, v_parameters, v_open, v_start, v_stop, v_path, v_place);
                 if (strncmp(v_projection, "error[", strlen("error[")) == 0) {
                     return capture_return_text(a, mark, v_projection);
                 }
-                v_result = summary_merge(a, v_result, summary_effect(a, v_open, v_slot, cp_field(a, v_projection, 0, 1), cp_field(a, v_facts, v_row, 2), decimal_value(cp_field(a, v_projection, 0, 2)), cp_field(a, v_projection, 0, 3), cp_field(a, v_projection, 0, 4), cp_field(a, v_facts, v_row, 4)));
-            } else {
-                if (v_lambda && (!capture_local(a, v_hir, v_binding, v_scope))) {
-                    v_result = summary_merge(a, v_result, summary_effect(a, v_open, (-1), "unavailable", "take", 0, "", "", ""));
+                const char * v_kind = cp_field(a, v_projection, 0, 1);
+                const char * v_mode = cp_field(a, v_facts, v_row, 2);
+                if (v_slot < 0) {
+                    v_kind = "unavailable";
+                    v_mode = "take";
                 }
+                v_result = summary_merge(a, v_result, summary_effect(a, v_open, v_slot, v_kind, v_mode, decimal_value(cp_field(a, v_projection, 0, 2)), cp_field(a, v_projection, 0, 3), cp_field(a, v_projection, 0, 4), cp_field(a, v_facts, v_row, 4)));
             }
             if (strncmp(v_result, "error[", strlen("error[")) == 0) {
                 return capture_return_text(a, mark, v_result);
@@ -37406,16 +37414,16 @@ static const char * summary_instance(CheckedPlaceArena *a, const char * v_source
     int64_t v_slot = decimal_value(cp_field(a, v_effects, v_effect, 2));
     const char * v_mode = cp_field(a, v_effects, v_effect, 4);
     const char * v_type = cp_field(a, v_effects, v_effect, 8);
+    const char * v_suffix = summary_substitute_bounds(a, v_source, v_hir, v_parameters, v_owner, v_facts, v_call_start, v_path, decimal_value(cp_field(a, v_effects, v_effect, 5)), cp_field(a, v_effects, v_effect, 6), cp_field(a, v_effects, v_effect, 7));
+    if (strncmp(v_suffix, "error[", strlen("error[")) == 0) {
+        return capture_return_text(a, mark, v_suffix);
+    }
     if (v_slot < 0) {
-        return capture_return_text(a, mark, cp_format(a, "%s%s%s", "instance||unavailable|", v_mode, "|0|||\n"));
+        return capture_return_text(a, mark, cp_format(a, "%s%s%s%s%s%s%s%s%s%s%s", "instance||unavailable|", v_mode, "|", cp_field(a, v_effects, v_effect, 5), "|", cp_field(a, v_suffix, 0, 3), "|", cp_field(a, v_suffix, 0, 4), "|", v_type, "\n"));
     }
     int64_t v_argument = summary_argument(a, v_facts, v_call_start, v_slot);
     if (v_argument < 0) {
         return capture_return_text(a, mark, summary_error(a, "checked actual slot is absent", v_call_start));
-    }
-    const char * v_suffix = summary_substitute_bounds(a, v_source, v_hir, v_parameters, v_owner, v_facts, v_call_start, v_path, decimal_value(cp_field(a, v_effects, v_effect, 5)), cp_field(a, v_effects, v_effect, 6), cp_field(a, v_effects, v_effect, 7));
-    if (strncmp(v_suffix, "error[", strlen("error[")) == 0) {
-        return capture_return_text(a, mark, v_suffix);
     }
     int64_t v_start = decimal_value(cp_field(a, v_facts, v_argument, 3));
     int64_t v_end = decimal_value(cp_field(a, v_facts, v_argument, 4));

@@ -7677,6 +7677,110 @@
           ]
         }
       ]
+    },
+    {
+      "name": "free-environment-valid-bounds",
+      "source": "fn main() {\n let outer: List[Int] = [1, 2, 3]\n let cut = fn(lo: Int, hi: Int) => len(outer[lo .. hi])\n par |scope| {\n  scope.spawn(fn() {\n   cut(0, 1)\n  })\n }\n}\n",
+      "allocation_note": "Independent allocation: par token precedes lambda formals, then outer/callable lets, then the hidden task handle. Resolved free-environment validation crosses the outer call without claiming a reconstructed environment place.",
+      "pars": [
+        {
+          "scope": 4,
+          "token": 0,
+          "name": "scope",
+          "span": [
+            103,
+            158
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "par": 0,
+          "handle": 5,
+          "span": [
+            119,
+            155
+          ],
+          "lambda_span": [
+            131,
+            154
+          ],
+          "observations": [
+            {
+              "binding": 4,
+              "name": "cut",
+              "mode": "read",
+              "projections": [],
+              "span": [
+                141,
+                144
+              ],
+              "text": "cut"
+            },
+            {
+              "mode": "take",
+              "reason": "unresolved-call",
+              "span": [
+                141,
+                150
+              ],
+              "text": "cut(0, 1)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "forwarded-free-environment-valid-bounds",
+      "source": "fn main() {\n let outer: List[Int] = [1, 2, 3]\n let cut = fn(lo: Int, hi: Int) => len(outer[lo .. hi])\n let relay = fn(hi: Int, lo: Int) => cut(lo, hi)\n par |scope| {\n  scope.spawn(fn() {\n   relay(1, 0)\n  })\n }\n}\n",
+      "allocation_note": "Independent allocation: par token precedes lambda formals, then outer/callable lets, then the hidden task handle. Resolved free-environment validation crosses the outer call without claiming a reconstructed environment place.",
+      "pars": [
+        {
+          "scope": 5,
+          "token": 0,
+          "name": "scope",
+          "span": [
+            152,
+            209
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "par": 0,
+          "handle": 8,
+          "span": [
+            168,
+            206
+          ],
+          "lambda_span": [
+            180,
+            205
+          ],
+          "observations": [
+            {
+              "binding": 7,
+              "name": "relay",
+              "mode": "read",
+              "projections": [],
+              "span": [
+                190,
+                195
+              ],
+              "text": "relay"
+            },
+            {
+              "mode": "take",
+              "reason": "unresolved-call",
+              "span": [
+                190,
+                201
+              ],
+              "text": "relay(1, 0)"
+            }
+          ]
+        }
+      ]
     }
   ],
   "negative": [
@@ -7783,6 +7887,16 @@
     {
       "name": "forwarded-unavailable-inverted-bounds",
       "source": "fn cut(read p: List[Int], lo: Int, hi: Int, a: Int, b: Int) -> List[Int] { return p[lo .. hi][a .. b] }\nfn relay(read p: List[Int], lo: Int, hi: Int, a: Int, b: Int) -> List[Int] { return cut(p, lo + 1, hi, a, b) }\nfn main() {\n let outer: List[Int] = [1, 2, 3]\n par |scope| {\n  scope.spawn(fn() {\n   relay(outer, 0, 3, 2, 1)\n  })\n }\n}\n",
+      "diagnostic_code": "E2S154"
+    },
+    {
+      "name": "free-environment-inverted-bounds",
+      "source": "fn main() {\n let outer: List[Int] = [1, 2, 3]\n let cut = fn(lo: Int, hi: Int) => len(outer[lo .. hi])\n par |scope| {\n  scope.spawn(fn() {\n   cut(2, 1)\n  })\n }\n}\n",
+      "diagnostic_code": "E2S154"
+    },
+    {
+      "name": "forwarded-free-environment-inverted-bounds",
+      "source": "fn main() {\n let outer: List[Int] = [1, 2, 3]\n let cut = fn(lo: Int, hi: Int) => len(outer[lo .. hi])\n let relay = fn(hi: Int, lo: Int) => cut(lo, hi)\n par |scope| {\n  scope.spawn(fn() {\n   relay(1, 2)\n  })\n }\n}\n",
       "diagnostic_code": "E2S154"
     }
   ]

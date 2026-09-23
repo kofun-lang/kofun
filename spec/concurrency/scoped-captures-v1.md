@@ -685,7 +685,9 @@ read/edit/take modes and field/slice paths. Named helpers resolve internal calls
 in their declaration context, independent of a caller's same-spelled local
 binding. A resolved lambda is summarized from its own formals and body. Its
 unreconstructed free environment produces an explicit unavailable effect;
-it never borrows a same-spelled named function's summary. Copying a scalar to
+it never borrows a same-spelled named function's summary. Known formal-bound
+validation obligations in that environment remain through resolved call
+forwarding without reconstructing an environment place. Copying a scalar to
 a callee-local variable retains the initializer read, without treating later
 local edits as edits to the actual. Checked actual expressions materialized
 as scalar temporaries similarly retain their operand reads without exporting
@@ -727,8 +729,8 @@ applies to unknown effects and materialized or task-local actuals. One
 unrepresentable bound does not discard another slice's validation obligation.
 
 Projection composition is exact through depth8. Depth9..64 becomes reason2
-with its resolved base, candidate depth and bounded validation templates
-retained privately. Distinct private templates remain distinct solver keys
+with its resolved base, candidate depth and unresolved bound templates
+retained privately. Distinct pending templates remain distinct solver keys
 even when final normalization gives them the same public unknown. Depth
 above64 refuses, including a recursive path that continues growing after it
 has become unknown. A checked element index remains reason3. Unavailable

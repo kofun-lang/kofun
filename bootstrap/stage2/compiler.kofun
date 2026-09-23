@@ -26607,14 +26607,22 @@ fn summary_mode(left: Text, right: Text) -> Text {
 }
 
 # effect|callable-open|formal-slot|kind|mode|depth|raw-template|JSON-template|type
-# Unknowns retain bounded private templates for later bound validation. These
+# Unknowns retain unresolved formal templates for later bound validation. These
 # are never published as known places; recursive growth still refuses at 65.
 fn summary_effect(open: Int, slot: Int, kind: Text, mode: Text, depth: Int, raw: Text, json: Text, type: Text) -> Text {
     if depth > 64 { return summary_error("composed projection limit is 64", open) }
     let mut target_kind = kind
     if target_kind == "place" && depth > 8 { target_kind = "deep" }
+    let mut target_raw = raw
+    let mut target_json = json
+    # Only unresolved formal bounds can change on a later substitution.
+    # Compact validated unknowns while retaining their maximum depth.
+    if target_kind != "place" && !contains(raw, "<p") {
+        target_raw = ""
+        target_json = ""
+    }
     return "effect|" + to_text(open) + "|" + to_text(slot) + "|" + target_kind + "|" + mode + "|" +
-        to_text(depth) + "|" + raw + "|" + json + "|" + type + "\n"
+        to_text(depth) + "|" + target_raw + "|" + target_json + "|" + type + "\n"
 }
 
 fn summary_merge(effects: Text, candidate: Text) -> Text {
@@ -26835,15 +26843,17 @@ fn summary_callable_seeds(source: Text, hir: Text, parameters: Text, facts: Text
         if start > open && stop <= end {
             let binding = hir_field(facts, row, 3)
             let slot = summary_parameter_slot(parameters, open, binding)
-            if slot >= 0 {
+            if slot >= 0 || (lambda && !capture_local(hir, binding, scope)) {
                 let place = hir_field(facts, row, 10) + "|" + binding + "|" + hir_field(facts, row, 4) + "|" +
                     hir_field(facts, row, 5) + "|" + hir_field(facts, row, 6) + "|" + hir_field(facts, row, 7) + "\n"
                 let projection = summary_projection(source, hir, parameters, open, start, stop, path, place)
                 if starts_with(projection, "error[") { return projection }
-                result = summary_merge(result, summary_effect(open, slot, hir_field(projection, 0, 1), hir_field(facts, row, 2),
+                let mut kind = hir_field(projection, 0, 1)
+                let mut mode = hir_field(facts, row, 2)
+                if slot < 0 { kind = "unavailable"
+                    mode = "take" }
+                result = summary_merge(result, summary_effect(open, slot, kind, mode,
                     decimal_value(hir_field(projection, 0, 2)), hir_field(projection, 0, 3), hir_field(projection, 0, 4), hir_field(facts, row, 4)))
-            } else if lambda && !capture_local(hir, binding, scope) {
-                result = summary_merge(result, summary_effect(open, -1, "unavailable", "take", 0, "", "", ""))
             }
             if starts_with(result, "error[") { return result }
         }
@@ -26884,14 +26894,17 @@ fn summary_instance(source: Text, hir: Text, catalog: Text, parameters: Text, ow
     let slot = decimal_value(hir_field(effects, effect, 2))
     let mode = hir_field(effects, effect, 4)
     let type = hir_field(effects, effect, 8)
-    if slot < 0 { return "instance||unavailable|" + mode + "|0|||\n" }
-    let argument = summary_argument(facts, call_start, slot)
-    if argument < 0 { return summary_error("checked actual slot is absent", call_start) }
     # Validate substituted bounds even when the public target will be unknown
     # or the actual is a materialized value rather than an escaping place.
     let suffix = summary_substitute_bounds(source, hir, parameters, owner, facts, call_start, path,
         decimal_value(hir_field(effects, effect, 5)), hir_field(effects, effect, 6), hir_field(effects, effect, 7))
     if starts_with(suffix, "error[") { return suffix }
+    if slot < 0 {
+        return "instance||unavailable|" + mode + "|" + hir_field(effects, effect, 5) + "|" +
+            hir_field(suffix, 0, 3) + "|" + hir_field(suffix, 0, 4) + "|" + type + "\n"
+    }
+    let argument = summary_argument(facts, call_start, slot)
+    if argument < 0 { return summary_error("checked actual slot is absent", call_start) }
     let start = decimal_value(hir_field(facts, argument, 3))
     let end = decimal_value(hir_field(facts, argument, 4))
     let actual = summary_actual(source, hir, catalog, start, end, path)
