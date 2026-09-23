@@ -29,6 +29,13 @@ Linux ELF checkpoints are bootstrap evidence toward that profile, not
 completion of it. `task native-toolchain-contract` checks the decision while
 `release/claims.json` continues to say what is actually implemented.
 
+The bounded `kofun.bench-report/v1` model, canonical Bytes codec and caller-threshold
+comparison are C11 Stage 2 capabilities, gated together by `task benchmark-report`.
+The [certification fixture](../tests/stdlib/benchmark-report/README.md) observes all
+49 fields and 100 samples through the complete production path. This advances the
+pure report slice; the benchmark harness, providers and filesystem publication
+remain separate work.
+
 ## Current critical-path order
 
 The frozen-profile fixed point is reached. The smallest compiler source `S`,

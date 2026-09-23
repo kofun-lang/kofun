@@ -1,0 +1,286 @@
+# The #1320 source fixture constructs reports through the production model.
+# Inputs come from the frozen maximum vector, with an unavailable counter,
+# an available zero, and a deliberately non-normalized Unicode parameter.
+# The candidate halves raw values; every summary and flag is computed by Kofun.
+
+fn certification_produce(candidate: Int, invalid: Int) -> BenchReport {
+    let identity: ReportIdentity = ReportIdentity(
+        suite: "\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\",
+        case: "\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"",
+        parameter_present: true,
+        parameter: "café-😀\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"",
+        metric: "\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\",
+        direction_tag: invalid
+    )
+    let schedule: ReportSchedule = ReportSchedule(
+        clock_tag: 2,
+        warmup_cap_ns: 500000000,
+        sampling_cap_ns: 3000000000,
+        sample_cap: 100,
+        warmup_iterations: 9007199254740991,
+        warmup_stop_tag: 1,
+        iterations_per_sample: 9007199254740991,
+        sample_count: 100,
+        sampling_stop_tag: 0,
+        harness_overhead_ns: 9007199254740991
+    )
+    let counters: ReportCounters = ReportCounters(
+        allocated_bytes_available: false,
+        allocated_bytes_value: 0,
+        allocation_count_available: true,
+        allocation_count_value: 0,
+        gc_collections_available: true,
+        gc_collections_value: 9007199254740991,
+        vm_peak_bytes_available: true,
+        vm_peak_bytes_value: 9007199254740991,
+        cpu_cycles_available: true,
+        cpu_cycles_value: 9007199254740991
+    )
+    let digests: ReportDigests = ReportDigests(
+        toolchain_sha256: "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        source_sha256: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        artifact_sha256: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    )
+    let host: ReportHost = ReportHost(
+        host_id_sha256: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        host_os: "\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\",
+        host_arch: "\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"",
+        host_cpu: "\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"",
+        host_affinity_available: true,
+        host_affinity: "\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\",
+        host_frequency_hz_available: true,
+        host_frequency_hz: 9007199254740991,
+        host_noise: "\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\\t\n\r\"\\"
+    )
+    let mut first: List[Int] = [
+        9007199254740990, 9007199254740990, 9007199254740990, 9007199254740990,
+        9007199254740990, 9007199254740990, 9007199254740990, 9007199254740990,
+        9007199254740990, 9007199254740990, 9007199254740990, 9007199254740990,
+        9007199254740990, 9007199254740990, 9007199254740990, 9007199254740990,
+        9007199254740990, 9007199254740990, 9007199254740990, 9007199254740990,
+        9007199254740990, 9007199254740990, 9007199254740990, 9007199254740990,
+        9007199254740990, 9007199254740990, 9007199254740990, 9007199254740990,
+        9007199254740990, 9007199254740990, 9007199254740990, 9007199254740990,
+        9007199254740990, 9007199254740990, 9007199254740990, 9007199254740990,
+        9007199254740990, 9007199254740990, 9007199254740990, 9007199254740990,
+        9007199254740990, 9007199254740990, 9007199254740990, 9007199254740990,
+        9007199254740990, 9007199254740990, 9007199254740990, 9007199254740990,
+        9007199254740990, 9007199254740990, 9007199254740990, 9007199254740990,
+        9007199254740990, 9007199254740990, 9007199254740990, 9007199254740990,
+        9007199254740990, 9007199254740990, 9007199254740990, 9007199254740990,
+        9007199254740990, 9007199254740990, 9007199254740990, 9007199254740990
+    ]
+    let mut second: List[Int] = [
+        9007199254740990, 9007199254740990, 9007199254740990, 9007199254740990,
+        9007199254740990, 9007199254740990, 9007199254740990, 9007199254740990,
+        9007199254740990, 9007199254740990, 9007199254740990, 9007199254740990,
+        9007199254740990, 9007199254740990, 9007199254740990, 9007199254740990,
+        9007199254740990, 9007199254740990, 9007199254740990, 9007199254740990,
+        9007199254740990, 9007199254740990, 9007199254740990, 9007199254740990,
+        9007199254740990, 9007199254740990, 9007199254740990, 9007199254740990,
+        9007199254740990, 9007199254740990, 9007199254740990, 9007199254740990,
+        9007199254740990, 9007199254740990, 9007199254740990, 9007199254740991
+    ]
+    if candidate == 1 {
+        let mut index = 0
+        while index < len(first) { first[index] = first[index] // 2
+            index = index + 1 }
+        let mut tail = 0
+        while tail < len(second) { second[tail] = second[tail] // 2
+            tail = tail + 1 }
+    }
+    let result: BenchReport = produce_report(identity, schedule, counters, digests, host, first, second)
+    return result
+}
+
+# Observe every physical field, including the neutral fields of refused reports.
+fn certification_fields(report: BenchReport) -> Int {
+    print("status_tag")
+    print(report.status_tag)
+    print("suite")
+    print(report.suite)
+    print("case")
+    print(report.case)
+    print("parameter_present")
+    if report.parameter_present { print(1) } else { print(0) }
+    print("parameter")
+    print(report.parameter)
+    print("metric")
+    print(report.metric)
+    print("direction_tag")
+    print(report.direction_tag)
+    print("clock_tag")
+    print(report.clock_tag)
+    print("warmup_cap_ns")
+    print(report.warmup_cap_ns)
+    print("sampling_cap_ns")
+    print(report.sampling_cap_ns)
+    print("sample_cap")
+    print(report.sample_cap)
+    print("warmup_iterations")
+    print(report.warmup_iterations)
+    print("warmup_stop_tag")
+    print(report.warmup_stop_tag)
+    print("iterations_per_sample")
+    print(report.iterations_per_sample)
+    print("sample_count")
+    print(report.sample_count)
+    print("sampling_stop_tag")
+    print(report.sampling_stop_tag)
+    print("harness_overhead_ns")
+    print(report.harness_overhead_ns)
+    print("sample_segment0")
+    print(len(report.sample_segment0))
+    let mut index_sample_segment0 = 0
+    while index_sample_segment0 < len(report.sample_segment0) {
+        print(report.sample_segment0[index_sample_segment0])
+        index_sample_segment0 = index_sample_segment0 + 1
+    }
+    print("sample_segment1")
+    print(len(report.sample_segment1))
+    let mut index_sample_segment1 = 0
+    while index_sample_segment1 < len(report.sample_segment1) {
+        print(report.sample_segment1[index_sample_segment1])
+        index_sample_segment1 = index_sample_segment1 + 1
+    }
+    print("outlier_segment0")
+    print(len(report.outlier_segment0))
+    let mut index_outlier_segment0 = 0
+    while index_outlier_segment0 < len(report.outlier_segment0) {
+        print(report.outlier_segment0[index_outlier_segment0])
+        index_outlier_segment0 = index_outlier_segment0 + 1
+    }
+    print("outlier_segment1")
+    print(len(report.outlier_segment1))
+    let mut index_outlier_segment1 = 0
+    while index_outlier_segment1 < len(report.outlier_segment1) {
+        print(report.outlier_segment1[index_outlier_segment1])
+        index_outlier_segment1 = index_outlier_segment1 + 1
+    }
+    print("summary_minimum")
+    print(report.summary_minimum)
+    print("summary_maximum")
+    print(report.summary_maximum)
+    print("summary_median")
+    print(report.summary_median)
+    print("summary_p25")
+    print(report.summary_p25)
+    print("summary_p75")
+    print(report.summary_p75)
+    print("summary_median_absolute_deviation")
+    print(report.summary_median_absolute_deviation)
+    print("allocated_bytes_available")
+    if report.allocated_bytes_available { print(1) } else { print(0) }
+    print("allocated_bytes_value")
+    print(report.allocated_bytes_value)
+    print("allocation_count_available")
+    if report.allocation_count_available { print(1) } else { print(0) }
+    print("allocation_count_value")
+    print(report.allocation_count_value)
+    print("gc_collections_available")
+    if report.gc_collections_available { print(1) } else { print(0) }
+    print("gc_collections_value")
+    print(report.gc_collections_value)
+    print("vm_peak_bytes_available")
+    if report.vm_peak_bytes_available { print(1) } else { print(0) }
+    print("vm_peak_bytes_value")
+    print(report.vm_peak_bytes_value)
+    print("cpu_cycles_available")
+    if report.cpu_cycles_available { print(1) } else { print(0) }
+    print("cpu_cycles_value")
+    print(report.cpu_cycles_value)
+    print("toolchain_sha256")
+    print(report.toolchain_sha256)
+    print("source_sha256")
+    print(report.source_sha256)
+    print("artifact_sha256")
+    print(report.artifact_sha256)
+    print("host_id_sha256")
+    print(report.host_id_sha256)
+    print("host_os")
+    print(report.host_os)
+    print("host_arch")
+    print(report.host_arch)
+    print("host_cpu")
+    print(report.host_cpu)
+    print("host_affinity_available")
+    if report.host_affinity_available { print(1) } else { print(0) }
+    print("host_affinity")
+    print(report.host_affinity)
+    print("host_frequency_hz_available")
+    if report.host_frequency_hz_available { print(1) } else { print(0) }
+    print("host_frequency_hz")
+    print(report.host_frequency_hz)
+    print("host_noise")
+    print(report.host_noise)
+    return 0
+}
+
+fn certification_bytes(read bytes: Bytes) -> Int {
+    print(stage2_bytes_len(bytes))
+    let mut at = 0
+    while at < stage2_bytes_len(bytes) {
+        print(stage2_bytes_byte_at(bytes, at))
+        at = at + 1
+    }
+    return 0
+}
+
+fn certification_comparison(value: Stage2BenchmarkComparisonOutcome) -> Int {
+    print(value.status_tag)
+    print(value.result_tag)
+    print(value.change_bps)
+    print(value.threshold_bps)
+    return 0
+}
+
+fn main() -> Int {
+    let baseline: BenchReport = certification_produce(0, 0)
+    let candidate: BenchReport = certification_produce(1, 0)
+    print("baseline model")
+    certification_fields(baseline)
+    print("candidate model")
+    certification_fields(candidate)
+    let baseline_bytes = stage2_bytes_empty()
+    let candidate_bytes = stage2_bytes_empty()
+    print("encode statuses")
+    print(encode_report(baseline, baseline_bytes))
+    print(encode_report(candidate, candidate_bytes))
+    print("baseline wire")
+    certification_bytes(baseline_bytes)
+    print("candidate wire")
+    certification_bytes(candidate_bytes)
+    let decoded_baseline: BenchReport = decode_report(baseline_bytes)
+    let decoded_candidate: BenchReport = decode_report(candidate_bytes)
+    print("baseline decoded")
+    certification_fields(decoded_baseline)
+    print("candidate decoded")
+    certification_fields(decoded_candidate)
+    print("comparison")
+    let comparison: Stage2BenchmarkComparisonOutcome = compare_reports(decoded_baseline, decoded_candidate, 100)
+    certification_comparison(comparison)
+    let empty = stage2_bytes_empty()
+    let refused_decode: BenchReport = decode_report(empty)
+    let refused_model: BenchReport = certification_produce(0, 99)
+    let cancelled: BenchReport = neutral_report(11)
+    print("decode refusal")
+    certification_fields(refused_decode)
+    print("model refusal")
+    certification_fields(refused_model)
+    print("cancelled outcome")
+    certification_fields(cancelled)
+    print("refused comparisons")
+    let decode_comparison: Stage2BenchmarkComparisonOutcome = compare_reports(refused_decode, candidate, 100)
+    certification_comparison(decode_comparison)
+    let model_comparison: Stage2BenchmarkComparisonOutcome = compare_reports(baseline, refused_model, 100)
+    certification_comparison(model_comparison)
+    print("refused encodes preserve complete prior wire")
+    print(encode_report(refused_decode, baseline_bytes))
+    print(encode_report(refused_model, baseline_bytes))
+    print(encode_report(cancelled, baseline_bytes))
+    certification_bytes(baseline_bytes)
+    print("empty destination remains empty")
+    print(encode_report(refused_model, empty))
+    certification_bytes(empty)
+    return 0
+}

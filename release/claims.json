@@ -111,6 +111,48 @@
       }
     },
     {
+      "id": "benchmark-report-v1",
+      "public_wording": "bounded benchmark report v1 model, Bytes codec, and comparison",
+      "public_status": "bounded C11 Stage 2: 49 fields, 100 samples in 64+36 segments, canonical Bytes and explicit threshold comparison; no live runner, providers, filesystem publication, generic JSON, or other backend",
+      "state": "implemented",
+      "area": "c-backend",
+      "bounded_capability": "The production Kofun model constructs complete 49-field reports with 100 samples in two capacity-64 segments. A bounded pure Bytes codec preserves canonical kofun.bench-report/v1 bytes and complete outcomes, and deterministic comparison uses the caller threshold. The composed fixture observes every model/decoded field, canonical buffers over 4 KiB, unavailable versus zero, non-normalized identity, and neutral refusals. Encoding prepares a private buffer and commits only after the destination reserve succeeds.",
+      "targets": [
+        "c11",
+        "stage2"
+      ],
+      "specification": [
+        "spec/benchmark-report-v1.md",
+        "tests/stdlib/benchmark-report/README.md"
+      ],
+      "compatibility": "The wire is at most 16384 bytes inside the shared Managed Bytes[65536] profile, Text fields are bounded to 96/128/255 UTF-8 bytes, samples to 100, and JSON integers to 2^53-1. No live benchmark runner, clocks or counters provider, filesystem publication, generic JSON, significance result, or non-C11 backend is claimed. benchmark-harness remains specified.",
+      "positive_gate": {
+        "command": "task benchmark-report",
+        "observation": "The specification, model, codec and comparison gates pass, and one Kofun source path constructs, encodes, decodes and compares complete reports against independent contract expectations at O0/O2, on repeat and under ASan/UBSan."
+      },
+      "negative_boundary": {
+        "kind": "rejection",
+        "evidence": "tests/stdlib/benchmark-report-codec/fixtures.mjs",
+        "observation": "All 44 digest-pinned negative vectors return the frozen code with 48 neutral fields. Every injected encoder/decoder allocation failure returns BR012; prior outcomes including BR011 preserve the exact destination pointer, capacity, length and bytes without exposing a prefix."
+      },
+      "safety": {
+        "classification": "refusal-boundary",
+        "threat_model": "spec/benchmark-report-v1.md",
+        "negative_test": "tests/stdlib/benchmark-report-codec/driver.c"
+      },
+      "performance": {
+        "classification": "none"
+      },
+      "reproduction": {
+        "command": "task benchmark-report",
+        "prerequisites": [
+          "cc",
+          "clang",
+          "node"
+        ]
+      }
+    },
+    {
       "id": "bindgen-c-stage1",
       "public_wording": "audited raw C bindings from the Clang AST",
       "public_status": "bounded stage-1 generator; raw and trusted, not safe",

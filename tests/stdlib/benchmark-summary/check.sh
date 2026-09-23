@@ -16,9 +16,38 @@ fail() {
     exit 1
 }
 
-producer="$CASES/summary.kofun"
+model="$ROOT/tests/stdlib/benchmark-report-model/model.kofun"
+fixture="$CASES/summary.kofun"
+producer="$WORK/summary.kofun"
 expected="$CASES/summary.stdout"
-assert_regular_file 'Kofun summary producer' "$producer"
+assert_regular_file 'Kofun report model' "$model"
+assert_regular_file 'Kofun summary witness' "$fixture"
+# Keep the complete-HIR witness small enough for the current projector. Read
+# the production summary closure directly; never keep a second implementation.
+# A new dependency fails compilation until it is included in this closure.
+awk '
+    BEGIN {
+        count = split("ReportSummary ceil_div absolute_distance sorted_copy merged_rank deviation_segment summarize_segments", names, " ")
+        for (i = 1; i <= count; i++) wanted[names[i]] = 1
+    }
+    /^type / || /^fn / {
+        if (selected) exit 1
+        name = $2
+        sub(/\(.*/, "", name)
+        if (name in wanted) {
+            if (seen[name]++) exit 1
+            selected = 1
+        }
+    }
+    selected { print }
+    selected && /^}$/ { selected = 0; print "" }
+    END {
+        if (selected) exit 1
+        for (name in wanted) if (seen[name] != 1) exit 1
+    }
+' "$model" >"$producer" ||
+    assert_fail 'shared summary declarations are missing, duplicated, or unterminated'
+cat "$fixture" >>"$producer"
 assert_regular_file 'summary golden' "$expected"
 
 find "$CASES" -type f \( -name '*.py' -o -name '*.kf' \) >"$WORK/forbidden"
@@ -40,10 +69,10 @@ assert_grep 'typed sidecar uses the Stage 2 semantic schema' \
     -Fq -- '"stage2-semantic-v1"' "$WORK/summary-semantic.json"
 assert_grep 'typed sidecar is a complete projection' \
     -Fq -- '"completeness": "complete"' "$WORK/summary-semantic.json"
-assert_grep 'typed sidecar carries Samples8' \
-    -Fq -- '"Samples8"' "$WORK/summary-semantic.json"
-assert_grep 'typed sidecar carries BenchmarkSummary' \
-    -Fq -- '"BenchmarkSummary"' "$WORK/summary-semantic.json"
+assert_grep 'typed sidecar carries the shared segmented summary' \
+    -Fq -- '"ReportSummary"' "$WORK/summary-semantic.json"
+assert_grep 'typed sidecar carries the raw sample segment type' \
+    -Fq -- '"List[Int]"' "$WORK/summary-semantic.json"
 
 "$ROOT/bin/kofun" build "$producer" -o "$WORK/summary" \
     --emit-c "$WORK/summary.c" >"$WORK/build.stdout" 2>"$WORK/build.stderr" ||

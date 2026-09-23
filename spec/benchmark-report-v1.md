@@ -71,6 +71,13 @@ consumer can preserve them exactly. Negative values, fractions, exponents, and
 values outside that range are invalid. Arithmetic used to compute summaries or
 comparisons is checked; an unrepresentable result is `BR007`, never wraparound.
 
+Numeric validation uses the exact mathematical value of the JSON token before
+canonical spelling is checked. An integral spelling such as `0e0` or `0.0`
+reaches canonical-byte refusal (`BR002`). A nonintegral decimal remains a schema
+refusal (`BR003` in an integer field), even when a host floating-point parser
+would round it to an integer or underflow it to zero. Such rounding must not
+change the value used for cross-field validation.
+
 The exact bounds are exported by `benchmark-report-v1/contract.mjs`. The closed
 JSON Schema mirrors structural and scalar/count bounds; the executable model
 additionally enforces canonical wire bytes, UTF-8 byte lengths, scalar validity,
