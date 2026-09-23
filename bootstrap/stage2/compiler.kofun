@@ -513,6 +513,11 @@ fn lex(source: Text) -> Text {
     # Lexical trivia only: a terminal comma is a token the tape records even
     # though every other reader steps over it.
     let mut cursor = skip_lexical_trivia(source, 0)
+    # Cursor only advances. Count each source byte once instead of rescanning
+    # the whole prefix for every token's line number.
+    let symbols = chars(source)
+    let mut line = 1
+    let mut line_cursor = 0
     while cursor < len(source) {
         let end = token_end(source, cursor)
         if end <= cursor {
@@ -525,9 +530,13 @@ fn lex(source: Text) -> Text {
             "; `.` and an exponent need digits, and `_` must sit between " +
             "two digits"
         }
+        while line_cursor < cursor {
+            if symbols[line_cursor] == "\n" { line = line + 1 }
+            line_cursor = line_cursor + 1
+        }
         tape = tape + token_kind(source, cursor) + "|" +
         to_text(cursor) + "|" + to_text(end) + "|" +
-        to_text(line_at(source, cursor)) + "\n"
+        to_text(line) + "\n"
         cursor = skip_lexical_trivia(source, end)
     }
     return tape
@@ -1994,6 +2003,9 @@ fn const_parameter_name(source: Text, start: Int) -> Text {
 
 # The const parameter declared by the type named `wanted`, or "".
 fn const_parameter_of_type(source: Text, wanted: Text) -> Text {
+    # A declaration needs its literal keyword. Substring false positives keep
+    # the full parser path; absence proves that this lookup has no result.
+    if !contains(source, "type") { return "" }
     let mut cursor = after_optional_module_header(source, 0)
     while cursor < len(source) {
         let type_start = type_declaration_start(source, cursor)
@@ -4014,6 +4026,9 @@ fn list_int_literal_count(source: Text, open: Int) -> Int {
 # syntax, not a lexical read. Keeping this local-only preserves #919's
 # boundary: parameters and results still reach their lowering diagnostics.
 fn list_int_local_type_token(source: Text, target: Int) -> Bool {
+    # Ordinary value uses need no whole-unit annotation scan when the unit has
+    # no possible let declaration. Comments/strings can only keep the old path.
+    if !contains(source, "let") { return false }
     let mut cursor = skip_trivia(source, 0)
     while cursor <= target && cursor < len(source) {
         if token_text(source, cursor) == "let" {
@@ -12005,7 +12020,37 @@ fn lambda_fn_keyword_before(source: Text, open: Int) -> Bool {
     return true
 }
 
-fn lambda_parameters_end(source: Text, previous: Int, open: Int) -> Int {
+# Analysis spans checked expressions independently of lowering's List-local
+# admission rule. Shape and type checking still run on the original bytes.
+fn scoped_arrow_end(source: Text, start: Int) -> Int {
+    let mut at = start
+    let mut last = start
+    let mut previous = ""
+    while at < len(source) {
+        let token = token_text(source, at)
+        if token == ";" || token == "}" || token == ")" || token == "]" ||
+           token == "," || token == "=" { return last }
+        if at > start && contains(text_slice(source, last, at), "\n") &&
+            !checked_place_shape_operator(previous) && !checked_place_shape_operator(token) &&
+            token != "." && token != "(" && token != "[" && previous != "=>" {
+            return last
+        }
+        if token == "(" || token == "[" || token == "{" {
+            let mut closing = ")"
+            if token == "[" { closing = "]" }
+            if token == "{" { closing = "}" }
+            let after = balanced_end(source, at, token, closing)
+            if after <= at { return -1 }
+            last = after
+        } else { last = token_end(source, at) }
+        if last <= at { return -1 }
+        previous = token
+        at = skip_lexical_trivia(source, last)
+    }
+    return last
+}
+
+fn lambda_parameters_end_mode(source: Text, previous: Int, open: Int, scoped_analysis: Bool) -> Int {
     if token_text(source, open) != "(" {
         # The bare single-parameter form `x => e` decided in #547. It is a
         # lambda everywhere an arm pattern is not, which is why the arm check
@@ -12057,24 +12102,35 @@ fn lambda_parameters_end(source: Text, previous: Int, open: Int) -> Int {
     if token_text(source, arrow) != "=>" {
         return -1
     }
+    if scoped_analysis && lambda_fn_keyword_before(source, open) {
+        return scoped_arrow_end(source, skip_trivia(source, token_end(source, arrow)))
+    }
     return expression_end(source, skip_trivia(source, token_end(source, arrow)))
+}
+
+fn lambda_parameters_end(source: Text, previous: Int, open: Int) -> Int {
+    return lambda_parameters_end_mode(source, previous, open, false)
 }
 
 # The innermost arrow lambda whose parameters are in scope at `target`, keyed by
 # its `(` so `hir_scope_id_for_open` finds the scope record. -1 when `target` is
 # not inside one.
-fn lambda_scope_open(source: Text, function_open: Int, target: Int) -> Int {
+fn lambda_scope_open_mode(source: Text, function_open: Int, target: Int, scoped_analysis: Bool) -> Int {
     let mut cursor = function_open
     let mut previous = -1
     let mut found = -1
     while cursor < target {
-        if lambda_parameters_end(source, previous, cursor) > target {
+        if lambda_parameters_end_mode(source, previous, cursor, scoped_analysis) > target {
             found = cursor
         }
         previous = cursor
         cursor = skip_trivia(source, token_end(source, cursor))
     }
     return found
+}
+
+fn lambda_scope_open(source: Text, function_open: Int, target: Int) -> Int {
+    return lambda_scope_open_mode(source, function_open, target, false)
 }
 
 # Lifted lambdas still use the scalar capture ABI. Fail before C publication
@@ -12138,15 +12194,16 @@ fn validate_list_int_lambda_uses(source: Text, hir: Text) -> Text {
 # `target` is a parameter name or a parameter type inside an arrow lambda's
 # parameter list. The identifier pass must resolve neither: the name is a
 # declaration, and the type names no binding.
-fn lambda_declaration_syntax_token(
+fn lambda_declaration_syntax_token_mode(
     source: Text,
     function_open: Int,
-    target: Int
+    target: Int,
+    scoped_analysis: Bool
 ) -> Bool {
     let mut cursor = function_open
     let mut previous = -1
     while cursor <= target {
-        if lambda_parameters_end(source, previous, cursor) >= 0 {
+        if lambda_parameters_end_mode(source, previous, cursor, scoped_analysis) >= 0 {
             if token_text(source, cursor) != "(" {
                 # The bare form has no parameter list: the keying token is
                 # itself the parameter, so it is the only declaration.
@@ -12162,6 +12219,14 @@ fn lambda_declaration_syntax_token(
         cursor = skip_trivia(source, token_end(source, cursor))
     }
     return false
+}
+
+fn lambda_declaration_syntax_token(
+    source: Text,
+    function_open: Int,
+    target: Int
+) -> Bool {
+    return lambda_declaration_syntax_token_mode(source, function_open, target, false)
 }
 
 # `x: Int => e` annotates a lambda parameter without parentheses. #547 rejects
@@ -12556,22 +12621,26 @@ fn hir_binding_declaration_start(hir: Text, binding_id: Text) -> Int {
 # what precedes the parameter list is `=` or `fn` — never an identifier, which
 # is why -1 is the right `previous` for `lambda_parameters_end`: the
 # constructor-pattern ambiguity that argument guards against cannot arise here.
-fn lambda_initializer_open(source: Text, value_start: Int) -> Int {
+fn lambda_initializer_open_mode(source: Text, value_start: Int, scoped_analysis: Bool) -> Int {
     let mut cursor = skip_trivia(source, value_start)
     if token_text(source, cursor) == "fn" {
         cursor = skip_trivia(source, token_end(source, cursor))
     }
-    if lambda_parameters_end(source, -1, cursor) < 0 {
+    if lambda_parameters_end_mode(source, -1, cursor, scoped_analysis) < 0 {
         return -1
     }
     return cursor
+}
+
+fn lambda_initializer_open(source: Text, value_start: Int) -> Int {
+    return lambda_initializer_open_mode(source, value_start, false)
 }
 
 # The `(` of the lambda a binding holds, or -1 when that binding is not a
 # lambda. This is how a call site reaches the lifted function: the scope HIR
 # has already resolved the callee name to a binding, shadowing included, so the
 # lowering never repeats that resolution by name.
-fn lambda_binding_open(source: Text, hir: Text, binding_id: Text) -> Int {
+fn lambda_binding_open_mode(source: Text, hir: Text, binding_id: Text, scoped_analysis: Bool) -> Int {
     let declaration_start = hir_binding_declaration_start(hir, binding_id)
     if declaration_start < 0 {
         return -1
@@ -12580,8 +12649,12 @@ fn lambda_binding_open(source: Text, hir: Text, binding_id: Text) -> Int {
     if token_text(source, equals) != "=" {
         return -1
     }
-    return lambda_initializer_open(
-        source, skip_trivia(source, token_end(source, equals)))
+    return lambda_initializer_open_mode(
+        source, skip_trivia(source, token_end(source, equals)), scoped_analysis)
+}
+
+fn lambda_binding_open(source: Text, hir: Text, binding_id: Text) -> Int {
+    return lambda_binding_open_mode(source, hir, binding_id, false)
 }
 
 # The binding ids a lambda body reads from outside its own parameter list, in
@@ -13712,11 +13785,7 @@ fn build_scope_hir_analysis_mode(
                 "; write `(" + token_text(source, cursor) + ": " +
                 token_text(source, annotation) + ") =>`"
             } else {
-                let lambda_close = lambda_parameters_end(
-                    source,
-                    previous,
-                    cursor
-                )
+                let lambda_close = lambda_parameters_end_mode(source, previous, cursor, scoped_analysis)
                 if lambda_close >= 0 {
                     let lambda_open = cursor
                     let lambda_depth = block_depth_at(
@@ -13891,7 +13960,7 @@ fn build_scope_hir_analysis_mode(
         cursor = skip_trivia(source, token_end(source, function_open))
         previous = -1
         while cursor < function_close {
-            if lambda_parameters_end(source, previous, cursor) >= 0 {
+            if lambda_parameters_end_mode(source, previous, cursor, scoped_analysis) >= 0 {
                 let lambda_open = cursor
                 # The bare form has no parameter list to walk: the parameter is
                 # the keying token itself, so the walk below covers exactly that
@@ -14344,6 +14413,23 @@ fn build_scope_hir_analysis_mode(
             }
         }
 
+        # Only scope/binding rows participate in the four declaration lookups
+        # below. Freeze them after this function's declarations, preserving all
+        # earlier functions and original record order. Keep the full HIR for
+        # emitted use rows and initializer/error-precedence consumers. The C
+        # counterpart already indexes these record kinds without scanning uses.
+        let mut declaration_hir = "kofun-scope-hir/v1\n"
+        let mut scope_row = hir_record_start(hir, "scope", 0)
+        let mut binding_row = hir_record_start(hir, "binding", 0)
+        while scope_row >= 0 || binding_row >= 0 {
+            let mut row = scope_row
+            if row < 0 || (binding_row >= 0 && binding_row < row) { row = binding_row }
+            let after = text_find_from(hir, "\n", row) + 1
+            declaration_hir = declaration_hir + text_slice(hir, row, after)
+            if row == scope_row { scope_row = hir_record_start(hir, "scope", row + 1) }
+            else { binding_row = hir_record_start(hir, "binding", row + 1) }
+        }
+
         # The use budget is 4096 where the other three lexical budgets are
         # 256 (#1483). It backs no array: the counter only gates how many
         # `use|` records this walk appends to a growable buffer. What it caps
@@ -14405,11 +14491,7 @@ fn build_scope_hir_analysis_mode(
                     function_open,
                     cursor
                 )
-                let lambda_token = lambda_declaration_syntax_token(
-                    source,
-                    function_open,
-                    cursor
-                )
+                let lambda_token = lambda_declaration_syntax_token_mode(source, function_open, cursor, scoped_analysis)
                 if !declaration_token && !record_token &&
                    !initializer_token &&
                    !pattern_token && !lambda_token &&
@@ -14419,11 +14501,7 @@ fn build_scope_hir_analysis_mode(
                    !optional_int_null_context(source, cursor) &&
                    !decimal_rounding_mode_name(name) &&
                    name != "print" && name != "_" {
-                    let mut scope_open = lambda_scope_open(
-                        source,
-                        function_open,
-                        cursor
-                    )
+                    let mut scope_open = lambda_scope_open_mode(source, function_open, cursor, scoped_analysis)
                     if scope_open >= 0 {
                         # A block-bodied lambda has a block scope *inside* its
                         # parameter scope (#1398), and a binding declared there
@@ -14458,9 +14536,9 @@ fn build_scope_hir_analysis_mode(
                             cursor
                         )
                     }
-                    let scope_id = hir_scope_id_for_open(hir, scope_open)
+                    let scope_id = hir_scope_id_for_open(declaration_hir, scope_open)
                     let binding_id = hir_resolve_binding(
-                        hir,
+                        declaration_hir,
                         scope_id,
                         cursor,
                         name
@@ -14509,7 +14587,7 @@ fn build_scope_hir_analysis_mode(
                     } else if token_text(source, after) != "(" &&
                               !unresolved_assignment {
                         let pending = hir_pending_declaration(
-                            hir,
+                            declaration_hir,
                             scope_id,
                             cursor,
                             name
@@ -14520,7 +14598,7 @@ fn build_scope_hir_analysis_mode(
                             "; declaration at byte " + pending
                         }
                         let escaped = hir_any_declaration(
-                            hir,
+                            declaration_hir,
                             scope_id,
                             cursor,
                             name
@@ -18746,17 +18824,17 @@ fn pipeline_subject_take(source: Text, cursor: Int) -> Bool {
 }
 
 # #1540. This is a type bound, not a cleanup or authority proof.
-fn move_trivial_record(source: Text, type: Text) -> Bool {
-    if type == "RootAuthority" || type == "EnvironmentAuthority" {
+fn move_trivial_record(source: Text, type_spelling: Text) -> Bool {
+    if type_spelling == "RootAuthority" || type_spelling == "EnvironmentAuthority" {
         return false
     }
-    let count = record_field_count(source, type)
+    let count = record_field_count(source, type_spelling)
     if count < 0 {
         return false
     }
     let mut index = 0
     while index < count {
-        let field = record_field_text(source, type, index, true)
+        let field = record_field_text(source, type_spelling, index, true)
         if field != "Int" && field != "Bool" {
             return false
         }
@@ -18770,8 +18848,8 @@ fn move_positional_owner(source: Text, hir: Text, binding: Text) -> Bool {
     if mode == "read" || mode == "edit" {
         return false
     }
-    let type = hir_binding_field(hir, binding, 5)
-    return type == "Bytes" || move_trivial_record(source, type)
+    let type_spelling = hir_binding_field(hir, binding, 5)
+    return type_spelling == "Bytes" || move_trivial_record(source, type_spelling)
 }
 
 # Exclude conditional/loop bodies and conditional expression operands. This
@@ -24075,7 +24153,7 @@ fn scoped_hir_observations(source: Text, hir: Text) -> Text {
                     let call_end = balanced_end(source, call_open, "(", ")")
                     let lambda = skip_trivia(source, token_end(source, call_open))
                     let parameters = skip_trivia(source, token_end(source, lambda))
-                    let lambda_end = lambda_parameters_end(source, -1, parameters)
+                    let lambda_end = lambda_parameters_end_mode(source, -1, parameters, true)
                     if token_text(source, lambda) != "fn" ||
                        token_text(source, parameters) != "(" ||
                        lambda_end <= parameters || call_end <= lambda_end ||
@@ -24407,9 +24485,9 @@ fn scoped_hir_par_id(file: Text, facts: Text, row: Int) -> Text {
 }
 
 fn scoped_hir_task_id(file: Text, facts: Text, row: Int) -> Text {
-    let par = scoped_hir_fact(facts, "par", 1, hir_field(facts, row, 1))
+    let par_row = scoped_hir_fact(facts, "par", 1, hir_field(facts, row, 1))
     return scoped_hir_hash_frame("kofun.scope-hir.task/v2",
-        scoped_hir_par_id(file, facts, par),
+        scoped_hir_par_id(file, facts, par_row),
         scoped_hir_hex(decimal_value(hir_field(facts, row, 2)), 8) +
         scoped_hir_node_id(file, 8, decimal_value(hir_field(facts, row, 3)),
             decimal_value(hir_field(facts, row, 4))),
@@ -24448,7 +24526,7 @@ fn scoped_hir_render(source: Text, facts: Text, path: Text) -> Text {
     }
     row = hir_record_start(facts, "task", 0)
     while row >= 0 {
-        let par = scoped_hir_fact(facts, "par", 1, hir_field(facts, row, 1))
+        let par_row = scoped_hir_fact(facts, "par", 1, hir_field(facts, row, 1))
         records = records + ",{\"display\":" +
         scoped_hir_display(source, decimal_value(hir_field(facts, row, 8))) +
         ",\"handle_binding_id\":\"" + scoped_hir_named_id(file, "binding", hir_field(facts, row, 7)) +
@@ -24456,7 +24534,7 @@ fn scoped_hir_render(source: Text, facts: Text, path: Text) -> Text {
         "\",\"lambda_node_id\":\"" + scoped_hir_node_id(file, 2,
             decimal_value(hir_field(facts, row, 5)), decimal_value(hir_field(facts, row, 6))) +
         "\",\"lexical_index\":" + hir_field(facts, row, 2) +
-        ",\"par_id\":\"" + scoped_hir_par_id(file, facts, par) +
+        ",\"par_id\":\"" + scoped_hir_par_id(file, facts, par_row) +
         "\",\"record\":\"task\",\"spawn_node_id\":\"" + scoped_hir_node_id(file, 8,
             decimal_value(hir_field(facts, row, 3)), decimal_value(hir_field(facts, row, 4))) + "\"}"
         row = hir_record_start(facts, "task", row + 1)
@@ -24634,9 +24712,9 @@ fn checked_place_type_id(path: Text, name: Text) -> Text {
     return scoped_hir_hash_frame("kofun.id.symbol/v1", payload, "", "", "")
 }
 
-fn checked_place_normalize_type(type: Text) -> Text {
-    if type == "List[Text]" { return "List" }
-    return type
+fn checked_place_normalize_type(type_spelling: Text) -> Text {
+    if type_spelling == "List[Text]" { return "List" }
+    return type_spelling
 }
 
 fn checked_place_type_known(catalog: Text, name: Text) -> Bool {
@@ -24693,17 +24771,17 @@ fn checked_place_catalog(source: Text) -> Text {
                 names = names + field_name + "|"
                 let typed = skip_trivia(source, token_end(source, colon))
                 let end = record_field_type_end(source, typed, close - 1)
-                let mut type = token_text(source, typed)
-                if type == "List" {
+                let mut type_spelling = token_text(source, typed)
+                if type_spelling == "List" {
                     let list_type = parameter_list_type_text(source, typed, close - 1)
-                    if list_type == "List[Int]" { type = "List[Int]" }
+                    if list_type == "List[Int]" { type_spelling = "List[Int]" }
                     else if list_type != "List[Text]" { return checked_place_error("unresolved field type", typed) }
                 }
                 if end <= typed || end > close - 1 {
                     return checked_place_error("malformed field type", typed)
                 }
                 result = result + "field|" + name + "|" + to_text(ordinal) + "|" +
-                    field_name + "|" + type + "|" + to_text(field) + "\n"
+                    field_name + "|" + type_spelling + "|" + to_text(field) + "\n"
                 ordinal = ordinal + 1
                 field = skip_trivia(source, end)
                 if field < close - 1 {
@@ -25022,7 +25100,7 @@ fn checked_place_shape(source: Text, start: Int, end: Int, depth: Int) -> Text {
         if len(error) > 0 { return error }
     } else if token == "fn" {
         let parameters = skip_trivia(source, token_end(source, first))
-        cursor = lambda_parameters_end(source, -1, parameters)
+        cursor = lambda_parameters_end_mode(source, -1, parameters, true)
         if cursor <= parameters || cursor > last { return checked_place_error("malformed expression", first) }
     } else {
         let kind = token_kind(source, first)
@@ -25091,7 +25169,7 @@ fn checked_place_shape(source: Text, start: Int, end: Int, depth: Int) -> Text {
 fn checked_place_binding_type(source: Text, hir: Text, catalog: Text,
     binding: Text, depth: Int) -> Text {
     if depth > 64 { return checked_place_error("expression depth limit is 64", 0) }
-    let type = checked_place_normalize_type(hir_binding_field(hir, binding, 5))
+    let type_spelling = checked_place_normalize_type(hir_binding_field(hir, binding, 5))
     let name = decimal_value(hir_binding_field(hir, binding, 8))
     let mut after = skip_trivia(source, token_end(source, name))
     if token_text(source, after) == ":" {
@@ -25100,24 +25178,29 @@ fn checked_place_binding_type(source: Text, hir: Text, catalog: Text,
         if end < 0 { end = annotation_type_end(source, annotation) }
         after = skip_trivia(source, end)
     }
-    if token_text(source, after) != "=" { return type }
+    if token_text(source, after) != "=" { return type_spelling }
     let start = skip_trivia(source, token_end(source, after))
     let end = decimal_value(hir_binding_field(hir, binding, 10))
     let actual = checked_place_expression_type(source, hir, catalog, start, end, depth + 1)
     if starts_with(actual, "error[") { return actual }
-    if actual == "List[?]" && (type == "List[Int]" || type == "List") { return type }
-    if actual != type { return "" }
-    return type
+    if actual == "List[?]" && (type_spelling == "List[Int]" || type_spelling == "List") { return type_spelling }
+    if actual != type_spelling { return "" }
+    return type_spelling
 }
 
 # Internal result: place|binding-number|checked-type|depth|projection-hex|JSON.
 # Every projection is checked even after depth eight; only serialization is
 # replaced with an explicit unknown, never a silently truncated known prefix.
+fn checked_place_bound_type(source: Text, hir: Text, catalog: Text, start: Int, end: Int, depth: Int) -> Text {
+    if starts_with(catalog, "checked-capture-types/v1") { return capture_expression_type(source, hir, catalog, start, end, depth) }
+    return checked_place_expression_type(source, hir, catalog, start, end, depth)
+}
+
 fn checked_place_walk(source: Text, hir: Text, catalog: Text, start: Int,
     end: Int, path: Text, recursion: Int) -> Text {
     if recursion > 64 { return checked_place_error("expression depth limit is 64", start) }
     let mut binding = ""
-    let mut type = ""
+    let mut type_spelling = ""
     let mut nameable = true
     let mut cursor = skip_trivia(source, token_end(source, start))
     let mut count = 0
@@ -25134,7 +25217,7 @@ fn checked_place_walk(source: Text, hir: Text, catalog: Text, start: Int,
             return "unknown|" + to_text(start) + "|" + to_text(end) + "\n"
         }
         binding = hir_field(inner, 0, 1)
-        type = hir_field(inner, 0, 2)
+        type_spelling = hir_field(inner, 0, 2)
         count = decimal_value(hir_field(inner, 0, 3))
         raw = hir_field(inner, 0, 4)
         json = hir_field(inner, 0, 5)
@@ -25144,11 +25227,13 @@ fn checked_place_walk(source: Text, hir: Text, catalog: Text, start: Int,
         if token_kind(source, start) != "identifier" { return "unknown|" + to_text(start) + "|" + to_text(end) + "\n" }
         binding = hir_use_binding_id(hir, start)
         if len(binding) == 0 { return "unknown|" + to_text(start) + "|" + to_text(end) + "\n" }
-        type = checked_place_binding_type(source, hir, catalog, binding, recursion + 1)
-        if starts_with(type, "error[") { return type }
-        if len(type) == 0 { return checked_place_error("binding initializer is not well typed", start) }
-        if !checked_place_type_known(catalog, type) && type != "Float" && type != "Decimal" &&
-            type != "Fn" && type != "Bytes" && !authority_type_name(type) {
+        if starts_with(catalog, "checked-capture-types/v1") {
+            type_spelling = capture_binding_type(source, hir, catalog, binding, recursion + 1)
+        } else { type_spelling = checked_place_binding_type(source, hir, catalog, binding, recursion + 1) }
+        if starts_with(type_spelling, "error[") { return type_spelling }
+        if len(type_spelling) == 0 { return checked_place_error("binding initializer is not well typed", start) }
+        if !checked_place_type_known(catalog, type_spelling) && type_spelling != "Float" && type_spelling != "Decimal" &&
+            type_spelling != "Fn" && type_spelling != "Bytes" && !authority_type_name(type_spelling) {
             return checked_place_error("binding type is unavailable", start)
         }
     }
@@ -25160,20 +25245,20 @@ fn checked_place_walk(source: Text, hir: Text, catalog: Text, start: Int,
             if token_kind(source, field) != "identifier" || token_end(source, field) > end {
                 return checked_place_error("malformed field projection", field)
             }
-            let resolved = checked_place_field(catalog, type, token_text(source, field))
+            let resolved = checked_place_field(catalog, type_spelling, token_text(source, field))
             if resolved < 0 { return checked_place_error("field does not resolve for checked owner type", field) }
             if count < 8 && len(path) > 0 {
-                let owner = checked_place_type_id(path, type)
+                let owner = checked_place_type_id(path, type_spelling)
                 let ordinal = hir_field(catalog, resolved, 2)
                 raw = raw + "01" + owner + scoped_hir_hex(decimal_value(ordinal), 8)
                 if len(json) > 0 { json = json + "," }
                 json = json + "{\"display\":" + scoped_hir_display(source, field) +
                     ",\"kind\":\"field\",\"ordinal\":" + ordinal + ",\"owner_type_id\":\"" + owner + "\"}"
             }
-            type = hir_field(catalog, resolved, 4)
+            type_spelling = hir_field(catalog, resolved, 4)
             cursor = skip_trivia(source, token_end(source, field))
         } else if token == "[" {
-            if type != "List[Int]" && type != "List" { return checked_place_error("slice receiver must be a checked list", cursor) }
+            if type_spelling != "List[Int]" && type_spelling != "List" { return checked_place_error("slice receiver must be a checked list", cursor) }
             let close = balanced_end(source, cursor, "[", "]")
             if close < 0 || close > end { return checked_place_error("malformed slice", cursor) }
             let lower = skip_trivia(source, token_end(source, cursor))
@@ -25188,10 +25273,10 @@ fn checked_place_walk(source: Text, hir: Text, catalog: Text, start: Int,
                 } else { separator = skip_trivia(source, token_end(source, separator)) }
             }
             if separator >= close - 1 {
-                let index_type = checked_place_expression_type(source, hir, catalog, lower, close - 1, recursion + 1)
+                let index_type = checked_place_bound_type(source, hir, catalog, lower, close - 1, recursion + 1)
                 if starts_with(index_type, "error[") { return index_type }
                 if index_type != "Int" { return checked_place_error("index must have checked Int type", lower) }
-                if type == "List[Int]" { type = "Int" } else { type = "Text" }
+                if type_spelling == "List[Int]" { type_spelling = "Int" } else { type_spelling = "Text" }
                 nameable = false
                 cursor = skip_trivia(source, close)
                 count = count + 1
@@ -25201,8 +25286,8 @@ fn checked_place_walk(source: Text, hir: Text, catalog: Text, start: Int,
             let lower_end = checked_place_trim_end(source, lower, separator)
             let upper_end = checked_place_trim_end(source, upper, close - 1)
             if lower >= lower_end || upper >= upper_end { return checked_place_error("empty slice bound", cursor) }
-            let lower_type = checked_place_expression_type(source, hir, catalog, lower, lower_end, recursion + 1)
-            let upper_type = checked_place_expression_type(source, hir, catalog, upper, upper_end, recursion + 1)
+            let lower_type = checked_place_bound_type(source, hir, catalog, lower, lower_end, recursion + 1)
+            let upper_type = checked_place_bound_type(source, hir, catalog, upper, upper_end, recursion + 1)
             if starts_with(lower_type, "error[") { return lower_type }
             if starts_with(upper_type, "error[") { return upper_type }
             if lower_type != "Int" || upper_type != "Int" { return checked_place_error("slice bounds must have checked Int type", lower) }
@@ -25238,7 +25323,7 @@ fn checked_place_walk(source: Text, hir: Text, catalog: Text, start: Int,
     if cursor < end { return checked_place_error("incomplete expression", cursor) }
     let mut kind = "place"
     if !nameable { kind = "unnameable" }
-    return kind + "|" + binding + "|" + type + "|" + to_text(count) + "|" + raw + "|" + json + "|" + to_text(start) + "|" + to_text(end) + "\n"
+    return kind + "|" + binding + "|" + type_spelling + "|" + to_text(count) + "|" + raw + "|" + json + "|" + to_text(start) + "|" + to_text(end) + "\n"
 }
 
 fn checked_place_candidate(source: Text, hir: Text, catalog: Text, start: Int, end: Int, path: Text) -> Text {
@@ -25248,9 +25333,9 @@ fn checked_place_candidate(source: Text, hir: Text, catalog: Text, start: Int, e
     if len(delimiters) > 0 { return delimiters }
     let shape = checked_place_shape(source, start, end, 0)
     if len(shape) > 0 { return shape }
-    let type = checked_place_expression_type(source, hir, catalog, start, end, 0)
-    if starts_with(type, "error[") { return type }
-    if len(type) == 0 { return checked_place_error("expression does not have a checked type", start) }
+    let type_spelling = checked_place_expression_type(source, hir, catalog, start, end, 0)
+    if starts_with(type_spelling, "error[") { return type_spelling }
+    if len(type_spelling) == 0 { return checked_place_error("expression does not have a checked type", start) }
     return checked_place_walk(source, hir, catalog, start, end, path, 0)
 }
 
@@ -25323,6 +25408,1122 @@ fn checked_place_render(source: Text, hir: Text, facts: Text, path: Text,
     let document = text_slice(prefix, 0, split) + "," + record + text_slice(prefix, split, len(prefix))
     if len(document) > 16777216 { return checked_place_error("document limit is 16777216 bytes", start) }
     return document
+}
+
+# #1222: checked lexical may-access facts. Private records retain resolved
+# binding provenance and original byte spans until task-local filtering.
+fn capture_error(code: Text, message: Text, at: Int) -> Text {
+    return "error[" + code + "]: checked capture: " + message + " at byte " + to_text(at)
+}
+
+fn capture_tail(rows: Text) -> Text {
+    let end = find(rows, "\n")
+    if end < 0 { return "" }
+    return text_slice(rows, end + 1, len(rows))
+}
+
+fn capture_line_end(rows: Text, start: Int) -> Int {
+    let mut at = start
+    while at < len(rows) && text_slice(rows, at, at + 1) != "\n" { at = at + 1 }
+    return at
+}
+
+fn capture_value(type_spelling: Text, facts: Text) -> Text {
+    return "value|" + type_spelling + "\n" + facts
+}
+
+fn capture_compatible(actual: Text, expected: Text) -> Bool {
+    return actual == expected || (actual == "List[?]" && (expected == "List[Int]" || expected == "List"))
+}
+
+fn capture_type_at(source: Text, at: Int) -> Text {
+    if callable_type_end(source, at) >= 0 { return "Fn" }
+    if token_text(source, at) == "List" {
+        return checked_place_normalize_type(parameter_list_type_text(source, at, len(source)))
+    }
+    return token_text(source, at)
+}
+
+fn capture_catalog(source: Text) -> Text {
+    let catalog = checked_place_catalog(source)
+    if starts_with(catalog, "error[") { return catalog }
+    let mut result = "checked-capture-types/v1\n" + capture_tail(catalog)
+    let mut functions = "|"
+    let mut at = after_optional_module_header(source, 0)
+    while at < len(source) {
+        let declaration = type_declaration_start(source, at)
+        if declaration < 0 && function_declaration_start(source, at) < 0 {
+            return capture_error("E2S154", "expected a checked function or nominal type declaration", at)
+        }
+        let function = function_declaration_start(source, at)
+        if function >= 0 {
+            let name = function_name(source, function)
+            if contains(functions, "|" + name + "|") { return capture_error("E2S16", "duplicate function declaration", function) }
+            functions = functions + name + "|"
+        }
+        if declaration >= 0 && !record_declaration_at(source, declaration) {
+            let name = type_name(source, declaration)
+            if enum_constructor_count(source, name) <= 0 || capture_fact(result, "type", 1, name) >= 0 {
+                return capture_error("E2S154", "expected a distinct checked enum declaration", declaration)
+            }
+            result = result + "type|" + name + "\n"
+        }
+        let end = top_level_end(source, at)
+        if end <= at { return capture_error("E2S154", "malformed declaration", at) }
+        at = skip_trivia(source, end)
+    }
+    return result
+}
+
+fn capture_binding_type(source: Text, hir: Text, catalog: Text, binding: Text, depth: Int) -> Text {
+    if depth > 64 { return capture_error("E2S154", "type dependency depth exceeds 64", 0) }
+    let declaration = hir_binding_declaration_start(hir, binding)
+    let mut at = skip_trivia(source, token_end(source, declaration))
+    let mut annotation = ""
+    if token_text(source, at) == ":" {
+        let typed = skip_trivia(source, token_end(source, at))
+        annotation = capture_type_at(source, typed)
+        at = skip_trivia(source, capture_type_end(source, typed))
+    }
+    if token_text(source, at) != "=" {
+        let type_spelling = checked_place_normalize_type(hir_binding_field(hir, binding, 5))
+        if checked_place_type_known(catalog, type_spelling) || type_spelling == "Fn" { return type_spelling }
+        return capture_error("E2S154", "binding has no checked source type", declaration)
+    }
+    let start = skip_trivia(source, token_end(source, at))
+    if lambda_initializer_open_mode(source, start, true) >= 0 {
+        if len(annotation) > 0 && annotation != "Fn" { return capture_error("E2S12", "initializer type mismatch", start) }
+        return "Fn"
+    }
+    let end = capture_end(source, start, len(source))
+    if end <= start { return capture_error("E2S12", "malformed initializer", start) }
+    let checked = capture_expression(source, hir, catalog, start, end, "", "read", depth + 1)
+    if starts_with(checked, "error[") { return checked }
+    let actual = hir_field(checked, 0, 1)
+    if len(annotation) == 0 { return actual }
+    if !capture_compatible(actual, annotation) { return capture_error("E2S12", "initializer type mismatch", start) }
+    return annotation
+}
+
+fn capture_expression_type(source: Text, hir: Text, catalog: Text, start: Int, end: Int, depth: Int) -> Text {
+    let result = capture_expression(source, hir, catalog, start, end, "", "read", depth)
+    if starts_with(result, "error[") { return result }
+    return hir_field(result, 0, 1)
+}
+
+# Commas are examined raw by the document entry before skip_trivia can hide
+# the permitted terminal comma. This helper only finds complete item ranges.
+fn capture_item_end(source: Text, start: Int, end: Int) -> Int {
+    let mut at = start
+    while at < end && token_text(source, at) != "," {
+        let token = token_text(source, at)
+        if token == "(" || token == "[" || token == "{" {
+            let mut close = ")"
+            if token == "[" { close = "]" }
+            if token == "{" { close = "}" }
+            let after = balanced_end(source, at, token, close)
+            if after <= at || after > end { return -1 }
+            at = skip_trivia(source, after)
+        } else { at = skip_trivia(source, token_end(source, at)) }
+    }
+    return at
+}
+
+fn capture_parameters(source: Text, open: Int) -> Text {
+    let end = balanced_end(source, open, "(", ")")
+    if end <= open { return capture_error("E2S154", "malformed parameters", open) }
+    let mut at = skip_trivia(source, token_end(source, open))
+    let mut rows = ""
+    let mut names = "|"
+    let mut labels = "|"
+    let mut ordinal = 0
+    while at < end - 1 {
+        let stop = capture_item_end(source, at, end - 1)
+        let internal = parameter_internal_start(source, at, stop)
+        let external = parameter_external_start(source, at, stop)
+        let typed = parameter_type_start(source, at, stop)
+        if stop < at || internal < 0 || typed < 0 { return capture_error("E2S154", "malformed parameter", at) }
+        let name = token_text(source, internal)
+        if contains(names, "|" + name + "|") { return capture_error("E2S47", "duplicate parameter", internal) }
+        names = names + name + "|"
+        let mut label = ""
+        if external >= 0 { label = token_text(source, external) }
+        if label != "" && label != "_" {
+            if contains(labels, "|" + label + "|") { return capture_error("E2S47", "duplicate parameter label", external) }
+            labels = labels + label + "|"
+        }
+        let mut mode = "read"
+        if ownership_mode_token(source, at) { mode = token_text(source, at) }
+        if mode == "copy" { mode = "read" }
+        let type_spelling = capture_type_at(source, typed)
+        if capture_type_end(source, typed) != checked_place_trim_end(source, at, stop) { return capture_error("E2S154", "malformed parameter type", typed) }
+        if !capture_declared_type(source, type_spelling) { return capture_error("E2S15", "parameter type is outside the checked profile", typed) }
+        if type_spelling == "Fn" && mode != "read" { return capture_error("E2S154", "callable parameters require an immutable read signature", at) }
+        if mode == "edit" && record_declaration_start(source, type_spelling) >= 0 {
+            return capture_error("E2S181", "nominal-record parameters cannot use edit", at)
+        }
+        if mode == "take" && !move_trivial_record(source, type_spelling) {
+            return capture_error("E2S122", "take requires a checked owning record carrier", at)
+        }
+        let mut arity = -1
+        if type_spelling == "Fn" { arity = callable_type_arity(source, typed) }
+        rows = rows + "formal|" + to_text(ordinal) + "|" + label + "|" + type_spelling + "|" + mode + "|" + to_text(arity) + "\n"
+        ordinal = ordinal + 1
+        at = stop
+        if at < end - 1 { at = skip_trivia(source, token_end(source, at)) }
+    }
+    return rows
+}
+
+fn capture_access(place: Text, mode: Text, start: Int, end: Int) -> Text {
+    return "access|0|" + mode + "|" + hir_field(place, 0, 1) + "|" + hir_field(place, 0, 2) + "|" +
+        hir_field(place, 0, 3) + "|" + hir_field(place, 0, 4) + "|" + hir_field(place, 0, 5) + "|" +
+        to_text(start) + "|" + to_text(end) + "|" + hir_field(place, 0, 0) + "\n"
+}
+
+fn capture_latent(facts: Text) -> Text {
+    let mut result = ""
+    let mut row = capture_record_start(facts, "access", 0)
+    while row >= 0 {
+        let end = capture_line_end(facts, row)
+        result = result + "access|1|" + text_slice(facts, row + 9, end) + "\n"
+        row = capture_record_start(facts, "access", row + 1)
+    }
+    return result
+}
+
+fn capture_lambda(source: Text, hir: Text, catalog: Text, open: Int, path: Text, depth: Int) -> Text {
+    if depth > 64 { return capture_error("E2S154", "callable nesting exceeds 64", open) }
+    let parameters = capture_parameters(source, open)
+    if starts_with(parameters, "error[") { return parameters }
+    let end = lambda_parameters_end_mode(source, -1, open, true)
+    let mut body = skip_trivia(source, balanced_end(source, open, "(", ")"))
+    let mut expected = ""
+    if token_text(source, body) == "->" {
+        let typed = skip_trivia(source, token_end(source, body))
+        expected = capture_type_at(source, typed)
+        body = skip_trivia(source, capture_type_end(source, typed))
+    }
+    let mut result = ""
+    if token_text(source, body) == "=>" {
+        result = capture_expression(source, hir, catalog, token_end(source, body), end, path, "read", depth + 1)
+        if !starts_with(result, "error[") {
+            let flow = capture_flow(source, hir, capture_tail(result), ",", -1)
+            if starts_with(flow, "error[") { return flow }
+        }
+    } else if token_text(source, body) == "{" {
+        result = capture_block(source, hir, catalog, token_end(source, body), end - 1, path, expected, ",", -1, depth + 1)
+    } else { return capture_error("E2S154", "malformed lambda body", body) }
+    if starts_with(result, "error[") { return result }
+    let mut returned = capture_record_start(result, "return-type", 0)
+    let mut inferred = ""
+    while returned >= 0 {
+        let type_spelling = hir_field(result, returned, 1)
+        if len(inferred) > 0 && !capture_compatible(type_spelling, inferred) { return capture_error("E2S12", "inconsistent lambda return types", body) }
+        inferred = type_spelling
+        returned = capture_record_start(result, "return-type", returned + 1)
+    }
+    if len(inferred) > 0 && !capture_compatible(hir_field(result, 0, 1), inferred) {
+        return capture_error("E2S12", "lambda fallthrough result type mismatch", body)
+    }
+    if len(expected) > 0 && !capture_compatible(hir_field(result, 0, 1), expected) {
+        return capture_error("E2S12", "lambda result type mismatch", body)
+    }
+    return result
+}
+
+fn capture_call(source: Text, hir: Text, catalog: Text, first: Int, open: Int, end: Int, path: Text, depth: Int) -> Text {
+    let name = token_text(source, first)
+    let binding = hir_use_binding_id(hir, first)
+    let mut parameters = ""
+    let mut returned = ""
+    let mut facts = ""
+    let mut builtin = false
+    if len(binding) > 0 {
+        let place = checked_place_walk(source, hir, catalog, first, token_end(source, first), path, depth + 1)
+        if starts_with(place, "error[") { return place }
+        if hir_field(place, 0, 2) != "Fn" { return capture_error("E2S154", "callee is not callable", first) }
+        facts = capture_access(place, "read", first, token_end(source, first))
+        let lambda = lambda_binding_open_mode(source, hir, binding, true)
+        if lambda < 0 {
+            let signature = callable_parameter_type_start(source, hir, binding)
+            let arity = callable_type_arity(source, signature)
+            if signature < 0 || arity < 0 { return capture_error("E2S154", "callable signature is unavailable", first) }
+            let mut slot = 0
+            while slot < arity {
+                parameters = parameters + "formal|" + to_text(slot) + "||Int|read\n"
+                slot = slot + 1
+            }
+            returned = "Int"
+        } else {
+            parameters = capture_parameters(source, lambda)
+            let body = capture_lambda(source, hir, catalog, lambda, "", depth + 1)
+            if starts_with(body, "error[") { return body }
+            returned = hir_field(body, 0, 1)
+        }
+    } else {
+        let declaration = function_start_named(source, name)
+        if declaration >= 0 {
+            parameters = capture_parameters(source, parameter_open(source, declaration))
+            returned = checked_place_normalize_type(function_return_type(source, name))
+        } else {
+            let owner = enum_constructor_owner(source, name)
+            if len(owner) > 0 {
+                returned = owner
+                let arity = enum_constructor_payload_arity(source, owner, name)
+                if arity == 1 { parameters = "formal|0||Int|read\n" }
+                else if arity != 0 { return capture_error("E2S154", "enum payload profile is unavailable", first) }
+            } else if capture_fact(catalog, "type", 1, name) >= 0 {
+                returned = name
+                let mut row = capture_record_start(catalog, "field", 0)
+                while row >= 0 {
+                    if hir_field(catalog, row, 1) == name {
+                        parameters = parameters + "formal|" + hir_field(catalog, row, 2) + "|" +
+                            hir_field(catalog, row, 3) + "|" + hir_field(catalog, row, 4) + "|read\n"
+                    }
+                    row = capture_record_start(catalog, "field", row + 1)
+                }
+            } else if name == "print" || name == "len" || name == "to_text" {
+                builtin = true
+                parameters = "formal|0||Any|read\n"
+                returned = "Void"
+                if name == "len" { returned = "Int" }
+                if name == "to_text" { returned = "Text" }
+            } else { return capture_error("E2S154", "unresolved call", first) }
+        }
+    }
+    if starts_with(parameters, "error[") { return parameters }
+    let mut arg = skip_trivia(source, token_end(source, open))
+    let mut ordinal = 0
+    let mut seen = "|"
+    while arg < end - 1 {
+        let stop = capture_item_end(source, arg, end - 1)
+        if stop <= arg { return capture_error("E2S154", "malformed call argument", arg) }
+        let mut value = arg
+        let mut row = capture_fact(parameters, "formal", 1, to_text(ordinal))
+        let after = skip_trivia(source, token_end(source, arg))
+        if token_text(source, after) == ":" {
+            row = capture_fact(parameters, "formal", 2, token_text(source, arg))
+            if row < 0 { return capture_error("E2S162", "unknown argument label", arg) }
+            value = skip_trivia(source, token_end(source, after))
+        } else if row >= 0 && len(hir_field(parameters, row, 2)) > 0 &&
+            hir_field(parameters, row, 2) != "_" && capture_fact(catalog, "type", 1, name) < 0 {
+            return capture_error("E2S164", "argument requires its declared label", arg)
+        }
+        if row < 0 { return capture_error("E2S164", "too many arguments", arg) }
+        let slot = hir_field(parameters, row, 1)
+        if contains(seen, "|" + slot + "|") { return capture_error("E2S163", "duplicate argument", arg) }
+        seen = seen + slot + "|"
+        let checked = capture_expression(source, hir, catalog, value, stop, path, hir_field(parameters, row, 4), depth + 1)
+        if starts_with(checked, "error[") { return checked }
+        let actual = hir_field(checked, 0, 1)
+        let expected = hir_field(parameters, row, 3)
+        if builtin {
+            if name == "len" && actual != "Text" && actual != "List" && actual != "List[Int]" && actual != "List[?]" {
+                return capture_error("E2S12", "len requires Text or List", value)
+            }
+            if name == "to_text" && actual != "Int" { return capture_error("E2S12", "to_text requires Int", value) }
+            if name == "print" && actual != "Int" && actual != "Text" && actual != "Bool" {
+                return capture_error("E2S12", "print requires a scalar", value)
+            }
+        } else if !capture_compatible(actual, expected) { return capture_error("E2S12", "argument type mismatch", value) }
+        if expected == "Fn" && !capture_fn_compatible(source, hir, catalog, value, stop,
+            decimal_value(hir_field(parameters, row, 5)), depth + 1) {
+            return capture_error("E2S12", "callable argument signature mismatch", value)
+        }
+        facts = facts + capture_tail(checked)
+        ordinal = ordinal + 1
+        arg = stop
+        if arg < end - 1 { arg = skip_trivia(source, token_end(source, arg)) }
+    }
+    let mut row = capture_record_start(parameters, "formal", 0)
+    while row >= 0 {
+        if !contains(seen, "|" + hir_field(parameters, row, 1) + "|") { return capture_error("E2S164", "missing argument", first) }
+        row = capture_record_start(parameters, "formal", row + 1)
+    }
+    return capture_value(returned, facts)
+}
+
+fn capture_expression(source: Text, hir: Text, catalog: Text, start: Int, end: Int, path: Text, mode: Text, depth: Int) -> Text {
+    if depth > 64 { return capture_error("E2S154", "expression depth exceeds 64", start) }
+    let first = skip_trivia(source, start)
+    let last = checked_place_trim_end(source, first, end)
+    if first >= last { return capture_error("E2S12", "empty expression", first) }
+    let token = token_text(source, first)
+    let literal = checked_place_constant(source, first, last)
+    if starts_with(literal, "error[") { return literal }
+    if len(literal) > 0 { return "value|Int\n" }
+    if token == "fn" || lambda_initializer_open_mode(source, first, true) >= 0 {
+        let open = lambda_initializer_open_mode(source, first, true)
+        if open < 0 || lambda_parameters_end_mode(source, -1, open, true) != last { return capture_error("E2S154", "incomplete lambda", first) }
+        let body = capture_lambda(source, hir, catalog, open, path, depth + 1)
+        if starts_with(body, "error[") { return body }
+        return capture_value("Fn", capture_latent(capture_tail(body)))
+    }
+    # Choose the lowest-precedence outer operator. Both operands are checked
+    # as reads: passing a computed scalar to an edit slot does not edit inputs.
+    let mut at = first
+    let mut operator = -1
+    let mut rank = 100
+    let mut prior = true
+    while at < last {
+        let symbol = token_text(source, at)
+        if symbol == "(" || symbol == "[" || symbol == "{" {
+            let mut close = ")"
+            if symbol == "[" { close = "]" }
+            if symbol == "{" { close = "}" }
+            let after = balanced_end(source, at, symbol, close)
+            if after <= at || after > last { return capture_error("E2S12", "unbalanced expression", at) }
+            at = skip_trivia(source, after)
+            prior = false
+        } else {
+            let mut current = 100
+            if symbol == "||" { current = 1 }
+            if symbol == "&&" { current = 2 }
+            if symbol == "==" || symbol == "!=" || symbol == "<" || symbol == ">" || symbol == "<=" || symbol == ">=" { current = 3 }
+            if symbol == "+" || symbol == "-" { current = 4 }
+            if symbol == "*" || symbol == "//" || symbol == "%" || symbol == "/" || symbol == "**" { current = 5 }
+            if !prior && current <= rank && current < 100 { operator = at
+                rank = current }
+            prior = current < 100
+            at = skip_trivia(source, token_end(source, at))
+        }
+    }
+    if operator >= 0 {
+        let left = capture_expression(source, hir, catalog, first, operator, path, "read", depth + 1)
+        if starts_with(left, "error[") { return left }
+        let right = capture_expression(source, hir, catalog, token_end(source, operator), last, path, "read", depth + 1)
+        if starts_with(right, "error[") { return right }
+        let a = hir_field(left, 0, 1)
+        let b = hir_field(right, 0, 1)
+        let symbol = token_text(source, operator)
+        let mut type_spelling = ""
+        if rank <= 2 && a == "Bool" && b == "Bool" { type_spelling = "Bool" }
+        if rank == 3 && a == b && (a == "Int" || ((symbol == "==" || symbol == "!=") && (a == "Bool" || a == "Text"))) { type_spelling = "Bool" }
+        if rank >= 4 && a == "Int" && b == "Int" && symbol != "/" { type_spelling = "Int" }
+        if len(type_spelling) == 0 { return capture_error("E2S12", "operator operand type mismatch", operator) }
+        return capture_value(type_spelling, capture_tail(left) + capture_tail(right))
+    }
+    if token == "take" {
+        let begin = skip_trivia(source, token_end(source, first))
+        if token_kind(source, begin) != "identifier" || token_end(source, begin) != last {
+            return capture_error("E2S122", "take requires a whole binding", first)
+        }
+        return capture_expression(source, hir, catalog, begin, last, path, "take", depth + 1)
+    }
+    if token == "!" || token == "-" || token == "+" {
+        let checked = capture_expression(source, hir, catalog, token_end(source, first), last, path, "read", depth + 1)
+        if starts_with(checked, "error[") { return checked }
+        let type_spelling = hir_field(checked, 0, 1)
+        if (token == "!" && type_spelling != "Bool") || (token != "!" && type_spelling != "Int") {
+            return capture_error("E2S12", "unary operand type mismatch", first)
+        }
+        return checked
+    }
+    if token_end(source, first) == last {
+        if token == "true" || token == "false" { return "value|Bool\n" }
+        if token_kind(source, first) == "string" { return "value|Text\n" }
+        let owner = enum_constructor_owner(source, token)
+        if len(owner) > 0 && enum_constructor_payload_arity(source, owner, token) == 0 { return capture_value(owner, "") }
+    }
+    let next = skip_trivia(source, token_end(source, first))
+    if token_kind(source, first) == "identifier" && token_text(source, next) == "(" && balanced_end(source, next, "(", ")") == last {
+        return capture_call(source, hir, catalog, first, next, last, path, depth + 1)
+    }
+    if token == "[" && balanced_end(source, first, "[", "]") == last {
+        let mut item = skip_trivia(source, token_end(source, first))
+        let mut element = ""
+        let mut facts = ""
+        let mut count = 0
+        while item < last - 1 {
+            let stop = capture_item_end(source, item, last - 1)
+            if stop <= item { return capture_error("E2S12", "malformed list", item) }
+            let checked = capture_expression(source, hir, catalog, item, stop, path, "read", depth + 1)
+            if starts_with(checked, "error[") { return checked }
+            let actual = hir_field(checked, 0, 1)
+            if (actual != "Int" && actual != "Text") || (len(element) > 0 && element != actual) {
+                return capture_error("E2S15", "list element type mismatch", item)
+            }
+            element = actual
+            facts = facts + capture_tail(checked)
+            count = count + 1
+            if count > 64 { return capture_error("E2S154", "list literal limit is 64", item) }
+            item = stop
+            if item < last - 1 { item = skip_trivia(source, token_end(source, item)) }
+        }
+        let mut type_spelling = "List[?]"
+        if element == "Int" { type_spelling = "List[Int]" }
+        if element == "Text" { type_spelling = "List" }
+        return capture_value(type_spelling, facts)
+    }
+    let shape = checked_place_shape(source, first, last, 0)
+    if len(shape) > 0 { return shape }
+    let place = checked_place_walk(source, hir, catalog, first, last, path, 0)
+    if starts_with(place, "error[") { return place }
+    if !starts_with(place, "place|") && !starts_with(place, "unnameable|") {
+        if token == "(" && balanced_end(source, first, "(", ")") == last {
+            return capture_expression(source, hir, catalog, token_end(source, first), last - 1, path, mode, depth + 1)
+        }
+        return capture_error("E2S12", "expression has no checked type", first)
+    }
+    if mode == "take" && decimal_value(hir_field(place, 0, 3)) > 0 { return capture_error("E2S122", "take requires a whole binding", first) }
+    let mut facts = capture_access(place, mode, first, last)
+    # Bounds are value expressions independent of the maximal place target.
+    at = first
+    while at < last {
+        if token_text(source, at) == "[" {
+            let close = balanced_end(source, at, "[", "]")
+            let begin = skip_trivia(source, token_end(source, at))
+            let mut separator = begin
+            while separator < close - 1 && token_text(source, separator) != ".." {
+                let symbol = token_text(source, separator)
+                if symbol == "(" || symbol == "[" {
+                    let mut closing = ")"
+                    if symbol == "[" { closing = "]" }
+                    separator = skip_trivia(source, balanced_end(source, separator, symbol, closing))
+                } else { separator = skip_trivia(source, token_end(source, separator)) }
+            }
+            let lower = capture_expression(source, hir, catalog, begin, separator, path, "read", depth + 1)
+            if starts_with(lower, "error[") { return lower }
+            facts = facts + capture_tail(lower)
+            if separator < close - 1 {
+                let upper = capture_expression(source, hir, catalog, token_end(source, separator), close - 1, path, "read", depth + 1)
+                if starts_with(upper, "error[") { return upper }
+                facts = facts + capture_tail(upper)
+            }
+            at = skip_trivia(source, close)
+        } else { at = skip_trivia(source, token_end(source, at)) }
+    }
+    return capture_value(hir_field(place, 0, 2), facts)
+}
+
+# The expression parser used by lowering has no slice surface. Retain original
+# source ranges with the same newline continuation rule, without rewriting it.
+fn capture_end(source: Text, start: Int, limit: Int) -> Int {
+    let mut at = start
+    let mut last = start
+    let mut previous = ""
+    while at < limit {
+        let token = token_text(source, at)
+        if token == ";" || token == "}" || token == "," || token == "=" { return last }
+        if at > start && contains(text_slice(source, last, at), "\n") &&
+            !checked_place_shape_operator(previous) && !checked_place_shape_operator(token) &&
+            token != "." && token != "(" && token != "[" && previous != "=>" {
+            return last
+        }
+        if token == "(" || token == "[" || token == "{" {
+            let mut closing = ")"
+            if token == "[" { closing = "]" }
+            if token == "{" { closing = "}" }
+            let after = balanced_end(source, at, token, closing)
+            if after <= at || after > limit { return -1 }
+            last = after
+        } else { last = token_end(source, at) }
+        previous = token
+        at = skip_trivia(source, last)
+    }
+    return last
+}
+
+fn capture_flow(source: Text, hir: Text, facts: Text, initial: Text, loop_start: Int) -> Text {
+    let mut moved = initial
+    let mut row = capture_record_start(facts, "access", 0)
+    while row >= 0 {
+        let binding = hir_field(facts, row, 3)
+        let at = decimal_value(hir_field(facts, row, 8))
+        if contains(moved, "," + binding + ",") { return capture_error("E2S123", "use after take", at) }
+        if hir_field(facts, row, 1) == "0" {
+            if hir_field(facts, row, 2) == "take" {
+                let mode = hir_binding_field(hir, binding, 6)
+                if !move_trivial_record(source, hir_field(facts, row, 4)) {
+                    return capture_error("E2S122", "take requires a checked owning record carrier", at)
+                }
+                if mode == "read" || mode == "edit" { return capture_error("E2S122", "borrowed binding cannot transfer ownership", at) }
+                if loop_start >= 0 && hir_binding_declaration_start(hir, binding) < loop_start {
+                    return capture_error("E2S123", "loop cannot repeatedly take an enclosing binding", at)
+                }
+                moved = moved + binding + ","
+            }
+        }
+        row = capture_record_start(facts, "access", row + 1)
+    }
+    return moved
+}
+
+fn capture_lifecycle_expression(source: Text, hir: Text, catalog: Text, start: Int, end: Int, path: Text, depth: Int) -> Text {
+    let dot = skip_trivia(source, token_end(source, start))
+    let member = skip_trivia(source, token_end(source, dot))
+    let open = skip_trivia(source, token_end(source, member))
+    if token_text(source, dot) == "." && token_text(source, member) == "spawn" {
+        let lambda = skip_trivia(source, token_end(source, open))
+        let parameters = skip_trivia(source, token_end(source, lambda))
+        let checked = capture_lambda(source, hir, catalog, parameters, path, depth + 1)
+        if starts_with(checked, "error[") { return checked }
+        return capture_value("TaskHandle", capture_latent(capture_tail(checked)))
+    }
+    if token_text(source, dot) == "." && token_text(source, member) == "join" {
+        return "value|Void\n"
+    }
+    return capture_expression(source, hir, catalog, start, end, path, "read", depth + 1)
+}
+
+fn capture_block(source: Text, hir: Text, catalog: Text, start: Int, end: Int, path: Text,
+    expected: Text, initial: Text, loop_start: Int, depth: Int) -> Text {
+    if depth > 64 { return capture_error("E2S154", "statement nesting exceeds 64", start) }
+    let mut at = skip_trivia(source, start)
+    let mut facts = ""
+    let mut moved = initial
+    let mut type_spelling = "Void"
+    let mut terminated = false
+    while at < end {
+        let token = token_text(source, at)
+        if token == ";" { at = skip_trivia(source, token_end(source, at))
+            continue }
+        if token == "par" {
+            let mut open = skip_trivia(source, token_end(source, at))
+            while open < end && token_text(source, open) != "{" { open = skip_trivia(source, token_end(source, open)) }
+            let close = balanced_end(source, open, "{", "}")
+            if close <= open || close > end { return capture_error("E2S154", "malformed par body", at) }
+            let checked = capture_block(source, hir, catalog, token_end(source, open), close - 1, path, expected, moved, loop_start, depth + 1)
+            if starts_with(checked, "error[") { return checked }
+            let state = capture_record_start(checked, "state", 0)
+            moved = hir_field(checked, state, 1)
+            facts = facts + capture_tail(capture_tail(checked))
+            type_spelling = hir_field(checked, 0, 1)
+            if capture_terminal(checked) { terminated = true }
+            at = skip_trivia(source, close)
+            continue
+        }
+        if token == "if" || token == "while" {
+            let condition = skip_trivia(source, token_end(source, at))
+            let mut open = condition
+            while open < end && token_text(source, open) != "{" {
+                if token_text(source, open) == "(" || token_text(source, open) == "[" {
+                    let mut closing = ")"
+                    if token_text(source, open) == "[" { closing = "]" }
+                    open = skip_trivia(source, balanced_end(source, open, token_text(source, open), closing))
+                } else { open = skip_trivia(source, token_end(source, open)) }
+            }
+            let close = balanced_end(source, open, "{", "}")
+            if close <= open || close > end { return capture_error("E2S154", "malformed control body", at) }
+            let checked = capture_expression(source, hir, catalog, condition, open, path, "read", depth + 1)
+            if starts_with(checked, "error[") { return checked }
+            if hir_field(checked, 0, 1) != "Bool" { return capture_error("E2S23", "condition requires Bool", condition) }
+            let mut loop = loop_start
+            if token == "while" { loop = open }
+            moved = capture_flow(source, hir, capture_tail(checked), moved, loop)
+            if starts_with(moved, "error[") { return moved }
+            facts = facts + capture_tail(checked)
+            let left = capture_block(source, hir, catalog, token_end(source, open), close - 1, path, expected, moved, loop, depth + 1)
+            if starts_with(left, "error[") { return left }
+            facts = facts + capture_tail(capture_tail(left))
+            let left_terminal = capture_terminal(left)
+            let mut union = moved
+            if !left_terminal { union = capture_join_state(union, hir_field(left, capture_record_start(left, "state", 0), 1)) }
+            type_spelling = "Void"
+            at = skip_trivia(source, close)
+            if token == "if" && token_text(source, at) == "else" {
+                let other = skip_trivia(source, token_end(source, at))
+                let after = balanced_end(source, other, "{", "}")
+                if token_text(source, other) != "{" || after <= other || after > end { return capture_error("E2S154", "else requires a checked block", other) }
+                let right = capture_block(source, hir, catalog, token_end(source, other), after - 1, path, expected, moved, loop_start, depth + 1)
+                if starts_with(right, "error[") { return right }
+                let right_terminal = capture_terminal(right)
+                type_spelling = hir_field(left, 0, 1)
+                if left_terminal && !right_terminal { type_spelling = hir_field(right, 0, 1) }
+                if !left_terminal && !right_terminal && type_spelling != hir_field(right, 0, 1) {
+                    if skip_trivia(source, after) >= end { return capture_error("E2S12", "branch result type mismatch", other) }
+                    type_spelling = "Void"
+                }
+                facts = facts + capture_tail(capture_tail(right))
+                if !right_terminal { union = capture_join_state(union, hir_field(right, capture_record_start(right, "state", 0), 1)) }
+                if left_terminal && right_terminal { terminated = true }
+                at = skip_trivia(source, after)
+            }
+            moved = union
+            continue
+        }
+        if token == "match" {
+            let open = pattern_match_open(source, at)
+            let close = balanced_end(source, open, "{", "}")
+            let subject = skip_trivia(source, token_end(source, at))
+            if close <= open || close > end { return capture_error("E2S154", "malformed match", at) }
+            let checked = capture_expression(source, hir, catalog, subject, open, path, "read", depth + 1)
+            if starts_with(checked, "error[") { return checked }
+            let owner = hir_field(checked, 0, 1)
+            if enum_declaration_start(source, owner) < 0 { return capture_error("E2S154", "match requires the checked enum profile", subject) }
+            moved = capture_flow(source, hir, capture_tail(checked), moved, loop_start)
+            if starts_with(moved, "error[") { return moved }
+            facts = facts + capture_tail(checked)
+            let mut arm = skip_trivia(source, token_end(source, open))
+            let mut covered = "|"
+            let mut union = moved
+            let mut all_terminal = true
+            type_spelling = ""
+            while arm < close - 1 {
+                let summary = pattern_summary(source, arm)
+                let arrow = pattern_arm_arrow(source, pattern_summary_end(summary), close - 1)
+                let body = skip_trivia(source, token_end(source, arrow))
+                let after = balanced_end(source, body, "{", "}")
+                let constructor = token_text(source, arm)
+                if enum_constructor_owner(source, constructor) != owner || arrow < 0 || token_text(source, body) != "{" || after <= body {
+                    return capture_error("E2S154", "match arm requires a resolved enum constructor", arm)
+                }
+                if contains(covered, "|" + constructor + "|") { return capture_error("E2S154", "duplicate match constructor", arm) }
+                covered = covered + constructor + "|"
+                let branch = capture_block(source, hir, catalog, token_end(source, body), after - 1, path, expected, moved, loop_start, depth + 1)
+                if starts_with(branch, "error[") { return branch }
+                let actual = hir_field(branch, 0, 1)
+                if !capture_terminal(branch) {
+                    if len(type_spelling) > 0 && type_spelling != actual { return capture_error("E2S12", "match result type mismatch", body) }
+                    type_spelling = actual
+                    all_terminal = false
+                    union = capture_join_state(union, hir_field(branch, capture_record_start(branch, "state", 0), 1))
+                }
+                facts = facts + capture_tail(capture_tail(branch))
+                arm = skip_trivia(source, after)
+                if token_text(source, arm) == "," { arm = skip_trivia(source, token_end(source, arm)) }
+            }
+            if !enum_constructors_covered(source, owner, covered) { return capture_error("E2S154", "match is not exhaustive", at) }
+            moved = union
+            if all_terminal { terminated = true }
+            at = skip_trivia(source, close)
+            continue
+        }
+        let mut value = at
+        let mut annotation = ""
+        let mut declaration = -1
+        let returning = token == "return"
+        if token == "let" {
+            declaration = skip_trivia(source, token_end(source, at))
+            if token_text(source, declaration) == "mut" { declaration = skip_trivia(source, token_end(source, declaration)) }
+            let mut equals = skip_trivia(source, token_end(source, declaration))
+            if token_text(source, equals) == ":" {
+                let typed = skip_trivia(source, token_end(source, equals))
+                annotation = capture_type_at(source, typed)
+                equals = skip_trivia(source, capture_type_end(source, typed))
+            }
+            if token_kind(source, declaration) != "identifier" || token_text(source, equals) != "=" { return capture_error("E2S12", "malformed declaration", at) }
+            value = skip_trivia(source, token_end(source, equals))
+        } else if returning { value = skip_trivia(source, token_end(source, at)) }
+        let mut stop = capture_end(source, value, end)
+        if stop <= value { return capture_error("E2S12", "malformed statement", value) }
+        let equals = skip_trivia(source, stop)
+        let mut checked = ""
+        if declaration < 0 && !returning && token_text(source, equals) == "=" {
+            let target = capture_expression(source, hir, catalog, value, stop, path, "edit", depth + 1)
+            if starts_with(target, "error[") { return target }
+            let access = capture_record_start(target, "access", 0)
+            if access < 0 || hir_field(target, access, 2) != "edit" ||
+                decimal_value(hir_field(target, access, 8)) != value || decimal_value(hir_field(target, access, 9)) != stop {
+                return capture_error("E2S22", "assignment requires a mutable place", value)
+            }
+            let binding = hir_field(target, access, 3)
+            if hir_binding_field(hir, binding, 4) != "mutable" && hir_binding_field(hir, binding, 6) != "edit" {
+                return capture_error("E2S22", "assignment to immutable binding", value)
+            }
+            if decimal_value(hir_field(target, access, 5)) > 0 && hir_field(target, access, 10) != "unnameable" {
+                return capture_error("E2S32", "record field and slice assignment are unavailable", value)
+            }
+            let right = skip_trivia(source, token_end(source, equals))
+            stop = capture_end(source, right, end)
+            let rhs = capture_expression(source, hir, catalog, right, stop, path, "read", depth + 1)
+            if starts_with(rhs, "error[") { return rhs }
+            if !capture_compatible(hir_field(rhs, 0, 1), hir_field(target, 0, 1)) { return capture_error("E2S12", "assignment type mismatch", right) }
+            checked = capture_value("Void", capture_tail(target) + capture_tail(rhs))
+        } else {
+            checked = capture_lifecycle_expression(source, hir, catalog, value, stop, path, depth + 1)
+            if starts_with(checked, "error[") { return checked }
+            if len(annotation) > 0 && !capture_compatible(hir_field(checked, 0, 1), annotation) {
+                return capture_error("E2S12", "declaration type mismatch", value)
+            }
+        }
+        type_spelling = hir_field(checked, 0, 1)
+        if declaration >= 0 {
+            let binding = hir_definition_id_at(hir, declaration)
+            if hir_binding_field(hir, binding, 4) == "mutable" {
+                if record_declaration_start(source, type_spelling) >= 0 { return capture_error("E2S32", "nominal-record bindings are immutable", declaration) }
+                if type_spelling == "Fn" { return capture_error("E2S154", "callable bindings require an immutable signature", declaration) }
+            }
+        }
+        if returning {
+            if len(expected) > 0 && !capture_compatible(type_spelling, expected) { return capture_error("E2S12", "return type mismatch", value) }
+            facts = facts + "return-type|" + type_spelling + "\n"
+            terminated = true
+        }
+        moved = capture_flow(source, hir, capture_tail(checked), moved, loop_start)
+        if starts_with(moved, "error[") { return moved }
+        facts = facts + capture_tail(checked)
+        if declaration >= 0 { type_spelling = "Void" }
+        at = skip_trivia(source, stop)
+    }
+    let mut terminal = "false"
+    if terminated {
+        terminal = "true"
+        let returned = capture_record_start(facts, "return-type", 0)
+        if returned >= 0 { type_spelling = hir_field(facts, returned, 1) }
+    }
+    return capture_value(type_spelling, "state|" + moved + "\nterminal|" + terminal + "\n" + facts)
+}
+
+fn capture_checked_source(source: Text, hir: Text, catalog: Text, path: Text) -> Text {
+    let delimiters = validate_delimiter_surface(source)
+    if len(delimiters) > 0 { return delimiters }
+    let mut facts = ""
+    let mut function = next_function_start(source, 0)
+    while function < len(source) {
+        let parameters = parameter_open(source, function)
+        let formals = capture_parameters(source, parameters)
+        if starts_with(formals, "error[") { return formals }
+        let mut open = skip_trivia(source, balanced_end(source, parameters, "(", ")"))
+        if token_text(source, open) == "->" {
+            let typed = skip_trivia(source, token_end(source, open))
+            open = skip_trivia(source, capture_type_end(source, typed))
+        }
+        let close = balanced_end(source, open, "{", "}")
+        if close <= open { return capture_error("E2S154", "function requires a checked body", open) }
+        # Keep declarations and row order, but resolve body uses within this
+        # complete named function. Nested lambdas still share its use view.
+        let mut body_hir = ""
+        let mut row = 0
+        while row < len(hir) {
+            let end = text_find_from(hir, "\n", row)
+            if end < 0 { return capture_error("E2S154", "incomplete checked HIR row", function) }
+            let mut keep = true
+            if text_slice(hir, row, row + 4) == "use|" {
+                let middle = text_find_from(hir, "|", row + 4)
+                let stop = text_find_from(hir, "|", middle + 1)
+                let begin = decimal_value(text_slice(hir, row + 4, middle))
+                let finish = decimal_value(text_slice(hir, middle + 1, stop))
+                keep = begin >= function && finish <= close
+            }
+            if keep { body_hir = body_hir + text_slice(hir, row, end + 1) }
+            row = end + 1
+        }
+        let checked = capture_block(source, body_hir, catalog, token_end(source, open), close - 1, path,
+            checked_place_normalize_type(function_return_type(source, function_name(source, function))), ",", -1, 0)
+        if starts_with(checked, "error[") { return checked }
+        let expected = checked_place_normalize_type(function_return_type(source, function_name(source, function)))
+        if expected != "Void" && !capture_compatible(hir_field(checked, 0, 1), expected) {
+            return capture_error("E2S12", "function result type mismatch", open)
+        }
+        facts = facts + capture_tail(capture_tail(checked))
+        function = next_function_start(source, close)
+    }
+    return facts
+}
+
+fn capture_record_start(rows: Text, kind: Text, start: Int) -> Int {
+    if start == 0 && starts_with(rows, kind + "|") { return 0 }
+    return hir_record_start(rows, kind, start)
+}
+
+fn capture_fact(rows: Text, kind: Text, field: Int, value: Text) -> Int {
+    let mut row = capture_record_start(rows, kind, 0)
+    while row >= 0 {
+        if hir_field(rows, row, field) == value { return row }
+        row = capture_record_start(rows, kind, row + 1)
+    }
+    return -1
+}
+
+fn capture_type_end(source: Text, at: Int) -> Int {
+    let callable = callable_type_end(source, at)
+    if callable >= 0 { return callable }
+    let list = parameter_list_type_end(source, at, len(source))
+    if list >= 0 { return list }
+    return token_end(source, at)
+}
+
+fn capture_local(hir: Text, binding: Text, task_scope: Text) -> Bool {
+    let mut scope = hir_binding_scope(hir, binding)
+    let mut count = 0
+    while len(scope) > 0 && scope != "-1" {
+        if scope == task_scope { return true }
+        scope = hir_scope_field(hir, scope, 2)
+        count = count + 1
+        if count > 256 { return false }
+    }
+    return false
+}
+
+fn capture_hex_before(left: Text, right: Text) -> Bool {
+    let mut at = 0
+    while at < len(left) && at < len(right) {
+        let a = scoped_hir_hex_digit(text_slice(left, at, at + 1))
+        let b = scoped_hir_hex_digit(text_slice(right, at, at + 1))
+        if a != b { return a < b }
+        at = at + 1
+    }
+    return len(left) < len(right)
+}
+
+# Stable merge sort over bounded private rows. This avoids repeatedly scanning
+# every target for the 4096-target document boundary.
+fn capture_sort(rows: Text) -> Text {
+    let mut count = 0
+    let mut at = 0
+    while at < len(rows) { count = count + 1
+        at = capture_line_end(rows, at) + 1 }
+    if count <= 1 { return rows }
+    let mut split = 0
+    let mut index = 0
+    while index < count // 2 { split = capture_line_end(rows, split) + 1
+        index = index + 1 }
+    let left = capture_sort(text_slice(rows, 0, split))
+    let right = capture_sort(text_slice(rows, split, len(rows)))
+    let mut a = 0
+    let mut b = 0
+    let mut result = ""
+    while a < len(left) && b < len(right) {
+        if capture_hex_before(hir_field(right, b, 1), hir_field(left, a, 1)) {
+            let end = capture_line_end(right, b) + 1
+            result = result + text_slice(right, b, end)
+            b = end
+        } else {
+            let end = capture_line_end(left, a) + 1
+            result = result + text_slice(left, a, end)
+            a = end
+        }
+    }
+    return result + text_slice(left, a, len(left)) + text_slice(right, b, len(right))
+}
+
+fn capture_task_observations(source: Text, hir: Text, facts: Text, accesses: Text, path: Text, task: Int, ordinal: Int) -> Text {
+    let file = scoped_hir_file_id(path)
+    let task_id = scoped_hir_task_id(file, facts, task)
+    let lambda = decimal_value(hir_field(facts, task, 5))
+    let end = decimal_value(hir_field(facts, task, 6))
+    let parameters = skip_trivia(source, token_end(source, lambda))
+    let scope = hir_scope_id_for_open(hir, parameters)
+    let mut result = ""
+    let mut count = 0
+    let mut row = capture_record_start(accesses, "access", 0)
+    while row >= 0 {
+        let start = decimal_value(hir_field(accesses, row, 8))
+        let stop = decimal_value(hir_field(accesses, row, 9))
+        let binding = hir_field(accesses, row, 3)
+        if start > parameters && stop <= end && !capture_local(hir, binding, scope) {
+            count = count + 1
+            if count > 256 { return capture_error("E2S154", "retained observation limit is 256 per task", start) }
+            let witness = checked_place_expression_id(file, start, stop)
+            let depth = decimal_value(hir_field(accesses, row, 5))
+            let mut raw = ""
+            let mut id = ""
+            let mut kind = "place"
+            let mut json = ""
+            if hir_field(accesses, row, 10) == "place" && depth <= 8 {
+                let base = scoped_hir_named_id(file, "binding", binding)
+                raw = "4b504c0002" + base + scoped_hir_hex(depth, 2) + hir_field(accesses, row, 6)
+                id = scoped_hir_hash_frame("kofun.scope-hir.place/v2", raw, "", "", "")
+                json = "{\"base_binding_id\":\"" + base + "\",\"canonical_bytes\":\"" + raw +
+                    "\",\"display\":" + scoped_hir_display(source, hir_binding_declaration_start(hir, binding)) +
+                    ",\"id\":\"" + id + "\",\"projections\":[" + hir_field(accesses, row, 7) + "],\"record\":\"place\"}"
+            } else {
+                kind = "unknown"
+                let mut reason = "unnameable-place"
+                let mut tag = "03"
+                if hir_field(accesses, row, 10) == "place" { tag = "02"
+                    reason = "projection-depth-exceeded" }
+                raw = "4b554e0002" + task_id + tag + witness
+                id = scoped_hir_hash_frame("kofun.scope-hir.unknown/v2", task_id, tag, witness, "")
+                json = "{\"canonical_bytes\":\"" + raw + "\",\"id\":\"" + id + "\",\"reason\":\"" + reason +
+                    "\",\"record\":\"unknown\",\"task_id\":\"" + task_id + "\",\"witness_node_id\":\"" + witness + "\"}"
+            }
+            # All keys are lowercase hexadecimal. Delimit the variable-sized
+            # target with its fixed 32-byte digest only after sorting targets;
+            # within one target the source span orders the origins.
+            result = result + "observation|" + raw + "|" + id + "|" + kind + "|" + task_id + "|" +
+                hir_field(accesses, row, 2) + "|" + witness + "|" + to_text(start) + "|" + to_text(stop) + "|" + json + "\n"
+        }
+        row = capture_record_start(accesses, "access", row + 1)
+    }
+    return capture_sort(result)
+}
+
+fn capture_origin_rows(observations: Text, start: Int, end: Int) -> Text {
+    let mut result = ""
+    let mut row = start
+    while row < end {
+        let begin = decimal_value(hir_field(observations, row, 7))
+        let stop = decimal_value(hir_field(observations, row, 8))
+        let witness = hir_field(observations, row, 6)
+        let key = scoped_hir_hex(begin, 8) + scoped_hir_hex(stop, 8) + witness
+        result = result + "origin|" + key + "|{\"node_id\":\"" + witness + "\",\"span\":{\"end\":" +
+            to_text(stop) + ",\"start\":" + to_text(begin) + "}}\n"
+        row = capture_line_end(observations, row) + 1
+    }
+    return capture_sort(result)
+}
+
+fn capture_render(source: Text, hir: Text, facts: Text, path: Text) -> Text {
+    let catalog = capture_catalog(source)
+    if starts_with(catalog, "error[") { return catalog }
+    let accesses = capture_checked_source(source, hir, catalog, path)
+    if starts_with(accesses, "error[") { return accesses }
+    let prefix = scoped_hir_render(source, facts, path)
+    if starts_with(prefix, "error[") { return prefix }
+    let mut targets = ""
+    let mut captures = ""
+    let mut task = hir_record_start(facts, "task", 0)
+    let mut ordinal = 0
+    let mut records = 0
+    while task >= 0 {
+        let observations = capture_task_observations(source, hir, facts, accesses, path, task, ordinal)
+        if starts_with(observations, "error[") { return observations }
+        let mut row = 0
+        let mut count = 0
+        while row < len(observations) {
+            let raw = hir_field(observations, row, 1)
+            let target = hir_field(observations, row, 2)
+            let kind = hir_field(observations, row, 3)
+            let task_id = hir_field(observations, row, 4)
+            let mut mode = hir_field(observations, row, 5)
+            let mut after = capture_line_end(observations, row) + 1
+            while after < len(observations) && hir_field(observations, after, 1) == raw {
+                let next = hir_field(observations, after, 5)
+                if next == "take" || (next == "edit" && mode == "read") { mode = next }
+                after = capture_line_end(observations, after) + 1
+            }
+            count = count + 1
+            if count > 64 { return capture_error("E2S154", "capture limit is 64 per task", decimal_value(hir_field(observations, row, 7))) }
+            targets = targets + "target|" + raw + "|" + hir_field(observations, row, 9) + "\n"
+            let origins = capture_origin_rows(observations, row, after)
+            let mut rendered = ""
+            let mut origin = 0
+            let mut previous = ""
+            while origin < len(origins) {
+                let key = hir_field(origins, origin, 1)
+                if key != previous {
+                    if len(rendered) > 0 { rendered = rendered + "," }
+                    rendered = rendered + hir_field(origins, origin, 2)
+                    previous = key
+                }
+                origin = capture_line_end(origins, origin) + 1
+            }
+            let mut tag = "01"
+            if kind == "unknown" { tag = "02" }
+            let id = scoped_hir_hash_frame("kofun.scope-hir.capture/v2", task_id, tag, target, "")
+            captures = captures + ",{\"id\":\"" + id + "\",\"mode\":\"" + mode + "\",\"origins\":[" + rendered +
+                "],\"record\":\"capture\",\"target_id\":\"" + target + "\",\"target_kind\":\"" + kind + "\",\"task_id\":\"" + task_id + "\"}"
+            records = records + 1
+            row = after
+        }
+        ordinal = ordinal + 1
+        task = hir_record_start(facts, "task", task + 1)
+    }
+    let ordered = capture_sort(targets)
+    let mut rendered = ""
+    let mut row = 0
+    let mut previous = ""
+    while row < len(ordered) {
+        let raw = hir_field(ordered, row, 1)
+        if raw != previous {
+            rendered = rendered + "," + hir_field(ordered, row, 2)
+            previous = raw
+            records = records + 1
+        }
+        row = capture_line_end(ordered, row) + 1
+    }
+    let mut par_row = hir_record_start(facts, "par", 0)
+    while par_row >= 0 { records = records + 1
+        par_row = hir_record_start(facts, "par", par_row + 1) }
+    records = records + ordinal * 2
+    if records > 8384 { return capture_error("E2S154", "record limit is 8384", 0) }
+    let split = find(prefix, "],\"root_scope_id\":")
+    let document = text_slice(prefix, 0, split) + rendered + captures + text_slice(prefix, split, len(prefix))
+    if len(document) > 16777216 { return capture_error("E2S154", "document byte limit is 16777216", 0) }
+    return document
+}
+
+fn emit_capture_hir_v2_file(input: Text, output: Text, logical_path: Text) -> Bool {
+    if stage2_same_file(input, output) == 1 {
+        print("error[E2S35]: scope-HIR input and output must be distinct")
+        return false
+    }
+    if !scoped_hir_logical_path(logical_path) {
+        print("error[E2S35]: scope-HIR logical path must be canonical relative UTF-8 (1..4096 bytes)")
+        return false
+    }
+    let source = read_text(input)
+    if len(source) > 4294967295 { print("error[E2S35]: scope-HIR source span exceeds u32")
+        return false }
+    let tokens = lex(source)
+    if starts_with(tokens, "error[") { print(tokens)
+        return false }
+    let tree = parse_pattern_trees(source)
+    let pattern_error = pattern_first_error(tree)
+    if len(pattern_error) > 0 { print(pattern_error)
+        return false }
+    let hir = build_scope_hir_analysis_mode(source, false, true)
+    if starts_with(hir, "error[") { print(hir)
+        return false }
+    let facts = scoped_hir_observations(source, hir)
+    if starts_with(facts, "error[") { print(facts)
+        return false }
+    let document = capture_render(source, hir, facts, logical_path)
+    if starts_with(document, "error[") { print(document)
+        return false }
+    write_text(output, document)
+    return true
+}
+
+fn capture_declared_type(source: Text, type_spelling: Text) -> Bool {
+    return type_spelling == "Int" || type_spelling == "Bool" || type_spelling == "Text" || type_spelling == "List[Int]" || type_spelling == "List" || type_spelling == "Fn" ||
+        record_declaration_start(source, type_spelling) >= 0 || enum_constructor_count(source, type_spelling) > 0
+}
+
+fn capture_fn_compatible(source: Text, hir: Text, catalog: Text, start: Int, end: Int, arity: Int, depth: Int) -> Bool {
+    if depth > 64 { return false }
+    let mut first = skip_trivia(source, start)
+    let mut last = checked_place_trim_end(source, first, end)
+    while token_text(source, first) == "(" && balanced_end(source, first, "(", ")") == last {
+        first = skip_trivia(source, token_end(source, first))
+        last = checked_place_trim_end(source, first, last - 1)
+    }
+    let mut open = lambda_initializer_open_mode(source, first, true)
+    if open < 0 && token_end(source, first) == last {
+        let binding = hir_use_binding_id(hir, first)
+        open = lambda_binding_open_mode(source, hir, binding, true)
+        if open < 0 {
+            let signature = callable_parameter_type_start(source, hir, binding)
+            return signature >= 0 && callable_type_arity(source, signature) == arity
+        }
+    }
+    if open < 0 { return false }
+    let parameters = capture_parameters(source, open)
+    if starts_with(parameters, "error[") { return false }
+    let mut count = 0
+    let mut row = capture_record_start(parameters, "formal", 0)
+    while row >= 0 {
+        if hir_field(parameters, row, 3) != "Int" || hir_field(parameters, row, 4) != "read" { return false }
+        count = count + 1
+        row = capture_record_start(parameters, "formal", row + 1)
+    }
+    if count != arity { return false }
+    let checked = capture_lambda(source, hir, catalog, open, "", depth + 1)
+    return !starts_with(checked, "error[") && hir_field(checked, 0, 1) == "Int"
+}
+
+fn capture_terminal(result: Text) -> Bool {
+    let row = capture_record_start(result, "terminal", 0)
+    return row >= 0 && hir_field(result, row, 1) == "true"
+}
+
+# Private ownership states are comma-delimited sets of resolved BindingIds.
+# Each operand is canonical; joining branches retains each id at most once,
+# independent of how many control-flow paths carry the same incoming state.
+fn capture_join_state(left: Text, right: Text) -> Text {
+    let mut result = left
+    let mut at = 1
+    while at < len(right) {
+        let end = text_find_from(right, ",", at)
+        if end < 0 { return result }
+        let binding = text_slice(right, at, end)
+        if len(binding) > 0 && !contains(result, "," + binding + ",") { result = result + binding + "," }
+        at = end + 1
+    }
+    return result
 }
 
 # ---------------------------------------------------------------- Scoped identity framing
@@ -25853,6 +27054,10 @@ fn main() -> Int {
             arguments[4], arguments[5], arguments[6]) { return 1 }
         return 0
     }
+    if len(arguments) == 4 && arguments[0] == "--emit-capture-hir-v2" {
+        if !emit_capture_hir_v2_file(arguments[1], arguments[2], arguments[3]) { return 1 }
+        return 0
+    }
     if len(arguments) == 4 && arguments[0] == "--emit-scope-hir-v2" {
         if !emit_scope_hir_v2_file(arguments[1], arguments[2], arguments[3]) {
             return 1
@@ -25890,6 +27095,7 @@ fn main() -> Int {
             "       kofun-stage2 --parse-patterns INPUT.kofun OUTPUT.patterns\n" +
             "       kofun-stage2 --emit-scope-hir INPUT.kofun OUTPUT.scope-hir\n" +
             "       kofun-stage2 --emit-scope-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n" +
+            "       kofun-stage2 --emit-capture-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n" +
             "       kofun-stage2 --emit-place-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH TASK-INDEX START END\n" +
             "       kofun-stage2 --emit-selfhost-hir INPUT.kofun OUTPUT.hir SOURCE-SHA256\n" +
             "       kofun-stage2 --lower-selfhost-c11 INPUT.hir OUTPUT.c\n" +

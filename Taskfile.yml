@@ -654,6 +654,11 @@ tasks:
     cmds:
       - "node tests/concurrency/places/check.mjs"
 
+  concurrency-captures-direct:
+    desc: "Verify checked lexical captures, ownership modes, source origins and bounds"
+    cmds:
+      - "node tests/concurrency/captures-direct/check.mjs"
+
   concurrency-capture-contract:
     desc: "Verify the versioned scoped-capture HIR, KSE2, and sidecar contract"
     cmds:
@@ -1560,6 +1565,7 @@ tasks:
             concurrency-capture-contract \
             concurrency-hir \
             concurrency-places \
+            concurrency-captures-direct \
             schedule-trace \
             type-reduction-trace \
             affine-resumption \
