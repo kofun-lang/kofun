@@ -31,11 +31,10 @@
 # comparison and runner children; naming them would advertise a path this file
 # cannot take.
 #
-# The codes are also the model's precedence order. `first_failure` keeps the
-# lowest-numbered applicable code, which is exactly the contract's stated
-# order: shape (BR003) before limits (BR004) before identity (BR005) before
-# invariants (BR006). Reporting whichever check happened to run first is what
-# that rule exists to forbid.
+# Codes name failures, not a global validation priority. `produce_report`
+# follows `fromStage2Outcome`: physical mapping first, then `validateReport`
+# field and invariant order. The numeric-minimum helper remains available to
+# codec callers that use it within their own independently ordered phases.
 
 fn status_valid() -> Int {
     return 0
@@ -495,7 +494,7 @@ fn control_free(value: Text) -> Int {
 
 fn identity_text_status(value: Text, ceiling: Int) -> Int {
     if len(value) == 0 {
-        return status_invalid_identity()
+        return status_limit_exceeded()
     }
     if len(value) > ceiling {
         return status_limit_exceeded()
@@ -508,245 +507,313 @@ fn identity_text_status(value: Text, ceiling: Int) -> Int {
 
 # ------------------------------------------------------------- validation
 
-fn identity_status(identity: ReportIdentity) -> Int {
-    let mut status = status_valid()
-    if identity.direction_tag < 0 {
-        status = first_failure(status, status_schema_shape())
+# The oracle checks exact integer representability before either bound.
+# A negative value within the exact range violates a lower bound (BR006),
+# whereas either sign outside that range is a representation limit (BR004).
+fn report_integer_status(value: Int, minimum: Int, maximum: Int) -> Int {
+    let lower_limit = 0 - limit_integer()
+    if value < lower_limit {
+        return status_limit_exceeded()
     }
-    if identity.direction_tag > 1 {
-        status = first_failure(status, status_schema_shape())
+    if value > limit_integer() {
+        return status_limit_exceeded()
     }
-    let suite = identity_text_status(identity.suite, limit_identity_bytes())
-    status = first_failure(status, suite)
-    let case = identity_text_status(identity.case, limit_identity_bytes())
-    status = first_failure(status, case)
-    let metric = identity_text_status(identity.metric, limit_identity_bytes())
-    status = first_failure(status, metric)
-
-    # Omission is distinct from a present value, and the flat encoding gives
-    # each logical value exactly one physical form: absent means empty Text.
-    if identity.parameter_present {
-        let parameter = identity_text_status(identity.parameter, limit_identity_bytes())
-        status = first_failure(status, parameter)
-    } else {
-        if len(identity.parameter) != 0 {
-            status = first_failure(status, status_schema_shape())
-        }
+    if value < minimum {
+        return status_invalid_invariant()
     }
-    return status
+    if value > maximum {
+        return status_limit_exceeded()
+    }
+    return status_valid()
 }
 
-fn schedule_status(schedule: ReportSchedule, total: Int) -> Int {
-    let mut status = status_valid()
-
-    if schedule.clock_tag < 0 {
-        status = first_failure(status, status_schema_shape())
+# Closed physical tags map before logical report validation. Their upper
+# bound, unlike an ordinary report integer's, is also an invariant failure.
+fn report_tag_status(value: Int, maximum: Int) -> Int {
+    let lower_limit = 0 - limit_integer()
+    if value < lower_limit {
+        return status_limit_exceeded()
     }
-    if schedule.clock_tag > 2 {
-        status = first_failure(status, status_schema_shape())
+    if value > limit_integer() {
+        return status_limit_exceeded()
     }
-    if schedule.warmup_stop_tag < 0 {
-        status = first_failure(status, status_schema_shape())
+    if value < 0 {
+        return status_invalid_invariant()
     }
-    if schedule.warmup_stop_tag > 2 {
-        status = first_failure(status, status_schema_shape())
+    if value > maximum {
+        return status_invalid_invariant()
     }
-    if schedule.sampling_stop_tag < 0 {
-        status = first_failure(status, status_schema_shape())
-    }
-    if schedule.sampling_stop_tag > 1 {
-        status = first_failure(status, status_schema_shape())
-    }
-
-    if schedule.warmup_cap_ns < 0 {
-        status = first_failure(status, status_limit_exceeded())
-    }
-    if schedule.warmup_cap_ns > limit_warmup_cap_ns() {
-        status = first_failure(status, status_limit_exceeded())
-    }
-    if schedule.sampling_cap_ns < 1 {
-        status = first_failure(status, status_limit_exceeded())
-    }
-    if schedule.sampling_cap_ns > limit_sampling_cap_ns() {
-        status = first_failure(status, status_limit_exceeded())
-    }
-    if schedule.sample_cap < 1 {
-        status = first_failure(status, status_limit_exceeded())
-    }
-    if schedule.sample_cap > limit_samples() {
-        status = first_failure(status, status_limit_exceeded())
-    }
-    if schedule.warmup_iterations < 0 {
-        status = first_failure(status, status_limit_exceeded())
-    }
-    if schedule.warmup_iterations > limit_integer() {
-        status = first_failure(status, status_limit_exceeded())
-    }
-    if schedule.iterations_per_sample < 1 {
-        status = first_failure(status, status_limit_exceeded())
-    }
-    if schedule.iterations_per_sample > limit_integer() {
-        status = first_failure(status, status_limit_exceeded())
-    }
-    if schedule.harness_overhead_ns < 0 {
-        status = first_failure(status, status_limit_exceeded())
-    }
-    if schedule.harness_overhead_ns > limit_integer() {
-        status = first_failure(status, status_limit_exceeded())
-    }
-
-    # The count is the raw series length, so a disagreement is the report
-    # describing a series it does not carry.
-    if schedule.sample_count != total {
-        status = first_failure(status, status_invalid_invariant())
-    }
-    if schedule.sample_count > schedule.sample_cap {
-        status = first_failure(status, status_invalid_invariant())
-    }
-
-    # A zero warmup cap is paired only with `disabled` and exactly zero warmup
-    # iterations; a nonzero cap is paired with `steady` or `time-cap` and at
-    # least one iteration.
-    if schedule.warmup_cap_ns == 0 {
-        if schedule.warmup_stop_tag != 0 {
-            status = first_failure(status, status_invalid_invariant())
-        }
-        if schedule.warmup_iterations != 0 {
-            status = first_failure(status, status_invalid_invariant())
-        }
-    } else {
-        if schedule.warmup_stop_tag == 0 {
-            status = first_failure(status, status_invalid_invariant())
-        }
-        if schedule.warmup_iterations < 1 {
-            status = first_failure(status, status_invalid_invariant())
-        }
-    }
-
-    # A `sample-cap` stop has exactly the requested count; a `time-cap` stop
-    # has strictly fewer and still publishes at least one.
-    if schedule.sampling_stop_tag == 0 {
-        if schedule.sample_count != schedule.sample_cap {
-            status = first_failure(status, status_invalid_invariant())
-        }
-    } else {
-        if schedule.sample_count >= schedule.sample_cap {
-            status = first_failure(status, status_invalid_invariant())
-        }
-    }
-    return status
+    return status_valid()
 }
 
 fn segment_values_status(values: List[Int]) -> Int {
-    let mut status = status_valid()
     let mut i = 0
     while i < len(values) {
-        if values[i] < 0 {
-            status = first_failure(status, status_limit_exceeded())
-        }
-        if values[i] > limit_integer() {
-            status = first_failure(status, status_limit_exceeded())
+        let status = report_integer_status(values[i], 0, limit_integer())
+        if status != status_valid() {
+            return status
         }
         i = i + 1
     }
-    return status
+    return status_valid()
 }
 
+# joinSegmentedSeries checks each segment's length, then its values, in order.
+# The caller checks sample_count before this function and its agreement after.
 fn series_status(samples0: List[Int], samples1: List[Int]) -> Int {
-    let mut status = status_valid()
-    let total = len(samples0) + len(samples1)
-
     if len(samples0) > limit_segment0() {
-        status = first_failure(status, status_limit_exceeded())
+        return status_invalid_invariant()
+    }
+    let first = segment_values_status(samples0)
+    if first != status_valid() {
+        return first
     }
     if len(samples1) > limit_segment1() {
-        status = first_failure(status, status_limit_exceeded())
+        return status_invalid_invariant()
     }
-    if total > limit_samples() {
-        status = first_failure(status, status_limit_exceeded())
+    let second = segment_values_status(samples1)
+    if second != status_valid() {
+        return second
     }
-    if total < 1 {
-        status = first_failure(status, status_invalid_invariant())
-    }
-
-    # The second segment starts only after a full first segment. A split that
-    # puts raw index 64 anywhere else is a different series with the same
-    # values, which is why it is refused rather than normalised.
-    if len(samples1) > 0 {
-        if len(samples0) != limit_segment0() {
-            status = first_failure(status, status_invalid_invariant())
-        }
-    }
-
-    status = first_failure(status, segment_values_status(samples0))
-    status = first_failure(status, segment_values_status(samples1))
-    return status
+    return status_valid()
 }
 
-# `available` arrives as 0/1 rather than as the `Bool` it is in the record: a
-# Core parameter is an Int, Text, concrete enum, or nominal record, and a Bool
-# parameter is refused. Converting at the five call sites keeps one copy of the
-# rule instead of five inlined copies of it.
-
-fn counter_status(available: Int, value: Int) -> Int {
-    let mut status = status_valid()
-    if available == 1 {
-        if value < 0 {
-            status = first_failure(status, status_limit_exceeded())
-        }
-        if value > limit_integer() {
-            status = first_failure(status, status_limit_exceeded())
-        }
+# The physical mapper runs before any identity, digest or logical budget
+# check. Counter values are only validated here when unavailable: available
+# values belong to validateReport's later counters phase.
+fn physical_report_status(
+    identity: ReportIdentity,
+    schedule: ReportSchedule,
+    counters: ReportCounters,
+    host: ReportHost,
+    samples0: List[Int],
+    samples1: List[Int]
+) -> Int {
+    if identity.parameter_present {
     } else {
-        # Unavailable carries no number. Available-zero, available-nonzero, and
-        # unavailable stay three distinct values because the absent case has
-        # exactly one physical form.
-        if value != 0 {
-            status = first_failure(status, status_schema_shape())
+        if len(identity.parameter) != 0 {
+            return status_invalid_invariant()
         }
     }
-    return status
+    let count = report_integer_status(schedule.sample_count, 1, limit_samples())
+    if count != status_valid() {
+        return count
+    }
+    let series = series_status(samples0, samples1)
+    if series != status_valid() {
+        return series
+    }
+    if schedule.sample_count != len(samples0) + len(samples1) {
+        return status_invalid_invariant()
+    }
+    if len(samples1) > 0 {
+        if len(samples0) != limit_segment0() {
+            return status_invalid_invariant()
+        }
+    }
+    let direction = report_tag_status(identity.direction_tag, 1)
+    if direction != status_valid() {
+        return direction
+    }
+    if counters.allocated_bytes_available {
+    } else {
+        if counters.allocated_bytes_value != 0 {
+            return status_invalid_invariant()
+        }
+    }
+    if counters.allocation_count_available {
+    } else {
+        if counters.allocation_count_value != 0 {
+            return status_invalid_invariant()
+        }
+    }
+    if counters.gc_collections_available {
+    } else {
+        if counters.gc_collections_value != 0 {
+            return status_invalid_invariant()
+        }
+    }
+    if counters.vm_peak_bytes_available {
+    } else {
+        if counters.vm_peak_bytes_value != 0 {
+            return status_invalid_invariant()
+        }
+    }
+    if counters.cpu_cycles_available {
+    } else {
+        if counters.cpu_cycles_value != 0 {
+            return status_invalid_invariant()
+        }
+    }
+    let clock = report_tag_status(schedule.clock_tag, 2)
+    if clock != status_valid() {
+        return clock
+    }
+    let warmup_stop = report_tag_status(schedule.warmup_stop_tag, 2)
+    if warmup_stop != status_valid() {
+        return warmup_stop
+    }
+    let sampling_stop = report_tag_status(schedule.sampling_stop_tag, 1)
+    if sampling_stop != status_valid() {
+        return sampling_stop
+    }
+    if host.host_affinity_available {
+    } else {
+        if len(host.host_affinity) != 0 {
+            return status_invalid_invariant()
+        }
+    }
+    if host.host_frequency_hz_available {
+    } else {
+        if host.host_frequency_hz != 0 {
+            return status_invalid_invariant()
+        }
+    }
+    return status_valid()
+}
+
+# Logical identity field order is suite, case, optional parameter, metric.
+# Its physical direction tag and absent payload already passed mapping.
+fn identity_status(identity: ReportIdentity) -> Int {
+    let suite = identity_text_status(identity.suite, limit_identity_bytes())
+    if suite != status_valid() {
+        return suite
+    }
+    let case = identity_text_status(identity.case, limit_identity_bytes())
+    if case != status_valid() {
+        return case
+    }
+    if identity.parameter_present {
+        let parameter = identity_text_status(identity.parameter, limit_identity_bytes())
+        if parameter != status_valid() {
+            return parameter
+        }
+    }
+    return identity_text_status(identity.metric, limit_identity_bytes())
+}
+
+fn schedule_status(schedule: ReportSchedule, total: Int) -> Int {
+    let warmup_cap = report_integer_status(schedule.warmup_cap_ns, 0, limit_warmup_cap_ns())
+    if warmup_cap != status_valid() {
+        return warmup_cap
+    }
+    let sampling_cap = report_integer_status(schedule.sampling_cap_ns, 1, limit_sampling_cap_ns())
+    if sampling_cap != status_valid() {
+        return sampling_cap
+    }
+    let sample_cap = report_integer_status(schedule.sample_cap, 1, limit_samples())
+    if sample_cap != status_valid() {
+        return sample_cap
+    }
+    let warmup_iterations = report_integer_status(schedule.warmup_iterations, 0, limit_integer())
+    if warmup_iterations != status_valid() {
+        return warmup_iterations
+    }
+    let iterations = report_integer_status(schedule.iterations_per_sample, 1, limit_integer())
+    if iterations != status_valid() {
+        return iterations
+    }
+    let count = report_integer_status(schedule.sample_count, 1, limit_samples())
+    if count != status_valid() {
+        return count
+    }
+    let overhead = report_integer_status(schedule.harness_overhead_ns, 0, limit_integer())
+    if overhead != status_valid() {
+        return overhead
+    }
+
+    # All measurement integers precede the warmup invariants in validateReport.
+    if schedule.warmup_cap_ns == 0 {
+        if schedule.warmup_stop_tag != 0 {
+            return status_invalid_invariant()
+        }
+    } else {
+        if schedule.warmup_stop_tag == 0 {
+            return status_invalid_invariant()
+        }
+    }
+    if schedule.warmup_stop_tag == 0 {
+        if schedule.warmup_iterations != 0 {
+            return status_invalid_invariant()
+        }
+    } else {
+        if schedule.warmup_iterations == 0 {
+            return status_invalid_invariant()
+        }
+    }
+
+    # Sample values/count/split passed physical mapping; the logical budget
+    # and sampling-stop relationships are checked only here.
+    if total > schedule.sample_cap {
+        return status_invalid_invariant()
+    }
+    if schedule.sampling_stop_tag == 0 {
+        if total != schedule.sample_cap {
+            return status_invalid_invariant()
+        }
+    } else {
+        if total >= schedule.sample_cap {
+            return status_invalid_invariant()
+        }
+    }
+    return status_valid()
+}
+
+# Bool record fields are converted to Int 0/1 only at these helper call sites:
+# the current Core profile does not admit Bool parameters.
+fn counter_status(available: Int, value: Int) -> Int {
+    if available != 0 {
+        if available != 1 {
+            return status_schema_shape()
+        }
+    }
+    if available == 1 {
+        return report_integer_status(value, 0, limit_integer())
+    }
+    if value != 0 {
+        return status_invalid_invariant()
+    }
+    return status_valid()
 }
 
 fn counters_status(counters: ReportCounters) -> Int {
-    let mut status = status_valid()
-
     let mut allocated_available = 0
     if counters.allocated_bytes_available {
         allocated_available = 1
     }
     let allocated = counter_status(allocated_available, counters.allocated_bytes_value)
-    status = first_failure(status, allocated)
-
+    if allocated != status_valid() {
+        return allocated
+    }
     let mut allocations_available = 0
     if counters.allocation_count_available {
         allocations_available = 1
     }
     let allocations = counter_status(allocations_available, counters.allocation_count_value)
-    status = first_failure(status, allocations)
-
+    if allocations != status_valid() {
+        return allocations
+    }
     let mut collections_available = 0
     if counters.gc_collections_available {
         collections_available = 1
     }
     let collections = counter_status(collections_available, counters.gc_collections_value)
-    status = first_failure(status, collections)
-
+    if collections != status_valid() {
+        return collections
+    }
     let mut peak_available = 0
     if counters.vm_peak_bytes_available {
         peak_available = 1
     }
     let peak = counter_status(peak_available, counters.vm_peak_bytes_value)
-    status = first_failure(status, peak)
-
+    if peak != status_valid() {
+        return peak
+    }
     let mut cycles_available = 0
     if counters.cpu_cycles_available {
         cycles_available = 1
     }
-    let cycles = counter_status(cycles_available, counters.cpu_cycles_value)
-    status = first_failure(status, cycles)
-
-    return status
+    return counter_status(cycles_available, counters.cpu_cycles_value)
 }
 
 fn digests_status(digests: ReportDigests) -> Int {
@@ -764,46 +831,45 @@ fn digests_status(digests: ReportDigests) -> Int {
 }
 
 fn host_status(host: ReportHost) -> Int {
-    let mut status = status_valid()
     if digest_ok(host.host_id_sha256) == 0 {
-        status = first_failure(status, status_invalid_identity())
+        return status_invalid_identity()
     }
     let os = identity_text_status(host.host_os, limit_host_bytes())
-    status = first_failure(status, os)
+    if os != status_valid() {
+        return os
+    }
     let arch = identity_text_status(host.host_arch, limit_host_bytes())
-    status = first_failure(status, arch)
+    if arch != status_valid() {
+        return arch
+    }
     let cpu = identity_text_status(host.host_cpu, limit_host_bytes())
-    status = first_failure(status, cpu)
-
+    if cpu != status_valid() {
+        return cpu
+    }
     if host.host_affinity_available {
         let affinity = identity_text_status(host.host_affinity, limit_host_bytes())
-        status = first_failure(status, affinity)
-    } else {
-        if len(host.host_affinity) != 0 {
-            status = first_failure(status, status_schema_shape())
+        if affinity != status_valid() {
+            return affinity
         }
     }
-
-    # Available zero is distinct from unavailable, as for the counters.
+    # Available zero remains valid. Keep the negative bound explicit so the
+    # existing frequency-zero mutation continues to exercise this boundary.
     if host.host_frequency_hz_available {
-        if host.host_frequency_hz < 0 {
-            status = first_failure(status, status_invalid_invariant())
+        let lower_limit = 0 - limit_integer()
+        if host.host_frequency_hz < lower_limit {
+            return status_limit_exceeded()
         }
         if host.host_frequency_hz > limit_integer() {
-            status = first_failure(status, status_limit_exceeded())
+            return status_limit_exceeded()
         }
-    } else {
-        if host.host_frequency_hz != 0 {
-            status = first_failure(status, status_invalid_invariant())
+        if host.host_frequency_hz < 0 {
+            return status_invalid_invariant()
         }
     }
-
-    # `noise` admits TAB, LF, and CR so an observation can be recorded without
-    # inventing another string type, and it may be empty.
     if len(host.host_noise) > limit_note_bytes() {
-        status = first_failure(status, status_limit_exceeded())
+        return status_limit_exceeded()
     }
-    return status
+    return status_valid()
 }
 
 # ------------------------------------------------------------ constructors
@@ -887,12 +953,22 @@ fn produce_report(
     samples1: List[Int]
 ) -> BenchReport {
     let total = len(samples0) + len(samples1)
-    let mut status = series_status(samples0, samples1)
-    status = first_failure(status, schedule_status(schedule, total))
-    status = first_failure(status, identity_status(identity))
-    status = first_failure(status, digests_status(digests))
-    status = first_failure(status, host_status(host))
-    status = first_failure(status, counters_status(counters))
+    let mut status = physical_report_status(identity, schedule, counters, host, samples0, samples1)
+    if status == status_valid() {
+        status = identity_status(identity)
+    }
+    if status == status_valid() {
+        status = schedule_status(schedule, total)
+    }
+    if status == status_valid() {
+        status = counters_status(counters)
+    }
+    if status == status_valid() {
+        status = digests_status(digests)
+    }
+    if status == status_valid() {
+        status = host_status(host)
+    }
     if status != status_valid() {
         let refused: BenchReport = neutral_report(status)
         return refused
