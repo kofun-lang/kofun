@@ -10970,6 +10970,71 @@
           ]
         }
       ]
+    },
+    {
+      "name": "taken-returning-branch-preserves-continuing-owner",
+      "source": "type Token = { value: Int }\nfn observe(read item: Token) -> Int { return item.value }\nfn consume(take item: Token) -> Int { return item.value }\nfn probe(condition: Bool) {\n let item: Token = Token(value: 7)\n par |scope| {\n  scope.spawn(fn() {\n   if condition {\n    return consume(item)\n   }\n   observe(item)\n  })\n }\n}\n",
+      "allocation_note": "A taken branch returns from the task lambda and cannot reach the later read. Ownership joins only continuing paths, while lexical captures retain both item occurrences and strengthen read to take. Authored function scopes: observe1/2, consume3/4, probe5/6, par7, lambda8/9, if10; bindings observe.item0, consume.item1, probe.condition2, scope3, item4, hidden handle5.",
+      "pars": [
+        {
+          "scope": 7,
+          "token": 3,
+          "name": "scope",
+          "span": [
+            208,
+            315
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "par": 0,
+          "handle": 5,
+          "span": [
+            224,
+            312
+          ],
+          "lambda_span": [
+            236,
+            311
+          ],
+          "observations": [
+            {
+              "mode": "read",
+              "span": [
+                249,
+                258
+              ],
+              "text": "condition",
+              "binding": 2,
+              "name": "condition",
+              "projections": []
+            },
+            {
+              "mode": "take",
+              "span": [
+                280,
+                284
+              ],
+              "text": "item",
+              "binding": 4,
+              "name": "item",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                302,
+                306
+              ],
+              "text": "item",
+              "binding": 4,
+              "name": "item",
+              "projections": []
+            }
+          ]
+        }
+      ]
     }
   ],
   "negative": [
@@ -11133,6 +11198,12 @@
       "name": "local-receivers-external-bounds-257",
       "source": "fn probe(index: Int) {\n par |scope| {\n  scope.spawn(fn() {\n   let values: List[Int] = [1, 2]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   values[index]\n   0\n  })\n }\n}\n",
       "reason": "Exactly257 retained external index reads exceed256 after excluding all local receiver observations."
+    },
+    {
+      "name": "taken-continuing-branch-refuses-later-read",
+      "source": "type Token = { value: Int }\nfn observe(read item: Token) -> Int { return item.value }\nfn consume(take item: Token) -> Int { return item.value }\nfn probe(condition: Bool) {\n let item: Token = Token(value: 7)\n par |scope| {\n  scope.spawn(fn() {\n   if condition {\n    consume(item)\n   }\n   observe(item)\n  })\n }\n}\n",
+      "reason": "Deleting only the terminal return leaves a continuing branch where the whole owned Token has been transferred. The later observe(item) is a possible use-after-take and must preserve E2S123 before capture publication.",
+      "diagnostic_code": "E2S123"
     }
   ],
   "full_boundary": {

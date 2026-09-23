@@ -46,6 +46,15 @@ The source corpus covers:
   and outer moves in loops. Fresh loop-local moves and never-invoked nested
   moves have positive controls.
 
+The nominal `Token` branch pair differs only by `return ` before its take
+call. A branch that returns from the task lambda cannot reach the later read,
+so the continuing path retains its live owner. Its lexical capture still
+joins that take and the later read into one take entry with both source
+origins; the condition has its separate read capture. Removing the return
+makes the taken path continue to the read and requires `E2S123`. This checks
+the existing continuing-branch ownership rule without condition refinement
+or nonlexical callee-body propagation.
+
 Partial/use-after-take, duplicate nested parameters and label/arity failures
 assert their established E2S122/123/47/162/163/164 diagnostic classes. A valid
 `print(combine(...))` counterpart prevents blanket nested-call refusal from
