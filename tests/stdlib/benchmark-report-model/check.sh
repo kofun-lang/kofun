@@ -64,8 +64,8 @@ grep -vE '^[[:space:]]*#' "$model" >"$WORK/model.code"
 assert_not_grep 'model reaches for Bytes, a codec, or a comparison' \
     -qE -- 'Bytes|encode|decode|compare_reports' "$WORK/model.code"
 
-# The model is a library: a `main` in it would make the corpus optional, and
-# the groups exist precisely because one program cannot run every case.
+# The model is a library: a `main` in it would make the corpus optional.
+# Keep the original case groups and their independent process state.
 assert_not_grep 'model declares its own main' -q -- '^fn main' "$model"
 
 # ------------------------------------------------------------------- census
@@ -200,8 +200,8 @@ do
 done
 
 # The physical matrix supplies invalid mappings and multiple simultaneous
-# failures to fromStage2Outcome. Eight cases per process keep programs small
-# and failures focused; every expected status comes from the normative mapper.
+# failures to fromStage2Outcome. One bounded program covers the complete
+# matrix; every expected status comes from the normative mapper.
 physical_groups=$(node "$oracle" physical-groups)
 for physical_group in $physical_groups
 do
