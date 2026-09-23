@@ -62,6 +62,14 @@ even when both lambdas have the same signature. Existing immutable record
 and callable positives remain their controls; task-local capture filtering
 does not excuse either invalid declaration shape.
 
+A higher-order call accepts a block lambda with exactly the formal
+`Int -> Int` signature and captures only its direct enclosing `outer` read.
+The nested parameter is local; the separately declared helper body contributes
+no direct capture. Three corresponding well-typed lambda bodies must refuse
+when their parameter type, result type, or fixed arity differs. All four use
+the same admitted block-body grammar, so an unsupported lambda spelling
+cannot substitute for signature checking.
+
 Partial/use-after-take, duplicate nested parameters and label/arity failures
 assert their established E2S122/123/47/162/163/164 diagnostic classes. A valid
 `print(combine(...))` counterpart prevents blanket nested-call refusal from

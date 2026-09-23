@@ -11035,6 +11035,49 @@
           ]
         }
       ]
+    },
+    {
+      "name": "callable-actual-exact-signature",
+      "source": "fn apply(read f: Int -> Int, x: Int) -> Int { return f(x) }\nfn probe(outer: Int) {\n par |scope| {\n  scope.spawn(fn() {\n   apply(fn(value: Int) { value + outer }, 1)\n  })\n }\n}\n",
+      "allocation_note": "The checked actual has one Int parameter and an Int result, matching read f: Int -> Int. Only outer is a direct external read; nested value is task-local, and apply body/f/x are nonlexical. Authored scopes apply1/2, probe3/4, par5, task6/7, actual lambda8/9; bindings apply.f0/x1, probe.outer2, scope3, actual.value4, hidden handle5.",
+      "pars": [
+        {
+          "scope": 5,
+          "token": 3,
+          "name": "scope",
+          "span": [
+            84,
+            172
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "par": 0,
+          "handle": 5,
+          "span": [
+            100,
+            169
+          ],
+          "lambda_span": [
+            112,
+            168
+          ],
+          "observations": [
+            {
+              "mode": "read",
+              "span": [
+                153,
+                158
+              ],
+              "text": "outer",
+              "binding": 2,
+              "name": "outer",
+              "projections": []
+            }
+          ]
+        }
+      ]
     }
   ],
   "negative": [
@@ -11233,6 +11276,21 @@
       "source": "fn probe(unused: Missing, outer: Int) {\n par |scope| {\n  scope.spawn(fn() {\n   outer\n  })\n }\n}\n",
       "reason": "An unused formal still requires a declared source type; capturing a different valid formal must not hide Missing. Preserve E2S15.",
       "diagnostic_code": "E2S15"
+    },
+    {
+      "name": "callable-actual-wrong-domain",
+      "source": "fn apply(read f: Int -> Int, x: Int) -> Int { return f(x) }\nfn probe(outer: Int) {\n par |scope| {\n  scope.spawn(fn() {\n   apply(fn(value: Bool) { outer }, 1)\n  })\n }\n}\n",
+      "reason": "The actual lambda body is valid Int, but its sole parameter is Bool rather than the required Int. Coarse Fn classification must not satisfy the fixed Int-to-Int formal signature."
+    },
+    {
+      "name": "callable-actual-wrong-result",
+      "source": "fn apply(read f: Int -> Int, x: Int) -> Int { return f(x) }\nfn probe(outer: Int) {\n par |scope| {\n  scope.spawn(fn() {\n   apply(fn(value: Int) { true }, 1)\n  })\n }\n}\n",
+      "reason": "The actual lambda has the required Int parameter but a valid Bool body result, not the formal Int result. The shared block-lambda positive prevents blanket argument-lambda refusal from satisfying this signature check."
+    },
+    {
+      "name": "callable-actual-wrong-arity",
+      "source": "fn apply(read f: Int -> Int, x: Int) -> Int { return f(x) }\nfn probe(outer: Int) {\n par |scope| {\n  scope.spawn(fn() {\n   apply(fn(left: Int, right: Int) { left + right + outer }, 1)\n  })\n }\n}\n",
+      "reason": "The actual lambda has a valid Int result and two Int parameters, while the formal requires exactly one. Callable arity is fixed; do not accept the coarse Fn type or invent currying/partial application."
     }
   ],
   "full_boundary": {
