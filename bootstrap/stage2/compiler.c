@@ -34448,6 +34448,512 @@ static char *scoped_hir_render(const char *source, const char *facts, const char
     return document.data;
 }
 
+/* #1221. All temporary Text values belong to one render-scoped arena. There
+ * is no global state and only the final document survives its destruction. */
+typedef struct CheckedPlaceText { char *text; struct CheckedPlaceText *next; } CheckedPlaceText;
+typedef struct { CheckedPlaceText *texts; } CheckedPlaceArena;
+static char *cp_keep(CheckedPlaceArena *a, char *text) {
+    CheckedPlaceText *node = malloc(sizeof(*node));
+    if (!node) { free(text); fputs("out of memory\n", stderr); exit(1); }
+    node->text = text; node->next = a->texts; a->texts = node; return text;
+}
+static char *cp_format(CheckedPlaceArena *a, const char *format, ...) {
+    va_list args, copy; va_start(args, format); va_copy(copy, args);
+    int length = vsnprintf(NULL, 0, format, copy); va_end(copy);
+    if (length < 0) abort();
+    char *text = malloc((size_t)length + 1);
+    if (!text) { fputs("out of memory\n", stderr); exit(1); }
+    (void)vsnprintf(text, (size_t)length + 1, format, args); va_end(args);
+    return cp_keep(a, text);
+}
+static char *cp_field(CheckedPlaceArena *a, const char *rows, int64_t row, int64_t field) {
+    return cp_keep(a, hir_field(rows, row, field));
+}
+static bool cp_error_p(const char *text) { return strncmp(text, "error[", 6) == 0; }
+static char *cp_error(CheckedPlaceArena *a, const char *message, int64_t at) {
+    return cp_format(a, "error[E2S154]: checked place: %s at byte %" PRId64, message, at);
+}
+static bool cp_kind(CheckedPlaceArena *a, const char *source, int64_t at, const char *kind) {
+    (void)a; return strcmp(token_kind(source, at), kind) == 0;
+}
+static int64_t checked_place_trim_end(const char *source, int64_t start, int64_t end) {
+    int64_t cursor = skip_trivia(source, start), last = start;
+    while (cursor < end) {
+        last = token_end(source, cursor);
+        if (last <= cursor || last > end) return -1;
+        cursor = skip_trivia(source, last);
+    }
+    return last;
+}
+static char *cp_expression_id(CheckedPlaceArena *a, const char *file, int64_t start, int64_t end) {
+    char *span = cp_format(a, "%08" PRIx64 "%08" PRIx64, (uint64_t)start, (uint64_t)end);
+    return cp_keep(a, scoped_hir_hash_frame("kofun.stage2.analysis-expression/v1", file, span, "", ""));
+}
+static char *cp_type_id(CheckedPlaceArena *a, const char *path, const char *name) {
+    char *package = cp_format(a, "kofun.package-id/v1\nkind=anonymous-single-file\nlogical-source=%s\n", path);
+    char *module_payload = cp_format(a, "kofun.module-id-input/v1\npackage-payload-begin\n%spackage-payload-end\nkind=synthetic-root\n", package);
+    char *module_hex = cp_keep(a, scoped_hir_text_hex(module_payload));
+    char *module = cp_keep(a, scoped_hir_hash_frame("kofun.id.module/v1", module_hex, "", "", ""));
+    char *namespace_hex = cp_keep(a, scoped_hir_text_hex("kofun.namespace-id/v1\ntag=1\nname=type\n"));
+    char *namespace_id = cp_keep(a, scoped_hir_hash_frame("kofun.id.namespace/v1", namespace_hex, "", "", ""));
+    char *name_hex = cp_keep(a, scoped_hir_text_hex(name));
+    char *payload = cp_format(a, "800100000020%s800200000020%s8003000000067265636f72648004%08" PRIx64 "%s", module, namespace_id, (uint64_t)strlen(name), name_hex);
+    return cp_keep(a, scoped_hir_hash_frame("kofun.id.symbol/v1", payload, "", "", ""));
+}
+static char *cp_normalize_type(char *type) {
+    return strcmp(type, "List[Text]") == 0 ? "List" : type;
+}
+static bool cp_type_known(const char *catalog, const char *name) {
+    return strcmp(name, "Int") == 0 || strcmp(name, "Bool") == 0 || strcmp(name, "Text") == 0 ||
+        strcmp(name, "List[Int]") == 0 || strcmp(name, "List") == 0 || scoped_hir_fact(catalog, "type", 1, name) >= 0;
+}
+static char *cp_catalog(CheckedPlaceArena *a, const char *source) {
+    char *result = "checked-place-types/v1\n";
+    int64_t cursor = after_optional_module_header(source, 0), types = 0;
+    while (cursor < source_length(source)) {
+        int64_t declaration = type_declaration_start(source, cursor);
+        if (declaration >= 0 && record_declaration_at(source, declaration)) {
+            char *name = cp_keep(a, type_name(source, declaration));
+            if (scoped_hir_fact(result, "type", 1, name) >= 0) return cp_error(a, "duplicate record type", declaration);
+            if (types >= 64) return cp_error(a, "record type limit is 64", declaration);
+            result = cp_format(a, "%stype|%s\n", result, name); ++types;
+            int64_t open = skip_trivia(source, token_end(source, declaration));
+            while (open < source_length(source) && !token_equal(source, open, "{")) open = skip_trivia(source, token_end(source, open));
+            int64_t close = balanced_end(source, open, "{", "}");
+            if (close < 0) return cp_error(a, "malformed record declaration", declaration);
+            int64_t field = skip_trivia(source, token_end(source, open)), ordinal = 0;
+            char *names = "|";
+            while (field < close - 1) {
+                char *name_field = cp_keep(a, token_copy(source, field));
+                int64_t colon = skip_trivia(source, token_end(source, field));
+                char *key = cp_format(a, "|%s|", name_field);
+                if (!cp_kind(a, source, field, "identifier") || !token_equal(source, colon, ":") || strstr(names, key)) return cp_error(a, "malformed or duplicate field", field);
+                if (ordinal >= 64) return cp_error(a, "record field limit is 64", field);
+                names = cp_format(a, "%s%s|", names, name_field);
+                int64_t typed = skip_trivia(source, token_end(source, colon));
+                int64_t end = record_field_type_end(source, typed, close - 1);
+                char *type = cp_keep(a, token_copy(source, typed));
+                if (strcmp(type, "List") == 0) {
+                    char *list_type = cp_keep(a, parameter_list_type_text(source, typed, close - 1));
+                    if (strcmp(list_type, "List[Int]") == 0) type = "List[Int]";
+                    else if (strcmp(list_type, "List[Text]") != 0) return cp_error(a, "unresolved field type", typed);
+                }
+                if (end <= typed || end > close - 1) return cp_error(a, "malformed field type", typed);
+                result = cp_format(a, "%sfield|%s|%" PRId64 "|%s|%s|%" PRId64 "\n", result, name, ordinal, name_field, type, field);
+                ++ordinal; field = skip_trivia(source, end);
+                if (field < close - 1) {
+                    if (!token_equal(source, field, ",")) return cp_error(a, "expected field separator", field);
+                    field = skip_trivia(source, token_end(source, field));
+                }
+            }
+        }
+        int64_t end = top_level_end(source, cursor);
+        if (end <= cursor) return cp_error(a, "malformed top-level declaration", cursor);
+        cursor = skip_trivia(source, end);
+    }
+    for (int64_t row = hir_record_start(result, "field", 0); row >= 0; row = hir_record_start(result, "field", row + 1)) {
+        if (!cp_type_known(result, cp_field(a, result, row, 4))) return cp_error(a, "unresolved field type", scoped_hir_integer(result, row, 5));
+    }
+    return result;
+}
+static int64_t cp_resolve_field(CheckedPlaceArena *a, const char *catalog, const char *owner, const char *name) {
+    for (int64_t row = hir_record_start(catalog, "field", 0); row >= 0; row = hir_record_start(catalog, "field", row + 1)) {
+        if (strcmp(cp_field(a, catalog, row, 1), owner) == 0 && strcmp(cp_field(a, catalog, row, 3), name) == 0) return row;
+    }
+    return -1;
+}
+static char *cp_constant(CheckedPlaceArena *a, const char *source, int64_t start, int64_t end) {
+    int64_t at = start; bool negative = false;
+    if (token_equal(source, at, "-") || token_equal(source, at, "+")) {
+        negative = token_equal(source, at, "-"); at = skip_trivia(source, token_end(source, at));
+    }
+    if (!cp_kind(a, source, at, "integer") || token_end(source, at) != end) return "";
+    if (numeric_underscore_error(source, at, end)) return cp_error(a, "invalid integer bound", start);
+    char *raw = cp_keep(a, token_copy(source, at));
+    size_t digits = 0;
+    for (size_t i = 0; raw[i]; ++i) if (raw[i] != '_') raw[digits++] = raw[i];
+    raw[digits] = '\0';
+    int64_t number = 0;
+    for (size_t i = 0; raw[i]; ++i) {
+        if (raw[i] < '0' || raw[i] > '9') return cp_error(a, "invalid integer bound", start);
+        int digit = raw[i] - '0', last = negative ? 8 : 7;
+        if (number < -INT64_C(922337203685477580) || (number == -INT64_C(922337203685477580) && digit > last)) return cp_error(a, "integer bound exceeds signed i64", start);
+        number = number * 10 - digit;
+    }
+    return cp_format(a, "%" PRId64, negative ? number : -number);
+}
+static char *cp_signed_hex(CheckedPlaceArena *a, const char *value) {
+    return cp_format(a, "%016" PRIx64, (uint64_t)strtoll(value, NULL, 10));
+}
+static char *cp_walk(CheckedPlaceArena *, const char *, const char *, const char *, int64_t, int64_t, const char *, int64_t);
+static char *cp_expression_type(CheckedPlaceArena *a, const char *source, const char *hir, const char *catalog, int64_t start, int64_t end, int64_t depth) {
+    if (depth > 64) return cp_error(a, "expression depth limit is 64", start);
+    int64_t first = skip_trivia(source, start), last = checked_place_trim_end(source, first, end);
+    if (first >= last) return cp_error(a, "empty expression", first);
+    char *literal = cp_constant(a, source, first, last);
+    if (cp_error_p(literal)) return literal;
+    if (*literal) return "Int";
+    if (token_equal(source, first, "(") && balanced_end(source, first, "(", ")") == last) return cp_expression_type(a, source, hir, catalog, token_end(source, first), last - 1, depth + 1);
+    int64_t cursor = first; bool prior_operator = true;
+    while (cursor < last) {
+        char *token = cp_keep(a, token_copy(source, cursor));
+        if (strcmp(token, "(") == 0 || strcmp(token, "[") == 0) {
+            const char *closing = strcmp(token, "[") == 0 ? "]" : ")";
+            int64_t close = balanced_end(source, cursor, token, closing);
+            if (close < 0 || close > last) return cp_error(a, "unbalanced expression", cursor);
+            cursor = skip_trivia(source, close); prior_operator = false;
+        } else {
+            if (arithmetic_operator_at(source, cursor) && !prior_operator) {
+                char *left = cp_expression_type(a, source, hir, catalog, first, cursor, depth + 1);
+                char *right = cp_expression_type(a, source, hir, catalog, token_end(source, cursor), last, depth + 1);
+                if (cp_error_p(left)) return left;
+                if (cp_error_p(right)) return right;
+                return strcmp(left, "Int") == 0 && strcmp(right, "Int") == 0 && strcmp(token, "/") != 0 ? "Int" : "";
+            }
+            prior_operator = arithmetic_operator_at(source, cursor); cursor = skip_trivia(source, token_end(source, cursor));
+        }
+    }
+    if (token_equal(source, first, "+") || token_equal(source, first, "-")) {
+        char *typed = cp_expression_type(a, source, hir, catalog, token_end(source, first), last, depth + 1);
+        return strcmp(typed, "Int") == 0 || cp_error_p(typed) ? typed : "";
+    }
+    if (token_equal(source, first, "fn")) {
+        int64_t parameters = skip_trivia(source, token_end(source, first));
+        if (lambda_parameters_end(source, -1, parameters) == last) return "Fn";
+    }
+    if (token_end(source, first) == last) {
+        if (cp_kind(a, source, first, "decimal")) return "Decimal";
+        if (cp_kind(a, source, first, "float")) return "Float";
+        if (token_equal(source, first, "true") || token_equal(source, first, "false")) return "Bool";
+        if (cp_kind(a, source, first, "string")) return "Text";
+    }
+    int64_t next = skip_trivia(source, token_end(source, first));
+    bool list = token_equal(source, first, "[") && balanced_end(source, first, "[", "]") == last;
+    bool call = cp_kind(a, source, first, "identifier") && token_equal(source, next, "(") && balanced_end(source, next, "(", ")") == last;
+    if (list || call) {
+        char *name = cp_keep(a, token_copy(source, first));
+        if (call && *cp_keep(a, hir_use_binding_id(hir, first))) return "";
+        bool constructor = scoped_hir_fact(catalog, "type", 1, name) >= 0;
+        char *returned = cp_normalize_type(cp_keep(a, function_return_type(source, name)));
+        int64_t open = list ? first : next;
+        if (constructor) returned = name;
+        if (!list && !*returned) return "";
+        int64_t arg = skip_trivia(source, token_end(source, open)), count = 0;
+        char *element = "";
+        int64_t field_row = hir_record_start(catalog, "field", 0);
+        while (field_row >= 0 && strcmp(cp_field(a, catalog, field_row, 1), name) != 0) field_row = hir_record_start(catalog, "field", field_row + 1);
+        while (arg < last - 1) {
+            int64_t stop = arg;
+            while (stop < last - 1 && !token_equal(source, stop, ",")) {
+                char *token = cp_keep(a, token_copy(source, stop));
+                if (strcmp(token, "(") == 0 || strcmp(token, "[") == 0) {
+                    int64_t close = balanced_end(source, stop, token, strcmp(token, "[") == 0 ? "]" : ")");
+                    if (close <= stop || close > last - 1) return cp_error(a, "malformed call argument", stop);
+                    stop = skip_trivia(source, close);
+                } else stop = skip_trivia(source, token_end(source, stop));
+            }
+            char *actual = cp_expression_type(a, source, hir, catalog, arg, stop, depth + 1);
+            if (cp_error_p(actual)) return actual;
+            if (!*actual) return "";
+            if (list) {
+                if (strcmp(actual, "Int") != 0 && strcmp(actual, "Text") != 0) return "";
+                if (*element && strcmp(element, actual) != 0) return "";
+                element = actual;
+                if (count >= 64) return cp_error(a, "list literal limit is 64", arg);
+            } else if (constructor) {
+                if (field_row < 0 || strcmp(cp_field(a, catalog, field_row, 1), name) != 0) return "";
+                char *expected = cp_field(a, catalog, field_row, 4);
+                if (strcmp(actual, expected) != 0 && !(strcmp(actual, "List[?]") == 0 && (strcmp(expected, "List[Int]") == 0 || strcmp(expected, "List") == 0))) return "";
+                field_row = hir_record_start(catalog, "field", field_row + 1);
+            } else if (strcmp(actual, cp_normalize_type(cp_keep(a, function_parameter_type(source, name, count)))) != 0) return "";
+            ++count; arg = stop;
+            if (arg < last - 1) arg = skip_trivia(source, token_end(source, arg));
+        }
+        if (list) return strcmp(element, "Int") == 0 ? "List[Int]" : strcmp(element, "Text") == 0 ? "List" : "List[?]";
+        if (constructor) {
+            if (field_row >= 0 && strcmp(cp_field(a, catalog, field_row, 1), name) == 0) return "";
+        } else if (count != function_arity(source, name)) return "";
+        return returned;
+    }
+    char *place = cp_walk(a, source, hir, catalog, first, last, "", depth + 1);
+    if (cp_error_p(place)) return place;
+    return strncmp(place, "place|", 6) == 0 || strncmp(place, "unnameable|", 10) == 0 ? cp_field(a, place, 0, 2) : "";
+}
+static bool cp_shape_operator(const char *token) {
+    static const char *const operators[] = {"+", "-", "*", "/", "//", "%", "**", "==", "!=", "<", ">", "<=", ">=", "&&", "||", "??"};
+    for (size_t i = 0; i < sizeof(operators)/sizeof(operators[0]); ++i) if (strcmp(token, operators[i]) == 0) return true;
+    return false;
+}
+static char *cp_shape(CheckedPlaceArena *, const char *, int64_t, int64_t, int64_t);
+static char *cp_arguments_shape(CheckedPlaceArena *a, const char *source, int64_t start, int64_t end, int64_t depth) {
+    int64_t cursor = skip_trivia(source, start);
+    while (cursor < end) {
+        int64_t stop = cursor;
+        while (stop < end && !token_equal(source, stop, ",")) {
+            char *token = cp_keep(a, token_copy(source, stop));
+            if (strcmp(token, "(") == 0 || strcmp(token, "[") == 0 || strcmp(token, "{") == 0) {
+                const char *closing = strcmp(token, "[") == 0 ? "]" : strcmp(token, "{") == 0 ? "}" : ")";
+                int64_t close = balanced_end(source, stop, token, closing);
+                if (close <= stop || close > end) return cp_error(a, "malformed expression", stop);
+                stop = skip_trivia(source, close);
+            } else stop = skip_trivia(source, token_end(source, stop));
+        }
+        char *error = cp_shape(a, source, cursor, stop, depth + 1);
+        if (*error) return error;
+        cursor = stop;
+        if (cursor < end) cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return "";
+}
+static char *cp_shape(CheckedPlaceArena *a, const char *source, int64_t start, int64_t end, int64_t depth) {
+    if (depth > 64) return cp_error(a, "expression depth limit is 64", start);
+    int64_t first = skip_trivia(source, start), last = checked_place_trim_end(source, first, end);
+    if (first >= last) return cp_error(a, "malformed expression", first);
+    int64_t cursor = first; bool unary = true;
+    while (cursor < last) {
+        char *token = cp_keep(a, token_copy(source, cursor));
+        if (strcmp(token, "(") == 0 || strcmp(token, "[") == 0 || strcmp(token, "{") == 0) {
+            const char *closing = strcmp(token, "[") == 0 ? "]" : strcmp(token, "{") == 0 ? "}" : ")";
+            int64_t close = balanced_end(source, cursor, token, closing);
+            if (close <= cursor || close > last) return cp_error(a, "malformed expression", cursor);
+            cursor = skip_trivia(source, close); unary = false;
+        } else {
+            if (cp_shape_operator(token) && !unary) {
+                char *left = cp_shape(a, source, first, cursor, depth + 1);
+                if (*left) return left;
+                return cp_shape(a, source, token_end(source, cursor), last, depth + 1);
+            }
+            unary = cp_shape_operator(token) || strcmp(token, "!") == 0;
+            cursor = skip_trivia(source, token_end(source, cursor));
+        }
+    }
+    char *token = cp_keep(a, token_copy(source, first));
+    if (strcmp(token, "+") == 0 || strcmp(token, "-") == 0 || strcmp(token, "!") == 0) return cp_shape(a, source, token_end(source, first), last, depth + 1);
+    cursor = token_end(source, first);
+    if (strcmp(token, "(") == 0 || strcmp(token, "[") == 0) {
+        const char *closing = strcmp(token, "[") == 0 ? "]" : ")";
+        cursor = balanced_end(source, first, token, closing);
+        char *error = strcmp(token, "(") == 0 ? cp_shape(a, source, token_end(source, first), cursor - 1, depth + 1) : cp_arguments_shape(a, source, token_end(source, first), cursor - 1, depth + 1);
+        if (*error) return error;
+    } else if (strcmp(token, "fn") == 0) {
+        int64_t parameters = skip_trivia(source, token_end(source, first));
+        cursor = lambda_parameters_end(source, -1, parameters);
+        if (cursor <= parameters || cursor > last) return cp_error(a, "malformed expression", first);
+    } else {
+        const char *kind = token_kind(source, first);
+        if (strcmp(kind, "identifier") != 0 && strcmp(kind, "integer") != 0 && strcmp(kind, "string") != 0 && strcmp(kind, "decimal") != 0 && strcmp(kind, "float") != 0 && strcmp(token, "true") != 0 && strcmp(token, "false") != 0) return cp_error(a, "selection is not an expression", first);
+    }
+    cursor = skip_trivia(source, cursor); int64_t projections = 0;
+    while (cursor < last) {
+        if (token_equal(source, cursor, ".")) {
+            int64_t name = skip_trivia(source, token_end(source, cursor));
+            if (!cp_kind(a, source, name, "identifier") || token_end(source, name) > last) return cp_error(a, "malformed field projection", name);
+            cursor = skip_trivia(source, token_end(source, name)); ++projections;
+        } else if (token_equal(source, cursor, "(")) {
+            int64_t close = balanced_end(source, cursor, "(", ")");
+            if (close <= cursor || close > last) return cp_error(a, "malformed expression", cursor);
+            char *error = cp_arguments_shape(a, source, token_end(source, cursor), close - 1, depth + 1);
+            if (*error) return error;
+            cursor = skip_trivia(source, close);
+        } else if (token_equal(source, cursor, "[")) {
+            int64_t close = balanced_end(source, cursor, "[", "]");
+            if (close <= cursor || close > last) return cp_error(a, "malformed slice", cursor);
+            int64_t begin = skip_trivia(source, token_end(source, cursor)), walk = begin, separator = -1;
+            while (walk < close - 1) {
+                char *part = cp_keep(a, token_copy(source, walk));
+                if (strcmp(part, "(") == 0 || strcmp(part, "[") == 0) {
+                    walk = skip_trivia(source, balanced_end(source, walk, part, strcmp(part, "[") == 0 ? "]" : ")"));
+                } else {
+                    if (strcmp(part, "..") == 0) {
+                        if (separator >= 0) return cp_error(a, "multiple slice separators", walk);
+                        separator = walk;
+                    }
+                    walk = skip_trivia(source, token_end(source, walk));
+                }
+            }
+            char *error;
+            if (separator < 0) error = cp_shape(a, source, begin, close - 1, depth + 1);
+            else {
+                int64_t upper = skip_trivia(source, token_end(source, separator));
+                if (begin == separator || upper >= close - 1) return cp_error(a, "empty slice bound", cursor);
+                error = cp_shape(a, source, begin, separator, depth + 1);
+                if (!*error) error = cp_shape(a, source, upper, close - 1, depth + 1);
+            }
+            if (*error) return error;
+            cursor = skip_trivia(source, close); ++projections;
+        } else return cp_error(a, "selection must cover one complete expression", cursor);
+        if (projections > 64) return cp_error(a, "candidate projection limit is 64", cursor);
+    }
+    return "";
+}
+static char *cp_binding_type(CheckedPlaceArena *a, const char *source, const char *hir, const char *catalog, const char *binding, int64_t depth) {
+    if (depth > 64) return cp_error(a, "expression depth limit is 64", 0);
+    char *type = cp_normalize_type(cp_keep(a, hir_binding_field(hir, binding, 5)));
+    int64_t name = decimal_value(cp_keep(a, hir_binding_field(hir, binding, 8)));
+    int64_t after = skip_trivia(source, token_end(source, name));
+    if (token_equal(source, after, ":")) {
+        int64_t annotation = skip_trivia(source, token_end(source, after));
+        int64_t end = parameter_list_type_end(source, annotation, source_length(source));
+        if (end < 0) end = annotation_type_end(source, annotation);
+        after = skip_trivia(source, end);
+    }
+    if (!token_equal(source, after, "=")) return type;
+    int64_t start = skip_trivia(source, token_end(source, after));
+    int64_t end = decimal_value(cp_keep(a, hir_binding_field(hir, binding, 10)));
+    char *actual = cp_expression_type(a, source, hir, catalog, start, end, depth + 1);
+    if (cp_error_p(actual)) return actual;
+    if (strcmp(actual, "List[?]") == 0 && (strcmp(type, "List[Int]") == 0 || strcmp(type, "List") == 0)) return type;
+    return strcmp(actual, type) == 0 ? type : "";
+}
+
+static char *cp_walk(CheckedPlaceArena *a, const char *source, const char *hir, const char *catalog, int64_t start, int64_t end, const char *path, int64_t recursion) {
+    if (recursion > 64) return cp_error(a, "expression depth limit is 64", start);
+    if (!cp_kind(a, source, start, "identifier")) return cp_format(a, "unknown|%" PRId64 "|%" PRId64 "\n", start, end);
+    char *binding = cp_keep(a, hir_use_binding_id(hir, start));
+    if (!*binding) return cp_format(a, "unknown|%" PRId64 "|%" PRId64 "\n", start, end);
+    char *type = cp_binding_type(a, source, hir, catalog, binding, recursion + 1);
+    if (cp_error_p(type)) return type;
+    if (!*type) return cp_error(a, "binding initializer is not well typed", start);
+    if (!cp_type_known(catalog, type) && strcmp(type, "Float") != 0 && strcmp(type, "Decimal") != 0 && strcmp(type, "Fn") != 0 && strcmp(type, "Bytes") != 0 && !authority_type_name(type)) return cp_error(a, "binding type is unavailable", start);
+    bool nameable = true;
+    int64_t cursor = skip_trivia(source, token_end(source, start)), count = 0;
+    char *raw = "", *json = "";
+    while (cursor < end) {
+        if (count >= 64) return cp_error(a, "candidate projection limit is 64", cursor);
+        if (token_equal(source, cursor, ".")) {
+            int64_t field = skip_trivia(source, token_end(source, cursor));
+            if (!cp_kind(a, source, field, "identifier") || token_end(source, field) > end) return cp_error(a, "malformed field projection", field);
+            int64_t resolved = cp_resolve_field(a, catalog, type, cp_keep(a, token_copy(source, field)));
+            if (resolved < 0) return cp_error(a, "field does not resolve for checked owner type", field);
+            if (count < 8 && *path) {
+                char *owner = cp_type_id(a, path, type), *ordinal = cp_field(a, catalog, resolved, 2);
+                raw = cp_format(a, "%s01%s%08" PRIx64, raw, owner, (uint64_t)decimal_value(ordinal));
+                char *display = cp_keep(a, scoped_hir_display(source, field));
+                json = cp_format(a, "%s%s{\"display\":%s,\"kind\":\"field\",\"ordinal\":%s,\"owner_type_id\":\"%s\"}", json, *json ? "," : "", display, ordinal, owner);
+            }
+            type = cp_field(a, catalog, resolved, 4); cursor = skip_trivia(source, token_end(source, field));
+        } else if (token_equal(source, cursor, "[")) {
+            if (strcmp(type, "List[Int]") != 0 && strcmp(type, "List") != 0) return cp_error(a, "slice receiver must be a checked list", cursor);
+            int64_t close = balanced_end(source, cursor, "[", "]");
+            if (close < 0 || close > end) return cp_error(a, "malformed slice", cursor);
+            int64_t lower = skip_trivia(source, token_end(source, cursor)), separator = lower;
+            while (separator < close - 1 && !token_equal(source, separator, "..")) {
+                char *token = cp_keep(a, token_copy(source, separator));
+                if (strcmp(token, "(") == 0 || strcmp(token, "[") == 0) {
+                    int64_t next = balanced_end(source, separator, token, strcmp(token, "[") == 0 ? "]" : ")");
+                    if (next <= separator || next > close - 1) return cp_error(a, "malformed slice bound", separator);
+                    separator = skip_trivia(source, next);
+                } else separator = skip_trivia(source, token_end(source, separator));
+            }
+            if (separator >= close - 1) {
+                char *index_type = cp_expression_type(a, source, hir, catalog, lower, close - 1, recursion + 1);
+                if (cp_error_p(index_type)) return index_type;
+                if (strcmp(index_type, "Int") != 0) return cp_error(a, "index must have checked Int type", lower);
+                type = strcmp(type, "List[Int]") == 0 ? "Int" : "Text";
+                nameable = false; cursor = skip_trivia(source, close); ++count; continue;
+            }
+            int64_t upper = skip_trivia(source, token_end(source, separator));
+            int64_t lower_end = checked_place_trim_end(source, lower, separator), upper_end = checked_place_trim_end(source, upper, close - 1);
+            if (lower >= lower_end || upper >= upper_end) return cp_error(a, "empty slice bound", cursor);
+            char *lower_type = cp_expression_type(a, source, hir, catalog, lower, lower_end, recursion + 1);
+            char *upper_type = cp_expression_type(a, source, hir, catalog, upper, upper_end, recursion + 1);
+            if (cp_error_p(lower_type)) return lower_type;
+            if (cp_error_p(upper_type)) return upper_type;
+            if (strcmp(lower_type, "Int") != 0 || strcmp(upper_type, "Int") != 0) return cp_error(a, "slice bounds must have checked Int type", lower);
+            char *low = cp_constant(a, source, lower, lower_end), *high = cp_constant(a, source, upper, upper_end);
+            if (*low && *high && strtoll(low, NULL, 10) > strtoll(high, NULL, 10)) return cp_error(a, "constant lower bound exceeds upper bound", lower);
+            if (count < 8 && *path) {
+                char *file = cp_keep(a, scoped_hir_file_id(path));
+                char *low_node = cp_expression_id(a, file, lower, lower_end), *high_node = cp_expression_id(a, file, upper, upper_end);
+                char *low_raw = cp_format(a, "02%s", low_node), *high_raw = cp_format(a, "02%s", high_node);
+                char *low_json = cp_format(a, "{\"kind\":\"node\",\"node_id\":\"%s\"}", low_node);
+                char *high_json = cp_format(a, "{\"kind\":\"node\",\"node_id\":\"%s\"}", high_node);
+                if (*low) {
+                    low_raw = cp_format(a, "01%s", cp_signed_hex(a, low));
+                    low_json = cp_format(a, "{\"kind\":\"constant\",\"value\":\"%s\"}", low);
+                }
+                if (*high) {
+                    high_raw = cp_format(a, "01%s", cp_signed_hex(a, high));
+                    high_json = cp_format(a, "{\"kind\":\"constant\",\"value\":\"%s\"}", high);
+                }
+                raw = cp_format(a, "%s02%s%s", raw, low_raw, high_raw);
+                json = cp_format(a, "%s%s{\"kind\":\"slice\",\"lower\":%s,\"upper\":%s}", json, *json ? "," : "", low_json, high_json);
+            }
+            cursor = skip_trivia(source, close);
+        } else return cp_format(a, "unknown|%" PRId64 "|%" PRId64 "\n", start, end);
+        ++count;
+    }
+    if (cursor < end) return cp_error(a, "incomplete expression", cursor);
+    return cp_format(a, "%s|%s|%s|%" PRId64 "|%s|%s|%" PRId64 "|%" PRId64 "\n", nameable ? "place" : "unnameable", binding, type, count, raw, json, start, end);
+}
+static char *cp_candidate(CheckedPlaceArena *a, const char *source, const char *hir, const char *catalog, int64_t start, int64_t end, const char *path) {
+    char *shape = cp_shape(a, source, start, end, 0);
+    if (*shape) return shape;
+    char *type = cp_expression_type(a, source, hir, catalog, start, end, 0);
+    if (cp_error_p(type)) return type;
+    if (!*type) return cp_error(a, "expression does not have a checked type", start);
+    return cp_walk(a, source, hir, catalog, start, end, path, 0);
+}
+static char *cp_render(CheckedPlaceArena *a, const char *source, const char *hir, const char *facts, const char *path, int64_t task_index, int64_t start, int64_t end) {
+    int64_t task = hir_record_start(facts, "task", 0), index = 0;
+    while (task >= 0 && index < task_index) { task = hir_record_start(facts, "task", task + 1); ++index; }
+    if (task_index < 0 || task < 0) return cp_error(a, "task index is outside the document", 0);
+    int64_t lambda = scoped_hir_integer(facts, task, 5), lambda_end = scoped_hir_integer(facts, task, 6);
+    int64_t parameters = skip_trivia(source, token_end(source, lambda));
+    int64_t after = balanced_end(source, parameters, "(", ")");
+    int64_t body = skip_trivia(source, after), body_end = lambda_end;
+    if (token_equal(source, body, "=>")) body = skip_trivia(source, token_end(source, body));
+    else {
+        if (token_equal(source, body, "->")) {
+            body = skip_trivia(source, token_end(source, body)); body = skip_trivia(source, annotation_type_end(source, body));
+        }
+        if (!token_equal(source, body, "{")) return cp_error(a, "unresolved lambda body", body);
+        body = skip_trivia(source, token_end(source, body)); body_end = lambda_end - 1;
+    }
+    if (start < body || end > body_end || start >= end || start < 0 || end > source_length(source)) return cp_error(a, "selection is outside the task body", start);
+    int64_t at = body;
+    while (at < start) at = skip_trivia(source, token_end(source, at));
+    if (at != start || checked_place_trim_end(source, start, end) != end) return cp_error(a, "selection must use complete token boundaries", start);
+    char *shape = cp_shape(a, source, start, end, 0);
+    if (*shape) return shape;
+    char *catalog = cp_catalog(a, source);
+    if (cp_error_p(catalog)) return catalog;
+    char *place = cp_candidate(a, source, hir, catalog, start, end, path);
+    if (cp_error_p(place)) return place;
+    char *file = cp_keep(a, scoped_hir_file_id(path)), *witness = cp_expression_id(a, file, start, end);
+    char *task_id = cp_keep(a, scoped_hir_task_id(file, facts, task)), *record;
+    if (strncmp(place, "place|", 6) == 0 && scoped_hir_integer(place, 0, 3) <= 8) {
+        char *binding = cp_keep(a, scoped_hir_named_id(file, "binding", cp_field(a, place, 0, 1)));
+        char *raw = cp_format(a, "4b504c0002%s%02" PRIx64 "%s", binding, (uint64_t)scoped_hir_integer(place, 0, 3), cp_field(a, place, 0, 4));
+        char *id = cp_keep(a, scoped_hir_hash_frame("kofun.scope-hir.place/v2", raw, "", "", ""));
+        char *display = cp_keep(a, scoped_hir_display(source, start));
+        record = cp_format(a, "{\"base_binding_id\":\"%s\",\"canonical_bytes\":\"%s\",\"display\":%s,\"id\":\"%s\",\"projections\":[%s],\"record\":\"place\"}", binding, raw, display, id, cp_field(a, place, 0, 5));
+    } else {
+        bool deep = strncmp(place, "place|", 6) == 0;
+        const char *reason = deep ? "projection-depth-exceeded" : "unnameable-place", *tag = deep ? "02" : "03";
+        char *raw = cp_format(a, "4b554e0002%s%s%s", task_id, tag, witness);
+        char *id = cp_keep(a, scoped_hir_hash_frame("kofun.scope-hir.unknown/v2", task_id, tag, witness, ""));
+        record = cp_format(a, "{\"canonical_bytes\":\"%s\",\"id\":\"%s\",\"reason\":\"%s\",\"record\":\"unknown\",\"task_id\":\"%s\",\"witness_node_id\":\"%s\"}", raw, id, reason, task_id, witness);
+    }
+    char *prefix = cp_keep(a, scoped_hir_render(source, facts, path));
+    if (cp_error_p(prefix)) return prefix;
+    const char *split = strstr(prefix, "],\"root_scope_id\":");
+    if (!split) abort();
+    char *before = cp_keep(a, source_slice(prefix, 0, (int64_t)(split - prefix)));
+    char *document = cp_format(a, "%s,%s%s", before, record, split);
+    return strlen(document) > 16777216 ? cp_error(a, "document limit is 16777216 bytes", start) : document;
+}
+static char *checked_place_render(const char *source, const char *hir, const char *facts, const char *path, int64_t task_index, int64_t start, int64_t end) {
+    CheckedPlaceArena arena = {0};
+    char *document = cp_render(&arena, source, hir, facts, path, task_index, start, end);
+    char *result = owned_text(document);
+    while (arena.texts) {
+        CheckedPlaceText *node = arena.texts; arena.texts = node->next;
+        free(node->text); free(node);
+    }
+    return result;
+}
+
 static int emit_scope_hir_v2_file(const char *input, const char *output, const char *logical_path) {
     Stage2FileIdentity identity = stage2_same_file(input, output);
     if (identity == STAGE2_FILE_LOOKUP_ERROR) { stage2_host_lookup_error(); return 2; }
@@ -34486,6 +34992,67 @@ static int emit_scope_hir_v2_file(const char *input, const char *output, const c
     free(hir);
     if (strncmp(facts, "error[", 6) == 0) { puts(facts); free(facts); free(source); return 1; }
     char *document = scoped_hir_render(source, facts, logical_path);
+    free(facts); free(source);
+    if (strncmp(document, "error[", 6) == 0) { puts(document); free(document); return 1; }
+    bool written = write_file_transactional(output, document);
+    free(document);
+    if (!written) { puts("error[E2S35]: cannot commit scope-HIR output"); return 1; }
+    return 0;
+}
+
+static int64_t checked_place_option(const char *text) {
+    size_t n = strlen(text);
+    if (!n || n > 10 || (n > 1 && text[0] == '0')) return -1;
+    uint64_t value = 0;
+    for (size_t i = 0; i < n; ++i) {
+        if (text[i] < '0' || text[i] > '9') return -1;
+        value = value * 10 + (unsigned)(text[i] - '0');
+    }
+    return value <= UINT32_MAX ? (int64_t)value : -1;
+}
+
+static int emit_place_hir_v2_file(const char *input, const char *output, const char *logical_path, const char *task_text, const char *start_text, const char *end_text) {
+    Stage2FileIdentity identity = stage2_same_file(input, output);
+    if (identity == STAGE2_FILE_LOOKUP_ERROR) { stage2_host_lookup_error(); return 2; }
+    if (identity == STAGE2_FILE_SAME) {
+        puts("error[E2S35]: scope-HIR input and output must be distinct"); return 1;
+    }
+    int64_t task_index = checked_place_option(task_text), start = checked_place_option(start_text), end = checked_place_option(end_text);
+    if (task_index < 0 || start < 0 || end < 0) {
+        puts("error[E2S35]: checked place indices must be canonical unsigned u32 decimal"); return 1;
+    }
+    if (!scoped_hir_logical_path(logical_path)) {
+        puts("error[E2S35]: scope-HIR logical path must be canonical relative UTF-8 (1..4096 bytes)");
+        return 1;
+    }
+    size_t source_bytes = 0;
+    char *source = read_file_with_length(input, &source_bytes);
+    if (source_bytes > UINT32_MAX) {
+        puts("error[E2S35]: scope-HIR source span exceeds u32"); free(source); return 1;
+    }
+    /* Text's explicit length must reach the Unicode validator before the C
+     * string representation can discard an embedded NUL and its suffix. */
+    if (memchr(source, 0, source_bytes) != NULL) {
+        KofunUnicodeError error;
+        if (!kofun_unicode_validate_source((const uint8_t *)source, source_bytes, &error)) {
+            char message[1024];
+            kofun_unicode_format_error(&error, getenv("KOFUN_DIAGNOSTIC_LOCALE"), message, sizeof(message));
+            puts(message); free(source); return 1;
+        }
+    }
+    char *tokens = lex_source(source);
+    if (strncmp(tokens, "error[", 6) == 0) { puts(tokens); free(tokens); free(source); return 1; }
+    free(tokens);
+    char *tree = parse_pattern_trees(source), *pattern_error = pattern_first_error(tree);
+    free(tree);
+    if (pattern_error[0] != '\0') { puts(pattern_error); free(pattern_error); free(source); return 1; }
+    free(pattern_error);
+    char *hir = build_scope_hir_analysis_mode(source, true, true);
+    if (strncmp(hir, "error[", 6) == 0) { puts(hir); free(hir); free(source); return 1; }
+    char *facts = scoped_hir_observations(source, hir);
+    if (strncmp(facts, "error[", 6) == 0) { puts(facts); free(facts); free(hir); free(source); return 1; }
+    char *document = checked_place_render(source, hir, facts, logical_path, task_index, start, end);
+    free(hir);
     free(facts); free(source);
     if (strncmp(document, "error[", 6) == 0) { puts(document); free(document); return 1; }
     bool written = write_file_transactional(output, document);
@@ -34589,6 +35156,9 @@ int main(int argc, char **argv) {
     if (argc == 4 && strcmp(argv[1], "--parse-patterns") == 0) {
         return parse_patterns_file(argv[2], argv[3]);
     }
+    if (argc == 8 && strcmp(argv[1], "--emit-place-hir-v2") == 0) {
+        return emit_place_hir_v2_file(argv[2], argv[3], argv[4], argv[5], argv[6], argv[7]);
+    }
     if (argc == 5 && strcmp(argv[1], "--emit-scope-hir-v2") == 0) {
         return emit_scope_hir_v2_file(argv[2], argv[3], argv[4]);
     }
@@ -34615,6 +35185,7 @@ int main(int argc, char **argv) {
             "       kofun-stage2 --parse-patterns INPUT.kofun OUTPUT.patterns\n"
             "       kofun-stage2 --emit-scope-hir INPUT.kofun OUTPUT.scope-hir\n"
             "       kofun-stage2 --emit-scope-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n"
+                "       kofun-stage2 --emit-place-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH TASK-INDEX START END\n"
             "       kofun-stage2 --emit-selfhost-hir INPUT.kofun OUTPUT.hir SOURCE-SHA256\n"
             "       kofun-stage2 --lower-selfhost-c11 INPUT.hir OUTPUT.c\n"
             "       kofun-stage2 --selfhost-compile INPUT.kofun OUTPUT.c SOURCE-SHA256\n"

@@ -52,7 +52,7 @@ export const GROUPS = Object.freeze([
             'call-arguments-spec',
             'call-arguments-surface',
             'affine-resumption', 'affine-resource-handle',
-            'scoped-parallelism', 'concurrency-capture-contract', 'concurrency-hir',
+            'scoped-parallelism', 'concurrency-capture-contract', 'concurrency-hir', 'concurrency-places',
             'schedule-trace', 'type-reduction-trace',
             'generics', 'const-generics', 'hm-levels', 'effect-inference',
             'pure-boundary', 'traits',

@@ -126,6 +126,7 @@ const modes=[
   ['--selfhost-compile','selfhost_compile_file','selfhost-compile',true],
   ['--emit-scope-hir','emit_scope_hir_file','scope-HIR',false],
   ['--emit-scope-hir-v2','emit_scope_hir_v2_file','scope-HIR',false,'../invalid.kofun'],
+  ['--emit-place-hir-v2','emit_place_hir_v2_file','scope-HIR',false,'../invalid.kofun','bad-index','bad-start','bad-end'],
   ['--parse-patterns','parse_patterns_file','patterns',false],
 ];
 const digest='0'.repeat(64);
@@ -141,7 +142,7 @@ function invokeKofun(pair,mode,left,right,{fault,invalidDigest=false,writeProbe,
     const result=run(native,['--pair-validate',p]);assert.equal(result.status,0);return bytes(result.stdout.trimEnd());
   },...(writeProbe ? {write:writeProbe}: {})});
   try {
-    const args=[bytes(left),bytes(right),...extra.map(bytes)];if(mode[4])args.push(bytes(mode[4]));if(mode[3])args.push(invalidDigest?'bad':digest);
+    const args=[bytes(left),bytes(right),...extra.map(bytes)];args.push(...mode.slice(4).map(bytes));if(mode[3])args.push(invalidDigest?'bad':digest);
     const result=side[mode[1]](...args);
     return {status:typeof result==='boolean' ? result?0:1 : Number(result),stdout:printed};
   } catch(error) {
@@ -151,7 +152,7 @@ function invokeKofun(pair,mode,left,right,{fault,invalidDigest=false,writeProbe,
 }
 function invokeC(binary,mode,left,right,{fault,invalidDigest=false,extra=[]}={}) {
   const executable=binary===native && !fault ? production : binary;
-  return run(executable,[mode[0],left,right,...extra,...(mode[4]?[mode[4]]:[]),...(mode[3]?[invalidDigest?'bad':digest]:[])],{env:{...process.env,...(fault?{KOFUN_PAIR_STAT_FAULT:fault}:{})}});
+  return run(executable,[mode[0],left,right,...extra,...mode.slice(4),...(mode[3]?[invalidDigest?'bad':digest]:[])],{env:{...process.env,...(fault?{KOFUN_PAIR_STAT_FAULT:fault}:{})}});
 }
 for(const mode of modes) {
   for(const alias of aliases) {

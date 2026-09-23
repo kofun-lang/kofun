@@ -487,3 +487,66 @@ validates lexical identities and lifecycle shape only; it does not check
 captures, call effects or conflicts, accept parallel execution, or publish a
 capability. The canonical source is executed through the existing bounded
 host driver for pair agreement. `task concurrency-hir` is the lasting gate.
+
+## 12. Production checked-place entry (#1221)
+
+```sh
+kofun-stage2 --emit-place-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH TASK-INDEX START END
+```
+
+This analysis entry selects one complete expression within a resolved task
+lambda. Task index is the zero-based document task order; start/end are
+nonempty half-open UTF-8 byte offsets. The three arguments use canonical
+unsigned u32 decimal. The existing file/provenance/Unicode and alias-before-
+publication rules apply. Invalid indices, token boundaries, expressions,
+declarations and bounds refuse before replacing the destination. This entry
+inherits §11's bounded lifecycle grammar. A block-bodied lambda supports the
+full place corpus without widening the ordinary arrow-body grammar.
+
+The resolver's use record supplies the base BindingId. A separate analysis
+record graph resolves nested nominal owner types and field ordinals, with 64
+record declarations and 64 fields per declaration. Forward nominal references
+are valid; duplicates and unresolved field types refuse. Field carriers are
+Int, Bool, Text, List[Int], List[Text] or another resolved record. The normal
+backend's flat layout rules do not change. Nominal owner TypeId reuses the
+synthetic-root ModuleId and tag-1 `type` NamespaceId, then the current symbol
+TLV with module, namespace, declaration kind `record` and declaration name.
+The projection contains that resolved TypeId and declaration ordinal. Field
+renaming with the same owner TypeId/ordinal changes display only. Renaming a
+type declaration can change its upstream nominal identity; this entry does
+not replace the existing identity owner with a display-independent fiction.
+
+A known candidate has the complete resolved base and zero to eight checked
+field/slice projections. Slice receivers use the existing Int/Text lists.
+Constants are exact signed i64, with canonical decimal and two's-complement
+bytes from §5. Dynamic bounds require a checked Int expression. The bounded
+checker covers resolved places, scalar literals, parentheses, Int arithmetic
+and declared direct calls with checked argument types and arity. Local
+initializers are rechecked; the ordinary inference fallback to Int is not an
+authority for bounds. No expression is evaluated. Only well-typed candidates
+that have no representable place become `unnameable-place`, including Int
+arithmetic, checked direct calls and ordinary list indexing. An index remains
+an index rather than an invented slice. Missing fields, invalid receivers,
+non-Int bounds, invalid local initializers, malformed syntax, out-of-range
+constants and reversed constant intervals refuse. All projections are checked; depth
+9–64 produces `projection-depth-exceeded`, and depth above 64 refuses.
+Expression recursion is bounded at 64.
+
+The private analysis expression graph allocates NodeId with the #303 frame,
+domain `kofun.stage2.analysis-expression/v1`, payload raw FileId followed by
+u32be start and end. One exact occurrence commits one complete source range;
+there is no spelling hash, fabricated zero, or new KSE1 kind tag. Dynamic
+bounds and unknown witnesses use these nodes. The private place/unknown rows
+retain source ranges for later capture diagnostics. The checked candidate API
+validates type facts before walking the projections. A deep checked place or
+checked unnameable index retains its resolved base, type and full candidate
+depth internally, so a later collector can exclude task-local bases before
+public unknown projection. The public JSON schema and place/unknown preimages
+remain unchanged.
+
+The output contains §11's complete lifecycle phases followed by one place or
+unknown, using the closed v2 schema and canonical order. Automatic observation
+collection, capture merging, effects, conflicts, KSE2 publication and runtime
+acceptance remain subsequent issues. `task concurrency-places` is the lasting
+compiler/identity/bytes/diagnostics gate; `task concurrency-hir` remains the
+independent lifecycle gate.
