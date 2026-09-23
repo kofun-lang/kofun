@@ -55,6 +55,16 @@ makes the taken path continue to the read and requires `E2S123`. This checks
 the existing continuing-branch ownership rule without condition refinement
 or nonlexical callee-body propagation.
 
+Latent bodies inherit values already moved when their lambda is created.
+Ordinary and task-local lambdas created after a nominal take, and a spawn
+created after the parent takes its input, must refuse as `E2S123` even if the
+latent body never runs. Creating the ordinary or task-local lambda before
+the take remains a valid control: the former has no lifecycle records, and
+the latter has only par/task/join records because its item is task-local.
+These checks preserve the separate rule that validating a latent body's own
+take does not execute that move in its enclosing flow. They add no runtime
+parent/task conflict or nonlexical callee-summary claim.
+
 Task-local mutable nominal records refuse as `E2S32` with either an explicit
 `Token` annotation or an inferred constructor. A mutable callable binding
 and reassignment also refuse under the declaration-based callable profile,

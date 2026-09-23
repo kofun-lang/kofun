@@ -11814,6 +11814,44 @@
           ]
         }
       ]
+    },
+    {
+      "name": "lambda-before-take",
+      "source": "type Token = { value: Int }\nfn inspect(read item: Token) -> Int { return item.value }\nfn consume(take item: Token) -> Int { return item.value }\nfn main() -> Int {\n let item: Token = Token(value: 7)\n let later = fn() => inspect(item)\n consume(item)\n return 0\n}\n",
+      "allocation_note": "Ordinary nested lambda is created while item is live, before consume(item), and is never invoked. It contributes no task captures or lifecycle records because this source contains no par; later caller flow is independent of checking the latent body.",
+      "pars": [],
+      "tasks": []
+    },
+    {
+      "name": "task-local-lambda-before-take",
+      "source": "type Token = { value: Int }\nfn inspect(read item: Token) -> Int { return item.value }\nfn consume(take item: Token) -> Int { return item.value }\nfn main() {\n par |scope| { scope.spawn(fn() {\n let item: Token = Token(value: 7)\n let later = fn() => inspect(item)\n consume(item)\n 0\n }) }\n}\n",
+      "allocation_note": "Creating the nested lambda before consume(item) is valid. Both item uses are excluded as task-local, so only par/task/scope-exit join records remain. Authored scopes inspect1/2, consume3/4, main5/6, par7, task8/9; bindings inspect.item0, consume.item1, scope2, item3, later4, hidden handle5.",
+      "pars": [
+        {
+          "scope": 7,
+          "token": 2,
+          "name": "scope",
+          "span": [
+            157,
+            283
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "par": 0,
+          "handle": 5,
+          "span": [
+            171,
+            281
+          ],
+          "lambda_span": [
+            183,
+            280
+          ],
+          "observations": []
+        }
+      ]
     }
   ],
   "negative": [
@@ -12027,6 +12065,24 @@
       "name": "callable-actual-wrong-arity",
       "source": "fn apply(read f: Int -> Int, x: Int) -> Int { return f(x) }\nfn probe(outer: Int) {\n par |scope| {\n  scope.spawn(fn() {\n   apply(fn(left: Int, right: Int) { left + right + outer }, 1)\n  })\n }\n}\n",
       "reason": "The actual lambda has a valid Int result and two Int parameters, while the formal requires exactly one. Callable arity is fixed; do not accept the coarse Fn type or invent currying/partial application."
+    },
+    {
+      "name": "lambda-after-take",
+      "source": "type Token = { value: Int }\nfn inspect(read item: Token) -> Int { return item.value }\nfn consume(take item: Token) -> Int { return item.value }\nfn main() -> Int {\n let item: Token = Token(value: 7)\n consume(item)\n let later = fn() => inspect(item)\n return 0\n}\n",
+      "reason": "The ordinary lambda is created after item was transferred. Its latent body must inherit the enclosing unavailable-binding fact and preserve E2S123 even though the callable is never invoked and there are no task captures.",
+      "diagnostic_code": "E2S123"
+    },
+    {
+      "name": "task-local-lambda-after-take",
+      "source": "type Token = { value: Int }\nfn inspect(read item: Token) -> Int { return item.value }\nfn consume(take item: Token) -> Int { return item.value }\nfn main() {\n par |scope| { scope.spawn(fn() {\n let item: Token = Token(value: 7)\n consume(item)\n let later = fn() => inspect(item)\n 0\n }) }\n}\n",
+      "reason": "A task-local item was transferred before the nested lambda was created. Inheriting the enclosing moved state must produce E2S123 before local-base capture exclusion can hide the invalid latent read.",
+      "diagnostic_code": "E2S123"
+    },
+    {
+      "name": "spawn-after-parent-take",
+      "source": "type Token = { value: Int }\nfn inspect(read item: Token) -> Int { return item.value }\nfn consume(take item: Token) -> Int { return item.value }\nfn main() {\n let item: Token = Token(value: 7)\n consume(item)\n par |scope| { scope.spawn(fn() => inspect(item)) }\n}\n",
+      "reason": "The parent transferred item before creating the spawn lambda. The task body cannot reset that known moved state and must refuse its read as E2S123, without claiming future parent/task conflict analysis.",
+      "diagnostic_code": "E2S123"
     }
   ],
   "full_boundary": {
