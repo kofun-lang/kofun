@@ -4,7 +4,7 @@
   "version": "0.12.2-seed",
   "inputs": {
     "VERSION": "7dc115030a7fb25b9cf2bd618a0a14e571d91fbbda6275e8e02d98ec75219ce0",
-    "release/claims.json": "e9911d146f829273224495a7df66a6e9ce9db14935da77c43efb6c958cb013de",
+    "release/claims.json": "dfb7822cb44fedabd0a7f953164d053f5e903f0cee7dfa92fafa24191a81d95f",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
     "bootstrap/manifest.json": "d9f8516c17d9d0d5ed97686d57a39c4c529d78f9e8766abb6975b8b28851eb53"
   },
@@ -843,7 +843,7 @@
     "docs/LAW_SYSTEM.md": "b974f0ad762bec778ee76afa5d0a2176423ac96a3a583739eee55dcb8dca5043",
     "docs/LINGUIST_RECOGNITION.md": "279f9afa7157c90e41d656974c2f5020f8b6d25acbbd389ee760efbb2d6d6166",
     "docs/MEMORY_MODEL.md": "74e300202f8274f6e9bbae0102cfdd22ad36e6fecc11b6e9515cc1d7549b0176",
-    "docs/MVP_IMPLEMENTED.md": "a5fde51697f069d9e3fcce4f9d25f0ad4396c970656f0962217cbd60a72b25d9",
+    "docs/MVP_IMPLEMENTED.md": "301ff9e3ad0ab75e0f6ecbddde82291cfa9cc85892c8e0db3f764ffa239fb591",
     "docs/NATIVE_BACKEND.md": "cc5b3680a3e250a4bcaa31170d40f5c7cf3fa3ecc74a489613a9a61bfeafd51f",
     "docs/ROADMAP.md": "ef7451d1bba1f420e8e77baf8328e998aadb8a20fe7aedb99e55345b91c5c3d6",
     "docs/RUST_CRATE_SHIMS.md": "4365b064cbc9a05733710d3a609c1db2623b28cb9ed4ba0e48536e35f9d58c47",
