@@ -42,7 +42,8 @@ mkdir -p "$OUTPUT"
 bridge_temporary="$OUTPUT/.semantic-bridge.$$.node"
 projector_temporary="$OUTPUT/.from-stage2.$$.mjs"
 codec_temporary="$OUTPUT/.codec.$$.mjs"
-trap 'rm -f "$bridge_temporary" "$projector_temporary" "$codec_temporary"' \
+captures_temporary="$OUTPUT/.captures.$$.mjs"
+trap 'rm -f "$bridge_temporary" "$projector_temporary" "$codec_temporary" "$captures_temporary"' \
     0 1 2 15
 
 case $(uname -s) in
@@ -73,6 +74,8 @@ esac
 
 cp "$ROOT/tooling/typed-sidecar/from-stage2.mjs" "$projector_temporary"
 cp "$ROOT/tooling/typed-sidecar/codec.mjs" "$codec_temporary"
+cp "$ROOT/tooling/typed-sidecar/captures.mjs" "$captures_temporary"
 mv "$bridge_temporary" "$OUTPUT/semantic-bridge.node"
 mv "$projector_temporary" "$OUTPUT/from-stage2.mjs"
 mv "$codec_temporary" "$OUTPUT/codec.mjs"
+mv "$captures_temporary" "$OUTPUT/captures.mjs"

@@ -851,3 +851,6 @@ process.stdout.write(
     'PASS: complete capture sections enforce identity, order, join and profile bounds\n' +
     'PASS: v2 publishes through the v1 codec, replay and cancellation included, and v1 bytes are unchanged\n',
 )
+
+// Full synthetic transactions add the upstream context absent from this section gate.
+await import('./capture_transactions_test.mjs')
