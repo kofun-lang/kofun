@@ -251,7 +251,21 @@ bool kofun_semantic_validate_logical_path(KofunSemanticBytes path) {
         return false;
     }
     if (path.bytes[0] == '/' || path.bytes[0] == '\\') return false;
-    if (path.length >= 2u && path.bytes[1] == ':') return false;
+    /* A leading URI scheme is [A-Za-z][A-Za-z0-9+.-]*:. This also
+     * rejects drive prefixes, without rejecting relative names like 1:x. */
+    if ((path.bytes[0] >= 'A' && path.bytes[0] <= 'Z') ||
+        (path.bytes[0] >= 'a' && path.bytes[0] <= 'z')) {
+        for (index = 1u; index < path.length; index += 1u) {
+            uint8_t value = path.bytes[index];
+            if (value == ':') return false;
+            if (!((value >= 'A' && value <= 'Z') ||
+                  (value >= 'a' && value <= 'z') ||
+                  (value >= '0' && value <= '9') ||
+                  value == '+' || value == '.' || value == '-')) {
+                break;
+            }
+        }
+    }
     while (cursor < path.length) {
         utf8proc_int32_t codepoint = 0;
         utf8proc_ssize_t width = utf8proc_iterate(
@@ -283,12 +297,6 @@ bool kofun_semantic_validate_logical_path(KofunSemanticBytes path) {
                 return false;
             }
             component_start = index + 1u;
-        }
-        if (index + 2u < path.length &&
-            path.bytes[index] == ':' &&
-            path.bytes[index + 1u] == '/' &&
-            path.bytes[index + 2u] == '/') {
-            return false;
         }
     }
     return true;

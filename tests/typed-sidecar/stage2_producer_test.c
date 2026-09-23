@@ -646,9 +646,21 @@ static void test_invalid_paths_emit_nothing(
         '.', 'k', 'o', 'f', 'u', 'n'
     };
     static const char *invalid_text_paths[] = {
+        "",
         "/abs/main.kofun",
         "C:/src/main.kofun",
         "file://src/main.kofun",
+        "https:remote.kofun",
+        "mailto:src.kofun",
+        "abc:main.kofun",
+        "git+ssh:main.kofun",
+        "a.b-c:main.kofun",
+        "a0:main.kofun",
+        "a:main.kofun",
+        "Z:main.kofun",
+        "A0+.-:main.kofun",
+        "a:",
+        "1://main.kofun",
         "../src/main.kofun",
         "src/../main.kofun",
         "src/\nprivate.kofun"
@@ -659,12 +671,19 @@ static void test_invalid_paths_emit_nothing(
          index += 1u) {
         Audit audit;
         KofunSemanticSink sink;
+        KofunSemanticStream *stream = kofun_semantic_stream_create();
+        KofunSemanticSink stream_sink;
         KofunStage2SemanticInput input;
         KofunStage2SemanticResult result;
         KofunSemanticBytes logical_path;
+        const uint8_t *bytes = NULL;
+        size_t length = 0u;
         unsigned phase;
         memset(&audit, 0, sizeof(audit));
         memset(&input, 0, sizeof(input));
+        CHECK(stream != NULL);
+        stream_sink = kofun_semantic_stream_sink(stream);
+        audit.downstream = &stream_sink;
         sink = audit_sink(&audit);
         if (index <
             sizeof(invalid_text_paths) / sizeof(invalid_text_paths[0])) {
@@ -689,6 +708,10 @@ static void test_invalid_paths_emit_nothing(
         for (phase = 0u; phase < AUDIT_PHASES; phase += 1u) {
             CHECK(audit.calls[phase] == 0u);
         }
+        CHECK(audit.capture.length == 0u);
+        CHECK(!kofun_semantic_stream_bytes(stream, &bytes, &length));
+        CHECK(bytes == NULL && length == 0u);
+        kofun_semantic_stream_destroy(stream);
         audit_destroy(&audit);
     }
 }
@@ -1102,17 +1125,40 @@ static void test_exact_dependencies(const char *path) {
 }
 
 int main(int argc, char **argv) {
+    static const char *valid_paths[] = {
+        "src/main.kofun",
+        "src/name:value.kofun",
+        "1abc:main.kofun",
+        "1:main.kofun",
+        "-abc:main.kofun",
+        "-:main.kofun",
+        ":main.kofun",
+        "_abc:main.kofun",
+        "a_b:main.kofun",
+        "src/a+b:main.kofun",
+        "src/a:main.kofun",
+        "a/b:main.kofun",
+        "a",
+        "\xc3\xa9:main.kofun",
+        "a\xc3\xa9:main.kofun"
+    };
     uint8_t *valid_source;
     uint8_t *invalid_source;
     size_t valid_length;
     size_t invalid_length;
+    size_t path_index;
     unsigned phase;
     CHECK(argc == 9);
     valid_source = read_file(argv[1], &valid_length);
     invalid_source = read_file(argv[2], &invalid_length);
 
     test_invalid_paths_emit_nothing(valid_source, valid_length);
-    test_dual_sink(valid_source, valid_length, "src/main.kofun");
+    for (path_index = 0u;
+         path_index < sizeof(valid_paths) / sizeof(valid_paths[0]);
+         path_index += 1u) {
+        CHECK(kofun_semantic_validate_logical_path(text(valid_paths[path_index])));
+        test_dual_sink(valid_source, valid_length, valid_paths[path_index]);
+    }
     test_dual_sink(
         invalid_source, invalid_length, "src/invalid.kofun"
     );
