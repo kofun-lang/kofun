@@ -18809,17 +18809,17 @@ fn pipeline_subject_take(source: Text, cursor: Int) -> Bool {
 }
 
 # #1540. This is a type bound, not a cleanup or authority proof.
-fn move_trivial_record(source: Text, type: Text) -> Bool {
-    if type == "RootAuthority" || type == "EnvironmentAuthority" {
+fn move_trivial_record(source: Text, type_spelling: Text) -> Bool {
+    if type_spelling == "RootAuthority" || type_spelling == "EnvironmentAuthority" {
         return false
     }
-    let count = record_field_count(source, type)
+    let count = record_field_count(source, type_spelling)
     if count < 0 {
         return false
     }
     let mut index = 0
     while index < count {
-        let field = record_field_text(source, type, index, true)
+        let field = record_field_text(source, type_spelling, index, true)
         if field != "Int" && field != "Bool" {
             return false
         }
@@ -18833,8 +18833,8 @@ fn move_positional_owner(source: Text, hir: Text, binding: Text) -> Bool {
     if mode == "read" || mode == "edit" {
         return false
     }
-    let type = hir_binding_field(hir, binding, 5)
-    return type == "Bytes" || move_trivial_record(source, type)
+    let type_spelling = hir_binding_field(hir, binding, 5)
+    return type_spelling == "Bytes" || move_trivial_record(source, type_spelling)
 }
 
 # Exclude conditional/loop bodies and conditional expression operands. This
@@ -24697,9 +24697,9 @@ fn checked_place_type_id(path: Text, name: Text) -> Text {
     return scoped_hir_hash_frame("kofun.id.symbol/v1", payload, "", "", "")
 }
 
-fn checked_place_normalize_type(type: Text) -> Text {
-    if type == "List[Text]" { return "List" }
-    return type
+fn checked_place_normalize_type(type_spelling: Text) -> Text {
+    if type_spelling == "List[Text]" { return "List" }
+    return type_spelling
 }
 
 fn checked_place_type_known(catalog: Text, name: Text) -> Bool {
@@ -24756,17 +24756,17 @@ fn checked_place_catalog(source: Text) -> Text {
                 names = names + field_name + "|"
                 let typed = skip_trivia(source, token_end(source, colon))
                 let end = record_field_type_end(source, typed, close - 1)
-                let mut type = token_text(source, typed)
-                if type == "List" {
+                let mut type_spelling = token_text(source, typed)
+                if type_spelling == "List" {
                     let list_type = parameter_list_type_text(source, typed, close - 1)
-                    if list_type == "List[Int]" { type = "List[Int]" }
+                    if list_type == "List[Int]" { type_spelling = "List[Int]" }
                     else if list_type != "List[Text]" { return checked_place_error("unresolved field type", typed) }
                 }
                 if end <= typed || end > close - 1 {
                     return checked_place_error("malformed field type", typed)
                 }
                 result = result + "field|" + name + "|" + to_text(ordinal) + "|" +
-                    field_name + "|" + type + "|" + to_text(field) + "\n"
+                    field_name + "|" + type_spelling + "|" + to_text(field) + "\n"
                 ordinal = ordinal + 1
                 field = skip_trivia(source, end)
                 if field < close - 1 {
@@ -25154,7 +25154,7 @@ fn checked_place_shape(source: Text, start: Int, end: Int, depth: Int) -> Text {
 fn checked_place_binding_type(source: Text, hir: Text, catalog: Text,
     binding: Text, depth: Int) -> Text {
     if depth > 64 { return checked_place_error("expression depth limit is 64", 0) }
-    let type = checked_place_normalize_type(hir_binding_field(hir, binding, 5))
+    let type_spelling = checked_place_normalize_type(hir_binding_field(hir, binding, 5))
     let name = decimal_value(hir_binding_field(hir, binding, 8))
     let mut after = skip_trivia(source, token_end(source, name))
     if token_text(source, after) == ":" {
@@ -25163,14 +25163,14 @@ fn checked_place_binding_type(source: Text, hir: Text, catalog: Text,
         if end < 0 { end = annotation_type_end(source, annotation) }
         after = skip_trivia(source, end)
     }
-    if token_text(source, after) != "=" { return type }
+    if token_text(source, after) != "=" { return type_spelling }
     let start = skip_trivia(source, token_end(source, after))
     let end = decimal_value(hir_binding_field(hir, binding, 10))
     let actual = checked_place_expression_type(source, hir, catalog, start, end, depth + 1)
     if starts_with(actual, "error[") { return actual }
-    if actual == "List[?]" && (type == "List[Int]" || type == "List") { return type }
-    if actual != type { return "" }
-    return type
+    if actual == "List[?]" && (type_spelling == "List[Int]" || type_spelling == "List") { return type_spelling }
+    if actual != type_spelling { return "" }
+    return type_spelling
 }
 
 # Internal result: place|binding-number|checked-type|depth|projection-hex|JSON.
@@ -25185,7 +25185,7 @@ fn checked_place_walk(source: Text, hir: Text, catalog: Text, start: Int,
     end: Int, path: Text, recursion: Int) -> Text {
     if recursion > 64 { return checked_place_error("expression depth limit is 64", start) }
     let mut binding = ""
-    let mut type = ""
+    let mut type_spelling = ""
     let mut nameable = true
     let mut cursor = skip_trivia(source, token_end(source, start))
     let mut count = 0
@@ -25202,7 +25202,7 @@ fn checked_place_walk(source: Text, hir: Text, catalog: Text, start: Int,
             return "unknown|" + to_text(start) + "|" + to_text(end) + "\n"
         }
         binding = hir_field(inner, 0, 1)
-        type = hir_field(inner, 0, 2)
+        type_spelling = hir_field(inner, 0, 2)
         count = decimal_value(hir_field(inner, 0, 3))
         raw = hir_field(inner, 0, 4)
         json = hir_field(inner, 0, 5)
@@ -25213,12 +25213,12 @@ fn checked_place_walk(source: Text, hir: Text, catalog: Text, start: Int,
         binding = hir_use_binding_id(hir, start)
         if len(binding) == 0 { return "unknown|" + to_text(start) + "|" + to_text(end) + "\n" }
         if starts_with(catalog, "checked-capture-types/v1") {
-            type = capture_binding_type(source, hir, catalog, binding, recursion + 1)
-        } else { type = checked_place_binding_type(source, hir, catalog, binding, recursion + 1) }
-        if starts_with(type, "error[") { return type }
-        if len(type) == 0 { return checked_place_error("binding initializer is not well typed", start) }
-        if !checked_place_type_known(catalog, type) && type != "Float" && type != "Decimal" &&
-            type != "Fn" && type != "Bytes" && !authority_type_name(type) {
+            type_spelling = capture_binding_type(source, hir, catalog, binding, recursion + 1)
+        } else { type_spelling = checked_place_binding_type(source, hir, catalog, binding, recursion + 1) }
+        if starts_with(type_spelling, "error[") { return type_spelling }
+        if len(type_spelling) == 0 { return checked_place_error("binding initializer is not well typed", start) }
+        if !checked_place_type_known(catalog, type_spelling) && type_spelling != "Float" && type_spelling != "Decimal" &&
+            type_spelling != "Fn" && type_spelling != "Bytes" && !authority_type_name(type_spelling) {
             return checked_place_error("binding type is unavailable", start)
         }
     }
@@ -25230,20 +25230,20 @@ fn checked_place_walk(source: Text, hir: Text, catalog: Text, start: Int,
             if token_kind(source, field) != "identifier" || token_end(source, field) > end {
                 return checked_place_error("malformed field projection", field)
             }
-            let resolved = checked_place_field(catalog, type, token_text(source, field))
+            let resolved = checked_place_field(catalog, type_spelling, token_text(source, field))
             if resolved < 0 { return checked_place_error("field does not resolve for checked owner type", field) }
             if count < 8 && len(path) > 0 {
-                let owner = checked_place_type_id(path, type)
+                let owner = checked_place_type_id(path, type_spelling)
                 let ordinal = hir_field(catalog, resolved, 2)
                 raw = raw + "01" + owner + scoped_hir_hex(decimal_value(ordinal), 8)
                 if len(json) > 0 { json = json + "," }
                 json = json + "{\"display\":" + scoped_hir_display(source, field) +
                     ",\"kind\":\"field\",\"ordinal\":" + ordinal + ",\"owner_type_id\":\"" + owner + "\"}"
             }
-            type = hir_field(catalog, resolved, 4)
+            type_spelling = hir_field(catalog, resolved, 4)
             cursor = skip_trivia(source, token_end(source, field))
         } else if token == "[" {
-            if type != "List[Int]" && type != "List" { return checked_place_error("slice receiver must be a checked list", cursor) }
+            if type_spelling != "List[Int]" && type_spelling != "List" { return checked_place_error("slice receiver must be a checked list", cursor) }
             let close = balanced_end(source, cursor, "[", "]")
             if close < 0 || close > end { return checked_place_error("malformed slice", cursor) }
             let lower = skip_trivia(source, token_end(source, cursor))
@@ -25261,7 +25261,7 @@ fn checked_place_walk(source: Text, hir: Text, catalog: Text, start: Int,
                 let index_type = checked_place_bound_type(source, hir, catalog, lower, close - 1, recursion + 1)
                 if starts_with(index_type, "error[") { return index_type }
                 if index_type != "Int" { return checked_place_error("index must have checked Int type", lower) }
-                if type == "List[Int]" { type = "Int" } else { type = "Text" }
+                if type_spelling == "List[Int]" { type_spelling = "Int" } else { type_spelling = "Text" }
                 nameable = false
                 cursor = skip_trivia(source, close)
                 count = count + 1
@@ -25308,7 +25308,7 @@ fn checked_place_walk(source: Text, hir: Text, catalog: Text, start: Int,
     if cursor < end { return checked_place_error("incomplete expression", cursor) }
     let mut kind = "place"
     if !nameable { kind = "unnameable" }
-    return kind + "|" + binding + "|" + type + "|" + to_text(count) + "|" + raw + "|" + json + "|" + to_text(start) + "|" + to_text(end) + "\n"
+    return kind + "|" + binding + "|" + type_spelling + "|" + to_text(count) + "|" + raw + "|" + json + "|" + to_text(start) + "|" + to_text(end) + "\n"
 }
 
 fn checked_place_candidate(source: Text, hir: Text, catalog: Text, start: Int, end: Int, path: Text) -> Text {
@@ -25318,9 +25318,9 @@ fn checked_place_candidate(source: Text, hir: Text, catalog: Text, start: Int, e
     if len(delimiters) > 0 { return delimiters }
     let shape = checked_place_shape(source, start, end, 0)
     if len(shape) > 0 { return shape }
-    let type = checked_place_expression_type(source, hir, catalog, start, end, 0)
-    if starts_with(type, "error[") { return type }
-    if len(type) == 0 { return checked_place_error("expression does not have a checked type", start) }
+    let type_spelling = checked_place_expression_type(source, hir, catalog, start, end, 0)
+    if starts_with(type_spelling, "error[") { return type_spelling }
+    if len(type_spelling) == 0 { return checked_place_error("expression does not have a checked type", start) }
     return checked_place_walk(source, hir, catalog, start, end, path, 0)
 }
 
@@ -25413,8 +25413,8 @@ fn capture_line_end(rows: Text, start: Int) -> Int {
     return at
 }
 
-fn capture_value(type: Text, facts: Text) -> Text {
-    return "value|" + type + "\n" + facts
+fn capture_value(type_spelling: Text, facts: Text) -> Text {
+    return "value|" + type_spelling + "\n" + facts
 }
 
 fn capture_compatible(actual: Text, expected: Text) -> Bool {
@@ -25471,8 +25471,8 @@ fn capture_binding_type(source: Text, hir: Text, catalog: Text, binding: Text, d
         at = skip_trivia(source, capture_type_end(source, typed))
     }
     if token_text(source, at) != "=" {
-        let type = checked_place_normalize_type(hir_binding_field(hir, binding, 5))
-        if checked_place_type_known(catalog, type) || type == "Fn" { return type }
+        let type_spelling = checked_place_normalize_type(hir_binding_field(hir, binding, 5))
+        if checked_place_type_known(catalog, type_spelling) || type_spelling == "Fn" { return type_spelling }
         return capture_error("E2S154", "binding has no checked source type", declaration)
     }
     let start = skip_trivia(source, token_end(source, at))
@@ -25540,19 +25540,19 @@ fn capture_parameters(source: Text, open: Int) -> Text {
         let mut mode = "read"
         if ownership_mode_token(source, at) { mode = token_text(source, at) }
         if mode == "copy" { mode = "read" }
-        let type = capture_type_at(source, typed)
+        let type_spelling = capture_type_at(source, typed)
         if capture_type_end(source, typed) != checked_place_trim_end(source, at, stop) { return capture_error("E2S154", "malformed parameter type", typed) }
-        if !capture_declared_type(source, type) { return capture_error("E2S15", "parameter type is outside the checked profile", typed) }
-        if type == "Fn" && mode != "read" { return capture_error("E2S154", "callable parameters require an immutable read signature", at) }
-        if mode == "edit" && record_declaration_start(source, type) >= 0 {
+        if !capture_declared_type(source, type_spelling) { return capture_error("E2S15", "parameter type is outside the checked profile", typed) }
+        if type_spelling == "Fn" && mode != "read" { return capture_error("E2S154", "callable parameters require an immutable read signature", at) }
+        if mode == "edit" && record_declaration_start(source, type_spelling) >= 0 {
             return capture_error("E2S181", "nominal-record parameters cannot use edit", at)
         }
-        if mode == "take" && !move_trivial_record(source, type) {
+        if mode == "take" && !move_trivial_record(source, type_spelling) {
             return capture_error("E2S122", "take requires a checked owning record carrier", at)
         }
         let mut arity = -1
-        if type == "Fn" { arity = callable_type_arity(source, typed) }
-        rows = rows + "formal|" + to_text(ordinal) + "|" + label + "|" + type + "|" + mode + "|" + to_text(arity) + "\n"
+        if type_spelling == "Fn" { arity = callable_type_arity(source, typed) }
+        rows = rows + "formal|" + to_text(ordinal) + "|" + label + "|" + type_spelling + "|" + mode + "|" + to_text(arity) + "\n"
         ordinal = ordinal + 1
         at = stop
         if at < end - 1 { at = skip_trivia(source, token_end(source, at)) }
@@ -25603,9 +25603,9 @@ fn capture_lambda(source: Text, hir: Text, catalog: Text, open: Int, path: Text,
     let mut returned = capture_record_start(result, "return-type", 0)
     let mut inferred = ""
     while returned >= 0 {
-        let type = hir_field(result, returned, 1)
-        if len(inferred) > 0 && !capture_compatible(type, inferred) { return capture_error("E2S12", "inconsistent lambda return types", body) }
-        inferred = type
+        let type_spelling = hir_field(result, returned, 1)
+        if len(inferred) > 0 && !capture_compatible(type_spelling, inferred) { return capture_error("E2S12", "inconsistent lambda return types", body) }
+        inferred = type_spelling
         returned = capture_record_start(result, "return-type", returned + 1)
     }
     if len(inferred) > 0 && !capture_compatible(hir_field(result, 0, 1), inferred) {
@@ -25782,12 +25782,12 @@ fn capture_expression(source: Text, hir: Text, catalog: Text, start: Int, end: I
         let a = hir_field(left, 0, 1)
         let b = hir_field(right, 0, 1)
         let symbol = token_text(source, operator)
-        let mut type = ""
-        if rank <= 2 && a == "Bool" && b == "Bool" { type = "Bool" }
-        if rank == 3 && a == b && (a == "Int" || ((symbol == "==" || symbol == "!=") && (a == "Bool" || a == "Text"))) { type = "Bool" }
-        if rank >= 4 && a == "Int" && b == "Int" && symbol != "/" { type = "Int" }
-        if len(type) == 0 { return capture_error("E2S12", "operator operand type mismatch", operator) }
-        return capture_value(type, capture_tail(left) + capture_tail(right))
+        let mut type_spelling = ""
+        if rank <= 2 && a == "Bool" && b == "Bool" { type_spelling = "Bool" }
+        if rank == 3 && a == b && (a == "Int" || ((symbol == "==" || symbol == "!=") && (a == "Bool" || a == "Text"))) { type_spelling = "Bool" }
+        if rank >= 4 && a == "Int" && b == "Int" && symbol != "/" { type_spelling = "Int" }
+        if len(type_spelling) == 0 { return capture_error("E2S12", "operator operand type mismatch", operator) }
+        return capture_value(type_spelling, capture_tail(left) + capture_tail(right))
     }
     if token == "take" {
         let begin = skip_trivia(source, token_end(source, first))
@@ -25799,8 +25799,8 @@ fn capture_expression(source: Text, hir: Text, catalog: Text, start: Int, end: I
     if token == "!" || token == "-" || token == "+" {
         let checked = capture_expression(source, hir, catalog, token_end(source, first), last, path, "read", depth + 1)
         if starts_with(checked, "error[") { return checked }
-        let type = hir_field(checked, 0, 1)
-        if (token == "!" && type != "Bool") || (token != "!" && type != "Int") {
+        let type_spelling = hir_field(checked, 0, 1)
+        if (token == "!" && type_spelling != "Bool") || (token != "!" && type_spelling != "Int") {
             return capture_error("E2S12", "unary operand type mismatch", first)
         }
         return checked
@@ -25836,10 +25836,10 @@ fn capture_expression(source: Text, hir: Text, catalog: Text, start: Int, end: I
             item = stop
             if item < last - 1 { item = skip_trivia(source, token_end(source, item)) }
         }
-        let mut type = "List[?]"
-        if element == "Int" { type = "List[Int]" }
-        if element == "Text" { type = "List" }
-        return capture_value(type, facts)
+        let mut type_spelling = "List[?]"
+        if element == "Int" { type_spelling = "List[Int]" }
+        if element == "Text" { type_spelling = "List" }
+        return capture_value(type_spelling, facts)
     }
     let shape = checked_place_shape(source, first, last, 0)
     if len(shape) > 0 { return shape }
@@ -25958,7 +25958,7 @@ fn capture_block(source: Text, hir: Text, catalog: Text, start: Int, end: Int, p
     let mut at = skip_trivia(source, start)
     let mut facts = ""
     let mut moved = initial
-    let mut type = "Void"
+    let mut type_spelling = "Void"
     let mut terminated = false
     while at < end {
         let token = token_text(source, at)
@@ -25974,7 +25974,7 @@ fn capture_block(source: Text, hir: Text, catalog: Text, start: Int, end: Int, p
             let state = capture_record_start(checked, "state", 0)
             moved = hir_field(checked, state, 1)
             facts = facts + capture_tail(capture_tail(checked))
-            type = hir_field(checked, 0, 1)
+            type_spelling = hir_field(checked, 0, 1)
             if capture_terminal(checked) { terminated = true }
             at = skip_trivia(source, close)
             continue
@@ -26005,7 +26005,7 @@ fn capture_block(source: Text, hir: Text, catalog: Text, start: Int, end: Int, p
             let left_terminal = capture_terminal(left)
             let mut union = moved
             if !left_terminal { union = capture_join_state(union, hir_field(left, capture_record_start(left, "state", 0), 1)) }
-            type = "Void"
+            type_spelling = "Void"
             at = skip_trivia(source, close)
             if token == "if" && token_text(source, at) == "else" {
                 let other = skip_trivia(source, token_end(source, at))
@@ -26014,11 +26014,11 @@ fn capture_block(source: Text, hir: Text, catalog: Text, start: Int, end: Int, p
                 let right = capture_block(source, hir, catalog, token_end(source, other), after - 1, path, expected, moved, loop_start, depth + 1)
                 if starts_with(right, "error[") { return right }
                 let right_terminal = capture_terminal(right)
-                type = hir_field(left, 0, 1)
-                if left_terminal && !right_terminal { type = hir_field(right, 0, 1) }
-                if !left_terminal && !right_terminal && type != hir_field(right, 0, 1) {
+                type_spelling = hir_field(left, 0, 1)
+                if left_terminal && !right_terminal { type_spelling = hir_field(right, 0, 1) }
+                if !left_terminal && !right_terminal && type_spelling != hir_field(right, 0, 1) {
                     if skip_trivia(source, after) >= end { return capture_error("E2S12", "branch result type mismatch", other) }
-                    type = "Void"
+                    type_spelling = "Void"
                 }
                 facts = facts + capture_tail(capture_tail(right))
                 if !right_terminal { union = capture_join_state(union, hir_field(right, capture_record_start(right, "state", 0), 1)) }
@@ -26044,7 +26044,7 @@ fn capture_block(source: Text, hir: Text, catalog: Text, start: Int, end: Int, p
             let mut covered = "|"
             let mut union = moved
             let mut all_terminal = true
-            type = ""
+            type_spelling = ""
             while arm < close - 1 {
                 let summary = pattern_summary(source, arm)
                 let arrow = pattern_arm_arrow(source, pattern_summary_end(summary), close - 1)
@@ -26060,8 +26060,8 @@ fn capture_block(source: Text, hir: Text, catalog: Text, start: Int, end: Int, p
                 if starts_with(branch, "error[") { return branch }
                 let actual = hir_field(branch, 0, 1)
                 if !capture_terminal(branch) {
-                    if len(type) > 0 && type != actual { return capture_error("E2S12", "match result type mismatch", body) }
-                    type = actual
+                    if len(type_spelling) > 0 && type_spelling != actual { return capture_error("E2S12", "match result type mismatch", body) }
+                    type_spelling = actual
                     all_terminal = false
                     union = capture_join_state(union, hir_field(branch, capture_record_start(branch, "state", 0), 1))
                 }
@@ -26123,32 +26123,32 @@ fn capture_block(source: Text, hir: Text, catalog: Text, start: Int, end: Int, p
                 return capture_error("E2S12", "declaration type mismatch", value)
             }
         }
-        type = hir_field(checked, 0, 1)
+        type_spelling = hir_field(checked, 0, 1)
         if declaration >= 0 {
             let binding = hir_definition_id_at(hir, declaration)
             if hir_binding_field(hir, binding, 4) == "mutable" {
-                if record_declaration_start(source, type) >= 0 { return capture_error("E2S32", "nominal-record bindings are immutable", declaration) }
-                if type == "Fn" { return capture_error("E2S154", "callable bindings require an immutable signature", declaration) }
+                if record_declaration_start(source, type_spelling) >= 0 { return capture_error("E2S32", "nominal-record bindings are immutable", declaration) }
+                if type_spelling == "Fn" { return capture_error("E2S154", "callable bindings require an immutable signature", declaration) }
             }
         }
         if returning {
-            if len(expected) > 0 && !capture_compatible(type, expected) { return capture_error("E2S12", "return type mismatch", value) }
-            facts = facts + "return-type|" + type + "\n"
+            if len(expected) > 0 && !capture_compatible(type_spelling, expected) { return capture_error("E2S12", "return type mismatch", value) }
+            facts = facts + "return-type|" + type_spelling + "\n"
             terminated = true
         }
         moved = capture_flow(source, hir, capture_tail(checked), moved, loop_start)
         if starts_with(moved, "error[") { return moved }
         facts = facts + capture_tail(checked)
-        if declaration >= 0 { type = "Void" }
+        if declaration >= 0 { type_spelling = "Void" }
         at = skip_trivia(source, stop)
     }
     let mut terminal = "false"
     if terminated {
         terminal = "true"
         let returned = capture_record_start(facts, "return-type", 0)
-        if returned >= 0 { type = hir_field(facts, returned, 1) }
+        if returned >= 0 { type_spelling = hir_field(facts, returned, 1) }
     }
-    return capture_value(type, "state|" + moved + "\nterminal|" + terminal + "\n" + facts)
+    return capture_value(type_spelling, "state|" + moved + "\nterminal|" + terminal + "\n" + facts)
 }
 
 fn capture_checked_source(source: Text, hir: Text, catalog: Text, path: Text) -> Text {
@@ -26453,9 +26453,9 @@ fn emit_capture_hir_v2_file(input: Text, output: Text, logical_path: Text) -> Bo
     return true
 }
 
-fn capture_declared_type(source: Text, type: Text) -> Bool {
-    return type == "Int" || type == "Bool" || type == "Text" || type == "List[Int]" || type == "List" || type == "Fn" ||
-        record_declaration_start(source, type) >= 0 || enum_constructor_count(source, type) > 0
+fn capture_declared_type(source: Text, type_spelling: Text) -> Bool {
+    return type_spelling == "Int" || type_spelling == "Bool" || type_spelling == "Text" || type_spelling == "List[Int]" || type_spelling == "List" || type_spelling == "Fn" ||
+        record_declaration_start(source, type_spelling) >= 0 || enum_constructor_count(source, type_spelling) > 0
 }
 
 fn capture_fn_compatible(source: Text, hir: Text, catalog: Text, start: Int, end: Int, arity: Int, depth: Int) -> Bool {
