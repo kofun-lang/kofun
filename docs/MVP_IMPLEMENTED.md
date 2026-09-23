@@ -34,7 +34,7 @@
 | general parser/type checker | open | no active gate | `general-parser-type-checker` |
 | borrowed-List Copy/move ownership check | narrow Stage 2 checkpoint | `bootstrap/stage2/check.sh` | `borrowed-list-ownership` |
 | bounded positional take and record-edit checking | checkpoint for direct bare owning Bytes and Int/Bool records; BindingId-based E2S123 and by-value record-edit E2S181; no general CFG ownership | `task move-call-crossings` | `positional-move-crossings` |
-| bounded Bytes[65536] carrier and mutation on C11 Stage 2 | bounded C11 Stage 2 checkpoint over tracked fixtures; refuses read-to-edit crossing, wrapper aliases and private source results, and resolves same-name declarations and parenthesized BindingIds; excludes complete exit cleanup; no Text bridge | `task bounded-bytes` | `bounded-bytes` |
+| bounded Bytes[65536] carrier and mutation on C11 Stage 2 | bounded C11 Stage 2 checkpoint over tracked fixtures; refuses read-to-edit crossing, wrapper aliases and private source results, and resolves same-name declarations and parenthesized BindingIds; includes bounded whole-file reads and a Text bridge of at most 255 bytes; excludes complete exit cleanup | `task bounded-bytes` | `bounded-bytes` |
 | bounded injected-Bytes time-zone transition producer | bounded Stage 2/C11 checkpoint | `task tzdb` | `bounded-tzdb-producer` |
 | bounded affine resource-handle protocol | bounded Stage 2/C11 checkpoint | `task affine-resource-handle` | `affine-resource-handle` |
 | general ownership and law checking | open | no active general pass | `general-ownership-checking` |
