@@ -11814,6 +11814,428 @@
           ]
         }
       ]
+    },
+    {
+      "name": "lambda-before-take",
+      "source": "type Token = { value: Int }\nfn inspect(read item: Token) -> Int { return item.value }\nfn consume(take item: Token) -> Int { return item.value }\nfn main() -> Int {\n let item: Token = Token(value: 7)\n let later = fn() => inspect(item)\n consume(item)\n return 0\n}\n",
+      "allocation_note": "Ordinary nested lambda is created while item is live, before consume(item), and is never invoked. It contributes no task captures or lifecycle records because this source contains no par; later caller flow is independent of checking the latent body.",
+      "pars": [],
+      "tasks": []
+    },
+    {
+      "name": "task-local-lambda-before-take",
+      "source": "type Token = { value: Int }\nfn inspect(read item: Token) -> Int { return item.value }\nfn consume(take item: Token) -> Int { return item.value }\nfn main() {\n par |scope| { scope.spawn(fn() {\n let item: Token = Token(value: 7)\n let later = fn() => inspect(item)\n consume(item)\n 0\n }) }\n}\n",
+      "allocation_note": "Creating the nested lambda before consume(item) is valid. Both item uses are excluded as task-local, so only par/task/scope-exit join records remain. Authored scopes inspect1/2, consume3/4, main5/6, par7, task8/9; bindings inspect.item0, consume.item1, scope2, item3, later4, hidden handle5.",
+      "pars": [
+        {
+          "scope": 7,
+          "token": 2,
+          "name": "scope",
+          "span": [
+            157,
+            283
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "par": 0,
+          "handle": 5,
+          "span": [
+            171,
+            281
+          ],
+          "lambda_span": [
+            183,
+            280
+          ],
+          "observations": []
+        }
+      ]
+    },
+    {
+      "name": "arrow-task-tail-read",
+      "source": "fn probe(outer: Int) {\n par |scope| {\n  scope.spawn(fn() => outer)\n }\n}\n",
+      "allocation_note": "Authored arrow task: function parameter/body scopes precede par scope 3; par token 1 and hidden handle 2 follow the declared parameter/let order. The expression and lambda share their half-open end; following source is outside the task.",
+      "pars": [
+        {
+          "scope": 3,
+          "token": 1,
+          "name": "scope",
+          "span": [
+            24,
+            69
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "par": 0,
+          "handle": 2,
+          "span": [
+            40,
+            66
+          ],
+          "lambda_span": [
+            52,
+            65
+          ],
+          "observations": [
+            {
+              "mode": "read",
+              "span": [
+                60,
+                65
+              ],
+              "text": "outer",
+              "binding": 0,
+              "name": "outer",
+              "projections": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "arrow-task-tail-binary",
+      "source": "fn probe(outer: Int) {\n par |scope| {\n  scope.spawn(fn() => outer + outer)\n }\n}\n",
+      "allocation_note": "Authored arrow task: function parameter/body scopes precede par scope 3; par token 1 and hidden handle 2 follow the declared parameter/let order. The expression and lambda share their half-open end; following source is outside the task.",
+      "pars": [
+        {
+          "scope": 3,
+          "token": 1,
+          "name": "scope",
+          "span": [
+            24,
+            77
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "par": 0,
+          "handle": 2,
+          "span": [
+            40,
+            74
+          ],
+          "lambda_span": [
+            52,
+            73
+          ],
+          "observations": [
+            {
+              "mode": "read",
+              "span": [
+                60,
+                65
+              ],
+              "text": "outer",
+              "binding": 0,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                68,
+                73
+              ],
+              "text": "outer",
+              "binding": 0,
+              "name": "outer",
+              "projections": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "arrow-task-tail-field",
+      "source": "type Token = { value: Int }\nfn probe(record: Token) {\n par |scope| {\n  scope.spawn(fn() => record.value)\n }\n}\n",
+      "allocation_note": "Authored arrow task: function parameter/body scopes precede par scope 3; par token 1 and hidden handle 2 follow the declared parameter/let order. The expression and lambda share their half-open end; following source is outside the task.",
+      "pars": [
+        {
+          "scope": 3,
+          "token": 1,
+          "name": "scope",
+          "span": [
+            55,
+            107
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "par": 0,
+          "handle": 2,
+          "span": [
+            71,
+            104
+          ],
+          "lambda_span": [
+            83,
+            103
+          ],
+          "observations": [
+            {
+              "mode": "read",
+              "span": [
+                91,
+                103
+              ],
+              "text": "record.value",
+              "binding": 0,
+              "name": "record",
+              "projections": [
+                {
+                  "kind": "field",
+                  "owner": "Token",
+                  "ordinal": 0,
+                  "name": "value"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "arrow-task-tail-call",
+      "source": "type Token = { value: Int }\nfn observe(read item: Token) -> Int { return item.value }\nfn probe(item: Token) {\n par |scope| {\n  scope.spawn(fn() => observe(item))\n }\n}\n",
+      "allocation_note": "Authored arrow task: function parameter/body scopes precede par scope 5; par token 2 and hidden handle 3 follow the declared parameter/let order. The expression and lambda share their half-open end; following source is outside the task.",
+      "pars": [
+        {
+          "scope": 5,
+          "token": 2,
+          "name": "scope",
+          "span": [
+            111,
+            164
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "par": 0,
+          "handle": 3,
+          "span": [
+            127,
+            161
+          ],
+          "lambda_span": [
+            139,
+            160
+          ],
+          "observations": [
+            {
+              "mode": "read",
+              "span": [
+                155,
+                159
+              ],
+              "text": "item",
+              "binding": 1,
+              "name": "item",
+              "projections": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "arrow-task-tail-index",
+      "source": "fn probe(values: List[Int], index: Int) {\n par |scope| {\n  scope.spawn(fn() => values[index])\n }\n}\n",
+      "allocation_note": "Authored arrow task: function parameter/body scopes precede par scope 3; par token 2 and hidden handle 3 follow the declared parameter/let order. The expression and lambda share their half-open end; following source is outside the task.",
+      "pars": [
+        {
+          "scope": 3,
+          "token": 2,
+          "name": "scope",
+          "span": [
+            43,
+            96
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "par": 0,
+          "handle": 3,
+          "span": [
+            59,
+            93
+          ],
+          "lambda_span": [
+            71,
+            92
+          ],
+          "observations": [
+            {
+              "mode": "read",
+              "span": [
+                79,
+                92
+              ],
+              "text": "values[index]",
+              "reason": "unnameable-place"
+            },
+            {
+              "mode": "read",
+              "span": [
+                86,
+                91
+              ],
+              "text": "index",
+              "binding": 1,
+              "name": "index",
+              "projections": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "arrow-task-tail-slice-bound-call",
+      "source": "fn probe(values: List[Int], lo: Int, hi: Int) {\n par |scope| {\n  scope.spawn(fn() => len(values[lo .. hi]))\n }\n}\n",
+      "allocation_note": "Authored arrow task: function parameter/body scopes precede par scope 3; par token 3 and hidden handle 4 follow the declared parameter/let order. The expression and lambda share their half-open end; following source is outside the task.",
+      "pars": [
+        {
+          "scope": 3,
+          "token": 3,
+          "name": "scope",
+          "span": [
+            49,
+            110
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "par": 0,
+          "handle": 4,
+          "span": [
+            65,
+            107
+          ],
+          "lambda_span": [
+            77,
+            106
+          ],
+          "observations": [
+            {
+              "mode": "read",
+              "span": [
+                89,
+                105
+              ],
+              "text": "values[lo .. hi]",
+              "binding": 0,
+              "name": "values",
+              "projections": [
+                {
+                  "kind": "slice",
+                  "lower": {
+                    "kind": "node",
+                    "span": [
+                      96,
+                      98
+                    ],
+                    "text": "lo"
+                  },
+                  "upper": {
+                    "kind": "node",
+                    "span": [
+                      102,
+                      104
+                    ],
+                    "text": "hi"
+                  }
+                }
+              ]
+            },
+            {
+              "mode": "read",
+              "span": [
+                96,
+                98
+              ],
+              "text": "lo",
+              "binding": 1,
+              "name": "lo",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                102,
+                104
+              ],
+              "text": "hi",
+              "binding": 2,
+              "name": "hi",
+              "projections": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "arrow-task-following-read-excluded",
+      "source": "fn probe(outer: Int, after: Int) {\n par |scope| {\n  scope.spawn(fn() => outer)\n }\n outer + after\n}\n",
+      "allocation_note": "Authored arrow task: function parameter/body scopes precede par scope 3; par token 2 and hidden handle 3 follow the declared parameter/let order. The expression and lambda share their half-open end; following source is outside the task.",
+      "pars": [
+        {
+          "scope": 3,
+          "token": 2,
+          "name": "scope",
+          "span": [
+            36,
+            81
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "par": 0,
+          "handle": 3,
+          "span": [
+            52,
+            78
+          ],
+          "lambda_span": [
+            64,
+            77
+          ],
+          "observations": [
+            {
+              "mode": "read",
+              "span": [
+                72,
+                77
+              ],
+              "text": "outer",
+              "binding": 0,
+              "name": "outer",
+              "projections": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ordinary-latent-take-does-not-move-parent",
+      "source": "type Token = { value: Int }\nfn inspect(read item: Token) -> Int { return item.value }\nfn consume(take item: Token) -> Int { return item.value }\nfn main() -> Int {\n let item: Token = Token(value: 11)\n let deferred = fn() => consume(item)\n return inspect(item)\n}\n",
+      "allocation_note": "There is no par or task: the independently expected lifecycle and capture record list is empty. The uninvoked lambda checks its own nominal take without executing that move in main; the parent read therefore remains valid.",
+      "pars": [],
+      "tasks": []
+    },
+    {
+      "name": "ordinary-shadow-does-not-inherit-move",
+      "source": "type Token = { value: Int }\nfn inspect(read item: Token) -> Int { return item.value }\nfn consume(take item: Token) -> Int { return item.value }\nfn main() -> Int {\n let item: Token = Token(value: 11)\n consume(item)\n if true {\n  let item: Token = Token(value: 23)\n  let deferred = fn() => inspect(item)\n }\n return 0\n}\n",
+      "allocation_note": "There is no par or task, so the complete record list is empty. Main item is binding2; block-local item is binding3 and deferred is binding4 after helper parameters0/1. The nested lambda reads the fresh local owner, not the already moved same-spelled outer binding.",
+      "pars": [],
+      "tasks": []
     }
   ],
   "negative": [
@@ -12027,6 +12449,24 @@
       "name": "callable-actual-wrong-arity",
       "source": "fn apply(read f: Int -> Int, x: Int) -> Int { return f(x) }\nfn probe(outer: Int) {\n par |scope| {\n  scope.spawn(fn() {\n   apply(fn(left: Int, right: Int) { left + right + outer }, 1)\n  })\n }\n}\n",
       "reason": "The actual lambda has a valid Int result and two Int parameters, while the formal requires exactly one. Callable arity is fixed; do not accept the coarse Fn type or invent currying/partial application."
+    },
+    {
+      "name": "lambda-after-take",
+      "source": "type Token = { value: Int }\nfn inspect(read item: Token) -> Int { return item.value }\nfn consume(take item: Token) -> Int { return item.value }\nfn main() -> Int {\n let item: Token = Token(value: 7)\n consume(item)\n let later = fn() => inspect(item)\n return 0\n}\n",
+      "reason": "The ordinary lambda is created after item was transferred. Its latent body must inherit the enclosing unavailable-binding fact and preserve E2S123 even though the callable is never invoked and there are no task captures.",
+      "diagnostic_code": "E2S123"
+    },
+    {
+      "name": "task-local-lambda-after-take",
+      "source": "type Token = { value: Int }\nfn inspect(read item: Token) -> Int { return item.value }\nfn consume(take item: Token) -> Int { return item.value }\nfn main() {\n par |scope| { scope.spawn(fn() {\n let item: Token = Token(value: 7)\n consume(item)\n let later = fn() => inspect(item)\n 0\n }) }\n}\n",
+      "reason": "A task-local item was transferred before the nested lambda was created. Inheriting the enclosing moved state must produce E2S123 before local-base capture exclusion can hide the invalid latent read.",
+      "diagnostic_code": "E2S123"
+    },
+    {
+      "name": "spawn-after-parent-take",
+      "source": "type Token = { value: Int }\nfn inspect(read item: Token) -> Int { return item.value }\nfn consume(take item: Token) -> Int { return item.value }\nfn main() {\n let item: Token = Token(value: 7)\n consume(item)\n par |scope| { scope.spawn(fn() => inspect(item)) }\n}\n",
+      "reason": "The parent transferred item before creating the spawn lambda. The task body cannot reset that known moved state and must refuse its read as E2S123, without claiming future parent/task conflict analysis.",
+      "diagnostic_code": "E2S123"
     }
   ],
   "full_boundary": {

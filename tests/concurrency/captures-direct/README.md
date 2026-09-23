@@ -55,6 +55,32 @@ makes the taken path continue to the read and requires `E2S123`. This checks
 the existing continuing-branch ownership rule without condition refinement
 or nonlexical callee-body propagation.
 
+Latent bodies inherit values already moved when their lambda is created.
+Ordinary and task-local lambdas created after a nominal take, and a spawn
+created after the parent takes its input, must refuse as `E2S123` even if the
+latent body never runs. Creating the ordinary or task-local lambda before
+the take remains a valid control: the former has no lifecycle records, and
+the latter has only par/task/join records because its item is task-local.
+These checks preserve the separate rule that validating a latent body's own
+take does not execute that move in its enclosing flow. They add no runtime
+parent/task conflict or nonlexical callee-summary claim.
+
+Two ordinary-function controls have no par and therefore require an empty
+complete record list. An uninvoked lambda may take a nominal owner while its
+parent subsequently reads that owner. After an outer owner is taken, a fresh
+block-local binding with the same spelling remains available to a nested
+lambda; moved state belongs to the resolved binding, not its name. Empty
+capture output does not excuse checking either ordinary function body.
+
+Arrow task lambdas include an access whose half-open end equals the lambda's
+end. Int-result controls cover a tail read, both occurrences in `outer + outer`,
+a field, a nominal read call and an indexed receiver. The indexed receiver
+keeps its occurrence-specific unknown and its separate external index read.
+An Int-result `len(values[lo .. hi])` control retains the maximal slice and
+both dynamic bound reads. A following read of the same value and another
+binding after the par block contributes neither another origin nor a capture.
+All identities and byte spans are authored independently of producer output.
+
 Task-local mutable nominal records refuse as `E2S32` with either an explicit
 `Token` annotation or an inferred constructor. A mutable callable binding
 and reassignment also refuse under the declaration-based callable profile,
