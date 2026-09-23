@@ -35,10 +35,13 @@ significance, or other backend. The schema's `Bytes[65536]` carrier is used with
 a report wire bound of 16,384 bytes, Text bounds of 96/128/255 UTF-8 bytes, and
 integers no greater than 2^53-1.
 
-The old `benchmark-summary` fixture remains a small compiler regression:
-it still positively checks a complete typed-sidecar projection for `Samples8`
-and `BenchmarkSummary`. The full model's gate instead pins the projector's
-located declaration-limit refusal. Therefore those assertions have not all
-migrated, and deleting the small fixture would remove coverage. Its sorting
-network is not used by this production path. The frozen contract vectors and
-the model/comparison corpora remain independent oracles and regression cases.
+The `benchmark-summary` witness now uses the production summary dependency
+closure. Its six original eight-sample golden values, complete typed-sidecar
+projection (`ReportSummary` and `List[Int]`), repeat and emitted-C observations
+remain checked. The former `Samples8` sorting network and duplicate
+`BenchmarkSummary` builder are removed. The full model's separate gate still
+pins its located declaration-limit refusal; this small complete witness does
+not claim that the whole model projects successfully. The frozen contract
+vectors and model/comparison corpora remain independent oracles and regression
+cases. The certification's invalid physical direction is derived through the
+normative mapper and reports BR006, including comparison/encoder propagation.

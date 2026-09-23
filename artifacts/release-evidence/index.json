@@ -898,7 +898,7 @@
     "tests/stage2/list-int-values/out_of_range_write.kofun": "7c423a2725fb644a5770a494c020fc837c2ef8ec82192584e3f10c90af61acf3",
     "tests/stdlib/benchmark-report-codec/driver.c": "fe5ce012a91f4d08f6e30fa1142797cc367b71c8192a2e8e18e84012d177d665",
     "tests/stdlib/benchmark-report-codec/fixtures.mjs": "2228cb61035a58fda4f8bbf7cf839174748ced90d3977b980c87277976f1d7c0",
-    "tests/stdlib/benchmark-report/README.md": "b5c6a52c0299e4b5759e422acaa6d31a8e41ea162e985dc734aeb2b75b8053c4",
+    "tests/stdlib/benchmark-report/README.md": "47e7e99c1c5e806972067056fee5a0f681ac70c280bd624e43bbf57767b3dd1d",
     "tests/stdlib/tzdb/README.md": "3ebada786546085ecd463e11f35740e9f304e0c873d9c66fd648c758e9f32848",
     "tests/stdlib/tzdb/tzdb.kofun": "a3bbfa3966f6cbde4c3bb3263147f7a89ce31416b6a8d19e3d0cfff3a6b6b379",
     "tests/typed-sidecar/authority-boundary.sh": "4348a011bae0f9c6ac5d3f0730f9a4a6db2a757a1368ac65bf35d75ae77b0052",
