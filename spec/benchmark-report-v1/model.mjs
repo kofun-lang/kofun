@@ -736,12 +736,63 @@ export function decodeReport(input) {
   if (hasDuplicateJsonKey(text)) {
     reject(ERROR_CODES.nonCanonicalBytes, "$bytes", "duplicate JSON object key");
   }
+  // Validate the mathematical JSON number, before binary64 can round a
+  // fractional token to an integer (or underflow it to zero). Canonical
+  // comparison still uses the original bytes, so this never repairs input.
+  parsed = JSON.parse(exactIntegerJson(text));
   const report = validateReport(parsed);
   const canonical = encodeReport(report);
   if (!canonical.equals(bytes)) {
     reject(ERROR_CODES.nonCanonicalBytes, "$bytes", "valid data is not in the canonical byte form");
   }
   return report;
+}
+
+function exactIntegerJson(text) {
+  let at = 0;
+  let normalized = "";
+  while (at < text.length) {
+    const start = at;
+    if (text[at] === '"') {
+      at += 1;
+      while (text[at] !== '"') at += text[at] === "\\" ? 2 : 1;
+      at += 1;
+      normalized += text.slice(start, at);
+    } else if (text[at] === "-" || /[0-9]/u.test(text[at])) {
+      const match = /^(-?)([0-9]+)(?:\.([0-9]+))?(?:[eE]([+-]?[0-9]+))?/u.exec(text.slice(at));
+      at += match[0].length;
+      const fraction = match[3] ?? "";
+      let digits = (match[2] + fraction).replace(/^0+/u, "");
+      if (digits === "") {
+        normalized += "0";
+        continue;
+      }
+      const writtenExponent = BigInt(match[4] ?? "0");
+      const scale = writtenExponent - BigInt(fraction.length);
+      if (scale < 0n) {
+        const removed = -scale;
+        if (removed > BigInt(digits.length) || !/^0+$/u.test(digits.slice(-Number(removed)))) {
+          // Null is forbidden at every v1 scalar position. In an integer
+          // slot it produces BR003, without inventing a host-rounded value.
+          normalized += "null";
+          continue;
+        }
+        digits = digits.slice(0, -Number(removed));
+      }
+      const zeroes = scale > 0n ? scale : 0n;
+      if (BigInt(digits.length) + zeroes > 16n) {
+        normalized += "1e9999"; // the validator's existing BR004 path
+        continue;
+      }
+      const integer = BigInt(digits) * 10n ** zeroes;
+      if (integer > BigInt(LIMITS.integer)) normalized += "1e9999";
+      else normalized += `${match[1]}${integer}`;
+    } else {
+      normalized += text[at];
+      at += 1;
+    }
+  }
+  return normalized;
 }
 
 function compatible(left, right) {
