@@ -24,6 +24,7 @@ import {
     projectKse2CaptureSection,
     projectTypedSidecarCaptures,
     projectTypedSidecarV2,
+    validateScopeHir,
 } from '../../spec/concurrency/scoped-captures-v1/model.mjs'
 import {
     CaptureCodecError,
@@ -291,7 +292,51 @@ const unknownIdentity = (event) => derived('unknown', Buffer.concat([
 const identityField = { par: 'par_id', task: 'task_id', join: 'join_id', place: 'place_id', unknown: 'unknown_id', capture: 'capture_id' }
 const flipId = (id) => (id[0] === 'e' ? 'd' : 'e') + id.slice(1)
 
-for (const event of decoded) {
+// Mutation fixtures preserve the frozen section order whenever order is not
+// the invariant under test. This is test construction, not reader repair.
+function canonicalSection(events) {
+    const compare = (left, right) => left < right ? -1 : left > right ? 1 : 0
+    const pars = events.filter((event) => event.event === 'par').sort((a, b) => a.lexical_index - b.lexical_index)
+    const parOrder = new Map(pars.map((event, index) => [event.par_id, index]))
+    const tasks = events.filter((event) => event.event === 'task').sort((a, b) =>
+        parOrder.get(a.par_id) - parOrder.get(b.par_id) || a.lexical_index - b.lexical_index)
+    const taskOrder = new Map(tasks.map((event, index) => [event.task_id, index]))
+    const targets = new Map(events.filter((event) => event.event === 'place' || event.event === 'unknown')
+        .map((event) => [event[identityField[event.event]], event.canonical_bytes]))
+    const modes = { read: 1, edit: 2, take: 3 }
+    events.sort((a, b) => a.kind - b.kind || (
+        a.event === 'par' ? a.lexical_index - b.lexical_index :
+        a.event === 'task' ? parOrder.get(a.par_id) - parOrder.get(b.par_id) || a.lexical_index - b.lexical_index :
+        a.event === 'join' ? taskOrder.get(a.task_id) - taskOrder.get(b.task_id) :
+        a.event === 'place' || a.event === 'unknown' ? compare(a.canonical_bytes, b.canonical_bytes) :
+        taskOrder.get(a.task_id) - taskOrder.get(b.task_id) || compare(targets.get(a.target_id), targets.get(b.target_id)) || modes[a.mode] - modes[b.mode]))
+    return events
+}
+
+function sectionHir(events) {
+    const display = { disclosure: 'hidden', text: null }
+    const spans = new Map(hir.records.filter((record) => record.record === 'capture')
+        .flatMap((capture) => capture.origins.map((origin) => [origin.node_id, origin.span])))
+    let nextSpan = 100000
+    return { ...hir, records: events.map((event) => {
+        const { event: record, kind, ...fields } = structuredClone(event)
+        const value = { ...fields, record, id: event[identityField[record]] }
+        delete value[identityField[record]]
+        if (record === 'par' || record === 'task' || record === 'place') value.display = display
+        if (record === 'place') value.projections = value.projections.map((projection) =>
+            projection.kind === 'field' ? { ...projection, display } : projection)
+        if (record === 'capture') {
+            value.origins = value.origin_node_ids.map((node_id) => {
+                if (!spans.has(node_id)) { spans.set(node_id, { start: nextSpan, end: nextSpan + 1 }); nextSpan += 2 }
+                return { node_id, span: spans.get(node_id) }
+            })
+            delete value.origin_node_ids
+        }
+        return value
+    }) }
+}
+
+function eventIdentity(event) {
     let payload
     if (event.event === 'par') payload = Buffer.concat([rawId(hir.file_id), rawId(event.scope_id), rawId(event.node_id)])
     if (event.event === 'task') payload = Buffer.concat([
@@ -309,7 +354,11 @@ for (const event of decoded) {
     if (event.event === 'capture') payload = Buffer.concat([
         rawId(event.task_id), Buffer.from([event.target_kind === 'place' ? 1 : 2]), rawId(event.target_id),
     ])
-    assert.equal(derived(event.event, payload), event[identityField[event.event]],
+    return derived(event.event, payload)
+}
+
+for (const event of decoded) {
+    assert.equal(eventIdentity(event), event[identityField[event.event]],
         `${event.event} identity agrees with independent raw-byte framing`)
 }
 
@@ -428,6 +477,8 @@ for (const bounds of [[4, 4], ['-9223372036854775808', '9223372036854775807']]) 
     const candidate = withEvents((events) => replacePlace(events, kpl([
         Buffer.concat([Buffer.from([2]), constantBound(bounds[0]), constantBound(bounds[1])]),
     ])))
+    canonicalSection(candidate)
+    assert.equal(validateScopeHir(sectionHir(candidate)), true, 'replaced slice fixture obeys the frozen complete-section contract')
     assert.doesNotThrow(() => validateCaptureStream(candidate), 'empty and i64-extreme slices remain valid')
 }
 
@@ -444,6 +495,8 @@ for (const reason of UNKNOWN_REASONS) {
             capture.capture_id = captureIdentity(capture)
         }
     })
+    canonicalSection(candidate)
+    assert.equal(validateScopeHir(sectionHir(candidate)), true, `${reason}: normalized fixture matches the frozen contract`)
     assert.doesNotThrow(() => projectSidecarV2(v1Document, candidate), `${reason}: consistent synthetic section`)
 }
 
@@ -467,6 +520,127 @@ assert.deepEqual(projectSidecarV2(foreignFile, []).captures, [],
     'empty projection is valid without advertising a capture FileId proof')
 assert.doesNotThrow(() => validateCaptureStream(decoded),
     'opaque source IDs need no invented source parser or node-table fixture')
+
+// -------------------------------------------------- complete sections
+//
+// These fixtures independently allocate opaque upstream IDs and construct all
+// derived IDs using the test's framed hash. No source analysis is simulated.
+function completeFixture(taskCounts, capturesPerTask = 0) {
+    let nextIdentity = 1000
+    const fresh = () => (nextIdentity++).toString(16).padStart(64, '0')
+    const events = []
+    for (const [lexical_index, taskCount] of taskCounts.entries()) {
+        const par = { event: 'par', kind: 8, lexical_index, node_id: fresh(), scope_id: fresh(),
+            parent_scope_id: hir.root_scope_id, scope_token_binding_id: fresh() }
+        par.par_id = eventIdentity(par)
+        events.push(par)
+        for (let index = 0; index < taskCount; index += 1) {
+            const task = { event: 'task', kind: 9, lexical_index: index, par_id: par.par_id,
+                spawn_node_id: fresh(), lambda_node_id: fresh(), handle_binding_id: fresh() }
+            task.task_id = eventIdentity(task)
+            const join = { event: 'join', kind: 10, task_id: task.task_id, join_kind: 'scope-exit', node_id: null }
+            join.join_id = eventIdentity(join)
+            events.push(task, join)
+            for (let index = 0; index < capturesPerTask; index += 1) {
+                const base = fresh()
+                const place = { event: 'place', kind: 11, base_binding_id: base, projections: [],
+                    canonical_bytes: Buffer.concat([Buffer.from([0x4b, 0x50, 0x4c, 0, 2]), rawId(base), Buffer.from([0])]).toString('hex') }
+                place.place_id = eventIdentity(place)
+                const capture = { event: 'capture', kind: 13, task_id: task.task_id,
+                    target_kind: 'place', target_id: place.place_id, mode: 'read', origin_node_ids: [fresh()] }
+                capture.capture_id = eventIdentity(capture)
+                events.push(place, capture)
+            }
+        }
+    }
+    return canonicalSection(events)
+}
+
+function assertSectionIds(events, name) {
+    for (const event of events) {
+        assert.equal(event[identityField[event.event]], eventIdentity(event), `${name}: coherent ${event.event} ID`)
+    }
+}
+
+function refusesComplete(name, events, normativeMessage, productionMessage) {
+    assertSectionIds(events, name)
+    assert.throws(() => validateScopeHir(sectionHir(events)), normativeMessage, `${name}: frozen oracle refuses`)
+    const check = (error) => error instanceof CaptureCodecError && productionMessage.test(error.message)
+    assert.throws(() => validateCaptureStream(events), check, name)
+    assert.throws(() => projectSidecarCaptures(events), check, `${name}: captures`)
+    assert.throws(() => projectSidecarV2(v1Document, events), check, `${name}: document`)
+    const raw = decodeCaptureFrames(encodeCaptureFrames(events))
+    assert.throws(() => validateCaptureStream(raw), check, `${name}: structural round trip still needs validation`)
+}
+
+function acceptsComplete(name, events) {
+    assertSectionIds(events, name)
+    assert.equal(validateScopeHir(sectionHir(events)), true, `${name}: frozen oracle accepts`)
+    assert.doesNotThrow(() => validateCaptureStream(events), name)
+    assert.doesNotThrow(() => validateCaptureStream(decodeCaptureFrames(encodeCaptureFrames(events))), `${name}: round trip`)
+    assert.doesNotThrow(() => projectSidecarV2(v1Document, events), `${name}: document`)
+}
+
+function reversePhase(events, kind) {
+    const indexes = events.flatMap((event, index) => event.event === kind ? [index] : [])
+    const reversed = indexes.map((index) => events[index]).reverse()
+    indexes.forEach((index, offset) => { events[index] = reversed[offset] })
+    return events
+}
+
+const phaseOrder = withEvents((events) => {
+    const index = events.findIndex((event) => event.event === 'place')
+    const [place] = events.splice(index, 1)
+    events.splice(events.findIndex((event) => event.event === 'join'), 0, place)
+})
+refusesComplete('place before join phase', phaseOrder, /phase order/, /phase order/)
+const sparsePars = completeFixture([0])
+sparsePars[0].lexical_index = 1 // ParId intentionally does not contain this index.
+refusesComplete('non-dense par index', sparsePars, /par order/, /par indexes must be dense/)
+
+const sparseTasks = completeFixture([2])
+const sparseTask = sparseTasks.filter((event) => event.event === 'task')[1]
+const oldTaskId = sparseTask.task_id
+sparseTask.lexical_index = 2
+sparseTask.task_id = eventIdentity(sparseTask)
+const repairedJoin = sparseTasks.find((event) => event.event === 'join' && event.task_id === oldTaskId)
+repairedJoin.task_id = sparseTask.task_id
+repairedJoin.join_id = eventIdentity(repairedJoin)
+refusesComplete('non-dense per-par task index', sparseTasks, /task indexes.*not dense/, /task indexes must be dense/)
+
+const missingJoin = completeFixture([2])
+missingJoin.splice(missingJoin.findLastIndex((event) => event.event === 'join'), 1)
+refusesComplete('missing task join', missingJoin, /exactly one join/, /exactly one join/)
+const duplicateJoin = completeFixture([1])
+const extraJoin = { ...duplicateJoin.find((event) => event.event === 'join'), join_kind: 'explicit', node_id: 'ad'.repeat(32) }
+extraJoin.join_id = eventIdentity(extraJoin)
+duplicateJoin.push(extraJoin)
+refusesComplete('two different correctly derived joins for one task', duplicateJoin, /exactly one join/, /duplicate joins/)
+
+refusesComplete('join order', reversePhase(completeFixture([2]), 'join'), /join order/, /join order/)
+refusesComplete('place canonical-byte order', reversePhase(structuredClone(decoded), 'place'), /place order/, /place order/)
+refusesComplete('unknown canonical-byte order', reversePhase(structuredClone(decoded), 'unknown'), /unknown order/, /unknown order/)
+refusesComplete('capture task/target order', reversePhase(structuredClone(decoded), 'capture'), /capture order/, /capture order/)
+// Dense task indexes reset per par; their global order must still follow pars.
+refusesComplete('task order across two pars', reversePhase(completeFixture([1, 1]), 'task'), /task order/, /task order/)
+
+for (const [name, tasks, captures, pattern] of [
+    ['65 pars', Array(65).fill(0), 0, /par limit exceeded/],
+    ['65 tasks across two pars', [33, 32], 0, /task limit exceeded/],
+    ['65 captures for one task', [1], 65, /capture limit exceeded/],
+]) {
+    refusesComplete(name, completeFixture(tasks, captures), pattern, pattern)
+}
+acceptsComplete('64 empty pars', completeFixture(Array(64).fill(0)))
+acceptsComplete('64 total tasks across two pars', completeFixture([32, 32]))
+acceptsComplete('64 captures for each of two tasks', completeFixture([2], 64))
+
+// A complete section is required independently of the eventual sidecar's
+// partial/cancelled status. The existing cancellation publication test below
+// uses a complete valid section; a transaction-aware raw-prefix API is future
+// work and must specify which declarations/facts were committed.
+const midSection = completeFixture([1]).filter((event) => event.event !== 'join')
+refusesComplete('raw mid-section task prefix', midSection, /exactly one join/, /exactly one join/)
 
 // ----------------------------------------------------------- publication
 //
@@ -609,5 +783,6 @@ process.stdout.write(
     'PASS: production KSE2 capture frames equal the frozen wire and round-trip exactly\n' +
     'PASS: the projected captures and v2 document equal the frozen projection\n' +
     'PASS: truncation, corruption, closed vocabularies, and broken links are refused\n' +
+    'PASS: complete capture sections enforce identity, order, join and profile bounds\n' +
     'PASS: v2 publishes through the v1 codec, replay and cancellation included, and v1 bytes are unchanged\n',
 )

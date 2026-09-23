@@ -488,10 +488,13 @@ export function decodeCanonicalPlaceBytes(input, path = '$place') {
 // an unknown target with two origins. These are the rules that need the whole
 // stream, so they run after decoding rather than inside it.
 //
-// These are section identity/link checks, not a full KSE2 transaction proof.
-// The caller's future transaction validator still owns source-node membership,
-// origin span/order, root-scope provenance and committed failed/cancelled
-// prefixes. The frame codecs above deliberately remain structural.
+// This API consumes a complete capture section, not a raw mid-section prefix.
+// Its identities, links, phase/order and available section bounds are checked
+// here. A future transaction/prefix API still needs explicit context for
+// source-node membership, origin spans/order, root-scope provenance and which
+// failed/cancelled facts were committed. A partial/cancelled sidecar document
+// can carry a complete valid section; that is different from accepting a
+// truncated section. The frame codecs above deliberately remain structural.
 
 function sectionIdentity(value, path) {
     identity(value, path)
@@ -650,7 +653,76 @@ export function validateCaptureStream(events) {
             }
         }
     }
+    validateCompleteSection(events)
     return events
+}
+
+function validateCompleteSection(events) {
+    const phases = { par: [], task: [], join: [], place: [], unknown: [], capture: [] }
+    let previousKind = 0
+    for (const event of events) {
+        if (event.kind < previousKind) fail('$kse.events', 'capture-section phase order is noncanonical')
+        previousKind = event.kind
+        phases[event.event].push(event)
+    }
+    if (phases.par.length > 64) fail('$kse.events', 'par limit exceeded (64)')
+    if (phases.task.length > 64) fail('$kse.events', 'task limit exceeded (64)')
+    const parOrder = new Map()
+    phases.par.forEach((par, index) => {
+        if (par.lexical_index !== index) fail('$kse.events', 'par indexes must be dense in canonical order')
+        parOrder.set(par.par_id, index)
+    })
+    const nextTaskIndex = new Map()
+    const taskOrder = new Map()
+    let previousPar = -1
+    phases.task.forEach((task, index) => {
+        const expected = nextTaskIndex.get(task.par_id) ?? 0
+        if (task.lexical_index !== expected) fail('$kse.events', 'per-par task indexes must be dense in canonical order')
+        const parent = parOrder.get(task.par_id)
+        if (parent < previousPar) fail('$kse.events', 'task order must follow par order')
+        previousPar = parent
+        nextTaskIndex.set(task.par_id, expected + 1)
+        taskOrder.set(task.task_id, index)
+    })
+    const joined = new Set()
+    for (const [index, join] of phases.join.entries()) {
+        if (joined.has(join.task_id)) fail('$kse.events', 'a task has duplicate joins')
+        joined.add(join.task_id)
+        if (phases.task[index]?.task_id !== join.task_id) fail('$kse.events', 'join order must follow task order')
+    }
+    if (joined.size !== phases.task.length) fail('$kse.events', 'every task must have exactly one join')
+    // Lowercase, even-length hex has the same order as its unsigned bytes.
+    const targets = new Map()
+    for (const kind of ['place', 'unknown']) {
+        let previous = null
+        for (const target of phases[kind]) {
+            if (previous !== null && target.canonical_bytes <= previous) {
+                fail('$kse.events', `${kind} order must follow unique canonical bytes`)
+            }
+            previous = target.canonical_bytes
+            targets.set(target[`${kind}_id`], target.canonical_bytes)
+        }
+    }
+    const captureCounts = new Map()
+    let previousCapture = null
+    for (const capture of phases.capture) {
+        const count = (captureCounts.get(capture.task_id) ?? 0) + 1
+        if (count > 64) fail('$kse.events', 'capture limit exceeded (64 per task)')
+        captureCounts.set(capture.task_id, count)
+        const current = {
+            task: taskOrder.get(capture.task_id),
+            bytes: targets.get(capture.target_id),
+            mode: MODE_TAG[capture.mode],
+        }
+        if (previousCapture !== null &&
+            (current.task < previousCapture.task ||
+             (current.task === previousCapture.task &&
+              (current.bytes < previousCapture.bytes ||
+               (current.bytes === previousCapture.bytes && current.mode <= previousCapture.mode))))) {
+            fail('$kse.events', 'capture order must follow task, target canonical bytes and mode')
+        }
+        previousCapture = current
+    }
 }
 
 function register(declared, kind, id, path) {
