@@ -11852,6 +11852,376 @@
           "observations": []
         }
       ]
+    },
+    {
+      "name": "arrow-task-tail-read",
+      "source": "fn probe(outer: Int) {\n par |scope| {\n  scope.spawn(fn() => outer)\n }\n}\n",
+      "allocation_note": "Authored arrow task: function parameter/body scopes precede par scope 3; par token 1 and hidden handle 2 follow the declared parameter/let order. The expression and lambda share their half-open end; following source is outside the task.",
+      "pars": [
+        {
+          "scope": 3,
+          "token": 1,
+          "name": "scope",
+          "span": [
+            24,
+            69
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "par": 0,
+          "handle": 2,
+          "span": [
+            40,
+            66
+          ],
+          "lambda_span": [
+            52,
+            65
+          ],
+          "observations": [
+            {
+              "mode": "read",
+              "span": [
+                60,
+                65
+              ],
+              "text": "outer",
+              "binding": 0,
+              "name": "outer",
+              "projections": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "arrow-task-tail-binary",
+      "source": "fn probe(outer: Int) {\n par |scope| {\n  scope.spawn(fn() => outer + outer)\n }\n}\n",
+      "allocation_note": "Authored arrow task: function parameter/body scopes precede par scope 3; par token 1 and hidden handle 2 follow the declared parameter/let order. The expression and lambda share their half-open end; following source is outside the task.",
+      "pars": [
+        {
+          "scope": 3,
+          "token": 1,
+          "name": "scope",
+          "span": [
+            24,
+            77
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "par": 0,
+          "handle": 2,
+          "span": [
+            40,
+            74
+          ],
+          "lambda_span": [
+            52,
+            73
+          ],
+          "observations": [
+            {
+              "mode": "read",
+              "span": [
+                60,
+                65
+              ],
+              "text": "outer",
+              "binding": 0,
+              "name": "outer",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                68,
+                73
+              ],
+              "text": "outer",
+              "binding": 0,
+              "name": "outer",
+              "projections": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "arrow-task-tail-field",
+      "source": "type Token = { value: Int }\nfn probe(record: Token) {\n par |scope| {\n  scope.spawn(fn() => record.value)\n }\n}\n",
+      "allocation_note": "Authored arrow task: function parameter/body scopes precede par scope 3; par token 1 and hidden handle 2 follow the declared parameter/let order. The expression and lambda share their half-open end; following source is outside the task.",
+      "pars": [
+        {
+          "scope": 3,
+          "token": 1,
+          "name": "scope",
+          "span": [
+            55,
+            107
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "par": 0,
+          "handle": 2,
+          "span": [
+            71,
+            104
+          ],
+          "lambda_span": [
+            83,
+            103
+          ],
+          "observations": [
+            {
+              "mode": "read",
+              "span": [
+                91,
+                103
+              ],
+              "text": "record.value",
+              "binding": 0,
+              "name": "record",
+              "projections": [
+                {
+                  "kind": "field",
+                  "owner": "Token",
+                  "ordinal": 0,
+                  "name": "value"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "arrow-task-tail-call",
+      "source": "type Token = { value: Int }\nfn observe(read item: Token) -> Int { return item.value }\nfn probe(item: Token) {\n par |scope| {\n  scope.spawn(fn() => observe(item))\n }\n}\n",
+      "allocation_note": "Authored arrow task: function parameter/body scopes precede par scope 5; par token 2 and hidden handle 3 follow the declared parameter/let order. The expression and lambda share their half-open end; following source is outside the task.",
+      "pars": [
+        {
+          "scope": 5,
+          "token": 2,
+          "name": "scope",
+          "span": [
+            111,
+            164
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "par": 0,
+          "handle": 3,
+          "span": [
+            127,
+            161
+          ],
+          "lambda_span": [
+            139,
+            160
+          ],
+          "observations": [
+            {
+              "mode": "read",
+              "span": [
+                155,
+                159
+              ],
+              "text": "item",
+              "binding": 1,
+              "name": "item",
+              "projections": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "arrow-task-tail-index",
+      "source": "fn probe(values: List[Int], index: Int) {\n par |scope| {\n  scope.spawn(fn() => values[index])\n }\n}\n",
+      "allocation_note": "Authored arrow task: function parameter/body scopes precede par scope 3; par token 2 and hidden handle 3 follow the declared parameter/let order. The expression and lambda share their half-open end; following source is outside the task.",
+      "pars": [
+        {
+          "scope": 3,
+          "token": 2,
+          "name": "scope",
+          "span": [
+            43,
+            96
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "par": 0,
+          "handle": 3,
+          "span": [
+            59,
+            93
+          ],
+          "lambda_span": [
+            71,
+            92
+          ],
+          "observations": [
+            {
+              "mode": "read",
+              "span": [
+                79,
+                92
+              ],
+              "text": "values[index]",
+              "reason": "unnameable-place"
+            },
+            {
+              "mode": "read",
+              "span": [
+                86,
+                91
+              ],
+              "text": "index",
+              "binding": 1,
+              "name": "index",
+              "projections": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "arrow-task-tail-slice-bound-call",
+      "source": "fn probe(values: List[Int], lo: Int, hi: Int) {\n par |scope| {\n  scope.spawn(fn() => len(values[lo .. hi]))\n }\n}\n",
+      "allocation_note": "Authored arrow task: function parameter/body scopes precede par scope 3; par token 3 and hidden handle 4 follow the declared parameter/let order. The expression and lambda share their half-open end; following source is outside the task.",
+      "pars": [
+        {
+          "scope": 3,
+          "token": 3,
+          "name": "scope",
+          "span": [
+            49,
+            110
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "par": 0,
+          "handle": 4,
+          "span": [
+            65,
+            107
+          ],
+          "lambda_span": [
+            77,
+            106
+          ],
+          "observations": [
+            {
+              "mode": "read",
+              "span": [
+                89,
+                105
+              ],
+              "text": "values[lo .. hi]",
+              "binding": 0,
+              "name": "values",
+              "projections": [
+                {
+                  "kind": "slice",
+                  "lower": {
+                    "kind": "node",
+                    "span": [
+                      96,
+                      98
+                    ],
+                    "text": "lo"
+                  },
+                  "upper": {
+                    "kind": "node",
+                    "span": [
+                      102,
+                      104
+                    ],
+                    "text": "hi"
+                  }
+                }
+              ]
+            },
+            {
+              "mode": "read",
+              "span": [
+                96,
+                98
+              ],
+              "text": "lo",
+              "binding": 1,
+              "name": "lo",
+              "projections": []
+            },
+            {
+              "mode": "read",
+              "span": [
+                102,
+                104
+              ],
+              "text": "hi",
+              "binding": 2,
+              "name": "hi",
+              "projections": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "arrow-task-following-read-excluded",
+      "source": "fn probe(outer: Int, after: Int) {\n par |scope| {\n  scope.spawn(fn() => outer)\n }\n outer + after\n}\n",
+      "allocation_note": "Authored arrow task: function parameter/body scopes precede par scope 3; par token 2 and hidden handle 3 follow the declared parameter/let order. The expression and lambda share their half-open end; following source is outside the task.",
+      "pars": [
+        {
+          "scope": 3,
+          "token": 2,
+          "name": "scope",
+          "span": [
+            36,
+            81
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "par": 0,
+          "handle": 3,
+          "span": [
+            52,
+            78
+          ],
+          "lambda_span": [
+            64,
+            77
+          ],
+          "observations": [
+            {
+              "mode": "read",
+              "span": [
+                72,
+                77
+              ],
+              "text": "outer",
+              "binding": 0,
+              "name": "outer",
+              "projections": []
+            }
+          ]
+        }
+      ]
     }
   ],
   "negative": [

@@ -55,6 +55,19 @@ assert.equal(records('local-depth-nine-filtered','unknown').length,0);
 assert.equal(records('all-local-no-captures','capture').length,0);
 assert.deepEqual(JSON.parse(expected.get('lambda-before-take')).records,[]);
 assert.deepEqual(JSON.parse(expected.get('task-local-lambda-before-take')).records.map(record=>record.record),['par','task','join']);
+for(const name of ['arrow-task-tail-read','arrow-task-tail-binary','arrow-task-tail-field','arrow-task-tail-index','arrow-task-following-read-excluded']){
+    const test=fixtures.positive.find(test=>test.name===name),end=test.tasks[0].lambda_span[1];
+    assert(records(name,'capture').some(capture=>capture.origins.some(origin=>origin.span.end===end)),`${name}: the half-open task end includes its final access`);
+}
+assert.equal(records('arrow-task-tail-binary','capture')[0].origins.length,2);
+assert.equal(records('arrow-task-tail-field','place')[0].projections.length,1);
+assert.equal(records('arrow-task-tail-call','capture').length,1);
+assert.equal(records('arrow-task-tail-index','unknown').length,1);
+assert.equal(records('arrow-task-tail-index','capture').length,2);
+assert.equal(records('arrow-task-tail-slice-bound-call','capture').length,3);
+assert.equal(records('arrow-task-tail-slice-bound-call','place').filter(place=>place.projections.length===1).length,1);
+assert.equal(records('arrow-task-following-read-excluded','capture').length,1);
+assert.equal(records('arrow-task-following-read-excluded','capture')[0].origins.length,1);
 assert.equal(records('32-sequential-branch-joins','capture')[0].origins.length,64);
 assert.equal(records('300-local-reads-zero-observations','capture').length,0);
 assert.equal(records('local-receivers-external-bounds-256','unknown').length,0);

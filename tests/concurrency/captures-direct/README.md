@@ -65,6 +65,15 @@ These checks preserve the separate rule that validating a latent body's own
 take does not execute that move in its enclosing flow. They add no runtime
 parent/task conflict or nonlexical callee-summary claim.
 
+Arrow task lambdas include an access whose half-open end equals the lambda's
+end. Int-result controls cover a tail read, both occurrences in `outer + outer`,
+a field, a nominal read call and an indexed receiver. The indexed receiver
+keeps its occurrence-specific unknown and its separate external index read.
+An Int-result `len(values[lo .. hi])` control retains the maximal slice and
+both dynamic bound reads. A following read of the same value and another
+binding after the par block contributes neither another origin nor a capture.
+All identities and byte spans are authored independently of producer output.
+
 Task-local mutable nominal records refuse as `E2S32` with either an explicit
 `Token` annotation or an inferred constructor. A mutable callable binding
 and reassignment also refuse under the declaration-based callable profile,
