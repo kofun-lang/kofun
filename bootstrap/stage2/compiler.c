@@ -932,6 +932,9 @@ static char *lex_source(const char *source) {
     /* Lexical trivia only: a terminal comma is a token the tape records even
      * though every other reader steps over it. */
     int64_t cursor = skip_lexical_trivia(source, 0);
+    /* Count each byte once as token starts advance, including trivia. */
+    int64_t line = 1;
+    int64_t line_cursor = 0;
     while (cursor < length) {
         int64_t end = token_end(source, cursor);
         if (end <= cursor) {
@@ -970,13 +973,17 @@ static char *lex_source(const char *source) {
             );
             return tape.data;
         }
+        while (line_cursor < cursor) {
+            if (source[line_cursor] == '\n') ++line;
+            ++line_cursor;
+        }
         buffer_format(
             &tape,
             "%s|%" PRId64 "|%" PRId64 "|%" PRId64 "\n",
             token_kind(source, cursor),
             cursor,
             end,
-            line_at(source, cursor)
+            line
         );
         cursor = skip_lexical_trivia(source, end);
     }
@@ -2669,6 +2676,8 @@ static char *const_parameter_name(const char *source, int64_t start) {
 
 /* The const parameter declared by the type named `wanted`, or "". */
 static char *const_parameter_of_type(const char *source, const char *wanted) {
+    /* Absence is conclusive; substring false positives retain the parser. */
+    if (strstr(source, "type") == NULL) return owned_text("");
     int64_t length = source_length(source);
     int64_t cursor = after_optional_module_header(source, 0);
     while (cursor < length) {
@@ -7050,6 +7059,7 @@ static bool list_int_local_type_token(
     const char *source,
     int64_t target
 ) {
+    if (strstr(source, "let") == NULL) return false;
     int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, 0);
     while (cursor <= target && cursor < length) {
