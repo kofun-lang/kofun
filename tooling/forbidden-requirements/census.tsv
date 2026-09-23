@@ -312,7 +312,7 @@ node	invoke	11	required-today	required	tests/rfc/check-registry.sh
 node	invoke	2	required-today	required	tests/stage2/list-int-signatures/run.sh
 node	invoke	4	required-today	required	tests/stage2/list-int-values/run.sh
 node	invoke	2	required-today	required	tests/stage2/optional-pair/run.sh
-node	invoke	5	required-today	required	tests/stdlib/benchmark-report-model/check.sh
+node	invoke	8	required-today	required	tests/stdlib/benchmark-report-model/check.sh
 node	invoke	6	required-today	required	tests/stdlib/benchmark-report-model/compare.sh
 node	invoke	4	required-today	required	tests/stdlib/kofun-digest-model/check.sh
 node	invoke	3	required-today	required	tests/tooling/ownership-view/run.sh

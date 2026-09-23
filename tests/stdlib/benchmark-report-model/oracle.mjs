@@ -15,7 +15,10 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { summarize, outlierFlags, compareReports } from '../../../spec/benchmark-report-v1/model.mjs'
+import {
+    summarize, outlierFlags, compareReports, fromStage2Outcome, toStage2Outcome,
+    stage2ErrorOutcome, ReportError,
+} from '../../../spec/benchmark-report-v1/model.mjs'
 import { LIMITS } from '../../../spec/benchmark-report-v1/contract.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -112,6 +115,7 @@ function caseLines(name, count, provided) {
 }
 
 function expectGroup(group) {
+    if (group === 4) return frequencyGroup()
     const chosen = CASES.filter((entry) => entry.group === group)
     const lines = chosen.flatMap((entry) => caseLines(entry.name, entry.count, entry.samples))
     lines.push(`cases ${chosen.length}`)
@@ -197,9 +201,8 @@ function sweepSource(counts) {
     parts.push(
         'fn main() {',
         '    # Group 6 matches no branch, so this runs no case and prints nothing.',
-        '    # The call is here because every function in model.kofun and',
-        '    # corpus.kofun must be *referenced* or the build fails at `cc` with',
-        '    # -Werror=unused-function (#1358), and `run_group` names them all.',
+        '    # Keep all tracked corpus entry points in the generated program',
+        '    # while this process executes only the summary sweep.',
         '    let mut ran = run_group(6) + run_comparison_group(6) + run_vector_group(6)',
     )
     for (const count of counts) parts.push(`    ran = ran + sweep_${count}()`)
@@ -233,6 +236,165 @@ function sweepExpect(counts) {
 
 const MINIMAL = JSON.parse(readFileSync(
     join(HERE, '..', '..', '..', 'spec/benchmark-report-v1/vectors/positive/minimal.json'), 'utf8'))
+
+function frequencyGroup() {
+    const cases = [...CORPUS.matchAll(
+        /cases = cases \+ run_frequency_case\("([^"]+)", ([01]), (-?\d+)\)/g,
+    )].map(([, name, available, value]) => [name, Number(available), Number(value)])
+    const required = [
+        ['frequency-zero', 1, 0],
+        ['frequency-unavailable', 0, 0],
+        ['frequency-positive', 1, 2400000000],
+        ['frequency-negative', 1, -1],
+        ['frequency-limit', 1, LIMITS.integer],
+        ['frequency-over-limit', 1, LIMITS.integer + 1],
+        ['frequency-nonneutral', 0, 1],
+    ]
+    if (JSON.stringify(cases) !== JSON.stringify(required)) {
+        throw new Error('frequency corpus must cover the complete availability and integer-bound matrix')
+    }
+    const lines = []
+    for (const [name, available, value] of cases) {
+        const source = {
+            ...toStage2Outcome(MINIMAL),
+            host_frequency_hz_available: available === 1,
+            host_frequency_hz: value,
+        }
+        let outcome
+        try {
+            const result = fromStage2Outcome(source)
+            outcome = toStage2Outcome(result.report)
+        } catch (error) {
+            if (!(error instanceof ReportError)) throw error
+            outcome = stage2ErrorOutcome(error.code)
+        }
+        if (outcome.status_tag === 0) {
+            lines.push(...caseLines(name, 1, [1000]))
+        } else {
+            lines.push(`${name} ${outcome.status_tag} 0 0 0 0 0 0 0`,
+                `${name} flags 0 0 0`, `${name} neutral 1`)
+        }
+        lines.push(`${name} frequency ${Number(outcome.host_frequency_hz_available)} ${outcome.host_frequency_hz}`)
+    }
+    lines.push(`cases ${cases.length}`)
+    return lines
+}
+
+// ---------------------------------------------------- physical validation
+//
+// The production entry point takes five records and two raw sample segments.
+// Its error order therefore joins fromStage2Outcome, not decodeReport: physical
+// presence, segmented-series and closed-tag checks precede validateReport's
+// field order. Expected codes are never copied from the implementation.
+const PHYSICAL_RECORDS = {
+    ReportIdentity: ['suite', 'case', 'parameter_present', 'parameter', 'metric', 'direction_tag'],
+    ReportSchedule: ['clock_tag', 'warmup_cap_ns', 'sampling_cap_ns', 'sample_cap',
+        'warmup_iterations', 'warmup_stop_tag', 'iterations_per_sample', 'sample_count',
+        'sampling_stop_tag', 'harness_overhead_ns'],
+    ReportCounters: ['allocated_bytes_available', 'allocated_bytes_value',
+        'allocation_count_available', 'allocation_count_value', 'gc_collections_available',
+        'gc_collections_value', 'vm_peak_bytes_available', 'vm_peak_bytes_value',
+        'cpu_cycles_available', 'cpu_cycles_value'],
+    ReportDigests: ['toolchain_sha256', 'source_sha256', 'artifact_sha256'],
+    ReportHost: ['host_id_sha256', 'host_os', 'host_arch', 'host_cpu',
+        'host_affinity_available', 'host_affinity', 'host_frequency_hz_available',
+        'host_frequency_hz', 'host_noise'],
+}
+const PHYSICAL_INPUTS = new Set([
+    ...Object.values(PHYSICAL_RECORDS).flat(), 'sample_segment0', 'sample_segment1',
+])
+const PHYSICAL_CASES = [...CORPUS.matchAll(/^# physical-case (.+)$/gm)]
+    .map(([, fixture]) => JSON.parse(fixture))
+const PHYSICAL_GROUP_SIZE = 73
+
+function physicalCases(group) {
+    if (PHYSICAL_CASES.length !== 73 ||
+        new Set(PHYSICAL_CASES.map(({ name }) => name)).size !== PHYSICAL_CASES.length) {
+        throw new Error('physical corpus must retain 73 distinct boundary and precedence cases')
+    }
+    for (const { name, changes } of PHYSICAL_CASES) {
+        if (!/^[a-z0-9_-]+$/.test(name)) throw new Error(`invalid physical case name ${name}`)
+        for (const field of Object.keys(changes)) {
+            if (!PHYSICAL_INPUTS.has(field)) {
+                throw new Error(`${name} changes derived or unknown field ${field}`)
+            }
+        }
+    }
+    if (!Number.isInteger(group) || group < 0 ||
+        group >= Math.ceil(PHYSICAL_CASES.length / PHYSICAL_GROUP_SIZE)) {
+        throw new Error(`no physical group ${group}`)
+    }
+    return PHYSICAL_CASES.slice(group * PHYSICAL_GROUP_SIZE, (group + 1) * PHYSICAL_GROUP_SIZE)
+}
+
+function physicalInput({ changes }) {
+    const source = { ...toStage2Outcome(MINIMAL), ...changes }
+    const samples = [...source.sample_segment0, ...source.sample_segment1]
+    // The model computes these fields rather than accepting them. Supply the
+    // independent derived values only when the raw values admit them. Invalid
+    // raw input is rejected by the mapper before it observes these placeholders;
+    // pre-validating it here would incorrectly steal an earlier physical error.
+    let flags = samples.map(() => false)
+    if (samples.length > 0 && samples.length <= LIMITS.samples &&
+        samples.every((value) => Number.isSafeInteger(value) && value >= 0)) {
+        const summary = summarize(samples)
+        for (const [field, value] of Object.entries(summary)) source[`summary_${field}`] = value
+        flags = outlierFlags(samples)
+    }
+    source.outlier_segment0 = flags.slice(0, source.sample_segment0.length).map(Number)
+    source.outlier_segment1 = flags.slice(source.sample_segment0.length).map(Number)
+    return source
+}
+
+function physicalOutcome(entry) {
+    const source = physicalInput(entry)
+    try {
+        return toStage2Outcome(fromStage2Outcome(source).report)
+    } catch (error) {
+        if (!(error instanceof ReportError)) throw error
+        return stage2ErrorOutcome(error.code)
+    }
+}
+
+function physicalExpect(group) {
+    const cases = physicalCases(group)
+    const lines = []
+    for (const entry of cases) {
+        const outcome = physicalOutcome(entry)
+        if (outcome.status_tag === 0) {
+            lines.push(...caseLines(entry.name, outcome.sample_count,
+                [...outcome.sample_segment0, ...outcome.sample_segment1]))
+        } else {
+            lines.push(`${entry.name} ${outcome.status_tag} 0 0 0 0 0 0 0`,
+                `${entry.name} flags 0 0 0`, `${entry.name} neutral 1`)
+        }
+    }
+    lines.push(`cases ${cases.length}`)
+    return lines
+}
+
+function physicalSource(group) {
+    const cases = physicalCases(group)
+    const parts = ['# Generated from the physical-case inputs in corpus.kofun.', '']
+    cases.forEach((entry, index) => {
+        const input = physicalInput(entry)
+        parts.push(`fn physical_case_${index}() -> Int {`)
+        Object.entries(PHYSICAL_RECORDS).forEach(([type, fields], record) => {
+            parts.push(`    let input${record}: ${type} = ${type}(`)
+            parts.push(fields.map((field) => `        ${field}: ${JSON.stringify(input[field])}`).join(',\n'))
+            parts.push('    )')
+        })
+        parts.push(`    let samples0: List[Int] = ${kofunList(input.sample_segment0)}`,
+            `    let samples1: List[Int] = ${kofunList(input.sample_segment1)}`,
+            '    let report: BenchReport = produce_report(input0, input1, input2, input3, input4, samples0, samples1)',
+            `    return print_case(${JSON.stringify(entry.name)}, report)`, '}', '')
+    })
+    parts.push('fn main() {',
+        '    let mut cases = run_group(6) + run_comparison_group(6) + run_vector_group(6)')
+    cases.forEach((_, index) => parts.push(`    cases = cases + physical_case_${index}()`))
+    parts.push('    print("cases " + to_text(cases))', '}', '')
+    return parts.join('\n')
+}
 
 const STATUS = Object.freeze({ BR006: 6, BR007: 7, BR008: 8, BR009: 9 })
 const RESULT = Object.freeze({ equivalent: 0, improved: 1, regressed: 2 })
@@ -377,7 +539,7 @@ function vectorCoverage() {
 }
 
 // The groups the corpus splits them into, in `run_vector_group` order. The
-// split exists for the bounded Text arena (#1359), not for meaning.
+// split preserves independent process state and the existing case boundaries.
 const VECTOR_GROUPS = Object.freeze([
     ['lower-below-threshold', 'lower-equal-threshold', 'lower-above-threshold',
         'lower-improvement', 'lower-improvement-equal-threshold'],
@@ -436,7 +598,17 @@ if (mode === 'group') {
     process.stdout.write(comparisonGroup(Number(argument)).join('\n') + '\n')
 } else if (mode === 'sweep-counts') {
     process.stdout.write(sweepCounts().join(' ') + '\n')
+} else if (mode === 'physical-source') {
+    process.stdout.write(physicalSource(Number(argument)))
+} else if (mode === 'physical-expect') {
+    process.stdout.write(physicalExpect(Number(argument)).join('\n') + '\n')
+} else if (mode === 'physical-groups') {
+    physicalCases(0)
+    process.stdout.write(Array.from(
+        { length: Math.ceil(PHYSICAL_CASES.length / PHYSICAL_GROUP_SIZE) },
+        (_, index) => index,
+    ).join(' ') + '\n')
 } else {
-    process.stderr.write('usage: oracle.mjs <group N|sweep-source|sweep-expect|sweep-counts>\n')
+    process.stderr.write('usage: oracle.mjs <group N|sweep-source|sweep-expect|sweep-counts|physical-source N|physical-expect N|physical-groups>\n')
     process.exit(2)
 }
