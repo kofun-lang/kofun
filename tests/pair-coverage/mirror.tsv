@@ -11,12 +11,11 @@
 # c-only: the Kofun half does not implement that work.
 # Every other-name/c-only verdict carries evidence in column 4.
 #
-# Reconciled to the actual two-host measurement at 91d353f23722093a6c206863ce6cd02ca86dab83.
+# Reconciled to the actual two-host measurement at eff76476f8a73b384f45d467a811fe228914427b.
 # Rows absent from that measurement are removed even if the function remains
-# in the source. New exact-name counterparts were checked in compiler.kofun;
-# the new scalar operation is implemented by its approved private driver
-# binding, not an ordinary builtin. #1513's executable pair gate separately
-# covers its typed failures and all escaping funnels, including mutations.
+# in the source. Existing classifications retain their evidence. The bounded
+# canonical Kofun driver supplies regional agreement evidence separately; it
+# is not native self-compilation or a whole-pair equivalence proof.
 #
 # The 23 C-only rows contain 150/138 untaken branches (gcc/clang).
 # They include compiler.ensure_move, the seed's structured observation API,
