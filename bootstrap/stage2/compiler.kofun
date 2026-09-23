@@ -14344,6 +14344,23 @@ fn build_scope_hir_analysis_mode(
             }
         }
 
+        # Only scope/binding rows participate in the four declaration lookups
+        # below. Freeze them after this function's declarations, preserving all
+        # earlier functions and original record order. Keep the full HIR for
+        # emitted use rows and initializer/error-precedence consumers. The C
+        # counterpart already indexes these record kinds without scanning uses.
+        let mut declaration_hir = "kofun-scope-hir/v1\n"
+        let mut scope_row = hir_record_start(hir, "scope", 0)
+        let mut binding_row = hir_record_start(hir, "binding", 0)
+        while scope_row >= 0 || binding_row >= 0 {
+            let mut row = scope_row
+            if row < 0 || (binding_row >= 0 && binding_row < row) { row = binding_row }
+            let after = text_find_from(hir, "\n", row) + 1
+            declaration_hir = declaration_hir + text_slice(hir, row, after)
+            if row == scope_row { scope_row = hir_record_start(hir, "scope", row + 1) }
+            else { binding_row = hir_record_start(hir, "binding", row + 1) }
+        }
+
         # The use budget is 4096 where the other three lexical budgets are
         # 256 (#1483). It backs no array: the counter only gates how many
         # `use|` records this walk appends to a growable buffer. What it caps
@@ -14458,9 +14475,9 @@ fn build_scope_hir_analysis_mode(
                             cursor
                         )
                     }
-                    let scope_id = hir_scope_id_for_open(hir, scope_open)
+                    let scope_id = hir_scope_id_for_open(declaration_hir, scope_open)
                     let binding_id = hir_resolve_binding(
-                        hir,
+                        declaration_hir,
                         scope_id,
                         cursor,
                         name
@@ -14509,7 +14526,7 @@ fn build_scope_hir_analysis_mode(
                     } else if token_text(source, after) != "(" &&
                               !unresolved_assignment {
                         let pending = hir_pending_declaration(
-                            hir,
+                            declaration_hir,
                             scope_id,
                             cursor,
                             name
@@ -14520,7 +14537,7 @@ fn build_scope_hir_analysis_mode(
                             "; declaration at byte " + pending
                         }
                         let escaped = hir_any_declaration(
-                            hir,
+                            declaration_hir,
                             scope_id,
                             cursor,
                             name
