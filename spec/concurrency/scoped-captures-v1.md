@@ -614,8 +614,10 @@ of their declared callable signature. Passing a compound expression does not
 apply a formal mode to every operand.
 The checker preserves the existing ownership refusals, including partial take
 and borrowing-to-owning escalation. Continuing branches merge possible-taken
-bindings; taking a binding from outside the current loop body refuses. Checking
-a nested callable does not mark its enclosing execution state as already moved.
+bindings; taking a binding from outside the current loop body refuses. At
+callable creation, every captured binding must still be available in the
+enclosing ownership state. Checking a nested callable retains its own ownership
+context and does not mark its enclosing execution state as already moved.
 Nonlexical callee effects, recursion and missing-summary propagation remain
 #1223; parent/task and cross-task conflicts remain #1162.
 
