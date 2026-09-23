@@ -513,6 +513,11 @@ fn lex(source: Text) -> Text {
     # Lexical trivia only: a terminal comma is a token the tape records even
     # though every other reader steps over it.
     let mut cursor = skip_lexical_trivia(source, 0)
+    # Cursor only advances. Count each source byte once instead of rescanning
+    # the whole prefix for every token's line number.
+    let symbols = chars(source)
+    let mut line = 1
+    let mut line_cursor = 0
     while cursor < len(source) {
         let end = token_end(source, cursor)
         if end <= cursor {
@@ -525,9 +530,13 @@ fn lex(source: Text) -> Text {
             "; `.` and an exponent need digits, and `_` must sit between " +
             "two digits"
         }
+        while line_cursor < cursor {
+            if symbols[line_cursor] == "\n" { line = line + 1 }
+            line_cursor = line_cursor + 1
+        }
         tape = tape + token_kind(source, cursor) + "|" +
         to_text(cursor) + "|" + to_text(end) + "|" +
-        to_text(line_at(source, cursor)) + "\n"
+        to_text(line) + "\n"
         cursor = skip_lexical_trivia(source, end)
     }
     return tape
@@ -1994,6 +2003,9 @@ fn const_parameter_name(source: Text, start: Int) -> Text {
 
 # The const parameter declared by the type named `wanted`, or "".
 fn const_parameter_of_type(source: Text, wanted: Text) -> Text {
+    # A declaration needs its literal keyword. Substring false positives keep
+    # the full parser path; absence proves that this lookup has no result.
+    if !contains(source, "type") { return "" }
     let mut cursor = after_optional_module_header(source, 0)
     while cursor < len(source) {
         let type_start = type_declaration_start(source, cursor)
@@ -4014,6 +4026,9 @@ fn list_int_literal_count(source: Text, open: Int) -> Int {
 # syntax, not a lexical read. Keeping this local-only preserves #919's
 # boundary: parameters and results still reach their lowering diagnostics.
 fn list_int_local_type_token(source: Text, target: Int) -> Bool {
+    # Ordinary value uses need no whole-unit annotation scan when the unit has
+    # no possible let declaration. Comments/strings can only keep the old path.
+    if !contains(source, "let") { return false }
     let mut cursor = skip_trivia(source, 0)
     while cursor <= target && cursor < len(source) {
         if token_text(source, cursor) == "let" {
