@@ -34422,8 +34422,8 @@ static char *scoped_hir_par_id(const char *file, const char *facts, int64_t row)
 
 static char *scoped_hir_task_id(const char *file, const char *facts, int64_t row) {
     char *par_index = hir_field(facts, row, 1);
-    int64_t par = scoped_hir_fact(facts, "par", 1, par_index);
-    char *parent = scoped_hir_par_id(file, facts, par);
+    int64_t par_row = scoped_hir_fact(facts, "par", 1, par_index);
+    char *parent = scoped_hir_par_id(file, facts, par_row);
     char *index = scoped_hir_hex(scoped_hir_integer(facts, row, 2), 8);
     char *spawn = scoped_hir_node_id(file, 8, scoped_hir_integer(facts, row, 3), scoped_hir_integer(facts, row, 4));
     char *lambda = scoped_hir_node_id(file, 2, scoped_hir_integer(facts, row, 5), scoped_hir_integer(facts, row, 6));
@@ -34469,12 +34469,12 @@ static char *scoped_hir_render(const char *source, const char *facts, const char
     row = hir_record_start(facts, "task", 0);
     while (row >= 0) {
         char *par_index = hir_field(facts, row, 1);
-        int64_t par = scoped_hir_fact(facts, "par", 1, par_index);
+        int64_t par_row = scoped_hir_fact(facts, "par", 1, par_index);
         char *display = scoped_hir_display(source, scoped_hir_integer(facts, row, 8));
         char *number = hir_field(facts, row, 7), *binding = scoped_hir_named_id(file, "binding", number);
         char *id = scoped_hir_task_id(file, facts, row);
         char *lambda = scoped_hir_node_id(file, 2, scoped_hir_integer(facts, row, 5), scoped_hir_integer(facts, row, 6));
-        char *parent = scoped_hir_par_id(file, facts, par);
+        char *parent = scoped_hir_par_id(file, facts, par_row);
         char *spawn = scoped_hir_node_id(file, 8, scoped_hir_integer(facts, row, 3), scoped_hir_integer(facts, row, 4));
         buffer_format(&records, ",{\"display\":%s,\"handle_binding_id\":\"%s\",\"id\":\"%s\",\"lambda_node_id\":\"%s\",\"lexical_index\":%" PRId64
             ",\"par_id\":\"%s\",\"record\":\"task\",\"spawn_node_id\":\"%s\"}",
@@ -36782,10 +36782,10 @@ static const char * capture_render_checked(CheckedPlaceArena *a, const char * v_
         }
         v_row = (capture_line_end(a, v_ordered, v_row) + 1);
     }
-    int64_t v_par = hir_record_start(v_facts, "par", 0);
-    while (v_par >= 0) {
+    int64_t v_par_row = hir_record_start(v_facts, "par", 0);
+    while (v_par_row >= 0) {
         v_records = (v_records + 1);
-        v_par = hir_record_start(v_facts, "par", (v_par + 1));
+        v_par_row = hir_record_start(v_facts, "par", (v_par_row + 1));
     }
     v_records = (v_records + (v_ordinal * 2));
     if (v_records > 8384) {
