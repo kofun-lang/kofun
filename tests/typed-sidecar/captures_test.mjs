@@ -13,6 +13,7 @@
 // refused at.
 
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -262,6 +263,210 @@ assert.throws(
     CaptureCodecError,
     'a base document that is already v2 is refused',
 )
+
+// --------------------------------------------------- section identities
+//
+// This independently assembled frame checks the production hash's domain,
+// lengths, raw ID bytes and prefix. The frozen model supplies the positive
+// record values, but neither it nor production supplies this test's encoder.
+function derived(name, payload) {
+    const domain = Buffer.from(`kofun.scope-hir.${name}/v2`)
+    const bytes = Buffer.alloc(6 + 2 + domain.length + 4 + payload.length)
+    Buffer.from([0x4b, 0x4f, 0x46, 0x55, 0x4e, 0]).copy(bytes)
+    bytes.writeUInt16BE(domain.length, 6)
+    domain.copy(bytes, 8)
+    bytes.writeUInt32BE(payload.length, 8 + domain.length)
+    payload.copy(bytes, 12 + domain.length)
+    return createHash('sha256').update(bytes).digest('hex')
+}
+
+const rawId = (id) => Buffer.from(id, 'hex')
+const indexBytes = (value) => { const bytes = Buffer.alloc(4); bytes.writeUInt32BE(value); return bytes }
+const captureIdentity = (event) => derived('capture', Buffer.concat([
+    rawId(event.task_id), Buffer.from([event.target_kind === 'place' ? 1 : 2]), rawId(event.target_id),
+]))
+const unknownIdentity = (event) => derived('unknown', Buffer.concat([
+    rawId(event.task_id), Buffer.from([REASON_TAG[event.reason]]), rawId(event.witness_node_id),
+]))
+const identityField = { par: 'par_id', task: 'task_id', join: 'join_id', place: 'place_id', unknown: 'unknown_id', capture: 'capture_id' }
+const flipId = (id) => (id[0] === 'e' ? 'd' : 'e') + id.slice(1)
+
+for (const event of decoded) {
+    let payload
+    if (event.event === 'par') payload = Buffer.concat([rawId(hir.file_id), rawId(event.scope_id), rawId(event.node_id)])
+    if (event.event === 'task') payload = Buffer.concat([
+        rawId(event.par_id), indexBytes(event.lexical_index), rawId(event.spawn_node_id),
+        rawId(event.lambda_node_id), rawId(event.handle_binding_id),
+    ])
+    if (event.event === 'join') payload = Buffer.concat([
+        rawId(event.task_id), Buffer.from([event.join_kind === 'explicit' ? 1 : 2]),
+        event.node_id === null ? Buffer.alloc(0) : rawId(event.node_id),
+    ])
+    if (event.event === 'place') payload = Buffer.from(event.canonical_bytes, 'hex')
+    if (event.event === 'unknown') payload = Buffer.concat([
+        rawId(event.task_id), Buffer.from([REASON_TAG[event.reason]]), rawId(event.witness_node_id),
+    ])
+    if (event.event === 'capture') payload = Buffer.concat([
+        rawId(event.task_id), Buffer.from([event.target_kind === 'place' ? 1 : 2]), rawId(event.target_id),
+    ])
+    assert.equal(derived(event.event, payload), event[identityField[event.event]],
+        `${event.event} identity agrees with independent raw-byte framing`)
+}
+
+function refusesSection(name, mutate, message, wire = true) {
+    const candidate = withEvents(mutate)
+    const check = (error) => error instanceof CaptureCodecError && message.test(error.message)
+    assert.throws(() => validateCaptureStream(candidate), check, name)
+    assert.throws(() => projectSidecarCaptures(candidate), check, `${name}: capture projection`)
+    assert.throws(() => projectSidecarV2(v1Document, candidate), check, `${name}: document projection`)
+    // Semantically wrong but structurally valid frames remain usable by raw
+    // codecs. A caller must cross the section validator after decoding.
+    if (wire) {
+        const reread = decodeCaptureFrames(encodeCaptureFrames(candidate))
+        assert.throws(() => validateCaptureStream(reread), check, `${name}: after raw round trip`)
+    }
+}
+
+for (const kind of ['task', 'join', 'place', 'unknown', 'capture']) {
+    refusesSection(`${kind} ID preimage mismatch`, (events) => {
+        const event = events.find((entry) => entry.event === kind)
+        event[identityField[kind]] = flipId(event[identityField[kind]])
+    }, new RegExp(`${kind} identity preimage mismatch`))
+}
+
+refusesSection('unknown origin must equal its witness, not merely have length one', (events) => {
+    const capture = events.find((event) => event.event === 'capture' && event.target_kind === 'unknown')
+    capture.origin_node_ids = [events.find((event) => event.event === 'capture' && event.target_kind === 'place').origin_node_ids[0]]
+}, /exactly its witness/)
+
+refusesSection('unknown cannot be captured by another declared task', (events) => {
+    const capture = events.find((event) => event.event === 'capture' && event.target_kind === 'unknown')
+    capture.task_id = events.find((event) => event.event === 'task' && event.task_id !== capture.task_id).task_id
+    // Keep CaptureId correct so only the cross-task link is invalid.
+    capture.capture_id = captureIdentity(capture)
+}, /belongs to another task/)
+
+refusesSection('KUN bytes must match the unknown fields', (events) => {
+    const unknown = events.find((event) => event.event === 'unknown')
+    unknown.canonical_bytes = unknownCanonicalBytes(unknown.task_id, unknown.reason, flipId(unknown.witness_node_id))
+}, /unknown bytes do not match/)
+refusesSection('UnknownId excludes the KUN prefix', (events) => {
+    const unknown = events.find((event) => event.event === 'unknown')
+    unknown.unknown_id = derived('unknown', Buffer.from(unknown.canonical_bytes, 'hex'))
+}, /unknown identity preimage mismatch/)
+refusesSection('KPL base must equal the separately supplied base', (events) => {
+    events.find((event) => event.event === 'place').base_binding_id = 'fe'.repeat(32)
+}, /place bytes do not match/, false)
+refusesSection('KPL projections cannot disagree with the supplied projections', (events) => {
+    const place = events.find((event) => event.event === 'place')
+    place.projections = []
+}, /place bytes do not match/, false)
+refusesSection('extra projection metadata is not silently stripped', (events) => {
+    events.find((event) => event.event === 'place').projections[0].display = { text: 'private' }
+}, /place bytes do not match/, false)
+
+// Every directly exposed section ID has the same nonzero rule. Updating an
+// identity alone must fail that rule before a later preimage or link check.
+const idFields = {
+    par: ['par_id', 'node_id', 'scope_id', 'parent_scope_id', 'scope_token_binding_id'],
+    task: ['task_id', 'par_id', 'spawn_node_id', 'lambda_node_id', 'handle_binding_id'],
+    join: ['join_id', 'task_id', 'node_id'],
+    place: ['place_id', 'base_binding_id'],
+    unknown: ['unknown_id', 'task_id', 'witness_node_id'],
+    capture: ['capture_id', 'task_id', 'target_id'],
+}
+for (const [kind, names] of Object.entries(idFields)) {
+    for (const name of names) {
+        refusesSection(`nonzero ${kind}.${name}`, (events) => {
+            const event = events.find((entry) => entry.event === kind && (name !== 'node_id' || entry.node_id !== null))
+            assert.ok(event, `${kind}.${name} fixture exists`)
+            event[name] = '00'.repeat(32)
+            if (kind === 'place' && name === 'base_binding_id') {
+                const canonical = Buffer.from(event.canonical_bytes, 'hex')
+                canonical.fill(0, 5, 37)
+                event.canonical_bytes = canonical.toString('hex')
+            }
+        }, /must be nonzero/)
+    }
+}
+refusesSection('nonzero capture origin', (events) => {
+    events.find((event) => event.event === 'capture').origin_node_ids[0] = '00'.repeat(32)
+}, /must be nonzero/)
+
+// The canonical-place parser stays a structural codec. Section validation
+// rejects semantically invalid bounds/depth/IDs even when the digest agrees.
+function replacePlace(events, canonical) {
+    const place = events.find((event) => event.event === 'place')
+    const before = place.place_id
+    const parsed = decodeCanonicalPlaceBytes(canonical)
+    Object.assign(place, parsed, { canonical_bytes: canonical, place_id: derived('place', Buffer.from(canonical, 'hex')) })
+    for (const capture of events.filter((event) => event.event === 'capture' && event.target_id === before)) {
+        capture.target_id = place.place_id
+        capture.capture_id = captureIdentity(capture)
+    }
+}
+const baseId = decoded.find((event) => event.event === 'place').base_binding_id
+const ownerId = 'ab'.repeat(32)
+const fieldBytes = Buffer.concat([Buffer.from([1]), rawId(ownerId), indexBytes(0)])
+const kpl = (projections) => Buffer.concat([
+    Buffer.from([0x4b, 0x50, 0x4c, 0, 2]), rawId(baseId), Buffer.from([projections.length]), ...projections,
+]).toString('hex')
+const constantBound = (value) => { const bytes = Buffer.alloc(9); bytes[0] = 1; bytes.writeBigInt64BE(BigInt(value), 1); return bytes }
+refusesSection('depth nine is not a known place even with a correct hash', (events) => {
+    replacePlace(events, kpl(Array(9).fill(fieldBytes)))
+}, /exceeds eight projections/)
+refusesSection('inverted constant range with a correct hash', (events) => {
+    replacePlace(events, kpl([Buffer.concat([Buffer.from([2]), constantBound(5), constantBound(4)])]))
+}, /inverted bounds/)
+refusesSection('nonzero field owner in canonical bytes', (events) => {
+    replacePlace(events, kpl([Buffer.concat([Buffer.from([1]), Buffer.alloc(32), indexBytes(0)])]))
+}, /must be nonzero/)
+refusesSection('nonzero dynamic bound in canonical bytes', (events) => {
+    replacePlace(events, kpl([Buffer.concat([Buffer.from([2, 2]), Buffer.alloc(32), constantBound(4)])]))
+}, /must be nonzero/)
+for (const bounds of [[4, 4], ['-9223372036854775808', '9223372036854775807']]) {
+    const candidate = withEvents((events) => replacePlace(events, kpl([
+        Buffer.concat([Buffer.from([2]), constantBound(bounds[0]), constantBound(bounds[1])]),
+    ])))
+    assert.doesNotThrow(() => validateCaptureStream(candidate), 'empty and i64-extreme slices remain valid')
+}
+
+// Each reason can be a fully linked synthetic section, not just a raw frame.
+for (const reason of UNKNOWN_REASONS) {
+    const candidate = withEvents((events) => {
+        const unknown = events.find((event) => event.event === 'unknown')
+        const before = unknown.unknown_id
+        unknown.reason = reason
+        unknown.canonical_bytes = unknownCanonicalBytes(unknown.task_id, reason, unknown.witness_node_id)
+        unknown.unknown_id = unknownIdentity(unknown)
+        for (const capture of events.filter((event) => event.event === 'capture' && event.target_id === before)) {
+            capture.target_id = unknown.unknown_id
+            capture.capture_id = captureIdentity(capture)
+        }
+    })
+    assert.doesNotThrow(() => projectSidecarV2(v1Document, candidate), `${reason}: consistent synthetic section`)
+}
+
+const foreignFile = JSON.parse(JSON.stringify(v1Document))
+foreignFile.file.file_id = flipId(hir.file_id)
+assert.throws(() => projectSidecarV2(foreignFile, decoded),
+    (error) => error instanceof CaptureCodecError && /par identity preimage mismatch/.test(error.message),
+    'nonempty capture section must be bound to the base FileId')
+const badPar = withEvents((events) => {
+    // Section-only validation has no FileId, but the document projector does.
+    events.find((event) => event.event === 'par').node_id = 'ef'.repeat(32)
+})
+assert.doesNotThrow(() => validateCaptureStream(badPar), 'section-only validation does not claim a FileId')
+assert.throws(() => projectSidecarV2(v1Document, badPar),
+    (error) => error instanceof CaptureCodecError && /par identity preimage mismatch/.test(error.message),
+    'projector checks ParId against the supplied base file')
+
+// No source snapshot, node table, prefix status or root-scope context is
+// supplied by these APIs. Empty events carry no FileId and prove no provenance.
+assert.deepEqual(projectSidecarV2(foreignFile, []).captures, [],
+    'empty projection is valid without advertising a capture FileId proof')
+assert.doesNotThrow(() => validateCaptureStream(decoded),
+    'opaque source IDs need no invented source parser or node-table fixture')
 
 // ----------------------------------------------------------- publication
 //
