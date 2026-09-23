@@ -668,8 +668,19 @@ function validateCompleteSection(events) {
     if (phases.par.length > 64) fail('$kse.events', 'par limit exceeded (64)')
     if (phases.task.length > 64) fail('$kse.events', 'task limit exceeded (64)')
     const parOrder = new Map()
+    // A complete section's first par has no earlier par parent: its parent
+    // is the sole possible external root. This proves the internal tree
+    // shape only; the compiler's actual enclosing scope needs its snapshot.
+    const rootScope = phases.par[0]?.parent_scope_id
+    const earlierScopes = new Set()
     phases.par.forEach((par, index) => {
         if (par.lexical_index !== index) fail('$kse.events', 'par indexes must be dense in canonical order')
+        if (par.scope_id === rootScope) fail('$kse.events', 'a par scope must not alias the section root scope')
+        if (earlierScopes.has(par.scope_id)) fail('$kse.events', 'duplicate par scope identity')
+        if (par.parent_scope_id !== rootScope && !earlierScopes.has(par.parent_scope_id)) {
+            fail('$kse.events', 'par parent must be the section root or an earlier par scope')
+        }
+        earlierScopes.add(par.scope_id)
         parOrder.set(par.par_id, index)
     })
     const nextTaskIndex = new Map()
@@ -726,13 +737,14 @@ function validateCompleteSection(events) {
 }
 
 function register(declared, kind, id, path) {
-    const key = `${kind}:${id}`
-    if (declared.has(key)) fail(path, `${kind} ${id} is declared twice`)
-    declared.set(key, true)
+    // Record identities are globally unique, including ParIds whose FileId
+    // preimage cannot be checked by the section-only entrypoint.
+    if (declared.has(id)) fail(path, `${kind} ${id} is declared twice`)
+    declared.set(id, kind)
 }
 
 function requireDeclared(declared, kind, id, path, what) {
-    if (!declared.has(`${kind}:${id}`)) fail(path, `${what} that no ${kind} event declared`)
+    if (declared.get(id) !== kind) fail(path, `${what} that no ${kind} event declared`)
 }
 
 // --------------------------------------------------------------- projection

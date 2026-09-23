@@ -598,6 +598,71 @@ const sparsePars = completeFixture([0])
 sparsePars[0].lexical_index = 1 // ParId intentionally does not contain this index.
 refusesComplete('non-dense par index', sparsePars, /par order/, /par indexes must be dense/)
 
+const duplicateScopes = completeFixture([0, 0])
+duplicateScopes[1].scope_id = duplicateScopes[0].scope_id
+duplicateScopes[1].par_id = eventIdentity(duplicateScopes[1])
+refusesComplete('distinct ParIds cannot reuse a ScopeId', duplicateScopes,
+    /duplicate par scope identity/, /duplicate par scope identity/)
+for (const index of [0, 1]) {
+    const rootAlias = completeFixture([0, 0])
+    rootAlias[index].scope_id = hir.root_scope_id
+    rootAlias[index].par_id = eventIdentity(rootAlias[index])
+    refusesComplete(`par ${index} scope aliases the external root`, rootAlias,
+        /must not alias the root scope/, /must not alias the section root scope/)
+}
+for (const [name, mutate, message] of [
+    ['first par is its own parent', (pars) => { pars[0].parent_scope_id = pars[0].scope_id }, /must not alias/],
+    ['later par is its own parent', (pars) => { pars[1].parent_scope_id = pars[1].scope_id }, /parent must be/],
+    ['later par names a forward parent', (pars) => { pars[1].parent_scope_id = pars[2].scope_id }, /parent must be/],
+    ['later par names a different external root', (pars) => { pars[1].parent_scope_id = 'bc'.repeat(32) }, /parent must be/],
+    ['first par names a later par', (pars) => { pars[0].parent_scope_id = pars[1].scope_id }, /must not alias/],
+    ['two par scopes form a cycle', (pars) => {
+        pars[0].parent_scope_id = pars[1].scope_id
+        pars[1].parent_scope_id = pars[0].scope_id
+    }, /must not alias/],
+]) {
+    const parents = completeFixture([0, 0, 0])
+    mutate(parents) // Parent links are deliberately not part of ParId.
+    refusesComplete(name, parents, /parent link is not closed/, message)
+}
+const nestedScopes = completeFixture([0, 0, 0, 0])
+nestedScopes[1].parent_scope_id = nestedScopes[0].scope_id
+nestedScopes[2].parent_scope_id = nestedScopes[1].scope_id
+acceptsComplete('nested earlier scopes and a later root sibling', nestedScopes)
+nestedScopes[3].parent_scope_id = nestedScopes[0].scope_id
+acceptsComplete('a later par can return to a non-immediate earlier parent', nestedScopes)
+
+// The first parent determines the section's possible external root, not its
+// actual compiler provenance. A consistently different opaque root remains
+// valid when the oracle's explicit root context agrees; production has none.
+const opaqueRoot = 'bd'.repeat(32)
+const otherRoot = completeFixture([0, 0, 0])
+otherRoot.forEach((par) => { par.parent_scope_id = opaqueRoot })
+otherRoot[1].parent_scope_id = otherRoot[0].scope_id
+assertSectionIds(otherRoot, 'a consistently different opaque root')
+assert.equal(validateScopeHir({ ...sectionHir(otherRoot), root_scope_id: opaqueRoot }), true)
+assert.doesNotThrow(() => validateCaptureStream(otherRoot))
+assert.doesNotThrow(() => projectSidecarCaptures(otherRoot))
+assert.doesNotThrow(() => projectSidecarV2(v1Document, otherRoot))
+assert.doesNotThrow(() => validateCaptureStream(decodeCaptureFrames(encodeCaptureFrames(otherRoot))))
+
+// A real cross-domain digest collision cannot be manufactured as a coherent
+// hash fixture. The section-only reader cannot recompute ParId, so reuse a
+// correctly derived PlaceId as that unchecked ParId to isolate its global
+// identity registry. The oracle additionally has the FileId and rejects the
+// bad ParId itself. Raw frames remain structural in either case.
+const crossKindIdentity = completeFixture([0])
+const collidingPlace = structuredClone(decoded.find((event) => event.event === 'place'))
+assert.equal(collidingPlace.place_id, eventIdentity(collidingPlace))
+crossKindIdentity[0].par_id = collidingPlace.place_id
+crossKindIdentity.push(collidingPlace)
+assert.throws(() => validateScopeHir(sectionHir(crossKindIdentity)), /ParId preimage mismatch/)
+const duplicateRecord = (error) => error instanceof CaptureCodecError && /declared twice/.test(error.message)
+assert.throws(() => validateCaptureStream(crossKindIdentity), duplicateRecord, 'record IDs are unique across kinds')
+assert.throws(() => projectSidecarCaptures(crossKindIdentity), duplicateRecord)
+assert.throws(() => projectSidecarV2(v1Document, crossKindIdentity), duplicateRecord)
+assert.throws(() => validateCaptureStream(decodeCaptureFrames(encodeCaptureFrames(crossKindIdentity))), duplicateRecord)
+
 const sparseTasks = completeFixture([2])
 const sparseTask = sparseTasks.filter((event) => event.event === 'task')[1]
 const oldTaskId = sparseTask.task_id
