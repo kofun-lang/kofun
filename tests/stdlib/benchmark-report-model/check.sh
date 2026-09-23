@@ -101,9 +101,8 @@ run_group() {
         golden="$WORK/$stem.expected"
     fi
     # `run_comparison_group(6)` matches no branch and runs nothing. It is here
-    # because every function in the concatenated program must be *referenced*
-    # or the build fails at `cc` with -Werror=unused-function (#1358), and the
-    # corpus now carries the #1313 comparison cases and #1367's vectors.
+    # to retain the comparison and frozen-vector entry points in each generated
+    # program, even when this process executes only a model group.
     {
         printf 'fn main() {\n'
         printf '    let mut cases = run_comparison_group(6) + run_vector_group(6)\n'
@@ -113,6 +112,12 @@ run_group() {
     } >"$WORK/$stem.main.kofun"
     cat "$model" "$compare" "$corpus" "$WORK/$stem.main.kofun" >"$WORK/$stem.kofun"
 
+    run_program
+}
+
+# Every tracked and generated group has the same checker, emitted C, repeat,
+# reference-executor, and exact-output obligations.
+run_program() {
     "$ROOT/bin/kofun" check "$WORK/$stem.kofun" \
         >"$WORK/$stem.check.stdout" 2>"$WORK/$stem.check.stderr" ||
         assert_fail "$stem did not check: $(cat "$WORK/$stem.check.stderr")"
@@ -192,6 +197,20 @@ for group in 0 1 4
 do
     cmp "$WORK/group$group.expected" "$WORK/group$group.stdout" ||
         assert_fail "group $group disagrees with the benchmark-report-v1 oracle"
+done
+
+# The physical matrix supplies invalid mappings and multiple simultaneous
+# failures to fromStage2Outcome. Eight cases per process keep programs small
+# and failures focused; every expected status comes from the normative mapper.
+physical_groups=$(node "$oracle" physical-groups)
+for physical_group in $physical_groups
+do
+    stem="physical$physical_group"
+    golden="$WORK/$stem.expected"
+    node "$oracle" physical-source "$physical_group" >"$WORK/$stem.main.kofun"
+    node "$oracle" physical-expect "$physical_group" >"$golden"
+    cat "$model" "$compare" "$corpus" "$WORK/$stem.main.kofun" >"$WORK/$stem.kofun"
+    run_program
 done
 
 # -------------------------------------------------------------------- sweep
@@ -290,4 +309,5 @@ printf '%s\n' \
     'PASS: every refusal maps to its contract code and carries no field of a report' \
     'PASS: -O0, -O2, the reference executor, and a repeat execution agree' \
     'PASS: host frequency availability, zero, signed values, and integer bounds agree with the physical oracle' \
+    'PASS: 73 physical mapping, scalar-bound, absence, closed-tag, and error-order cases agree with fromStage2Outcome' \
     'PASS: six reintroduced defects are refused'

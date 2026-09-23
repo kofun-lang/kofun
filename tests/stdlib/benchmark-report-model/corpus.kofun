@@ -2,11 +2,10 @@
 # gate runs.
 #
 # `check.sh` concatenates `model.kofun`, this file, and one generated `main`
-# per group. The groups exist because the bounded Text arena is a whole-run
-# 4096-byte budget that is never reclaimed (#1359): validating four SHA-256
-# digests costs 256 bytes of one-byte slices per report, so a single program
-# cannot construct every case. Every group is a separate process, and no case
-# depends on state from another.
+# per group. The five original groups preserve independent runtime state and
+# committed golden boundaries. Generated physical groups use the same checks.
+# The Text runtime reuses loop temporaries (#1359); grouping is no longer a
+# claim of a whole-run 4096-byte arena.
 #
 # The sample values are one arithmetic pattern with two planted extremes —
 # index 5 sits above the upper Tukey fence and index 40 below the lower one —
@@ -382,7 +381,7 @@ fn run_counter_case(name: Text, value: Int) -> Int {
 #
 # Every group is named here rather than in the generated driver, so the driver
 # is three lines and the cases stay in the tracked corpus. A group runs in its
-# own process; the arena is the reason, and the count each group returns is
+# own process with independent runtime state; the count each group returns is
 # what the golden pins.
 
 fn run_group(group: Int) -> Int {
@@ -417,9 +416,9 @@ fn run_group(group: Int) -> Int {
     }
 
     if group == 2 {
-        # Series shape: an empty series, a noncanonical split, and a second
-        # segment that overflows its own bound is not reachable — a literal
-        # cannot exceed the carrier — so the split rule carries that weight.
+        # Series shape: an empty series and a noncanonical split. The physical
+        # matrix below also covers a 37-element second segment: it fits the
+        # 64-element carrier but exceeds this report's 36-element bound.
         cases = cases + run_case("empty", empty, empty, 1, 0)
         let short0: List[Int] = [1000, 1481, 1962]
         let segment1_1: List[Int] = corpus_segment1_1()
@@ -458,6 +457,88 @@ fn run_group(group: Int) -> Int {
 
     return cases
 }
+
+# -------------------------------------------------- physical validation inputs
+#
+# These JSON comments are data consumed by oracle.mjs. Each changes the frozen
+# minimal physical outcome; derived flags/summaries come from the independent
+# oracle. Generated Kofun drivers pass only the five input records and raw
+# segments to produce_report, so no decoded-wire error order is substituted.
+# Eight cases per process keep failures focused and programs small. Keeping
+# inputs here makes both emitted source and expectation share each exact value.
+# physical-case {"name":"physical-valid","changes":{}}
+# physical-case {"name":"empty-suite","changes":{"suite":""}}
+# physical-case {"name":"empty-case","changes":{"case":""}}
+# physical-case {"name":"empty-metric","changes":{"metric":""}}
+# physical-case {"name":"empty-host_os","changes":{"host_os":""}}
+# physical-case {"name":"empty-host_arch","changes":{"host_arch":""}}
+# physical-case {"name":"empty-host_cpu","changes":{"host_cpu":""}}
+# physical-case {"name":"empty-parameter","changes":{"parameter_present":true,"parameter":""}}
+# physical-case {"name":"empty-affinity","changes":{"host_affinity_available":true,"host_affinity":""}}
+# physical-case {"name":"absent-parameter","changes":{"parameter":"x"}}
+# physical-case {"name":"absent-affinity","changes":{"host_affinity":"x"}}
+# physical-case {"name":"absent-allocated_bytes","changes":{"allocated_bytes_value":1}}
+# physical-case {"name":"absent-allocation_count","changes":{"allocation_count_value":1}}
+# physical-case {"name":"absent-gc_collections","changes":{"gc_collections_value":1}}
+# physical-case {"name":"absent-vm_peak_bytes","changes":{"vm_peak_bytes_value":1}}
+# physical-case {"name":"absent-cpu_cycles","changes":{"cpu_cycles_value":1}}
+# physical-case {"name":"direction_tag-negative","changes":{"direction_tag":-1}}
+# physical-case {"name":"direction_tag-over","changes":{"direction_tag":2}}
+# physical-case {"name":"direction_tag-unsafe","changes":{"direction_tag":9007199254740992}}
+# physical-case {"name":"clock_tag-negative","changes":{"clock_tag":-1}}
+# physical-case {"name":"clock_tag-over","changes":{"clock_tag":3}}
+# physical-case {"name":"clock_tag-unsafe","changes":{"clock_tag":9007199254740992}}
+# physical-case {"name":"warmup_stop_tag-negative","changes":{"warmup_stop_tag":-1}}
+# physical-case {"name":"warmup_stop_tag-over","changes":{"warmup_stop_tag":3}}
+# physical-case {"name":"warmup_stop_tag-unsafe","changes":{"warmup_stop_tag":9007199254740992}}
+# physical-case {"name":"sampling_stop_tag-negative","changes":{"sampling_stop_tag":-1}}
+# physical-case {"name":"sampling_stop_tag-over","changes":{"sampling_stop_tag":2}}
+# physical-case {"name":"sampling_stop_tag-unsafe","changes":{"sampling_stop_tag":9007199254740992}}
+# physical-case {"name":"warmup_cap_ns-negative","changes":{"warmup_cap_ns":-1}}
+# physical-case {"name":"sampling_cap_ns-negative","changes":{"sampling_cap_ns":-1}}
+# physical-case {"name":"sample_cap-negative","changes":{"sample_cap":-1}}
+# physical-case {"name":"warmup_iterations-negative","changes":{"warmup_iterations":-1}}
+# physical-case {"name":"iterations_per_sample-negative","changes":{"iterations_per_sample":-1}}
+# physical-case {"name":"harness_overhead_ns-negative","changes":{"harness_overhead_ns":-1}}
+# physical-case {"name":"iterations-zero","changes":{"iterations_per_sample":0}}
+# physical-case {"name":"sampling-cap-zero","changes":{"sampling_cap_ns":0}}
+# physical-case {"name":"sample-cap-zero","changes":{"sample_cap":0}}
+# physical-case {"name":"warmup-cap-over","changes":{"warmup_cap_ns":500000001}}
+# physical-case {"name":"sampling-cap-over","changes":{"sampling_cap_ns":3000000001}}
+# physical-case {"name":"sample-cap-over","changes":{"sample_cap":101}}
+# physical-case {"name":"sample-count-over","changes":{"sample_count":101}}
+# physical-case {"name":"sample-count-negative","changes":{"sample_count":-1}}
+# physical-case {"name":"sample-count-unsafe-negative","changes":{"sample_count":-9007199254740992}}
+# physical-case {"name":"negative-sample","changes":{"sample_segment0":[-1]}}
+# physical-case {"name":"unsafe-negative-sample","changes":{"sample_segment0":[-9007199254740992]}}
+# physical-case {"name":"sample-over","changes":{"sample_segment0":[9007199254740992]}}
+# physical-case {"name":"negative-counter","changes":{"allocated_bytes_available":true,"allocated_bytes_value":-1}}
+# physical-case {"name":"unsafe-negative-counter","changes":{"allocated_bytes_available":true,"allocated_bytes_value":-9007199254740992}}
+# physical-case {"name":"counter-over","changes":{"allocated_bytes_available":true,"allocated_bytes_value":9007199254740992}}
+# physical-case {"name":"counter-zero","changes":{"allocated_bytes_available":true,"allocated_bytes_value":0}}
+# physical-case {"name":"segment1-over","changes":{"sample_segment1":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"sample_count":38,"sample_cap":38}}
+# physical-case {"name":"split-empty-suite","changes":{"sample_segment1":[0],"sample_count":2,"sample_cap":2,"suite":""}}
+# physical-case {"name":"parameter-before-count","changes":{"parameter":"x","sample_count":101}}
+# physical-case {"name":"count-before-parameter-text","changes":{"parameter_present":true,"parameter":"","sample_count":-1}}
+# physical-case {"name":"sample-before-direction","changes":{"sample_segment0":[9007199254740992],"direction_tag":-1}}
+# physical-case {"name":"sample-order-negative-first","changes":{"sample_segment0":[-1,9007199254740992],"sample_count":2,"sample_cap":2}}
+# physical-case {"name":"sample-order-unsafe-first","changes":{"sample_segment0":[9007199254740992,-1],"sample_count":2,"sample_cap":2}}
+# physical-case {"name":"direction-before-counter","changes":{"direction_tag":9007199254740992,"allocated_bytes_value":1}}
+# physical-case {"name":"counter-before-clock","changes":{"allocated_bytes_value":1,"clock_tag":9007199254740992}}
+# physical-case {"name":"clock-before-warmup-tag","changes":{"clock_tag":-1,"warmup_stop_tag":9007199254740992}}
+# physical-case {"name":"warmup-tag-before-sampling-tag","changes":{"warmup_stop_tag":-1,"sampling_stop_tag":9007199254740992}}
+# physical-case {"name":"sampling-tag-before-affinity","changes":{"sampling_stop_tag":9007199254740992,"host_affinity":"x"}}
+# physical-case {"name":"affinity-before-identity","changes":{"host_affinity":"x","suite":""}}
+# physical-case {"name":"identity-before-budget","changes":{"suite":"\t","warmup_cap_ns":500000001}}
+# physical-case {"name":"identity-field-order","changes":{"suite":"\t","case":""}}
+# physical-case {"name":"budget-field-order","changes":{"warmup_cap_ns":-1,"sampling_cap_ns":3000000001}}
+# physical-case {"name":"measurement-before-warmup-invariant","changes":{"warmup_stop_tag":1,"harness_overhead_ns":9007199254740992}}
+# physical-case {"name":"measurement-field-order","changes":{"warmup_iterations":-1,"iterations_per_sample":9007199254740992}}
+# physical-case {"name":"counter-before-digest","changes":{"allocated_bytes_available":true,"allocated_bytes_value":-1,"toolchain_sha256":"bad"}}
+# physical-case {"name":"digest-before-host","changes":{"toolchain_sha256":"bad","host_os":""}}
+# physical-case {"name":"host-id-before-text","changes":{"host_id_sha256":"bad","host_os":""}}
+# physical-case {"name":"host-text-before-frequency","changes":{"host_os":"\t","host_frequency_hz_available":true,"host_frequency_hz":9007199254740992}}
+# physical-case {"name":"noise-whitespace","changes":{"host_noise":"\t\n\r"}}
 
 # ---------------------------------------------------- comparison corpus
 #

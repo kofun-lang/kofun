@@ -6,7 +6,8 @@ executable Stage 2 C11 profile, in Kofun (#1311).
 
 - `model.kofun` — the 49-field flat outcome, closed validation, the segmented
   summaries, and the outlier flags. It declares no `main`: it is a library.
-- `corpus.kofun` — the inputs and the five groups the gate runs.
+- `corpus.kofun` — the five original groups and the physical validation inputs
+  used to generate ten additional bounded groups.
 - `oracle.mjs` — the independent expectation. It computes nothing itself; it
   calls `summarize`, `outlierFlags`, and the physical mapping from the merged
   #1310 oracle and reads the sample values out of `corpus.kofun`, so the two
@@ -30,11 +31,35 @@ segment boundary, and the 100-sample ceiling. `KOFUN_BENCHMARK_REPORT_MODEL_SWEE
 runs every count from 1 to 100; the counts actually used are printed by the gate
 rather than assumed.
 
-The original refusal groups retain explicit contract-code goldens. The host
+The original refusal groups retain explicit contract-code goldens. Three
+previously incorrect group 3 codes now agree with `fromStage2Outcome`: an empty
+required suite is BR004, an absent parameter with a nonempty payload is BR006,
+and an unavailable counter with a nonzero payload is BR006. Every original
+case, flag assertion, and neutral-payload assertion remains.
+
+The host
 frequency group checks available zero, unavailable zero, a positive value,
 a negative value, the integer ceiling, one above it, and an unavailable
 nonzero payload against `fromStage2Outcome`. It also checks that success
 preserves both physical frequency fields and that every failure is neutral.
+
+The 73-case physical matrix covers required empty Text, all four closed tag
+families, all five unavailable counters, lower and upper integer bounds,
+unsafe negative integers, count and segment limits, and 21 simultaneous-error
+cases. The latter distinguish the physical mapper's validation order from a
+global minimum error number: absent payloads and segmented shape are checked
+before semantic identity, and semantic fields are checked in contract order.
+For example, an invalid split plus an empty suite is BR006, while a forbidden
+suite control plus an excessive warmup budget is BR005.
+
+The JSON comments marked `physical-case` contain inputs only. `oracle.mjs`
+generates both the Kofun input records and the expectation from those exact
+values, deriving summaries and flags with the independent oracle and obtaining
+every status through `fromStage2Outcome`. The generated program passes only
+the production constructor's five records and raw segments; it cannot inject
+an invalid derived summary or outlier flag. Every failure checks all 49 neutral
+fields, and every group retains the checker, strict C11 at O0/O2, repeated
+execution, and reference-executor comparisons. No wire decoder participates.
 
 Six mutations defend these checks: truncating the nearest rank, admitting
 equality at the Tukey fence, disarming the canonical-split guard, and leaking
@@ -42,22 +67,22 @@ one Text field into a refused outcome, rejecting available zero, and assigning
 the wrong error code to an unavailable nonzero frequency. Each must build and
 change the output.
 
-## Three profile limits shaped this, not preference
+## Bounded execution and tooling
 
-**The corpus runs in five processes.** The bounded Text arena is a whole-run
-4096-byte budget that is never reclaimed (#1359), and validating four SHA-256
-digests costs 256 bytes of one-byte slices per report, so one program cannot
-construct every case. The groups are that split, and the gate's sweep driver is
-generated for the same reason.
+The five original groups preserve their golden boundaries and independent
+runtime state. Generated physical groups carry at most eight cases each to
+keep programs small and failures focused. The Text runtime has 4,096 slots of
+256 bytes; #1359 added reuse of loop temporaries. It is not a 4,096-byte
+whole-process budget.
 
-**No `main` in `model.kofun`, and `run_group` names every corpus function.** A
-declared-but-uncalled function fails the build at `cc` with
-`-Werror=unused-function` (#1358), so a driver that used part of the model
-would not compile.
+`model.kofun` declares no `main`; the corpus and gate supply the callers.
+The production emitter references declared functions, so an unused fixture
+helper no longer fails strict C compilation (#1358).
 
-**No typed-sidecar assertion.** On a program this size the projector prints
-`ok:`, writes `ETS04`, and exits 3 without producing a file (#1360). The
-assertion belongs here and returns when that is fixed.
+The full model still exceeds the typed-sidecar producer's declaration profile.
+Since #1360, the gate checks the located `ETS04` refusal, exit 3, empty stdout
+and absent sidecar. The small `benchmark-summary` regression separately keeps
+a positive complete projection; these are different tooling observations.
 
 ## What this child does not own
 
