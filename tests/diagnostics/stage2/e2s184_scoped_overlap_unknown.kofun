@@ -1,0 +1,13 @@
+# diagnostic-mode: scoped-ownership
+# expect-code: E2S184
+# expect-span: byte 302
+fn fill(edit xs: List[Int]) { }
+fn main() -> Int {
+    let mut items: List[Int] = [1, 2, 3, 4]
+    let split: Int = 2
+    par |scope| {
+        scope.spawn(fn() { fill(items[0..split]) })
+        scope.spawn(fn() { fill(items[split..4]) })
+    }
+    return 0
+}

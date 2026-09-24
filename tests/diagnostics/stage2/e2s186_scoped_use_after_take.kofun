@@ -1,0 +1,15 @@
+# diagnostic-mode: scoped-ownership
+# expect-code: E2S186
+# expect-span: byte 400
+type Resource = { value: Int }
+fn consume(take resource: Resource) -> Int { return 1 }
+fn look(read resource: Resource) -> Int { return 2 }
+fn main() -> Int {
+    let resource: Resource = Resource(value: 1)
+    par |scope| {
+        let owner = scope.spawn(fn() => consume(resource))
+        owner.join()
+        look(resource)
+    }
+    return 0
+}

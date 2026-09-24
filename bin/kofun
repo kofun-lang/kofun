@@ -1189,6 +1189,26 @@ case ${1-} in
             printf '%s\n' "ok: $2"
             exit 0
         fi
+        # A `par` the scoped ownership checker rejects reports that class
+        # (#1163) rather than whichever unimplemented construct compilation
+        # met first; an accepted or unanalysable `par` keeps that refusal.
+        if test "$compile_status" -eq 1 &&
+           grep -Eq '(^|[^A-Za-z0-9_])par[[:space:]]*[|]' "$2"
+        then
+            ensure_stage2_compiler
+            set +e
+            "$STAGE2_COMPILER" --check-scoped-ownership "$2" \
+                "$work/scoped-ownership.json" "$(basename -- "$2")" \
+                >"$work/scoped.stdout" 2>"$work/scoped.stderr"
+            scoped_status=$?
+            set -e
+            if test "$scoped_status" -eq 1 &&
+               grep -Eq '^error\[E2S18[3-8]\]' "$work/scoped.stdout"
+            then
+                cat "$work/scoped.stdout" >&2
+                exit 1
+            fi
+        fi
         if test "$compile_status" -eq 1 ||
            test "$compile_status" -eq 3
         then

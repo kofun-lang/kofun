@@ -27550,10 +27550,10 @@ fn ownership_token_escape(source: Text, hir: Text, facts: Text, par_row: Int) ->
         if hir_field(hir, use, 4) == token {
             let member = scoped_parallel_member(source, at)
             if ownership_in_closure(source, block, close, at) {
-                return ownership_error("SPV1-HANDLE-ESCAPE", "a closure cannot capture its scope token", at)
+                return "error[E2S187]: a closure cannot capture its scope token at byte " + to_text(at)
             }
             if member < 0 || token_text(source, member) != "spawn" {
-                return ownership_error("SPV1-HANDLE-ESCAPE", "a scope token is used only to spawn", at)
+                return "error[E2S187]: a scope token is used only to spawn at byte " + to_text(at)
             }
         }
         use = hir_record_start(hir, "use", use + 1)
@@ -27677,17 +27677,85 @@ fn ownership_access_key(accesses: Text, row: Int, file: Text) -> Text {
     return "U" + checked_place_expression_id(file, start, stop)
 }
 
-fn ownership_diagnostic(code: Text, at: Text, byte: Int) -> Text {
-    return "diag|" + code + "|" + at + "|" + to_text(byte) + "\n"
+# #1163: the one registered compiler code for each contract class of §8.
+fn ownership_compiler_code(class: Text) -> Text {
+    if class == "SPV1-CAPTURE-CONFLICT" { return "E2S183" }
+    if class == "SPV1-OVERLAP-UNKNOWN" { return "E2S184" }
+    if class == "SPV1-PARENT-CONFLICT" { return "E2S185" }
+    if class == "SPV1-USE-AFTER-TAKE" { return "E2S186" }
+    if class == "SPV1-HANDLE-ESCAPE" { return "E2S187" }
+    return "E2S188"
+}
+
+# A visible display from the scope's name table; anything else is hidden.
+fn ownership_name_text(names: Text, id: Text) -> Text {
+    let row = capture_fact(names, "name", 1, id)
+    if row < 0 { return "<hidden>" }
+    let display = hir_field(names, row, 2)
+    let text = text_find_from(display, "\"text\":\"", 0)
+    if text < 0 { return "<hidden>" }
+    return text_slice(display, text + 8, text_find_from(display, "\"", text + 8))
+}
+
+# A constant bound's decimal text from its sign-flipped two's-complement key.
+fn ownership_constant_text(bound: Text) -> Text {
+    let flipped = scoped_hir_hex_digit(text_slice(bound, 1, 2))
+    let mut value = flipped - 8
+    let mut at = 2
+    if flipped >= 8 {
+        while at < 17 {
+            value = value * 16 + scoped_hir_hex_digit(text_slice(bound, at, at + 1))
+            at = at + 1
+        }
+        return to_text(value)
+    }
+    if text_slice(bound, 1, 17) == "0000000000000000" { return "-9223372036854775808" }
+    value = 7 - flipped
+    while at < 17 {
+        value = value * 16 + 15 - scoped_hir_hex_digit(text_slice(bound, at, at + 1))
+        at = at + 1
+    }
+    return "-" + to_text(value + 1)
+}
+
+fn ownership_bound_text(bound: Text) -> Text {
+    if ownership_constant(bound) { return ownership_constant_text(bound) }
+    return "_"
+}
+
+# A disclosure-safe place: visible names, constant bounds, `_` for a dynamic
+# bound, and no identity, path, or hidden spelling.
+fn ownership_place_text(names: Text, key: Text) -> Text {
+    if starts_with(key, "U") { return "an unknown place" }
+    let mut result = ownership_name_text(names, "b" + text_slice(key, 1, 65))
+    let mut at = ownership_segment_end(key, 0) + 1
+    while at < len(key) {
+        let end = ownership_segment_end(key, at)
+        if text_slice(key, at, at + 1) == "F" {
+            result = result + "." + ownership_name_text(names, "f" + text_slice(key, at + 1, at + 65) + "-" +
+                to_text(ownership_hex_value(key, at + 65, 8)))
+        } else {
+            let comma = text_find_from(key, ",", at)
+            result = result + "[" + ownership_bound_text(text_slice(key, at + 1, comma)) + ".." +
+                ownership_bound_text(text_slice(key, comma + 1, end)) + "]"
+        }
+        at = end + 1
+    }
+    return result
+}
+
+fn ownership_diagnostic(code: Text, at: Text, byte: Int, detail: Text) -> Text {
+    return "diag|" + code + "|" + at + "|" + to_text(byte) + "|" + detail + "\n"
 }
 
 # The model's analyzeNormalized rejection rules, over `task|INDEX|SPAWN|END`,
 # `cap`, `act|INDEX|STEP|MODE|KEY|START` and `escape` rows.
-fn ownership_decide(rows: Text) -> Text {
+fn ownership_decide(rows: Text, names: Text) -> Text {
     let mut result = ""
     let mut row = capture_record_start(rows, "escape", 0)
     while row >= 0 {
-        result = result + ownership_diagnostic("SPV1-HANDLE-ESCAPE", "task:t" + hir_field(rows, row, 1), decimal_value(hir_field(rows, row, 3)))
+        result = result + ownership_diagnostic("SPV1-HANDLE-ESCAPE", "task:t" + hir_field(rows, row, 1), decimal_value(hir_field(rows, row, 3)),
+            "scoped task #" + hir_field(rows, row, 1) + " handle escapes by " + hir_field(rows, row, 2))
         row = capture_record_start(rows, "escape", row + 1)
     }
     let mut left = capture_record_start(rows, "task", 0)
@@ -27704,8 +27772,15 @@ fn ownership_decide(rows: Text) -> Text {
                         if ownership_conflict(hir_field(rows, a, 2), hir_field(rows, b, 2)) {
                             let relation = ownership_relation(hir_field(rows, a, 3), hir_field(rows, b, 3))
                             let byte = decimal_value(hir_field(rows, b, 4))
-                            if relation == "unknown" { result = result + ownership_diagnostic("SPV1-OVERLAP-UNKNOWN", at, byte) }
-                            if relation == "overlap" { result = result + ownership_diagnostic("SPV1-CAPTURE-CONFLICT", at, byte) }
+                            let pair = "scoped tasks #" + hir_field(rows, left, 1) + " and #" + hir_field(rows, right, 1)
+                            let first = hir_field(rows, a, 2) + " " + ownership_place_text(names, hir_field(rows, a, 3))
+                            let second = hir_field(rows, b, 2) + " " + ownership_place_text(names, hir_field(rows, b, 3))
+                            if relation == "unknown" {
+                                result = result + ownership_diagnostic("SPV1-OVERLAP-UNKNOWN", at, byte, pair + " need disjoint places: " + first + ", " + second)
+                            }
+                            if relation == "overlap" {
+                                result = result + ownership_diagnostic("SPV1-CAPTURE-CONFLICT", at, byte, pair + " conflict: " + first + " overlaps " + second)
+                            }
                         }
                         b = capture_record_start(rows, "cap", b + 1)
                     }
@@ -27732,8 +27807,13 @@ fn ownership_decide(rows: Text) -> Text {
                             if relation != "disjoint" {
                                 let at = "tasks:t" + hir_field(rows, earlier, 1) + ",t" + hir_field(rows, later, 1)
                                 let byte = decimal_value(hir_field(rows, capture, 4))
-                                found = ownership_diagnostic("SPV1-USE-AFTER-TAKE", at, byte)
-                                if relation == "unknown" { found = ownership_diagnostic("SPV1-OVERLAP-UNKNOWN", at, byte) }
+                                let used = "scoped task #" + hir_field(rows, later, 1) + " uses " + ownership_place_text(names, hir_field(rows, capture, 3))
+                                found = ownership_diagnostic("SPV1-USE-AFTER-TAKE", at, byte, used + " after task #" + hir_field(rows, earlier, 1) +
+                                    " took " + ownership_place_text(names, hir_field(rows, taken, 3)))
+                                if relation == "unknown" {
+                                    found = ownership_diagnostic("SPV1-OVERLAP-UNKNOWN", at, byte, used + ", not provably apart from what task #" +
+                                        hir_field(rows, earlier, 1) + " took")
+                                }
                             }
                         }
                         taken = capture_record_start(rows, "cap", taken + 1)
@@ -27757,13 +27837,21 @@ fn ownership_decide(rows: Text) -> Text {
             while capture >= 0 && hir_field(rows, capture, 1) == hir_field(rows, task, 1) {
                 let relation = ownership_relation(hir_field(rows, action, 4), hir_field(rows, capture, 3))
                 if step >= decimal_value(hir_field(rows, task, 2)) && relation != "disjoint" {
+                    let access = hir_field(rows, action, 3) + " " + ownership_place_text(names, hir_field(rows, action, 4))
+                    let owner = "scoped task #" + hir_field(rows, task, 1)
                     if hir_field(rows, capture, 2) == "take" {
-                        if relation == "unknown" { result = result + ownership_diagnostic("SPV1-OVERLAP-UNKNOWN", at, byte) }
-                        else { result = result + ownership_diagnostic("SPV1-USE-AFTER-TAKE", at, byte) }
+                        if relation == "unknown" {
+                            result = result + ownership_diagnostic("SPV1-OVERLAP-UNKNOWN", at, byte, access + " is not provably apart from what " + owner + " took")
+                        } else {
+                            result = result + ownership_diagnostic("SPV1-USE-AFTER-TAKE", at, byte, access + " after " + owner + " took " +
+                                ownership_place_text(names, hir_field(rows, capture, 3)))
+                        }
                     } else if step < decimal_value(hir_field(rows, task, 3)) &&
                         ownership_conflict(hir_field(rows, action, 3), hir_field(rows, capture, 2)) {
-                        if relation == "unknown" { result = result + ownership_diagnostic("SPV1-OVERLAP-UNKNOWN", at, byte) }
-                        else { result = result + ownership_diagnostic("SPV1-PARENT-CONFLICT", at, byte) }
+                        let live = "live " + hir_field(rows, capture, 2) + " " + ownership_place_text(names, hir_field(rows, capture, 3)) + " in " + owner
+                        if relation == "unknown" {
+                            result = result + ownership_diagnostic("SPV1-OVERLAP-UNKNOWN", at, byte, access + " is not provably apart from " + live)
+                        } else { result = result + ownership_diagnostic("SPV1-PARENT-CONFLICT", at, byte, access + " conflicts with " + live) }
                     }
                 }
                 capture = capture_record_start(rows, "cap", capture + 1)
@@ -27960,10 +28048,12 @@ fn ownership_scope(source: Text, hir: Text, facts: Text, accesses: Text, path: T
         }
         row = capture_record_start(acts, "act", row + 1)
     }
+    let unique_names = ownership_unique(names)
     let mut diagnostics = ""
     if actions > 256 {
-        diagnostics = ownership_diagnostic("SPV1-INVALID-MODEL", "$input.scope.parent_actions", decimal_value(hir_field(facts, par_row, 2)))
-    } else { diagnostics = ownership_decide(rows) }
+        diagnostics = ownership_diagnostic("SPV1-INVALID-MODEL", "$input.scope.parent_actions", decimal_value(hir_field(facts, par_row, 2)),
+            "a par has more than 256 parent actions")
+    } else { diagnostics = ownership_decide(rows, unique_names) }
     # Capture order follows opaque identities; the reported order must not.
     let mut keyed = ""
     row = 0
@@ -27987,10 +28077,11 @@ fn ownership_scope(source: Text, hir: Text, facts: Text, accesses: Text, path: T
     row = 0
     while row < len(diagnostics) && count < 256 {
         if len(diagnostic_json) > 0 { diagnostic_json = diagnostic_json + "," }
+        let compiler_code = ownership_compiler_code(hir_field(diagnostics, row, 1))
         diagnostic_json = diagnostic_json + "{\"at\":\"" + hir_field(diagnostics, row, 2) + "\",\"byte\":" + hir_field(diagnostics, row, 3) +
-            ",\"code\":\"" + hir_field(diagnostics, row, 1) + "\"}"
-        if count == 0 { first = "error[" + hir_field(diagnostics, row, 1) + "]: scoped ownership rejects " + hir_field(diagnostics, row, 2) +
-            " at byte " + hir_field(diagnostics, row, 3) }
+            ",\"code\":\"" + hir_field(diagnostics, row, 1) + "\",\"compiler_code\":\"" + compiler_code + "\",\"message\":\"" +
+            hir_field(diagnostics, row, 4) + "\"}"
+        if count == 0 { first = "error[" + compiler_code + "]: " + hir_field(diagnostics, row, 4) + " at byte " + hir_field(diagnostics, row, 3) }
         count = count + 1
         row = capture_line_end(diagnostics, row) + 1
     }
@@ -28002,7 +28093,6 @@ fn ownership_scope(source: Text, hir: Text, facts: Text, accesses: Text, path: T
     if row < len(diagnostics) { truncated = "true" }
     let mut derivation = "complete"
     if !derived { derivation = "lifecycle-only" }
-    let unique_names = ownership_unique(names)
     let mut name_json = ""
     row = 0
     while row < len(unique_names) {

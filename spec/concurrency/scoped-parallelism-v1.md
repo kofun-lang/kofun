@@ -180,18 +180,18 @@ belong to later implementation work.
 
 ## 8. Required diagnostic classes
 
-The contract/model identifiers are stable specification classes; a production
-diagnostic registry may allocate user-facing compiler numbers without changing
-their meaning.
+The contract/model identifiers are stable specification classes. The
+production diagnostic registry (`tests/diagnostics/registry.tsv`) allocates
+one user-facing compiler code to each without changing its meaning (#1163):
 
-| Identifier | Required meaning |
-| --- | --- |
-| `SPV1-CAPTURE-CONFLICT` | two overlapping sibling captures violate exclusivity |
-| `SPV1-OVERLAP-UNKNOWN` | a required disjointness proof is unavailable |
-| `SPV1-PARENT-CONFLICT` | a parent access conflicts with a live task capture |
-| `SPV1-USE-AFTER-TAKE` | the parent accesses a place transferred to a task |
-| `SPV1-HANDLE-ESCAPE` | a scope token or handle is returned, stored, captured, or passed |
-| `SPV1-INVALID-MODEL` | the bounded model input is malformed or exceeds a limit |
+| Identifier | Compiler code | Required meaning |
+| --- | --- | --- |
+| `SPV1-CAPTURE-CONFLICT` | `E2S183` | two overlapping sibling captures violate exclusivity |
+| `SPV1-OVERLAP-UNKNOWN` | `E2S184` | a required disjointness proof is unavailable |
+| `SPV1-PARENT-CONFLICT` | `E2S185` | a parent access conflicts with a live task capture |
+| `SPV1-USE-AFTER-TAKE` | `E2S186` | the parent accesses a place transferred to a task |
+| `SPV1-HANDLE-ESCAPE` | `E2S187` | a scope token or handle is returned, stored, captured, or passed |
+| `SPV1-INVALID-MODEL` | `E2S188` | the bounded model input is malformed or exceeds a limit |
 
 A conflict diagnostic names both lexical task identities, both modes, and a
 disclosure-safe place description. It must not report a runtime thread ID,

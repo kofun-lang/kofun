@@ -1198,13 +1198,13 @@
   {
    "name": "token-stored",
    "source": "fn main() -> Int {\n par |scope| {\n  let other = scope\n }\n return 0\n}\n",
-   "refusal": "SPV1-HANDLE-ESCAPE",
+   "refusal": "E2S187",
    "reason": "the scope token is used only to spawn"
   },
   {
    "name": "token-captured",
    "source": "fn main() -> Int {\n par |scope| {\n  scope.spawn(fn() { scope.spawn(fn() => 1) })\n }\n return 0\n}\n",
-   "refusal": "SPV1-HANDLE-ESCAPE",
+   "refusal": "E2S187",
    "reason": "a task cannot capture its scope token"
   },
   {
@@ -1222,7 +1222,7 @@
   {
    "name": "closure-token-spawn",
    "source": "fn bump(edit value: Int) { value = value + 1 }\nfn main() -> Int {\n let mut value: Int = 0\n par |scope| {\n  let go = fn() { scope.spawn(fn() { bump(value) }) }\n  go()\n  go()\n }\n return value\n}\n",
-   "refusal": "SPV1-HANDLE-ESCAPE",
+   "refusal": "E2S187",
    "reason": "a closure can spawn on the token more than once"
   }
  ]

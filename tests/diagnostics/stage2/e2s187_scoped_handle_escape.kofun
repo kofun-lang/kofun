@@ -1,0 +1,10 @@
+# diagnostic-mode: scoped-ownership
+# expect-code: E2S187
+# expect-span: byte 180
+fn main() -> Int {
+    par |scope| {
+        let escaping = scope.spawn(fn() => 1)
+        return escaping
+    }
+    return 0
+}

@@ -72,5 +72,17 @@ other scope in it reports `not-decided` rather than `accepted`. That is the
 entry's statement that it decided nothing, not a model verdict, so the gate
 does not compare it with the model.
 
+Each rejection carries its contract class and the registered compiler code
+(#1163). The gate reads the mapping from the §8 table of the spec and requires
+the registry to hold it: `E2S183` capture conflict, `E2S184` overlap unknown,
+`E2S185` parent conflict, `E2S186` use after take, `E2S187` handle escape, and
+`E2S188` invalid model. Every message must match one of a closed set of
+shapes: lexical task numbers (`#0`), modes, and places built from visible
+names, constant bounds, `_` for a dynamic bound, or `<hidden>`. It never
+carries an identity, a path, a time, or a thread. A binding name over 128
+bytes is reported as `<hidden>`, and the gate checks that the name appears in
+neither the message nor the document. `kofun check` on each registered
+fixture must print exactly its golden to stderr, with empty stdout.
+
 Other checks: `logical-path` invariance of every decision, the 256/257
 parent-action bound, and the entry's own `E2S35` refusals.

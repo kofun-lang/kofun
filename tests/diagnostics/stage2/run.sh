@@ -46,6 +46,10 @@ for source in "$SUITE"/*.kofun; do
         "$WORK/kofun-stage2" \
             "$source" "$output" "$ir" "$tokens" \
             >"$actual" 2>"$internal_stderr"
+    elif test "$mode" = scoped-ownership; then
+        "$WORK/kofun-stage2" --check-scoped-ownership "$source" \
+            "$WORK/$stem.ownership.json" "tests/diagnostics/stage2/$stem.kofun" \
+            >"$actual" 2>"$internal_stderr"
     else
         printf '%s\n' \
             "diagnostics: unknown mode '$mode' in $source" >&2
@@ -69,6 +73,15 @@ for source in "$SUITE"/*.kofun; do
             "diagnostics: rejected source produced $output" >&2
         exit 1
     }
+    if test "$mode" = scoped-ownership; then
+        # The analysis succeeded and its decision is the rejection: the
+        # document is the entry's required artifact, not a partial output.
+        grep -F '"status":"rejected"}' "$WORK/$stem.ownership.json" >/dev/null || {
+            printf '%s\n' \
+                "diagnostics: $source wrote no rejected ownership decision" >&2
+            exit 1
+        }
+    fi
     cmp "$golden" "$actual" || {
         printf '%s\n' \
             "diagnostics: golden mismatch for $source; run bless.sh intentionally" >&2

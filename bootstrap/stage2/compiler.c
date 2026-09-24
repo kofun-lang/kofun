@@ -37058,10 +37058,10 @@ static const char * ownership_token_escape(CheckedPlaceArena *a, const char * v_
         if (strcmp(cp_field(a, v_hir, v_use, 4), v_token) == 0) {
             int64_t v_member = scoped_parallel_member(v_source, v_at);
             if (ownership_in_closure(a, v_source, v_block, v_close, v_at)) {
-                return capture_return_text(a, mark, ownership_error(a, "SPV1-HANDLE-ESCAPE", "a closure cannot capture its scope token", v_at));
+                return capture_return_text(a, mark, cp_format(a, "%s%s", "error[E2S187]: a closure cannot capture its scope token at byte ", cp_format(a, "%" PRId64, v_at)));
             }
             if ((v_member < 0) || (strcmp(cp_keep(a, token_copy(v_source, v_member)), "spawn") != 0)) {
-                return capture_return_text(a, mark, ownership_error(a, "SPV1-HANDLE-ESCAPE", "a scope token is used only to spawn", v_at));
+                return capture_return_text(a, mark, cp_format(a, "%s%s", "error[E2S187]: a scope token is used only to spawn at byte ", cp_format(a, "%" PRId64, v_at)));
             }
         }
         v_use = hir_record_start(v_hir, "use", (v_use + 1));
@@ -37209,18 +37209,107 @@ static const char * ownership_access_key(CheckedPlaceArena *a, const char * v_ac
     return capture_return_text(a, mark, cp_format(a, "%s%s", "U", cp_expression_id(a, v_file, v_start, v_stop)));
 }
 
-static const char * ownership_diagnostic(CheckedPlaceArena *a, const char * v_code, const char * v_at, int64_t v_byte) {
-    CheckedPlaceText *mark = a->texts;
-    return capture_return_text(a, mark, cp_format(a, "%s%s%s%s%s%s%s", "diag|", v_code, "|", v_at, "|", cp_format(a, "%" PRId64, v_byte), "\n"));
+static const char * ownership_compiler_code(CheckedPlaceArena *a, const char * v_class) {
+    (void)a;
+    if (strcmp(v_class, "SPV1-CAPTURE-CONFLICT") == 0) {
+        return "E2S183";
+    }
+    if (strcmp(v_class, "SPV1-OVERLAP-UNKNOWN") == 0) {
+        return "E2S184";
+    }
+    if (strcmp(v_class, "SPV1-PARENT-CONFLICT") == 0) {
+        return "E2S185";
+    }
+    if (strcmp(v_class, "SPV1-USE-AFTER-TAKE") == 0) {
+        return "E2S186";
+    }
+    if (strcmp(v_class, "SPV1-HANDLE-ESCAPE") == 0) {
+        return "E2S187";
+    }
+    return "E2S188";
 }
 
-static const char * ownership_decide(CheckedPlaceArena *a, const char * v_rows) {
+static const char * ownership_name_text(CheckedPlaceArena *a, const char * v_names, const char * v_id) {
+    CheckedPlaceText *mark = a->texts;
+    int64_t v_row = capture_fact(a, v_names, "name", 1, v_id);
+    if (v_row < 0) {
+        return capture_return_text(a, mark, "<hidden>");
+    }
+    const char * v_display = cp_field(a, v_names, v_row, 2);
+    int64_t v_text = text_find_from(v_display, "\"text\":\"", 0);
+    if (v_text < 0) {
+        return capture_return_text(a, mark, "<hidden>");
+    }
+    return capture_return_text(a, mark, cp_keep(a, source_slice(v_display, (v_text + 8), text_find_from(v_display, "\"", (v_text + 8)))));
+}
+
+static const char * ownership_constant_text(CheckedPlaceArena *a, const char * v_bound) {
+    CheckedPlaceText *mark = a->texts;
+    int64_t v_flipped = scoped_hir_hex_digit(cp_keep(a, source_slice(v_bound, 1, 2)));
+    int64_t v_value = (v_flipped - 8);
+    int64_t v_at = 2;
+    if (v_flipped >= 8) {
+        while (v_at < 17) {
+            v_value = ((v_value * 16) + scoped_hir_hex_digit(cp_keep(a, source_slice(v_bound, v_at, (v_at + 1)))));
+            v_at = (v_at + 1);
+        }
+        return capture_return_text(a, mark, cp_format(a, "%" PRId64, v_value));
+    }
+    if (strcmp(cp_keep(a, source_slice(v_bound, 1, 17)), "0000000000000000") == 0) {
+        return capture_return_text(a, mark, "-9223372036854775808");
+    }
+    v_value = (7 - v_flipped);
+    while (v_at < 17) {
+        v_value = (((v_value * 16) + 15) - scoped_hir_hex_digit(cp_keep(a, source_slice(v_bound, v_at, (v_at + 1)))));
+        v_at = (v_at + 1);
+    }
+    return capture_return_text(a, mark, cp_format(a, "%s%s", "-", cp_format(a, "%" PRId64, (v_value + 1))));
+}
+
+static const char * ownership_bound_text(CheckedPlaceArena *a, const char * v_bound) {
+    CheckedPlaceText *mark = a->texts;
+    if (ownership_constant(a, v_bound)) {
+        return capture_return_text(a, mark, ownership_constant_text(a, v_bound));
+    }
+    return capture_return_text(a, mark, "_");
+}
+
+static const char * ownership_place_text(CheckedPlaceArena *a, const char * v_names, const char * v_key) {
+    CheckedPlaceText *mark = a->texts;
+    if (strncmp(v_key, "U", strlen("U")) == 0) {
+        return capture_return_text(a, mark, "an unknown place");
+    }
+    CheckedPlaceText *builder_result = NULL;
+    const char * v_result = ownership_name_text(a, v_names, cp_format(a, "%s%s", "b", cp_keep(a, source_slice(v_key, 1, 65))));
+    int64_t v_at = (ownership_segment_end(a, v_key, 0) + 1);
+    while (v_at < ((int64_t)strlen(v_key))) {
+        int64_t v_end = ownership_segment_end(a, v_key, v_at);
+        if (strcmp(cp_keep(a, source_slice(v_key, v_at, (v_at + 1))), "F") == 0) {
+            v_result = capture_append(a, &builder_result, v_result, cp_format(a, "%s%s", ".", ownership_name_text(a, v_names, cp_format(a, "%s%s%s%s", "f", cp_keep(a, source_slice(v_key, (v_at + 1), (v_at + 65))), "-",
+                cp_format(a, "%" PRId64, ownership_hex_value(a, v_key, (v_at + 65), 8))))));
+        } else {
+            int64_t v_comma = text_find_from(v_key, ",", v_at);
+            v_result = capture_append(a, &builder_result, v_result, cp_format(a, "%s%s%s%s%s", "[", ownership_bound_text(a, cp_keep(a, source_slice(v_key, (v_at + 1), v_comma))), "..",
+                ownership_bound_text(a, cp_keep(a, source_slice(v_key, (v_comma + 1), v_end))), "]"));
+        }
+        v_at = (v_end + 1);
+    }
+    return capture_return_text(a, mark, v_result);
+}
+
+static const char * ownership_diagnostic(CheckedPlaceArena *a, const char * v_code, const char * v_at, int64_t v_byte, const char * v_detail) {
+    CheckedPlaceText *mark = a->texts;
+    return capture_return_text(a, mark, cp_format(a, "%s%s%s%s%s%s%s%s%s", "diag|", v_code, "|", v_at, "|", cp_format(a, "%" PRId64, v_byte), "|", v_detail, "\n"));
+}
+
+static const char * ownership_decide(CheckedPlaceArena *a, const char * v_rows, const char * v_names) {
     CheckedPlaceText *mark = a->texts;
     CheckedPlaceText *builder_result = NULL;
     const char * v_result = "";
     int64_t v_row = capture_record_start(a, v_rows, "escape", 0);
     while (v_row >= 0) {
-        v_result = capture_append(a, &builder_result, v_result, ownership_diagnostic(a, "SPV1-HANDLE-ESCAPE", cp_format(a, "%s%s", "task:t", cp_field(a, v_rows, v_row, 1)), decimal_value(cp_field(a, v_rows, v_row, 3))));
+        v_result = capture_append(a, &builder_result, v_result, ownership_diagnostic(a, "SPV1-HANDLE-ESCAPE", cp_format(a, "%s%s", "task:t", cp_field(a, v_rows, v_row, 1)), decimal_value(cp_field(a, v_rows, v_row, 3)),
+            cp_format(a, "%s%s%s%s", "scoped task #", cp_field(a, v_rows, v_row, 1), " handle escapes by ", cp_field(a, v_rows, v_row, 2))));
         v_row = capture_record_start(a, v_rows, "escape", (v_row + 1));
     }
     int64_t v_left = capture_record_start(a, v_rows, "task", 0);
@@ -37237,11 +37326,14 @@ static const char * ownership_decide(CheckedPlaceArena *a, const char * v_rows) 
                         if (ownership_conflict(a, cp_field(a, v_rows, v_a, 2), cp_field(a, v_rows, v_b, 2))) {
                             const char * v_relation = ownership_relation(a, cp_field(a, v_rows, v_a, 3), cp_field(a, v_rows, v_b, 3));
                             int64_t v_byte = decimal_value(cp_field(a, v_rows, v_b, 4));
+                            const char * v_pair = cp_format(a, "%s%s%s%s", "scoped tasks #", cp_field(a, v_rows, v_left, 1), " and #", cp_field(a, v_rows, v_right, 1));
+                            const char * v_first = cp_format(a, "%s%s%s", cp_field(a, v_rows, v_a, 2), " ", ownership_place_text(a, v_names, cp_field(a, v_rows, v_a, 3)));
+                            const char * v_second = cp_format(a, "%s%s%s", cp_field(a, v_rows, v_b, 2), " ", ownership_place_text(a, v_names, cp_field(a, v_rows, v_b, 3)));
                             if (strcmp(v_relation, "unknown") == 0) {
-                                v_result = capture_append(a, &builder_result, v_result, ownership_diagnostic(a, "SPV1-OVERLAP-UNKNOWN", v_at, v_byte));
+                                v_result = capture_append(a, &builder_result, v_result, ownership_diagnostic(a, "SPV1-OVERLAP-UNKNOWN", v_at, v_byte, cp_format(a, "%s%s%s%s%s", v_pair, " need disjoint places: ", v_first, ", ", v_second)));
                             }
                             if (strcmp(v_relation, "overlap") == 0) {
-                                v_result = capture_append(a, &builder_result, v_result, ownership_diagnostic(a, "SPV1-CAPTURE-CONFLICT", v_at, v_byte));
+                                v_result = capture_append(a, &builder_result, v_result, ownership_diagnostic(a, "SPV1-CAPTURE-CONFLICT", v_at, v_byte, cp_format(a, "%s%s%s%s%s", v_pair, " conflict: ", v_first, " overlaps ", v_second)));
                             }
                         }
                         v_b = capture_record_start(a, v_rows, "cap", (v_b + 1));
@@ -37269,9 +37361,12 @@ static const char * ownership_decide(CheckedPlaceArena *a, const char * v_rows) 
                             if (strcmp(v_relation, "disjoint") != 0) {
                                 const char * v_at = cp_format(a, "%s%s%s%s", "tasks:t", cp_field(a, v_rows, v_earlier, 1), ",t", cp_field(a, v_rows, v_later, 1));
                                 int64_t v_byte = decimal_value(cp_field(a, v_rows, v_capture, 4));
-                                v_found = ownership_diagnostic(a, "SPV1-USE-AFTER-TAKE", v_at, v_byte);
+                                const char * v_used = cp_format(a, "%s%s%s%s", "scoped task #", cp_field(a, v_rows, v_later, 1), " uses ", ownership_place_text(a, v_names, cp_field(a, v_rows, v_capture, 3)));
+                                v_found = ownership_diagnostic(a, "SPV1-USE-AFTER-TAKE", v_at, v_byte, cp_format(a, "%s%s%s%s%s", v_used, " after task #", cp_field(a, v_rows, v_earlier, 1),
+                                    " took ", ownership_place_text(a, v_names, cp_field(a, v_rows, v_taken, 3))));
                                 if (strcmp(v_relation, "unknown") == 0) {
-                                    v_found = ownership_diagnostic(a, "SPV1-OVERLAP-UNKNOWN", v_at, v_byte);
+                                    v_found = ownership_diagnostic(a, "SPV1-OVERLAP-UNKNOWN", v_at, v_byte, cp_format(a, "%s%s%s%s", v_used, ", not provably apart from what task #",
+                                        cp_field(a, v_rows, v_earlier, 1), " took"));
                                 }
                             }
                         }
@@ -37296,18 +37391,22 @@ static const char * ownership_decide(CheckedPlaceArena *a, const char * v_rows) 
             while ((v_capture >= 0) && (strcmp(cp_field(a, v_rows, v_capture, 1), cp_field(a, v_rows, v_task, 1)) == 0)) {
                 const char * v_relation = ownership_relation(a, cp_field(a, v_rows, v_action, 4), cp_field(a, v_rows, v_capture, 3));
                 if ((v_step >= decimal_value(cp_field(a, v_rows, v_task, 2))) && (strcmp(v_relation, "disjoint") != 0)) {
+                    const char * v_access = cp_format(a, "%s%s%s", cp_field(a, v_rows, v_action, 3), " ", ownership_place_text(a, v_names, cp_field(a, v_rows, v_action, 4)));
+                    const char * v_owner = cp_format(a, "%s%s", "scoped task #", cp_field(a, v_rows, v_task, 1));
                     if (strcmp(cp_field(a, v_rows, v_capture, 2), "take") == 0) {
                         if (strcmp(v_relation, "unknown") == 0) {
-                            v_result = capture_append(a, &builder_result, v_result, ownership_diagnostic(a, "SPV1-OVERLAP-UNKNOWN", v_at, v_byte));
+                            v_result = capture_append(a, &builder_result, v_result, ownership_diagnostic(a, "SPV1-OVERLAP-UNKNOWN", v_at, v_byte, cp_format(a, "%s%s%s%s", v_access, " is not provably apart from what ", v_owner, " took")));
                         } else {
-                            v_result = capture_append(a, &builder_result, v_result, ownership_diagnostic(a, "SPV1-USE-AFTER-TAKE", v_at, v_byte));
+                            v_result = capture_append(a, &builder_result, v_result, ownership_diagnostic(a, "SPV1-USE-AFTER-TAKE", v_at, v_byte, cp_format(a, "%s%s%s%s%s", v_access, " after ", v_owner, " took ",
+                                ownership_place_text(a, v_names, cp_field(a, v_rows, v_capture, 3)))));
                         }
                     } else if ((v_step < decimal_value(cp_field(a, v_rows, v_task, 3))) &&
                         ownership_conflict(a, cp_field(a, v_rows, v_action, 3), cp_field(a, v_rows, v_capture, 2))) {
+                        const char * v_live = cp_format(a, "%s%s%s%s%s%s", "live ", cp_field(a, v_rows, v_capture, 2), " ", ownership_place_text(a, v_names, cp_field(a, v_rows, v_capture, 3)), " in ", v_owner);
                         if (strcmp(v_relation, "unknown") == 0) {
-                            v_result = capture_append(a, &builder_result, v_result, ownership_diagnostic(a, "SPV1-OVERLAP-UNKNOWN", v_at, v_byte));
+                            v_result = capture_append(a, &builder_result, v_result, ownership_diagnostic(a, "SPV1-OVERLAP-UNKNOWN", v_at, v_byte, cp_format(a, "%s%s%s", v_access, " is not provably apart from ", v_live)));
                         } else {
-                            v_result = capture_append(a, &builder_result, v_result, ownership_diagnostic(a, "SPV1-PARENT-CONFLICT", v_at, v_byte));
+                            v_result = capture_append(a, &builder_result, v_result, ownership_diagnostic(a, "SPV1-PARENT-CONFLICT", v_at, v_byte, cp_format(a, "%s%s%s", v_access, " conflicts with ", v_live)));
                         }
                     }
                 }
@@ -37527,11 +37626,13 @@ static const char * ownership_scope(CheckedPlaceArena *a, const char * v_source,
         }
         v_row = capture_record_start(a, v_acts, "act", (v_row + 1));
     }
+    const char * v_unique_names = ownership_unique(a, v_names);
     const char * v_diagnostics;
     if (v_actions > 256) {
-        v_diagnostics = ownership_diagnostic(a, "SPV1-INVALID-MODEL", "$input.scope.parent_actions", decimal_value(cp_field(a, v_facts, v_par_row, 2)));
+        v_diagnostics = ownership_diagnostic(a, "SPV1-INVALID-MODEL", "$input.scope.parent_actions", decimal_value(cp_field(a, v_facts, v_par_row, 2)),
+            "a par has more than 256 parent actions");
     } else {
-        v_diagnostics = ownership_decide(a, v_rows);
+        v_diagnostics = ownership_decide(a, v_rows, v_unique_names);
     }
     CheckedPlaceText *builder_keyed = NULL;
     const char * v_keyed = "";
@@ -37560,10 +37661,11 @@ static const char * ownership_scope(CheckedPlaceArena *a, const char * v_source,
         if (((int64_t)strlen(v_diagnostic_json)) > 0) {
             v_diagnostic_json = capture_append(a, &builder_diagnostic_json, v_diagnostic_json, ",");
         }
-        v_diagnostic_json = capture_append(a, &builder_diagnostic_json, v_diagnostic_json, cp_format(a, "%s%s%s%s%s%s%s", "{\"at\":\"", cp_field(a, v_diagnostics, v_row, 2), "\",\"byte\":", cp_field(a, v_diagnostics, v_row, 3),
-            ",\"code\":\"", cp_field(a, v_diagnostics, v_row, 1), "\"}"));
+        const char * v_compiler_code = ownership_compiler_code(a, cp_field(a, v_diagnostics, v_row, 1));
+        v_diagnostic_json = capture_append(a, &builder_diagnostic_json, v_diagnostic_json, cp_format(a, "%s%s%s%s%s%s%s%s%s%s%s", "{\"at\":\"", cp_field(a, v_diagnostics, v_row, 2), "\",\"byte\":", cp_field(a, v_diagnostics, v_row, 3),
+            ",\"code\":\"", cp_field(a, v_diagnostics, v_row, 1), "\",\"compiler_code\":\"", v_compiler_code, "\",\"message\":\"", cp_field(a, v_diagnostics, v_row, 4), "\"}"));
         if (v_count == 0) {
-            v_first = cp_format(a, "%s%s%s%s%s%s", "error[", cp_field(a, v_diagnostics, v_row, 1), "]: scoped ownership rejects ", cp_field(a, v_diagnostics, v_row, 2),
+            v_first = cp_format(a, "%s%s%s%s%s%s", "error[", v_compiler_code, "]: ", cp_field(a, v_diagnostics, v_row, 4),
                 " at byte ", cp_field(a, v_diagnostics, v_row, 3));
         }
         v_count = (v_count + 1);
@@ -37584,7 +37686,6 @@ static const char * ownership_scope(CheckedPlaceArena *a, const char * v_source,
     if (!v_derived) {
         v_derivation = "lifecycle-only";
     }
-    const char * v_unique_names = ownership_unique(a, v_names);
     CheckedPlaceText *builder_name_json = NULL;
     const char * v_name_json = "";
     v_row = 0;
