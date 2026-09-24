@@ -10584,6 +10584,197 @@ static char *emit_unary(
     return emit_primary(source, hir, cursor, end);
 }
 
+static const char *numeric_name(const char *name);
+static bool comparison_operator(const char *source, int64_t cursor);
+static bool arithmetic_operator_at(const char *source, int64_t cursor);
+
+/*
+ * #1658. Whether an operand of this type has an aggregate C representation --
+ * a nominal record, a concrete enum, `List[Int]` or `Bytes` -- which no
+ * operator lowering declares. The scalar names are answered first so the
+ * common operand never walks the declarations.
+ */
+static bool operator_operand_aggregate(
+    const char *source,
+    const char *value_type
+) {
+    if (
+        strcmp(value_type, "List[Int]") == 0 ||
+        strcmp(value_type, "Bytes") == 0
+    ) {
+        return true;
+    }
+    if (
+        value_type[0] == '\0' ||
+        strcmp(value_type, "Int") == 0 ||
+        strcmp(value_type, "Text") == 0 ||
+        strcmp(value_type, "Bool") == 0 ||
+        strcmp(value_type, "Decimal") == 0 ||
+        strcmp(value_type, "Float") == 0
+    ) {
+        return false;
+    }
+    return record_declaration_start(source, value_type) >= 0 ||
+        enum_constructor_count(source, value_type) >= 0;
+}
+
+/*
+ * #1658. Whether the operand between `start` and `end` is one primary the
+ * classifications read whole -- a literal, a list literal, a name, a
+ * `name.field` or a direct call -- ending at `end` or at an arithmetic
+ * operator, whose operands the emitters keep homogeneous. A longer postfix
+ * chain has the type of its last link, which none of them follows:
+ * `index.values[middle]` is an Int element of a `List[Int]` field, and so are
+ * a method call, `??` and `|>`.
+ */
+static bool operator_operand_whole(
+    const char *source,
+    int64_t start,
+    int64_t end
+) {
+    int64_t cursor = skip_trivia(source, start);
+    while (
+        cursor < end &&
+        (token_equal(source, cursor, "(") ||
+         token_equal(source, cursor, "-") ||
+         token_equal(source, cursor, "+"))
+    ) {
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    if (cursor >= end) return false;
+    int64_t after = token_end(source, cursor);
+    if (token_equal(source, cursor, "[")) {
+        after = balanced_end(source, cursor, "[", "]");
+    } else if (strcmp(token_kind(source, cursor), "identifier") == 0) {
+        int64_t next = skip_trivia(source, after);
+        if (next < end && token_equal(source, next, "(")) {
+            after = balanced_end(source, next, "(", ")");
+        } else if (next < end && token_equal(source, next, ".")) {
+            int64_t member_end = token_end(
+                source,
+                skip_trivia(source, token_end(source, next))
+            );
+            int64_t call = skip_trivia(source, member_end);
+            if (call < end && token_equal(source, call, "(")) return false;
+            after = member_end;
+        }
+    }
+    if (after < 0) return false;
+    int64_t rest = skip_trivia(source, after);
+    while (rest < end && token_equal(source, rest, ")")) {
+        rest = skip_trivia(source, token_end(source, rest));
+    }
+    return rest >= end || arithmetic_operator_at(source, rest);
+}
+
+/*
+ * #1658. The type one operator operand has, or "" when it is not known here.
+ * It is asked the way the emitters already ask it: Text first, then the
+ * numeric lattice, and then the bounded initializer classification, which
+ * names a record, an enum or a list.
+ */
+static char *operator_operand_type(
+    const char *source,
+    const char *hir,
+    int64_t function_open,
+    int64_t start,
+    int64_t end
+) {
+    if (!operator_operand_whole(source, start, end)) return owned_text("");
+    if (text_operand(source, hir, function_open, start)) {
+        return owned_text("Text");
+    }
+    const char *numeric = numeric_primary_type(
+        source,
+        hir,
+        function_open,
+        start
+    );
+    if (numeric[0] != '\0') return owned_text(numeric);
+    return initializer_type_bounded(source, hir, function_open, start, end);
+}
+
+/*
+ * #1658. The refusal for a binary operator whose operand pair the C11
+ * lowering does not implement, or NULL when it does.
+ *
+ * Every operator emitter declares its operands as one C scalar -- `int64_t`,
+ * `double`, `KofunDecimal *` or `const char *` -- chosen from the left
+ * operand, and until this nothing asked what the operands were. A record,
+ * enum, list or Bytes operand therefore reached the host C compiler as an
+ * `int64_t` initializer or a `kofun_add` argument, after `check` had accepted
+ * the program. A comparison of Text with a number is the same defect from the
+ * other side: an `int64_t` initialized from `const char *`, or the reverse.
+ *
+ * Only what is known is refused, and only known types are named. An
+ * aggregate is one the classification names, never its `Int` fallback, and
+ * Text arithmetic stays with `E2S155`, which the callers ask first. Bool and
+ * mixed-numeric pairs are outside this rule.
+ */
+static char *operator_operands_error(
+    const char *source,
+    const char *hir,
+    const char *operator_text,
+    int64_t operator_start,
+    int64_t left_start,
+    int64_t left_end,
+    int64_t right_start,
+    int64_t right_end
+) {
+    int64_t function_open = enclosing_function_open(source, left_start);
+    char *left_type = operator_operand_type(
+        source,
+        hir,
+        function_open,
+        left_start,
+        left_end
+    );
+    char *right_type = operator_operand_type(
+        source,
+        hir,
+        function_open,
+        right_start,
+        right_end
+    );
+    bool left_text = strcmp(left_type, "Text") == 0;
+    bool right_text = strcmp(right_type, "Text") == 0;
+    bool refused = operator_operand_aggregate(source, left_type) ||
+        operator_operand_aggregate(source, right_type);
+    if (
+        !refused && comparison_operator(source, operator_start) &&
+        ((left_text && !right_text) || (!left_text && right_text))
+    ) {
+        refused = numeric_name(left_type)[0] != '\0' ||
+            numeric_name(right_type)[0] != '\0';
+    }
+    char *refusal = NULL;
+    if (refused) {
+        Buffer message;
+        buffer_init(&message);
+        if (left_type[0] == '\0' || right_type[0] == '\0') {
+            buffer_format(
+                &message,
+                "operator `%s` is not defined on %s",
+                operator_text,
+                left_type[0] == '\0' ? right_type : left_type
+            );
+        } else {
+            buffer_format(
+                &message,
+                "operator `%s` is not defined on %s and %s",
+                operator_text,
+                left_type,
+                right_type
+            );
+        }
+        refusal = lower_error("E2S15", message.data, operator_start);
+        free(message.data);
+    }
+    free(left_type);
+    free(right_type);
+    return refusal;
+}
+
 static char *emit_product(
     const char *source,
     const char *hir,
@@ -10635,6 +10826,22 @@ static char *emit_product(
             free(emitted);
             free(operator_text);
             return right;
+        }
+        char *refusal = operator_operands_error(
+            source,
+            hir,
+            operator_text,
+            operator_start,
+            start,
+            cursor,
+            right_start,
+            right_end
+        );
+        if (refusal != NULL) {
+            free(emitted);
+            free(right);
+            free(operator_text);
+            return refusal;
         }
         char *combined = emitted;
         if (strcmp(operator_text, "*") == 0) {
@@ -10732,6 +10939,26 @@ static char *emit_arithmetic_expression(
             free(emitted);
             free(operator_text);
             return right;
+        }
+        /* A Text operand is `E2S155`'s below, so this asks only when neither
+         * is. */
+        if (!left_is_text && !right_is_text) {
+            char *refusal = operator_operands_error(
+                source,
+                hir,
+                operator_text,
+                operator_start,
+                start,
+                cursor,
+                right_start,
+                right_end
+            );
+            if (refusal != NULL) {
+                free(emitted);
+                free(right);
+                free(operator_text);
+                return refusal;
+            }
         }
         char *combined = emitted;
         if (strcmp(operator_text, "+") == 0) {
@@ -14742,6 +14969,26 @@ static char *emit_condition_into(
         free(operator_text);
         return right;
     }
+    /* Before a branch is chosen: each one declares both operands as the C
+     * scalar the left operand selects (#1658). */
+    {
+        char *refusal = operator_operands_error(
+            source,
+            hir,
+            operator_text,
+            operator_start,
+            cursor,
+            left_end,
+            right_start,
+            end
+        );
+        if (refusal != NULL) {
+            free(left);
+            free(right);
+            free(operator_text);
+            return refusal;
+        }
+    }
     Buffer output;
     buffer_init(&output);
     int64_t function_open = enclosing_function_open(source, cursor);
@@ -15415,8 +15662,13 @@ static char *emit_value_into(
             failure_result
         );
     }
+    /* Every piece is refused whole rather than spliced (#1658): a rejected
+     * value or condition is `error[...]` text, and inside the braces below it
+     * stopped being the result's first bytes, so no caller could see it and
+     * the diagnostic reached the host C compiler as C. */
     if (!token_equal(source, cursor, "if")) {
         char *value = emit_expression(source, hir, cursor, end);
+        if (strncmp(value, "error[", 6) == 0) return value;
         Buffer emitted;
         buffer_init(&emitted);
         buffer_format(
@@ -15444,6 +15696,7 @@ static char *emit_value_into(
         failure_result,
         "        "
     );
+    if (strncmp(condition, "error[", 6) == 0) return condition;
     char *then_body = emit_value_into(
         source,
         hir,
@@ -15598,6 +15851,13 @@ static char *emit_value_match_into(
                 failure_result,
                 "            "
             );
+            /* Refused whole, as `emit_value_into` refuses its pieces
+             * (#1658). */
+            if (strncmp(guard, "error[", 6) == 0) {
+                free(arm_body);
+                free(dispatch.data);
+                return guard;
+            }
             buffer_format(
                 &dispatch,
                 "        if (!kofun_match_selected && %s) {\n"
@@ -15644,6 +15904,10 @@ static char *emit_value_match_into(
         failure_result,
         "        "
     );
+    if (strncmp(match_value, "error[", 6) == 0) {
+        free(dispatch.data);
+        return match_value;
+    }
     Buffer emitted;
     buffer_init(&emitted);
     buffer_format(
@@ -20909,6 +21173,18 @@ static char *lower_enum_match(
                 failure_result,
                 "            "
             );
+            /* A rejected guard is refused, not spliced into the dispatch
+             * (#1658). */
+            if (strncmp(guard, "error[", 6) == 0) {
+                free(payload_declaration.data);
+                free(pattern_condition.data);
+                free(arm_body);
+                free(pattern);
+                free(covered.data);
+                free(dispatch.data);
+                free(dense_dispatch.data);
+                return guard;
+            }
             buffer_format(
                 &dispatch,
                 "        if (!kofun_match_selected && %s) {\n"
@@ -21664,6 +21940,15 @@ static char *emit_value_enum_match_into(
                 failure_result,
                 "            "
             );
+            /* Refused whole, as `emit_value_into` refuses its pieces
+             * (#1658). */
+            if (strncmp(guard, "error[", 6) == 0) {
+                free(arm_body);
+                free(payload_declaration.data);
+                free(pattern_condition.data);
+                free(dispatch.data);
+                return guard;
+            }
             buffer_format(
                 &dispatch,
                 "        if (!kofun_match_selected && %s) {\n"
@@ -24449,6 +24734,13 @@ static char *lower_body_with_workspace(
                         failure_result,
                         "            "
                     );
+                    /* Refused whole rather than spliced (#1658). */
+                    if (strncmp(guard, "error[", 6) == 0) {
+                        free(arm_body);
+                        free(dispatch.data);
+                        free(emitted.data);
+                        return guard;
+                    }
                     buffer_format(
                         &dispatch,
                         "        if (!kofun_match_selected && %s) {\n"
@@ -24554,6 +24846,11 @@ static char *lower_body_with_workspace(
                 failure_result,
                 "        "
             );
+            if (strncmp(match_value, "error[", 6) == 0) {
+                free(dispatch.data);
+                free(emitted.data);
+                return match_value;
+            }
             buffer_format(
                 &emitted,
                 "    {\n"

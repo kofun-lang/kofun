@@ -1113,7 +1113,14 @@ tests/diagnostics/stage2/e2s154_spawn_member.kofun
 tests/diagnostics/stage2/e2s157_list_authority.kofun
 tests/diagnostics/stage2/e2s157_list_index_out_of_range.kofun
 tests/diagnostics/stage2/e2s158_trailing_lambda.kofun
+tests/diagnostics/stage2/e2s15_authority_record_equality.kofun
+tests/diagnostics/stage2/e2s15_list_ordering.kofun
 tests/diagnostics/stage2/e2s15_parameter_type.kofun
+tests/diagnostics/stage2/e2s15_record_addition.kofun
+tests/diagnostics/stage2/e2s15_record_equality.kofun
+tests/diagnostics/stage2/e2s15_record_int_equality.kofun
+tests/diagnostics/stage2/e2s15_text_int_equality.kofun
+tests/diagnostics/stage2/e2s15_value_if_record_equality.kofun
 tests/diagnostics/stage2/e2s162_unknown_call_label.kofun
 tests/diagnostics/stage2/e2s163_duplicate_call_label.kofun
 tests/diagnostics/stage2/e2s164_missing_call_argument.kofun
