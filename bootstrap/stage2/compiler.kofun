@@ -14101,13 +14101,99 @@ fn propagation_let_head_end(source: Text, let_start: Int, limit: Int) -> Int {
     return cursor
 }
 
+# Whether the operand at `operand` is headed by a call whose callee resolves to
+# nothing: exactly the case `validate_core_calls` reports as E2S16 `unknown
+# Core function`, with its exclusions (`print`, a declared or duplicated
+# function, a constructor application, a lambda or callable-typed binding, a
+# builtin). Such an operand has no type, so nothing may be named for it.
+fn propagation_unresolved_callee(source: Text, hir: Text, operand: Int) -> Bool {
+    if token_kind(source, operand) != "identifier" {
+        return false
+    }
+    let open = skip_trivia(source, token_end(source, operand))
+    if open >= len(source) || token_text(source, open) != "(" {
+        return false
+    }
+    let name = token_text(source, operand)
+    let declared = function_arity(source, name)
+    if name == "print" || declared >= 0 || declared == -2 {
+        return false
+    }
+    if len(enum_constructor_owner(source, name)) > 0 ||
+       record_declaration_start(source, name) >= 0 {
+        return false
+    }
+    return lambda_call_arity(source, hir, operand) < 0 &&
+        callable_call_arity(source, hir, operand) < 0 &&
+        builtin_arity(name) < 0
+}
+
+# #1662. The end of the `if`/`else` chain or the `match` whose keyword is at
+# `start`, or -1 when a block does not close before `limit`. The first block is
+# the first `{` outside parentheses and brackets after the keyword; an `if`
+# then takes each `else` block and `else if` that follows. Only the extent is
+# measured here: whether the construct is well formed is somebody else's
+# diagnostic.
+fn propagation_block_expression_end(source: Text, start: Int, limit: Int) -> Int {
+    let mut cursor = skip_trivia(source, token_end(source, start))
+    let mut depth = 0
+    let mut searching = true
+    while searching && cursor < limit {
+        let text = token_text(source, cursor)
+        if depth == 0 && text == "{" {
+            searching = false
+        } else {
+            if text == "(" || text == "[" {
+                depth = depth + 1
+            } else if text == ")" || text == "]" {
+                depth = depth - 1
+            }
+            let step = token_end(source, cursor)
+            if step <= cursor {
+                return -1
+            }
+            cursor = skip_trivia(source, step)
+        }
+    }
+    if cursor >= limit {
+        return -1
+    }
+    let block_end = balanced_end(source, cursor, "{", "}")
+    if block_end < 0 || block_end > limit {
+        return -1
+    }
+    if token_text(source, start) != "if" {
+        return block_end
+    }
+    let after = skip_trivia(source, block_end)
+    if after >= limit || token_text(source, after) != "else" {
+        return block_end
+    }
+    let alternative = skip_trivia(source, token_end(source, after))
+    if alternative < limit && token_text(source, alternative) == "if" {
+        return propagation_block_expression_end(source, alternative, limit)
+    }
+    if alternative < limit && token_text(source, alternative) == "{" {
+        let else_end = balanced_end(source, alternative, "{", "}")
+        if else_end < 0 || else_end > limit {
+            return -1
+        }
+        return else_end
+    }
+    return -1
+}
+
 # The type a `?` operand has, by the same bounded classification an
-# unannotated `let` initializer gets. Three shapes are answered first, because
+# unannotated `let` initializer gets. Some shapes are answered first, because
 # that classification decides by the first primary alone and would misname
 # them: `null` is an optional; a parenthesised operand is typed by what it
-# encloses, so `(x ?? 0)` is `Int` rather than its first primary's `Int?`; and
-# a call to a declared `-> Int?` function is `Int?`, where the declared-type
-# reader returns only the head `Int`.
+# encloses, so `(x ?? 0)` is `Int` rather than its first primary's `Int?`; a
+# value `if` or `match` is `Int`, as it is for an unannotated `let`, because
+# this slice joins value control on `Int` only; a call whose callee resolves to
+# nothing has no type at all, which is the empty text rather than the
+# classification's historical `Int` default; `print` yields nothing, `Void`;
+# and a call to a declared `-> Int?` function is `Int?`, where the
+# declared-type reader returns only the head `Int`.
 fn propagation_operand_type(
     source: Text,
     hir: Text,
@@ -14130,8 +14216,18 @@ fn propagation_operand_type(
             operand_end - 1
         )
     }
+    if value_control(head) {
+        return "Int"
+    }
     if token_kind(source, operand) == "identifier" {
+        if propagation_unresolved_callee(source, hir, operand) {
+            return ""
+        }
         let open = skip_trivia(source, after_head)
+        if head == "print" && open < operand_end &&
+           token_text(source, open) == "(" {
+            return "Void"
+        }
         if open < operand_end && token_text(source, open) == "(" &&
            balanced_end(source, open, "(", ")") == operand_end &&
            optional_int_result(source, head) {
@@ -14185,7 +14281,8 @@ fn result_propagation_node(
 # annotation, a lambda's parameter list, a `->` result), because the optional
 # type `T?` and propagation never share a token occurrence. Groups are walked
 # recursively, so a `?` inside an argument or a parenthesised operand is found
-# with its own operand.
+# with its own operand. A value `if`/`else` chain or `match` followed by `?` is
+# that `?`'s operand, its blocks walked recursively the same way.
 fn result_propagation_nodes(
     source: Text,
     hir: Text,
@@ -14200,6 +14297,26 @@ fn result_propagation_nodes(
         let kind = token_kind(source, cursor)
         let next = skip_trivia(source, token_end(source, cursor))
         let group = text == "(" || text == "["
+        # An `if` or `match` is a primary only when a `?` follows its last
+        # block, so a statement `if` never turns a group on the next line into
+        # a call. An inner `else if` of the chain ends where the chain does,
+        # which is `limit` inside the recursive walk, so it is never a second
+        # operand for the same `?`.
+        let mut block_end = -1
+        if value_control(text) {
+            let construct_end = propagation_block_expression_end(
+                source,
+                cursor,
+                limit
+            )
+            if construct_end >= 0 {
+                let after_construct = skip_trivia(source, construct_end)
+                if after_construct < limit &&
+                   token_text(source, after_construct) == "?" {
+                    block_end = construct_end
+                }
+            }
+        }
         if text == "let" {
             cursor = propagation_let_head_end(source, cursor, limit)
         } else if text == "->" {
@@ -14210,13 +14327,22 @@ fn result_propagation_nodes(
                 return records
             }
             cursor = skip_trivia(source, parameters_end)
-        } else if group || kind == "identifier" || kind == "integer" ||
-                  kind == "decimal" || kind == "float" || kind == "string" ||
-                  text == "true" || text == "false" {
+        } else if block_end >= 0 || group || kind == "identifier" ||
+                  kind == "integer" || kind == "decimal" || kind == "float" ||
+                  kind == "string" || text == "true" || text == "false" {
             let chain = cursor
             let mut chain_end = token_end(source, cursor)
             let mut lambda_parameters = false
-            if group {
+            if block_end >= 0 {
+                chain_end = block_end
+                records = records + result_propagation_nodes(
+                    source,
+                    hir,
+                    function_open,
+                    token_end(source, cursor),
+                    block_end
+                )
+            } else if group {
                 let mut close = ")"
                 if text == "[" {
                     close = "]"
@@ -14309,8 +14435,14 @@ fn result_propagation_nodes(
 # also not a `Result` and the specific suggestion is the useful one. The
 # pipeline-stage refusal is syntactic and has already run in `parse_program`.
 #
-# `source` is unused here; the C half reads it for the spans it publishes to
-# the structured diagnostic.
+# An operand whose callee resolves to nothing (an empty type in its node) has
+# no type to name, and inventing one would hide the real defect. The spec
+# desugars `expr?` after name and type resolution, so that operand keeps its
+# own resolution diagnostic, E2S16 at the callee, byte for byte what
+# `validate_core_calls` says without the `?` — as an unknown binding operand
+# keeps its E2S35 from scope construction. It is reported here, not left to
+# that later validator, because a `?` this refusal does not stop is lowered
+# with the `?` dropped.
 fn validate_result_propagation(source: Text, hir: Text) -> Text {
     let line = hir_record_start(hir, "propagate", 0)
     if line < 0 {
@@ -14319,6 +14451,10 @@ fn validate_result_propagation(source: Text, hir: Text) -> Text {
     let question = hir_field(hir, line, 1)
     let operand = hir_field(hir, line, 2)
     let operand_type = hir_field(hir, line, 5)
+    if operand_type == "" {
+        return "error[E2S16]: unknown Core function `" +
+        token_text(source, decimal_value(operand)) + "` at byte " + operand
+    }
     if operand_type == "null" || ends_with(operand_type, "?") {
         return "error[E2S190]: optionals do not propagate, and this `?` " +
         "operand is `" + operand_type + "`; convert it with " +

@@ -969,6 +969,7 @@ tests/conformance/result-propagation/decimal_division.kofun
 tests/conformance/result-propagation/decimal_round.kofun
 tests/conformance/result-propagation/grammar.kofun
 tests/conformance/result-propagation/let_call.kofun
+tests/conformance/result-propagation/match_operand.kofun
 tests/conformance/result-propagation/optional_binding.kofun
 tests/conformance/result-propagation/optional_call.kofun
 tests/conformance/result-propagation/optional_null.kofun
@@ -979,6 +980,8 @@ tests/conformance/result-propagation/parenthesized_pipeline.kofun
 tests/conformance/result-propagation/pipeline_bare_stage.kofun
 tests/conformance/result-propagation/pipeline_call_stage.kofun
 tests/conformance/result-propagation/statement_call.kofun
+tests/conformance/result-propagation/unknown_callee.kofun
+tests/conformance/result-propagation/value_if_operand.kofun
 tests/conformance/syntax/issues_35_47/enum_constructor_escape.kofun
 tests/conformance/syntax/issues_35_47/enum_match_constructor_mismatch.kofun
 tests/conformance/syntax/issues_35_47/enum_match_duplicate.kofun

@@ -1,0 +1,17 @@
+# The operand of `?` is a value `match` in `return` position: the whole match,
+# from `match` to its closing `}`, is what the `?` applies to. Refusal 1 names
+# `Int`, the join value control has in this slice.
+type Reply =
+    | Pending
+    | Ready(value: Int)
+
+fn score(ready: Reply) -> Int {
+    return match ready {
+        Ready(value) => { value },
+        Pending => { 0 },
+    }?
+}
+
+fn main() -> Int {
+    return 0
+}

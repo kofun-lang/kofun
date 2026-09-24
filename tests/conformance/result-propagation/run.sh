@@ -134,7 +134,8 @@ check_refusal() {
 
 # stem:code:checkpoints. The first seven are the measured rows of #1662 in its
 # order; the rest pin optional operands, the suggested fix shape, the check
-# order, and the grammar corpus.
+# order, operands that end in a `}` (a value `if` and a value `match`), and the
+# grammar corpus.
 refusals='
 let_call:E2S189:present
 statement_call:E2S189:present
@@ -149,6 +150,8 @@ parenthesized_pipeline:E2S189:present
 order_stage_before_optional:E2S191:absent
 order_syntactic_first:E2S191:absent
 order_first_question:E2S189:present
+value_if_operand:E2S189:present
+match_operand:E2S189:present
 grammar:E2S189:present
 '
 
@@ -166,9 +169,43 @@ for entry in $refusals; do
 done
 IFS=$previous_ifs
 
+# An operand whose callee resolves to nothing has no type to name, so it is
+# not refused as E2S189 with an invented one. It keeps its own E2S16 at the
+# callee, and the gate holds that to be byte for byte the line the same source
+# gives without the `?`. Exit 1 all the same: never E2S10, never Stage 1.
+set +e
+"$COMPILER" --compile-outcome "$CASES/unknown_callee.kofun" \
+    "$WORK/unknown_callee.c" "$WORK/unknown_callee.ir" \
+    "$WORK/unknown_callee.tokens" >"$WORK/unknown_callee.actual" \
+    2>"$WORK/unknown_callee.internal"
+unknown_status=$?
+sed 's/nope()?/nope()/' "$CASES/unknown_callee.kofun" \
+    >"$WORK/unknown_callee_plain.kofun"
+"$COMPILER" --compile-outcome "$WORK/unknown_callee_plain.kofun" \
+    "$WORK/unknown_callee_plain.c" "$WORK/unknown_callee_plain.ir" \
+    "$WORK/unknown_callee_plain.tokens" >"$WORK/unknown_callee_plain.actual" \
+    2>"$WORK/unknown_callee_plain.internal"
+plain_status=$?
+set -e
+test "$unknown_status" -eq 1 ||
+    fail "unknown_callee exited $unknown_status instead of 1"
+test "$plain_status" -eq 1 ||
+    fail "unknown_callee without its ? exited $plain_status instead of 1"
+test ! -s "$WORK/unknown_callee.internal" ||
+    fail 'unknown_callee wrote internal stderr'
+test ! -e "$WORK/unknown_callee.c" || fail 'unknown_callee emitted C'
+cmp "$CASES/unknown_callee.stderr" "$WORK/unknown_callee.actual" ||
+    fail 'unknown_callee diagnostic differs from its golden'
+grep -F 'error[E2S16]: unknown Core function `nope` at byte ' \
+    "$WORK/unknown_callee.actual" >/dev/null ||
+    fail 'unknown_callee did not keep its own E2S16'
+cmp "$WORK/unknown_callee_plain.actual" "$WORK/unknown_callee.actual" ||
+    fail 'the ? changed the unknown callee diagnostic'
+
 # The corpus is globbed as well as listed, so a fixture added without a gate
-# entry stops the build.
-declared=$(printf '%s' "$refusals" | grep -c ':')
+# entry stops the build. `unknown_callee` is the one fixture checked above
+# rather than in the refusal table.
+declared=$(( $(printf '%s' "$refusals" | grep -c ':') + 1 ))
 present=$(find "$CASES" -name '*.stderr' -type f | wc -l | tr -d ' ')
 test "$declared" -eq "$present" ||
     fail "gate lists $declared refusals but $present fixtures exist"
@@ -214,6 +251,9 @@ inner-group|    let value = 1 + (one()?)
 assignment|    total = one()?
 lambda-body|    let apply = fn(value: Int) => one()? + value
 field-continuation|    let value = one()?.x
+value-if|    let value = if total == 0 { 1 } else { 2 }?
+else-if-statement|    if total == 0 {\n        total = 1\n    } else if total == 1 {\n        total = 2\n    } else {\n        total = 3\n    }?
+bool-match|    let value = match total == 0 {\n        true => { 1 },\n        false => { 2 },\n    }?
 '
 position_sources=
 IFS='
@@ -365,9 +405,28 @@ case $answer in
     *) fail "reader-stops mutant did not mis-span the lambda body: $answer" ;;
 esac
 
+# A value `if` or `match` is never an operand primary: the `?` after its `}`
+# falls through every refusal to the E2S10 statement path, exit 3, and Stage 1.
+mutate no-block-operand \
+    's/block_end = construct_end;/block_end = -1;/'
+answer=$(mutant_answer no-block-operand value_if_operand)
+case $answer in
+    '3 error[E2S10]: unsupported Core statement at byte '*) ;;
+    *) fail "no-block-operand mutant did not restore E2S10 for value_if_operand: $answer" ;;
+esac
+
+# Every callee counts as resolved: the unknown one is typed by the historical
+# `Int` default and its own E2S16 is hidden behind an invented type.
+mutate every-callee-resolves 's/    return !resolved;/    return false;/'
+answer=$(mutant_answer every-callee-resolves unknown_callee)
+case $answer in
+    '1 error[E2S189]: '*'this operand is `Int` at byte '*) ;;
+    *) fail "every-callee-resolves mutant did not invent Int for unknown_callee: $answer" ;;
+esac
+
 printf '%s\n' \
     'PASS: postfix ? parses at call/field level beside T? annotations, as typed propagate nodes' \
     'PASS: E2S189/E2S190/E2S191 fire on the ? token with an operand span, exit 1, no C' \
     'PASS: check order is syntactic (E2S191), then operand (E2S190 before E2S189)' \
     'PASS: no ? reaches E2S10 or exit 3, and bin/kofun check/build answer without Stage 1' \
-    'PASS: both halves of the pair agree, and four mutations toward the old path are caught'
+    'PASS: both halves of the pair agree, and six mutations toward the old path are caught'

@@ -1,0 +1,9 @@
+# The operand's callee resolves to nothing, so the operand has no type and
+# refusal 1 has none to name. The spec desugars `expr?` after name and type
+# resolution, so the operand keeps its own diagnostic: E2S16 at the callee,
+# exactly the line this source gives without the `?`. It is not E2S189 with
+# an invented `Int`.
+fn main() -> Int {
+    let value = nope()?
+    return 0
+}

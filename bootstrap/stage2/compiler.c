@@ -19141,12 +19141,105 @@ static int64_t propagation_let_head_end(
 }
 
 /*
+ * Whether the operand at `operand` is headed by a call whose callee resolves
+ * to nothing: exactly the case `validate_core_calls` reports as E2S16
+ * `unknown Core function`, with its exclusions (`print`, a declared or
+ * duplicated function, a constructor application, a lambda or callable-typed
+ * binding, a builtin). Such an operand has no type, so nothing may be named
+ * for it.
+ */
+static bool propagation_unresolved_callee(
+    const char *source,
+    const char *hir,
+    int64_t operand
+) {
+    if (strcmp(token_kind(source, operand), "identifier") != 0) return false;
+    int64_t open = skip_trivia(source, token_end(source, operand));
+    if (open >= source_length(source) || !token_equal(source, open, "(")) {
+        return false;
+    }
+    char *name = token_copy(source, operand);
+    int64_t declared = function_arity(source, name);
+    bool resolved = strcmp(name, "print") == 0 || declared >= 0 ||
+        declared == -2;
+    if (!resolved) {
+        char *owner = enum_constructor_owner(source, name);
+        resolved = owner[0] != '\0' ||
+            record_declaration_start(source, name) >= 0;
+        free(owner);
+    }
+    if (!resolved) {
+        resolved = lambda_call_arity(source, hir, operand) >= 0 ||
+            callable_call_arity(source, hir, operand) >= 0 ||
+            builtin_arity(name) >= 0;
+    }
+    free(name);
+    return !resolved;
+}
+
+/*
+ * #1662. The end of the `if`/`else` chain or the `match` whose keyword is at
+ * `start`, or -1 when a block does not close before `limit`. The first block
+ * is the first `{` outside parentheses and brackets after the keyword; an
+ * `if` then takes each `else` block and `else if` that follows. Only the
+ * extent is measured here: whether the construct is well formed is somebody
+ * else's diagnostic.
+ */
+static int64_t propagation_block_expression_end(
+    const char *source,
+    int64_t start,
+    int64_t limit
+) {
+    int64_t cursor = skip_trivia(source, token_end(source, start));
+    int64_t depth = 0;
+    bool searching = true;
+    while (searching && cursor < limit) {
+        if (depth == 0 && token_equal(source, cursor, "{")) {
+            searching = false;
+        } else {
+            if (token_equal(source, cursor, "(") ||
+                token_equal(source, cursor, "[")) {
+                depth += 1;
+            } else if (token_equal(source, cursor, ")") ||
+                       token_equal(source, cursor, "]")) {
+                depth -= 1;
+            }
+            int64_t step = token_end(source, cursor);
+            if (step <= cursor) return -1;
+            cursor = skip_trivia(source, step);
+        }
+    }
+    if (cursor >= limit) return -1;
+    int64_t block_end = balanced_end(source, cursor, "{", "}");
+    if (block_end < 0 || block_end > limit) return -1;
+    if (!token_equal(source, start, "if")) return block_end;
+    int64_t after = skip_trivia(source, block_end);
+    if (after >= limit || !token_equal(source, after, "else")) {
+        return block_end;
+    }
+    int64_t alternative = skip_trivia(source, token_end(source, after));
+    if (alternative < limit && token_equal(source, alternative, "if")) {
+        return propagation_block_expression_end(source, alternative, limit);
+    }
+    if (alternative < limit && token_equal(source, alternative, "{")) {
+        int64_t else_end = balanced_end(source, alternative, "{", "}");
+        if (else_end < 0 || else_end > limit) return -1;
+        return else_end;
+    }
+    return -1;
+}
+
+/*
  * The type a `?` operand has, by the same bounded classification an
- * unannotated `let` initializer gets. Three shapes are answered first,
- * because that classification decides by the first primary alone and would
- * misname them: `null` is an optional; a parenthesised operand is typed by
- * what it encloses, so `(x ?? 0)` is `Int` rather than its first primary's
- * `Int?`; and a call to a declared `-> Int?` function is `Int?`, where the
+ * unannotated `let` initializer gets. Some shapes are answered first, because
+ * that classification decides by the first primary alone and would misname
+ * them: `null` is an optional; a parenthesised operand is typed by what it
+ * encloses, so `(x ?? 0)` is `Int` rather than its first primary's `Int?`; a
+ * value `if` or `match` is `Int`, as it is for an unannotated `let`, because
+ * this slice joins value control on `Int` only; a call whose callee resolves
+ * to nothing has no type at all, which is the empty text rather than the
+ * classification's historical `Int` default; `print` yields nothing, `Void`;
+ * and a call to a declared `-> Int?` function is `Int?`, where the
  * declared-type reader returns only the head `Int`.
  */
 static char *propagation_operand_type(
@@ -19171,8 +19264,16 @@ static char *propagation_operand_type(
             operand_end - 1
         );
     }
+    if (value_control(source, operand)) return owned_text("Int");
     if (strcmp(token_kind(source, operand), "identifier") == 0) {
+        if (propagation_unresolved_callee(source, hir, operand)) {
+            return owned_text("");
+        }
         int64_t open = skip_trivia(source, after_head);
+        if (token_equal(source, operand, "print") && open < operand_end &&
+            token_equal(source, open, "(")) {
+            return owned_text("Void");
+        }
         if (open < operand_end && token_equal(source, open, "(") &&
             balanced_end(source, open, "(", ")") == operand_end) {
             char *head = token_copy(source, operand);
@@ -19241,7 +19342,9 @@ static void result_propagation_node(
  * whole (a `let` annotation, a lambda's parameter list, a `->` result),
  * because the optional type `T?` and propagation never share a token
  * occurrence. Groups are walked recursively, so a `?` inside an argument or a
- * parenthesised operand is found with its own operand.
+ * parenthesised operand is found with its own operand. A value `if`/`else`
+ * chain or `match` followed by `?` is that `?`'s operand, its blocks walked
+ * recursively the same way.
  */
 static void result_propagation_nodes(
     const char *source,
@@ -19257,6 +19360,26 @@ static void result_propagation_nodes(
         int64_t next = skip_trivia(source, token_end(source, cursor));
         bool parenthesized = token_equal(source, cursor, "(");
         bool group = parenthesized || token_equal(source, cursor, "[");
+        /* An `if` or `match` is a primary only when a `?` follows its last
+         * block, so a statement `if` never turns a group on the next line
+         * into a call. An inner `else if` of the chain ends where the chain
+         * does, which is `limit` inside the recursive walk, so it is never a
+         * second operand for the same `?`. */
+        int64_t block_end = -1;
+        if (value_control(source, cursor)) {
+            int64_t construct_end = propagation_block_expression_end(
+                source,
+                cursor,
+                limit
+            );
+            if (construct_end >= 0) {
+                int64_t after_construct = skip_trivia(source, construct_end);
+                if (after_construct < limit &&
+                    token_equal(source, after_construct, "?")) {
+                    block_end = construct_end;
+                }
+            }
+        }
         if (token_equal(source, cursor, "let")) {
             cursor = propagation_let_head_end(source, cursor, limit);
         } else if (token_equal(source, cursor, "->")) {
@@ -19266,7 +19389,8 @@ static void result_propagation_nodes(
             int64_t parameters_end = balanced_end(source, next, "(", ")");
             if (parameters_end < 0) return;
             cursor = skip_trivia(source, parameters_end);
-        } else if (group ||
+        } else if (block_end >= 0 ||
+                   group ||
                    strcmp(kind, "identifier") == 0 ||
                    strcmp(kind, "integer") == 0 ||
                    strcmp(kind, "decimal") == 0 ||
@@ -19277,7 +19401,17 @@ static void result_propagation_nodes(
             int64_t chain = cursor;
             int64_t chain_end = token_end(source, cursor);
             bool lambda_parameters = false;
-            if (group) {
+            if (block_end >= 0) {
+                chain_end = block_end;
+                result_propagation_nodes(
+                    source,
+                    hir,
+                    function_open,
+                    token_end(source, cursor),
+                    block_end,
+                    records
+                );
+            } else if (group) {
                 chain_end = balanced_end(
                     source,
                     cursor,
@@ -19374,6 +19508,15 @@ static void result_propagation_nodes(
  * optional is also not a `Result` and the specific suggestion is the useful
  * one. The pipeline-stage refusal is syntactic and has already run in
  * `parse_program`. The primary span is the `?`, the secondary the operand.
+ *
+ * An operand whose callee resolves to nothing (an empty type in its node) has
+ * no type to name, and inventing one would hide the real defect. The spec
+ * desugars `expr?` after name and type resolution, so that operand keeps its
+ * own resolution diagnostic, E2S16 at the callee, byte for byte what
+ * `validate_core_calls` says without the `?` — as an unknown binding operand
+ * keeps its E2S35 from scope construction. It is reported here, not left to
+ * that later validator, because a `?` this refusal does not stop is lowered
+ * with the `?` dropped.
  */
 static char *validate_result_propagation(const char *source, const char *hir) {
     int64_t line = hir_record_start(hir, "propagate", 0);
@@ -19386,38 +19529,61 @@ static char *validate_result_propagation(const char *source, const char *hir) {
     int64_t operand = decimal_value(operand_text);
     int64_t operand_end = decimal_value(operand_end_text);
     size_t type_length = strlen(operand_type);
-    bool optional = strcmp(operand_type, "null") == 0 ||
-        (type_length > 0 && operand_type[type_length - 1] == '?');
     Buffer error;
     buffer_init(&error);
-    if (optional) {
+    if (type_length == 0) {
+        char *callee = token_copy(source, operand);
         buffer_format(
             &error,
-            "error[E2S190]: optionals do not propagate, and this `?` "
-            "operand is `%s`; convert it with `ok_or(error)?` at byte %s; "
-            "operand at byte %s",
-            operand_type,
-            question_text,
+            "error[E2S16]: unknown Core function `%s` at byte %s",
+            callee,
             operand_text
         );
+        stage2_diagnostic_set(
+            "E2S16",
+            operand,
+            token_end(source, operand),
+            true,
+            error.data
+        );
+        stage2_diagnostic_affected(
+            STAGE2_DIAGNOSTIC_AFFECTED_CALL,
+            operand,
+            token_end(source, operand)
+        );
+        free(callee);
     } else {
-        buffer_format(
-            &error,
-            "error[E2S189]: `?` propagates only a `Result[T, E]`, and this "
-            "operand is `%s` at byte %s; operand at byte %s",
-            operand_type,
-            question_text,
-            operand_text
+        bool optional = strcmp(operand_type, "null") == 0 ||
+            operand_type[type_length - 1] == '?';
+        if (optional) {
+            buffer_format(
+                &error,
+                "error[E2S190]: optionals do not propagate, and this `?` "
+                "operand is `%s`; convert it with `ok_or(error)?` at byte "
+                "%s; operand at byte %s",
+                operand_type,
+                question_text,
+                operand_text
+            );
+        } else {
+            buffer_format(
+                &error,
+                "error[E2S189]: `?` propagates only a `Result[T, E]`, and "
+                "this operand is `%s` at byte %s; operand at byte %s",
+                operand_type,
+                question_text,
+                operand_text
+            );
+        }
+        stage2_diagnostic_set(
+            optional ? "E2S190" : "E2S189",
+            question,
+            token_end(source, question),
+            true,
+            error.data
         );
+        stage2_diagnostic_related(operand, operand_end, "operand");
     }
-    stage2_diagnostic_set(
-        optional ? "E2S190" : "E2S189",
-        question,
-        token_end(source, question),
-        true,
-        error.data
-    );
-    stage2_diagnostic_related(operand, operand_end, "operand");
     free(question_text);
     free(operand_text);
     free(operand_end_text);
