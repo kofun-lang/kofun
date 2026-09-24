@@ -1,0 +1,6 @@
+rfc: 6 RFC-0015 examples construct and format as written
+modes: 360 constructions equal kofun_decimal_round and format at S
+witness: 315 profile-boundary constructions in 0..6144 succeed
+domain: S -1, 6145, LONG_MIN and LONG_MAX are D002, mode 5 is D006, missing operands are D003; none allocates or writes
+refusal: every refused allocation in construct (wide and narrow divisor rounding, and exact), and clone, is D004 with an empty output, an unchanged input and nothing live
+ownership: move empties its source, clone is deep, and drop is exactly once and idempotent

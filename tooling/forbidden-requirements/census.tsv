@@ -148,6 +148,7 @@ cc	invoke	5	required-today	required	tests/conformance/bytes-text/run.sh
 cc	invoke	2	required-today	required	tests/conformance/call-arguments/run.sh
 cc	invoke	5	required-today	required	tests/conformance/codegen/dense-enum-dispatch/run.sh
 cc	invoke	6	required-today	required	tests/conformance/const-generics/run.sh
+cc	invoke	1	required-today	required	tests/conformance/decimal-fixed/runtime/check.sh
 cc	invoke	4	required-today	required	tests/conformance/decimal/run.sh
 cc	invoke	10	required-today	required	tests/conformance/discovery/run.sh
 cc	invoke	1	required-today	required	tests/conformance/discovery/sanitizer-cc-wrapper.sh
@@ -637,6 +638,7 @@ shell-build-driver	source	1	required-today	required	tests/conformance/capabiliti
 shell-build-driver	source	1	required-today	required	tests/conformance/check-capabilities.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/codegen/dense-enum-dispatch/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/const-generics/run.sh
+shell-build-driver	source	1	required-today	required	tests/conformance/decimal-fixed/runtime/check.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/decimal/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/discovery/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/discovery/sanitizer-cc-wrapper.sh

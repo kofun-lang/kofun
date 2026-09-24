@@ -47,6 +47,7 @@ const-generics
 date-time
 decimal
 decimal-arithmetic
+decimal-fixed-runtime
 diagnostics
 digest
 directory-enumeration-carrier-decision

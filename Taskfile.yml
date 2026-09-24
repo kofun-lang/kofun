@@ -526,6 +526,11 @@ tasks:
     cmds:
       - "sh tests/conformance/run.sh tests/conformance/decimal-arithmetic"
 
+  decimal-fixed-runtime:
+    desc: "Verify Fixed[S] runtime construct, clone, move, and drop under allocation refusal"
+    cmds:
+      - "sh tests/conformance/decimal-fixed/runtime/check.sh"
+
   date-time:
     desc: "Verify bounded date/time values, failures, arithmetic, and RFC 3339"
     cmds:
@@ -1544,6 +1549,7 @@ tasks:
             incremental \
             decimal \
             decimal-arithmetic \
+            decimal-fixed-runtime \
             date-time \
             tzdb \
             discovery \
