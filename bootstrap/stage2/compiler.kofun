@@ -27883,7 +27883,9 @@ fn ownership_scope(source: Text, hir: Text, facts: Text, accesses: Text, path: T
         } else { steps = steps + kind + "|" + hir_field(ordered, row, 3) + "|" + to_text(step) + "\n" }
         row = capture_line_end(ordered, row) + 1
     }
-    let exit = step + 1
+    # The model's scope exit is at least step 2, even for an empty `par`.
+    let mut exit = step + 1
+    if exit < 2 { exit = 2 }
     let ordered_after = capture_sort(after)
     let mut after_json = ""
     row = 0

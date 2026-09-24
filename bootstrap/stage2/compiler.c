@@ -37435,6 +37435,9 @@ static const char * ownership_scope(CheckedPlaceArena *a, const char * v_source,
         v_row = (capture_line_end(a, v_ordered, v_row) + 1);
     }
     int64_t v_exit = (v_step + 1);
+    if (v_exit < 2) {
+        v_exit = 2;
+    }
     const char * v_ordered_after = capture_sort(a, v_after);
     CheckedPlaceText *builder_after_json = NULL;
     const char * v_after_json = "";

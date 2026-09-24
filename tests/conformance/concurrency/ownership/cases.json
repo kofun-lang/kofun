@@ -1183,6 +1183,19 @@
    "derivation": "lifecycle-only"
   },
   {
+   "name": "empty-scope",
+   "source": "fn main() -> Int {\n let value: Int = 1\n par |scope| {\n }\n return value\n}\n",
+   "scopes": [
+    {
+     "tasks": [],
+     "order": [],
+     "captures": {},
+     "status": "accepted",
+     "codes": []
+    }
+   ]
+  },
+  {
    "name": "token-stored",
    "source": "fn main() -> Int {\n par |scope| {\n  let other = scope\n }\n return 0\n}\n",
    "refusal": "SPV1-HANDLE-ESCAPE",

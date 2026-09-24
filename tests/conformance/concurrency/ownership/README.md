@@ -68,7 +68,9 @@ keeps every order and equality the model compares exact over the full i64
 range; the gate reads them back in the same rank domain.
 
 When a file has an escape, capture facts are not derived at all, and every
-other scope in it reports `not-decided` rather than `accepted`.
+other scope in it reports `not-decided` rather than `accepted`. That is the
+entry's statement that it decided nothing, not a model verdict, so the gate
+does not compare it with the model.
 
 Other checks: `logical-path` invariance of every decision, the 256/257
 parent-action bound, and the entry's own `E2S35` refusals.
