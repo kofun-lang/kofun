@@ -37,7 +37,7 @@ gate confirms the model refuses them as `SPV1-INVALID-MODEL`.
 (`E2S122`). Its mirror takes the explicit unknown of an unresolved callback
 instead, and that relation is just as unprovable.
 
-Four derivation choices are deliberately conservative:
+Five derivation choices are deliberately conservative:
 
 - **Conditional joins.** Only a join written as a plain statement of its own
   block ends its task's liveness. A join inside a nested block, a loop
@@ -50,6 +50,13 @@ Four derivation choices are deliberately conservative:
 - **Loops.** A `par` inside a loop cannot take a binding declared outside that
   loop. This is refused with `E2S123`, because the next iteration would take it
   again.
+- **Closures.** Any lambda written in a `par` block, whether a task's or
+  not, can run later or more than once. A handle used inside one, even as a
+  join receiver, is an escape, and so is the scope token. A parent use of a
+  callable binding that is not a capture-free local lambda literal (a
+  parameter, a capturing closure, a returned lambda) takes an explicit
+  unknown place at that step, and after the scope when a task took anything.
+  A capture-free closure stays free to call.
 - **Escapes.** A handle used for anything other than its own join is
   `SPV1-HANDLE-ESCAPE`, decided before any capture exists: capture derivation
   cannot type an escaping handle, so such a file reports lifecycle facts only.
@@ -59,6 +66,9 @@ Four derivation choices are deliberately conservative:
 Constants in slice bounds are dense ranks over one scope's constants. That
 keeps every order and equality the model compares exact over the full i64
 range; the gate reads them back in the same rank domain.
+
+When a file has an escape, capture facts are not derived at all, and every
+other scope in it reports `not-decided` rather than `accepted`.
 
 Other checks: `logical-path` invariance of every decision, the 256/257
 parent-action bound, and the entry's own `E2S35` refusals.

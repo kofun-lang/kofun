@@ -142,6 +142,12 @@ function checkScope(name,produced,expected,derivation){
     const derived=view(produced.model_input.scope,{rename,taskNames:expected.tasks,after:produced.after_scope_actions});
     const authored=expectedView(expected);
     assert.deepEqual(derived,authored,`${name}: derived model input equals the authored expectation`);
+    if(produced.decision.status==='not-decided'){
+        // Without capture facts, a scope with no escape of its own decides nothing.
+        assert.equal(derivation,'lifecycle-only',`${name}: only a lifecycle-only file leaves a scope undecided`);
+        assert.deepEqual(produced.decision.diagnostics,[]);assert.equal(expected.status,'not-decided');
+        return derived;
+    }
     const model=analyzeScopedParallelism(extended(produced.model_input.scope,produced.after_scope_actions));
     assert.equal(produced.decision.status,model.status,`${name}: production status equals the model's`);
     assert.deepEqual(codeAt(produced.decision.diagnostics),codeAt(model.diagnostics),`${name}: production diagnostics equal the model's`);

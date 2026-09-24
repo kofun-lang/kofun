@@ -36882,7 +36882,7 @@ static bool ownership_join_unconditional(CheckedPlaceArena *a, const char * v_so
         if ((v_depth == 0) && ((((strcmp(v_token, "while") == 0) || (strcmp(v_token, "for") == 0)) || (strcmp(v_token, "&&") == 0)) || (strcmp(v_token, "||") == 0))) {
             v_guarded = true;
         }
-        if ((((((v_depth == 0) && (strcmp(v_token, "&&") != 0)) && (strcmp(v_token, "||") != 0)) && (v_next < v_join)) &&
+        if ((((((v_depth == 0) && (strcmp(v_token, "&&") != 0)) && (strcmp(v_token, "||") != 0)) && (v_next <= v_join)) &&
             (strstr(cp_keep(a, source_slice(v_source, token_end(v_source, v_at), v_next)), "\n") != NULL)) &&
             (!cp_shape_operator(v_token)) && (!cp_shape_operator(cp_keep(a, token_copy(v_source, v_next))))) {
             v_guarded = false;
@@ -36955,9 +36955,53 @@ static bool ownership_in_lambda(CheckedPlaceArena *a, const char * v_facts, cons
     return capture_return_integer(a, mark, false);
 }
 
+static bool ownership_in_closure(CheckedPlaceArena *a, const char * v_source, int64_t v_block, int64_t v_close, int64_t v_at) {
+    CheckedPlaceText *mark = a->texts;
+    int64_t v_cursor = skip_trivia(v_source, token_end(v_source, v_block));
+    while ((v_cursor < v_close) && (v_cursor < v_at)) {
+        if (strcmp(cp_keep(a, token_copy(v_source, v_cursor)), "fn") == 0) {
+            int64_t v_open = lambda_initializer_open_mode(v_source, v_cursor, true);
+            if ((v_open >= 0) && (v_at < lambda_parameters_end_mode(v_source, -1, v_open, true))) {
+                return capture_return_integer(a, mark, true);
+            }
+        }
+        v_cursor = skip_trivia(v_source, token_end(v_source, v_cursor));
+    }
+    return capture_return_integer(a, mark, false);
+}
+
+static bool ownership_pure_callable(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_accesses, const char * v_binding) {
+    CheckedPlaceText *mark = a->texts;
+    int64_t v_open = lambda_binding_open_mode(v_source, v_hir, v_binding, true);
+    if (v_open < 0) {
+        return capture_return_integer(a, mark, false);
+    }
+    int64_t v_end = lambda_parameters_end_mode(v_source, -1, v_open, true);
+    const char * v_scope = cp_keep(a, hir_scope_id_for_open(v_hir, v_open));
+    int64_t v_row = capture_record_start(a, v_accesses, "access", 0);
+    while (v_row >= 0) {
+        int64_t v_start = decimal_value(cp_field(a, v_accesses, v_row, 8));
+        if ((v_start > v_open) && (v_start < v_end)) {
+            const char * v_used = cp_field(a, v_accesses, v_row, 3);
+            if ((((int64_t)strlen(v_used)) == 0) || (!capture_local(a, v_hir, v_used, v_scope))) {
+                return capture_return_integer(a, mark, false);
+            }
+        }
+        v_row = capture_record_start(a, v_accesses, "access", (v_row + 1));
+    }
+    return capture_return_integer(a, mark, true);
+}
+
+static const char * ownership_call_key(CheckedPlaceArena *a, const char * v_file, int64_t v_start, int64_t v_stop) {
+    CheckedPlaceText *mark = a->texts;
+    return capture_return_text(a, mark, cp_format(a, "%s%s", "U", cp_keep(a, scoped_hir_hash_frame("kofun.stage2.scoped-ownership-call/v1", v_file,
+        cp_format(a, "%s%s", cp_keep(a, scoped_hir_hex(v_start, 8)), cp_keep(a, scoped_hir_hex(v_stop, 8))), "", ""))));
+}
+
 static const char * ownership_escapes(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_facts, int64_t v_par_row) {
     CheckedPlaceText *mark = a->texts;
     const char * v_par = cp_field(a, v_facts, v_par_row, 1);
+    int64_t v_close = decimal_value(cp_field(a, v_facts, v_par_row, 3));
     int64_t v_name = decimal_value(cp_field(a, v_facts, v_par_row, 6));
     int64_t v_block = skip_trivia(v_source, token_end(v_source, skip_trivia(v_source, token_end(v_source, v_name))));
     CheckedPlaceText *builder_result = NULL;
@@ -36974,7 +37018,7 @@ static const char * ownership_escapes(CheckedPlaceArena *a, const char * v_sourc
                 if ((strcmp(cp_field(a, v_hir, v_use, 4), v_binding) == 0) && ((v_first < 0) || (v_at < v_first))) {
                     int64_t v_member = scoped_parallel_member(v_source, v_at);
                     const char * v_current = "";
-                    if (ownership_in_lambda(a, v_facts, v_par, v_at)) {
+                    if (ownership_in_closure(a, v_source, v_block, v_close, v_at)) {
                         v_current = "capture";
                     } else if ((v_member < 0) || (strcmp(cp_keep(a, token_copy(v_source, v_member)), "join") != 0)) {
                         const char * v_previous = ownership_previous_token(a, v_source, v_block, v_at);
@@ -37004,15 +37048,17 @@ static const char * ownership_escapes(CheckedPlaceArena *a, const char * v_sourc
 
 static const char * ownership_token_escape(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_facts, int64_t v_par_row) {
     CheckedPlaceText *mark = a->texts;
-    const char * v_par = cp_field(a, v_facts, v_par_row, 1);
+    int64_t v_close = decimal_value(cp_field(a, v_facts, v_par_row, 3));
+    int64_t v_name = decimal_value(cp_field(a, v_facts, v_par_row, 6));
+    int64_t v_block = skip_trivia(v_source, token_end(v_source, skip_trivia(v_source, token_end(v_source, v_name))));
     const char * v_token = cp_field(a, v_facts, v_par_row, 5);
     int64_t v_use = hir_record_start(v_hir, "use", 0);
     while (v_use >= 0) {
         int64_t v_at = decimal_value(cp_field(a, v_hir, v_use, 1));
         if (strcmp(cp_field(a, v_hir, v_use, 4), v_token) == 0) {
             int64_t v_member = scoped_parallel_member(v_source, v_at);
-            if (ownership_in_lambda(a, v_facts, v_par, v_at)) {
-                return capture_return_text(a, mark, ownership_error(a, "SPV1-HANDLE-ESCAPE", "a task cannot capture its scope token", v_at));
+            if (ownership_in_closure(a, v_source, v_block, v_close, v_at)) {
+                return capture_return_text(a, mark, ownership_error(a, "SPV1-HANDLE-ESCAPE", "a closure cannot capture its scope token", v_at));
             }
             if ((v_member < 0) || (strcmp(cp_keep(a, token_copy(v_source, v_member)), "spawn") != 0)) {
                 return capture_return_text(a, mark, ownership_error(a, "SPV1-HANDLE-ESCAPE", "a scope token is used only to spawn", v_at));
@@ -37291,7 +37337,7 @@ static const char * ownership_scope(CheckedPlaceArena *a, const char * v_source,
             const char * v_index = cp_field(a, v_facts, v_task, 2);
             v_events = capture_append(a, &builder_events, v_events, cp_format(a, "%s%s%s%s%s", "ev|", cp_keep(a, scoped_hir_hex(decimal_value(cp_field(a, v_facts, v_task, 4)), 8)), "0|spawn|", v_index, "\n"));
             int64_t v_join = scoped_hir_fact(v_facts, "join", 1, cp_field(a, v_facts, v_task, 7));
-            if (((v_join >= 0) && (!ownership_in_lambda(a, v_facts, v_par, decimal_value(cp_field(a, v_facts, v_join, 2))))) &&
+            if (((v_join >= 0) && (!ownership_in_closure(a, v_source, v_block, v_close, decimal_value(cp_field(a, v_facts, v_join, 2))))) &&
                 ownership_join_unconditional(a, v_source, v_block, decimal_value(cp_field(a, v_facts, v_join, 2)))) {
                 v_events = capture_append(a, &builder_events, v_events, cp_format(a, "%s%s%s%s%s", "ev|", cp_keep(a, scoped_hir_hex(decimal_value(cp_field(a, v_facts, v_join, 3)), 8)), "0|join|", v_index, "\n"));
             }
@@ -37350,6 +37396,16 @@ static const char * ownership_scope(CheckedPlaceArena *a, const char * v_source,
                         cp_field(a, v_accesses, v_row, 7)));
                 }
                 v_after = capture_append(a, &builder_after, v_after, cp_format(a, "%s%s%s%s%s%s%s%s", "ev|", cp_keep(a, scoped_hir_hex(v_start, 8)), "1|act|", cp_field(a, v_accesses, v_row, 2), "|", v_key, "|", cp_format(a, "%" PRId64 "\n", v_start)));
+            }
+        }
+        if ((strcmp(cp_field(a, v_accesses, v_row, 4), "Fn") == 0) && (!ownership_pure_callable(a, v_source, v_hir, v_accesses, cp_field(a, v_accesses, v_row, 3)))) {
+            const char * v_call = ownership_call_key(a, v_file, v_start, v_stop);
+            if (((v_start > v_block) && (v_stop < v_close)) && (!ownership_in_lambda(a, v_facts, v_par, v_start))) {
+                v_actions = (v_actions + 1);
+                v_events = capture_append(a, &builder_events, v_events, cp_format(a, "%s%s%s%s%s%s", "ev|", cp_keep(a, scoped_hir_hex(v_start, 8)), "1|act|take|", v_call, "|", cp_format(a, "%" PRId64 "\n", v_start)));
+            }
+            if (((v_start >= v_close) && (v_stop <= v_function_close)) && (capture_fact(a, v_captures, "cap", 2, "take") >= 0)) {
+                v_after = capture_append(a, &builder_after, v_after, cp_format(a, "%s%s%s%s%s%s", "ev|", cp_keep(a, scoped_hir_hex(v_start, 8)), "1|act|take|", v_call, "|", cp_format(a, "%" PRId64 "\n", v_start)));
             }
         }
         if ((((((v_start > v_block) && (v_stop < v_close)) && (strcmp(cp_field(a, v_accesses, v_row, 2), "take") == 0)) && (v_loop >= 0)) && ownership_in_lambda(a, v_facts, v_par, v_start)) &&
@@ -37513,6 +37569,9 @@ static const char * ownership_scope(CheckedPlaceArena *a, const char * v_source,
     const char * v_status = "accepted";
     if (((int64_t)strlen(v_diagnostics)) > 0) {
         v_status = "rejected";
+    }
+    if ((!v_derived) && (((int64_t)strlen(v_diagnostics)) == 0)) {
+        v_status = "not-decided";
     }
     const char * v_truncated = "false";
     if (v_row < ((int64_t)strlen(v_diagnostics))) {

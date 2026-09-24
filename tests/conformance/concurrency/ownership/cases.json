@@ -920,6 +920,269 @@
    ]
   },
   {
+   "name": "closure-join-is-a-capture",
+   "source": "fn bump(edit value: Int) { value = value + 1 }\nfn main() -> Int {\n let mut value: Int = 0\n par |scope| {\n  let worker = scope.spawn(fn() { bump(value) })\n  let later = fn() => worker.join()\n  value = 3\n }\n return value\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "worker"
+     ],
+     "order": [
+      "worker.spawn"
+     ],
+     "captures": {
+      "worker": []
+     },
+     "escapes": {
+      "worker": "capture"
+     },
+     "status": "rejected",
+     "codes": [
+      "SPV1-HANDLE-ESCAPE"
+     ]
+    }
+   ],
+   "derivation": "lifecycle-only"
+  },
+  {
+   "name": "closure-called-while-live",
+   "source": "fn bump(edit value: Int) { value = value + 1 }\nfn main() -> Int {\n let mut value: Int = 0\n let poke = fn() { bump(value) }\n par |scope| {\n  let reader = scope.spawn(fn() => value)\n  poke()\n  reader.join()\n }\n return value\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "reader"
+     ],
+     "order": [
+      "reader.spawn",
+      "parent",
+      "parent",
+      "reader.join"
+     ],
+     "captures": {
+      "reader": [
+       "read value"
+      ]
+     },
+     "parent": [
+      "read poke",
+      "take ?"
+     ],
+     "status": "rejected",
+     "codes": [
+      "SPV1-OVERLAP-UNKNOWN"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "closure-defined-in-scope",
+   "source": "fn bump(edit value: Int) { value = value + 1 }\nfn main() -> Int {\n let mut value: Int = 0\n par |scope| {\n  let reader = scope.spawn(fn() => value)\n  let poke = fn() { bump(value) }\n  poke()\n  reader.join()\n }\n return value\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "reader"
+     ],
+     "order": [
+      "reader.spawn",
+      "parent",
+      "parent",
+      "parent",
+      "reader.join"
+     ],
+     "captures": {
+      "reader": [
+       "read value"
+      ]
+     },
+     "parent": [
+      "edit value",
+      "read poke",
+      "take ?"
+     ],
+     "status": "rejected",
+     "codes": [
+      "SPV1-OVERLAP-UNKNOWN",
+      "SPV1-PARENT-CONFLICT"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "par-in-closure-called-twice",
+   "source": "type Resource = { value: Int }\nfn consume(take resource: Resource) -> Int { return 1 }\nfn main() -> Int {\n let resource: Resource = Resource(value: 1)\n let run = fn() {\n  par |scope| {\n   scope.spawn(fn() => consume(resource))\n  }\n }\n run()\n run()\n return 0\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "owner"
+     ],
+     "order": [
+      "owner.spawn"
+     ],
+     "captures": {
+      "owner": [
+       "take resource"
+      ]
+     },
+     "after": [
+      "take ?",
+      "take ?"
+     ],
+     "status": "rejected",
+     "codes": [
+      "SPV1-OVERLAP-UNKNOWN"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "callable-parameter-called-while-live",
+   "source": "fn main(poke: Int -> Int) -> Int {\n let mut value: Int = 0\n par |scope| {\n  let reader = scope.spawn(fn() => value)\n  poke(1)\n  reader.join()\n }\n return value\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "reader"
+     ],
+     "order": [
+      "reader.spawn",
+      "parent",
+      "parent",
+      "reader.join"
+     ],
+     "captures": {
+      "reader": [
+       "read value"
+      ]
+     },
+     "parent": [
+      "read poke",
+      "take ?"
+     ],
+     "status": "rejected",
+     "codes": [
+      "SPV1-OVERLAP-UNKNOWN"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "pure-closure-called-while-live",
+   "source": "fn main() -> Int {\n let mut value: Int = 0\n let k = fn() => 1\n par |scope| {\n  let reader = scope.spawn(fn() => value)\n  k()\n  reader.join()\n }\n return value\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "reader"
+     ],
+     "order": [
+      "reader.spawn",
+      "parent",
+      "reader.join"
+     ],
+     "captures": {
+      "reader": [
+       "read value"
+      ]
+     },
+     "parent": [
+      "read k"
+     ],
+     "status": "accepted",
+     "codes": []
+    }
+   ]
+  },
+  {
+   "name": "capture-free-closure-defined",
+   "source": "fn main() -> Int {\n let mut value: Int = 0\n par |scope| {\n  let reader = scope.spawn(fn() => value)\n  let k = fn() => 1\n  reader.join()\n }\n return value\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "reader"
+     ],
+     "order": [
+      "reader.spawn",
+      "reader.join"
+     ],
+     "captures": {
+      "reader": [
+       "read value"
+      ]
+     },
+     "status": "accepted",
+     "codes": []
+    }
+   ]
+  },
+  {
+   "name": "join-after-continued-condition",
+   "source": "fn step(edit value: Int) -> Int {\n value = value + 1\n return 1\n}\nfn main() -> Int {\n let mut value: Int = 0\n let ready: Bool = true\n let mut done: Bool = false\n par |scope| {\n  let worker = scope.spawn(fn() => step(value))\n  done = ready &&\n   ready\n  worker.join()\n  value = 3\n }\n return value\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "worker"
+     ],
+     "order": [
+      "worker.spawn",
+      "parent",
+      "parent",
+      "parent",
+      "worker.join",
+      "parent"
+     ],
+     "captures": {
+      "worker": [
+       "edit value"
+      ]
+     },
+     "parent": [
+      "edit done",
+      "read ready",
+      "read ready",
+      "edit value"
+     ],
+     "status": "accepted",
+     "codes": []
+    }
+   ]
+  },
+  {
+   "name": "other-scope-not-decided",
+   "source": "fn main() -> Int {\n par |scope| {\n  let escaping = scope.spawn(fn() => 1)\n  return escaping\n }\n par |other| {\n  other.spawn(fn() => 2)\n }\n return 0\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "escaping"
+     ],
+     "order": [
+      "escaping.spawn"
+     ],
+     "captures": {
+      "escaping": []
+     },
+     "escapes": {
+      "escaping": "return"
+     },
+     "status": "rejected",
+     "codes": [
+      "SPV1-HANDLE-ESCAPE"
+     ]
+    },
+    {
+     "tasks": [
+      "other"
+     ],
+     "order": [
+      "other.spawn"
+     ],
+     "captures": {
+      "other": []
+     },
+     "status": "not-decided",
+     "codes": []
+    }
+   ],
+   "derivation": "lifecycle-only"
+  },
+  {
    "name": "token-stored",
    "source": "fn main() -> Int {\n par |scope| {\n  let other = scope\n }\n return 0\n}\n",
    "refusal": "SPV1-HANDLE-ESCAPE",
@@ -942,6 +1205,12 @@
    "source": "fn fill(edit xs: List[Int]) { }\nfn main() -> Int {\n let mut items: List[Int] = [1, 2, 3, 4]\n par |scope| {\n  scope.spawn(fn() { fill(items[3..1]) })\n }\n return 0\n}\n",
    "refusal": "E2S154",
    "reason": "a known start above its end is malformed, not empty"
+  },
+  {
+   "name": "closure-token-spawn",
+   "source": "fn bump(edit value: Int) { value = value + 1 }\nfn main() -> Int {\n let mut value: Int = 0\n par |scope| {\n  let go = fn() { scope.spawn(fn() { bump(value) }) }\n  go()\n  go()\n }\n return value\n}\n",
+   "refusal": "SPV1-HANDLE-ESCAPE",
+   "reason": "a closure can spawn on the token more than once"
   }
  ]
 }

@@ -27390,7 +27390,7 @@ fn ownership_join_unconditional(source: Text, block: Int, join: Int) -> Bool {
             if depth == 0 { guarded = false }
         }
         if depth == 0 && (token == "while" || token == "for" || token == "&&" || token == "||") { guarded = true }
-        if depth == 0 && token != "&&" && token != "||" && next < join &&
+        if depth == 0 && token != "&&" && token != "||" && next <= join &&
             contains(text_slice(source, token_end(source, at), next), "\n") &&
             !checked_place_shape_operator(token) && !checked_place_shape_operator(token_text(source, next)) {
             guarded = false
@@ -27453,10 +27453,53 @@ fn ownership_in_lambda(facts: Text, par: Text, at: Int) -> Bool {
     return false
 }
 
+# Whether `at` lies inside any lambda written in this `par` block, a task's
+# or not: a closure can run later or twice, so nothing inside one is a
+# statement of the block.
+fn ownership_in_closure(source: Text, block: Int, close: Int, at: Int) -> Bool {
+    let mut cursor = skip_trivia(source, token_end(source, block))
+    while cursor < close && cursor < at {
+        if token_text(source, cursor) == "fn" {
+            let open = lambda_initializer_open_mode(source, cursor, true)
+            if open >= 0 && at < lambda_parameters_end_mode(source, -1, open, true) { return true }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return false
+}
+
+# A callable binding whose call can have no effect a scope must order: a local
+# lambda literal whose body touches only its own bindings. Parameters, other
+# callables and capturing lambdas are not pure.
+fn ownership_pure_callable(source: Text, hir: Text, accesses: Text, binding: Text) -> Bool {
+    let open = lambda_binding_open_mode(source, hir, binding, true)
+    if open < 0 { return false }
+    let end = lambda_parameters_end_mode(source, -1, open, true)
+    let scope = hir_scope_id_for_open(hir, open)
+    let mut row = capture_record_start(accesses, "access", 0)
+    while row >= 0 {
+        let start = decimal_value(hir_field(accesses, row, 8))
+        if start > open && start < end {
+            let used = hir_field(accesses, row, 3)
+            if len(used) == 0 || !capture_local(hir, used, scope) { return false }
+        }
+        row = capture_record_start(accesses, "access", row + 1)
+    }
+    return true
+}
+
+# A parent use of an impure callable may run any effect there, including a
+# take: it is an explicit unknown place taken at that step.
+fn ownership_call_key(file: Text, start: Int, stop: Int) -> Text {
+    return "U" + scoped_hir_hash_frame("kofun.stage2.scoped-ownership-call/v1", file,
+        scoped_hir_hex(start, 8) + scoped_hir_hex(stop, 8), "", "")
+}
+
 # §3: a handle is used only as its own join receiver. Rows are
 # `escape|TASK|USE|BYTE` for the first escaping use of each task handle.
 fn ownership_escapes(source: Text, hir: Text, facts: Text, par_row: Int) -> Text {
     let par = hir_field(facts, par_row, 1)
+    let close = decimal_value(hir_field(facts, par_row, 3))
     let name = decimal_value(hir_field(facts, par_row, 6))
     let block = skip_trivia(source, token_end(source, skip_trivia(source, token_end(source, name))))
     let mut result = ""
@@ -27472,7 +27515,7 @@ fn ownership_escapes(source: Text, hir: Text, facts: Text, par_row: Int) -> Text
                 if hir_field(hir, use, 4) == binding && (first < 0 || at < first) {
                     let member = scoped_parallel_member(source, at)
                     let mut current = ""
-                    if ownership_in_lambda(facts, par, at) { current = "capture" }
+                    if ownership_in_closure(source, block, close, at) { current = "capture" }
                     else if member < 0 || token_text(source, member) != "join" {
                         let previous = ownership_previous_token(source, block, at)
                         current = "store"
@@ -27497,15 +27540,17 @@ fn ownership_escapes(source: Text, hir: Text, facts: Text, par_row: Int) -> Text
 # directly in its own block. Capturing, storing, passing, or returning it is a
 # refusal before any capture fact exists; the model has no token input.
 fn ownership_token_escape(source: Text, hir: Text, facts: Text, par_row: Int) -> Text {
-    let par = hir_field(facts, par_row, 1)
+    let close = decimal_value(hir_field(facts, par_row, 3))
+    let name = decimal_value(hir_field(facts, par_row, 6))
+    let block = skip_trivia(source, token_end(source, skip_trivia(source, token_end(source, name))))
     let token = hir_field(facts, par_row, 5)
     let mut use = hir_record_start(hir, "use", 0)
     while use >= 0 {
         let at = decimal_value(hir_field(hir, use, 1))
         if hir_field(hir, use, 4) == token {
             let member = scoped_parallel_member(source, at)
-            if ownership_in_lambda(facts, par, at) {
-                return ownership_error("SPV1-HANDLE-ESCAPE", "a task cannot capture its scope token", at)
+            if ownership_in_closure(source, block, close, at) {
+                return ownership_error("SPV1-HANDLE-ESCAPE", "a closure cannot capture its scope token", at)
             }
             if member < 0 || token_text(source, member) != "spawn" {
                 return ownership_error("SPV1-HANDLE-ESCAPE", "a scope token is used only to spawn", at)
@@ -27747,7 +27792,7 @@ fn ownership_scope(source: Text, hir: Text, facts: Text, accesses: Text, path: T
             let index = hir_field(facts, task, 2)
             events = events + "ev|" + scoped_hir_hex(decimal_value(hir_field(facts, task, 4)), 8) + "0|spawn|" + index + "\n"
             let join = scoped_hir_fact(facts, "join", 1, hir_field(facts, task, 7))
-            if join >= 0 && !ownership_in_lambda(facts, par, decimal_value(hir_field(facts, join, 2))) &&
+            if join >= 0 && !ownership_in_closure(source, block, close, decimal_value(hir_field(facts, join, 2))) &&
                 ownership_join_unconditional(source, block, decimal_value(hir_field(facts, join, 2))) {
                 events = events + "ev|" + scoped_hir_hex(decimal_value(hir_field(facts, join, 3)), 8) + "0|join|" + index + "\n"
             }
@@ -27800,6 +27845,19 @@ fn ownership_scope(source: Text, hir: Text, facts: Text, accesses: Text, path: T
                         hir_field(accesses, row, 7))
                 }
                 after = after + "ev|" + scoped_hir_hex(start, 8) + "1|act|" + hir_field(accesses, row, 2) + "|" + key + "|" + to_text(start) + "\n"
+            }
+        }
+        if hir_field(accesses, row, 4) == "Fn" && !ownership_pure_callable(source, hir, accesses, hir_field(accesses, row, 3)) {
+            # A parent use of an impure callable (a parameter, a capturing
+            # closure, a returned lambda) may run any effect there, including
+            # after scope exit, so it takes an explicit unknown place.
+            let call = ownership_call_key(file, start, stop)
+            if start > block && stop < close && !ownership_in_lambda(facts, par, start) {
+                actions = actions + 1
+                events = events + "ev|" + scoped_hir_hex(start, 8) + "1|act|take|" + call + "|" + to_text(start) + "\n"
+            }
+            if start >= close && stop <= function_close && capture_fact(captures, "cap", 2, "take") >= 0 {
+                after = after + "ev|" + scoped_hir_hex(start, 8) + "1|act|take|" + call + "|" + to_text(start) + "\n"
             }
         }
         if start > block && stop < close && hir_field(accesses, row, 2) == "take" && loop >= 0 && ownership_in_lambda(facts, par, start) &&
@@ -27936,6 +27994,8 @@ fn ownership_scope(source: Text, hir: Text, facts: Text, accesses: Text, path: T
     }
     let mut status = "accepted"
     if len(diagnostics) > 0 { status = "rejected" }
+    # Without capture facts a scope with no escape of its own is undecided.
+    if !derived && len(diagnostics) == 0 { status = "not-decided" }
     let mut truncated = "false"
     if row < len(diagnostics) { truncated = "true" }
     let mut derivation = "complete"
