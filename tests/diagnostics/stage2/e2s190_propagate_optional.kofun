@@ -1,0 +1,12 @@
+# diagnostic-mode: compile
+# expect-code: E2S190
+# expect-span: byte 432
+# spec/result-propagation-v1.md, refusal 2 (#1662): optionals do not propagate,
+# so `?` on an `Int?` is refused with the `ok_or(error)?` suggestion rather
+# than read as a narrowing mistake. Before #1662 this was `E2S147` at the
+# operand, which told the author to add a `null` comparison.
+fn main() -> Int {
+    let reading: Int? = 7
+    let value = reading?
+    return 0
+}

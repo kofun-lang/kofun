@@ -1,0 +1,13 @@
+# Check order, two `?`: an optional operand first in the source and a
+# pipeline stage after it. Refusal 3 is syntactic and runs while parsing, so
+# it is reported ahead of any operand refusal wherever the two sit.
+fn twice(value: Int) -> Int {
+    return value * 2
+}
+
+fn main() -> Int {
+    let x: Int? = 1
+    let first = x?
+    let second = 1 |> twice()?
+    return 0
+}

@@ -1,0 +1,1 @@
+error[E2S191]: `?` on a pipeline stage applies to the stage, not the result; parenthesize the pipeline: `(a |> f())?` at byte 497; operand at byte 490

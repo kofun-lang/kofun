@@ -1,0 +1,14 @@
+# Check order, two operand refusals: a non-Result operand first and an
+# optional one after it. The first `?` in the source is the one reported, and
+# for each `?` refusal 2 is checked before refusal 1; the second `?` alone
+# would be refusal 2.
+fn one() -> Int {
+    return 1
+}
+
+fn main() -> Int {
+    let x: Int? = 1
+    let first = one()?
+    let second = x?
+    return 0
+}

@@ -1,0 +1,10 @@
+# Table row 2 of #1662: `?` on a call in statement position. Refusal 1. The
+# `?` does not end the statement; the newline after it does, as before.
+fn one() -> Int {
+    return 1
+}
+
+fn main() -> Int {
+    one()?
+    return 0
+}

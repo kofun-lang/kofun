@@ -329,6 +329,14 @@ tasks:
     cmds:
       - "sh tests/stage2/optional-pair/run.sh"
 
+  # #1662. The part of spec/result-propagation-v1.md Stage 2 reaches before a
+  # `Result` type exists: postfix `?` parsed as a typed scope-HIR node and
+  # refused as E2S189/E2S190/E2S191. #1250 adds the positive lowering here.
+  result-propagation:
+    desc: "Verify postfix ? parsing and the result-propagation refusals in the Stage 2 pair"
+    cmds:
+      - "sh tests/conformance/result-propagation/run.sh"
+
   text-results:
     desc: "Verify bounded Stage 2 Text results, conversion, and concatenation"
     cmds:
@@ -1525,6 +1533,7 @@ tasks:
             optional-construction \
             optional-coalescing \
             optional-pair \
+            result-propagation \
             text-results \
             int-bits \
             int-bits-lowering \

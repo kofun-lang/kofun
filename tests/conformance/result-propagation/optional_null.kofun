@@ -1,0 +1,8 @@
+# `?` on the literal `null`. Refusal 2 names it. `null` resolves only in an
+# `Int?` slot; the left operand of `??` is one, and the `?` binds to `null`
+# before `??` does. (`let v: Int? = null?` is not such a slot: its initializer
+# is `null?`, not `null`, and scope construction refuses the name as E2S35.)
+fn main() -> Int {
+    let value = null? ?? 0
+    return 0
+}

@@ -1,0 +1,7 @@
+# Table row 7 of #1662: `?` on exact Decimal division. The operand is a
+# `DecimalResult` (docs/DECIMAL.md), a checked result but not a
+# `Result[T, E]`; the parenthesized operand is typed by what it encloses.
+fn main() -> Int {
+    let amount = (1.0 / 4.0)?
+    return 0
+}

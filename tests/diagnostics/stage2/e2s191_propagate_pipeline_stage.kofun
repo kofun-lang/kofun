@@ -1,0 +1,16 @@
+# diagnostic-mode: compile
+# expect-code: E2S191
+# expect-span: byte 497
+# spec/result-propagation-v1.md, refusal 3 (#1662): postfix `?` binds as
+# tightly as a call, so `?` written directly on a pipeline stage applies to
+# the stage, not to the pipeline's result. The suggestion parenthesizes the
+# pipeline. Refused while parsing, so no IR or token checkpoint is written.
+fn twice(value: Int) -> Int {
+    return value * 2
+}
+
+fn main() -> Int {
+    let start = 1
+    let value = start |> twice()?
+    return value
+}

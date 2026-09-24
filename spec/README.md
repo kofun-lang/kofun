@@ -56,9 +56,11 @@ executable bootstrap implementation.
   and names `tests/conformance/records/` as its executable gate.
 - `result-propagation-v1.md` selects postfix `?` on `Result[T, E]` as the one
   initial sequencing sugar, monomorphic to `Result` and desugaring after type
-  resolution to the `match`-and-early-return core. Accepted as DD-036; nothing
-  implements it yet and it has no gate, so acceptance settles what the sugar is,
-  not that it ships.
+  resolution to the `match`-and-early-return core. Accepted as DD-036. Stage 2
+  parses `?` and implements refusals 1–3 (`E2S189`–`E2S191`: non-Result
+  operand, optional operand, `?` on a pipeline stage), gated by
+  `tests/conformance/result-propagation/`; positive lowering and the
+  non-Result function refusal are pending in #1250.
 - `type-level-programming-v1.md` defines the Type-only, named, structurally
   terminating type-function profile, its fixed reduction/display budgets, and
   the requirement that type-level features ship with inspectable traces. No

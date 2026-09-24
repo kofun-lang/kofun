@@ -1,0 +1,9 @@
+# Table row 1 of #1662: `?` on a call in a `let` initializer. Refusal 1.
+fn one() -> Int {
+    return 1
+}
+
+fn main() -> Int {
+    let value = one()?
+    return value
+}

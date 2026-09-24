@@ -115,6 +115,7 @@ re-exports-spec
 release-claims
 release-procedure
 repository-check
+result-propagation
 reuse-candidate
 rfc-registry
 roadmap

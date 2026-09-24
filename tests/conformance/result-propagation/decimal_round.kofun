@@ -1,0 +1,6 @@
+# Table row 6 of #1662: `?` on `Decimal.round`, whose result is a plain
+# `Decimal`. Refusal 1 names the type.
+fn main() -> Int {
+    let amount = Decimal.round(1.25, 2, HalfEven)?
+    return 0
+}

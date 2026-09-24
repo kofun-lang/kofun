@@ -1,0 +1,7 @@
+# Table row 5 of #1662: `?` on an `Int?` binding. Refusal 2, where `E2S147`
+# used to ask for a `null` comparison at the operand.
+fn main() -> Int {
+    let x: Int? = 1
+    let value = x?
+    return 0
+}
