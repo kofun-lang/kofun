@@ -710,6 +710,7 @@ shell-build-driver	source	1	required-today	required	tests/fuzz/match_value.sh
 shell-build-driver	source	1	required-today	required	tests/fuzz/match_value_invalid.sh
 shell-build-driver	source	1	required-today	required	tests/fuzz/optional_narrowing.sh
 shell-build-driver	source	1	required-today	required	tests/fuzz/pure_io.sh
+shell-build-driver	source	1	required-today	required	tests/fuzz/semantic_cold_toolchain_test.sh
 shell-build-driver	source	1	required-today	required	tests/fuzz/semantic_differential.sh
 shell-build-driver	source	1	required-today	required	tests/fuzz/semantic_protocol.sh
 shell-build-driver	source	1	required-today	required	tests/fuzz/semantic_protocol_test.sh

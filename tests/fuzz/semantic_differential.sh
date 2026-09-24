@@ -7,6 +7,30 @@ CASES=${KOFUN_SEMANTIC_FUZZ_CASES:-48}
 MANIFEST="$ROOT/tests/fuzz/families/arithmetic.tsv"
 RUNNER="$ROOT/tests/fuzz/semantic_runner.sh"
 GENERATOR=arithmetic-lcg-v1
+. "$ROOT/bootstrap/stage2/build.sh"
+
+# `arithmetic-c11.sh` compiles through `bin/kofun build --backend c`, which
+# builds the Stage 2 compiler on first use, and the runner times every adapter
+# invocation. From an empty `build/` the first case therefore timed a
+# 38k-line compile rather than a program: the scheduled lane failed exactly
+# that way on 2026-09-24 (#1656, tests/fuzz/FINDINGS.md). Build it once here,
+# untimed, and hand it to `bin/kofun` through the variable it already honours,
+# as the sibling Stage 2 generators do. A caller that already exports one --
+# `task verify` does -- is left alone, so that path compiles nothing new.
+prepare_stage2_compiler() {
+    if test -n "${KOFUN_STAGE2_COMPILER:-}"; then
+        test -x "$KOFUN_STAGE2_COMPILER" || {
+            printf '%s\n' \
+                "semantic fuzz: KOFUN_STAGE2_COMPILER is not executable: $KOFUN_STAGE2_COMPILER" >&2
+            exit 2
+        }
+        return 0
+    fi
+    kofun_stage2_build "$ROOT" "$1"
+    KOFUN_STAGE2_COMPILER=$1
+    export KOFUN_STAGE2_COMPILER
+}
+
 # The default is the seed this corpus was recorded with, so `task verify`
 # generates the same programs it always has. It is overridable so a lane
 # that runs more than once can explore more than one input set; a fixed
@@ -35,6 +59,7 @@ if test "${1-}" = --replay; then
     }
     replay_work=$(mktemp -d "${TMPDIR:-/tmp}/kofun-semantic-replay.XXXXXX")
     trap 'rm -rf "$replay_work"' 0 1 2 15
+    prepare_stage2_compiler "$replay_work/kofun-stage2"
     case_index=$(sed -n 's/^case-index	//p' "$artifact/case.tsv")
     "$RUNNER" \
         "$artifact/family.manifest" \
@@ -61,6 +86,7 @@ esac
 
 rm -rf "$WORK"
 mkdir -p "$WORK"
+prepare_stage2_compiler "$WORK/kofun-stage2"
 
 seed=$INITIAL_SEED
 next_random() {

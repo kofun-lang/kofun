@@ -83,6 +83,7 @@ tasks:
       - "sh tests/fuzz/grammar.sh"
       - "sh tests/fuzz/semantic_protocol_test.sh"
       - "sh tests/fuzz/semantic_differential.sh"
+      - "sh tests/fuzz/semantic_cold_toolchain_test.sh"
       - "sh tests/fuzz/value_if.sh"
       - "sh tests/fuzz/match_guard.sh"
       - "sh tests/fuzz/match_value.sh"
