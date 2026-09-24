@@ -131,7 +131,7 @@ cc	invoke	1	required-today	required	stdlib/entropy/tests/verify.sh
 cc	invoke	1	required-today	required	stdlib/random/tests/verify.sh
 cc	invoke	2	required-today	required	tests/artifact-qualification/check.sh
 cc	invoke	1	required-today	required	tests/build_system.sh
-cc	invoke	3	required-today	required	tests/concurrency/capture-events/check.mjs
+cc	invoke	4	required-today	required	tests/concurrency/capture-events/check.mjs
 cc	invoke	1	required-today	required	tests/concurrency/captures-direct/check.mjs
 cc	invoke	2	required-today	required	tests/concurrency/captures/check.mjs
 cc	invoke	1	required-today	required	tests/concurrency/hir/check.mjs
