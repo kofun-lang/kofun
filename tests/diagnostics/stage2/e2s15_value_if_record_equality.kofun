@@ -1,0 +1,12 @@
+# diagnostic-mode: compile
+# expect-code: E2S15
+# expect-span: byte 330
+# #1658. A value-position `if` spliced its condition into the C it
+# emitted, so a refused condition reached the host compiler as text.
+type Point = { x: Int }
+fn main() -> Int {
+    let a: Point = Point(x: 1)
+    let b: Point = Point(x: 2)
+    let v = if a == b { 1 } else { 2 }
+    return v
+}

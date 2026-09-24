@@ -1,0 +1,1 @@
+error[E2S15]: operator `==` is not defined on Point and Point at byte 406

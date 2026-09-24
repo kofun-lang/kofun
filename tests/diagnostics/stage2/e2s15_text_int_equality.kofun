@@ -1,0 +1,14 @@
+# diagnostic-mode: compile
+# expect-code: E2S15
+# expect-span: byte 237
+# #1658. spec/semantics.md rejects mixed Text/Int operators before
+# execution; this one became `strcmp` of an `int64_t`.
+fn same(a: Text, b: Int) -> Int {
+    if a == b {
+        return 1
+    }
+    return 0
+}
+fn main() -> Int {
+    return same("x", 1)
+}

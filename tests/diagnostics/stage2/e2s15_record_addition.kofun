@@ -1,0 +1,11 @@
+# diagnostic-mode: compile
+# expect-code: E2S15
+# expect-span: byte 265
+# #1658. Arithmetic on a record reached `kofun_add` as a struct argument.
+type Point = { x: Int }
+fn main() -> Int {
+    let a: Point = Point(x: 1)
+    let b: Point = Point(x: 2)
+    let c = a + b
+    return 0
+}

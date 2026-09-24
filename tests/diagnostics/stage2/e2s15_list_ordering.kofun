@@ -1,0 +1,13 @@
+# diagnostic-mode: compile
+# expect-code: E2S15
+# expect-span: byte 273
+# #1658. `List[Int]` has no ordering, and its `KofunIntListValue` was
+# declared `int64_t` by the comparison lowering.
+fn main() -> Int {
+    let a: List[Int] = [1]
+    let b: List[Int] = [2]
+    if a < b {
+        return 1
+    }
+    return 0
+}

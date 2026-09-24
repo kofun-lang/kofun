@@ -7313,6 +7313,156 @@ fn emit_unary(source: Text, hir: Text, start: Int, end: Int) -> Text {
     return emit_primary(source, hir, cursor, end)
 }
 
+# #1658. Whether an operand of this type has an aggregate C representation --
+# a nominal record, a concrete enum, `List[Int]` or `Bytes` -- which no operator
+# lowering declares. The scalar names are answered first so the common operand
+# never walks the declarations.
+fn operator_operand_aggregate(source: Text, value_type: Text) -> Bool {
+    if value_type == "List[Int]" || value_type == "Bytes" {
+        return true
+    }
+    if len(value_type) == 0 || value_type == "Int" || value_type == "Text" ||
+       value_type == "Bool" || value_type == "Decimal" ||
+       value_type == "Float" {
+        return false
+    }
+    return record_declaration_start(source, value_type) >= 0 ||
+    enum_constructor_count(source, value_type) >= 0
+}
+
+# #1658. Whether the operand between `start` and `end` is one primary the
+# classifications read whole -- a literal, a list literal, a name, a
+# `name.field` or a direct call -- ending at `end` or at an arithmetic operator,
+# whose operands the emitters keep homogeneous. A longer postfix chain has the
+# type of its last link, which none of them follows: `index.values[middle]` is
+# an Int element of a `List[Int]` field, and so are a method call, `??` and
+# `|>`.
+fn operator_operand_whole(source: Text, start: Int, end: Int) -> Bool {
+    let mut cursor = skip_trivia(source, start)
+    while cursor < end &&
+          (token_text(source, cursor) == "(" ||
+           token_text(source, cursor) == "-" ||
+           token_text(source, cursor) == "+") {
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    if cursor >= end {
+        return false
+    }
+    let mut after = token_end(source, cursor)
+    if token_text(source, cursor) == "[" {
+        after = balanced_end(source, cursor, "[", "]")
+    } else if token_kind(source, cursor) == "identifier" {
+        let next = skip_trivia(source, after)
+        if next < end && token_text(source, next) == "(" {
+            after = balanced_end(source, next, "(", ")")
+        } else if next < end && token_text(source, next) == "." {
+            let member_end = token_end(
+                source,
+                skip_trivia(source, token_end(source, next))
+            )
+            let call = skip_trivia(source, member_end)
+            if call < end && token_text(source, call) == "(" {
+                return false
+            }
+            after = member_end
+        }
+    }
+    if after < 0 {
+        return false
+    }
+    let mut rest = skip_trivia(source, after)
+    while rest < end && token_text(source, rest) == ")" {
+        rest = skip_trivia(source, token_end(source, rest))
+    }
+    return rest >= end || arithmetic_operator(token_text(source, rest))
+}
+
+# #1658. The type one operator operand has, or "" when it is not known here.
+# It is asked the way the emitters already ask it: Text first, then the
+# numeric lattice, and then the bounded initializer classification, which
+# names a record, an enum or a list.
+fn operator_operand_type(
+    source: Text,
+    hir: Text,
+    function_open: Int,
+    start: Int,
+    end: Int
+) -> Text {
+    if !operator_operand_whole(source, start, end) {
+        return ""
+    }
+    if text_operand(source, hir, function_open, start) {
+        return "Text"
+    }
+    let numeric = numeric_primary_type(source, hir, function_open, start)
+    if len(numeric) > 0 {
+        return numeric
+    }
+    return initializer_type_bounded(source, hir, function_open, start, end)
+}
+
+# #1658. The refusal for a binary operator whose operand pair the C11 lowering
+# does not implement, or "" when it does.
+#
+# Every operator emitter declares its operands as one C scalar -- `int64_t`,
+# `double`, `KofunDecimal *` or `const char *` -- chosen from the left operand,
+# and until this nothing asked what the operands were. A record, enum, list or
+# Bytes operand therefore reached the host C compiler as an `int64_t`
+# initializer or a `kofun_add` argument, after `check` had accepted the
+# program. A comparison of Text with a number is the same defect from the other
+# side: an `int64_t` initialized from `const char *`, or the reverse.
+#
+# Only what is known is refused, and only known types are named. An aggregate
+# is one the classification names, never its `Int` fallback, and Text
+# arithmetic stays with `E2S155`, which the callers ask first. Bool and
+# mixed-numeric pairs are outside this rule.
+fn operator_operands_error(
+    source: Text,
+    hir: Text,
+    operator: Text,
+    operator_start: Int,
+    left_start: Int,
+    left_end: Int,
+    right_start: Int,
+    right_end: Int
+) -> Text {
+    let function_open = enclosing_function_open(source, left_start)
+    let left_type = operator_operand_type(
+        source,
+        hir,
+        function_open,
+        left_start,
+        left_end
+    )
+    let right_type = operator_operand_type(
+        source,
+        hir,
+        function_open,
+        right_start,
+        right_end
+    )
+    let left_text = left_type == "Text"
+    let right_text = right_type == "Text"
+    let mut refused = operator_operand_aggregate(source, left_type) ||
+        operator_operand_aggregate(source, right_type)
+    if !refused && comparison_operator(operator) &&
+       ((left_text && !right_text) || (!left_text && right_text)) {
+        refused = len(numeric_name(left_type)) > 0 ||
+            len(numeric_name(right_type)) > 0
+    }
+    if !refused {
+        return ""
+    }
+    let mut operands = left_type + " and " + right_type
+    if len(left_type) == 0 {
+        operands = right_type
+    } else if len(right_type) == 0 {
+        operands = left_type
+    }
+    return "error[E2S15]: operator `" + operator + "` is not defined on " +
+    operands + " at byte " + to_text(operator_start)
+}
+
 fn emit_product(source: Text, hir: Text, start: Int, end: Int) -> Text {
     # #1409. The scanner refuses by returning -1 and the emitter used to consume
     # that as a byte offset: `skip_trivia(source, -1)` reads before the buffer,
@@ -7352,6 +7502,19 @@ fn emit_product(source: Text, hir: Text, start: Int, end: Int) -> Text {
         }
         if starts_with(right, "error[") {
             return right
+        }
+        let refusal = operator_operands_error(
+            source,
+            hir,
+            operator,
+            operator_start,
+            start,
+            cursor,
+            right_start,
+            right_end
+        )
+        if len(refusal) > 0 {
+            return refusal
         }
         if operator == "*" {
             if value_type == "Decimal" {
@@ -7434,6 +7597,22 @@ fn emit_arithmetic_expression(
         }
         if starts_with(right, "error[") {
             return right
+        }
+        # A Text operand is `E2S155`'s below, so this asks only when neither is.
+        if !left_is_text && !right_is_text {
+            let refusal = operator_operands_error(
+                source,
+                hir,
+                operator,
+                operator_start,
+                start,
+                cursor,
+                right_start,
+                right_end
+            )
+            if len(refusal) > 0 {
+                return refusal
+            }
         }
         if operator == "+" {
             if left_is_text || right_is_text {
@@ -10715,6 +10894,21 @@ fn emit_condition_into(
         return right
     }
     let operator = token_text(source, operator_start)
+    # Before a branch is chosen: each one declares both operands as the C
+    # scalar the left operand selects (#1658).
+    let refusal = operator_operands_error(
+        source,
+        hir,
+        operator,
+        operator_start,
+        cursor,
+        left_end,
+        right_start,
+        end
+    )
+    if len(refusal) > 0 {
+        return refusal
+    }
     let value_type = numeric_primary_type(
         source,
         hir,
@@ -11372,9 +11566,16 @@ fn emit_value_into(
             failure_result
         )
     }
+    # Every piece is refused whole rather than spliced (#1658): a rejected
+    # value or condition is `error[...]` text, and inside the braces below it
+    # stopped being the result's first bytes, so no caller could see it and
+    # the diagnostic reached the host C compiler as C.
     if token_text(source, cursor) != "if" {
-        return "    " + target + " = " +
-        emit_expression(source, hir, cursor, end) + ";\n" +
+        let value = emit_expression(source, hir, cursor, end)
+        if starts_with(value, "error[") {
+            return value
+        }
+        return "    " + target + " = " + value + ";\n" +
         "    if (kofun_failed) return " + failure_result + ";\n"
     }
     let condition_start = skip_trivia(source, token_end(source, cursor))
@@ -11387,8 +11588,7 @@ fn emit_value_into(
     let else_open = skip_trivia(source, token_end(source, else_keyword))
     let else_start = skip_trivia(source, token_end(source, else_open))
     let else_end = value_if_branch_end(source, else_start)
-    return "    {\n" +
-    emit_condition_into(
+    let condition = emit_condition_into(
         source,
         hir,
         condition_start,
@@ -11396,25 +11596,35 @@ fn emit_value_into(
         "kofun_value_condition",
         failure_result,
         "        "
-    ) +
-    "        if (kofun_value_condition) {\n" +
-    emit_value_into(
+    )
+    if starts_with(condition, "error[") {
+        return condition
+    }
+    let then_value = emit_value_into(
         source,
         hir,
         then_start,
         then_end,
         target,
         failure_result
-    ) +
-    "        } else {\n" +
-    emit_value_into(
+    )
+    if starts_with(then_value, "error[") {
+        return then_value
+    }
+    let else_value = emit_value_into(
         source,
         hir,
         else_start,
         else_end,
         target,
         failure_result
-    ) +
+    )
+    if starts_with(else_value, "error[") {
+        return else_value
+    }
+    return "    {\n" + condition +
+    "        if (kofun_value_condition) {\n" + then_value +
+    "        } else {\n" + else_value +
     "        }\n" +
     "    }\n"
 }
@@ -11527,11 +11737,7 @@ fn emit_value_enum_match_into(
             return arm_body
         }
         if guarded {
-            dispatch = dispatch +
-            "        if (!kofun_match_selected && " +
-            pattern_condition + ") {\n" +
-            payload_declaration +
-            emit_condition_into(
+            let guard = emit_condition_into(
                 source,
                 hir,
                 guard_start,
@@ -11539,7 +11745,14 @@ fn emit_value_enum_match_into(
                 "kofun_match_guard",
                 failure_result,
                 "            "
-            ) +
+            )
+            if starts_with(guard, "error[") {
+                return guard
+            }
+            dispatch = dispatch +
+            "        if (!kofun_match_selected && " +
+            pattern_condition + ") {\n" +
+            payload_declaration + guard +
             "            if (kofun_match_guard) {\n" +
             arm_body +
             "                kofun_match_selected = true;\n" +
@@ -11634,11 +11847,12 @@ fn emit_value_match_into(
             target,
             failure_result
         )
+        # Refused whole, as `emit_value_into` refuses its pieces (#1658).
+        if starts_with(arm_body, "error[") {
+            return arm_body
+        }
         if guarded {
-            dispatch = dispatch +
-            "        if (!kofun_match_selected && " +
-            pattern_condition + ") {\n" +
-            emit_condition_into(
+            let guard = emit_condition_into(
                 source,
                 hir,
                 guard_start,
@@ -11646,7 +11860,13 @@ fn emit_value_match_into(
                 "kofun_match_guard",
                 failure_result,
                 "            "
-            ) +
+            )
+            if starts_with(guard, "error[") {
+                return guard
+            }
+            dispatch = dispatch +
+            "        if (!kofun_match_selected && " +
+            pattern_condition + ") {\n" + guard +
             "            if (kofun_match_guard) {\n" +
             arm_body +
             "                kofun_match_selected = true;\n" +
@@ -11665,8 +11885,7 @@ fn emit_value_match_into(
             arm_cursor = skip_trivia(source, token_end(source, arm_cursor))
         }
     }
-    return "    {\n" +
-    emit_condition_into(
+    let scrutinee = emit_condition_into(
         source,
         hir,
         value_start,
@@ -11674,7 +11893,11 @@ fn emit_value_match_into(
         "kofun_match_value",
         failure_result,
         "        "
-    ) +
+    )
+    if starts_with(scrutinee, "error[") {
+        return scrutinee
+    }
+    return "    {\n" + scrutinee +
     "        (void)kofun_match_value;\n" +
     "        bool kofun_match_selected = false;\n" +
     dispatch +
@@ -15015,11 +15238,9 @@ fn lower_enum_match(
             "            (void)k_b" + catchall_id + ";\n"
         }
         if guarded {
-            dispatch = dispatch +
-            "        if (!kofun_match_selected && " +
-            pattern_condition + ") {\n" +
-            payload_declaration +
-            emit_condition_into(
+            # A rejected guard is refused, not spliced into the dispatch
+            # (#1658).
+            let guard = emit_condition_into(
                 source,
                 hir,
                 guard_start,
@@ -15027,7 +15248,14 @@ fn lower_enum_match(
                 "kofun_match_guard",
                 failure_result,
                 "            "
-            ) +
+            )
+            if starts_with(guard, "error[") {
+                return guard
+            }
+            dispatch = dispatch +
+            "        if (!kofun_match_selected && " +
+            pattern_condition + ") {\n" +
+            payload_declaration + guard +
             "            if (kofun_match_guard) {\n" +
             arm_body +
             "                kofun_match_selected = true;\n" +
@@ -15899,9 +16127,7 @@ fn lower_body(
                     return value_check
                 }
                 let value_end = value_end(source, value_start)
-                emitted = emitted + "    int64_t " + storage +
-                " = INT64_C(0);\n" +
-                emit_value_into(
+                let produced = emit_value_into(
                     source,
                     hir,
                     value_start,
@@ -15909,6 +16135,12 @@ fn lower_body(
                     storage,
                     failure_result
                 )
+                # A rejected value is refused, not spliced (#1658).
+                if starts_with(produced, "error[") {
+                    return produced
+                }
+                emitted = emitted + "    int64_t " + storage +
+                " = INT64_C(0);\n" + produced
                 cursor = skip_trivia(source, value_end)
             } else {
                 let value_end = expression_end(source, value_start)
@@ -16074,17 +16306,21 @@ fn lower_body(
                     return "error[E2S13]: expected `)` at byte " +
                     to_text(call_close)
                 }
-                emitted = emitted +
-                "    {\n" +
-                "        int64_t kofun_value = INT64_C(0);\n" +
-                emit_value_into(
+                let produced = emit_value_into(
                     source,
                     hir,
                     value_start,
                     value_end,
                     "kofun_value",
                     failure_result
-                ) +
+                )
+                # A rejected value is refused, not spliced (#1658).
+                if starts_with(produced, "error[") {
+                    return produced
+                }
+                emitted = emitted +
+                "    {\n" +
+                "        int64_t kofun_value = INT64_C(0);\n" + produced +
                 "        printf(\"%\" PRId64 \"\\n\", kofun_value);\n" +
                 "    }\n"
                 cursor = skip_trivia(source, token_end(source, call_close))
@@ -16177,17 +16413,21 @@ fn lower_body(
                 return value_check
             }
             let branch_end = value_if_end(source, cursor)
-            emitted = emitted +
-            "    {\n" +
-            "        int64_t kofun_result = INT64_C(0);\n" +
-            emit_value_into(
+            let produced = emit_value_into(
                 source,
                 hir,
                 cursor,
                 branch_end,
                 "kofun_result",
                 failure_result
-            ) +
+            )
+            # A rejected value is refused, not spliced (#1658).
+            if starts_with(produced, "error[") {
+                return produced
+            }
+            emitted = emitted +
+            "    {\n" +
+            "        int64_t kofun_result = INT64_C(0);\n" + produced +
             "        return kofun_result;\n" +
             "    }\n"
             returned = true
@@ -16556,10 +16796,8 @@ fn lower_body(
                     pattern_condition = "!kofun_match_value"
                 }
                 if guarded {
-                    dispatch = dispatch +
-                    "        if (!kofun_match_selected && " +
-                    pattern_condition + ") {\n" +
-                    emit_condition_into(
+                    # Refused whole rather than spliced (#1658).
+                    let guard = emit_condition_into(
                         source,
                         hir,
                         guard_start,
@@ -16567,7 +16805,13 @@ fn lower_body(
                         "kofun_match_guard",
                         failure_result,
                         "            "
-                    ) +
+                    )
+                    if starts_with(guard, "error[") {
+                        return guard
+                    }
+                    dispatch = dispatch +
+                    "        if (!kofun_match_selected && " +
+                    pattern_condition + ") {\n" + guard +
                     "            if (kofun_match_guard) {\n" +
                     arm_body +
                     "                kofun_match_selected = true;\n" +
@@ -16620,9 +16864,7 @@ fn lower_body(
                 return "error[E2S25]: non-exhaustive Bool match; missing pattern `false` at byte " +
                 to_text(match_start)
             }
-            emitted = emitted +
-            "    {\n" +
-            emit_condition_into(
+            let scrutinee = emit_condition_into(
                 source,
                 hir,
                 value_start,
@@ -16630,7 +16872,12 @@ fn lower_body(
                 "kofun_match_value",
                 failure_result,
                 "        "
-            ) +
+            )
+            if starts_with(scrutinee, "error[") {
+                return scrutinee
+            }
+            emitted = emitted +
+            "    {\n" + scrutinee +
             "        (void)kofun_match_value;\n" +
             "        bool kofun_match_selected = false;\n" +
             dispatch +
@@ -16801,10 +17048,7 @@ fn lower_body(
                     return value_check
                 }
                 let value_end = value_end(source, value_start)
-                emitted = emitted +
-                "    {\n" +
-                "        int64_t kofun_result = INT64_C(0);\n" +
-                emit_value_into(
+                let produced = emit_value_into(
                     source,
                     hir,
                     value_start,
@@ -16812,6 +17056,13 @@ fn lower_body(
                     "kofun_result",
                     failure_result
                 )
+                # A rejected value is refused, not spliced (#1658).
+                if starts_with(produced, "error[") {
+                    return produced
+                }
+                emitted = emitted +
+                "    {\n" +
+                "        int64_t kofun_result = INT64_C(0);\n" + produced
                 if is_main {
                     emitted = emitted + bytes_cleanup +
                     "        return (int)kofun_result;\n"
@@ -16950,17 +17201,22 @@ fn lower_body(
                         return value_check
                     }
                     let value_end = value_end(source, value_start)
-                    emitted = emitted +
-                    "    {\n" +
-                    "        int64_t kofun_replacement = INT64_C(0);\n" +
-                    emit_value_into(
+                    let produced = emit_value_into(
                         source,
                         hir,
                         value_start,
                         value_end,
                         "kofun_replacement",
                         failure_result
-                    ) +
+                    )
+                    # A rejected value is refused, not spliced (#1658).
+                    if starts_with(produced, "error[") {
+                        return produced
+                    }
+                    emitted = emitted +
+                    "    {\n" +
+                    "        int64_t kofun_replacement = INT64_C(0);\n" +
+                    produced +
                     "        k_b" + binding_id + " = kofun_replacement;\n" +
                     "    }\n"
                     cursor = skip_trivia(source, value_end)
