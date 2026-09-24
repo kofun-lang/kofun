@@ -124,6 +124,40 @@ function extended(scope,after){
 }
 const codeAt=list=>list.map(d=>`${d.code}@${d.at}`).sort();
 
+// #1163: one registered compiler code per contract class, read from the
+// normative table itself so the spec, registry and producer cannot drift.
+const specTable=fs.readFileSync(path.join(root,'spec/concurrency/scoped-parallelism-v1.md'),'utf8');
+const compilerCodes=new Map([...specTable.matchAll(/^\| `(SPV1-[A-Z-]+)` \| `(E2S[0-9]+)` \|/gm)].map(m=>[m[1],m[2]]));
+assert.equal(compilerCodes.size,6,'the §8 table maps six classes');
+assert.equal(new Set(compilerCodes.values()).size,6,'six distinct compiler codes');
+const registry=fs.readFileSync(path.join(root,'tests/diagnostics/registry.tsv'),'utf8');
+for(const code of compilerCodes.values())assert.match(registry,new RegExp(`^${code}\t`,'m'),`${code} is registered`);
+// Every message is one of these shapes: lexical task numbers, modes, and
+// disclosure-safe places only -- never an identity, path, time or thread.
+const PLACE='(?:an unknown place|(?:[A-Za-z_][A-Za-z0-9_]*|<hidden>)(?:\\.(?:[A-Za-z_][A-Za-z0-9_]*|<hidden>)|\\[(?:-?[0-9]+|_)\\.\\.(?:-?[0-9]+|_)\\])*)';
+const MODE='(?:read|edit|take)';
+const MESSAGES=[
+    `scoped tasks #[0-9]+ and #[0-9]+ conflict: ${MODE} ${PLACE} overlaps ${MODE} ${PLACE}`,
+    `scoped tasks #[0-9]+ and #[0-9]+ need disjoint places: ${MODE} ${PLACE}, ${MODE} ${PLACE}`,
+    `scoped task #[0-9]+ uses ${PLACE} after task #[0-9]+ took ${PLACE}`,
+    `scoped task #[0-9]+ uses ${PLACE}, not provably apart from what task #[0-9]+ took`,
+    `${MODE} ${PLACE} after scoped task #[0-9]+ took ${PLACE}`,
+    `${MODE} ${PLACE} is not provably apart from what scoped task #[0-9]+ took`,
+    `${MODE} ${PLACE} conflicts with live ${MODE} ${PLACE} in scoped task #[0-9]+`,
+    `${MODE} ${PLACE} is not provably apart from live ${MODE} ${PLACE} in scoped task #[0-9]+`,
+    'scoped task #[0-9]+ handle escapes by (?:return|store|capture|pass)',
+    'a par has more than 256 parent actions',
+].map(shape=>new RegExp(`^${shape}$`));
+function checkMessages(name,document,source){
+    for(const scope of document.scopes)for(const d of scope.decision.diagnostics){
+        assert.equal(d.compiler_code,compilerCodes.get(d.code),`${name}: ${d.code} reports its registered code`);
+        assert(MESSAGES.some(shape=>shape.test(d.message)),`${name}: message shape: ${d.message}`);
+        assert(Buffer.byteLength(`error[${d.compiler_code}]: ${d.message} at byte ${d.byte}`)<=160,`${name}: 160-byte detail bound`);
+    }
+    assert(!JSON.stringify(document).includes(root)&&!JSON.stringify(document).includes(work),`${name}: no checkout path`);
+    void source;
+}
+
 function fixtureView(fixture,taskNames){
     const scope=JSON.parse(fs.readFileSync(path.join(fixtureRoot,fixture),'utf8')).scope;
     const ordered=[...scope.tasks].sort((a,b)=>a.spawn_step-b.spawn_step);
@@ -184,9 +218,10 @@ for(const test of corpus.cases){
     const rejected=document.scopes.find(scope=>scope.decision.status==='rejected');
     assert.equal(document.status,rejected?'rejected':'accepted');
     assert.equal(result.status,rejected?1:0,`${test.name}: exit status`);
+    checkMessages(test.name,document,test.source);
     if(rejected){
         const [first]=rejected.decision.diagnostics;
-        assert.equal(result.stdout,`error[${first.code}]: scoped ownership rejects ${first.at} at byte ${first.byte}\n`);
+        assert.equal(result.stdout,`error[${first.compiler_code}]: ${first.message} at byte ${first.byte}\n`);
     }else assert.equal(result.stdout,'');
     for(const scope of document.scopes)for(const d of scope.decision.diagnostics){
         assert(d.byte>=0&&d.byte<Buffer.byteLength(test.source),`${test.name}: diagnostic byte inside the source`);
@@ -239,6 +274,21 @@ for(const [count,status] of [[256,'accepted'],[257,'rejected']]){
 }
 console.log('PASS: 256 parent actions decide, 257 refuse as SPV1-INVALID-MODEL in production and the model');
 
+// An inaccessible name never reaches a message: a display over 128 bytes is
+// hidden in the name table, and the diagnostic says `<hidden>` instead.
+{
+    const hidden=`value_${'x'.repeat(130)}`;
+    const source=`fn bump(edit value: Int) { value = value + 1 }\nfn main() -> Int {\n let mut ${hidden}: Int = 0\n par |scope| {\n  scope.spawn(fn() => ${hidden})\n  scope.spawn(fn() { bump(${hidden}) })\n }\n return 0\n}\n`;
+    const result=invoke(source);
+    assert.equal(result.status,1);
+    assert.equal(result.stdout.includes(hidden),false,'hidden name stays out of the message');
+    assert.equal(result.document.includes(hidden),false,'hidden name stays out of the document');
+    const document=JSON.parse(result.document);
+    checkMessages('hidden-name',document,source);
+    assert.match(result.stdout,/^error\[E2S183\]: scoped tasks #0 and #1 conflict: read <hidden> overlaps edit <hidden> at byte [0-9]+\n$/);
+}
+console.log('PASS: an inaccessible binding name is reported as <hidden>');
+
 // Entry refusals shared with the other analysis entries.
 {
     const input=path.join(work,'entry.kofun');fs.writeFileSync(input,corpus.cases.find(c=>c.name==='panic-drain').source);
@@ -253,4 +303,20 @@ console.log('PASS: 256 parent actions decide, 257 refuse as SPV1-INVALID-MODEL i
     assert.notEqual(ordinary.status,0);assert.match(ordinary.stdout,/E2S154/,'ordinary compilation still refuses scoped parallelism');
 }
 console.log('PASS: entry refusals, and ordinary compilation still refuses par with E2S154');
+
+// `kofun check` reports each registered fixture's class, byte for byte, with
+// empty stdout; a par the checker accepts keeps the unimplemented refusal.
+for(const code of compilerCodes.values()){
+    const row=registry.split('\n').find(line=>line.startsWith(`${code}\t`)).split('\t');
+    const fixture=row[10].replace(/^file:/,''),golden=row[11].replace(/^file:/,'');
+    const result=run('sh',['bin/kofun','check',fixture]);
+    assert.equal(result.status,1,`${code}: kofun check exit`);
+    assert.equal(result.stdout,'',`${code}: kofun check stdout`);
+    assert.equal(result.stderr,fs.readFileSync(path.join(root,golden),'utf8'),`${code}: kofun check reports the registered golden`);
+}
+{
+    const accepted=run('sh',['bin/kofun','check','tests/diagnostics/stage2/e2s154_scoped_parallelism.kofun']);
+    assert.equal(accepted.status,1);assert.match(accepted.stderr,/^error\[E2S154\]/);
+}
+console.log('PASS: kofun check reports each registered E2S183-E2S188 golden; an accepted par still refuses with E2S154');
 fs.rmSync(work,{recursive:true,force:true});

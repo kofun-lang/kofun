@@ -1,0 +1,12 @@
+# diagnostic-mode: scoped-ownership
+# expect-code: E2S183
+# expect-span: byte 255
+fn bump(edit value: Int) { value = value + 1 }
+fn main() -> Int {
+    let mut value: Int = 0
+    par |scope| {
+        scope.spawn(fn() => value)
+        scope.spawn(fn() { bump(value) })
+    }
+    return value
+}

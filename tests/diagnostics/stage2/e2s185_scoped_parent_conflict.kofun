@@ -1,0 +1,12 @@
+# diagnostic-mode: scoped-ownership
+# expect-code: E2S185
+# expect-span: byte 202
+fn main() -> Int {
+    let mut value: Int = 0
+    par |scope| {
+        let reader = scope.spawn(fn() => value)
+        value = 1
+        reader.join()
+    }
+    return value
+}

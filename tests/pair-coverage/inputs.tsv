@@ -1139,6 +1139,12 @@ tests/diagnostics/stage2/e2s180_bytes_wrapper_owner_identity.kofun
 tests/diagnostics/stage2/e2s182_argument_empty.kofun
 tests/diagnostics/stage2/e2s182_list_empty.kofun
 tests/diagnostics/stage2/e2s182_parameter_empty.kofun
+tests/diagnostics/stage2/e2s183_scoped_capture_conflict.kofun
+tests/diagnostics/stage2/e2s184_scoped_overlap_unknown.kofun
+tests/diagnostics/stage2/e2s185_scoped_parent_conflict.kofun
+tests/diagnostics/stage2/e2s186_scoped_use_after_take.kofun
+tests/diagnostics/stage2/e2s187_scoped_handle_escape.kofun
+tests/diagnostics/stage2/e2s188_scoped_invalid_model.kofun
 tests/diagnostics/stage2/e2s18_malformed_if.kofun
 tests/diagnostics/stage2/e2s19_missing_return.kofun
 tests/diagnostics/stage2/e2s20_ownership_shape.kofun

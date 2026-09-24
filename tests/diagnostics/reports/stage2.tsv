@@ -38,6 +38,12 @@ E2S179	stage2	stdout	1	required	not-applicable	forbidden
 E2S18	stage2	stdout	1	required	not-applicable	forbidden
 E2S180	stage2	stdout	1	required	not-applicable	forbidden
 E2S182	stage2	stdout	1	required	not-applicable	forbidden
+E2S183	stage2	stdout	1	required	not-applicable	required
+E2S184	stage2	stdout	1	required	not-applicable	required
+E2S185	stage2	stdout	1	required	not-applicable	required
+E2S186	stage2	stdout	1	required	not-applicable	required
+E2S187	stage2	stdout	1	required	not-applicable	required
+E2S188	stage2	stdout	1	required	not-applicable	required
 E2S19	stage2	stdout	1	required	not-applicable	forbidden
 E2S20	stage2	stdout	1	debt(stage2-no-source-position)	not-applicable	forbidden
 E2S21	stage2	stdout	1	debt(stage2-no-source-position)	not-applicable	forbidden

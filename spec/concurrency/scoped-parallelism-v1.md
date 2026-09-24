@@ -180,18 +180,18 @@ belong to later implementation work.
 
 ## 8. Required diagnostic classes
 
-The contract/model identifiers are stable specification classes; a production
-diagnostic registry may allocate user-facing compiler numbers without changing
-their meaning.
+The contract/model identifiers are stable specification classes. The
+production diagnostic registry (`tests/diagnostics/registry.tsv`) allocates
+one user-facing compiler code to each without changing its meaning (#1163):
 
-| Identifier | Required meaning |
-| --- | --- |
-| `SPV1-CAPTURE-CONFLICT` | two overlapping sibling captures violate exclusivity |
-| `SPV1-OVERLAP-UNKNOWN` | a required disjointness proof is unavailable |
-| `SPV1-PARENT-CONFLICT` | a parent access conflicts with a live task capture |
-| `SPV1-USE-AFTER-TAKE` | the parent accesses a place transferred to a task |
-| `SPV1-HANDLE-ESCAPE` | a scope token or handle is returned, stored, captured, or passed |
-| `SPV1-INVALID-MODEL` | the bounded model input is malformed or exceeds a limit |
+| Identifier | Compiler code | Required meaning |
+| --- | --- | --- |
+| `SPV1-CAPTURE-CONFLICT` | `E2S183` | two overlapping sibling captures violate exclusivity |
+| `SPV1-OVERLAP-UNKNOWN` | `E2S184` | a required disjointness proof is unavailable |
+| `SPV1-PARENT-CONFLICT` | `E2S185` | a parent access conflicts with a live task capture |
+| `SPV1-USE-AFTER-TAKE` | `E2S186` | the parent accesses a place transferred to a task |
+| `SPV1-HANDLE-ESCAPE` | `E2S187` | a scope token or handle is returned, stored, captured, or passed |
+| `SPV1-INVALID-MODEL` | `E2S188` | the bounded model input is malformed or exceeds a limit |
 
 A conflict diagnostic names both lexical task identities, both modes, and a
 disclosure-safe place description. It must not report a runtime thread ID,
@@ -292,9 +292,10 @@ The ownership slice is now in production as an analysis entry
 --check-scoped-ownership` derives this model's input for each `par` from
 checked lifecycle, capture and parent-access facts. It then decides that input
 with the rules above and reports the §8 identifiers. `task
-concurrency-ownership` compares every decision with this model. The entry does
-not allocate user-facing diagnostics, schedule, or lower anything, and ordinary
-compilation still refuses `par` with `E2S154`.
+concurrency-ownership` compares every decision with this model. Each rejection
+also carries its registered compiler code from the §8 table, which `kofun
+check` reports (#1163). The entry does not schedule or lower anything, and
+ordinary compilation still refuses `par` with `E2S154`.
 
 This document is the normative contract of accepted
 [`RFC-0003`](../../rfcs/0003-scoped-parallelism.md), decided 2026-08-09. The

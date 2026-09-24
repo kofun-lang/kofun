@@ -338,6 +338,11 @@ do
         fail "$case_name exit: authority=$authority_status producer=$producer_status"
     cmp "$WORK/plain/$case_name.authority" \
         "$WORK/plain/$case_name.producer"
+    # A scoped-ownership golden is printed by the analysis entry
+    # `--check-scoped-ownership` (#1163), which task concurrency-ownership
+    # compares with the accepted model. Ordinary compilation of the same
+    # source must still refuse, identically in both producers, above.
+    test "$mode" != scoped-ownership || continue
     cmp "${source%.kofun}.stderr" "$WORK/plain/$case_name.producer"
     assert_grep "plain/$case_name.producer" \
         -q "error\\[$code\\]" "$WORK/plain/$case_name.producer"
@@ -352,8 +357,8 @@ do
             ;;
     esac
 done
-test "$diagnostic_cases" -eq 88 ||
-    fail "expected all 88 Stage 2 diagnostic fixtures, saw $diagnostic_cases"
+test "$diagnostic_cases" -eq 94 ||
+    fail "expected all 94 Stage 2 diagnostic fixtures, saw $diagnostic_cases"
 
 # Enumerate every checked-in Stage 2 language-error companion, including the
 # conformance, bootstrap, ownership, and diagnostic corpora.  Some companions
@@ -458,8 +463,8 @@ done <"$WORK/plain/repository-error-companions"
 # that makes a refusal executable lowers it. Both are expected edits — what
 # this number refuses is a companion silently gaining or losing its stream,
 # code, or exit status without anyone noticing.
-test "$repository_error_cases" -eq 432 ||
-    fail "expected all 432 repository error companions, saw $repository_error_cases"
+test "$repository_error_cases" -eq 438 ||
+    fail "expected all 438 repository error companions, saw $repository_error_cases"
 
 # Project-owned valid Stage 2 profiles cover functions, value control, concrete
 # enums, nested lexical scopes, and shadowing.  Producer and compiler must both

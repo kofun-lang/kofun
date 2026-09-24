@@ -28,6 +28,10 @@ for source in "$SUITE"/*.kofun; do
         "$WORK/kofun-stage2" \
             "$source" "$WORK/$stem.c" "$WORK/$stem.ir" "$WORK/$stem.tokens" \
             >"$actual" 2>"$WORK/$stem.internal.stderr"
+    elif test "$mode" = scoped-ownership; then
+        "$WORK/kofun-stage2" --check-scoped-ownership "$source" \
+            "$WORK/$stem.ownership.json" "tests/diagnostics/stage2/$stem.kofun" \
+            >"$actual" 2>"$WORK/$stem.internal.stderr"
     else
         printf '%s\n' \
             "diagnostics bless: unknown mode '$mode' in $source" >&2

@@ -5,6 +5,12 @@ expected source span. The paired `.stderr` file is the exact byte-for-byte
 public diagnostic. The runner also requires exit status 1, empty internal
 stderr, and no generated C artifact.
 
+Modes are `compile`, `ownership` (`--check-ownership`), and
+`scoped-ownership` (`--check-scoped-ownership`, #1163). A scoped-ownership
+refusal is a completed analysis whose decision rejects the `par`, so the runner
+also requires its decision document; E2S183-E2S188 map the §8 classes of
+`spec/concurrency/scoped-parallelism-v1.md` one-to-one.
+
 Run the corpus:
 
 ```sh
