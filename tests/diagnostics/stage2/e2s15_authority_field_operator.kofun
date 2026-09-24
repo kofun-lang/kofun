@@ -1,0 +1,12 @@
+# diagnostic-mode: compile
+# expect-code: E2S15
+# expect-span: byte 170
+type Holder = { slot: RootAuthority }
+
+fn leak(read value: Holder) -> Int {
+    return value.slot + 1
+}
+
+fn main() -> Int {
+    return 0
+}

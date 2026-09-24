@@ -1113,6 +1113,9 @@ tests/diagnostics/stage2/e2s154_spawn_member.kofun
 tests/diagnostics/stage2/e2s157_list_authority.kofun
 tests/diagnostics/stage2/e2s157_list_index_out_of_range.kofun
 tests/diagnostics/stage2/e2s158_trailing_lambda.kofun
+tests/diagnostics/stage2/e2s15_authority_field_operator.kofun
+tests/diagnostics/stage2/e2s15_authority_field_print.kofun
+tests/diagnostics/stage2/e2s15_authority_field_return.kofun
 tests/diagnostics/stage2/e2s15_authority_record_equality.kofun
 tests/diagnostics/stage2/e2s15_list_ordering.kofun
 tests/diagnostics/stage2/e2s15_parameter_type.kofun
@@ -1183,6 +1186,7 @@ tests/diagnostics/stage2/e2s98_malformed_numeric_literal.kofun
 tests/diagnostics/stage2/e352_authority_creation.kofun
 tests/diagnostics/stage2/e353_authority_copy.kofun
 tests/diagnostics/stage2/e353_authority_equality.kofun
+tests/diagnostics/stage2/e353_authority_field_copy.kofun
 tests/enum-match-value/duplicate_arm.kofun
 tests/enum-match-value/empty_arm.kofun
 tests/enum-match-value/enum_valued_arm.kofun
