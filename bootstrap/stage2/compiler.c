@@ -11247,6 +11247,13 @@ static char *initializer_type(
     int64_t function_open,
     int64_t initializer
 );
+/* #1659. Defined beside `validate_authority_reads`, its other caller. */
+static char *authority_read_type(
+    const char *source,
+    const char *hir,
+    int64_t function_open,
+    int64_t start
+);
 static bool record_initializer_constructor_token(
     const char *source,
     int64_t function_open,
@@ -11557,12 +11564,27 @@ static char *validate_core_types(const char *source, const char *hir) {
                         function_open,
                         value
                     );
+                    /* #1659. An authority read out of a record is known
+                     * too; see `authority_read_type` for why a bare
+                     * authority parameter is not. */
+                    bool authority_read = false;
+                    if (authority_type_name(value_type)) {
+                        char *read = authority_read_type(
+                            source,
+                            hir,
+                            function_open,
+                            value
+                        );
+                        authority_read = read[0] != '\0';
+                        free(read);
+                    }
                     bool known =
                         strcmp(value_type, "Int") == 0 ||
                         strcmp(value_type, "Bool") == 0 ||
                         strcmp(value_type, "Text") == 0 ||
                         strcmp(value_type, "List") == 0 ||
-                        strcmp(value_type, "List[Int]") == 0;
+                        strcmp(value_type, "List[Int]") == 0 ||
+                        authority_read;
                     if (known && strcmp(value_type, declared) != 0) {
                         Buffer error;
                         buffer_init(&error);
@@ -26693,6 +26715,358 @@ static char *validate_fractional_operators(
 }
 
 /*
+ * #1659. Whether a type declaration in this source names an authority type, as
+ * a record field (#1465) or a constructor payload. Without one no value the
+ * source can name is an authority read out of a composite: a bare authority
+ * parameter is answered where it is declared, and no source construct creates
+ * one (E352). So the walks that look for such a read can skip every other
+ * program, the compiler's own source among them.
+ */
+static bool source_declares_authority_member(const char *source) {
+    int64_t length = source_length(source);
+    int64_t cursor = after_optional_module_header(source, 0);
+    while (cursor < length) {
+        int64_t end = top_level_end(source, cursor);
+        if (end <= cursor) return false;
+        if (type_declaration_start(source, cursor) >= 0) {
+            int64_t member = cursor;
+            while (member < end) {
+                char *text = token_copy(source, member);
+                bool authority = authority_type_name(text);
+                free(text);
+                if (authority) return true;
+                member = skip_trivia(source, token_end(source, member));
+            }
+        }
+        cursor = skip_trivia(source, end);
+    }
+    return false;
+}
+
+/*
+ * #1659. The authority type of the value starting at `start`, or "" when this
+ * checker does not answer for it. Always owned.
+ *
+ * #1465 admitted the three names as record field types, and a read of such a
+ * field already has its type: `initializer_type` returns it, which is how
+ * `to_text(value.slot)` is refused by name. `return`, `print`, the arithmetic
+ * operators and `let` did not ask, and each accepted the read as the `int64_t`
+ * it lowers to. This is the question they ask.
+ *
+ * Two shapes answer, either one parenthesised: a field read `binding.field`,
+ * and a body binding initialized from one — an `EnvironmentKey` may be copied
+ * out, and the copy is still that type. A bare authority *parameter* does not.
+ * Its declaration is refused with the carrier answer #1242 fixed, and a use
+ * site that answered first would move that refusal.
+ *
+ * `binding` is resolved through the scope HIR at the use, never matched by
+ * name, so a shadowing `let value: Box = ...` is read as the `Box` it is, and
+ * a shadowing `let value: Holder = other` as the `Holder`.
+ */
+static char *authority_read_type(
+    const char *source,
+    const char *hir,
+    int64_t function_open,
+    int64_t start
+) {
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, start);
+    while (cursor < length && token_equal(source, cursor, "(")) {
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    if (
+        cursor >= length ||
+        strcmp(token_kind(source, cursor), "identifier") != 0
+    ) {
+        return owned_text("");
+    }
+    char *name = token_copy(source, cursor);
+    int64_t scope_open = parent_block_open(source, function_open, cursor);
+    char *scope_id = hir_scope_id_for_open(hir, scope_open);
+    char *binding_id = hir_resolve_binding(hir, scope_id, cursor, name);
+    free(scope_id);
+    free(name);
+    if (binding_id[0] == '\0') return binding_id;
+    char *binding_type = hir_binding_field(hir, binding_id, 5);
+    int64_t dot = skip_trivia(source, token_end(source, cursor));
+    if (dot < length && token_equal(source, dot, ".")) {
+        char *field = token_copy(
+            source,
+            skip_trivia(source, token_end(source, dot))
+        );
+        char *field_type = record_field_type_named(
+            source,
+            binding_type,
+            field
+        );
+        free(field);
+        free(binding_type);
+        free(binding_id);
+        if (authority_type_name(field_type)) return field_type;
+        free(field_type);
+        return owned_text("");
+    }
+    bool local =
+        authority_type_name(binding_type) &&
+        hir_binding_declaration_start(hir, binding_id) > function_open;
+    free(binding_id);
+    if (local) return binding_type;
+    free(binding_type);
+    return owned_text("");
+}
+
+/*
+ * #1659. `let`, `print` and the arithmetic operators, applied to an authority
+ * read.
+ *
+ * All three accepted `value.slot` as the `int64_t` it lowers to: `let` bound
+ * it, `print` formatted it with `PRId64` and `+` passed it to `kofun_add`.
+ *
+ * An unannotated `let` whose initializer reads an Owned authority binds a
+ * second name for one unforgeable value. That is RFC-0002's "authority is
+ * copied", with a bare value on the right exactly as in `let alias = root`, so
+ * the refusal is that one word for word; no causal path through the record is
+ * involved, and the record's own classification is #1243's. Only an
+ * unannotated `let` makes the copy: `let n: Int = value.slot` asks for an Int,
+ * which is the initializer mismatch it already reports, and an annotation
+ * naming the authority type is the creation E352 refuses. `EnvironmentKey` is
+ * unrestricted, so its copy is admitted and keeps its type.
+ *
+ * This is asked here, after the scope HIR exists, and not beside the bare
+ * check in `validate_authority_uses`, which runs before it and matches a
+ * parameter's name as text. What `value.slot` reads depends on which `value`
+ * is in scope, and a shadowing `let` changes that: matched as text, a
+ * `let value: Box = Box(slot: 1)` inside `fn g(read value: Holder)` made
+ * `let inner = value.slot` a false E353, and a `let value: Holder = other`
+ * over a `Box` parameter hid a real one.
+ *
+ * The operators and `print` are refused by the name of the type, as `to_text`
+ * already refuses the same read.
+ *
+ * An operand is the primary on either side of the operator. The left one is
+ * found by asking `primary_end` where each primary ends, so `f(value.slot) + 1`
+ * adds to a call result, while `(value.slot) + 1` and `g(value.slot + 1)` add
+ * to the read. A `(` after a name or a closing bracket is a call or an index,
+ * not a group, so it does not start a primary of its own here.
+ *
+ * `print` is refused only when the read is its whole argument. In
+ * `print(value.slot + 1)` the operator is what is wrong, and it is reported.
+ */
+static char *validate_authority_reads(const char *source, const char *hir) {
+    if (!source_declares_authority_member(source)) return owned_text("ok");
+    int64_t length = source_length(source);
+    int64_t function_start = next_function_start(source, 0);
+    while (function_start < length) {
+        int64_t function_close = function_end(source, function_start);
+        int64_t function_open = enclosing_function_open(
+            source,
+            function_start < function_close ?
+                function_close - 1 : function_start
+        );
+        if (function_open >= 0) {
+            char *before_previous = owned_text("");
+            char *previous = owned_text("{");
+            const char *previous_kind = "";
+            int64_t cursor = skip_trivia(
+                source,
+                token_end(source, function_open)
+            );
+            while (cursor < function_close) {
+                char *text = token_copy(source, cursor);
+                const char *kind = token_kind(source, cursor);
+                if (
+                    strcmp(text, "=") == 0 &&
+                    (strcmp(before_previous, "let") == 0 ||
+                     strcmp(before_previous, "mut") == 0)
+                ) {
+                    int64_t value = skip_trivia(
+                        source,
+                        token_end(source, cursor)
+                    );
+                    while (
+                        value < function_close &&
+                        token_equal(source, value, "(")
+                    ) {
+                        value = skip_trivia(source, token_end(source, value));
+                    }
+                    char *authority = authority_read_type(
+                        source,
+                        hir,
+                        function_open,
+                        value
+                    );
+                    if (authority_type_is_owned(authority)) {
+                        Buffer message;
+                        buffer_init(&message);
+                        buffer_format(
+                            &message,
+                            "%s is an Owned authority and cannot be copied; "
+                            "pass it with `take`, or borrow it with `read` or "
+                            "`edit`",
+                            authority
+                        );
+                        char *error = lower_error(
+                            "E353",
+                            message.data,
+                            value
+                        );
+                        free(message.data);
+                        free(authority);
+                        free(text);
+                        free(previous);
+                        free(before_previous);
+                        return error;
+                    }
+                    free(authority);
+                }
+                if (arithmetic_operator_at(source, cursor)) {
+                    char *authority = authority_read_type(
+                        source,
+                        hir,
+                        function_open,
+                        skip_trivia(source, token_end(source, cursor))
+                    );
+                    if (authority[0] != '\0') {
+                        Buffer message;
+                        buffer_init(&message);
+                        buffer_format(
+                            &message,
+                            "operator `%s` is not defined on %s",
+                            text,
+                            authority
+                        );
+                        char *error = lower_error(
+                            "E2S15",
+                            message.data,
+                            cursor
+                        );
+                        free(message.data);
+                        free(authority);
+                        free(text);
+                        free(previous);
+                        free(before_previous);
+                        return error;
+                    }
+                    free(authority);
+                }
+                bool head =
+                    (strcmp(kind, "identifier") == 0 &&
+                     strcmp(previous, ".") != 0) ||
+                    (strcmp(text, "(") == 0 &&
+                     strcmp(previous_kind, "identifier") != 0 &&
+                     strcmp(previous, ")") != 0 &&
+                     strcmp(previous, "]") != 0);
+                if (head) {
+                    int64_t open = skip_trivia(
+                        source,
+                        token_end(source, cursor)
+                    );
+                    if (
+                        strcmp(text, "print") == 0 &&
+                        open < function_close &&
+                        token_equal(source, open, "(")
+                    ) {
+                        int64_t argument = skip_trivia(
+                            source,
+                            token_end(source, open)
+                        );
+                        int64_t argument_end = primary_end(source, argument);
+                        if (
+                            argument_end >= 0 &&
+                            token_equal(
+                                source,
+                                skip_trivia(source, argument_end),
+                                ")"
+                            )
+                        ) {
+                            char *authority = authority_read_type(
+                                source,
+                                hir,
+                                function_open,
+                                argument
+                            );
+                            if (authority[0] != '\0') {
+                                Buffer message;
+                                buffer_init(&message);
+                                buffer_format(
+                                    &message,
+                                    "builtin `print` does not accept %s for "
+                                    "argument 1",
+                                    authority
+                                );
+                                char *error = lower_error(
+                                    "E2S15",
+                                    message.data,
+                                    argument
+                                );
+                                free(message.data);
+                                free(authority);
+                                free(text);
+                                free(previous);
+                                free(before_previous);
+                                return error;
+                            }
+                            free(authority);
+                        }
+                    }
+                    int64_t end = primary_end(source, cursor);
+                    if (end >= 0) {
+                        int64_t operator_at = skip_trivia(source, end);
+                        if (
+                            operator_at < function_close &&
+                            arithmetic_operator_at(source, operator_at)
+                        ) {
+                            char *authority = authority_read_type(
+                                source,
+                                hir,
+                                function_open,
+                                cursor
+                            );
+                            if (authority[0] != '\0') {
+                                char *operator_text = token_copy(
+                                    source,
+                                    operator_at
+                                );
+                                Buffer message;
+                                buffer_init(&message);
+                                buffer_format(
+                                    &message,
+                                    "operator `%s` is not defined on %s",
+                                    operator_text,
+                                    authority
+                                );
+                                char *error = lower_error(
+                                    "E2S15",
+                                    message.data,
+                                    operator_at
+                                );
+                                free(message.data);
+                                free(operator_text);
+                                free(authority);
+                                free(text);
+                                free(previous);
+                                free(before_previous);
+                                return error;
+                            }
+                            free(authority);
+                        }
+                    }
+                }
+                free(before_previous);
+                before_previous = previous;
+                previous = text;
+                previous_kind = kind;
+                cursor = skip_trivia(source, token_end(source, cursor));
+            }
+            free(before_previous);
+            free(previous);
+        }
+        function_start = next_function_start(source, function_close);
+    }
+    return owned_text("ok");
+}
+
+/*
  * A numeric annotation and its initializer must name the same type.
  *
  * #710 frozen decision 4 removes implicit promotion *in both directions*, so
@@ -28897,6 +29271,13 @@ static char *lower_c_body(
         return list_annotation_check;
     }
     free(list_annotation_check);
+    /* #1659. Before the return check, so `return value.slot + 1` names the
+     * operator it misuses rather than the result type that misuse produces. */
+    char *authority_read_check = validate_authority_reads(source, hir);
+    if (strncmp(authority_read_check, "error[", 6) == 0) {
+        return authority_read_check;
+    }
+    free(authority_read_check);
     char *type_check = validate_core_types(source, hir);
     if (strncmp(type_check, "error[", 6) == 0) return type_check;
     free(type_check);

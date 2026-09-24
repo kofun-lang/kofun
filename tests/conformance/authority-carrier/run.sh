@@ -148,6 +148,80 @@ case $(first_line) in
     *) fail "comparing authority bindings reported $(first_line)" ;;
 esac
 
+# --- a field read has its field's type --------------------------------------
+# #1659. #1465 admitted the three names as record field types, and a read of
+# one lowered to the `int64_t` behind it: `return`, `print`, `+` and `let` all
+# accepted it as an Int. Each now refuses by the type's name. Every type,
+# because the copy is where they differ: Root and Environment authority are
+# Owned and refuse the copy-out with the bare-value wording, while an
+# EnvironmentKey copy is admitted and keeps its type.
+field_reads=0
+field_case() {
+    printf 'type Holder = { slot: %s }\n\nfn leak(read value: Holder) -> Int {\n%s\n}\n\nfn main() -> Int {\n    return 0\n}\n' \
+        "$1" "$2" >"$WORK/case.kofun"
+    status=$(outcome "$WORK/case.kofun")
+    test "$status" -eq 1 ||
+        fail "a $1 field $3 exited $status, not 1"
+    case $(first_line) in
+        "$4"*) ;;
+        *) fail "a $1 field $3 reported $(first_line)" ;;
+    esac
+    field_reads=$((field_reads + 1))
+}
+while IFS= read -r type; do
+    field_case "$type" '    return value.slot' 'returned as Int' \
+        "error[E2S15]: Core function \`leak\` returns $type, expected Int"
+    field_case "$type" '    print(value.slot)
+    return 0' 'printed' \
+        "error[E2S15]: builtin \`print\` does not accept $type for argument 1"
+    field_case "$type" '    return value.slot + 1' 'added to' \
+        "error[E2S15]: operator \`+\` is not defined on $type"
+    case $type in
+        EnvironmentKey)
+            field_case "$type" '    let key = value.slot
+    return key' 'copied out and returned as Int' \
+                "error[E2S15]: Core function \`leak\` returns $type, expected Int"
+            ;;
+        *)
+            field_case "$type" '    let inner = value.slot
+    return 0' 'copied out' \
+                "error[E353]: $type is an Owned authority and cannot be copied; pass it with \`take\`, or borrow it with \`read\` or \`edit\`"
+            ;;
+    esac
+done <"$WORK/types.txt"
+
+test "$field_reads" -eq $((declared * 4)) ||
+    fail "checked $field_reads field reads for $declared types; the loop lost cases"
+
+# The same four sites over an Int field are ordinary code. Without this, a
+# compiler that refused every field read would pass the section above.
+printf 'type Holder = { slot: Int }\n\nfn leak(read value: Holder) -> Int {\n    let inner = value.slot\n    print(value.slot)\n    return value.slot + inner\n}\n\nfn main() -> Int {\n    return 0\n}\n' \
+    >"$WORK/case.kofun"
+status=$(outcome "$WORK/case.kofun")
+test "$status" -eq 0 ||
+    fail "the same sites over an Int field exited $status: $(first_line)"
+
+# --- the read is resolved, not matched by name ------------------------------
+# What `value.slot` reads is whichever `value` is in scope there. A first
+# version matched the parameter's name as text, so a shadowing `Box` made the
+# copy below a false E353 -- and a shadowing `Holder` over a `Box` parameter
+# hid a real one. Both directions, at function scope and in a block.
+printf 'type Holder = { slot: RootAuthority }\n\ntype Box = { slot: Int }\n\nfn g(read value: Holder) -> Int {\n    let value: Box = Box(slot: 1)\n    let inner = value.slot\n    print(value.slot)\n    return value.slot + inner\n}\n\nfn h(read value: Holder) -> Int {\n    if true {\n        let value: Box = Box(slot: 2)\n        let inner = value.slot\n        print(inner)\n    }\n    return 0\n}\n\nfn main() -> Int {\n    return 0\n}\n' \
+    >"$WORK/case.kofun"
+status=$(outcome "$WORK/case.kofun")
+test "$status" -eq 0 ||
+    fail "reads through a shadowing Box exited $status: $(first_line)"
+
+printf 'type Holder = { slot: RootAuthority }\n\ntype Box = { slot: Int }\n\nfn g(read value: Box, read other: Holder) -> Int {\n    let value: Holder = other\n    let inner = value.slot\n    return 0\n}\n\nfn main() -> Int {\n    return 0\n}\n' \
+    >"$WORK/case.kofun"
+status=$(outcome "$WORK/case.kofun")
+test "$status" -eq 1 ||
+    fail "a copy through a shadowing Holder exited $status, not 1"
+case $(first_line) in
+    "error[E353]: RootAuthority is an Owned authority and cannot be copied"*) ;;
+    *) fail "a copy through a shadowing Holder reported $(first_line)" ;;
+esac
+
 # --- the name cannot be taken over -----------------------------------------
 # #1243. "One stable nominal TypeId independent of source spelling" is false if
 # the spelling can be redeclared. Before the names were reserved,
@@ -194,5 +268,5 @@ test "$status" -eq 0 ||
 cmp "$CASES/control.stdout" "$WORK/control.stdout" ||
     fail "the control program printed unexpected output"
 
-printf 'PASS: authority carrier: %s declared types, %s (type, mode) pairs withheld, forge/copy/equality refused\n' \
-    "$declared" "$attempted"
+printf 'PASS: authority carrier: %s declared types, %s (type, mode) pairs withheld, forge/copy/equality refused, %s field reads typed\n' \
+    "$declared" "$attempted" "$field_reads"
