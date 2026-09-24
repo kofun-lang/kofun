@@ -25497,7 +25497,10 @@ fn capture_binding_type(source: Text, hir: Text, catalog: Text, binding: Text, d
     }
     let end = capture_end(source, start, len(source))
     if end <= start { return capture_error("E2S12", "malformed initializer", start) }
-    let checked = capture_expression(source, hir, catalog, start, end, "", "read", depth + 1)
+    let mut checked = ""
+    if scoped_parallel_member(source, start) >= 0 {
+        checked = capture_lifecycle_expression(source, hir, catalog, start, end, "", depth + 1)
+    } else { checked = capture_expression(source, hir, catalog, start, end, "", "read", depth + 1) }
     if starts_with(checked, "error[") { return checked }
     let actual = hir_field(checked, 0, 1)
     if len(annotation) == 0 { return actual }
@@ -25849,6 +25852,11 @@ fn capture_expression(source: Text, hir: Text, catalog: Text, start: Int, end: I
     if token_kind(source, first) == "identifier" && token_text(source, next) == "(" && balanced_end(source, next, "(", ")") == last {
         return capture_call(source, hir, catalog, first, next, last, path, depth + 1)
     }
+    let lifecycle = scoped_parallel_member(source, first)
+    if lifecycle >= 0 && token_text(source, lifecycle) == "join" &&
+        balanced_end(source, skip_trivia(source, token_end(source, lifecycle)), "(", ")") == last {
+        return capture_join_type(source, hir, catalog, first, path, depth + 1)
+    }
     if token == "[" && balanced_end(source, first, "[", "]") == last {
         let mut item = skip_trivia(source, token_end(source, first))
         let mut element = ""
@@ -25978,12 +25986,35 @@ fn capture_lifecycle_expression(source: Text, hir: Text, catalog: Text, start: I
         let parameters = skip_trivia(source, token_end(source, lambda))
         let checked = capture_lambda(source, hir, catalog, parameters, path, depth + 1)
         if starts_with(checked, "error[") { return checked }
-        return capture_value("TaskHandle", capture_latent(capture_tail(checked)))
+        let mut type_spelling = "TaskHandle"
+        if scoped_hir_chained_join(source, balanced_end(source, open, "(", ")")) >= 0 { type_spelling = hir_field(checked, 0, 1) }
+        return capture_value(type_spelling, capture_latent(capture_tail(checked)))
     }
     if token_text(source, dot) == "." && token_text(source, member) == "join" {
-        return "value|Void\n"
+        return capture_join_type(source, hir, catalog, start, path, depth + 1)
     }
     return capture_expression(source, hir, catalog, start, end, path, "read", depth + 1)
+}
+
+# A join yields its task's result: the spawned lambda's checked type. The
+# scope-HIR observations already refused a receiver that is not this scope's
+# own spawn binding, so its initializer is exactly `TOKEN.spawn(fn ...)`. The
+# task's accesses were recorded at the spawn; the join adds none.
+fn capture_join_type(source: Text, hir: Text, catalog: Text, receiver: Int, path: Text, depth: Int) -> Text {
+    if depth > 64 { return capture_error("E2S154", "expression depth exceeds 64", receiver) }
+    let binding = hir_use_binding_id(hir, receiver)
+    let declaration = hir_binding_declaration_start(hir, binding)
+    if len(binding) == 0 || declaration < 0 { return capture_error("E2S154", "join requires a resolved spawn binding", receiver) }
+    let assign = skip_trivia(source, token_end(source, declaration))
+    let spawn = skip_trivia(source, token_end(source, assign))
+    let member = scoped_parallel_member(source, spawn)
+    if token_text(source, assign) != "=" || member < 0 || token_text(source, member) != "spawn" {
+        return capture_error("E2S154", "join requires a resolved spawn binding", receiver)
+    }
+    let lambda = skip_trivia(source, token_end(source, skip_trivia(source, token_end(source, member))))
+    let checked = capture_lambda(source, hir, catalog, skip_trivia(source, token_end(source, lambda)), path, depth + 1)
+    if starts_with(checked, "error[") { return checked }
+    return capture_value(hir_field(checked, 0, 1), "")
 }
 
 fn capture_block(source: Text, hir: Text, catalog: Text, start: Int, end: Int, path: Text,
@@ -27200,6 +27231,870 @@ fn capture_join_state(left: Text, right: Text) -> Text {
     return result
 }
 
+# ---------------------------------------------------------------- Scoped ownership
+# #1162: the accepted ownership rules of spec/concurrency/scoped-parallelism-v1.md
+# §§4-6, decided in production. Each `par` becomes one bounded model input for
+# spec/concurrency/scoped-parallelism-v1/model.mjs, derived from checked facts
+# only: lifecycle rows from scoped_hir_observations, task captures from the
+# complete capture collector, and parent accesses from the same expanded access
+# rows outside every task lambda. The decision is computed here, natively; the
+# gate compares it with the model over the same input and with authored facts.
+#
+# Private place keys are `;`-separated segments. `B` is the base BindingId,
+# `F` an owner TypeId plus its u32 ordinal, and `S` a slice whose bounds are
+# `c` plus a sign-flipped i64 (so hex order is numeric order) or `n` plus the
+# bound's NodeId. An explicit unknown is `U` plus its UnknownId. Steps are the
+# dense ranks of lifecycle completions and parent access starts in source order.
+
+fn ownership_error(code: Text, message: Text, at: Int) -> Text {
+    return "error[" + code + "]: scoped ownership: " + message + " at byte " + to_text(at)
+}
+
+fn ownership_hex_value(value: Text, start: Int, width: Int) -> Int {
+    let mut result = 0
+    let mut at = start
+    while at < start + width {
+        result = result * 16 + scoped_hir_hex_digit(text_slice(value, at, at + 1))
+        at = at + 1
+    }
+    return result
+}
+
+fn ownership_bound_width(raw: Text, at: Int) -> Int {
+    if text_slice(raw, at, at + 2) == "01" { return 18 }
+    return 66
+}
+
+fn ownership_bound_key(raw: Text, at: Int) -> Text {
+    if text_slice(raw, at, at + 2) == "02" { return "n" + text_slice(raw, at + 2, at + 66) }
+    let flipped = (scoped_hir_hex_digit(text_slice(raw, at + 2, at + 3)) + 8) % 16
+    return "c" + scoped_hir_hex(flipped, 1) + text_slice(raw, at + 3, at + 18)
+}
+
+# A known place's canonical KPL bytes (scoped-captures-v1 §5) as a private key.
+fn ownership_known_key(raw: Text) -> Text {
+    let mut key = "B" + text_slice(raw, 10, 74)
+    let count = ownership_hex_value(raw, 74, 2)
+    let mut at = 76
+    let mut index = 0
+    while index < count {
+        if text_slice(raw, at, at + 2) == "01" {
+            key = key + ";F" + text_slice(raw, at + 2, at + 74)
+            at = at + 74
+        } else {
+            let upper = at + 2 + ownership_bound_width(raw, at + 2)
+            key = key + ";S" + ownership_bound_key(raw, at + 2) + "," + ownership_bound_key(raw, upper)
+            at = upper + ownership_bound_width(raw, upper)
+        }
+        index = index + 1
+    }
+    return key
+}
+
+fn ownership_segment_end(key: Text, start: Int) -> Int {
+    let end = text_find_from(key, ";", start)
+    if end < 0 { return len(key) }
+    return end
+}
+
+fn ownership_constant(bound: Text) -> Bool {
+    return starts_with(bound, "c")
+}
+
+# §6 rule 3 for one slice level: `disjoint`, `unknown`, or `continue` to the
+# next projection when the ranges are identical or intersect.
+fn ownership_slice_relation(left: Text, right: Text) -> Text {
+    let a = text_find_from(left, ",", 0)
+    let b = text_find_from(right, ",", 0)
+    let a_lower = text_slice(left, 1, a)
+    let a_upper = text_slice(left, a + 1, len(left))
+    let b_lower = text_slice(right, 1, b)
+    let b_upper = text_slice(right, b + 1, len(right))
+    if ownership_constant(a_lower) && ownership_constant(a_upper) &&
+        ownership_constant(b_lower) && ownership_constant(b_upper) {
+        if a_lower == a_upper || b_lower == b_upper { return "disjoint" }
+        if !capture_hex_before(b_lower, a_upper) || !capture_hex_before(a_lower, b_upper) { return "disjoint" }
+        return "continue"
+    }
+    if a_lower == b_lower && a_upper == b_upper { return "continue" }
+    return "unknown"
+}
+
+# §6: different bases and different fields are disjoint, ordered known slices
+# are disjoint, a common prefix overlaps, and every other relation is unknown.
+fn ownership_relation(left: Text, right: Text) -> Text {
+    if starts_with(left, "U") || starts_with(right, "U") {
+        if left == right { return "overlap" }
+        return "unknown"
+    }
+    let mut a = 0
+    let mut b = 0
+    let mut level = 0
+    while a < len(left) && b < len(right) {
+        let a_end = ownership_segment_end(left, a)
+        let b_end = ownership_segment_end(right, b)
+        let x = text_slice(left, a, a_end)
+        let y = text_slice(right, b, b_end)
+        if level == 0 || (starts_with(x, "F") && starts_with(y, "F")) {
+            if x != y { return "disjoint" }
+        } else if starts_with(x, "S") && starts_with(y, "S") {
+            let relation = ownership_slice_relation(x, y)
+            if relation != "continue" { return relation }
+        } else { return "unknown" }
+        a = a_end + 1
+        b = b_end + 1
+        level = level + 1
+    }
+    return "overlap"
+}
+
+fn ownership_conflict(left: Text, right: Text) -> Bool {
+    return left != "read" || right != "read"
+}
+
+# Base and field display metadata, in key order, for the scope's name table.
+fn ownership_names(key: Text, base: Text, projections: Text) -> Text {
+    if starts_with(key, "U") { return "" }
+    let mut result = "name|b" + text_slice(key, 1, 65) + "|" + base + "\n"
+    let mut at = ownership_segment_end(key, 0) + 1
+    let mut cursor = 0
+    while at < len(key) {
+        let end = ownership_segment_end(key, at)
+        if text_slice(key, at, at + 1) == "F" {
+            let display = text_find_from(projections, "\"display\":", cursor)
+            let close = text_find_from(projections, "}", display)
+            if display < 0 || close < 0 { return "" }
+            result = result + "name|f" + text_slice(key, at + 1, at + 65) + "-" +
+                to_text(ownership_hex_value(key, at + 65, 8)) + "|" + text_slice(projections, display + 10, close + 1) + "\n"
+            cursor = close
+        }
+        at = end + 1
+    }
+    return result
+}
+
+# The one join of a task that certainly completes where it is written: a
+# direct statement of its own `par` block, outside every nested block, loop
+# condition, and short-circuit operand. Any other join still bounds the
+# handle, but its task stays live to scope exit, which only rejects more.
+fn ownership_join_unconditional(source: Text, block: Int, join: Int) -> Bool {
+    let mut at = skip_trivia(source, token_end(source, block))
+    let mut depth = 0
+    let mut guarded = false
+    while at < join {
+        let token = token_text(source, at)
+        let next = skip_trivia(source, token_end(source, at))
+        if token == "{" { depth = depth + 1 }
+        if token == "}" {
+            depth = depth - 1
+            if depth == 0 { guarded = false }
+        }
+        if depth == 0 && (token == "while" || token == "for" || token == "&&" || token == "||") { guarded = true }
+        if depth == 0 && token != "&&" && token != "||" && next <= join &&
+            contains(text_slice(source, token_end(source, at), next), "\n") &&
+            !checked_place_shape_operator(token) && !checked_place_shape_operator(token_text(source, next)) {
+            guarded = false
+        }
+        at = next
+    }
+    return depth == 0 && !guarded
+}
+
+# The body braces of the named function around `at`, as `open|close`.
+fn ownership_function(source: Text, at: Int) -> Text {
+    let mut function = next_function_start(source, 0)
+    while function < len(source) {
+        let parameters = parameter_open(source, function)
+        let mut open = skip_trivia(source, balanced_end(source, parameters, "(", ")"))
+        if token_text(source, open) == "->" {
+            let typed = skip_trivia(source, token_end(source, open))
+            open = skip_trivia(source, capture_type_end(source, typed))
+        }
+        let close = balanced_end(source, open, "{", "}")
+        if close <= open { return "" }
+        if at > open && at < close { return to_text(open) + "|" + to_text(close) + "\n" }
+        function = next_function_start(source, close)
+    }
+    return ""
+}
+
+# The block of the innermost loop around `at` inside one function, or -1.
+fn ownership_loop_open(source: Text, open: Int, at: Int) -> Int {
+    let mut result = -1
+    let mut cursor = skip_trivia(source, token_end(source, open))
+    while cursor < at {
+        let token = token_text(source, cursor)
+        if token == "while" || token == "for" {
+            let block = par_loop_block_open(source, cursor, at)
+            if block >= 0 && at < balanced_end(source, block, "{", "}") { result = block }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return result
+}
+
+fn ownership_previous_token(source: Text, block: Int, at: Int) -> Text {
+    let mut cursor = skip_trivia(source, token_end(source, block))
+    let mut previous = "{"
+    while cursor < at {
+        previous = token_text(source, cursor)
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return previous
+}
+
+fn ownership_in_lambda(facts: Text, par: Text, at: Int) -> Bool {
+    let mut task = hir_record_start(facts, "task", 0)
+    while task >= 0 {
+        if hir_field(facts, task, 1) == par && at >= decimal_value(hir_field(facts, task, 5)) &&
+            at < decimal_value(hir_field(facts, task, 6)) { return true }
+        task = hir_record_start(facts, "task", task + 1)
+    }
+    return false
+}
+
+# Whether `at` lies inside any lambda written in this `par` block, a task's
+# or not: a closure can run later or twice, so nothing inside one is a
+# statement of the block.
+fn ownership_in_closure(source: Text, block: Int, close: Int, at: Int) -> Bool {
+    let mut cursor = skip_trivia(source, token_end(source, block))
+    while cursor < close && cursor < at {
+        if token_text(source, cursor) == "fn" {
+            let open = lambda_initializer_open_mode(source, cursor, true)
+            if open >= 0 && at < lambda_parameters_end_mode(source, -1, open, true) { return true }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return false
+}
+
+# A callable binding whose call can have no effect a scope must order: a local
+# lambda literal whose body touches only its own bindings. Parameters, other
+# callables and capturing lambdas are not pure.
+fn ownership_pure_callable(source: Text, hir: Text, accesses: Text, binding: Text) -> Bool {
+    let open = lambda_binding_open_mode(source, hir, binding, true)
+    if open < 0 { return false }
+    let end = lambda_parameters_end_mode(source, -1, open, true)
+    let scope = hir_scope_id_for_open(hir, open)
+    let mut row = capture_record_start(accesses, "access", 0)
+    while row >= 0 {
+        let start = decimal_value(hir_field(accesses, row, 8))
+        if start > open && start < end {
+            let used = hir_field(accesses, row, 3)
+            if len(used) == 0 || !capture_local(hir, used, scope) { return false }
+        }
+        row = capture_record_start(accesses, "access", row + 1)
+    }
+    return true
+}
+
+# A parent use of an impure callable may run any effect there, including a
+# take: it is an explicit unknown place taken at that step.
+fn ownership_call_key(file: Text, start: Int, stop: Int) -> Text {
+    return "U" + scoped_hir_hash_frame("kofun.stage2.scoped-ownership-call/v1", file,
+        scoped_hir_hex(start, 8) + scoped_hir_hex(stop, 8), "", "")
+}
+
+# §3: a handle is used only as its own join receiver. Rows are
+# `escape|TASK|USE|BYTE` for the first escaping use of each task handle.
+fn ownership_escapes(source: Text, hir: Text, facts: Text, par_row: Int) -> Text {
+    let par = hir_field(facts, par_row, 1)
+    let close = decimal_value(hir_field(facts, par_row, 3))
+    let name = decimal_value(hir_field(facts, par_row, 6))
+    let block = skip_trivia(source, token_end(source, skip_trivia(source, token_end(source, name))))
+    let mut result = ""
+    let mut task = hir_record_start(facts, "task", 0)
+    while task >= 0 {
+        if hir_field(facts, task, 1) == par && decimal_value(hir_field(facts, task, 8)) >= 0 {
+            let binding = hir_field(facts, task, 7)
+            let mut first = -1
+            let mut kind = ""
+            let mut use = hir_record_start(hir, "use", 0)
+            while use >= 0 {
+                let at = decimal_value(hir_field(hir, use, 1))
+                if hir_field(hir, use, 4) == binding && (first < 0 || at < first) {
+                    let member = scoped_parallel_member(source, at)
+                    let mut current = ""
+                    if ownership_in_closure(source, block, close, at) { current = "capture" }
+                    else if member < 0 || token_text(source, member) != "join" {
+                        let previous = ownership_previous_token(source, block, at)
+                        current = "store"
+                        if previous == "return" { current = "return" }
+                        if previous == "(" || previous == "," { current = "pass" }
+                    }
+                    if len(current) > 0 {
+                        first = at
+                        kind = current
+                    }
+                }
+                use = hir_record_start(hir, "use", use + 1)
+            }
+            if first >= 0 { result = result + "escape|" + hir_field(facts, task, 2) + "|" + kind + "|" + to_text(first) + "\n" }
+        }
+        task = hir_record_start(facts, "task", task + 1)
+    }
+    return result
+}
+
+# §3: the scope token is used only as the receiver of a spawn written
+# directly in its own block. Capturing, storing, passing, or returning it is a
+# refusal before any capture fact exists; the model has no token input.
+fn ownership_token_escape(source: Text, hir: Text, facts: Text, par_row: Int) -> Text {
+    let close = decimal_value(hir_field(facts, par_row, 3))
+    let name = decimal_value(hir_field(facts, par_row, 6))
+    let block = skip_trivia(source, token_end(source, skip_trivia(source, token_end(source, name))))
+    let token = hir_field(facts, par_row, 5)
+    let mut use = hir_record_start(hir, "use", 0)
+    while use >= 0 {
+        let at = decimal_value(hir_field(hir, use, 1))
+        if hir_field(hir, use, 4) == token {
+            let member = scoped_parallel_member(source, at)
+            if ownership_in_closure(source, block, close, at) {
+                return ownership_error("SPV1-HANDLE-ESCAPE", "a closure cannot capture its scope token", at)
+            }
+            if member < 0 || token_text(source, member) != "spawn" {
+                return ownership_error("SPV1-HANDLE-ESCAPE", "a scope token is used only to spawn", at)
+            }
+        }
+        use = hir_record_start(hir, "use", use + 1)
+    }
+    return ""
+}
+
+# Merged task captures in capture-record order: `cap|TASK|MODE|KEY|BYTE`,
+# plus `name` rows for their visible bases and fields.
+fn ownership_task_captures(source: Text, hir: Text, facts: Text, accesses: Text, path: Text, task: Int, index: Text) -> Text {
+    let observations = capture_task_observations(source, hir, facts, accesses, path, task, 0)
+    if starts_with(observations, "error[") { return observations }
+    let mut result = ""
+    let mut row = 0
+    while row < len(observations) {
+        let raw = hir_field(observations, row, 1)
+        let mut mode = hir_field(observations, row, 5)
+        let mut byte = decimal_value(hir_field(observations, row, 7))
+        let mut after = capture_line_end(observations, row) + 1
+        while after < len(observations) && hir_field(observations, after, 1) == raw {
+            let next = hir_field(observations, after, 5)
+            if next == "take" || (next == "edit" && mode == "read") { mode = next }
+            if decimal_value(hir_field(observations, after, 7)) < byte { byte = decimal_value(hir_field(observations, after, 7)) }
+            after = capture_line_end(observations, after) + 1
+        }
+        let mut key = "U" + hir_field(observations, row, 2)
+        if hir_field(observations, row, 3) == "place" {
+            key = ownership_known_key(raw)
+            let json = hir_field(observations, row, 9)
+            let display = text_find_from(json, "\"display\":", 0)
+            let projections = text_find_from(json, "\"projections\":", 0)
+            result = result + ownership_names(key, text_slice(json, display + 10, text_find_from(json, "}", display) + 1),
+                text_slice(json, projections, len(json)))
+        }
+        result = result + "cap|" + index + "|" + mode + "|" + key + "|" + to_text(byte) + "\n"
+        row = after
+    }
+    return result
+}
+
+fn ownership_rank(ranks: Text, key: Text) -> Int {
+    let mut rank = 0
+    let mut row = 0
+    while row < len(ranks) {
+        if hir_field(ranks, row, 1) == key { return rank }
+        rank = rank + 1
+        row = capture_line_end(ranks, row) + 1
+    }
+    return -1
+}
+
+fn ownership_bound_json(ranks: Text, bound: Text) -> Text {
+    if ownership_constant(bound) { return to_text(ownership_rank(ranks, text_slice(bound, 1, len(bound)))) }
+    return "\"" + bound + "\""
+}
+
+# Model place JSON. Slice constants are dense ranks over this scope's
+# constants, which preserve every order and equality the model compares
+# while keeping full i64 range exact.
+fn ownership_place_json(ranks: Text, key: Text) -> Text {
+    if starts_with(key, "U") { return "{\"unknown\":\"u" + text_slice(key, 1, len(key)) + "\"}" }
+    let mut path = ""
+    let mut at = ownership_segment_end(key, 0) + 1
+    while at < len(key) {
+        let end = ownership_segment_end(key, at)
+        if len(path) > 0 { path = path + "," }
+        if text_slice(key, at, at + 1) == "F" {
+            path = path + "{\"field\":\"f" + text_slice(key, at + 1, at + 65) + "-" + to_text(ownership_hex_value(key, at + 65, 8)) + "\"}"
+        } else {
+            let comma = text_find_from(key, ",", at)
+            path = path + "{\"slice\":[" + ownership_bound_json(ranks, text_slice(key, at + 1, comma)) + "," +
+                ownership_bound_json(ranks, text_slice(key, comma + 1, end)) + "]}"
+        }
+        at = end + 1
+    }
+    return "{\"base\":\"b" + text_slice(key, 1, 65) + "\",\"path\":[" + path + "]}"
+}
+
+fn ownership_constants(key: Text) -> Text {
+    let mut result = ""
+    let mut at = 0
+    while at < len(key) {
+        let end = ownership_segment_end(key, at)
+        if text_slice(key, at, at + 1) == "S" {
+            let comma = text_find_from(key, ",", at)
+            let lower = text_slice(key, at + 1, comma)
+            let upper = text_slice(key, comma + 1, end)
+            if ownership_constant(lower) { result = result + "k|" + text_slice(lower, 1, len(lower)) + "\n" }
+            if ownership_constant(upper) { result = result + "k|" + text_slice(upper, 1, len(upper)) + "\n" }
+        }
+        at = end + 1
+    }
+    return result
+}
+
+fn ownership_unique(rows: Text) -> Text {
+    let sorted = capture_sort(rows)
+    let mut result = ""
+    let mut previous = ""
+    let mut row = 0
+    while row < len(sorted) {
+        let end = capture_line_end(sorted, row)
+        let key = hir_field(sorted, row, 1)
+        if row == 0 || key != previous { result = result + text_slice(sorted, row, end + 1) }
+        previous = key
+        row = end + 1
+    }
+    return result
+}
+
+# A parent access row as a private key; unknown occurrences are keyed by the
+# NodeId of their own expression.
+fn ownership_access_key(accesses: Text, row: Int, file: Text) -> Text {
+    let start = decimal_value(hir_field(accesses, row, 8))
+    let stop = decimal_value(hir_field(accesses, row, 9))
+    let depth = decimal_value(hir_field(accesses, row, 5))
+    if hir_field(accesses, row, 10) == "place" && depth <= 8 {
+        return ownership_known_key("4b504c0002" + scoped_hir_named_id(file, "binding", hir_field(accesses, row, 3)) +
+            scoped_hir_hex(depth, 2) + hir_field(accesses, row, 6))
+    }
+    return "U" + checked_place_expression_id(file, start, stop)
+}
+
+fn ownership_diagnostic(code: Text, at: Text, byte: Int) -> Text {
+    return "diag|" + code + "|" + at + "|" + to_text(byte) + "\n"
+}
+
+# The model's analyzeNormalized rejection rules, over `task|INDEX|SPAWN|END`,
+# `cap`, `act|INDEX|STEP|MODE|KEY|START` and `escape` rows.
+fn ownership_decide(rows: Text) -> Text {
+    let mut result = ""
+    let mut row = capture_record_start(rows, "escape", 0)
+    while row >= 0 {
+        result = result + ownership_diagnostic("SPV1-HANDLE-ESCAPE", "task:t" + hir_field(rows, row, 1), decimal_value(hir_field(rows, row, 3)))
+        row = capture_record_start(rows, "escape", row + 1)
+    }
+    let mut left = capture_record_start(rows, "task", 0)
+    while left >= 0 {
+        let mut right = capture_record_start(rows, "task", left + 1)
+        while right >= 0 {
+            if decimal_value(hir_field(rows, left, 2)) < decimal_value(hir_field(rows, right, 3)) &&
+                decimal_value(hir_field(rows, right, 2)) < decimal_value(hir_field(rows, left, 3)) {
+                let at = "tasks:t" + hir_field(rows, left, 1) + ",t" + hir_field(rows, right, 1)
+                let mut a = capture_fact(rows, "cap", 1, hir_field(rows, left, 1))
+                while a >= 0 && hir_field(rows, a, 1) == hir_field(rows, left, 1) {
+                    let mut b = capture_fact(rows, "cap", 1, hir_field(rows, right, 1))
+                    while b >= 0 && hir_field(rows, b, 1) == hir_field(rows, right, 1) {
+                        if ownership_conflict(hir_field(rows, a, 2), hir_field(rows, b, 2)) {
+                            let relation = ownership_relation(hir_field(rows, a, 3), hir_field(rows, b, 3))
+                            let byte = decimal_value(hir_field(rows, b, 4))
+                            if relation == "unknown" { result = result + ownership_diagnostic("SPV1-OVERLAP-UNKNOWN", at, byte) }
+                            if relation == "overlap" { result = result + ownership_diagnostic("SPV1-CAPTURE-CONFLICT", at, byte) }
+                        }
+                        b = capture_record_start(rows, "cap", b + 1)
+                    }
+                    a = capture_record_start(rows, "cap", a + 1)
+                }
+            }
+            right = capture_record_start(rows, "task", right + 1)
+        }
+        left = capture_record_start(rows, "task", left + 1)
+    }
+    let mut later = capture_record_start(rows, "task", 0)
+    while later >= 0 {
+        let spawn = decimal_value(hir_field(rows, later, 2))
+        let mut capture = capture_fact(rows, "cap", 1, hir_field(rows, later, 1))
+        while capture >= 0 && hir_field(rows, capture, 1) == hir_field(rows, later, 1) {
+            let mut found = ""
+            let mut earlier = capture_record_start(rows, "task", 0)
+            while earlier >= 0 && len(found) == 0 && decimal_value(hir_field(rows, earlier, 2)) < spawn {
+                if decimal_value(hir_field(rows, earlier, 3)) <= spawn {
+                    let mut taken = capture_fact(rows, "cap", 1, hir_field(rows, earlier, 1))
+                    while taken >= 0 && len(found) == 0 && hir_field(rows, taken, 1) == hir_field(rows, earlier, 1) {
+                        if hir_field(rows, taken, 2) == "take" {
+                            let relation = ownership_relation(hir_field(rows, taken, 3), hir_field(rows, capture, 3))
+                            if relation != "disjoint" {
+                                let at = "tasks:t" + hir_field(rows, earlier, 1) + ",t" + hir_field(rows, later, 1)
+                                let byte = decimal_value(hir_field(rows, capture, 4))
+                                found = ownership_diagnostic("SPV1-USE-AFTER-TAKE", at, byte)
+                                if relation == "unknown" { found = ownership_diagnostic("SPV1-OVERLAP-UNKNOWN", at, byte) }
+                            }
+                        }
+                        taken = capture_record_start(rows, "cap", taken + 1)
+                    }
+                }
+                earlier = capture_record_start(rows, "task", earlier + 1)
+            }
+            result = result + found
+            capture = capture_record_start(rows, "cap", capture + 1)
+        }
+        later = capture_record_start(rows, "task", later + 1)
+    }
+    let mut action = capture_record_start(rows, "act", 0)
+    while action >= 0 {
+        let step = decimal_value(hir_field(rows, action, 2))
+        let at = "parent_action:" + hir_field(rows, action, 1)
+        let byte = decimal_value(hir_field(rows, action, 5))
+        let mut task = capture_record_start(rows, "task", 0)
+        while task >= 0 {
+            let mut capture = capture_fact(rows, "cap", 1, hir_field(rows, task, 1))
+            while capture >= 0 && hir_field(rows, capture, 1) == hir_field(rows, task, 1) {
+                let relation = ownership_relation(hir_field(rows, action, 4), hir_field(rows, capture, 3))
+                if step >= decimal_value(hir_field(rows, task, 2)) && relation != "disjoint" {
+                    if hir_field(rows, capture, 2) == "take" {
+                        if relation == "unknown" { result = result + ownership_diagnostic("SPV1-OVERLAP-UNKNOWN", at, byte) }
+                        else { result = result + ownership_diagnostic("SPV1-USE-AFTER-TAKE", at, byte) }
+                    } else if step < decimal_value(hir_field(rows, task, 3)) &&
+                        ownership_conflict(hir_field(rows, action, 3), hir_field(rows, capture, 2)) {
+                        if relation == "unknown" { result = result + ownership_diagnostic("SPV1-OVERLAP-UNKNOWN", at, byte) }
+                        else { result = result + ownership_diagnostic("SPV1-PARENT-CONFLICT", at, byte) }
+                    }
+                }
+                capture = capture_record_start(rows, "cap", capture + 1)
+            }
+            task = capture_record_start(rows, "task", task + 1)
+        }
+        action = capture_record_start(rows, "act", action + 1)
+    }
+    return result
+}
+
+# One `par`: lifecycle events, captures and parent actions ranked into steps,
+# then the model input, the native decision and the name table as JSON.
+fn ownership_scope(source: Text, hir: Text, facts: Text, accesses: Text, path: Text, par_row: Int, escapes: Text, derived: Bool) -> Text {
+    let file = scoped_hir_file_id(path)
+    let par = hir_field(facts, par_row, 1)
+    let close = decimal_value(hir_field(facts, par_row, 3))
+    let name = decimal_value(hir_field(facts, par_row, 6))
+    let block = skip_trivia(source, token_end(source, skip_trivia(source, token_end(source, name))))
+    let mut events = ""
+    let mut captures = ""
+    let mut names = ""
+    let mut task = hir_record_start(facts, "task", 0)
+    while task >= 0 {
+        if hir_field(facts, task, 1) == par {
+            let index = hir_field(facts, task, 2)
+            events = events + "ev|" + scoped_hir_hex(decimal_value(hir_field(facts, task, 4)), 8) + "0|spawn|" + index + "\n"
+            let join = scoped_hir_fact(facts, "join", 1, hir_field(facts, task, 7))
+            if join >= 0 && !ownership_in_closure(source, block, close, decimal_value(hir_field(facts, join, 2))) &&
+                ownership_join_unconditional(source, block, decimal_value(hir_field(facts, join, 2))) {
+                events = events + "ev|" + scoped_hir_hex(decimal_value(hir_field(facts, join, 3)), 8) + "0|join|" + index + "\n"
+            }
+            if derived {
+                let checked = ownership_task_captures(source, hir, facts, accesses, path, task, index)
+                if starts_with(checked, "error[") { return checked }
+                let mut row = 0
+                while row < len(checked) {
+                    let end = capture_line_end(checked, row)
+                    if text_slice(checked, row, row + 4) == "cap|" { captures = captures + text_slice(checked, row, end + 1) }
+                    else { names = names + text_slice(checked, row, end + 1) }
+                    row = end + 1
+                }
+            }
+        }
+        task = hir_record_start(facts, "task", task + 1)
+    }
+    let bounds = ownership_function(source, decimal_value(hir_field(facts, par_row, 2)))
+    if len(bounds) == 0 { return ownership_error("E2S154", "par requires an enclosing checked function", decimal_value(hir_field(facts, par_row, 2))) }
+    let function_open = decimal_value(hir_field(bounds, 0, 0))
+    let function_close = decimal_value(hir_field(bounds, 0, 1))
+    let loop = ownership_loop_open(source, function_open, decimal_value(hir_field(facts, par_row, 2)))
+    let mut after = ""
+    let mut actions = 0
+    let mut row = capture_record_start(accesses, "access", 0)
+    while derived && row >= 0 {
+        let start = decimal_value(hir_field(accesses, row, 8))
+        let stop = decimal_value(hir_field(accesses, row, 9))
+        let key = ownership_access_key(accesses, row, file)
+        if start > block && stop < close && !ownership_in_lambda(facts, par, start) {
+            actions = actions + 1
+            if !starts_with(key, "U") {
+                names = names + ownership_names(key, scoped_hir_display(source, hir_binding_declaration_start(hir, hir_field(accesses, row, 3))),
+                    hir_field(accesses, row, 7))
+            }
+            events = events + "ev|" + scoped_hir_hex(start, 8) + "1|act|" + hir_field(accesses, row, 2) + "|" + key + "|" + to_text(start) + "\n"
+        }
+        if start >= close && stop <= function_close {
+            # §5: a place taken by a task stays removed after its join and
+            # after scope exit; only accesses related to a taken place matter.
+            let mut related = false
+            let mut capture = capture_record_start(captures, "cap", 0)
+            while capture >= 0 && !related {
+                related = hir_field(captures, capture, 2) == "take" && ownership_relation(key, hir_field(captures, capture, 3)) != "disjoint"
+                capture = capture_record_start(captures, "cap", capture + 1)
+            }
+            if related {
+                if !starts_with(key, "U") {
+                    names = names + ownership_names(key, scoped_hir_display(source, hir_binding_declaration_start(hir, hir_field(accesses, row, 3))),
+                        hir_field(accesses, row, 7))
+                }
+                after = after + "ev|" + scoped_hir_hex(start, 8) + "1|act|" + hir_field(accesses, row, 2) + "|" + key + "|" + to_text(start) + "\n"
+            }
+        }
+        if hir_field(accesses, row, 4) == "Fn" && !ownership_pure_callable(source, hir, accesses, hir_field(accesses, row, 3)) {
+            # A parent use of an impure callable (a parameter, a capturing
+            # closure, a returned lambda) may run any effect there, including
+            # after scope exit, so it takes an explicit unknown place.
+            let call = ownership_call_key(file, start, stop)
+            if start > block && stop < close && !ownership_in_lambda(facts, par, start) {
+                actions = actions + 1
+                events = events + "ev|" + scoped_hir_hex(start, 8) + "1|act|take|" + call + "|" + to_text(start) + "\n"
+            }
+            if start >= close && stop <= function_close && capture_fact(captures, "cap", 2, "take") >= 0 {
+                after = after + "ev|" + scoped_hir_hex(start, 8) + "1|act|take|" + call + "|" + to_text(start) + "\n"
+            }
+        }
+        if start > block && stop < close && hir_field(accesses, row, 2) == "take" && loop >= 0 && ownership_in_lambda(facts, par, start) &&
+            (starts_with(key, "U") || hir_binding_declaration_start(hir, hir_field(accesses, row, 3)) < loop) {
+            return ownership_error("E2S123", "a par in a loop cannot repeatedly take an enclosing binding", start)
+        }
+        row = capture_record_start(accesses, "access", row + 1)
+    }
+    let ordered = capture_sort(events)
+    let mut rows = escapes
+    let mut steps = ""
+    let mut acts = ""
+    let mut step = 0
+    let mut action = 0
+    row = 0
+    while row < len(ordered) {
+        step = step + 1
+        let kind = hir_field(ordered, row, 2)
+        if kind == "act" {
+            acts = acts + "act|" + to_text(action) + "|" + to_text(step) + "|" + hir_field(ordered, row, 3) + "|" +
+                hir_field(ordered, row, 4) + "|" + hir_field(ordered, row, 5) + "\n"
+            action = action + 1
+        } else { steps = steps + kind + "|" + hir_field(ordered, row, 3) + "|" + to_text(step) + "\n" }
+        row = capture_line_end(ordered, row) + 1
+    }
+    # The model's scope exit is at least step 2, even for an empty `par`.
+    let mut exit = step + 1
+    if exit < 2 { exit = 2 }
+    let ordered_after = capture_sort(after)
+    let mut after_json = ""
+    row = 0
+    while row < len(ordered_after) {
+        acts = acts + "act|" + to_text(action) + "|" + to_text(exit + 1 + action) + "|" + hir_field(ordered_after, row, 3) + "|" +
+            hir_field(ordered_after, row, 4) + "|" + hir_field(ordered_after, row, 5) + "\n"
+        actions = actions + 1
+        action = action + 1
+        row = capture_line_end(ordered_after, row) + 1
+    }
+    let mut constants = ""
+    let mut tasks = ""
+    task = hir_record_start(facts, "task", 0)
+    while task >= 0 {
+        if hir_field(facts, task, 1) == par {
+            let index = hir_field(facts, task, 2)
+            let spawn = hir_field(steps, capture_fact(steps, "spawn", 1, index), 2)
+            let joined = capture_fact(steps, "join", 1, index)
+            let mut end = to_text(exit)
+            let mut join_json = ""
+            if joined >= 0 {
+                end = hir_field(steps, joined, 2)
+                join_json = ",\"join_step\":" + end
+            }
+            rows = rows + "task|" + index + "|" + spawn + "|" + end + "\n"
+            let mut handle = "none"
+            let escape = capture_fact(escapes, "escape", 1, index)
+            if escape >= 0 { handle = hir_field(escapes, escape, 2) }
+            let mut capture = capture_fact(captures, "cap", 1, index)
+            while capture >= 0 && hir_field(captures, capture, 1) == index {
+                constants = constants + ownership_constants(hir_field(captures, capture, 3))
+                capture = capture_record_start(captures, "cap", capture + 1)
+            }
+            tasks = tasks + "|" + index + "|" + spawn + "|" + join_json + "|" + handle + "\n"
+        }
+        task = hir_record_start(facts, "task", task + 1)
+    }
+    rows = rows + captures + acts
+    row = capture_record_start(acts, "act", 0)
+    while row >= 0 {
+        constants = constants + ownership_constants(hir_field(acts, row, 4))
+        row = capture_record_start(acts, "act", row + 1)
+    }
+    let ranks = ownership_unique(constants)
+    let mut task_json = ""
+    row = 0
+    while row < len(tasks) {
+        let index = hir_field(tasks, row, 1)
+        let mut list = ""
+        let mut capture = capture_fact(captures, "cap", 1, index)
+        while capture >= 0 && hir_field(captures, capture, 1) == index {
+            if len(list) > 0 { list = list + "," }
+            list = list + "{\"mode\":\"" + hir_field(captures, capture, 2) + "\",\"place\":" +
+                ownership_place_json(ranks, hir_field(captures, capture, 3)) + "}"
+            capture = capture_record_start(captures, "cap", capture + 1)
+        }
+        if len(task_json) > 0 { task_json = task_json + "," }
+        task_json = task_json + "{\"captures\":[" + list + "],\"handle_use\":\"" + hir_field(tasks, row, 4) + "\",\"id\":\"t" + index + "\"" +
+            hir_field(tasks, row, 3) + ",\"spawn_step\":" + hir_field(tasks, row, 2) + "}"
+        row = capture_line_end(tasks, row) + 1
+    }
+    let mut act_json = ""
+    row = capture_record_start(acts, "act", 0)
+    while row >= 0 {
+        let place = "{\"mode\":\"" + hir_field(acts, row, 3) + "\",\"place\":" + ownership_place_json(ranks, hir_field(acts, row, 4))
+        if decimal_value(hir_field(acts, row, 2)) < exit {
+            if len(act_json) > 0 { act_json = act_json + "," }
+            act_json = act_json + place + ",\"step\":" + hir_field(acts, row, 2) + "}"
+        } else {
+            if len(after_json) > 0 { after_json = after_json + "," }
+            after_json = after_json + place + "}"
+        }
+        row = capture_record_start(acts, "act", row + 1)
+    }
+    let mut diagnostics = ""
+    if actions > 256 {
+        diagnostics = ownership_diagnostic("SPV1-INVALID-MODEL", "$input.scope.parent_actions", decimal_value(hir_field(facts, par_row, 2)))
+    } else { diagnostics = ownership_decide(rows) }
+    # Capture order follows opaque identities; the reported order must not.
+    let mut keyed = ""
+    row = 0
+    while row < len(diagnostics) {
+        let end = capture_line_end(diagnostics, row)
+        keyed = keyed + "d|" + scoped_hir_hex(decimal_value(hir_field(diagnostics, row, 3)), 8) +
+            scoped_hir_text_hex(hir_field(diagnostics, row, 1) + " " + hir_field(diagnostics, row, 2)) + text_slice(diagnostics, row + 4, end + 1)
+        row = end + 1
+    }
+    let sorted = capture_sort(keyed)
+    diagnostics = ""
+    row = 0
+    while row < len(sorted) {
+        let end = capture_line_end(sorted, row)
+        diagnostics = diagnostics + "diag" + text_slice(sorted, text_find_from(sorted, "|", row + 2), end + 1)
+        row = end + 1
+    }
+    let mut diagnostic_json = ""
+    let mut count = 0
+    let mut first = ""
+    row = 0
+    while row < len(diagnostics) && count < 256 {
+        if len(diagnostic_json) > 0 { diagnostic_json = diagnostic_json + "," }
+        diagnostic_json = diagnostic_json + "{\"at\":\"" + hir_field(diagnostics, row, 2) + "\",\"byte\":" + hir_field(diagnostics, row, 3) +
+            ",\"code\":\"" + hir_field(diagnostics, row, 1) + "\"}"
+        if count == 0 { first = "error[" + hir_field(diagnostics, row, 1) + "]: scoped ownership rejects " + hir_field(diagnostics, row, 2) +
+            " at byte " + hir_field(diagnostics, row, 3) }
+        count = count + 1
+        row = capture_line_end(diagnostics, row) + 1
+    }
+    let mut status = "accepted"
+    if len(diagnostics) > 0 { status = "rejected" }
+    # Without capture facts a scope with no escape of its own is undecided.
+    if !derived && len(diagnostics) == 0 { status = "not-decided" }
+    let mut truncated = "false"
+    if row < len(diagnostics) { truncated = "true" }
+    let mut derivation = "complete"
+    if !derived { derivation = "lifecycle-only" }
+    let unique_names = ownership_unique(names)
+    let mut name_json = ""
+    row = 0
+    while row < len(unique_names) {
+        if len(name_json) > 0 { name_json = name_json + "," }
+        name_json = name_json + "{\"display\":" + hir_field(unique_names, row, 2) + ",\"id\":\"" + hir_field(unique_names, row, 1) + "\"}"
+        row = capture_line_end(unique_names, row) + 1
+    }
+    return "scope|" + status + "|" + first + "\n{\"after_scope_actions\":[" + after_json + "],\"decision\":{\"diagnostics\":[" + diagnostic_json + "],\"diagnostics_truncated\":" + truncated +
+        ",\"status\":\"" + status + "\"},\"derivation\":\"" + derivation + "\",\"lexical_index\":" + par +
+        ",\"model_input\":{\"schema\":\"kofun.scoped-parallelism-model/v1\",\"scope\":{\"exit_step\":" + to_text(exit) +
+        ",\"parent_actions\":[" + act_json + "],\"tasks\":[" + task_json + "]}},\"names\":[" + name_json + "]}"
+}
+
+fn check_scoped_ownership_file(input: Text, output: Text, logical_path: Text) -> Int {
+    if stage2_same_file(input, output) == 1 {
+        print("error[E2S35]: scoped ownership input and output must be distinct")
+        return 1
+    }
+    if !scoped_hir_logical_path(logical_path) {
+        print("error[E2S35]: scoped ownership logical path must be canonical relative UTF-8 (1..4096 bytes)")
+        return 1
+    }
+    let source = read_text(input)
+    if len(source) > 4294967295 { print("error[E2S35]: scoped ownership source span exceeds u32")
+        return 1 }
+    let tokens = lex(source)
+    if starts_with(tokens, "error[") { print(tokens)
+        return 1 }
+    let tree = parse_pattern_trees(source)
+    let pattern_error = pattern_first_error(tree)
+    if len(pattern_error) > 0 { print(pattern_error)
+        return 1 }
+    let hir = build_scope_hir_analysis_mode(source, false, true)
+    if starts_with(hir, "error[") { print(hir)
+        return 1 }
+    let facts = scoped_hir_observations(source, hir)
+    if starts_with(facts, "error[") { print(facts)
+        return 1 }
+    # Handle escape is decided before capture derivation, which cannot type
+    # an escaping handle; such a file reports lifecycle facts only.
+    let mut escapes = ""
+    let mut par = hir_record_start(facts, "par", 0)
+    while par >= 0 {
+        let token = ownership_token_escape(source, hir, facts, par)
+        if len(token) > 0 { print(token)
+            return 1 }
+        escapes = escapes + ownership_escapes(source, hir, facts, par)
+        par = hir_record_start(facts, "par", par + 1)
+    }
+    let derived = len(escapes) == 0
+    let mut accesses = ""
+    if derived {
+        let base_catalog = capture_catalog(source)
+        if starts_with(base_catalog, "error[") { print(base_catalog)
+            return 1 }
+        let catalog = base_catalog + "summary-mode|complete-v1\n"
+        let checked = capture_checked_source(source, hir, catalog, logical_path)
+        if starts_with(checked, "error[") { print(checked)
+            return 1 }
+        accesses = summary_expand(source, hir, catalog, facts, checked, logical_path)
+        if starts_with(accesses, "error[") { print(accesses)
+            return 1 }
+        let document = capture_render_checked(source, hir, facts, accesses, logical_path)
+        if starts_with(document, "error[") { print(document)
+            return 1 }
+    }
+    let mut scopes = ""
+    let mut status = "accepted"
+    let mut first = ""
+    par = hir_record_start(facts, "par", 0)
+    while par >= 0 {
+        let scope = ownership_scope(source, hir, facts, accesses, logical_path, par,
+            ownership_escapes(source, hir, facts, par), derived)
+        if starts_with(scope, "error[") { print(scope)
+            return 1 }
+        if hir_field(scope, 0, 1) == "rejected" {
+            status = "rejected"
+            if len(first) == 0 { first = hir_field(scope, 0, 2) }
+        }
+        if len(scopes) > 0 { scopes = scopes + "," }
+        scopes = scopes + capture_tail(scope)
+        par = hir_record_start(facts, "par", par + 1)
+    }
+    write_text(output, "{\"profile\":\"kofun.stage2-analysis/scoped-ownership/v1\",\"schema\":\"kofun-scoped-ownership/v1\",\"scopes\":[" +
+        scopes + "],\"status\":\"" + status + "\"}\n")
+    if status == "rejected" {
+        print(first)
+        return 1
+    }
+    return 0
+}
+
 # ---------------------------------------------------------------- Scoped identity framing
 # #1220: frame bytes are streamed into one SHA block. Raw IDs travel as hex
 # fragments internally, and are decoded to bytes here, never hashed as text.
@@ -27736,6 +28631,9 @@ fn main() -> Int {
         if !emit_complete_capture_hir_v2_file(arguments[1], arguments[2], arguments[3]) { return 1 }
         return 0
     }
+    if len(arguments) == 4 && arguments[0] == "--check-scoped-ownership" {
+        return check_scoped_ownership_file(arguments[1], arguments[2], arguments[3])
+    }
     if len(arguments) == 4 && arguments[0] == "--emit-scope-hir-v2" {
         if !emit_scope_hir_v2_file(arguments[1], arguments[2], arguments[3]) {
             return 1
@@ -27775,6 +28673,7 @@ fn main() -> Int {
             "       kofun-stage2 --emit-scope-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n" +
             "       kofun-stage2 --emit-capture-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n" +
             "       kofun-stage2 --emit-complete-capture-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n" +
+            "       kofun-stage2 --check-scoped-ownership INPUT.kofun OUTPUT.json LOGICAL-PATH\n" +
             "       kofun-stage2 --emit-place-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH TASK-INDEX START END\n" +
             "       kofun-stage2 --emit-selfhost-hir INPUT.kofun OUTPUT.hir SOURCE-SHA256\n" +
             "       kofun-stage2 --lower-selfhost-c11 INPUT.hir OUTPUT.c\n" +

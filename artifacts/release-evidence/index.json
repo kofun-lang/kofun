@@ -6,7 +6,7 @@
     "VERSION": "c36ad34b12a7fbb0783b4749c10d1f1cee17cbe3f2c7bfc2efe0ec3b909529d2",
     "release/claims.json": "dfb7822cb44fedabd0a7f953164d053f5e903f0cee7dfa92fafa24191a81d95f",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
-    "bootstrap/manifest.json": "d9f8516c17d9d0d5ed97686d57a39c4c529d78f9e8766abb6975b8b28851eb53"
+    "bootstrap/manifest.json": "3f945d7c25a09833aed29dcb442cdc96d8f95eeba3cba8ca60e67ef43a9366d9"
   },
   "states": {
     "checkpoint": 42,
@@ -818,7 +818,7 @@
   ],
   "evidence_digests": {
     ".github/workflows/native-hosts.yml": "ce5a6b7cc1f5034a1eb97e2fdac7e4db2a540c78086ad91a0da1cc95d8627153",
-    "Taskfile.yml": "85f4dfba3488f95defd728b23471042df878c2f7e3d4023b3f6261e40770acbc",
+    "Taskfile.yml": "01e688fb62a6c2cc180f9fabb3943b6ea4870bcd467ddf0546f9d212d8b88043",
     "bootstrap/native/README.md": "6c470b203c3dbc327c6b601ab958c754e6f82be78c255d442307ad0c7691bc21",
     "bootstrap/native/check-macho64-signed.sh": "6fc51ddfec599ea85b8b06a5c16d68b6fdc994621cdb8ca4267e20be38141393",
     "bootstrap/native/check-macho64.sh": "d6bd52e3f6756aa607a2dc44a0117defeaaa55e64fa3f4221986da6406251e15",
@@ -842,7 +842,7 @@
     "docs/GETTING_STARTED.md": "cbbe5d0df1a008c9ca2194792e5619527d8701bedf7fd6b6b777e27169008f0c",
     "docs/LAW_SYSTEM.md": "b974f0ad762bec778ee76afa5d0a2176423ac96a3a583739eee55dcb8dca5043",
     "docs/LINGUIST_RECOGNITION.md": "279f9afa7157c90e41d656974c2f5020f8b6d25acbbd389ee760efbb2d6d6166",
-    "docs/MEMORY_MODEL.md": "74e300202f8274f6e9bbae0102cfdd22ad36e6fecc11b6e9515cc1d7549b0176",
+    "docs/MEMORY_MODEL.md": "1d11b076de5e4003cb053a5f08de87635f27ea0967d4d933aa8182f0f575d8ca",
     "docs/MVP_IMPLEMENTED.md": "301ff9e3ad0ab75e0f6ecbddde82291cfa9cc85892c8e0db3f764ffa239fb591",
     "docs/NATIVE_BACKEND.md": "cc5b3680a3e250a4bcaa31170d40f5c7cf3fa3ecc74a489613a9a61bfeafd51f",
     "docs/ROADMAP.md": "a190e6d552d45ee14789c7d56b2469960a8d8c233b315fa10d15d03244b53ed6",

@@ -364,7 +364,9 @@ checked by `task scoped-parallelism` and proposed as
 [`RFC-0003`](../rfcs/0003-scoped-parallelism.md) with review closing
 2026-08-16. Where this section and that contract disagree, the contract wins.
 Passing its gate is evidence about the contract, not about a compiler:
-production parsing, checking, scheduling, and lowering remain unwritten.
+production parsing, scheduling, and lowering remain unwritten. The production
+ownership check exists as an analysis entry only, compared with the contract's
+model by `task concurrency-ownership` (#1162).
 
 ### Data-race freedom is not race-condition freedom
 
