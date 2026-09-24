@@ -42,6 +42,10 @@ seed, can surface an input the corpus had never explored. Those are findings.
 
 ## Findings
 
-None recorded yet. The scheduled lane lands with this file; a run that has
-never failed has nothing to declare, and saying so explicitly is the
-difference between "no findings" and "no register".
+| Date | Generator | Base seed | Generator seed | Summary | Resolution |
+| --- | --- | --- | --- | --- | --- |
+| 2026-09-24 | `tests/fuzz/semantic_differential.sh` | 44 | 1310084867 | `adapter timed out: c11-stage1` on case 0: from an empty `build/`, `bin/kofun build --backend c` built the Stage 2 compiler inside the runner's 10s adapter timeout, and 38,037 lines of `compiler.c` no longer compile inside it on a hosted runner. All 48 programs agree once the compiler exists ([#1656](https://github.com/kofun-lang/kofun/issues/1656)) | fixed in [#1657](https://github.com/kofun-lang/kofun/pull/1657) |
+
+The first row is a harness defect rather than a miscompile, and it is recorded
+here anyway: the lane exists to report what it finds, and a finding filed only
+where it was fixed would leave this register saying the lane had never failed.

@@ -86,6 +86,19 @@ status, stdout, and stderr exactly. Signals, adapter crashes, timeouts,
 malformed capabilities/results, omissions, and transport output are protocol
 failures rather than semantic observations or skips.
 
+## Toolchain preparation is not an observation
+
+The runner's timeout bounds one adapter invocation on one generated program.
+Building a compiler is not part of that observation, so a generator prepares
+every toolchain it can before its first case: `semantic_differential.sh`
+builds the Stage 2 compiler with `kofun_stage2_build` and exports it as
+`KOFUN_STAGE2_COMPILER`, in both generation and `--replay` mode, unless the
+caller already exported one. Without that, the first case on an empty
+`build/` timed the compiler build (#1656).
+`tests/fuzz/semantic_cold_toolchain_test.sh` holds the property without
+depending on machine speed: its CC stand-in refuses a Stage 2 compiler build
+wherever the runner's adapter environment is set.
+
 ## Determinism and replay
 
 Each case metadata file records protocol, family, generator version, original
