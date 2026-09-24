@@ -1,0 +1,947 @@
+{
+ "schema": "kofun.scoped-ownership-cases/v1",
+ "logical_path": "src/ownership.kofun",
+ "cases": [
+  {
+   "name": "shared-read",
+   "fixture": "positive/shared-read.json",
+   "source": "fn total(read xs: List[Int]) -> Int { return 0 }\nfn main() -> Int {\n let items: List[Int] = [1, 2, 3, 4]\n par |scope| {\n  let left = scope.spawn(fn() => total(items))\n  let right = scope.spawn(fn() => total(items))\n  left.join()\n  right.join()\n }\n return 0\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "left",
+      "right"
+     ],
+     "order": [
+      "left.spawn",
+      "right.spawn",
+      "left.join",
+      "right.join"
+     ],
+     "captures": {
+      "left": [
+       "read items"
+      ],
+      "right": [
+       "read items"
+      ]
+     },
+     "status": "accepted",
+     "codes": []
+    }
+   ]
+  },
+  {
+   "name": "distinct-fields",
+   "fixture": "positive/distinct-fields.json",
+   "source": "type Pair = { left: Int, right: Int }\nfn bump(edit value: Int) { value = value + 1 }\nfn main() -> Int {\n let pair: Pair = Pair(left: 1, right: 2)\n par |scope| {\n  scope.spawn(fn() { bump(pair.left) })\n  scope.spawn(fn() { bump(pair.right) })\n }\n return 0\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "left",
+      "right"
+     ],
+     "order": [
+      "left.spawn",
+      "right.spawn"
+     ],
+     "captures": {
+      "left": [
+       "edit pair.left"
+      ],
+      "right": [
+       "edit pair.right"
+      ]
+     },
+     "status": "accepted",
+     "codes": []
+    }
+   ]
+  },
+  {
+   "name": "disjoint-slices",
+   "fixture": "positive/disjoint-slices.json",
+   "source": "fn fill(edit xs: List[Int]) { }\nfn main() -> Int {\n let mut items: List[Int] = [1, 2, 3, 4, 5, 6, 7, 8]\n par |scope| {\n  scope.spawn(fn() { fill(items[0..4]) })\n  scope.spawn(fn() { fill(items[4..8]) })\n }\n return 0\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "lower",
+      "upper"
+     ],
+     "order": [
+      "lower.spawn",
+      "upper.spawn"
+     ],
+     "captures": {
+      "lower": [
+       "edit items[0..4]"
+      ],
+      "upper": [
+       "edit items[4..8]"
+      ]
+     },
+     "status": "accepted",
+     "codes": []
+    }
+   ]
+  },
+  {
+   "name": "result-join",
+   "fixture": "positive/result-join.json",
+   "source": "fn bump(edit value: Int) { value = value + 1 }\nfn main() -> Int {\n let mut state: Int = 0\n par |scope| {\n  let compute = scope.spawn(fn() { bump(state) })\n  compute.join()\n  state = 42\n }\n return state\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "compute"
+     ],
+     "order": [
+      "compute.spawn",
+      "compute.join",
+      "parent"
+     ],
+     "captures": {
+      "compute": [
+       "edit state"
+      ]
+     },
+     "parent": [
+      "edit state"
+     ],
+     "status": "accepted",
+     "codes": []
+    }
+   ]
+  },
+  {
+   "name": "scope-exit-unused",
+   "fixture": "positive/scope-exit-unused.json",
+   "source": "fn main() -> Int {\n let input: Int = 5\n par |scope| {\n  let unused = scope.spawn(fn() => input)\n }\n return 0\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "unused"
+     ],
+     "order": [
+      "unused.spawn"
+     ],
+     "captures": {
+      "unused": [
+       "read input"
+      ]
+     },
+     "status": "accepted",
+     "codes": []
+    }
+   ]
+  },
+  {
+   "name": "panic-drain",
+   "fixture": "positive/panic-drain.json",
+   "source": "fn main() -> Int {\n par |scope| {\n  scope.spawn(fn() => 1)\n  scope.spawn(fn() => 2)\n }\n return 0\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "first",
+      "sibling"
+     ],
+     "order": [
+      "first.spawn",
+      "sibling.spawn"
+     ],
+     "captures": {
+      "first": [],
+      "sibling": []
+     },
+     "status": "accepted",
+     "codes": []
+    }
+   ]
+  },
+  {
+   "name": "cancellation-drain",
+   "fixture": "positive/cancellation-drain.json",
+   "source": "fn main() -> Int {\n par |scope| {\n  scope.spawn(fn() => 1)\n  scope.spawn(fn() => 2)\n }\n return 0\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "observed",
+      "finished"
+     ],
+     "order": [
+      "observed.spawn",
+      "finished.spawn"
+     ],
+     "captures": {
+      "observed": [],
+      "finished": []
+     },
+     "status": "accepted",
+     "codes": []
+    }
+   ]
+  },
+  {
+   "name": "panic-over-cancellation",
+   "fixture": "positive/panic-over-cancellation.json",
+   "source": "fn main() -> Int {\n par |scope| {\n  scope.spawn(fn() => 1)\n  scope.spawn(fn() => 2)\n  scope.spawn(fn() => 3)\n }\n return 0\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "earlier",
+      "panicked",
+      "cancelled"
+     ],
+     "order": [
+      "earlier.spawn",
+      "panicked.spawn",
+      "cancelled.spawn"
+     ],
+     "captures": {
+      "earlier": [],
+      "panicked": [],
+      "cancelled": []
+     },
+     "status": "accepted",
+     "codes": []
+    }
+   ]
+  },
+  {
+   "name": "read-edit",
+   "fixture": "negative/read-edit.json",
+   "source": "fn bump(edit value: Int) { value = value + 1 }\nfn main() -> Int {\n let mut value: Int = 0\n par |scope| {\n  scope.spawn(fn() => value)\n  scope.spawn(fn() { bump(value) })\n }\n return value\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "reader",
+      "editor"
+     ],
+     "order": [
+      "reader.spawn",
+      "editor.spawn"
+     ],
+     "captures": {
+      "reader": [
+       "read value"
+      ],
+      "editor": [
+       "edit value"
+      ]
+     },
+     "status": "rejected",
+     "codes": [
+      "SPV1-CAPTURE-CONFLICT"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "edit-edit",
+   "fixture": "negative/edit-edit.json",
+   "source": "fn bump(edit value: Int) { value = value + 1 }\nfn main() -> Int {\n let mut value: Int = 0\n par |scope| {\n  scope.spawn(fn() { bump(value) })\n  scope.spawn(fn() { bump(value) })\n }\n return value\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "one",
+      "two"
+     ],
+     "order": [
+      "one.spawn",
+      "two.spawn"
+     ],
+     "captures": {
+      "one": [
+       "edit value"
+      ],
+      "two": [
+       "edit value"
+      ]
+     },
+     "status": "rejected",
+     "codes": [
+      "SPV1-CAPTURE-CONFLICT"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "concurrent-take-read",
+   "fixture": "negative/concurrent-take-read.json",
+   "source": "type Resource = { value: Int }\nfn consume(take resource: Resource) -> Int { return 1 }\nfn look(read resource: Resource) -> Int { return 2 }\nfn main() -> Int {\n let resource: Resource = Resource(value: 1)\n par |scope| {\n  let owner = scope.spawn(fn() => consume(resource))\n  let reader = scope.spawn(fn() => look(resource))\n  reader.join()\n  owner.join()\n }\n return 0\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "owner",
+      "reader"
+     ],
+     "order": [
+      "owner.spawn",
+      "reader.spawn",
+      "reader.join",
+      "owner.join"
+     ],
+     "captures": {
+      "owner": [
+       "take resource"
+      ],
+      "reader": [
+       "read resource"
+      ]
+     },
+     "status": "rejected",
+     "codes": [
+      "SPV1-CAPTURE-CONFLICT"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "overlapping-slices",
+   "fixture": "negative/overlapping-slices.json",
+   "source": "fn fill(edit xs: List[Int]) { }\nfn main() -> Int {\n let mut items: List[Int] = [1, 2, 3, 4, 5, 6, 7, 8]\n par |scope| {\n  scope.spawn(fn() { fill(items[0..5]) })\n  scope.spawn(fn() { fill(items[4..8]) })\n }\n return 0\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "lower",
+      "upper"
+     ],
+     "order": [
+      "lower.spawn",
+      "upper.spawn"
+     ],
+     "captures": {
+      "lower": [
+       "edit items[0..5]"
+      ],
+      "upper": [
+       "edit items[4..8]"
+      ]
+     },
+     "status": "rejected",
+     "codes": [
+      "SPV1-CAPTURE-CONFLICT"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "unknown-slices",
+   "fixture": "negative/unknown-slices.json",
+   "source": "fn fill(edit xs: List[Int]) { }\nfn main() -> Int {\n let mut items: List[Int] = [1, 2, 3, 4, 5, 6, 7, 8]\n let lo: Int = 0\n let split: Int = 4\n let hi: Int = 8\n par |scope| {\n  scope.spawn(fn() { fill(items[lo..split]) })\n  scope.spawn(fn() { fill(items[split..hi]) })\n }\n return 0\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "lower",
+      "upper"
+     ],
+     "order": [
+      "lower.spawn",
+      "upper.spawn"
+     ],
+     "captures": {
+      "lower": [
+       "edit items[lo..split]",
+       "read lo",
+       "read split"
+      ],
+      "upper": [
+       "edit items[split..hi]",
+       "read hi",
+       "read split"
+      ]
+     },
+     "status": "rejected",
+     "codes": [
+      "SPV1-OVERLAP-UNKNOWN"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "parent-edit-live",
+   "fixture": "negative/parent-edit-live.json",
+   "source": "fn main() -> Int {\n let mut value: Int = 0\n par |scope| {\n  let reader = scope.spawn(fn() => value)\n  value = 1\n  reader.join()\n }\n return value\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "reader"
+     ],
+     "order": [
+      "reader.spawn",
+      "parent",
+      "reader.join"
+     ],
+     "captures": {
+      "reader": [
+       "read value"
+      ]
+     },
+     "parent": [
+      "edit value"
+     ],
+     "status": "rejected",
+     "codes": [
+      "SPV1-PARENT-CONFLICT"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "take-parent-use",
+   "fixture": "negative/take-parent-use.json",
+   "source": "type Resource = { value: Int }\nfn consume(take resource: Resource) -> Int { return 1 }\nfn look(read resource: Resource) -> Int { return 2 }\nfn main() -> Int {\n let resource: Resource = Resource(value: 1)\n par |scope| {\n  let owner = scope.spawn(fn() => consume(resource))\n  owner.join()\n  look(resource)\n }\n return 0\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "owner"
+     ],
+     "order": [
+      "owner.spawn",
+      "owner.join",
+      "parent"
+     ],
+     "captures": {
+      "owner": [
+       "take resource"
+      ]
+     },
+     "parent": [
+      "read resource"
+     ],
+     "status": "rejected",
+     "codes": [
+      "SPV1-USE-AFTER-TAKE"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "sequential-reuse-after-take",
+   "fixture": "negative/sequential-reuse-after-take.json",
+   "source": "type Resource = { value: Int }\nfn consume(take resource: Resource) -> Int { return 1 }\nfn look(read resource: Resource) -> Int { return 2 }\nfn main() -> Int {\n let resource: Resource = Resource(value: 1)\n par |scope| {\n  let owner = scope.spawn(fn() => consume(resource))\n  owner.join()\n  let reuse = scope.spawn(fn() => look(resource))\n  reuse.join()\n }\n return 0\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "owner",
+      "reuse"
+     ],
+     "order": [
+      "owner.spawn",
+      "owner.join",
+      "reuse.spawn",
+      "reuse.join"
+     ],
+     "captures": {
+      "owner": [
+       "take resource"
+      ],
+      "reuse": [
+       "read resource"
+      ]
+     },
+     "status": "rejected",
+     "codes": [
+      "SPV1-USE-AFTER-TAKE"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "sequential-unknown-after-take",
+   "fixture": "negative/sequential-unknown-after-take.json",
+   "source": "fn total(read xs: List[Int]) -> Int { return 0 }\nfn main(callback: Int -> Int) -> Int {\n let items: List[Int] = [1, 2, 3, 4]\n let split: Int = 2\n let hi: Int = 4\n par |scope| {\n  let owner = scope.spawn(fn() => callback(1))\n  owner.join()\n  let reuse = scope.spawn(fn() => total(items[split..hi]))\n  reuse.join()\n }\n return 0\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "owner",
+      "reuse"
+     ],
+     "order": [
+      "owner.spawn",
+      "owner.join",
+      "reuse.spawn",
+      "reuse.join"
+     ],
+     "captures": {
+      "owner": [
+       "read callback",
+       "take ?"
+      ],
+      "reuse": [
+       "read hi",
+       "read items[split..hi]",
+       "read split"
+      ]
+     },
+     "status": "rejected",
+     "codes": [
+      "SPV1-OVERLAP-UNKNOWN"
+     ]
+    }
+   ],
+   "fixture_captures": "unknown-target"
+  },
+  {
+   "name": "handle-return",
+   "fixture": "negative/handle-return.json",
+   "source": "fn main() -> Int {\n par |scope| {\n  let escaping = scope.spawn(fn() => 1)\n  return escaping\n }\n return 0\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "escaping"
+     ],
+     "order": [
+      "escaping.spawn"
+     ],
+     "captures": {
+      "escaping": []
+     },
+     "escapes": {
+      "escaping": "return"
+     },
+     "status": "rejected",
+     "codes": [
+      "SPV1-HANDLE-ESCAPE"
+     ]
+    }
+   ],
+   "derivation": "lifecycle-only"
+  },
+  {
+   "name": "unknown-read-read",
+   "source": "fn main() -> Int {\n let items: List[Int] = [1, 2, 3, 4]\n par |scope| {\n  scope.spawn(fn() => items[0])\n  scope.spawn(fn() => items[1])\n }\n return 0\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "first",
+      "second"
+     ],
+     "order": [
+      "first.spawn",
+      "second.spawn"
+     ],
+     "captures": {
+      "first": [
+       "read ?"
+      ],
+      "second": [
+       "read ?"
+      ]
+     },
+     "status": "accepted",
+     "codes": []
+    }
+   ]
+  },
+  {
+   "name": "unknown-read-edit",
+   "source": "fn bump(edit value: Int) { value = value + 1 }\nfn main() -> Int {\n let mut items: List[Int] = [1, 2, 3, 4]\n par |scope| {\n  scope.spawn(fn() => items[0])\n  scope.spawn(fn() { bump(items[1]) })\n }\n return 0\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "reader",
+      "editor"
+     ],
+     "order": [
+      "reader.spawn",
+      "editor.spawn"
+     ],
+     "captures": {
+      "reader": [
+       "read ?"
+      ],
+      "editor": [
+       "edit ?",
+       "edit ?"
+      ]
+     },
+     "status": "rejected",
+     "codes": [
+      "SPV1-OVERLAP-UNKNOWN"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "take-result-new-place",
+   "source": "type Resource = { value: Int }\nfn pass(take resource: Resource) -> Resource { return resource }\nfn main() -> Int {\n let resource: Resource = Resource(value: 1)\n let mut seen: Int = 0\n par |scope| {\n  let owner = scope.spawn(fn() => pass(resource))\n  let back = owner.join()\n  seen = back.value\n }\n return seen\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "owner"
+     ],
+     "order": [
+      "owner.spawn",
+      "owner.join",
+      "parent",
+      "parent"
+     ],
+     "captures": {
+      "owner": [
+       "take resource"
+      ]
+     },
+     "parent": [
+      "edit seen",
+      "read back.value"
+     ],
+     "status": "accepted",
+     "codes": []
+    }
+   ]
+  },
+  {
+   "name": "take-original-after-result",
+   "source": "type Resource = { value: Int }\nfn pass(take resource: Resource) -> Resource { return resource }\nfn main() -> Int {\n let resource: Resource = Resource(value: 1)\n let mut seen: Int = 0\n par |scope| {\n  let owner = scope.spawn(fn() => pass(resource))\n  let back = owner.join()\n  seen = resource.value\n }\n return seen\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "owner"
+     ],
+     "order": [
+      "owner.spawn",
+      "owner.join",
+      "parent",
+      "parent"
+     ],
+     "captures": {
+      "owner": [
+       "take resource"
+      ]
+     },
+     "parent": [
+      "edit seen",
+      "read resource.value"
+     ],
+     "status": "rejected",
+     "codes": [
+      "SPV1-USE-AFTER-TAKE"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "take-after-scope",
+   "source": "type Resource = { value: Int }\nfn consume(take resource: Resource) -> Int { return 1 }\nfn look(read resource: Resource) -> Int { return 2 }\nfn main() -> Int {\n let resource: Resource = Resource(value: 1)\n par |scope| {\n  scope.spawn(fn() => consume(resource))\n }\n return look(resource)\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "owner"
+     ],
+     "order": [
+      "owner.spawn"
+     ],
+     "captures": {
+      "owner": [
+       "take resource"
+      ]
+     },
+     "after": [
+      "read resource"
+     ],
+     "status": "rejected",
+     "codes": [
+      "SPV1-USE-AFTER-TAKE"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "take-then-later-scope",
+   "source": "type Resource = { value: Int }\nfn consume(take resource: Resource) -> Int { return 1 }\nfn look(read resource: Resource) -> Int { return 2 }\nfn main() -> Int {\n let resource: Resource = Resource(value: 1)\n par |scope| {\n  scope.spawn(fn() => consume(resource))\n }\n par |again| {\n  again.spawn(fn() => look(resource))\n }\n return 0\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "owner"
+     ],
+     "order": [
+      "owner.spawn"
+     ],
+     "captures": {
+      "owner": [
+       "take resource"
+      ]
+     },
+     "after": [
+      "read resource"
+     ],
+     "status": "rejected",
+     "codes": [
+      "SPV1-USE-AFTER-TAKE"
+     ]
+    },
+    {
+     "tasks": [
+      "reader"
+     ],
+     "order": [
+      "reader.spawn"
+     ],
+     "captures": {
+      "reader": [
+       "read resource"
+      ]
+     },
+     "status": "accepted",
+     "codes": []
+    }
+   ]
+  },
+  {
+   "name": "empty-slice",
+   "source": "fn fill(edit xs: List[Int]) { }\nfn main() -> Int {\n let mut items: List[Int] = [1, 2, 3, 4]\n par |scope| {\n  scope.spawn(fn() { fill(items[0..4]) })\n  scope.spawn(fn() { fill(items[2..2]) })\n }\n return 0\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "whole",
+      "empty"
+     ],
+     "order": [
+      "whole.spawn",
+      "empty.spawn"
+     ],
+     "captures": {
+      "whole": [
+       "edit items[0..4]"
+      ],
+      "empty": [
+       "edit items[2..2]"
+      ]
+     },
+     "status": "accepted",
+     "codes": []
+    }
+   ]
+  },
+  {
+   "name": "extreme-constant-slices",
+   "source": "fn fill(edit xs: List[Int]) { }\nfn main() -> Int {\n let mut items: List[Int] = [1, 2, 3, 4]\n par |scope| {\n  scope.spawn(fn() { fill(items[-9223372036854775808..0]) })\n  scope.spawn(fn() { fill(items[0..9223372036854775807]) })\n }\n return 0\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "lower",
+      "upper"
+     ],
+     "order": [
+      "lower.spawn",
+      "upper.spawn"
+     ],
+     "captures": {
+      "lower": [
+       "edit items[-9223372036854775808..0]"
+      ],
+      "upper": [
+       "edit items[0..9223372036854775807]"
+      ]
+     },
+     "status": "accepted",
+     "codes": []
+    }
+   ]
+  },
+  {
+   "name": "whole-against-field",
+   "source": "type Pair = { left: Int, right: Int }\nfn bump(edit value: Int) { value = value + 1 }\nfn look(read pair: Pair) -> Int { return 0 }\nfn main() -> Int {\n let pair: Pair = Pair(left: 1, right: 2)\n par |scope| {\n  scope.spawn(fn() { bump(pair.left) })\n  scope.spawn(fn() => look(pair))\n }\n return 0\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "editor",
+      "reader"
+     ],
+     "order": [
+      "editor.spawn",
+      "reader.spawn"
+     ],
+     "captures": {
+      "editor": [
+       "edit pair.left"
+      ],
+      "reader": [
+       "read pair"
+      ]
+     },
+     "status": "rejected",
+     "codes": [
+      "SPV1-CAPTURE-CONFLICT"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "parent-read-with-task-read",
+   "source": "fn main() -> Int {\n let mut value: Int = 0\n let mut seen: Int = 0\n value = 3\n par |scope| {\n  let reader = scope.spawn(fn() => value)\n  seen = value\n  reader.join()\n }\n return seen\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "reader"
+     ],
+     "order": [
+      "reader.spawn",
+      "parent",
+      "parent",
+      "reader.join"
+     ],
+     "captures": {
+      "reader": [
+       "read value"
+      ]
+     },
+     "parent": [
+      "edit seen",
+      "read value"
+     ],
+     "status": "accepted",
+     "codes": []
+    }
+   ]
+  },
+  {
+   "name": "conditional-join-stays-live",
+   "source": "fn bump(edit value: Int) { value = value + 1 }\nfn main() -> Int {\n let mut value: Int = 0\n let ready: Bool = true\n par |scope| {\n  let worker = scope.spawn(fn() { bump(value) })\n  if ready { worker.join() }\n  value = 3\n }\n return value\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "worker"
+     ],
+     "order": [
+      "worker.spawn",
+      "parent",
+      "parent"
+     ],
+     "captures": {
+      "worker": [
+       "edit value"
+      ]
+     },
+     "parent": [
+      "read ready",
+      "edit value"
+     ],
+     "status": "rejected",
+     "codes": [
+      "SPV1-PARENT-CONFLICT"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "escape-kinds",
+   "source": "fn keep(read value: Int) -> Int { return value }\nfn main() -> Int {\n par |scope| {\n  let passed = scope.spawn(fn() => 1)\n  let stored = scope.spawn(fn() => 2)\n  let captured = scope.spawn(fn() => 3)\n  keep(passed)\n  let alias = stored\n  scope.spawn(fn() => captured.join())\n }\n return 0\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "passed",
+      "stored",
+      "captured",
+      "joiner"
+     ],
+     "order": [
+      "passed.spawn",
+      "stored.spawn",
+      "captured.spawn",
+      "joiner.spawn"
+     ],
+     "captures": {
+      "passed": [],
+      "stored": [],
+      "captured": [],
+      "joiner": []
+     },
+     "escapes": {
+      "passed": "pass",
+      "stored": "store",
+      "captured": "capture"
+     },
+     "status": "rejected",
+     "codes": [
+      "SPV1-HANDLE-ESCAPE"
+     ]
+    }
+   ],
+   "derivation": "lifecycle-only"
+  },
+  {
+   "name": "short-circuit-join-stays-live",
+   "source": "fn step(edit value: Int) -> Int {\n value = value + 1\n return 1\n}\nfn main() -> Int {\n let mut value: Int = 0\n let ready: Bool = true\n let mut done: Bool = false\n par |scope| {\n  let worker = scope.spawn(fn() => step(value))\n  done = ready && worker.join() == 1\n  value = 3\n }\n return value\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "worker"
+     ],
+     "order": [
+      "worker.spawn",
+      "parent",
+      "parent",
+      "parent"
+     ],
+     "captures": {
+      "worker": [
+       "edit value"
+      ]
+     },
+     "parent": [
+      "edit done",
+      "read ready",
+      "edit value"
+     ],
+     "status": "rejected",
+     "codes": [
+      "SPV1-PARENT-CONFLICT"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "join-inside-expression",
+   "source": "fn step(edit value: Int) -> Int {\n value = value + 1\n return 1\n}\nfn main() -> Int {\n let mut value: Int = 0\n let mut done: Int = 0\n par |scope| {\n  let worker = scope.spawn(fn() => step(value))\n  done = worker.join() + 1\n  value = 3\n }\n return value\n}\n",
+   "scopes": [
+    {
+     "tasks": [
+      "worker"
+     ],
+     "order": [
+      "worker.spawn",
+      "parent",
+      "worker.join",
+      "parent"
+     ],
+     "captures": {
+      "worker": [
+       "edit value"
+      ]
+     },
+     "parent": [
+      "edit done",
+      "edit value"
+     ],
+     "status": "accepted",
+     "codes": []
+    }
+   ]
+  },
+  {
+   "name": "token-stored",
+   "source": "fn main() -> Int {\n par |scope| {\n  let other = scope\n }\n return 0\n}\n",
+   "refusal": "SPV1-HANDLE-ESCAPE",
+   "reason": "the scope token is used only to spawn"
+  },
+  {
+   "name": "token-captured",
+   "source": "fn main() -> Int {\n par |scope| {\n  scope.spawn(fn() { scope.spawn(fn() => 1) })\n }\n return 0\n}\n",
+   "refusal": "SPV1-HANDLE-ESCAPE",
+   "reason": "a task cannot capture its scope token"
+  },
+  {
+   "name": "loop-retakes-enclosing",
+   "source": "type Resource = { value: Int }\nfn consume(take resource: Resource) -> Int { return 1 }\nfn look(read resource: Resource) -> Int { return 2 }\nfn main() -> Int {\n let resource: Resource = Resource(value: 1)\n let mut round: Int = 0\n while round < 2 {\n  par |scope| {\n   scope.spawn(fn() => consume(resource))\n  }\n  round = round + 1\n }\n return 0\n}\n",
+   "refusal": "E2S123",
+   "reason": "a par in a loop runs its taking task again"
+  },
+  {
+   "name": "inverted-slice",
+   "source": "fn fill(edit xs: List[Int]) { }\nfn main() -> Int {\n let mut items: List[Int] = [1, 2, 3, 4]\n par |scope| {\n  scope.spawn(fn() { fill(items[3..1]) })\n }\n return 0\n}\n",
+   "refusal": "E2S154",
+   "reason": "a known start above its end is malformed, not empty"
+  }
+ ]
+}

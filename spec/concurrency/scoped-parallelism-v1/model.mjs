@@ -76,8 +76,14 @@ function bound(value, path) {
   return text(value, path, { identifier: true });
 }
 
+// An explicit unknown place (scoped-captures-v1 §5) names no base and no
+// projections, so no rule in §6 can prove it disjoint from anything.
 function normalizePlace(value, path) {
   const source = object(value, path);
+  if (Object.hasOwn(source, "unknown")) {
+    exactKeys(source, new Set(["unknown"]), path);
+    return Object.freeze({ unknown: text(source.unknown, `${path}.unknown`, { identifier: true }) });
+  }
   exactKeys(source, new Set(["base", "path"]), path);
   const projections = array(source.path ?? [], `${path}.path`, LIMITS.projectionDepth)
     .map((projection, index) => {
@@ -226,6 +232,9 @@ function taskOrder(left, right) {
 }
 
 function projectionRelation(left, right) {
+  if (Object.hasOwn(left, "unknown") || Object.hasOwn(right, "unknown")) {
+    return left.unknown === right.unknown ? "overlap" : "unknown";
+  }
   if (left.base !== right.base) return "disjoint";
   const length = Math.min(left.path.length, right.path.length);
   for (let index = 0; index < length; index += 1) {
@@ -263,6 +272,7 @@ function modesConflict(left, right) {
 }
 
 function placeText(place) {
+  if (Object.hasOwn(place, "unknown")) return `?${place.unknown}`;
   let result = place.base;
   for (const projection of place.path) {
     if (projection.kind === "field") result += `.${projection.name}`;

@@ -34686,6 +34686,7 @@ static const char * capture_expression(CheckedPlaceArena *a, const char * v_sour
 static int64_t capture_end(CheckedPlaceArena *a, const char * v_source, int64_t v_start, int64_t v_limit);
 static const char * capture_flow(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_facts, const char * v_initial, int64_t v_loop_start);
 static const char * capture_lifecycle_expression(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_catalog, int64_t v_start, int64_t v_end, const char * v_path, int64_t v_depth);
+static const char * capture_join_type(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_catalog, int64_t v_receiver, const char * v_path, int64_t v_depth);
 static const char * capture_block(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_catalog, int64_t v_start, int64_t v_end, const char * v_path, const char * v_expected, const char * v_initial, int64_t v_loop_start, int64_t v_depth);
 static const char * capture_checked_source(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_catalog, const char * v_path);
 static int64_t capture_record_start(CheckedPlaceArena *a, const char * v_rows, const char * v_kind, int64_t v_start);
@@ -35290,7 +35291,12 @@ static const char * capture_binding_type(CheckedPlaceArena *a, const char * v_so
     if (v_end <= v_start) {
         return capture_return_text(a, mark, capture_error(a, "E2S12", "malformed initializer", v_start));
     }
-    const char * v_checked = capture_expression(a, v_source, v_hir, v_catalog, v_start, v_end, "", "read", (v_depth + 1));
+    const char * v_checked = "";
+    if (scoped_parallel_member(v_source, v_start) >= 0) {
+        v_checked = capture_lifecycle_expression(a, v_source, v_hir, v_catalog, v_start, v_end, "", (v_depth + 1));
+    } else {
+        v_checked = capture_expression(a, v_source, v_hir, v_catalog, v_start, v_end, "", "read", (v_depth + 1));
+    }
     if (strncmp(v_checked, "error[", strlen("error[")) == 0) {
         return capture_return_text(a, mark, v_checked);
     }
@@ -35834,6 +35840,11 @@ static const char * capture_expression(CheckedPlaceArena *a, const char * v_sour
     if (((strcmp(token_kind(v_source, v_first), "identifier") == 0) && (strcmp(cp_keep(a, token_copy(v_source, v_next)), "(") == 0)) && (balanced_end(v_source, v_next, "(", ")") == v_last)) {
         return capture_return_text(a, mark, capture_call(a, v_source, v_hir, v_catalog, v_first, v_next, v_last, v_path, (v_depth + 1)));
     }
+    int64_t v_lifecycle = scoped_parallel_member(v_source, v_first);
+    if (((v_lifecycle >= 0) && (strcmp(cp_keep(a, token_copy(v_source, v_lifecycle)), "join") == 0)) &&
+        (balanced_end(v_source, skip_trivia(v_source, token_end(v_source, v_lifecycle)), "(", ")") == v_last)) {
+        return capture_return_text(a, mark, capture_join_type(a, v_source, v_hir, v_catalog, v_first, v_path, (v_depth + 1)));
+    }
     if ((strcmp(v_token, "[") == 0) && (balanced_end(v_source, v_first, "[", "]") == v_last)) {
         int64_t v_item = skip_trivia(v_source, token_end(v_source, v_first));
         const char * v_element = "";
@@ -36021,12 +36032,46 @@ static const char * capture_lifecycle_expression(CheckedPlaceArena *a, const cha
         if (strncmp(v_checked, "error[", strlen("error[")) == 0) {
             return capture_return_text(a, mark, v_checked);
         }
-        return capture_return_text(a, mark, capture_value(a, "TaskHandle", capture_latent(a, capture_tail(a, v_checked))));
+        const char * v_type = "TaskHandle";
+        if (scoped_hir_chained_join(v_source, balanced_end(v_source, v_open, "(", ")")) >= 0) {
+            v_type = cp_field(a, v_checked, 0, 1);
+        }
+        return capture_return_text(a, mark, capture_value(a, v_type, capture_latent(a, capture_tail(a, v_checked))));
     }
     if ((strcmp(cp_keep(a, token_copy(v_source, v_dot)), ".") == 0) && (strcmp(cp_keep(a, token_copy(v_source, v_member)), "join") == 0)) {
-        return capture_return_text(a, mark, "value|Void\n");
+        return capture_return_text(a, mark, capture_join_type(a, v_source, v_hir, v_catalog, v_start, v_path, (v_depth + 1)));
     }
     return capture_return_text(a, mark, capture_expression(a, v_source, v_hir, v_catalog, v_start, v_end, v_path, "read", (v_depth + 1)));
+}
+
+static const char * capture_join_type(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_catalog, int64_t v_receiver, const char * v_path, int64_t v_depth) {
+    CheckedPlaceText *mark = a->texts;
+    (void)v_source;
+    (void)v_hir;
+    (void)v_catalog;
+    (void)v_receiver;
+    (void)v_path;
+    (void)v_depth;
+    if (v_depth > 64) {
+        return capture_return_text(a, mark, capture_error(a, "E2S154", "expression depth exceeds 64", v_receiver));
+    }
+    const char * v_binding = cp_keep(a, hir_use_binding_id(v_hir, v_receiver));
+    int64_t v_declaration = hir_binding_declaration_start(v_hir, v_binding);
+    if ((((int64_t)strlen(v_binding)) == 0) || (v_declaration < 0)) {
+        return capture_return_text(a, mark, capture_error(a, "E2S154", "join requires a resolved spawn binding", v_receiver));
+    }
+    int64_t v_assign = skip_trivia(v_source, token_end(v_source, v_declaration));
+    int64_t v_spawn = skip_trivia(v_source, token_end(v_source, v_assign));
+    int64_t v_member = scoped_parallel_member(v_source, v_spawn);
+    if (((strcmp(cp_keep(a, token_copy(v_source, v_assign)), "=") != 0) || (v_member < 0)) || (strcmp(cp_keep(a, token_copy(v_source, v_member)), "spawn") != 0)) {
+        return capture_return_text(a, mark, capture_error(a, "E2S154", "join requires a resolved spawn binding", v_receiver));
+    }
+    int64_t v_lambda = skip_trivia(v_source, token_end(v_source, skip_trivia(v_source, token_end(v_source, v_member))));
+    const char * v_checked = capture_lambda(a, v_source, v_hir, v_catalog, skip_trivia(v_source, token_end(v_source, v_lambda)), v_path, (v_depth + 1));
+    if (strncmp(v_checked, "error[", strlen("error[")) == 0) {
+        return capture_return_text(a, mark, v_checked);
+    }
+    return capture_return_text(a, mark, capture_value(a, cp_field(a, v_checked, 0, 1), ""));
 }
 
 static const char * capture_block(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_catalog, int64_t v_start, int64_t v_end, const char * v_path, const char * v_expected, const char * v_initial, int64_t v_loop_start, int64_t v_depth) {
@@ -36658,6 +36703,928 @@ static const char * capture_join_state(CheckedPlaceArena *a, const char * v_left
         v_at = (v_end + 1);
     }
     return capture_return_text(a, mark, v_result);
+}
+
+/* #1162: scoped-parallel ownership, transliterated from the Kofun half. */
+static const char * ownership_error(CheckedPlaceArena *a, const char * v_code, const char * v_message, int64_t v_at) {
+    CheckedPlaceText *mark = a->texts;
+    return capture_return_text(a, mark, cp_format(a, "%s%s%s%s%s%s", "error[", v_code, "]: scoped ownership: ", v_message, " at byte ", cp_format(a, "%" PRId64, v_at)));
+}
+
+static int64_t ownership_hex_value(CheckedPlaceArena *a, const char * v_value, int64_t v_start, int64_t v_width) {
+    CheckedPlaceText *mark = a->texts;
+    int64_t v_result = 0;
+    int64_t v_at = v_start;
+    while (v_at < (v_start + v_width)) {
+        v_result = ((v_result * 16) + scoped_hir_hex_digit(cp_keep(a, source_slice(v_value, v_at, (v_at + 1)))));
+        v_at = (v_at + 1);
+    }
+    return capture_return_integer(a, mark, v_result);
+}
+
+static int64_t ownership_bound_width(CheckedPlaceArena *a, const char * v_raw, int64_t v_at) {
+    CheckedPlaceText *mark = a->texts;
+    if (strcmp(cp_keep(a, source_slice(v_raw, v_at, (v_at + 2))), "01") == 0) {
+        return capture_return_integer(a, mark, 18);
+    }
+    return capture_return_integer(a, mark, 66);
+}
+
+static const char * ownership_bound_key(CheckedPlaceArena *a, const char * v_raw, int64_t v_at) {
+    CheckedPlaceText *mark = a->texts;
+    if (strcmp(cp_keep(a, source_slice(v_raw, v_at, (v_at + 2))), "02") == 0) {
+        return capture_return_text(a, mark, cp_format(a, "%s%s", "n", cp_keep(a, source_slice(v_raw, (v_at + 2), (v_at + 66)))));
+    }
+    int64_t v_flipped = ((scoped_hir_hex_digit(cp_keep(a, source_slice(v_raw, (v_at + 2), (v_at + 3)))) + 8) % 16);
+    return capture_return_text(a, mark, cp_format(a, "%s%s%s", "c", cp_keep(a, scoped_hir_hex(v_flipped, 1)), cp_keep(a, source_slice(v_raw, (v_at + 3), (v_at + 18)))));
+}
+
+static const char * ownership_known_key(CheckedPlaceArena *a, const char * v_raw) {
+    CheckedPlaceText *mark = a->texts;
+    CheckedPlaceText *builder_key = NULL;
+    const char * v_key = cp_format(a, "%s%s", "B", cp_keep(a, source_slice(v_raw, 10, 74)));
+    int64_t v_count = ownership_hex_value(a, v_raw, 74, 2);
+    int64_t v_at = 76;
+    int64_t v_index = 0;
+    while (v_index < v_count) {
+        if (strcmp(cp_keep(a, source_slice(v_raw, v_at, (v_at + 2))), "01") == 0) {
+            v_key = capture_append(a, &builder_key, v_key, cp_format(a, "%s%s", ";F", cp_keep(a, source_slice(v_raw, (v_at + 2), (v_at + 74)))));
+            v_at = (v_at + 74);
+        } else {
+            int64_t v_upper = ((v_at + 2) + ownership_bound_width(a, v_raw, (v_at + 2)));
+            v_key = capture_append(a, &builder_key, v_key, cp_format(a, "%s%s%s%s", ";S", ownership_bound_key(a, v_raw, (v_at + 2)), ",", ownership_bound_key(a, v_raw, v_upper)));
+            v_at = (v_upper + ownership_bound_width(a, v_raw, v_upper));
+        }
+        v_index = (v_index + 1);
+    }
+    return capture_return_text(a, mark, v_key);
+}
+
+static int64_t ownership_segment_end(CheckedPlaceArena *a, const char * v_key, int64_t v_start) {
+    (void)a;
+    int64_t v_end = text_find_from(v_key, ";", v_start);
+    if (v_end < 0) {
+        return ((int64_t)strlen(v_key));
+    }
+    return v_end;
+}
+
+static bool ownership_constant(CheckedPlaceArena *a, const char * v_bound) {
+    (void)a;
+    return strncmp(v_bound, "c", strlen("c")) == 0;
+}
+
+static const char * ownership_slice_relation(CheckedPlaceArena *a, const char * v_left, const char * v_right) {
+    CheckedPlaceText *mark = a->texts;
+    int64_t v_a = text_find_from(v_left, ",", 0);
+    int64_t v_b = text_find_from(v_right, ",", 0);
+    const char * v_a_lower = cp_keep(a, source_slice(v_left, 1, v_a));
+    const char * v_a_upper = cp_keep(a, source_slice(v_left, (v_a + 1), ((int64_t)strlen(v_left))));
+    const char * v_b_lower = cp_keep(a, source_slice(v_right, 1, v_b));
+    const char * v_b_upper = cp_keep(a, source_slice(v_right, (v_b + 1), ((int64_t)strlen(v_right))));
+    if (((ownership_constant(a, v_a_lower) && ownership_constant(a, v_a_upper)) && ownership_constant(a, v_b_lower)) && ownership_constant(a, v_b_upper)) {
+        if ((strcmp(v_a_lower, v_a_upper) == 0) || (strcmp(v_b_lower, v_b_upper) == 0)) {
+            return capture_return_text(a, mark, "disjoint");
+        }
+        if ((!capture_hex_before(a, v_b_lower, v_a_upper)) || (!capture_hex_before(a, v_a_lower, v_b_upper))) {
+            return capture_return_text(a, mark, "disjoint");
+        }
+        return capture_return_text(a, mark, "continue");
+    }
+    if ((strcmp(v_a_lower, v_b_lower) == 0) && (strcmp(v_a_upper, v_b_upper) == 0)) {
+        return capture_return_text(a, mark, "continue");
+    }
+    return capture_return_text(a, mark, "unknown");
+}
+
+static const char * ownership_relation(CheckedPlaceArena *a, const char * v_left, const char * v_right) {
+    CheckedPlaceText *mark = a->texts;
+    if ((strncmp(v_left, "U", strlen("U")) == 0) || (strncmp(v_right, "U", strlen("U")) == 0)) {
+        if (strcmp(v_left, v_right) == 0) {
+            return capture_return_text(a, mark, "overlap");
+        }
+        return capture_return_text(a, mark, "unknown");
+    }
+    int64_t v_a = 0;
+    int64_t v_b = 0;
+    int64_t v_level = 0;
+    while ((v_a < ((int64_t)strlen(v_left))) && (v_b < ((int64_t)strlen(v_right)))) {
+        int64_t v_a_end = ownership_segment_end(a, v_left, v_a);
+        int64_t v_b_end = ownership_segment_end(a, v_right, v_b);
+        const char * v_x = cp_keep(a, source_slice(v_left, v_a, v_a_end));
+        const char * v_y = cp_keep(a, source_slice(v_right, v_b, v_b_end));
+        if ((v_level == 0) || ((strncmp(v_x, "F", strlen("F")) == 0) && (strncmp(v_y, "F", strlen("F")) == 0))) {
+            if (strcmp(v_x, v_y) != 0) {
+                return capture_return_text(a, mark, "disjoint");
+            }
+        } else if ((strncmp(v_x, "S", strlen("S")) == 0) && (strncmp(v_y, "S", strlen("S")) == 0)) {
+            const char * v_relation = ownership_slice_relation(a, v_x, v_y);
+            if (strcmp(v_relation, "continue") != 0) {
+                return capture_return_text(a, mark, v_relation);
+            }
+        } else {
+            return capture_return_text(a, mark, "unknown");
+        }
+        v_a = (v_a_end + 1);
+        v_b = (v_b_end + 1);
+        v_level = (v_level + 1);
+    }
+    return capture_return_text(a, mark, "overlap");
+}
+
+static bool ownership_conflict(CheckedPlaceArena *a, const char * v_left, const char * v_right) {
+    (void)a;
+    return (strcmp(v_left, "read") != 0) || (strcmp(v_right, "read") != 0);
+}
+
+static const char * ownership_names(CheckedPlaceArena *a, const char * v_key, const char * v_base, const char * v_projections) {
+    CheckedPlaceText *mark = a->texts;
+    if (strncmp(v_key, "U", strlen("U")) == 0) {
+        return capture_return_text(a, mark, "");
+    }
+    CheckedPlaceText *builder_result = NULL;
+    const char * v_result = cp_format(a, "%s%s%s%s%s", "name|b", cp_keep(a, source_slice(v_key, 1, 65)), "|", v_base, "\n");
+    int64_t v_at = (ownership_segment_end(a, v_key, 0) + 1);
+    int64_t v_cursor = 0;
+    while (v_at < ((int64_t)strlen(v_key))) {
+        int64_t v_end = ownership_segment_end(a, v_key, v_at);
+        if (strcmp(cp_keep(a, source_slice(v_key, v_at, (v_at + 1))), "F") == 0) {
+            int64_t v_display = text_find_from(v_projections, "\"display\":", v_cursor);
+            int64_t v_close = text_find_from(v_projections, "}", v_display);
+            if ((v_display < 0) || (v_close < 0)) {
+                return capture_return_text(a, mark, "");
+            }
+            v_result = capture_append(a, &builder_result, v_result, cp_format(a, "%s%s%s%s%s%s%s", "name|f", cp_keep(a, source_slice(v_key, (v_at + 1), (v_at + 65))), "-", cp_format(a, "%" PRId64, ownership_hex_value(a, v_key, (v_at + 65), 8)), "|", cp_keep(a, source_slice(v_projections, (v_display + 10), (v_close + 1))), "\n"));
+            v_cursor = v_close;
+        }
+        v_at = (v_end + 1);
+    }
+    return capture_return_text(a, mark, v_result);
+}
+
+static bool ownership_join_unconditional(CheckedPlaceArena *a, const char * v_source, int64_t v_block, int64_t v_join) {
+    CheckedPlaceText *mark = a->texts;
+    int64_t v_at = skip_trivia(v_source, token_end(v_source, v_block));
+    int64_t v_depth = 0;
+    bool v_guarded = false;
+    while (v_at < v_join) {
+        const char * v_token = cp_keep(a, token_copy(v_source, v_at));
+        int64_t v_next = skip_trivia(v_source, token_end(v_source, v_at));
+        if (strcmp(v_token, "{") == 0) {
+            v_depth = (v_depth + 1);
+        }
+        if (strcmp(v_token, "}") == 0) {
+            v_depth = (v_depth - 1);
+            if (v_depth == 0) {
+                v_guarded = false;
+            }
+        }
+        if ((v_depth == 0) && ((((strcmp(v_token, "while") == 0) || (strcmp(v_token, "for") == 0)) || (strcmp(v_token, "&&") == 0)) || (strcmp(v_token, "||") == 0))) {
+            v_guarded = true;
+        }
+        if ((((((v_depth == 0) && (strcmp(v_token, "&&") != 0)) && (strcmp(v_token, "||") != 0)) && (v_next < v_join)) &&
+            (strstr(cp_keep(a, source_slice(v_source, token_end(v_source, v_at), v_next)), "\n") != NULL)) &&
+            (!cp_shape_operator(v_token)) && (!cp_shape_operator(cp_keep(a, token_copy(v_source, v_next))))) {
+            v_guarded = false;
+        }
+        v_at = v_next;
+    }
+    return capture_return_integer(a, mark, (v_depth == 0) && (!v_guarded));
+}
+
+static const char * ownership_function(CheckedPlaceArena *a, const char * v_source, int64_t v_at) {
+    CheckedPlaceText *mark = a->texts;
+    int64_t v_function = next_function_start(v_source, 0);
+    while (v_function < ((int64_t)strlen(v_source))) {
+        int64_t v_parameters = parameter_open(v_source, v_function);
+        int64_t v_open = skip_trivia(v_source, balanced_end(v_source, v_parameters, "(", ")"));
+        if (strcmp(cp_keep(a, token_copy(v_source, v_open)), "->") == 0) {
+            int64_t v_typed = skip_trivia(v_source, token_end(v_source, v_open));
+            v_open = skip_trivia(v_source, capture_type_end(a, v_source, v_typed));
+        }
+        int64_t v_close = balanced_end(v_source, v_open, "{", "}");
+        if (v_close <= v_open) {
+            return capture_return_text(a, mark, "");
+        }
+        if ((v_at > v_open) && (v_at < v_close)) {
+            return capture_return_text(a, mark, cp_format(a, "%" PRId64 "|%" PRId64 "\n", v_open, v_close));
+        }
+        v_function = next_function_start(v_source, v_close);
+    }
+    return capture_return_text(a, mark, "");
+}
+
+static int64_t ownership_loop_open(CheckedPlaceArena *a, const char * v_source, int64_t v_open, int64_t v_at) {
+    CheckedPlaceText *mark = a->texts;
+    int64_t v_result = -1;
+    int64_t v_cursor = skip_trivia(v_source, token_end(v_source, v_open));
+    while (v_cursor < v_at) {
+        const char * v_token = cp_keep(a, token_copy(v_source, v_cursor));
+        if ((strcmp(v_token, "while") == 0) || (strcmp(v_token, "for") == 0)) {
+            int64_t v_block = par_loop_block_open(v_source, v_cursor, v_at);
+            if ((v_block >= 0) && (v_at < balanced_end(v_source, v_block, "{", "}"))) {
+                v_result = v_block;
+            }
+        }
+        v_cursor = skip_trivia(v_source, token_end(v_source, v_cursor));
+    }
+    return capture_return_integer(a, mark, v_result);
+}
+
+static const char * ownership_previous_token(CheckedPlaceArena *a, const char * v_source, int64_t v_block, int64_t v_at) {
+    CheckedPlaceText *mark = a->texts;
+    int64_t v_cursor = skip_trivia(v_source, token_end(v_source, v_block));
+    const char * v_previous = "{";
+    while (v_cursor < v_at) {
+        v_previous = cp_keep(a, token_copy(v_source, v_cursor));
+        v_cursor = skip_trivia(v_source, token_end(v_source, v_cursor));
+    }
+    return capture_return_text(a, mark, v_previous);
+}
+
+static bool ownership_in_lambda(CheckedPlaceArena *a, const char * v_facts, const char * v_par, int64_t v_at) {
+    CheckedPlaceText *mark = a->texts;
+    int64_t v_task = hir_record_start(v_facts, "task", 0);
+    while (v_task >= 0) {
+        if (((strcmp(cp_field(a, v_facts, v_task, 1), v_par) == 0) && (v_at >= decimal_value(cp_field(a, v_facts, v_task, 5)))) &&
+            (v_at < decimal_value(cp_field(a, v_facts, v_task, 6)))) {
+            return capture_return_integer(a, mark, true);
+        }
+        v_task = hir_record_start(v_facts, "task", (v_task + 1));
+    }
+    return capture_return_integer(a, mark, false);
+}
+
+static const char * ownership_escapes(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_facts, int64_t v_par_row) {
+    CheckedPlaceText *mark = a->texts;
+    const char * v_par = cp_field(a, v_facts, v_par_row, 1);
+    int64_t v_name = decimal_value(cp_field(a, v_facts, v_par_row, 6));
+    int64_t v_block = skip_trivia(v_source, token_end(v_source, skip_trivia(v_source, token_end(v_source, v_name))));
+    CheckedPlaceText *builder_result = NULL;
+    const char * v_result = "";
+    int64_t v_task = hir_record_start(v_facts, "task", 0);
+    while (v_task >= 0) {
+        if ((strcmp(cp_field(a, v_facts, v_task, 1), v_par) == 0) && (decimal_value(cp_field(a, v_facts, v_task, 8)) >= 0)) {
+            const char * v_binding = cp_field(a, v_facts, v_task, 7);
+            int64_t v_first = -1;
+            const char * v_kind = "";
+            int64_t v_use = hir_record_start(v_hir, "use", 0);
+            while (v_use >= 0) {
+                int64_t v_at = decimal_value(cp_field(a, v_hir, v_use, 1));
+                if ((strcmp(cp_field(a, v_hir, v_use, 4), v_binding) == 0) && ((v_first < 0) || (v_at < v_first))) {
+                    int64_t v_member = scoped_parallel_member(v_source, v_at);
+                    const char * v_current = "";
+                    if (ownership_in_lambda(a, v_facts, v_par, v_at)) {
+                        v_current = "capture";
+                    } else if ((v_member < 0) || (strcmp(cp_keep(a, token_copy(v_source, v_member)), "join") != 0)) {
+                        const char * v_previous = ownership_previous_token(a, v_source, v_block, v_at);
+                        v_current = "store";
+                        if (strcmp(v_previous, "return") == 0) {
+                            v_current = "return";
+                        }
+                        if ((strcmp(v_previous, "(") == 0) || (strcmp(v_previous, ",") == 0)) {
+                            v_current = "pass";
+                        }
+                    }
+                    if (((int64_t)strlen(v_current)) > 0) {
+                        v_first = v_at;
+                        v_kind = v_current;
+                    }
+                }
+                v_use = hir_record_start(v_hir, "use", (v_use + 1));
+            }
+            if (v_first >= 0) {
+                v_result = capture_append(a, &builder_result, v_result, cp_format(a, "%s%s%s%s%s%s%s", "escape|", cp_field(a, v_facts, v_task, 2), "|", v_kind, "|", cp_format(a, "%" PRId64, v_first), "\n"));
+            }
+        }
+        v_task = hir_record_start(v_facts, "task", (v_task + 1));
+    }
+    return capture_return_text(a, mark, v_result);
+}
+
+static const char * ownership_token_escape(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_facts, int64_t v_par_row) {
+    CheckedPlaceText *mark = a->texts;
+    const char * v_par = cp_field(a, v_facts, v_par_row, 1);
+    const char * v_token = cp_field(a, v_facts, v_par_row, 5);
+    int64_t v_use = hir_record_start(v_hir, "use", 0);
+    while (v_use >= 0) {
+        int64_t v_at = decimal_value(cp_field(a, v_hir, v_use, 1));
+        if (strcmp(cp_field(a, v_hir, v_use, 4), v_token) == 0) {
+            int64_t v_member = scoped_parallel_member(v_source, v_at);
+            if (ownership_in_lambda(a, v_facts, v_par, v_at)) {
+                return capture_return_text(a, mark, ownership_error(a, "SPV1-HANDLE-ESCAPE", "a task cannot capture its scope token", v_at));
+            }
+            if ((v_member < 0) || (strcmp(cp_keep(a, token_copy(v_source, v_member)), "spawn") != 0)) {
+                return capture_return_text(a, mark, ownership_error(a, "SPV1-HANDLE-ESCAPE", "a scope token is used only to spawn", v_at));
+            }
+        }
+        v_use = hir_record_start(v_hir, "use", (v_use + 1));
+    }
+    return capture_return_text(a, mark, "");
+}
+
+static const char * ownership_task_captures(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_facts, const char * v_accesses, const char * v_path, int64_t v_task, const char * v_index) {
+    CheckedPlaceText *mark = a->texts;
+    const char * v_observations = capture_task_observations(a, v_source, v_hir, v_facts, v_accesses, v_path, v_task, 0);
+    if (strncmp(v_observations, "error[", strlen("error[")) == 0) {
+        return capture_return_text(a, mark, v_observations);
+    }
+    CheckedPlaceText *builder_result = NULL;
+    const char * v_result = "";
+    int64_t v_row = 0;
+    while (v_row < ((int64_t)strlen(v_observations))) {
+        const char * v_raw = cp_field(a, v_observations, v_row, 1);
+        const char * v_mode = cp_field(a, v_observations, v_row, 5);
+        int64_t v_byte = decimal_value(cp_field(a, v_observations, v_row, 7));
+        int64_t v_after = (capture_line_end(a, v_observations, v_row) + 1);
+        while ((v_after < ((int64_t)strlen(v_observations))) && (strcmp(cp_field(a, v_observations, v_after, 1), v_raw) == 0)) {
+            const char * v_next = cp_field(a, v_observations, v_after, 5);
+            if ((strcmp(v_next, "take") == 0) || ((strcmp(v_next, "edit") == 0) && (strcmp(v_mode, "read") == 0))) {
+                v_mode = v_next;
+            }
+            if (decimal_value(cp_field(a, v_observations, v_after, 7)) < v_byte) {
+                v_byte = decimal_value(cp_field(a, v_observations, v_after, 7));
+            }
+            v_after = (capture_line_end(a, v_observations, v_after) + 1);
+        }
+        const char * v_key = cp_format(a, "%s%s", "U", cp_field(a, v_observations, v_row, 2));
+        if (strcmp(cp_field(a, v_observations, v_row, 3), "place") == 0) {
+            v_key = ownership_known_key(a, v_raw);
+            const char * v_json = cp_field(a, v_observations, v_row, 9);
+            int64_t v_display = text_find_from(v_json, "\"display\":", 0);
+            int64_t v_projections = text_find_from(v_json, "\"projections\":", 0);
+            v_result = capture_append(a, &builder_result, v_result, ownership_names(a, v_key, cp_keep(a, source_slice(v_json, (v_display + 10), (text_find_from(v_json, "}", v_display) + 1))),
+                cp_keep(a, source_slice(v_json, v_projections, ((int64_t)strlen(v_json))))));
+        }
+        v_result = capture_append(a, &builder_result, v_result, cp_format(a, "%s%s%s%s%s%s%s%s%s", "cap|", v_index, "|", v_mode, "|", v_key, "|", cp_format(a, "%" PRId64, v_byte), "\n"));
+        v_row = v_after;
+    }
+    return capture_return_text(a, mark, v_result);
+}
+
+static int64_t ownership_rank(CheckedPlaceArena *a, const char * v_ranks, const char * v_key) {
+    CheckedPlaceText *mark = a->texts;
+    int64_t v_rank = 0;
+    int64_t v_row = 0;
+    while (v_row < ((int64_t)strlen(v_ranks))) {
+        if (strcmp(cp_field(a, v_ranks, v_row, 1), v_key) == 0) {
+            return capture_return_integer(a, mark, v_rank);
+        }
+        v_rank = (v_rank + 1);
+        v_row = (capture_line_end(a, v_ranks, v_row) + 1);
+    }
+    return capture_return_integer(a, mark, -1);
+}
+
+static const char * ownership_bound_json(CheckedPlaceArena *a, const char * v_ranks, const char * v_bound) {
+    CheckedPlaceText *mark = a->texts;
+    if (ownership_constant(a, v_bound)) {
+        return capture_return_text(a, mark, cp_format(a, "%" PRId64, ownership_rank(a, v_ranks, cp_keep(a, source_slice(v_bound, 1, ((int64_t)strlen(v_bound)))))));
+    }
+    return capture_return_text(a, mark, cp_format(a, "%s%s%s", "\"", v_bound, "\""));
+}
+
+static const char * ownership_place_json(CheckedPlaceArena *a, const char * v_ranks, const char * v_key) {
+    CheckedPlaceText *mark = a->texts;
+    if (strncmp(v_key, "U", strlen("U")) == 0) {
+        return capture_return_text(a, mark, cp_format(a, "%s%s%s", "{\"unknown\":\"u", cp_keep(a, source_slice(v_key, 1, ((int64_t)strlen(v_key)))), "\"}"));
+    }
+    CheckedPlaceText *builder_path = NULL;
+    const char * v_path = "";
+    int64_t v_at = (ownership_segment_end(a, v_key, 0) + 1);
+    while (v_at < ((int64_t)strlen(v_key))) {
+        int64_t v_end = ownership_segment_end(a, v_key, v_at);
+        if (((int64_t)strlen(v_path)) > 0) {
+            v_path = capture_append(a, &builder_path, v_path, ",");
+        }
+        if (strcmp(cp_keep(a, source_slice(v_key, v_at, (v_at + 1))), "F") == 0) {
+            v_path = capture_append(a, &builder_path, v_path, cp_format(a, "%s%s%s%s%s", "{\"field\":\"f", cp_keep(a, source_slice(v_key, (v_at + 1), (v_at + 65))), "-", cp_format(a, "%" PRId64, ownership_hex_value(a, v_key, (v_at + 65), 8)), "\"}"));
+        } else {
+            int64_t v_comma = text_find_from(v_key, ",", v_at);
+            v_path = capture_append(a, &builder_path, v_path, cp_format(a, "%s%s%s%s%s", "{\"slice\":[", ownership_bound_json(a, v_ranks, cp_keep(a, source_slice(v_key, (v_at + 1), v_comma))), ",",
+                ownership_bound_json(a, v_ranks, cp_keep(a, source_slice(v_key, (v_comma + 1), v_end))), "]}"));
+        }
+        v_at = (v_end + 1);
+    }
+    return capture_return_text(a, mark, cp_format(a, "%s%s%s%s%s", "{\"base\":\"b", cp_keep(a, source_slice(v_key, 1, 65)), "\",\"path\":[", v_path, "]}"));
+}
+
+static const char * ownership_constants(CheckedPlaceArena *a, const char * v_key) {
+    CheckedPlaceText *mark = a->texts;
+    CheckedPlaceText *builder_result = NULL;
+    const char * v_result = "";
+    int64_t v_at = 0;
+    while (v_at < ((int64_t)strlen(v_key))) {
+        int64_t v_end = ownership_segment_end(a, v_key, v_at);
+        if (strcmp(cp_keep(a, source_slice(v_key, v_at, (v_at + 1))), "S") == 0) {
+            int64_t v_comma = text_find_from(v_key, ",", v_at);
+            const char * v_lower = cp_keep(a, source_slice(v_key, (v_at + 1), v_comma));
+            const char * v_upper = cp_keep(a, source_slice(v_key, (v_comma + 1), v_end));
+            if (ownership_constant(a, v_lower)) {
+                v_result = capture_append(a, &builder_result, v_result, cp_format(a, "%s%s%s", "k|", cp_keep(a, source_slice(v_lower, 1, ((int64_t)strlen(v_lower)))), "\n"));
+            }
+            if (ownership_constant(a, v_upper)) {
+                v_result = capture_append(a, &builder_result, v_result, cp_format(a, "%s%s%s", "k|", cp_keep(a, source_slice(v_upper, 1, ((int64_t)strlen(v_upper)))), "\n"));
+            }
+        }
+        v_at = (v_end + 1);
+    }
+    return capture_return_text(a, mark, v_result);
+}
+
+static const char * ownership_unique(CheckedPlaceArena *a, const char * v_rows) {
+    CheckedPlaceText *mark = a->texts;
+    const char * v_sorted = capture_sort(a, v_rows);
+    CheckedPlaceText *builder_result = NULL;
+    const char * v_result = "";
+    const char * v_previous = "";
+    int64_t v_row = 0;
+    while (v_row < ((int64_t)strlen(v_sorted))) {
+        int64_t v_end = capture_line_end(a, v_sorted, v_row);
+        const char * v_key = cp_field(a, v_sorted, v_row, 1);
+        if ((v_row == 0) || (strcmp(v_key, v_previous) != 0)) {
+            v_result = capture_append(a, &builder_result, v_result, cp_keep(a, source_slice(v_sorted, v_row, (v_end + 1))));
+        }
+        v_previous = v_key;
+        v_row = (v_end + 1);
+    }
+    return capture_return_text(a, mark, v_result);
+}
+
+static const char * ownership_access_key(CheckedPlaceArena *a, const char * v_accesses, int64_t v_row, const char * v_file) {
+    CheckedPlaceText *mark = a->texts;
+    int64_t v_start = decimal_value(cp_field(a, v_accesses, v_row, 8));
+    int64_t v_stop = decimal_value(cp_field(a, v_accesses, v_row, 9));
+    int64_t v_depth = decimal_value(cp_field(a, v_accesses, v_row, 5));
+    if ((strcmp(cp_field(a, v_accesses, v_row, 10), "place") == 0) && (v_depth <= 8)) {
+        return capture_return_text(a, mark, ownership_known_key(a, cp_format(a, "%s%s%s%s", "4b504c0002", cp_keep(a, scoped_hir_named_id(v_file, "binding", cp_field(a, v_accesses, v_row, 3))),
+            cp_keep(a, scoped_hir_hex(v_depth, 2)), cp_field(a, v_accesses, v_row, 6))));
+    }
+    return capture_return_text(a, mark, cp_format(a, "%s%s", "U", cp_expression_id(a, v_file, v_start, v_stop)));
+}
+
+static const char * ownership_diagnostic(CheckedPlaceArena *a, const char * v_code, const char * v_at, int64_t v_byte) {
+    CheckedPlaceText *mark = a->texts;
+    return capture_return_text(a, mark, cp_format(a, "%s%s%s%s%s%s%s", "diag|", v_code, "|", v_at, "|", cp_format(a, "%" PRId64, v_byte), "\n"));
+}
+
+static const char * ownership_decide(CheckedPlaceArena *a, const char * v_rows) {
+    CheckedPlaceText *mark = a->texts;
+    CheckedPlaceText *builder_result = NULL;
+    const char * v_result = "";
+    int64_t v_row = capture_record_start(a, v_rows, "escape", 0);
+    while (v_row >= 0) {
+        v_result = capture_append(a, &builder_result, v_result, ownership_diagnostic(a, "SPV1-HANDLE-ESCAPE", cp_format(a, "%s%s", "task:t", cp_field(a, v_rows, v_row, 1)), decimal_value(cp_field(a, v_rows, v_row, 3))));
+        v_row = capture_record_start(a, v_rows, "escape", (v_row + 1));
+    }
+    int64_t v_left = capture_record_start(a, v_rows, "task", 0);
+    while (v_left >= 0) {
+        int64_t v_right = capture_record_start(a, v_rows, "task", (v_left + 1));
+        while (v_right >= 0) {
+            if ((decimal_value(cp_field(a, v_rows, v_left, 2)) < decimal_value(cp_field(a, v_rows, v_right, 3))) &&
+                (decimal_value(cp_field(a, v_rows, v_right, 2)) < decimal_value(cp_field(a, v_rows, v_left, 3)))) {
+                const char * v_at = cp_format(a, "%s%s%s%s", "tasks:t", cp_field(a, v_rows, v_left, 1), ",t", cp_field(a, v_rows, v_right, 1));
+                int64_t v_a = capture_fact(a, v_rows, "cap", 1, cp_field(a, v_rows, v_left, 1));
+                while ((v_a >= 0) && (strcmp(cp_field(a, v_rows, v_a, 1), cp_field(a, v_rows, v_left, 1)) == 0)) {
+                    int64_t v_b = capture_fact(a, v_rows, "cap", 1, cp_field(a, v_rows, v_right, 1));
+                    while ((v_b >= 0) && (strcmp(cp_field(a, v_rows, v_b, 1), cp_field(a, v_rows, v_right, 1)) == 0)) {
+                        if (ownership_conflict(a, cp_field(a, v_rows, v_a, 2), cp_field(a, v_rows, v_b, 2))) {
+                            const char * v_relation = ownership_relation(a, cp_field(a, v_rows, v_a, 3), cp_field(a, v_rows, v_b, 3));
+                            int64_t v_byte = decimal_value(cp_field(a, v_rows, v_b, 4));
+                            if (strcmp(v_relation, "unknown") == 0) {
+                                v_result = capture_append(a, &builder_result, v_result, ownership_diagnostic(a, "SPV1-OVERLAP-UNKNOWN", v_at, v_byte));
+                            }
+                            if (strcmp(v_relation, "overlap") == 0) {
+                                v_result = capture_append(a, &builder_result, v_result, ownership_diagnostic(a, "SPV1-CAPTURE-CONFLICT", v_at, v_byte));
+                            }
+                        }
+                        v_b = capture_record_start(a, v_rows, "cap", (v_b + 1));
+                    }
+                    v_a = capture_record_start(a, v_rows, "cap", (v_a + 1));
+                }
+            }
+            v_right = capture_record_start(a, v_rows, "task", (v_right + 1));
+        }
+        v_left = capture_record_start(a, v_rows, "task", (v_left + 1));
+    }
+    int64_t v_later = capture_record_start(a, v_rows, "task", 0);
+    while (v_later >= 0) {
+        int64_t v_spawn = decimal_value(cp_field(a, v_rows, v_later, 2));
+        int64_t v_capture = capture_fact(a, v_rows, "cap", 1, cp_field(a, v_rows, v_later, 1));
+        while ((v_capture >= 0) && (strcmp(cp_field(a, v_rows, v_capture, 1), cp_field(a, v_rows, v_later, 1)) == 0)) {
+            const char * v_found = "";
+            int64_t v_earlier = capture_record_start(a, v_rows, "task", 0);
+            while (((v_earlier >= 0) && (((int64_t)strlen(v_found)) == 0)) && (decimal_value(cp_field(a, v_rows, v_earlier, 2)) < v_spawn)) {
+                if (decimal_value(cp_field(a, v_rows, v_earlier, 3)) <= v_spawn) {
+                    int64_t v_taken = capture_fact(a, v_rows, "cap", 1, cp_field(a, v_rows, v_earlier, 1));
+                    while (((v_taken >= 0) && (((int64_t)strlen(v_found)) == 0)) && (strcmp(cp_field(a, v_rows, v_taken, 1), cp_field(a, v_rows, v_earlier, 1)) == 0)) {
+                        if (strcmp(cp_field(a, v_rows, v_taken, 2), "take") == 0) {
+                            const char * v_relation = ownership_relation(a, cp_field(a, v_rows, v_taken, 3), cp_field(a, v_rows, v_capture, 3));
+                            if (strcmp(v_relation, "disjoint") != 0) {
+                                const char * v_at = cp_format(a, "%s%s%s%s", "tasks:t", cp_field(a, v_rows, v_earlier, 1), ",t", cp_field(a, v_rows, v_later, 1));
+                                int64_t v_byte = decimal_value(cp_field(a, v_rows, v_capture, 4));
+                                v_found = ownership_diagnostic(a, "SPV1-USE-AFTER-TAKE", v_at, v_byte);
+                                if (strcmp(v_relation, "unknown") == 0) {
+                                    v_found = ownership_diagnostic(a, "SPV1-OVERLAP-UNKNOWN", v_at, v_byte);
+                                }
+                            }
+                        }
+                        v_taken = capture_record_start(a, v_rows, "cap", (v_taken + 1));
+                    }
+                }
+                v_earlier = capture_record_start(a, v_rows, "task", (v_earlier + 1));
+            }
+            v_result = capture_append(a, &builder_result, v_result, v_found);
+            v_capture = capture_record_start(a, v_rows, "cap", (v_capture + 1));
+        }
+        v_later = capture_record_start(a, v_rows, "task", (v_later + 1));
+    }
+    int64_t v_action = capture_record_start(a, v_rows, "act", 0);
+    while (v_action >= 0) {
+        int64_t v_step = decimal_value(cp_field(a, v_rows, v_action, 2));
+        const char * v_at = cp_format(a, "%s%s", "parent_action:", cp_field(a, v_rows, v_action, 1));
+        int64_t v_byte = decimal_value(cp_field(a, v_rows, v_action, 5));
+        int64_t v_task = capture_record_start(a, v_rows, "task", 0);
+        while (v_task >= 0) {
+            int64_t v_capture = capture_fact(a, v_rows, "cap", 1, cp_field(a, v_rows, v_task, 1));
+            while ((v_capture >= 0) && (strcmp(cp_field(a, v_rows, v_capture, 1), cp_field(a, v_rows, v_task, 1)) == 0)) {
+                const char * v_relation = ownership_relation(a, cp_field(a, v_rows, v_action, 4), cp_field(a, v_rows, v_capture, 3));
+                if ((v_step >= decimal_value(cp_field(a, v_rows, v_task, 2))) && (strcmp(v_relation, "disjoint") != 0)) {
+                    if (strcmp(cp_field(a, v_rows, v_capture, 2), "take") == 0) {
+                        if (strcmp(v_relation, "unknown") == 0) {
+                            v_result = capture_append(a, &builder_result, v_result, ownership_diagnostic(a, "SPV1-OVERLAP-UNKNOWN", v_at, v_byte));
+                        } else {
+                            v_result = capture_append(a, &builder_result, v_result, ownership_diagnostic(a, "SPV1-USE-AFTER-TAKE", v_at, v_byte));
+                        }
+                    } else if ((v_step < decimal_value(cp_field(a, v_rows, v_task, 3))) &&
+                        ownership_conflict(a, cp_field(a, v_rows, v_action, 3), cp_field(a, v_rows, v_capture, 2))) {
+                        if (strcmp(v_relation, "unknown") == 0) {
+                            v_result = capture_append(a, &builder_result, v_result, ownership_diagnostic(a, "SPV1-OVERLAP-UNKNOWN", v_at, v_byte));
+                        } else {
+                            v_result = capture_append(a, &builder_result, v_result, ownership_diagnostic(a, "SPV1-PARENT-CONFLICT", v_at, v_byte));
+                        }
+                    }
+                }
+                v_capture = capture_record_start(a, v_rows, "cap", (v_capture + 1));
+            }
+            v_task = capture_record_start(a, v_rows, "task", (v_task + 1));
+        }
+        v_action = capture_record_start(a, v_rows, "act", (v_action + 1));
+    }
+    return capture_return_text(a, mark, v_result);
+}
+
+static const char * ownership_scope(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_facts, const char * v_accesses, const char * v_path, int64_t v_par_row, const char * v_escapes, bool v_derived) {
+    CheckedPlaceText *mark = a->texts;
+    const char * v_file = cp_keep(a, scoped_hir_file_id(v_path));
+    const char * v_par = cp_field(a, v_facts, v_par_row, 1);
+    int64_t v_close = decimal_value(cp_field(a, v_facts, v_par_row, 3));
+    int64_t v_name = decimal_value(cp_field(a, v_facts, v_par_row, 6));
+    int64_t v_block = skip_trivia(v_source, token_end(v_source, skip_trivia(v_source, token_end(v_source, v_name))));
+    CheckedPlaceText *builder_events = NULL, *builder_captures = NULL, *builder_names = NULL;
+    const char * v_events = "";
+    const char * v_captures = "";
+    const char * v_names = "";
+    int64_t v_task = hir_record_start(v_facts, "task", 0);
+    while (v_task >= 0) {
+        if (strcmp(cp_field(a, v_facts, v_task, 1), v_par) == 0) {
+            const char * v_index = cp_field(a, v_facts, v_task, 2);
+            v_events = capture_append(a, &builder_events, v_events, cp_format(a, "%s%s%s%s%s", "ev|", cp_keep(a, scoped_hir_hex(decimal_value(cp_field(a, v_facts, v_task, 4)), 8)), "0|spawn|", v_index, "\n"));
+            int64_t v_join = scoped_hir_fact(v_facts, "join", 1, cp_field(a, v_facts, v_task, 7));
+            if (((v_join >= 0) && (!ownership_in_lambda(a, v_facts, v_par, decimal_value(cp_field(a, v_facts, v_join, 2))))) &&
+                ownership_join_unconditional(a, v_source, v_block, decimal_value(cp_field(a, v_facts, v_join, 2)))) {
+                v_events = capture_append(a, &builder_events, v_events, cp_format(a, "%s%s%s%s%s", "ev|", cp_keep(a, scoped_hir_hex(decimal_value(cp_field(a, v_facts, v_join, 3)), 8)), "0|join|", v_index, "\n"));
+            }
+            if (v_derived) {
+                const char * v_checked = ownership_task_captures(a, v_source, v_hir, v_facts, v_accesses, v_path, v_task, v_index);
+                if (strncmp(v_checked, "error[", strlen("error[")) == 0) {
+                    return capture_return_text(a, mark, v_checked);
+                }
+                int64_t v_row = 0;
+                while (v_row < ((int64_t)strlen(v_checked))) {
+                    int64_t v_end = capture_line_end(a, v_checked, v_row);
+                    if (strcmp(cp_keep(a, source_slice(v_checked, v_row, (v_row + 4))), "cap|") == 0) {
+                        v_captures = capture_append(a, &builder_captures, v_captures, cp_keep(a, source_slice(v_checked, v_row, (v_end + 1))));
+                    } else {
+                        v_names = capture_append(a, &builder_names, v_names, cp_keep(a, source_slice(v_checked, v_row, (v_end + 1))));
+                    }
+                    v_row = (v_end + 1);
+                }
+            }
+        }
+        v_task = hir_record_start(v_facts, "task", (v_task + 1));
+    }
+    const char * v_bounds = ownership_function(a, v_source, decimal_value(cp_field(a, v_facts, v_par_row, 2)));
+    if (((int64_t)strlen(v_bounds)) == 0) {
+        return capture_return_text(a, mark, ownership_error(a, "E2S154", "par requires an enclosing checked function", decimal_value(cp_field(a, v_facts, v_par_row, 2))));
+    }
+    int64_t v_function_open = decimal_value(cp_field(a, v_bounds, 0, 0));
+    int64_t v_function_close = decimal_value(cp_field(a, v_bounds, 0, 1));
+    int64_t v_loop = ownership_loop_open(a, v_source, v_function_open, decimal_value(cp_field(a, v_facts, v_par_row, 2)));
+    CheckedPlaceText *builder_after = NULL;
+    const char * v_after = "";
+    int64_t v_actions = 0;
+    int64_t v_row = capture_record_start(a, v_accesses, "access", 0);
+    while (v_derived && (v_row >= 0)) {
+        int64_t v_start = decimal_value(cp_field(a, v_accesses, v_row, 8));
+        int64_t v_stop = decimal_value(cp_field(a, v_accesses, v_row, 9));
+        const char * v_key = ownership_access_key(a, v_accesses, v_row, v_file);
+        if (((v_start > v_block) && (v_stop < v_close)) && (!ownership_in_lambda(a, v_facts, v_par, v_start))) {
+            v_actions = (v_actions + 1);
+            if (!(strncmp(v_key, "U", strlen("U")) == 0)) {
+                v_names = capture_append(a, &builder_names, v_names, ownership_names(a, v_key, cp_keep(a, scoped_hir_display(v_source, hir_binding_declaration_start(v_hir, cp_field(a, v_accesses, v_row, 3)))),
+                    cp_field(a, v_accesses, v_row, 7)));
+            }
+            v_events = capture_append(a, &builder_events, v_events, cp_format(a, "%s%s%s%s%s%s%s%s", "ev|", cp_keep(a, scoped_hir_hex(v_start, 8)), "1|act|", cp_field(a, v_accesses, v_row, 2), "|", v_key, "|", cp_format(a, "%" PRId64 "\n", v_start)));
+        }
+        if ((v_start >= v_close) && (v_stop <= v_function_close)) {
+            bool v_related = false;
+            int64_t v_capture = capture_record_start(a, v_captures, "cap", 0);
+            while ((v_capture >= 0) && (!v_related)) {
+                v_related = (strcmp(cp_field(a, v_captures, v_capture, 2), "take") == 0) && (strcmp(ownership_relation(a, v_key, cp_field(a, v_captures, v_capture, 3)), "disjoint") != 0);
+                v_capture = capture_record_start(a, v_captures, "cap", (v_capture + 1));
+            }
+            if (v_related) {
+                if (!(strncmp(v_key, "U", strlen("U")) == 0)) {
+                    v_names = capture_append(a, &builder_names, v_names, ownership_names(a, v_key, cp_keep(a, scoped_hir_display(v_source, hir_binding_declaration_start(v_hir, cp_field(a, v_accesses, v_row, 3)))),
+                        cp_field(a, v_accesses, v_row, 7)));
+                }
+                v_after = capture_append(a, &builder_after, v_after, cp_format(a, "%s%s%s%s%s%s%s%s", "ev|", cp_keep(a, scoped_hir_hex(v_start, 8)), "1|act|", cp_field(a, v_accesses, v_row, 2), "|", v_key, "|", cp_format(a, "%" PRId64 "\n", v_start)));
+            }
+        }
+        if ((((((v_start > v_block) && (v_stop < v_close)) && (strcmp(cp_field(a, v_accesses, v_row, 2), "take") == 0)) && (v_loop >= 0)) && ownership_in_lambda(a, v_facts, v_par, v_start)) &&
+            ((strncmp(v_key, "U", strlen("U")) == 0) || (hir_binding_declaration_start(v_hir, cp_field(a, v_accesses, v_row, 3)) < v_loop))) {
+            return capture_return_text(a, mark, ownership_error(a, "E2S123", "a par in a loop cannot repeatedly take an enclosing binding", v_start));
+        }
+        v_row = capture_record_start(a, v_accesses, "access", (v_row + 1));
+    }
+    const char * v_ordered = capture_sort(a, v_events);
+    CheckedPlaceText *builder_rows = NULL, *builder_steps = NULL, *builder_acts = NULL;
+    const char * v_rows = v_escapes;
+    const char * v_steps = "";
+    const char * v_acts = "";
+    int64_t v_step = 0;
+    int64_t v_action = 0;
+    v_row = 0;
+    while (v_row < ((int64_t)strlen(v_ordered))) {
+        v_step = (v_step + 1);
+        const char * v_kind = cp_field(a, v_ordered, v_row, 2);
+        if (strcmp(v_kind, "act") == 0) {
+            v_acts = capture_append(a, &builder_acts, v_acts, cp_format(a, "%s%s%s%s%s%s%s%s%s%s%s", "act|", cp_format(a, "%" PRId64, v_action), "|", cp_format(a, "%" PRId64, v_step), "|", cp_field(a, v_ordered, v_row, 3), "|",
+                cp_field(a, v_ordered, v_row, 4), "|", cp_field(a, v_ordered, v_row, 5), "\n"));
+            v_action = (v_action + 1);
+        } else {
+            v_steps = capture_append(a, &builder_steps, v_steps, cp_format(a, "%s%s%s%s%s%s", v_kind, "|", cp_field(a, v_ordered, v_row, 3), "|", cp_format(a, "%" PRId64, v_step), "\n"));
+        }
+        v_row = (capture_line_end(a, v_ordered, v_row) + 1);
+    }
+    int64_t v_exit = (v_step + 1);
+    const char * v_ordered_after = capture_sort(a, v_after);
+    CheckedPlaceText *builder_after_json = NULL;
+    const char * v_after_json = "";
+    v_row = 0;
+    while (v_row < ((int64_t)strlen(v_ordered_after))) {
+        v_acts = capture_append(a, &builder_acts, v_acts, cp_format(a, "%s%s%s%s%s%s%s%s%s%s%s", "act|", cp_format(a, "%" PRId64, v_action), "|", cp_format(a, "%" PRId64, ((v_exit + 1) + v_action)), "|", cp_field(a, v_ordered_after, v_row, 3), "|",
+            cp_field(a, v_ordered_after, v_row, 4), "|", cp_field(a, v_ordered_after, v_row, 5), "\n"));
+        v_actions = (v_actions + 1);
+        v_action = (v_action + 1);
+        v_row = (capture_line_end(a, v_ordered_after, v_row) + 1);
+    }
+    CheckedPlaceText *builder_constants = NULL, *builder_tasks = NULL;
+    const char * v_constants = "";
+    const char * v_tasks = "";
+    v_task = hir_record_start(v_facts, "task", 0);
+    while (v_task >= 0) {
+        if (strcmp(cp_field(a, v_facts, v_task, 1), v_par) == 0) {
+            const char * v_index = cp_field(a, v_facts, v_task, 2);
+            const char * v_spawn = cp_field(a, v_steps, capture_fact(a, v_steps, "spawn", 1, v_index), 2);
+            int64_t v_joined = capture_fact(a, v_steps, "join", 1, v_index);
+            const char * v_end = cp_format(a, "%" PRId64, v_exit);
+            const char * v_join_json = "";
+            if (v_joined >= 0) {
+                v_end = cp_field(a, v_steps, v_joined, 2);
+                v_join_json = cp_format(a, "%s%s", ",\"join_step\":", v_end);
+            }
+            v_rows = capture_append(a, &builder_rows, v_rows, cp_format(a, "%s%s%s%s%s%s%s", "task|", v_index, "|", v_spawn, "|", v_end, "\n"));
+            const char * v_handle = "none";
+            int64_t v_escape = capture_fact(a, v_escapes, "escape", 1, v_index);
+            if (v_escape >= 0) {
+                v_handle = cp_field(a, v_escapes, v_escape, 2);
+            }
+            int64_t v_capture = capture_fact(a, v_captures, "cap", 1, v_index);
+            while ((v_capture >= 0) && (strcmp(cp_field(a, v_captures, v_capture, 1), v_index) == 0)) {
+                v_constants = capture_append(a, &builder_constants, v_constants, ownership_constants(a, cp_field(a, v_captures, v_capture, 3)));
+                v_capture = capture_record_start(a, v_captures, "cap", (v_capture + 1));
+            }
+            v_tasks = capture_append(a, &builder_tasks, v_tasks, cp_format(a, "%s%s%s%s%s%s%s%s%s", "|", v_index, "|", v_spawn, "|", v_join_json, "|", v_handle, "\n"));
+        }
+        v_task = hir_record_start(v_facts, "task", (v_task + 1));
+    }
+    v_rows = capture_append(a, &builder_rows, v_rows, cp_format(a, "%s%s", v_captures, v_acts));
+    v_row = capture_record_start(a, v_acts, "act", 0);
+    while (v_row >= 0) {
+        v_constants = capture_append(a, &builder_constants, v_constants, ownership_constants(a, cp_field(a, v_acts, v_row, 4)));
+        v_row = capture_record_start(a, v_acts, "act", (v_row + 1));
+    }
+    const char * v_ranks = ownership_unique(a, v_constants);
+    CheckedPlaceText *builder_task_json = NULL;
+    const char * v_task_json = "";
+    v_row = 0;
+    while (v_row < ((int64_t)strlen(v_tasks))) {
+        const char * v_index = cp_field(a, v_tasks, v_row, 1);
+        CheckedPlaceText *builder_list = NULL;
+        const char * v_list = "";
+        int64_t v_capture = capture_fact(a, v_captures, "cap", 1, v_index);
+        while ((v_capture >= 0) && (strcmp(cp_field(a, v_captures, v_capture, 1), v_index) == 0)) {
+            if (((int64_t)strlen(v_list)) > 0) {
+                v_list = capture_append(a, &builder_list, v_list, ",");
+            }
+            v_list = capture_append(a, &builder_list, v_list, cp_format(a, "%s%s%s%s%s", "{\"mode\":\"", cp_field(a, v_captures, v_capture, 2), "\",\"place\":",
+                ownership_place_json(a, v_ranks, cp_field(a, v_captures, v_capture, 3)), "}"));
+            v_capture = capture_record_start(a, v_captures, "cap", (v_capture + 1));
+        }
+        if (((int64_t)strlen(v_task_json)) > 0) {
+            v_task_json = capture_append(a, &builder_task_json, v_task_json, ",");
+        }
+        v_task_json = capture_append(a, &builder_task_json, v_task_json, cp_format(a, "%s%s%s%s%s%s%s%s%s%s", "{\"captures\":[", v_list, "],\"handle_use\":\"", cp_field(a, v_tasks, v_row, 4), "\",\"id\":\"t", v_index, "\"",
+            cp_field(a, v_tasks, v_row, 3), ",\"spawn_step\":", cp_format(a, "%s}", cp_field(a, v_tasks, v_row, 2))));
+        v_row = (capture_line_end(a, v_tasks, v_row) + 1);
+    }
+    CheckedPlaceText *builder_act_json = NULL;
+    const char * v_act_json = "";
+    v_row = capture_record_start(a, v_acts, "act", 0);
+    while (v_row >= 0) {
+        const char * v_place = cp_format(a, "%s%s%s%s", "{\"mode\":\"", cp_field(a, v_acts, v_row, 3), "\",\"place\":", ownership_place_json(a, v_ranks, cp_field(a, v_acts, v_row, 4)));
+        if (decimal_value(cp_field(a, v_acts, v_row, 2)) < v_exit) {
+            if (((int64_t)strlen(v_act_json)) > 0) {
+                v_act_json = capture_append(a, &builder_act_json, v_act_json, ",");
+            }
+            v_act_json = capture_append(a, &builder_act_json, v_act_json, cp_format(a, "%s%s%s%s", v_place, ",\"step\":", cp_field(a, v_acts, v_row, 2), "}"));
+        } else {
+            if (((int64_t)strlen(v_after_json)) > 0) {
+                v_after_json = capture_append(a, &builder_after_json, v_after_json, ",");
+            }
+            v_after_json = capture_append(a, &builder_after_json, v_after_json, cp_format(a, "%s%s", v_place, "}"));
+        }
+        v_row = capture_record_start(a, v_acts, "act", (v_row + 1));
+    }
+    const char * v_diagnostics = "";
+    if (v_actions > 256) {
+        v_diagnostics = ownership_diagnostic(a, "SPV1-INVALID-MODEL", "$input.scope.parent_actions", decimal_value(cp_field(a, v_facts, v_par_row, 2)));
+    } else {
+        v_diagnostics = ownership_decide(a, v_rows);
+    }
+    CheckedPlaceText *builder_keyed = NULL;
+    const char * v_keyed = "";
+    v_row = 0;
+    while (v_row < ((int64_t)strlen(v_diagnostics))) {
+        int64_t v_end = capture_line_end(a, v_diagnostics, v_row);
+        v_keyed = capture_append(a, &builder_keyed, v_keyed, cp_format(a, "%s%s%s%s", "d|", cp_keep(a, scoped_hir_hex(decimal_value(cp_field(a, v_diagnostics, v_row, 3)), 8)),
+            cp_keep(a, scoped_hir_text_hex(cp_format(a, "%s%s%s", cp_field(a, v_diagnostics, v_row, 1), " ", cp_field(a, v_diagnostics, v_row, 2)))), cp_keep(a, source_slice(v_diagnostics, (v_row + 4), (v_end + 1)))));
+        v_row = (v_end + 1);
+    }
+    const char * v_sorted = capture_sort(a, v_keyed);
+    CheckedPlaceText *builder_ordered_diagnostics = NULL;
+    v_diagnostics = "";
+    v_row = 0;
+    while (v_row < ((int64_t)strlen(v_sorted))) {
+        int64_t v_end = capture_line_end(a, v_sorted, v_row);
+        v_diagnostics = capture_append(a, &builder_ordered_diagnostics, v_diagnostics, cp_format(a, "%s%s", "diag", cp_keep(a, source_slice(v_sorted, text_find_from(v_sorted, "|", (v_row + 2)), (v_end + 1)))));
+        v_row = (v_end + 1);
+    }
+    CheckedPlaceText *builder_diagnostic_json = NULL;
+    const char * v_diagnostic_json = "";
+    int64_t v_count = 0;
+    const char * v_first = "";
+    v_row = 0;
+    while ((v_row < ((int64_t)strlen(v_diagnostics))) && (v_count < 256)) {
+        if (((int64_t)strlen(v_diagnostic_json)) > 0) {
+            v_diagnostic_json = capture_append(a, &builder_diagnostic_json, v_diagnostic_json, ",");
+        }
+        v_diagnostic_json = capture_append(a, &builder_diagnostic_json, v_diagnostic_json, cp_format(a, "%s%s%s%s%s%s%s", "{\"at\":\"", cp_field(a, v_diagnostics, v_row, 2), "\",\"byte\":", cp_field(a, v_diagnostics, v_row, 3),
+            ",\"code\":\"", cp_field(a, v_diagnostics, v_row, 1), "\"}"));
+        if (v_count == 0) {
+            v_first = cp_format(a, "%s%s%s%s%s%s", "error[", cp_field(a, v_diagnostics, v_row, 1), "]: scoped ownership rejects ", cp_field(a, v_diagnostics, v_row, 2),
+                " at byte ", cp_field(a, v_diagnostics, v_row, 3));
+        }
+        v_count = (v_count + 1);
+        v_row = (capture_line_end(a, v_diagnostics, v_row) + 1);
+    }
+    const char * v_status = "accepted";
+    if (((int64_t)strlen(v_diagnostics)) > 0) {
+        v_status = "rejected";
+    }
+    const char * v_truncated = "false";
+    if (v_row < ((int64_t)strlen(v_diagnostics))) {
+        v_truncated = "true";
+    }
+    const char * v_derivation = "complete";
+    if (!v_derived) {
+        v_derivation = "lifecycle-only";
+    }
+    const char * v_unique_names = ownership_unique(a, v_names);
+    CheckedPlaceText *builder_name_json = NULL;
+    const char * v_name_json = "";
+    v_row = 0;
+    while (v_row < ((int64_t)strlen(v_unique_names))) {
+        if (((int64_t)strlen(v_name_json)) > 0) {
+            v_name_json = capture_append(a, &builder_name_json, v_name_json, ",");
+        }
+        v_name_json = capture_append(a, &builder_name_json, v_name_json, cp_format(a, "%s%s%s%s%s", "{\"display\":", cp_field(a, v_unique_names, v_row, 2), ",\"id\":\"", cp_field(a, v_unique_names, v_row, 1), "\"}"));
+        v_row = (capture_line_end(a, v_unique_names, v_row) + 1);
+    }
+    return capture_return_text(a, mark, cp_format(a, "scope|%s|%s\n{\"after_scope_actions\":[%s],\"decision\":{\"diagnostics\":[%s],\"diagnostics_truncated\":%s,\"status\":\"%s\"},\"derivation\":\"%s\",\"lexical_index\":%s,\"model_input\":{\"schema\":\"kofun.scoped-parallelism-model/v1\",\"scope\":{\"exit_step\":%" PRId64 ",\"parent_actions\":[%s],\"tasks\":[%s]}},\"names\":[%s]}",
+        v_status, v_first, v_after_json, v_diagnostic_json, v_truncated, v_status, v_derivation, v_par, v_exit, v_act_json, v_task_json, v_name_json));
+}
+
+static int check_scoped_ownership_file(const char *input, const char *output, const char *logical_path) {
+    Stage2FileIdentity identity = stage2_same_file(input, output);
+    if (identity == STAGE2_FILE_LOOKUP_ERROR) { stage2_host_lookup_error(); return 2; }
+    if (identity == STAGE2_FILE_SAME) {
+        puts("error[E2S35]: scoped ownership input and output must be distinct"); return 1;
+    }
+    if (!scoped_hir_logical_path(logical_path)) {
+        puts("error[E2S35]: scoped ownership logical path must be canonical relative UTF-8 (1..4096 bytes)");
+        return 1;
+    }
+    size_t source_bytes = 0;
+    char *source = read_file_with_length(input, &source_bytes);
+    if (source_bytes > UINT32_MAX) {
+        puts("error[E2S35]: scoped ownership source span exceeds u32"); free(source); return 1;
+    }
+    /* Text's explicit length must reach the Unicode validator before the C
+     * string representation can discard an embedded NUL and its suffix. */
+    if (memchr(source, 0, source_bytes) != NULL) {
+        KofunUnicodeError error;
+        if (!kofun_unicode_validate_source((const uint8_t *)source, source_bytes, &error)) {
+            char message[1024];
+            kofun_unicode_format_error(&error, getenv("KOFUN_DIAGNOSTIC_LOCALE"), message, sizeof(message));
+            puts(message); free(source); return 1;
+        }
+    }
+    char *tokens = lex_source(source);
+    if (strncmp(tokens, "error[", 6) == 0) { puts(tokens); free(tokens); free(source); return 1; }
+    free(tokens);
+    char *tree = parse_pattern_trees(source), *pattern_error = pattern_first_error(tree);
+    free(tree);
+    if (pattern_error[0] != '\0') { puts(pattern_error); free(pattern_error); free(source); return 1; }
+    free(pattern_error);
+    char *hir = build_scope_hir_analysis_mode(source, false, true);
+    if (strncmp(hir, "error[", 6) == 0) { puts(hir); free(hir); free(source); return 1; }
+    char *facts = scoped_hir_observations(source, hir);
+    if (strncmp(facts, "error[", 6) == 0) { puts(facts); free(facts); free(hir); free(source); return 1; }
+    CheckedPlaceArena arena = {0};
+    CheckedPlaceArena *a = &arena;
+    /* Handle escape is decided before capture derivation, which cannot type
+     * an escaping handle; such a file reports lifecycle facts only. */
+    const char *refusal = "";
+    const char *escapes = "";
+    for (int64_t par = hir_record_start(facts, "par", 0); par >= 0 && refusal[0] == '\0'; par = hir_record_start(facts, "par", par + 1)) {
+        refusal = ownership_token_escape(a, source, hir, facts, par);
+        escapes = cp_format(a, "%s%s", escapes, ownership_escapes(a, source, hir, facts, par));
+    }
+    bool derived = escapes[0] == '\0';
+    const char *accesses = "";
+    if (refusal[0] == '\0' && derived) {
+        const char *base_catalog = capture_catalog(a, source);
+        if (cp_error_p(base_catalog)) refusal = base_catalog;
+        else {
+            const char *catalog = cp_format(a, "%ssummary-mode|complete-v1\n", base_catalog);
+            const char *checked = capture_checked_source(a, source, hir, catalog, logical_path);
+            if (cp_error_p(checked)) refusal = checked;
+            else {
+                accesses = summary_expand(a, source, hir, catalog, facts, checked, logical_path);
+                if (cp_error_p(accesses)) refusal = accesses;
+                else {
+                    const char *document = capture_render_checked(a, source, hir, facts, accesses, logical_path);
+                    if (cp_error_p(document)) refusal = document;
+                }
+            }
+        }
+    }
+    const char *scopes = "", *status = "accepted", *first = "";
+    for (int64_t par = hir_record_start(facts, "par", 0); par >= 0 && refusal[0] == '\0'; par = hir_record_start(facts, "par", par + 1)) {
+        const char *scope = ownership_scope(a, source, hir, facts, accesses, logical_path, par, ownership_escapes(a, source, hir, facts, par), derived);
+        if (cp_error_p(scope)) { refusal = scope; break; }
+        if (strcmp(cp_field(a, scope, 0, 1), "rejected") == 0) {
+            status = "rejected";
+            if (first[0] == '\0') first = cp_field(a, scope, 0, 2);
+        }
+        scopes = cp_format(a, "%s%s%s", scopes, scopes[0] == '\0' ? "" : ",", capture_tail(a, scope));
+    }
+    char *message = owned_text(refusal[0] != '\0' ? refusal : first);
+    char *document = refusal[0] != '\0' ? NULL : owned_text(cp_format(a,
+        "{\"profile\":\"kofun.stage2-analysis/scoped-ownership/v1\",\"schema\":\"kofun-scoped-ownership/v1\",\"scopes\":[%s],\"status\":\"%s\"}\n", scopes, status));
+    bool rejected = strcmp(status, "rejected") == 0;
+    capture_release(&arena, NULL);
+    free(facts); free(hir); free(source);
+    if (document == NULL) { puts(message); free(message); return 1; }
+    bool written = write_file_transactional(output, document);
+    free(document);
+    if (!written) { puts("error[E2S35]: cannot commit scoped ownership output"); free(message); return 1; }
+    if (rejected) { puts(message); free(message); return 1; }
+    free(message);
+    return 0;
 }
 
 static int emit_scope_hir_v2_file(const char *input, const char *output, const char *logical_path) {
@@ -37996,6 +38963,9 @@ int main(int argc, char **argv) {
     if (argc == 5 && strcmp(argv[1], "--emit-complete-capture-hir-v2") == 0) {
         return emit_complete_capture_hir_v2_file(argv[2], argv[3], argv[4]);
     }
+    if (argc == 5 && strcmp(argv[1], "--check-scoped-ownership") == 0) {
+        return check_scoped_ownership_file(argv[2], argv[3], argv[4]);
+    }
     if (argc == 5 && strcmp(argv[1], "--emit-scope-hir-v2") == 0) {
         return emit_scope_hir_v2_file(argv[2], argv[3], argv[4]);
     }
@@ -38024,6 +38994,7 @@ int main(int argc, char **argv) {
             "       kofun-stage2 --emit-scope-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n"
             "       kofun-stage2 --emit-capture-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n"
             "       kofun-stage2 --emit-complete-capture-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n"
+            "       kofun-stage2 --check-scoped-ownership INPUT.kofun OUTPUT.json LOGICAL-PATH\n"
                 "       kofun-stage2 --emit-place-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH TASK-INDEX START END\n"
             "       kofun-stage2 --emit-selfhost-hir INPUT.kofun OUTPUT.hir SOURCE-SHA256\n"
             "       kofun-stage2 --lower-selfhost-c11 INPUT.hir OUTPUT.c\n"

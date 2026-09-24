@@ -1,8 +1,9 @@
 # Scoped parallelism v1
 
 Status: accepted normative contract (RFC-0003, decided 2026-08-09) and bounded
-executable model; production parsing, checking, lowering, and scheduling are
-not implemented.
+executable model; production parsing, lowering, and scheduling are not
+implemented, and the production ownership check is an analysis entry only
+(§11).
 
 Issue: [#555](https://github.com/kofun-lang/kofun/issues/555)
 
@@ -223,6 +224,11 @@ Projection depth is at most eight and input is at most 64 KiB.
 
 Logical steps express liveness only. They are not clock ticks.
 
+A place is either a base with projections or an explicit unknown,
+`{"unknown": ID}`: the checked unavailable place of the capture contract,
+which names no base. §6 can prove nothing about it, so its relation to every
+other place is unknown and to itself is overlap.
+
 Each explicit spawn, join, or parent access has a unique logical step and must
 occur strictly before the scope-exit step. Only implicit joins share the
 scope-exit step, and they occur before the `scope.exit` anchor.
@@ -271,18 +277,29 @@ scope-HIR walk, and the typed frontend — refuses the construct by name with
 frozen v1 node representation. Naming the construct replaces an incidental
 `E2S35 unknown lexical binding` blamed on the scope token. Representing `par`
 in the typed HIR would
-require `kofun.selfhost-hir/v2` and a profile revision, so capture derivation,
-place-overlap checking, the diagnostic classes in §8, scheduling, and backend
-lowering all remain unimplemented.
+require `kofun.selfhost-hir/v2` and a profile revision, so the typed frontend
+still refuses it. Capture derivation and ownership checking have since landed
+as analysis-only entries (below); user-facing diagnostics for the §8 classes,
+scheduling, and backend lowering remain unimplemented.
 
 A production implementation must be split into separately gated parser/HIR,
 ownership/place analysis, runtime/scheduler, diagnostics, and backend work. It
 must preserve every rejection and lifecycle rule here. Passing this model is
 not evidence that any production component is implemented.
 
+The ownership slice is now in production as an analysis entry
+([#1162](https://github.com/kofun-lang/kofun/issues/1162)). `kofun-stage2
+--check-scoped-ownership` derives this model's input for each `par` from
+checked lifecycle, capture and parent-access facts. It then decides that input
+with the rules above and reports the §8 identifiers. `task
+concurrency-ownership` compares every decision with this model. The entry does
+not allocate user-facing diagnostics, schedule, or lower anything, and ordinary
+compilation still refuses `par` with `E2S154`.
+
 This document is the normative contract of accepted
 [`RFC-0003`](../../rfcs/0003-scoped-parallelism.md), decided 2026-08-09. The
-decision is in force; the feature is not shipped. No parser, ownership checker,
-scheduler, or backend implements it, and the compiler refuses `par` by name
+decision is in force; the feature is not shipped. No compiling parser,
+scheduler, or backend implements it (the ownership checker is analysis-only),
+and the compiler refuses `par` by name
 with `E2S154` — which is the separation between an accepted decision and an
 implemented capability, not a gap in the decision.

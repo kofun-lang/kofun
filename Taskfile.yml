@@ -675,6 +675,11 @@ tasks:
     cmds:
       - "node tests/concurrency/capture-events/check.mjs"
 
+  concurrency-ownership:
+    desc: "Verify production scoped-parallel ownership decisions against the accepted model"
+    cmds:
+      - "sh tests/conformance/concurrency/ownership/run.sh"
+
   concurrency-capture-contract:
     desc: "Verify the versioned scoped-capture HIR, KSE2, and sidecar contract"
     cmds:
@@ -1585,6 +1590,7 @@ tasks:
             concurrency-captures-direct \
             concurrency-captures \
             concurrency-capture-events \
+            concurrency-ownership \
             schedule-trace \
             type-reduction-trace \
             affine-resumption \
