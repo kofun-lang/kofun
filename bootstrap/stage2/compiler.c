@@ -26749,16 +26749,19 @@ static bool source_declares_authority_member(const char *source) {
  *
  * #1465 admitted the three names as record field types, and a read of such a
  * field already has its type: `initializer_type` returns it, which is how
- * `to_text(value.slot)` is refused by name. `return`, `print` and the
- * arithmetic operators did not ask, and each accepted the read as the `int64_t`
- * it lowers to. This is the question they ask; the copy a `let` makes is
- * `authority_field_misuse`'s.
+ * `to_text(value.slot)` is refused by name. `return`, `print`, the arithmetic
+ * operators and `let` did not ask, and each accepted the read as the `int64_t`
+ * it lowers to. This is the question they ask.
  *
  * Two shapes answer, either one parenthesised: a field read `binding.field`,
  * and a body binding initialized from one — an `EnvironmentKey` may be copied
  * out, and the copy is still that type. A bare authority *parameter* does not.
  * Its declaration is refused with the carrier answer #1242 fixed, and a use
  * site that answered first would move that refusal.
+ *
+ * `binding` is resolved through the scope HIR at the use, never matched by
+ * name, so a shadowing `let value: Box = ...` is read as the `Box` it is, and
+ * a shadowing `let value: Holder = other` as the `Holder`.
  */
 static char *authority_read_type(
     const char *source,
@@ -26813,11 +26816,32 @@ static char *authority_read_type(
 }
 
 /*
- * #1659. `print` and the arithmetic operators, applied to an authority read.
+ * #1659. `let`, `print` and the arithmetic operators, applied to an authority
+ * read.
  *
- * Both accepted `value.slot` as the `int64_t` it lowers to: `print` formatted
- * it with `PRId64` and `+` passed it to `kofun_add`. Each is refused by the
- * name of the type, as `to_text` already refuses the same read.
+ * All three accepted `value.slot` as the `int64_t` it lowers to: `let` bound
+ * it, `print` formatted it with `PRId64` and `+` passed it to `kofun_add`.
+ *
+ * An unannotated `let` whose initializer reads an Owned authority binds a
+ * second name for one unforgeable value. That is RFC-0002's "authority is
+ * copied", with a bare value on the right exactly as in `let alias = root`, so
+ * the refusal is that one word for word; no causal path through the record is
+ * involved, and the record's own classification is #1243's. Only an
+ * unannotated `let` makes the copy: `let n: Int = value.slot` asks for an Int,
+ * which is the initializer mismatch it already reports, and an annotation
+ * naming the authority type is the creation E352 refuses. `EnvironmentKey` is
+ * unrestricted, so its copy is admitted and keeps its type.
+ *
+ * This is asked here, after the scope HIR exists, and not beside the bare
+ * check in `validate_authority_uses`, which runs before it and matches a
+ * parameter's name as text. What `value.slot` reads depends on which `value`
+ * is in scope, and a shadowing `let` changes that: matched as text, a
+ * `let value: Box = Box(slot: 1)` inside `fn g(read value: Holder)` made
+ * `let inner = value.slot` a false E353, and a `let value: Holder = other`
+ * over a `Box` parameter hid a real one.
+ *
+ * The operators and `print` are refused by the name of the type, as `to_text`
+ * already refuses the same read.
  *
  * An operand is the primary on either side of the operator. The left one is
  * found by asking `primary_end` where each primary ends, so `f(value.slot) + 1`
@@ -26840,6 +26864,7 @@ static char *validate_authority_reads(const char *source, const char *hir) {
                 function_close - 1 : function_start
         );
         if (function_open >= 0) {
+            char *before_previous = owned_text("");
             char *previous = owned_text("{");
             const char *previous_kind = "";
             int64_t cursor = skip_trivia(
@@ -26849,6 +26874,51 @@ static char *validate_authority_reads(const char *source, const char *hir) {
             while (cursor < function_close) {
                 char *text = token_copy(source, cursor);
                 const char *kind = token_kind(source, cursor);
+                if (
+                    strcmp(text, "=") == 0 &&
+                    (strcmp(before_previous, "let") == 0 ||
+                     strcmp(before_previous, "mut") == 0)
+                ) {
+                    int64_t value = skip_trivia(
+                        source,
+                        token_end(source, cursor)
+                    );
+                    while (
+                        value < function_close &&
+                        token_equal(source, value, "(")
+                    ) {
+                        value = skip_trivia(source, token_end(source, value));
+                    }
+                    char *authority = authority_read_type(
+                        source,
+                        hir,
+                        function_open,
+                        value
+                    );
+                    if (authority_type_is_owned(authority)) {
+                        Buffer message;
+                        buffer_init(&message);
+                        buffer_format(
+                            &message,
+                            "%s is an Owned authority and cannot be copied; "
+                            "pass it with `take`, or borrow it with `read` or "
+                            "`edit`",
+                            authority
+                        );
+                        char *error = lower_error(
+                            "E353",
+                            message.data,
+                            value
+                        );
+                        free(message.data);
+                        free(authority);
+                        free(text);
+                        free(previous);
+                        free(before_previous);
+                        return error;
+                    }
+                    free(authority);
+                }
                 if (arithmetic_operator_at(source, cursor)) {
                     char *authority = authority_read_type(
                         source,
@@ -26874,6 +26944,7 @@ static char *validate_authority_reads(const char *source, const char *hir) {
                         free(authority);
                         free(text);
                         free(previous);
+                        free(before_previous);
                         return error;
                     }
                     free(authority);
@@ -26932,6 +27003,7 @@ static char *validate_authority_reads(const char *source, const char *hir) {
                                 free(authority);
                                 free(text);
                                 free(previous);
+                                free(before_previous);
                                 return error;
                             }
                             free(authority);
@@ -26973,17 +27045,20 @@ static char *validate_authority_reads(const char *source, const char *hir) {
                                 free(authority);
                                 free(text);
                                 free(previous);
+                                free(before_previous);
                                 return error;
                             }
                             free(authority);
                         }
                     }
                 }
-                free(previous);
+                free(before_previous);
+                before_previous = previous;
                 previous = text;
                 previous_kind = kind;
                 cursor = skip_trivia(source, token_end(source, cursor));
             }
+            free(before_previous);
             free(previous);
         }
         function_start = next_function_start(source, function_close);
@@ -30212,89 +30287,6 @@ static char *authority_binding_misuse(
 }
 
 /*
- * #1659. An Owned authority copied out of a record parameter.
- *
- * A read of the field has the field's type, so `let inner = value.slot` binds a
- * second name for one unforgeable value. That is RFC-0002's "authority is
- * copied", with a bare value on the right exactly as in `let alias = root`, so
- * the refusal is that one word for word. The record's own classification is
- * #1243's and is not involved: nothing here asks what `value` is, only what
- * was taken out of it.
- *
- * Only an unannotated `let` makes the copy. `let n: Int = value.slot` asks for
- * an Int, which is the initializer mismatch it already reports, and an
- * annotation naming the authority type is the creation E352 refuses.
- */
-static char *authority_field_misuse(
-    const char *source,
-    int64_t body_start,
-    int64_t body_end,
-    const char *binding,
-    const char *record_type
-) {
-    int64_t cursor = skip_trivia(source, body_start);
-    char *previous = owned_text("");
-    char *before_previous = owned_text("");
-    while (cursor < body_end) {
-        char *text = token_copy(source, cursor);
-        if (
-            strcmp(text, "=") == 0 &&
-            (strcmp(before_previous, "let") == 0 ||
-             strcmp(before_previous, "mut") == 0)
-        ) {
-            int64_t value = skip_trivia(source, token_end(source, cursor));
-            while (value < body_end && token_equal(source, value, "(")) {
-                value = skip_trivia(source, token_end(source, value));
-            }
-            int64_t dot = skip_trivia(source, token_end(source, value));
-            if (
-                value < body_end &&
-                token_equal(source, value, binding) &&
-                strcmp(token_kind(source, value), "identifier") == 0 &&
-                dot < body_end &&
-                token_equal(source, dot, ".")
-            ) {
-                char *field = token_copy(
-                    source,
-                    skip_trivia(source, token_end(source, dot))
-                );
-                char *field_type = record_field_type_named(
-                    source,
-                    record_type,
-                    field
-                );
-                free(field);
-                if (authority_type_is_owned(field_type)) {
-                    Buffer message;
-                    buffer_init(&message);
-                    buffer_format(
-                        &message,
-                        "%s is an Owned authority and cannot be copied; pass "
-                        "it with `take`, or borrow it with `read` or `edit`",
-                        field_type
-                    );
-                    char *error = lower_error("E353", message.data, value);
-                    free(message.data);
-                    free(field_type);
-                    free(text);
-                    free(previous);
-                    free(before_previous);
-                    return error;
-                }
-                free(field_type);
-            }
-        }
-        free(before_previous);
-        before_previous = previous;
-        previous = text;
-        cursor = skip_trivia(source, token_end(source, cursor));
-    }
-    free(previous);
-    free(before_previous);
-    return owned_text("ok");
-}
-
-/*
  * #1245. The explicit `pure` boundary over the effects the compiler already
  * infers. The io root is a parameter: a function that reaches it, directly or
  * through any chain of calls, is io, and an annotated function that is io is a
@@ -30597,9 +30589,6 @@ static char *validate_pure_annotations(const char *source) {
 }
 
 static char *validate_authority_uses(const char *source) {
-    /* #1659. Asked once: a record parameter can hold an authority only if a
-     * type declaration names one. */
-    bool authority_members = source_declares_authority_member(source);
     int64_t function_start = next_function_start(source, 0);
     int64_t length = (int64_t)strlen(source);
     while (function_start < length) {
@@ -30636,24 +30625,6 @@ static char *validate_authority_uses(const char *source) {
                     return misuse;
                 }
                 free(misuse);
-            } else if (authority_members &&
-                       strcmp(previous_text, ":") == 0 &&
-                       strcmp(previous_name, "") != 0 &&
-                       record_declaration_start(source, text) >= 0) {
-                char *field_misuse = authority_field_misuse(
-                    source,
-                    parameters_close,
-                    function_close,
-                    previous_name,
-                    text
-                );
-                if (strcmp(field_misuse, "ok") != 0) {
-                    free(text);
-                    free(previous_text);
-                    free(previous_name);
-                    return field_misuse;
-                }
-                free(field_misuse);
             }
             if (strcmp(token_kind(source, cursor), "identifier") == 0 &&
                 strcmp(previous_text, ":") != 0) {

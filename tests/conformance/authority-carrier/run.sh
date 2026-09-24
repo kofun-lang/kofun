@@ -201,6 +201,27 @@ status=$(outcome "$WORK/case.kofun")
 test "$status" -eq 0 ||
     fail "the same sites over an Int field exited $status: $(first_line)"
 
+# --- the read is resolved, not matched by name ------------------------------
+# What `value.slot` reads is whichever `value` is in scope there. A first
+# version matched the parameter's name as text, so a shadowing `Box` made the
+# copy below a false E353 -- and a shadowing `Holder` over a `Box` parameter
+# hid a real one. Both directions, at function scope and in a block.
+printf 'type Holder = { slot: RootAuthority }\n\ntype Box = { slot: Int }\n\nfn g(read value: Holder) -> Int {\n    let value: Box = Box(slot: 1)\n    let inner = value.slot\n    print(value.slot)\n    return value.slot + inner\n}\n\nfn h(read value: Holder) -> Int {\n    if true {\n        let value: Box = Box(slot: 2)\n        let inner = value.slot\n        print(inner)\n    }\n    return 0\n}\n\nfn main() -> Int {\n    return 0\n}\n' \
+    >"$WORK/case.kofun"
+status=$(outcome "$WORK/case.kofun")
+test "$status" -eq 0 ||
+    fail "reads through a shadowing Box exited $status: $(first_line)"
+
+printf 'type Holder = { slot: RootAuthority }\n\ntype Box = { slot: Int }\n\nfn g(read value: Box, read other: Holder) -> Int {\n    let value: Holder = other\n    let inner = value.slot\n    return 0\n}\n\nfn main() -> Int {\n    return 0\n}\n' \
+    >"$WORK/case.kofun"
+status=$(outcome "$WORK/case.kofun")
+test "$status" -eq 1 ||
+    fail "a copy through a shadowing Holder exited $status, not 1"
+case $(first_line) in
+    "error[E353]: RootAuthority is an Owned authority and cannot be copied"*) ;;
+    *) fail "a copy through a shadowing Holder reported $(first_line)" ;;
+esac
+
 # --- the name cannot be taken over -----------------------------------------
 # #1243. "One stable nominal TypeId independent of source spelling" is false if
 # the spelling can be redeclared. Before the names were reserved,

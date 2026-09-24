@@ -18050,16 +18050,19 @@ fn source_declares_authority_member(source: Text) -> Bool {
 #
 # #1465 admitted the three names as record field types, and a read of such a
 # field already has its type: `initializer_type` returns it, which is how
-# `to_text(value.slot)` is refused by name. `return`, `print` and the
-# arithmetic operators did not ask, and each accepted the read as the `int64_t`
-# it lowers to. This is the question they ask; the copy a `let` makes is
-# `authority_field_misuse`'s.
+# `to_text(value.slot)` is refused by name. `return`, `print`, the arithmetic
+# operators and `let` did not ask, and each accepted the read as the `int64_t`
+# it lowers to. This is the question they ask.
 #
 # Two shapes answer, either one parenthesised: a field read `binding.field`,
 # and a body binding initialized from one -- an `EnvironmentKey` may be copied
 # out, and the copy is still that type. A bare authority *parameter* does not.
 # Its declaration is refused with the carrier answer #1242 fixed, and a use
 # site that answered first would move that refusal.
+#
+# `binding` is resolved through the scope HIR at the use, never matched by
+# name, so a shadowing `let value: Box = ...` is read as the `Box` it is, and
+# a shadowing `let value: Holder = other` as the `Holder`.
 fn authority_read_type(
     source: Text,
     hir: Text,
@@ -18104,11 +18107,32 @@ fn authority_read_type(
     return ""
 }
 
-# #1659. `print` and the arithmetic operators, applied to an authority read.
+# #1659. `let`, `print` and the arithmetic operators, applied to an authority
+# read.
 #
-# Both accepted `value.slot` as the `int64_t` it lowers to: `print` formatted
-# it with `PRId64` and `+` passed it to `kofun_add`. Each is refused by the
-# name of the type, as `to_text` already refuses the same read.
+# All three accepted `value.slot` as the `int64_t` it lowers to: `let` bound
+# it, `print` formatted it with `PRId64` and `+` passed it to `kofun_add`.
+#
+# An unannotated `let` whose initializer reads an Owned authority binds a
+# second name for one unforgeable value. That is RFC-0002's "authority is
+# copied", with a bare value on the right exactly as in `let alias = root`, so
+# the refusal is that one word for word; no causal path through the record is
+# involved, and the record's own classification is #1243's. Only an
+# unannotated `let` makes the copy: `let n: Int = value.slot` asks for an Int,
+# which is the initializer mismatch it already reports, and an annotation
+# naming the authority type is the creation E352 refuses. `EnvironmentKey` is
+# unrestricted, so its copy is admitted and keeps its type.
+#
+# This is asked here, after the scope HIR exists, and not beside the bare
+# check in `validate_authority_uses`, which runs before it and matches a
+# parameter's name as text. What `value.slot` reads depends on which `value`
+# is in scope, and a shadowing `let` changes that: matched as text, a
+# `let value: Box = Box(slot: 1)` inside `fn g(read value: Holder)` made
+# `let inner = value.slot` a false E353, and a `let value: Holder = other`
+# over a `Box` parameter hid a real one.
+#
+# The operators and `print` are refused by the name of the type, as `to_text`
+# already refuses the same read.
 #
 # An operand is the primary on either side of the operator. The left one is
 # found by asking `primary_end` where each primary ends, so `f(value.slot) + 1`
@@ -18131,6 +18155,7 @@ fn validate_authority_reads(source: Text, hir: Text) -> Text {
         }
         let function_open = enclosing_function_open(source, probe)
         if function_open >= 0 {
+            let mut before_previous = ""
             let mut previous = "{"
             let mut previous_kind = ""
             let mut cursor = skip_trivia(
@@ -18140,6 +18165,32 @@ fn validate_authority_reads(source: Text, hir: Text) -> Text {
             while cursor < function_close {
                 let text = token_text(source, cursor)
                 let kind = token_kind(source, cursor)
+                if text == "=" &&
+                   (before_previous == "let" || before_previous == "mut") {
+                    let mut value = skip_trivia(
+                        source,
+                        token_end(source, cursor)
+                    )
+                    while value < function_close &&
+                          token_text(source, value) == "(" {
+                        value = skip_trivia(source, token_end(source, value))
+                    }
+                    let authority = authority_read_type(
+                        source,
+                        hir,
+                        function_open,
+                        value
+                    )
+                    if authority_type_is_owned(authority) {
+                        return lower_error(
+                            "E353",
+                            authority + " is an Owned authority and cannot" +
+                            " be copied; pass it with `take`, or borrow it" +
+                            " with `read` or `edit`",
+                            value
+                        )
+                    }
+                }
                 if arithmetic_operator(text) {
                     let right = skip_trivia(source, token_end(source, cursor))
                     let authority = authority_read_type(
@@ -18214,6 +18265,7 @@ fn validate_authority_reads(source: Text, hir: Text) -> Text {
                         }
                     }
                 }
+                before_previous = previous
                 previous = text
                 previous_kind = kind
                 cursor = skip_trivia(source, token_end(source, cursor))
@@ -20162,66 +20214,6 @@ fn authority_binding_misuse(
     return "ok"
 }
 
-# #1659. An Owned authority copied out of a record parameter.
-#
-# A read of the field has the field's type, so `let inner = value.slot` binds a
-# second name for one unforgeable value. That is RFC-0002's "authority is
-# copied", with a bare value on the right exactly as in `let alias = root`, so
-# the refusal is that one word for word. The record's own classification is
-# #1243's and is not involved: nothing here asks what `value` is, only what
-# was taken out of it.
-#
-# Only an unannotated `let` makes the copy. `let n: Int = value.slot` asks for
-# an Int, which is the initializer mismatch it already reports, and an
-# annotation naming the authority type is the creation E352 refuses.
-fn authority_field_misuse(
-    source: Text,
-    body_start: Int,
-    body_end: Int,
-    binding: Text,
-    record_type: Text
-) -> Text {
-    let mut cursor = skip_trivia(source, body_start)
-    let mut previous = ""
-    let mut before_previous = ""
-    while cursor < body_end {
-        let text = token_text(source, cursor)
-        if text == "=" &&
-           (before_previous == "let" || before_previous == "mut") {
-            let mut value = skip_trivia(source, token_end(source, cursor))
-            while value < body_end && token_text(source, value) == "(" {
-                value = skip_trivia(source, token_end(source, value))
-            }
-            let dot = skip_trivia(source, token_end(source, value))
-            if value < body_end && token_text(source, value) == binding &&
-               token_kind(source, value) == "identifier" &&
-               dot < body_end && token_text(source, dot) == "." {
-                let field_type = record_field_type_named(
-                    source,
-                    record_type,
-                    token_text(
-                        source,
-                        skip_trivia(source, token_end(source, dot))
-                    )
-                )
-                if authority_type_is_owned(field_type) {
-                    return lower_error(
-                        "E353",
-                        field_type + " is an Owned authority and cannot be" +
-                        " copied; pass it with `take`, or borrow it with" +
-                        " `read` or `edit`",
-                        value
-                    )
-                }
-            }
-        }
-        before_previous = previous
-        previous = text
-        cursor = skip_trivia(source, token_end(source, cursor))
-    }
-    return "ok"
-}
-
 # #1245. Every declaration the annotation applies to, as `|start|start|`, from
 # one forward pass. One pass and not one backward walk per declaration: the
 # walk cost a scan from byte zero for every function in the file, and the empty
@@ -20466,9 +20458,6 @@ fn validate_pure_annotations(source: Text) -> Text {
 }
 
 fn validate_authority_uses(source: Text) -> Text {
-    # #1659. Asked once: a record parameter can hold an authority only if a
-    # type declaration names one.
-    let authority_members = source_declares_authority_member(source)
     let mut function_start = next_function_start(source, 0)
     while function_start < len(source) {
         let function_close = function_end(source, function_start)
@@ -20500,19 +20489,6 @@ fn validate_authority_uses(source: Text) -> Text {
                 )
                 if misuse != "ok" {
                     return misuse
-                }
-            } else if authority_members && previous_text == ":" &&
-                      previous_name != "" &&
-                      record_declaration_start(source, text) >= 0 {
-                let field_misuse = authority_field_misuse(
-                    source,
-                    parameters_close,
-                    function_close,
-                    previous_name,
-                    text
-                )
-                if field_misuse != "ok" {
-                    return field_misuse
                 }
             }
             if token_kind(source, cursor) == "identifier" &&
