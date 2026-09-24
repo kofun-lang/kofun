@@ -258,6 +258,59 @@ KofunDecimalStatus kofun_decimal_format(
     char **out
 );
 
+/* --- Fixed[S] carrier (RFC-0015, issue #1661) ---------------------------- */
+
+/*
+ * The runtime half of `Fixed[S]`. RFC-0015 makes the payload the canonical
+ * `KofunDecimal` itself -- "not a second mutable Fixed identity" -- so these
+ * entry points take and produce `KofunDecimal`, and the static `S` exists
+ * only at construction and formatting. No compiler calls them yet; #1250 is
+ * the first caller.
+ *
+ * They differ from the value shim below in the one way RFC-0015 requires:
+ * there is "no ambient rounding mode, clamp, fatal generated-program
+ * shortcut, or partial value". Every failure is a returned status, and
+ * reporting one allocates nothing. On any failure `out` is a valid empty
+ * value, the input is unchanged, and no temporary survives.
+ *
+ * Ownership: an `out` argument must not own a payload when passed; it is
+ * overwritten. A successful `out` is owned by the caller and released exactly
+ * once by `kofun_fixed_drop`.
+ */
+#define KOFUN_FIXED_MIN_SCALE 0L
+#define KOFUN_FIXED_MAX_SCALE KOFUN_DECIMAL_MAX_SCALE
+
+/*
+ * `Fixed.from_decimal(value, mode)` at the expected `Fixed[scale]`: round
+ * `input` to `scale` under the explicit `mode`, then canonicalize. The result
+ * is exactly `kofun_decimal_round`'s. A `scale` outside
+ * `KOFUN_FIXED_MIN_SCALE..KOFUN_FIXED_MAX_SCALE` is D002 -- the compiler
+ * refuses it statically as E408, so reaching the runtime with one is a
+ * status, never an abort -- and an unknown mode is D006.
+ */
+KofunDecimalStatus kofun_fixed_from_decimal(
+    const KofunDecimal *input,
+    long scale,
+    KofunDecimalRounding mode,
+    KofunDecimal *out
+);
+
+/* Explicit `clone`: a deep copy into a fresh owner, or D004. */
+KofunDecimalStatus kofun_fixed_clone(
+    const KofunDecimal *source,
+    KofunDecimal *out
+);
+
+/* `take`: `out` receives the payload and `source` is left empty. */
+void kofun_fixed_move(KofunDecimal *source, KofunDecimal *out);
+
+/*
+ * Release the payload and leave `value` empty. Dropping an empty or
+ * moved-from value does nothing, so cleanup can run unconditionally on every
+ * path and still release each payload exactly once.
+ */
+void kofun_fixed_drop(KofunDecimal *value);
+
 /*
  * The same four operations on `Float`, where they are binary64 and therefore
  * *not* exact. They exist here, beside the exact ones, because keeping the two

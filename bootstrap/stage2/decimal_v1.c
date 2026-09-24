@@ -363,6 +363,9 @@ bool kofun_decimal_equal(const KofunDecimal *left, const KofunDecimal *right) {
     if (left->sign != right->sign) return false;
     if (left->scale != right->scale) return false;
     if (left->limb_count != right->limb_count) return false;
+    /* Zero has no limbs, and `memcmp` on a null pointer is undefined even
+     * for length zero; UBSan reports it once Fixed's gate compares zeros. */
+    if (left->limb_count == 0) return true;
     return memcmp(
         left->limbs,
         right->limbs,
@@ -827,6 +830,12 @@ static bool magnitude_scale_pow_small(Magnitude *m, uint32_t base, long power) {
  * the dividend — but that question is exactly divisibility, so an approximate
  * answer would be a wrong answer rather than a coarse one.
  */
+/*
+ * On failure both `quotient` and `remainder` are released and empty. Before
+ * #1661 a refused remainder allocation returned with the quotient still
+ * owned, and every caller freed only its own operands, so each such refusal
+ * leaked one block.
+ */
 static bool magnitude_divmod(const Magnitude *numerator,
                              const Magnitude *divisor,
                              Magnitude *quotient,
@@ -844,7 +853,10 @@ static bool magnitude_divmod(const Magnitude *numerator,
         }
         uint32_t rest = magnitude_divmod_small(quotient, divisor->limbs[0]);
         if (rest != 0) {
-            if (!magnitude_reserve(remainder, 1)) return false;
+            if (!magnitude_reserve(remainder, 1)) {
+                magnitude_free(quotient);
+                return false;
+            }
             remainder->limbs[0] = rest;
             remainder->count = 1;
         }
@@ -960,6 +972,7 @@ static bool magnitude_divmod(const Magnitude *numerator,
     if (!magnitude_reserve(remainder, n)) {
         magnitude_free(&u);
         magnitude_free(&v);
+        magnitude_free(quotient);
         return false;
     }
     for (size_t index = 0; index < n; ++index) {
@@ -1586,6 +1599,58 @@ KofunDecimalStatus kofun_decimal_format(
     free(digits);
     *out = text;
     return KOFUN_DECIMAL_OK;
+}
+
+/* --- Fixed[S] carrier (RFC-0015, issue #1661) ---------------------------- */
+
+KofunDecimalStatus kofun_fixed_from_decimal(
+    const KofunDecimal *input,
+    long scale,
+    KofunDecimalRounding mode,
+    KofunDecimal *out
+) {
+    if (input == NULL || out == NULL) return KOFUN_DECIMAL_MALFORMED;
+    kofun_decimal_init(out);
+    /*
+     * Decimal rounding accepts a negative target scale; `Fixed[S]` does not.
+     * Checked here rather than left to `kofun_decimal_round`, whose wider
+     * domain would otherwise make `Fixed[-1]` a successful construction.
+     */
+    if (scale < KOFUN_FIXED_MIN_SCALE || scale > KOFUN_FIXED_MAX_SCALE) {
+        return KOFUN_DECIMAL_SCALE_LIMIT;
+    }
+    return kofun_decimal_round(input, scale, mode, out);
+}
+
+KofunDecimalStatus kofun_fixed_clone(
+    const KofunDecimal *source,
+    KofunDecimal *out
+) {
+    if (source == NULL || out == NULL) return KOFUN_DECIMAL_MALFORMED;
+    kofun_decimal_init(out);
+    if (source->limb_count == 0) return KOFUN_DECIMAL_OK;
+    if (source->limb_count > (size_t)-1 / sizeof(*source->limbs)) {
+        return KOFUN_DECIMAL_MEMORY;
+    }
+    uint32_t *limbs = malloc(source->limb_count * sizeof(*limbs));
+    if (limbs == NULL) return KOFUN_DECIMAL_MEMORY;
+    memcpy(limbs, source->limbs, source->limb_count * sizeof(*limbs));
+    out->sign = source->sign;
+    out->scale = source->scale;
+    out->limbs = limbs;
+    out->limb_count = source->limb_count;
+    out->inline_storage = source->inline_storage;
+    return KOFUN_DECIMAL_OK;
+}
+
+void kofun_fixed_move(KofunDecimal *source, KofunDecimal *out) {
+    if (source == NULL || out == NULL) return;
+    *out = *source;
+    kofun_decimal_init(source);
+}
+
+void kofun_fixed_drop(KofunDecimal *value) {
+    kofun_decimal_free(value);
 }
 
 /* --- Float, for contrast (slice 4 of #710, issue #723) -------------------- */

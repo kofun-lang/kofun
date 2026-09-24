@@ -66,7 +66,7 @@ export const GROUPS = Object.freeze([
             'list-int-signatures',
             'adt-exhaustiveness', 'adt-usefulness-v2',
             'enum-match-value', 'module-constants',
-            'decimal', 'decimal-arithmetic',
+            'decimal', 'decimal-arithmetic', 'decimal-fixed-runtime',
             'date-time', 'syntax'
         ]
     },
