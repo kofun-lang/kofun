@@ -125,8 +125,14 @@ Every serialized task still requires its join: an interrupted byte stream or
 an unfinished task/join section is rejected. Cancellation observation has no
 wire event; these APIs consume committed snapshots and do not infer when a
 producer observed cancellation. A producer must freeze validated records at
-that point and buffer any uncommitted section until it is closed. Compiler
-fact production and that production cancellation boundary remain #1225.
+that point and buffer any uncommitted section until it is closed.
+
+The compiler producer is `bootstrap/stage2/capture_events_producer.c` (#1225,
+`spec/concurrency/scoped-captures-v1.md` §15). It commits a checked, failed
+or cancelled transaction at phase boundaries, and `emit-stage2-v2.mjs`
+publishes the sidecar. KSE2 alone adds node kind 13, `analysis.expression`,
+for the §12 analysis-expression NodeId domain. A KSE1 stream still refuses
+that kind.
 
 Publication uses the existing atomic writer after complete transaction
 validation and a current-source byte-length/SHA check, with a refreshed digest

@@ -70,6 +70,11 @@ const NODE_KIND = Object.freeze({
   11: "match.expression",
   12: "parser.error-pattern",
 });
+// KSE2 alone adds the §12 analysis-expression NodeId domain of
+// `spec/concurrency/scoped-captures-v1.md` (§15). Labelling such a node with a
+// v1 syntax kind would claim the `kofun.sidecar.node/v1` preimage, so KSE1
+// streams keep refusing it.
+const V2_NODE_KIND = Object.freeze({ ...NODE_KIND, 13: "analysis.expression" });
 const IDENTITY_KIND = Object.freeze({
   1: "PackageId",
   2: "ModuleId",
@@ -558,7 +563,7 @@ function recordFromFields(kind, fields, record, limits = LIMITS) {
   }
 }
 
-function basicRecordValidation(event, record, eventKind) {
+function basicRecordValidation(event, record, eventKind, nodeKinds = NODE_KIND) {
   const enumValue = (table, value, message) => {
     if (!Object.hasOwn(table, value)) {
       fail("ETS03", message, { record, eventKind });
@@ -585,7 +590,7 @@ function basicRecordValidation(event, record, eventKind) {
     }
     validateLogicalPath(event.logical_path, record, eventKind);
   } else if (event.kind === "node") {
-    enumValue(NODE_KIND, event.node_kind, "unknown node kind");
+    enumValue(nodeKinds, event.node_kind, "unknown node kind");
     enumValue(STATUS, event.status, "unknown node status");
   } else if (event.kind === "identity") {
     enumValue(IDENTITY_KIND, event.identity_kind, "unknown identity kind");
@@ -755,7 +760,8 @@ function readSemanticEventBytes(input, profile) {
       previousPhase = phase;
       if (!event) {
         event = recordFromFields(kind, fields, record, limits);
-        basicRecordValidation(event, record, kind);
+        basicRecordValidation(event, record, kind,
+          profile.major === 2 ? V2_NODE_KIND : NODE_KIND);
         if (profile.major === 2 && !encodeCommonEvent(event).equals(bytes.subarray(frameStart, frameEnd))) {
           fail("ETS03", "common event frame is not canonical", { record, eventKind: kind });
         }
@@ -1042,7 +1048,7 @@ function mapDiagnostic(event, source, allRecordIds) {
   };
 }
 
-function semanticProjection(events, limits = LIMITS) {
+function semanticProjection(events, limits = LIMITS, nodeKinds = NODE_KIND) {
   if (!Array.isArray(events)) {
     throw new TypeError("Stage 2 semantic events must be an array");
   }
@@ -1116,7 +1122,7 @@ function semanticProjection(events, limits = LIMITS) {
     }
     if (event.kind === "node") {
       ensureId(event.id, "node ID");
-      if (!NODE_KIND[event.node_kind] || !STATUS[event.status] ||
+      if (!nodeKinds[event.node_kind] || !STATUS[event.status] ||
           nodes.has(event.id) || allIds.has(event.id)) {
         fail("ETS03", "duplicate or invalid semantic node", { record: index });
       }
@@ -1131,7 +1137,7 @@ function semanticProjection(events, limits = LIMITS) {
         diagnostic_ids: new Set(event.diagnostic_ids),
         id: event.id,
         identities: [],
-        kind: NODE_KIND[event.node_kind],
+        kind: nodeKinds[event.node_kind],
         span: { ...event.span },
         status: STATUS[event.status],
       };
@@ -1724,7 +1730,7 @@ function encodeV2Bytes(events) {
 function projectV2Decoded(events) {
   const captures = events.filter((event) => typeof event.kind === "number");
   const common = events.filter((event) => typeof event.kind === "string");
-  const projected = semanticProjection(common, V2_PROFILE.limits);
+  const projected = semanticProjection(common, V2_PROFILE.limits, V2_NODE_KIND);
   const nodes = new Map(common.filter((event) => event.kind === "node").map((event) => [event.id, event]));
   // Key by the actual kind/value pair, not a display label or an arbitrary owner.
   const identities = new Map(common.filter((event) => event.kind === "identity")
