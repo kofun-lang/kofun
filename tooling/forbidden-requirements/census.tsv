@@ -131,6 +131,7 @@ cc	invoke	1	required-today	required	stdlib/entropy/tests/verify.sh
 cc	invoke	1	required-today	required	stdlib/random/tests/verify.sh
 cc	invoke	2	required-today	required	tests/artifact-qualification/check.sh
 cc	invoke	1	required-today	required	tests/build_system.sh
+cc	invoke	4	required-today	required	tests/concurrency/capture-events/check.mjs
 cc	invoke	1	required-today	required	tests/concurrency/captures-direct/check.mjs
 cc	invoke	2	required-today	required	tests/concurrency/captures/check.mjs
 cc	invoke	1	required-today	required	tests/concurrency/hir/check.mjs
@@ -254,7 +255,7 @@ cargo	invoke	4	required-today	required	examples/rust-shim/check.sh
 cargo	invoke	2	required-today	required	tests/build_system.sh
 zig	-	0	-	-	-
 node	invoke	4	required-today	required	.github/workflows/pages.yml
-node	invoke	25	required-today	required	Taskfile.yml
+node	invoke	26	required-today	required	Taskfile.yml
 node	invoke	6	required-today	required	bin/kofun
 node	invoke	1	required-today	required	bootstrap/native/check-macho64-signed.sh
 node	invoke	1	required-today	required	bootstrap/native/check-macho64.sh
@@ -418,6 +419,7 @@ node	source	1	required-today	required	tests/backlog/claim-refresh.mjs
 node	source	1	required-today	required	tests/backlog/extract-self-test.mjs
 node	source	1	required-today	required	tests/backlog/extract.mjs
 node	source	1	required-today	required	tests/backlog/refresh.mjs
+node	source	1	required-today	required	tests/concurrency/capture-events/check.mjs
 node	source	1	required-today	required	tests/concurrency/captures-direct/check.mjs
 node	source	1	required-today	required	tests/concurrency/captures-direct/oracle.mjs
 node	source	1	required-today	required	tests/concurrency/captures/check.mjs
@@ -502,6 +504,7 @@ node	source	1	required-today	required	tooling/typed-sidecar/captures.mjs
 node	source	1	required-today	required	tooling/typed-sidecar/codec.mjs
 node	source	1	required-today	required	tooling/typed-sidecar/documentation-index-cli.mjs
 node	source	1	required-today	required	tooling/typed-sidecar/documentation-index.mjs
+node	source	1	required-today	required	tooling/typed-sidecar/emit-stage2-v2.mjs
 node	source	1	required-today	required	tooling/typed-sidecar/emit-stage2.mjs
 node	source	1	required-today	required	tooling/typed-sidecar/from-stage2.mjs
 node	source	1	required-today	required	tooling/typed-sidecar/ownership-view.mjs

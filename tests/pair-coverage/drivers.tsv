@@ -39,6 +39,7 @@ check
 cli-framework
 clock-adapters
 concurrency-capture-contract
+concurrency-capture-events
 concurrency-captures
 concurrency-captures-direct
 concurrency-hir

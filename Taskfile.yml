@@ -670,6 +670,11 @@ tasks:
     cmds:
       - "node tests/concurrency/captures-direct/check.mjs"
 
+  concurrency-capture-events:
+    desc: "Verify compiler capture facts through complete KSE2 transactions into typed-sidecar v2"
+    cmds:
+      - "node tests/concurrency/capture-events/check.mjs"
+
   concurrency-capture-contract:
     desc: "Verify the versioned scoped-capture HIR, KSE2, and sidecar contract"
     cmds:
@@ -1579,6 +1584,7 @@ tasks:
             concurrency-places \
             concurrency-captures-direct \
             concurrency-captures \
+            concurrency-capture-events \
             schedule-trace \
             type-reduction-trace \
             affine-resumption \

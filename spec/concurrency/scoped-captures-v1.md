@@ -768,3 +768,110 @@ forced work/sweep exhaustion proves fail-closed publication. The independent
 `concurrency-captures-direct`, `scoped-parallelism` and existing writer gates
 remain required. Successful analysis does not establish scheduling, liveness,
 conflict acceptance, parallel C lowering or execution.
+
+## 15. Compiler capture transaction (#1225)
+
+```sh
+kofun-stage2-capture-events [--cancel-after source|lifecycle|captures] \
+    INPUT.kofun LOGICAL-PATH OUTPUT.kse2 GENERATION
+node tooling/typed-sidecar/emit-stage2-v2.mjs OUTPUT.kse2 SIDECAR.json INPUT.kofun
+```
+
+`bootstrap/stage2/capture_events_producer.c` is the producer. As with
+`semantic_producer.c`, it is compiled in one translation unit with the
+maintained C half of the canonical pair and calls its passes directly; the pair
+is unchanged and `compiler.kofun` has no counterpart. It runs exactly §14's
+pipeline and writes one complete KSE2 transaction (§7) for the result.
+`emit-stage2-v2.mjs` validates that transaction with the #1224 reader, checks
+the current source bytes and publishes the typed-sidecar v2 projection (§8)
+atomically.
+
+**Checked records, not text.** The capture section is the in-memory record set
+that `--emit-complete-capture-hir-v2` would publish for the same arguments, in
+its own canonical order, with displays dropped. The producer never resorts it.
+Its lifecycle records must be byte-identical to the §11 render of the same
+facts, and the complete set must extend them. Nodes and identities are derived
+from the lifecycle fact rows and scope-HIR scope and binding rows that produced
+those records. A derived NodeId, ScopeId or BindingId that differs from the one
+a record names is a tooling failure. Source text is not re-parsed, command
+output is not read, and a diagnostic is never a fact source.
+
+**Nodes.** Every node is `validated`, with no dependencies and no diagnostic
+IDs:
+
+| Node | Kind | Span | Owns |
+| --- | ---: | --- | --- |
+| module root | 1 | whole source | PackageId, ModuleId, FileId |
+| resolver scope (root, each par block) | 4 | scope-HIR open..close | its ScopeId |
+| par | 4 | §11 par span | — |
+| spawn call, explicit join call | 8 | §11 call span | — |
+| task lambda | 2 | §11 lambda span | — |
+| binding (par token, task handle, place base) | 3 in a `parameters` scope, else 5 | scope-HIR declaration span | its BindingId |
+| record declaration of a field owner | 6 | top-level declaration | its §12 TypeId |
+| origin, unknown witness, dynamic slice bound | 13 | the analysis expression | — |
+
+Kind 13, `analysis.expression`, is added by KSE2 for §12's
+`kofun.stage2.analysis-expression/v1` NodeId domain. Kinds 1–12 keep their
+KSE1 meaning and `kofun.sidecar.node/v1` preimage, so labelling an analysis
+expression with one of them would claim the wrong preimage. A KSE1 reader
+still refuses kind 13. A compiler-owned spawn handle keeps its spawn span as
+its declaration span (§11). Slice bounds are the one exception to the row rule
+above, because no row retains a bound's span. A bound is matched against the
+spans between token boundaries inside the origins of captures of the same place.
+The match must reproduce its committed NodeId, and a bound with no match is a
+tooling failure.
+
+**Order.** Nodes are ordered by span start, then descending span end, kind and
+raw NodeId, so the module root is first. Identities are ordered by their owner
+node's position, then identity kind. The capture section follows, in the
+record order of §6, and is followed by the diagnostic and end events. Source
+fields are those of the KSE1 producer: edition `2026` and semantic
+compatibility `stage2-semantic-v1`. There are no reference or fact events.
+
+**Outcomes.** The transaction describes the analysis entry, not ordinary
+compilation:
+
+| Outcome | End | Exit class | Capture section | Diagnostics | Process exit |
+| --- | --- | ---: | --- | --- | ---: |
+| analysis succeeds | `checked`/`complete` | 0 | complete | none | 0 |
+| first pipeline refusal | `failed`/`partial` | 1 | §11 lifecycle phases if they were rendered, else empty | one error | 1 |
+| `--cancel-after P` | `cancelled`/`partial` | 0 | empty, lifecycle, or complete after `source`, `lifecycle`, `captures` | none | 1 |
+
+Cancellation is observed only after phase `P` has committed, and no later
+stage runs. A refusal before that point is still a failure. The error
+diagnostic transports the compiler's own refusal: its stable code, a primary
+span that is empty at the reported byte (or byte 0 when none is reported),
+category `stage2`, template `stage2/CODE`, the module root as its affected
+node, and at most 1,024 bytes of the refusal's first line as fallback, with
+each run of bytes outside printable ASCII replaced by one `?`. Its identity is
+the KSE1 producer's diagnostic identity, and it contributes no capture, node or
+identity fact. The refusal line is also printed to standard output, as the
+JSON entry prints it.
+
+Some refusals come before any source is committed: the same file named as input
+and output, an invalid §11 logical path, or a source span beyond u32. These
+print `E2S35` and exit 1 without writing a stream. A bad argument or generation
+exits 2. A resource or consistency failure is `ETS03`/`ETS04` on standard
+error, exits 3 and writes no stream. This includes exceeding a §9 KSE2 limit,
+which the producer never truncates. In every refusal case a prior destination
+is preserved.
+
+**Determinism and privacy.** The stream is a function of source bytes,
+logical path and generation. It carries no display text, host path, address,
+thread identity, time or schedule. Its only free text is the logical path, the
+fixed source strings and a failure's bounded fallback. The sidecar projection
+adds none. Ordinary compilation of the same source is unchanged and still
+refuses scoped parallelism (`E2S154`) or an earlier unsupported form.
+
+`task concurrency-capture-events` is the lasting gate. For every §14 positive
+fixture it builds the producer at O0, at O2 and with ASan/UBSan, and requires
+all repeats to write identical bytes. Each stream must decode, re-encode
+identically through the independent #1224 encoder, and project a sidecar that
+is identical across repeats. Its capture section must equal the accepted
+model's projection of the independent source oracle. Every lifecycle, origin,
+witness and bound node must have the kind and authored span that recompute its
+NodeId, and every identity owner and binding or type declaration span must be
+the one this section names. The gate also covers the failed-prefix,
+cancellation, pre-source and over-limit refusals with preserved destinations,
+KSE1 refusal of kind 13, repeated ordinary-compilation refusal after analysis,
+and three paired producer defect controls.
