@@ -870,7 +870,7 @@
     "stdlib/decimal/README.md": "ae6ac8ebf59826e12b85593a55018bd2bc47ade82c6655bf3d98a2ddae19a1f5",
     "stdlib/tests/verify.sh": "85dbe0ab72691c7a5d9fc5e3088de354d94dda6f7a5584dfac5f9cf4f50d6145",
     "tests/cli.sh": "6ca726adc3cb5fa4437d34665603b6556a63d01d26db1141a93af3388c5240f9",
-    "tests/cli_stage2_outcomes.sh": "9f84a95495afab023a1572b37a2508a4ee02a3a89881df14b887c209a628a9a7",
+    "tests/cli_stage2_outcomes.sh": "39997e23a0b7f6806721c3953e4fd4526744ae26935b2d99fc61dc35d656dbc8",
     "tests/conformance/aggregate-bridge/README.md": "aec3624a10648a59d18723bf7429422ff017cec17995402653e403f065ec0f0a",
     "tests/conformance/bytes-mutation/same_carrier.kofun": "114d7b5fc79b76c38d23bac12dc5d3dcec523edb57ca7f605c34ba920b92eceb",
     "tests/conformance/capabilities.tsv": "7dca885522b8fd775dea20b0622d62fb774d8c8df0b8c71672f379894cdc2eab",

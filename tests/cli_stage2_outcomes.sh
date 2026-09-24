@@ -64,6 +64,11 @@ for source in "$SUITE"/*.kofun; do
         compile:*|ownership:E007|ownership:E2S21)
             expect_cli_failure "$source" 1 "$SUITE/$stem.stderr"
             ;;
+        scoped-ownership:E2S18[3-8])
+            # `kofun check` reports the scoped ownership class (#1163)
+            # rather than whichever unimplemented construct compiled first.
+            expect_cli_failure "$source" 1 "$SUITE/$stem.stderr"
+            ;;
         *)
             fail "unhandled Stage 2 diagnostic mode/code: $mode/$code"
             ;;
