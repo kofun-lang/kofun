@@ -292,9 +292,10 @@ The ownership slice is now in production as an analysis entry
 --check-scoped-ownership` derives this model's input for each `par` from
 checked lifecycle, capture and parent-access facts. It then decides that input
 with the rules above and reports the §8 identifiers. `task
-concurrency-ownership` compares every decision with this model. The entry does
-not allocate user-facing diagnostics, schedule, or lower anything, and ordinary
-compilation still refuses `par` with `E2S154`.
+concurrency-ownership` compares every decision with this model. Each rejection
+also carries its registered compiler code from the §8 table, which `kofun
+check` reports (#1163). The entry does not schedule or lower anything, and
+ordinary compilation still refuses `par` with `E2S154`.
 
 This document is the normative contract of accepted
 [`RFC-0003`](../../rfcs/0003-scoped-parallelism.md), decided 2026-08-09. The

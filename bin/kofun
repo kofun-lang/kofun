@@ -1193,12 +1193,12 @@ case ${1-} in
         # (#1163) rather than whichever unimplemented construct compilation
         # met first; an accepted or unanalysable `par` keeps that refusal.
         if test "$compile_status" -eq 1 &&
-           grep -Eq '(^|[^A-Za-z0-9_])par[[:space:]]*[|]' "$2"
+           grep -Eq -e '(^|[^A-Za-z0-9_])par[[:space:]]*[|]' -- "$2"
         then
             ensure_stage2_compiler
             set +e
             "$STAGE2_COMPILER" --check-scoped-ownership "$2" \
-                "$work/scoped-ownership.json" "$(basename -- "$2")" \
+                "$work/scoped-ownership.json" check.kofun \
                 >"$work/scoped.stdout" 2>"$work/scoped.stderr"
             scoped_status=$?
             set -e
