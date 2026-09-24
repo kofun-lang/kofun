@@ -35291,7 +35291,7 @@ static const char * capture_binding_type(CheckedPlaceArena *a, const char * v_so
     if (v_end <= v_start) {
         return capture_return_text(a, mark, capture_error(a, "E2S12", "malformed initializer", v_start));
     }
-    const char * v_checked = "";
+    const char * v_checked;
     if (scoped_parallel_member(v_source, v_start) >= 0) {
         v_checked = capture_lifecycle_expression(a, v_source, v_hir, v_catalog, v_start, v_end, "", (v_depth + 1));
     } else {
@@ -37468,7 +37468,7 @@ static const char * ownership_scope(CheckedPlaceArena *a, const char * v_source,
         }
         v_row = capture_record_start(a, v_acts, "act", (v_row + 1));
     }
-    const char * v_diagnostics = "";
+    const char * v_diagnostics;
     if (v_actions > 256) {
         v_diagnostics = ownership_diagnostic(a, "SPV1-INVALID-MODEL", "$input.scope.parent_actions", decimal_value(cp_field(a, v_facts, v_par_row, 2)));
     } else {
