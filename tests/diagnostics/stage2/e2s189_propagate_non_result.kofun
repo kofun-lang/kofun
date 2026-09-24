@@ -1,0 +1,15 @@
+# diagnostic-mode: compile
+# expect-code: E2S189
+# expect-span: byte 437
+# spec/result-propagation-v1.md, refusal 1 (#1662): `?` propagates only a
+# `Result[T, E]`, and `one()` is an `Int`. The primary span is the `?`, the
+# secondary the operand it applies to. Before #1662 this `?` was `E2S10`, an
+# unsupported statement, and `bin/kofun` fell back to Stage 1.
+fn one() -> Int {
+    return 1
+}
+
+fn main() -> Int {
+    let value = one()?
+    return value
+}

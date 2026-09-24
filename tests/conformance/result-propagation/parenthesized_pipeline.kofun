@@ -1,0 +1,12 @@
+# The shape refusal 3 suggests: the whole pipeline parenthesized. Its `?`
+# follows a group, not a stage, so it is not refusal 3; the operand is the
+# pipeline, typed by its last stage, and refusal 1 names that `Int`.
+fn twice(value: Int) -> Int {
+    return value * 2
+}
+
+fn main() -> Int {
+    let start = 1
+    let value = (start |> twice())?
+    return value
+}

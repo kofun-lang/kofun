@@ -1,0 +1,10 @@
+# `?` on a call to a declared `-> Int?` function. Refusal 2: the operand is
+# `Int?`, not the `Int` its return type's head names.
+fn maybe() -> Int? {
+    return null
+}
+
+fn main() -> Int {
+    let value = maybe()?
+    return 0
+}

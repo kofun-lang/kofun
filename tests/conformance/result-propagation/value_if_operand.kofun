@@ -1,0 +1,9 @@
+# The operand of `?` is a value `if`, whose last token is a `}` rather than a
+# primary. Refusal 1 names its type, `Int`, which is what value control joins
+# on in this slice. Before this fixture, this `?` was `E2S10`, exit 3, and a
+# Stage 1 fallback, because no operand chain started at the `if`.
+fn main() -> Int {
+    let total = 0
+    let value = if total == 0 { 1 } else { 2 }?
+    return value
+}

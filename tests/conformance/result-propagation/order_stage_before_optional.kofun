@@ -1,0 +1,11 @@
+# Check order, one `?`: the stage returns `Int?`, so refusals 3 and 2 both
+# describe this `?`. The syntactic refusal 3 is checked first.
+fn maybe(value: Int) -> Int? {
+    return null
+}
+
+fn main() -> Int {
+    let start = 1
+    let value = start |> maybe()?
+    return 0
+}

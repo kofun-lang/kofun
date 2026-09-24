@@ -1,0 +1,11 @@
+# Table row 4 of #1662: `?` directly on a bare pipeline stage. Refusal 3 runs
+# before `E2S158`, which would otherwise say the stage lacks parentheses.
+fn twice(value: Int) -> Int {
+    return value * 2
+}
+
+fn main() -> Int {
+    let start = 1
+    let value = start |> twice?
+    return value
+}

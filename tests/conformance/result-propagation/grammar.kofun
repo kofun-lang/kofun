@@ -1,0 +1,41 @@
+# The grammar of postfix `?` (spec/result-propagation-v1.md), held through the
+# typed `propagate` nodes the scope HIR records for every `?` in expression
+# position; `grammar.propagate` is the exact list. What it pins:
+#
+#   - `?` binds like a call or field read: in `origin()?.x` the operand is
+#     `origin()`, and `.x` continues the chain after the `?`;
+#   - optional types `T?` sit beside `?` expressions and are never read as
+#     propagation: the `?` of every `Int?` annotation below has no node;
+#   - `?` inside an argument, a group, an assignment, a lambda body, and a
+#     parenthesized pipeline each has its own operand;
+#   - `?` never ends a statement: each line below ends at its newline.
+#
+# Only the first node is refused; `grammar.stderr` is that refusal.
+type Point = {
+    x: Int,
+    y: Int,
+}
+
+fn origin() -> Point {
+    let value: Point = Point(x: 0, y: 0)
+    return value
+}
+
+fn one() -> Int {
+    return 1
+}
+
+fn twice(value: Int) -> Int {
+    return value * 2
+}
+
+fn main() -> Int {
+    let declared: Int? = 1
+    let first = origin()?.x
+    let mut total: Int? = declared
+    total = one()?
+    print(one()? + (one()?))
+    let apply = fn(value: Int) => one()? + value
+    let piped = (1 |> twice())?
+    return 0
+}

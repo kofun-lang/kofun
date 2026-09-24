@@ -1,8 +1,15 @@
 # Result propagation v1
 
-Status: accepted normative design for GitHub issue #626. No parser, type
-checker, or backend implements this syntax, and its gate does not exist yet —
-acceptance settles what the sequencing sugar is, not that it ships.
+Status: accepted normative design for GitHub issue #626. Stage 2 parses
+postfix `?` as a typed scope-HIR node and implements refusals 1–3 of
+*Diagnostics* below — operand is not a `Result` (`E2S189`), optional operand
+(`E2S190`), and `?` on a pipeline stage (`E2S191`) — gated by
+`task result-propagation` (#1662). Stage 2 has no `Result` type, so every `?`
+it sees is refused. Pending in #1250: positive lowering, the non-Result
+enclosing function refusal, and the hand-desugared twin corpus. The
+error-type mismatch refusal stays unimplemented until two `Result` error types
+exist. No formatter, debugger mapping, Stage 1, or direct/Wasm backend
+implements the syntax.
 
 The words **must**, **must not**, and **may** are normative.
 

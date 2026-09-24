@@ -181,6 +181,7 @@ cc	invoke	2	required-today	required	tests/conformance/optional-construction/run.
 cc	invoke	3	required-today	required	tests/conformance/optional-narrowing/run.sh
 cc	invoke	3	required-today	required	tests/conformance/optional/run.sh
 cc	invoke	5	required-today	required	tests/conformance/records/run.sh
+cc	invoke	1	required-today	required	tests/conformance/result-propagation/run.sh
 cc	invoke	1	required-today	required	tests/conformance/stage1-adapter/check.sh
 cc	invoke	17	required-today	required	tests/conformance/syntax/issues_35_47/run.sh
 cc	invoke	3	required-today	required	tests/conformance/syntax/issues_48_60/run.sh
@@ -304,6 +305,7 @@ node	invoke	5	required-today	required	tests/conformance/effects/pure-io/run.sh
 node	invoke	3	required-today	required	tests/conformance/int-bits/run.sh
 node	invoke	1	required-today	required	tests/conformance/move-call-crossings/run.sh
 node	invoke	3	required-today	required	tests/conformance/optional-construction/run.sh
+node	invoke	2	required-today	required	tests/conformance/result-propagation/run.sh
 node	invoke	7	required-today	optional	tests/digest/check.sh
 node	invoke	5	required-today	required	tests/docs/documentation-index.sh
 node	invoke	2	required-today	unknown	tests/fuzz/adapters/arithmetic-wasm32-node.sh
@@ -437,6 +439,7 @@ node	source	1	required-today	required	tests/conformance/effects/pure-boundary/re
 node	source	1	required-today	required	tests/conformance/effects/pure-io/report.mjs
 node	source	1	required-today	required	tests/conformance/int-bits/check-pair.mjs
 node	source	1	required-today	required	tests/conformance/move-call-crossings/check.mjs
+node	source	1	required-today	required	tests/conformance/result-propagation/pair.mjs
 node	source	1	required-today	required	tests/digest/no-host-digest-tools.mjs
 node	source	1	required-today	required	tests/docs/audited-claim-metadata.mjs
 node	source	1	required-today	required	tests/docs/documentation_index_test.mjs
@@ -680,6 +683,7 @@ shell-build-driver	source	1	required-today	required	tests/conformance/optional-n
 shell-build-driver	source	1	required-today	required	tests/conformance/optional/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/patterns/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/records/run.sh
+shell-build-driver	source	1	required-today	required	tests/conformance/result-propagation/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/stage1-adapter/cc-count-wrapper.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/stage1-adapter/check.sh

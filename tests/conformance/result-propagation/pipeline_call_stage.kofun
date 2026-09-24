@@ -1,0 +1,11 @@
+# Table row 3 of #1662: `?` directly on a parenthesized pipeline stage.
+# Refusal 3, while parsing, so neither checkpoint is written.
+fn twice(value: Int) -> Int {
+    return value * 2
+}
+
+fn main() -> Int {
+    let start = 1
+    let value = start |> twice()?
+    return value
+}

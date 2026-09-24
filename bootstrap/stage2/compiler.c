@@ -4025,6 +4025,116 @@ static char *pipeline_refusal(
 );
 
 /*
+ * #1662. Postfix `?` (spec/result-propagation-v1.md) binds as tightly as a
+ * call or a field read, so one postfix step is one of those three: a call's or
+ * an index's balanced group, or `.name`. Returns the end of the step that
+ * starts after `end`, or -1 when the next token before `limit` continues no
+ * chain. `?` is not a step here; the walkers that pass through it do so
+ * themselves.
+ */
+static int64_t propagation_step_end(
+    const char *source,
+    int64_t end,
+    int64_t limit
+) {
+    int64_t next = skip_trivia(source, end);
+    if (next >= limit) return -1;
+    if (token_equal(source, next, "(")) {
+        return balanced_end(source, next, "(", ")");
+    }
+    if (token_equal(source, next, "[")) {
+        return balanced_end(source, next, "[", "]");
+    }
+    if (token_equal(source, next, ".")) {
+        int64_t name = skip_trivia(source, token_end(source, next));
+        if (name < limit &&
+            strcmp(token_kind(source, name), "identifier") == 0) {
+            return token_end(source, name);
+        }
+    }
+    return -1;
+}
+
+/* The end of the postfix chain whose primary ends at `end`, stopping before
+ * the first `?`. */
+static int64_t propagation_postfix_end(
+    const char *source,
+    int64_t end,
+    int64_t limit
+) {
+    int64_t cursor = end;
+    int64_t step = propagation_step_end(source, cursor, limit);
+    while (step > cursor) {
+        cursor = step;
+        step = propagation_step_end(source, cursor, limit);
+    }
+    return cursor;
+}
+
+/*
+ * #1662. The `?` written directly on the target of the pipeline stage at
+ * `pipe`, or -1. The tight postfix binding applies that `?` to the stage —
+ * `f` in `a |> f?`, `f()` in `a |> f()?` — and never to the value the
+ * pipeline produces, which is what the author almost certainly meant.
+ * `(a |> f())?` is not this shape: its `?` follows the `)` of a group, not a
+ * stage.
+ */
+static int64_t pipeline_stage_question(const char *source, int64_t pipe) {
+    int64_t length = source_length(source);
+    int64_t target = skip_trivia(source, token_end(source, pipe));
+    if (target >= length ||
+        strcmp(token_kind(source, target), "identifier") != 0) {
+        return -1;
+    }
+    int64_t stage_end = propagation_postfix_end(
+        source,
+        token_end(source, target),
+        length
+    );
+    int64_t question = skip_trivia(source, stage_end);
+    if (question < length && token_equal(source, question, "?")) {
+        return question;
+    }
+    return -1;
+}
+
+/* Refusal 3 of spec/result-propagation-v1.md: the primary span is the `?`,
+ * the secondary span the stage it would otherwise apply to. */
+static char *pipeline_stage_propagation_refusal(
+    const char *source,
+    int64_t question,
+    int64_t operand
+) {
+    Buffer error;
+    buffer_init(&error);
+    buffer_format(
+        &error,
+        "error[E2S191]: `?` on a pipeline stage applies to the stage, "
+        "not the result; parenthesize the pipeline: `(a |> f())?` at byte "
+        "%" PRId64 "; operand at byte %" PRId64,
+        question,
+        operand
+    );
+    stage2_diagnostic_set(
+        "E2S191",
+        question,
+        token_end(source, question),
+        true,
+        error.data
+    );
+    stage2_diagnostic_related(
+        operand,
+        propagation_postfix_end(
+            source,
+            token_end(source, operand),
+            source_length(source)
+        ),
+        "operand"
+    );
+    return error.data;
+}
+
+/*
  * The pipeline shapes this slice does not recognize, refused before scope
  * construction.
  *
@@ -4056,6 +4166,17 @@ static char *validate_pipeline_shapes(const char *source) {
     int64_t cursor = skip_trivia(source, 0);
     while (cursor < length) {
         if (token_equal(source, cursor, "|>")) {
+            /* #1662. Before either shape refusal below: `a |> f?` has no
+             * parentheses and would otherwise be told so, when the defect is
+             * the `?` that follows it. */
+            int64_t stage_question = pipeline_stage_question(source, cursor);
+            if (stage_question >= 0) {
+                return pipeline_stage_propagation_refusal(
+                    source,
+                    stage_question,
+                    skip_trivia(source, token_end(source, cursor))
+                );
+            }
             int64_t call_end = pipeline_call_end(source, cursor);
             if (call_end < 0) {
                 /* A member target has its parentheses, so saying it lacks them
@@ -6898,8 +7019,34 @@ static int64_t int_bit_postfix_end(const char *source, int64_t primary) {
 }
 
 static int64_t field_read_postfix_end(const char *source, int64_t primary);
+static int64_t field_postfix_chain_end(const char *source, int64_t primary);
 
+/*
+ * The postfix steps after a primary, ending with any postfix `?`.
+ *
+ * #1662. `?` is a postfix operator at the level of a call or a field read
+ * (spec/result-propagation-v1.md), so this shared reader steps over it and
+ * carries on: `f(x)?.name` is one expression, `(f(x)?).name`. Before #1662 it
+ * stopped at the `?`, so every reader measured a shorter expression than the
+ * one written — a lambda body `one()? + value` ended at `one()` and left
+ * `value` outside the lambda's scope. Nothing lowers a `?`:
+ * `validate_result_propagation` refuses each one before emission.
+ */
 static int64_t field_postfix_end(
+    const char *source,
+    int64_t primary
+) {
+    int64_t chain = field_postfix_chain_end(source, primary);
+    if (chain < 0) return chain;
+    int64_t question = skip_trivia(source, chain);
+    if (question < source_length(source) &&
+        token_equal(source, question, "?")) {
+        return field_postfix_end(source, token_end(source, question));
+    }
+    return chain;
+}
+
+static int64_t field_postfix_chain_end(
     const char *source,
     int64_t primary
 ) {
@@ -18905,6 +19052,545 @@ static int64_t scoped_parallel_member(const char *source, int64_t start);
 static char *scoped_hir_spawn_binding(const char *source, const char *hir, int64_t spawn);
 static int64_t scoped_hir_chained_join(const char *source, int64_t call_end);
 
+/*
+ * Whether a `?` byte occurs in [start, end). Bounded, so a file whose last
+ * `?` is early is not rescanned to its end per function. A `?` inside a
+ * string or a comment passes this test; the token walk that follows is what
+ * decides.
+ */
+static bool source_has_question_between(
+    const char *source,
+    int64_t start,
+    int64_t end
+) {
+    int64_t length = source_length(source);
+    if (end > length) end = length;
+    if (start < 0 || start >= end) return false;
+    return memchr(source + start, '?', (size_t)(end - start)) != NULL;
+}
+
+/*
+ * #1662. The end of a type written at `start` in an annotation position: a
+ * name with an optional bracketed argument list, or a parenthesised parameter
+ * list, then any `?`/`??` suffixes, then an optional `-> Type` result. This
+ * is only a skip, so that an optional type's `?` is never read as
+ * propagation; whether the type is well formed is somebody else's diagnostic.
+ */
+static int64_t propagation_type_end(const char *source, int64_t start) {
+    int64_t length = source_length(source);
+    if (start >= length) return start;
+    int64_t cursor = token_end(source, start);
+    bool parenthesized = token_equal(source, start, "(");
+    if (parenthesized || token_equal(source, start, "[")) {
+        int64_t group = balanced_end(
+            source,
+            start,
+            parenthesized ? "(" : "[",
+            parenthesized ? ")" : "]"
+        );
+        if (group < 0) return cursor;
+        cursor = group;
+    } else {
+        int64_t bracket = skip_trivia(source, cursor);
+        if (bracket < length && token_equal(source, bracket, "[")) {
+            int64_t group = balanced_end(source, bracket, "[", "]");
+            if (group > 0) cursor = group;
+        }
+    }
+    int64_t suffix = skip_trivia(source, cursor);
+    while (suffix < length &&
+           (token_equal(source, suffix, "?") ||
+            token_equal(source, suffix, "??"))) {
+        cursor = token_end(source, suffix);
+        suffix = skip_trivia(source, cursor);
+    }
+    if (suffix < length && token_equal(source, suffix, "->")) {
+        return propagation_type_end(
+            source,
+            skip_trivia(source, token_end(source, suffix))
+        );
+    }
+    return cursor;
+}
+
+/* `let [mut] name [: Type]`, stepped over as a whole so the annotation's `?`
+ * is a type suffix. Returns the first token after the head, normally `=`. */
+static int64_t propagation_let_head_end(
+    const char *source,
+    int64_t let_start,
+    int64_t limit
+) {
+    int64_t cursor = skip_trivia(source, token_end(source, let_start));
+    if (cursor < limit && token_equal(source, cursor, "mut")) {
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    if (cursor < limit &&
+        strcmp(token_kind(source, cursor), "identifier") == 0) {
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    if (cursor < limit && token_equal(source, cursor, ":")) {
+        cursor = skip_trivia(
+            source,
+            propagation_type_end(
+                source,
+                skip_trivia(source, token_end(source, cursor))
+            )
+        );
+    }
+    return cursor;
+}
+
+/*
+ * Whether the operand at `operand` is headed by a call whose callee resolves
+ * to nothing: exactly the case `validate_core_calls` reports as E2S16
+ * `unknown Core function`, with its exclusions (`print`, a declared or
+ * duplicated function, a constructor application, a lambda or callable-typed
+ * binding, a builtin). Such an operand has no type, so nothing may be named
+ * for it.
+ */
+static bool propagation_unresolved_callee(
+    const char *source,
+    const char *hir,
+    int64_t operand
+) {
+    if (strcmp(token_kind(source, operand), "identifier") != 0) return false;
+    int64_t open = skip_trivia(source, token_end(source, operand));
+    if (open >= source_length(source) || !token_equal(source, open, "(")) {
+        return false;
+    }
+    char *name = token_copy(source, operand);
+    int64_t declared = function_arity(source, name);
+    bool resolved = strcmp(name, "print") == 0 || declared >= 0 ||
+        declared == -2;
+    if (!resolved) {
+        char *owner = enum_constructor_owner(source, name);
+        resolved = owner[0] != '\0' ||
+            record_declaration_start(source, name) >= 0;
+        free(owner);
+    }
+    if (!resolved) {
+        resolved = lambda_call_arity(source, hir, operand) >= 0 ||
+            callable_call_arity(source, hir, operand) >= 0 ||
+            builtin_arity(name) >= 0;
+    }
+    free(name);
+    return !resolved;
+}
+
+/*
+ * #1662. The end of the `if`/`else` chain or the `match` whose keyword is at
+ * `start`, or -1 when a block does not close before `limit`. The first block
+ * is the first `{` outside parentheses and brackets after the keyword; an
+ * `if` then takes each `else` block and `else if` that follows. Only the
+ * extent is measured here: whether the construct is well formed is somebody
+ * else's diagnostic.
+ */
+static int64_t propagation_block_expression_end(
+    const char *source,
+    int64_t start,
+    int64_t limit
+) {
+    int64_t cursor = skip_trivia(source, token_end(source, start));
+    int64_t depth = 0;
+    bool searching = true;
+    while (searching && cursor < limit) {
+        if (depth == 0 && token_equal(source, cursor, "{")) {
+            searching = false;
+        } else {
+            if (token_equal(source, cursor, "(") ||
+                token_equal(source, cursor, "[")) {
+                depth += 1;
+            } else if (token_equal(source, cursor, ")") ||
+                       token_equal(source, cursor, "]")) {
+                depth -= 1;
+            }
+            int64_t step = token_end(source, cursor);
+            if (step <= cursor) return -1;
+            cursor = skip_trivia(source, step);
+        }
+    }
+    if (cursor >= limit) return -1;
+    int64_t block_end = balanced_end(source, cursor, "{", "}");
+    if (block_end < 0 || block_end > limit) return -1;
+    if (!token_equal(source, start, "if")) return block_end;
+    int64_t after = skip_trivia(source, block_end);
+    if (after >= limit || !token_equal(source, after, "else")) {
+        return block_end;
+    }
+    int64_t alternative = skip_trivia(source, token_end(source, after));
+    if (alternative < limit && token_equal(source, alternative, "if")) {
+        return propagation_block_expression_end(source, alternative, limit);
+    }
+    if (alternative < limit && token_equal(source, alternative, "{")) {
+        int64_t else_end = balanced_end(source, alternative, "{", "}");
+        if (else_end < 0 || else_end > limit) return -1;
+        return else_end;
+    }
+    return -1;
+}
+
+/*
+ * The type a `?` operand has, by the same bounded classification an
+ * unannotated `let` initializer gets. Some shapes are answered first, because
+ * that classification decides by the first primary alone and would misname
+ * them: `null` is an optional; a parenthesised operand is typed by what it
+ * encloses, so `(x ?? 0)` is `Int` rather than its first primary's `Int?`; a
+ * value `if` or `match` is `Int`, as it is for an unannotated `let`, because
+ * this slice joins value control on `Int` only; a call whose callee resolves
+ * to nothing has no type at all, which is the empty text rather than the
+ * classification's historical `Int` default; `print` yields nothing, `Void`;
+ * and a call to a declared `-> Int?` function is `Int?`, where the
+ * declared-type reader returns only the head `Int`.
+ */
+static char *propagation_operand_type(
+    const char *source,
+    const char *hir,
+    int64_t function_open,
+    int64_t operand,
+    int64_t operand_end
+) {
+    int64_t after_head = token_end(source, operand);
+    if (token_equal(source, operand, "null") &&
+        skip_trivia(source, after_head) >= operand_end) {
+        return owned_text("null");
+    }
+    if (token_equal(source, operand, "(") &&
+        balanced_end(source, operand, "(", ")") == operand_end) {
+        return propagation_operand_type(
+            source,
+            hir,
+            function_open,
+            skip_trivia(source, after_head),
+            operand_end - 1
+        );
+    }
+    if (value_control(source, operand)) return owned_text("Int");
+    if (strcmp(token_kind(source, operand), "identifier") == 0) {
+        if (propagation_unresolved_callee(source, hir, operand)) {
+            return owned_text("");
+        }
+        int64_t open = skip_trivia(source, after_head);
+        if (token_equal(source, operand, "print") && open < operand_end &&
+            token_equal(source, open, "(")) {
+            return owned_text("Void");
+        }
+        if (open < operand_end && token_equal(source, open, "(") &&
+            balanced_end(source, open, "(", ")") == operand_end) {
+            char *head = token_copy(source, operand);
+            bool optional = optional_int_result(source, head);
+            free(head);
+            if (optional) return owned_text("Int?");
+        }
+    }
+    return initializer_type_bounded(
+        source,
+        hir,
+        function_open,
+        operand,
+        operand_end
+    );
+}
+
+/*
+ * One typed `?` node. The operand is recorded once, as the byte span the `?`
+ * applies to; nothing in the node can name it a second time, which is the
+ * "evaluated exactly once" of the spec's desugaring stated as data.
+ */
+static void result_propagation_node(
+    const char *source,
+    const char *hir,
+    int64_t function_open,
+    int64_t question,
+    int64_t operand,
+    int64_t operand_end,
+    Buffer *records
+) {
+    char *scope = hir_scope_id_for_open(
+        hir,
+        parent_block_open(source, function_open, question)
+    );
+    char *operand_type = propagation_operand_type(
+        source,
+        hir,
+        function_open,
+        operand,
+        operand_end
+    );
+    buffer_format(
+        records,
+        "propagate|%" PRId64 "|%" PRId64 "|%" PRId64 "|%s|%s\n",
+        question,
+        operand,
+        operand_end,
+        scope,
+        operand_type
+    );
+    free(scope);
+    free(operand_type);
+}
+
+/*
+ * #1662. Every postfix `?` in expression position between `start` and
+ * `limit`, as scope-HIR records in source order of the `?`:
+ *
+ *     propagate|QUESTION|OPERAND-START|OPERAND-END|SCOPE|OPERAND-TYPE
+ *
+ * The walk parses what spec/result-propagation-v1.md specifies: `?` is a
+ * postfix step at the level of a call or field read, so it ends the chain it
+ * follows and a chain may continue after it — `f(x)?.name` is
+ * `(f(x)?).name`, whose operand is `f(x)`. Type positions are stepped over
+ * whole (a `let` annotation, a lambda's parameter list, a `->` result),
+ * because the optional type `T?` and propagation never share a token
+ * occurrence. Groups are walked recursively, so a `?` inside an argument or a
+ * parenthesised operand is found with its own operand. A value `if`/`else`
+ * chain or `match` followed by `?` is that `?`'s operand, its blocks walked
+ * recursively the same way.
+ */
+static void result_propagation_nodes(
+    const char *source,
+    const char *hir,
+    int64_t function_open,
+    int64_t start,
+    int64_t limit,
+    Buffer *records
+) {
+    int64_t cursor = skip_trivia(source, start);
+    while (cursor < limit) {
+        const char *kind = token_kind(source, cursor);
+        int64_t next = skip_trivia(source, token_end(source, cursor));
+        bool parenthesized = token_equal(source, cursor, "(");
+        bool group = parenthesized || token_equal(source, cursor, "[");
+        /* An `if` or `match` is a primary only when a `?` follows its last
+         * block, so a statement `if` never turns a group on the next line
+         * into a call. An inner `else if` of the chain ends where the chain
+         * does, which is `limit` inside the recursive walk, so it is never a
+         * second operand for the same `?`. */
+        int64_t block_end = -1;
+        if (value_control(source, cursor)) {
+            int64_t construct_end = propagation_block_expression_end(
+                source,
+                cursor,
+                limit
+            );
+            if (construct_end >= 0) {
+                int64_t after_construct = skip_trivia(source, construct_end);
+                if (after_construct < limit &&
+                    token_equal(source, after_construct, "?")) {
+                    block_end = construct_end;
+                }
+            }
+        }
+        if (token_equal(source, cursor, "let")) {
+            cursor = propagation_let_head_end(source, cursor, limit);
+        } else if (token_equal(source, cursor, "->")) {
+            cursor = skip_trivia(source, propagation_type_end(source, next));
+        } else if (token_equal(source, cursor, "fn") && next < limit &&
+                   token_equal(source, next, "(")) {
+            int64_t parameters_end = balanced_end(source, next, "(", ")");
+            if (parameters_end < 0) return;
+            cursor = skip_trivia(source, parameters_end);
+        } else if (block_end >= 0 ||
+                   group ||
+                   strcmp(kind, "identifier") == 0 ||
+                   strcmp(kind, "integer") == 0 ||
+                   strcmp(kind, "decimal") == 0 ||
+                   strcmp(kind, "float") == 0 ||
+                   strcmp(kind, "string") == 0 ||
+                   token_equal(source, cursor, "true") ||
+                   token_equal(source, cursor, "false")) {
+            int64_t chain = cursor;
+            int64_t chain_end = token_end(source, cursor);
+            bool lambda_parameters = false;
+            if (block_end >= 0) {
+                chain_end = block_end;
+                result_propagation_nodes(
+                    source,
+                    hir,
+                    function_open,
+                    token_end(source, cursor),
+                    block_end,
+                    records
+                );
+            } else if (group) {
+                chain_end = balanced_end(
+                    source,
+                    cursor,
+                    parenthesized ? "(" : "[",
+                    parenthesized ? ")" : "]"
+                );
+                if (chain_end < 0) return;
+                int64_t after_group = skip_trivia(source, chain_end);
+                lambda_parameters = parenthesized && after_group < limit &&
+                    (token_equal(source, after_group, "=>") ||
+                     token_equal(source, after_group, "->"));
+                if (!lambda_parameters) {
+                    result_propagation_nodes(
+                        source,
+                        hir,
+                        function_open,
+                        token_end(source, cursor),
+                        chain_end,
+                        records
+                    );
+                }
+            }
+            if (lambda_parameters) {
+                cursor = skip_trivia(source, chain_end);
+            } else {
+                bool walking = true;
+                while (walking) {
+                    int64_t step = skip_trivia(source, chain_end);
+                    if (step >= limit) {
+                        walking = false;
+                    } else if (token_equal(source, step, "?")) {
+                        result_propagation_node(
+                            source,
+                            hir,
+                            function_open,
+                            step,
+                            chain,
+                            chain_end,
+                            records
+                        );
+                        chain_end = token_end(source, step);
+                    } else if (token_equal(source, step, "(") ||
+                               token_equal(source, step, "[")) {
+                        bool step_parenthesized =
+                            token_equal(source, step, "(");
+                        int64_t group_end = balanced_end(
+                            source,
+                            step,
+                            step_parenthesized ? "(" : "[",
+                            step_parenthesized ? ")" : "]"
+                        );
+                        if (group_end < 0) {
+                            walking = false;
+                        } else {
+                            result_propagation_nodes(
+                                source,
+                                hir,
+                                function_open,
+                                token_end(source, step),
+                                group_end,
+                                records
+                            );
+                            chain_end = group_end;
+                        }
+                    } else if (token_equal(source, step, ".")) {
+                        int64_t name = skip_trivia(
+                            source,
+                            token_end(source, step)
+                        );
+                        if (name < limit &&
+                            strcmp(token_kind(source, name), "identifier") ==
+                                0) {
+                            chain_end = token_end(source, name);
+                        } else {
+                            walking = false;
+                        }
+                    } else {
+                        walking = false;
+                    }
+                }
+                cursor = skip_trivia(source, chain_end);
+            }
+        } else {
+            cursor = next;
+        }
+    }
+}
+
+/*
+ * #1662. Refusals 1 and 2 of spec/result-propagation-v1.md, read from the
+ * typed `propagate` nodes. Stage 2 has no `Result` type yet, so every operand
+ * is one of the two; the first `?` in source order is the one reported, and
+ * for it the optional refusal is checked before the general one, because an
+ * optional is also not a `Result` and the specific suggestion is the useful
+ * one. The pipeline-stage refusal is syntactic and has already run in
+ * `parse_program`. The primary span is the `?`, the secondary the operand.
+ *
+ * An operand whose callee resolves to nothing (an empty type in its node) has
+ * no type to name, and inventing one would hide the real defect. The spec
+ * desugars `expr?` after name and type resolution, so that operand keeps its
+ * own resolution diagnostic, E2S16 at the callee, byte for byte what
+ * `validate_core_calls` says without the `?` — as an unknown binding operand
+ * keeps its E2S35 from scope construction. It is reported here, not left to
+ * that later validator, because a `?` this refusal does not stop is lowered
+ * with the `?` dropped.
+ */
+static char *validate_result_propagation(const char *source, const char *hir) {
+    int64_t line = hir_record_start(hir, "propagate", 0);
+    if (line < 0) return owned_text("ok");
+    char *question_text = hir_field(hir, line, 1);
+    char *operand_text = hir_field(hir, line, 2);
+    char *operand_end_text = hir_field(hir, line, 3);
+    char *operand_type = hir_field(hir, line, 5);
+    int64_t question = decimal_value(question_text);
+    int64_t operand = decimal_value(operand_text);
+    int64_t operand_end = decimal_value(operand_end_text);
+    size_t type_length = strlen(operand_type);
+    Buffer error;
+    buffer_init(&error);
+    if (type_length == 0) {
+        char *callee = token_copy(source, operand);
+        buffer_format(
+            &error,
+            "error[E2S16]: unknown Core function `%s` at byte %s",
+            callee,
+            operand_text
+        );
+        stage2_diagnostic_set(
+            "E2S16",
+            operand,
+            token_end(source, operand),
+            true,
+            error.data
+        );
+        stage2_diagnostic_affected(
+            STAGE2_DIAGNOSTIC_AFFECTED_CALL,
+            operand,
+            token_end(source, operand)
+        );
+        free(callee);
+    } else {
+        bool optional = strcmp(operand_type, "null") == 0 ||
+            operand_type[type_length - 1] == '?';
+        if (optional) {
+            buffer_format(
+                &error,
+                "error[E2S190]: optionals do not propagate, and this `?` "
+                "operand is `%s`; convert it with `ok_or(error)?` at byte "
+                "%s; operand at byte %s",
+                operand_type,
+                question_text,
+                operand_text
+            );
+        } else {
+            buffer_format(
+                &error,
+                "error[E2S189]: `?` propagates only a `Result[T, E]`, and "
+                "this operand is `%s` at byte %s; operand at byte %s",
+                operand_type,
+                question_text,
+                operand_text
+            );
+        }
+        stage2_diagnostic_set(
+            optional ? "E2S190" : "E2S189",
+            question,
+            token_end(source, question),
+            true,
+            error.data
+        );
+        stage2_diagnostic_related(operand, operand_end, "operand");
+    }
+    free(question_text);
+    free(operand_text);
+    free(operand_end_text);
+    free(operand_type);
+    return error.data;
+}
+
 static char *build_scope_hir_analysis_mode(
     const char *source,
     bool preserve_pattern_candidates,
@@ -20420,6 +21106,32 @@ static char *build_scope_hir_analysis_mode(
                 free(name);
             }
             cursor = skip_trivia(source, token_end(source, cursor));
+        }
+        /* #1662. The typed `?` nodes come last, once this function's
+         * bindings and uses are recorded, so an operand's type resolves
+         * against them. A body with no `?` byte at all is not walked. The
+         * scoped analyses (capture and place HIR v2) project a different
+         * document and do not carry these nodes. The records are collected
+         * apart and appended after, because typing reads `hir.data` and an
+         * append may move it. */
+        if (!scoped_analysis &&
+            source_has_question_between(
+                source,
+                function_open,
+                function_close
+            )) {
+            Buffer propagation;
+            buffer_init(&propagation);
+            result_propagation_nodes(
+                source,
+                hir.data,
+                function_open,
+                token_end(source, function_open),
+                function_close,
+                &propagation
+            );
+            buffer_append(&hir, propagation.data);
+            free(propagation.data);
         }
         function_start = next_function_start(source, function_close);
     }
@@ -29203,6 +29915,16 @@ static char *lower_c_body(
         return bytes_private_check;
     }
     free(bytes_private_check);
+    /* #1662. After the move rules (#946 still runs first) and before every
+     * typing and lowering validator: each of those reads the expression
+     * around a `?` as if the `?` were not there, so `x?` with `x: Int?` was an
+     * `E2S147` narrowing refusal and most other positions reached the `E2S10`
+     * statement fallback, which sent `bin/kofun` to Stage 1. */
+    char *propagation_check = validate_result_propagation(source, hir);
+    if (strncmp(propagation_check, "error[", 6) == 0) {
+        return propagation_check;
+    }
+    free(propagation_check);
     /* A mixed-type expression is reported before operator lowering, so
      * `1 + 1.5` names the missing explicit conversion. */
     char *operand_check = validate_numeric_operand_types(source, hir);

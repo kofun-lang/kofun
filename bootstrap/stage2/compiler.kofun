@@ -3029,6 +3029,74 @@ fn pipeline_refusal(reason: Text, pipe: Int) -> Text {
     return "error[E2S158]: " + reason + " at byte " + to_text(pipe)
 }
 
+# #1662. Postfix `?` (spec/result-propagation-v1.md) binds as tightly as a call
+# or a field read, so one postfix step is one of those three: a call's or an
+# index's balanced group, or `.name`. Returns the end of the step that starts
+# after `end`, or -1 when the next token before `limit` continues no chain. `?`
+# is not a step here; the walkers that pass through it do so themselves.
+fn propagation_step_end(source: Text, end: Int, limit: Int) -> Int {
+    let next = skip_trivia(source, end)
+    if next >= limit {
+        return -1
+    }
+    let text = token_text(source, next)
+    if text == "(" {
+        return balanced_end(source, next, "(", ")")
+    }
+    if text == "[" {
+        return balanced_end(source, next, "[", "]")
+    }
+    if text == "." {
+        let name = skip_trivia(source, token_end(source, next))
+        if name < limit && token_kind(source, name) == "identifier" {
+            return token_end(source, name)
+        }
+    }
+    return -1
+}
+
+# The end of the postfix chain whose primary ends at `end`, stopping before the
+# first `?`.
+fn propagation_postfix_end(source: Text, end: Int, limit: Int) -> Int {
+    let mut cursor = end
+    let mut step = propagation_step_end(source, cursor, limit)
+    while step > cursor {
+        cursor = step
+        step = propagation_step_end(source, cursor, limit)
+    }
+    return cursor
+}
+
+# #1662. The `?` written directly on the target of the pipeline stage at
+# `pipe`, or -1. The tight postfix binding applies that `?` to the stage —
+# `f` in `a |> f?`, `f()` in `a |> f()?` — and never to the value the pipeline
+# produces, which is what the author almost certainly meant. `(a |> f())?` is
+# not this shape: its `?` follows the `)` of a group, not a stage.
+fn pipeline_stage_question(source: Text, pipe: Int) -> Int {
+    let target = skip_trivia(source, token_end(source, pipe))
+    if target >= len(source) || token_kind(source, target) != "identifier" {
+        return -1
+    }
+    let stage_end = propagation_postfix_end(
+        source,
+        token_end(source, target),
+        len(source)
+    )
+    let question = skip_trivia(source, stage_end)
+    if question < len(source) && token_text(source, question) == "?" {
+        return question
+    }
+    return -1
+}
+
+# Refusal 3 of spec/result-propagation-v1.md: the primary span is the `?`, the
+# secondary span the stage it would otherwise apply to.
+fn pipeline_stage_propagation_refusal(question: Int, operand: Int) -> Text {
+    return "error[E2S191]: `?` on a pipeline stage applies to the stage, " +
+    "not the result; parenthesize the pipeline: `(a |> f())?` at byte " +
+    to_text(question) + "; operand at byte " + to_text(operand)
+}
+
 # The pipeline shapes this slice does not recognize, refused before scope
 # construction.
 #
@@ -3058,6 +3126,16 @@ fn validate_pipeline_shapes(source: Text) -> Text {
     let mut scan = skip_trivia(source, 0)
     while scan < len(source) {
         if token_text(source, scan) == "|>" {
+            # #1662. Before either shape refusal below: `a |> f?` has no
+            # parentheses and would otherwise be told so, when the defect is
+            # the `?` that follows it.
+            let stage_question = pipeline_stage_question(source, scan)
+            if stage_question >= 0 {
+                return pipeline_stage_propagation_refusal(
+                    stage_question,
+                    skip_trivia(source, token_end(source, scan))
+                )
+            }
             let call_end = pipeline_call_end(source, scan)
             if call_end < 0 {
                 # A member target has its parentheses, so saying it lacks them
@@ -3892,7 +3970,28 @@ fn int_bit_postfix_end(source: Text, primary: Int) -> Int {
     return cursor
 }
 
+# The postfix steps after a primary, ending with any postfix `?`.
+#
+# #1662. `?` is a postfix operator at the level of a call or a field read
+# (spec/result-propagation-v1.md), so this shared reader steps over it and
+# carries on: `f(x)?.name` is one expression, `(f(x)?).name`. Before #1662 it
+# stopped at the `?`, so every reader measured a shorter expression than the
+# one written — a lambda body `one()? + value` ended at `one()` and left
+# `value` outside the lambda's scope. Nothing lowers a `?`:
+# `validate_result_propagation` refuses each one before emission.
 fn field_postfix_end(source: Text, primary: Int) -> Int {
+    let chain = field_postfix_chain_end(source, primary)
+    if chain < 0 {
+        return chain
+    }
+    let question = skip_trivia(source, chain)
+    if question < len(source) && token_text(source, question) == "?" {
+        return field_postfix_end(source, token_end(source, question))
+    }
+    return chain
+}
+
+fn field_postfix_chain_end(source: Text, primary: Int) -> Int {
     # A bit-operation chain is tried first because the record-field reader
     # consumes `.and` on its own and would leave the `(` behind — the argument
     # counter then read the call as a malformed one and the program was refused
@@ -13918,6 +14017,454 @@ fn int_bit_error_before_unresolved(
     )
 }
 
+# Whether a `?` byte occurs in [start, end). Bounded, unlike `text_find_from`,
+# so a file whose last `?` is early is not rescanned to its end per function.
+# A `?` inside a string or a comment passes this test; the token walk that
+# follows is what decides.
+fn source_has_question_between(source: Text, start: Int, end: Int) -> Bool {
+    let symbols = chars(source)
+    let mut cursor = start
+    while cursor < end && cursor < len(symbols) {
+        if symbols[cursor] == "?" {
+            return true
+        }
+        cursor = cursor + 1
+    }
+    return false
+}
+
+# #1662. The end of a type written at `start` in an annotation position: a name
+# with an optional bracketed argument list, or a parenthesised parameter list,
+# then any `?`/`??` suffixes, then an optional `-> Type` result. This is only a
+# skip, so that an optional type's `?` is never read as propagation; whether
+# the type is well formed is somebody else's diagnostic.
+fn propagation_type_end(source: Text, start: Int) -> Int {
+    if start >= len(source) {
+        return start
+    }
+    let head = token_text(source, start)
+    let mut cursor = token_end(source, start)
+    if head == "(" || head == "[" {
+        let mut close = ")"
+        if head == "[" {
+            close = "]"
+        }
+        let group = balanced_end(source, start, head, close)
+        if group < 0 {
+            return cursor
+        }
+        cursor = group
+    } else {
+        let bracket = skip_trivia(source, cursor)
+        if bracket < len(source) && token_text(source, bracket) == "[" {
+            let group = balanced_end(source, bracket, "[", "]")
+            if group > 0 {
+                cursor = group
+            }
+        }
+    }
+    let mut suffix = skip_trivia(source, cursor)
+    while suffix < len(source) &&
+          (token_text(source, suffix) == "?" ||
+           token_text(source, suffix) == "??") {
+        cursor = token_end(source, suffix)
+        suffix = skip_trivia(source, cursor)
+    }
+    if suffix < len(source) && token_text(source, suffix) == "->" {
+        return propagation_type_end(
+            source,
+            skip_trivia(source, token_end(source, suffix))
+        )
+    }
+    return cursor
+}
+
+# `let [mut] name [: Type]`, stepped over as a whole so the annotation's `?` is
+# a type suffix. Returns the first token after the head, normally `=`.
+fn propagation_let_head_end(source: Text, let_start: Int, limit: Int) -> Int {
+    let mut cursor = skip_trivia(source, token_end(source, let_start))
+    if cursor < limit && token_text(source, cursor) == "mut" {
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    if cursor < limit && token_kind(source, cursor) == "identifier" {
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    if cursor < limit && token_text(source, cursor) == ":" {
+        cursor = skip_trivia(
+            source,
+            propagation_type_end(
+                source,
+                skip_trivia(source, token_end(source, cursor))
+            )
+        )
+    }
+    return cursor
+}
+
+# Whether the operand at `operand` is headed by a call whose callee resolves to
+# nothing: exactly the case `validate_core_calls` reports as E2S16 `unknown
+# Core function`, with its exclusions (`print`, a declared or duplicated
+# function, a constructor application, a lambda or callable-typed binding, a
+# builtin). Such an operand has no type, so nothing may be named for it.
+fn propagation_unresolved_callee(source: Text, hir: Text, operand: Int) -> Bool {
+    if token_kind(source, operand) != "identifier" {
+        return false
+    }
+    let open = skip_trivia(source, token_end(source, operand))
+    if open >= len(source) || token_text(source, open) != "(" {
+        return false
+    }
+    let name = token_text(source, operand)
+    let declared = function_arity(source, name)
+    if name == "print" || declared >= 0 || declared == -2 {
+        return false
+    }
+    if len(enum_constructor_owner(source, name)) > 0 ||
+       record_declaration_start(source, name) >= 0 {
+        return false
+    }
+    return lambda_call_arity(source, hir, operand) < 0 &&
+        callable_call_arity(source, hir, operand) < 0 &&
+        builtin_arity(name) < 0
+}
+
+# #1662. The end of the `if`/`else` chain or the `match` whose keyword is at
+# `start`, or -1 when a block does not close before `limit`. The first block is
+# the first `{` outside parentheses and brackets after the keyword; an `if`
+# then takes each `else` block and `else if` that follows. Only the extent is
+# measured here: whether the construct is well formed is somebody else's
+# diagnostic.
+fn propagation_block_expression_end(source: Text, start: Int, limit: Int) -> Int {
+    let mut cursor = skip_trivia(source, token_end(source, start))
+    let mut depth = 0
+    let mut searching = true
+    while searching && cursor < limit {
+        let text = token_text(source, cursor)
+        if depth == 0 && text == "{" {
+            searching = false
+        } else {
+            if text == "(" || text == "[" {
+                depth = depth + 1
+            } else if text == ")" || text == "]" {
+                depth = depth - 1
+            }
+            let step = token_end(source, cursor)
+            if step <= cursor {
+                return -1
+            }
+            cursor = skip_trivia(source, step)
+        }
+    }
+    if cursor >= limit {
+        return -1
+    }
+    let block_end = balanced_end(source, cursor, "{", "}")
+    if block_end < 0 || block_end > limit {
+        return -1
+    }
+    if token_text(source, start) != "if" {
+        return block_end
+    }
+    let after = skip_trivia(source, block_end)
+    if after >= limit || token_text(source, after) != "else" {
+        return block_end
+    }
+    let alternative = skip_trivia(source, token_end(source, after))
+    if alternative < limit && token_text(source, alternative) == "if" {
+        return propagation_block_expression_end(source, alternative, limit)
+    }
+    if alternative < limit && token_text(source, alternative) == "{" {
+        let else_end = balanced_end(source, alternative, "{", "}")
+        if else_end < 0 || else_end > limit {
+            return -1
+        }
+        return else_end
+    }
+    return -1
+}
+
+# The type a `?` operand has, by the same bounded classification an
+# unannotated `let` initializer gets. Some shapes are answered first, because
+# that classification decides by the first primary alone and would misname
+# them: `null` is an optional; a parenthesised operand is typed by what it
+# encloses, so `(x ?? 0)` is `Int` rather than its first primary's `Int?`; a
+# value `if` or `match` is `Int`, as it is for an unannotated `let`, because
+# this slice joins value control on `Int` only; a call whose callee resolves to
+# nothing has no type at all, which is the empty text rather than the
+# classification's historical `Int` default; `print` yields nothing, `Void`;
+# and a call to a declared `-> Int?` function is `Int?`, where the
+# declared-type reader returns only the head `Int`.
+fn propagation_operand_type(
+    source: Text,
+    hir: Text,
+    function_open: Int,
+    operand: Int,
+    operand_end: Int
+) -> Text {
+    let head = token_text(source, operand)
+    let after_head = token_end(source, operand)
+    if head == "null" && skip_trivia(source, after_head) >= operand_end {
+        return "null"
+    }
+    if head == "(" &&
+       balanced_end(source, operand, "(", ")") == operand_end {
+        return propagation_operand_type(
+            source,
+            hir,
+            function_open,
+            skip_trivia(source, after_head),
+            operand_end - 1
+        )
+    }
+    if value_control(head) {
+        return "Int"
+    }
+    if token_kind(source, operand) == "identifier" {
+        if propagation_unresolved_callee(source, hir, operand) {
+            return ""
+        }
+        let open = skip_trivia(source, after_head)
+        if head == "print" && open < operand_end &&
+           token_text(source, open) == "(" {
+            return "Void"
+        }
+        if open < operand_end && token_text(source, open) == "(" &&
+           balanced_end(source, open, "(", ")") == operand_end &&
+           optional_int_result(source, head) {
+            return "Int?"
+        }
+    }
+    return initializer_type_bounded(
+        source,
+        hir,
+        function_open,
+        operand,
+        operand_end
+    )
+}
+
+# One typed `?` node. The operand is recorded once, as the byte span the `?`
+# applies to; nothing in the node can name it a second time, which is the
+# "evaluated exactly once" of the spec's desugaring stated as data.
+fn result_propagation_node(
+    source: Text,
+    hir: Text,
+    function_open: Int,
+    question: Int,
+    operand: Int,
+    operand_end: Int
+) -> Text {
+    let scope = hir_scope_id_for_open(
+        hir,
+        parent_block_open(source, function_open, question)
+    )
+    return "propagate|" + to_text(question) + "|" + to_text(operand) + "|" +
+    to_text(operand_end) + "|" + scope + "|" +
+    propagation_operand_type(
+        source,
+        hir,
+        function_open,
+        operand,
+        operand_end
+    ) + "\n"
+}
+
+# #1662. Every postfix `?` in expression position between `start` and `limit`,
+# as scope-HIR records in source order of the `?`:
+#
+#     propagate|QUESTION|OPERAND-START|OPERAND-END|SCOPE|OPERAND-TYPE
+#
+# The walk parses what spec/result-propagation-v1.md specifies: `?` is a
+# postfix step at the level of a call or field read, so it ends the chain it
+# follows and a chain may continue after it — `f(x)?.name` is `(f(x)?).name`,
+# whose operand is `f(x)`. Type positions are stepped over whole (a `let`
+# annotation, a lambda's parameter list, a `->` result), because the optional
+# type `T?` and propagation never share a token occurrence. Groups are walked
+# recursively, so a `?` inside an argument or a parenthesised operand is found
+# with its own operand. A value `if`/`else` chain or `match` followed by `?` is
+# that `?`'s operand, its blocks walked recursively the same way.
+fn result_propagation_nodes(
+    source: Text,
+    hir: Text,
+    function_open: Int,
+    start: Int,
+    limit: Int
+) -> Text {
+    let mut records = ""
+    let mut cursor = skip_trivia(source, start)
+    while cursor < limit {
+        let text = token_text(source, cursor)
+        let kind = token_kind(source, cursor)
+        let next = skip_trivia(source, token_end(source, cursor))
+        let group = text == "(" || text == "["
+        # An `if` or `match` is a primary only when a `?` follows its last
+        # block, so a statement `if` never turns a group on the next line into
+        # a call. An inner `else if` of the chain ends where the chain does,
+        # which is `limit` inside the recursive walk, so it is never a second
+        # operand for the same `?`.
+        let mut block_end = -1
+        if value_control(text) {
+            let construct_end = propagation_block_expression_end(
+                source,
+                cursor,
+                limit
+            )
+            if construct_end >= 0 {
+                let after_construct = skip_trivia(source, construct_end)
+                if after_construct < limit &&
+                   token_text(source, after_construct) == "?" {
+                    block_end = construct_end
+                }
+            }
+        }
+        if text == "let" {
+            cursor = propagation_let_head_end(source, cursor, limit)
+        } else if text == "->" {
+            cursor = skip_trivia(source, propagation_type_end(source, next))
+        } else if text == "fn" && next < limit && token_text(source, next) == "(" {
+            let parameters_end = balanced_end(source, next, "(", ")")
+            if parameters_end < 0 {
+                return records
+            }
+            cursor = skip_trivia(source, parameters_end)
+        } else if block_end >= 0 || group || kind == "identifier" ||
+                  kind == "integer" || kind == "decimal" || kind == "float" ||
+                  kind == "string" || text == "true" || text == "false" {
+            let chain = cursor
+            let mut chain_end = token_end(source, cursor)
+            let mut lambda_parameters = false
+            if block_end >= 0 {
+                chain_end = block_end
+                records = records + result_propagation_nodes(
+                    source,
+                    hir,
+                    function_open,
+                    token_end(source, cursor),
+                    block_end
+                )
+            } else if group {
+                let mut close = ")"
+                if text == "[" {
+                    close = "]"
+                }
+                chain_end = balanced_end(source, cursor, text, close)
+                if chain_end < 0 {
+                    return records
+                }
+                let after_group = skip_trivia(source, chain_end)
+                lambda_parameters = text == "(" && after_group < limit &&
+                    (token_text(source, after_group) == "=>" ||
+                     token_text(source, after_group) == "->")
+                if !lambda_parameters {
+                    records = records + result_propagation_nodes(
+                        source,
+                        hir,
+                        function_open,
+                        token_end(source, cursor),
+                        chain_end
+                    )
+                }
+            }
+            if lambda_parameters {
+                cursor = skip_trivia(source, chain_end)
+            } else {
+                let mut walking = true
+                while walking {
+                    let step = skip_trivia(source, chain_end)
+                    let step_text = token_text(source, step)
+                    if step >= limit {
+                        walking = false
+                    } else if step_text == "?" {
+                        records = records + result_propagation_node(
+                            source,
+                            hir,
+                            function_open,
+                            step,
+                            chain,
+                            chain_end
+                        )
+                        chain_end = token_end(source, step)
+                    } else if step_text == "(" || step_text == "[" {
+                        let mut step_close = ")"
+                        if step_text == "[" {
+                            step_close = "]"
+                        }
+                        let group_end = balanced_end(
+                            source,
+                            step,
+                            step_text,
+                            step_close
+                        )
+                        if group_end < 0 {
+                            walking = false
+                        } else {
+                            records = records + result_propagation_nodes(
+                                source,
+                                hir,
+                                function_open,
+                                token_end(source, step),
+                                group_end
+                            )
+                            chain_end = group_end
+                        }
+                    } else if step_text == "." {
+                        let name = skip_trivia(source, token_end(source, step))
+                        if name < limit &&
+                           token_kind(source, name) == "identifier" {
+                            chain_end = token_end(source, name)
+                        } else {
+                            walking = false
+                        }
+                    } else {
+                        walking = false
+                    }
+                }
+                cursor = skip_trivia(source, chain_end)
+            }
+        } else {
+            cursor = next
+        }
+    }
+    return records
+}
+
+# #1662. Refusals 1 and 2 of spec/result-propagation-v1.md, read from the typed
+# `propagate` nodes. Stage 2 has no `Result` type yet, so every operand is one
+# of the two; the first `?` in source order is the one reported, and for it the
+# optional refusal is checked before the general one, because an optional is
+# also not a `Result` and the specific suggestion is the useful one. The
+# pipeline-stage refusal is syntactic and has already run in `parse_program`.
+#
+# An operand whose callee resolves to nothing (an empty type in its node) has
+# no type to name, and inventing one would hide the real defect. The spec
+# desugars `expr?` after name and type resolution, so that operand keeps its
+# own resolution diagnostic, E2S16 at the callee, byte for byte what
+# `validate_core_calls` says without the `?` — as an unknown binding operand
+# keeps its E2S35 from scope construction. It is reported here, not left to
+# that later validator, because a `?` this refusal does not stop is lowered
+# with the `?` dropped.
+fn validate_result_propagation(source: Text, hir: Text) -> Text {
+    let line = hir_record_start(hir, "propagate", 0)
+    if line < 0 {
+        return "ok"
+    }
+    let question = hir_field(hir, line, 1)
+    let operand = hir_field(hir, line, 2)
+    let operand_type = hir_field(hir, line, 5)
+    if operand_type == "" {
+        return "error[E2S16]: unknown Core function `" +
+        token_text(source, decimal_value(operand)) + "` at byte " + operand
+    }
+    if operand_type == "null" || ends_with(operand_type, "?") {
+        return "error[E2S190]: optionals do not propagate, and this `?` " +
+        "operand is `" + operand_type + "`; convert it with " +
+        "`ok_or(error)?` at byte " + question + "; operand at byte " + operand
+    }
+    return "error[E2S189]: `?` propagates only a `Result[T, E]`, and this " +
+    "operand is `" + operand_type + "` at byte " + question +
+    "; operand at byte " + operand
+}
+
 fn build_scope_hir_analysis_mode(
     source: Text,
     preserve_pattern_candidates: Bool,
@@ -14871,6 +15418,21 @@ fn build_scope_hir_analysis_mode(
                 }
             }
             cursor = skip_trivia(source, token_end(source, cursor))
+        }
+        # #1662. The typed `?` nodes come last, once this function's bindings
+        # and uses are recorded, so an operand's type resolves against them.
+        # A body with no `?` byte at all is not walked. The scoped analyses
+        # (capture and place HIR v2) project a different document and do not
+        # carry these nodes.
+        if !scoped_analysis &&
+           source_has_question_between(source, function_open, function_close) {
+            hir = hir + result_propagation_nodes(
+                source,
+                hir,
+                function_open,
+                token_end(source, function_open),
+                function_close
+            )
         }
         function_start = next_function_start(source, function_close)
     }
@@ -19716,6 +20278,15 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
         bytes_prelude = bytes_carrier_prelude()
         bytes_text_prelude = bytes_text_bridge_prelude()
         bytes_include = "#include <stdlib.h>\n"
+    }
+    # #1662. After the move rules (#946 still runs first) and before every
+    # typing and lowering validator: each of those reads the expression around
+    # a `?` as if the `?` were not there, so `x?` with `x: Int?` was an
+    # `E2S147` narrowing refusal and most other positions reached the
+    # `E2S10` statement fallback, which sent `bin/kofun` to Stage 1.
+    let propagation_check = validate_result_propagation(source, hir)
+    if starts_with(propagation_check, "error[") {
+        return propagation_check
     }
     # A mixed-type expression is reported before operator lowering, so
     # `1 + 1.5` names the missing explicit conversion.

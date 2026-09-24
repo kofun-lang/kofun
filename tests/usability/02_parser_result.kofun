@@ -17,11 +17,11 @@
 #     declares a monomorphic, purpose-built `ParseResult` instead. Every
 #     fallible type in a real program would need its own copy.
 #
-#   * Postfix `?` — DD-036, spec/result-propagation-v1.md — is not
-#     implemented. That spec says so itself: "No parser, type checker, or
-#     backend implements this syntax". The three-step version with `?` is
-#     four lines; the version below is thirty-one, and the nesting is the
-#     whole reason #624 wants the comparison.
+#   * Postfix `?` — DD-036, spec/result-propagation-v1.md — is not usable
+#     yet. Stage 2 parses it and refuses every use until a `Result` type
+#     exists (#1662); the positive lowering is #1250. The three-step version
+#     with `?` is four lines; the version below is thirty-one, and the
+#     nesting is the whole reason #624 wants the comparison.
 #
 # The rightward drift is not a style choice. `match` arms are statements, so
 # each fallible step opens a new block one level deeper, and the error case
