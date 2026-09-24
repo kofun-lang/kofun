@@ -73,6 +73,18 @@ for(const [fixture] of inexpressible){
 }
 console.log(`PASS: ${mirrored.size} model fixtures mirrored by source, ${inexpressible.size} inexpressible as source`);
 
+// `par` is a Stage 2 keyword, so the compiler's own Kofun half must never
+// spell it as a name: a `par` binding there refuses #1483's self-compilation
+// at parse (E2S154) before it reaches lowering. Code only, not strings or
+// comments; the compiler writes no `par` expression of its own.
+{
+    const own=fs.readFileSync(path.join(root,'bootstrap/stage2/compiler.kofun'),'utf8').split('\n');
+    const code=own.map(line=>line.replace(/"(?:[^"\\]|\\.)*"/g,'""').replace(/#.*$/,''));
+    const hits=code.flatMap((line,index)=>/\bpar\b/.test(line)?[index+1]:[]);
+    assert.deepEqual(hits,[],`compiler.kofun spells the par keyword as a name on lines ${hits.join(', ')}`);
+}
+console.log('PASS: the compiler\'s own Kofun half never spells the par keyword as a name');
+
 const parent=path.join(root,'build',process.env.KOFUN_GATE_WORK_NAMESPACE??'','concurrency-ownership');
 fs.mkdirSync(parent,{recursive:true});
 const work=fs.mkdtempSync(path.join(parent,'run-'));

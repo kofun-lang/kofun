@@ -28545,10 +28545,10 @@ fn ownership_previous_token(source: Text, block: Int, at: Int) -> Text {
     return previous
 }
 
-fn ownership_in_lambda(facts: Text, par: Text, at: Int) -> Bool {
+fn ownership_in_lambda(facts: Text, par_index: Text, at: Int) -> Bool {
     let mut task = hir_record_start(facts, "task", 0)
     while task >= 0 {
-        if hir_field(facts, task, 1) == par && at >= decimal_value(hir_field(facts, task, 5)) &&
+        if hir_field(facts, task, 1) == par_index && at >= decimal_value(hir_field(facts, task, 5)) &&
             at < decimal_value(hir_field(facts, task, 6)) { return true }
         task = hir_record_start(facts, "task", task + 1)
     }
@@ -28600,14 +28600,14 @@ fn ownership_call_key(file: Text, start: Int, stop: Int) -> Text {
 # §3: a handle is used only as its own join receiver. Rows are
 # `escape|TASK|USE|BYTE` for the first escaping use of each task handle.
 fn ownership_escapes(source: Text, hir: Text, facts: Text, par_row: Int) -> Text {
-    let par = hir_field(facts, par_row, 1)
+    let par_index = hir_field(facts, par_row, 1)
     let close = decimal_value(hir_field(facts, par_row, 3))
     let name = decimal_value(hir_field(facts, par_row, 6))
     let block = skip_trivia(source, token_end(source, skip_trivia(source, token_end(source, name))))
     let mut result = ""
     let mut task = hir_record_start(facts, "task", 0)
     while task >= 0 {
-        if hir_field(facts, task, 1) == par && decimal_value(hir_field(facts, task, 8)) >= 0 {
+        if hir_field(facts, task, 1) == par_index && decimal_value(hir_field(facts, task, 8)) >= 0 {
             let binding = hir_field(facts, task, 7)
             let mut first = -1
             let mut kind = ""
@@ -28969,7 +28969,7 @@ fn ownership_decide(rows: Text, names: Text) -> Text {
 # then the model input, the native decision and the name table as JSON.
 fn ownership_scope(source: Text, hir: Text, facts: Text, accesses: Text, path: Text, par_row: Int, escapes: Text, derived: Bool) -> Text {
     let file = scoped_hir_file_id(path)
-    let par = hir_field(facts, par_row, 1)
+    let par_index = hir_field(facts, par_row, 1)
     let close = decimal_value(hir_field(facts, par_row, 3))
     let name = decimal_value(hir_field(facts, par_row, 6))
     let block = skip_trivia(source, token_end(source, skip_trivia(source, token_end(source, name))))
@@ -28978,7 +28978,7 @@ fn ownership_scope(source: Text, hir: Text, facts: Text, accesses: Text, path: T
     let mut names = ""
     let mut task = hir_record_start(facts, "task", 0)
     while task >= 0 {
-        if hir_field(facts, task, 1) == par {
+        if hir_field(facts, task, 1) == par_index {
             let index = hir_field(facts, task, 2)
             events = events + "ev|" + scoped_hir_hex(decimal_value(hir_field(facts, task, 4)), 8) + "0|spawn|" + index + "\n"
             let join = scoped_hir_fact(facts, "join", 1, hir_field(facts, task, 7))
@@ -29012,7 +29012,7 @@ fn ownership_scope(source: Text, hir: Text, facts: Text, accesses: Text, path: T
         let start = decimal_value(hir_field(accesses, row, 8))
         let stop = decimal_value(hir_field(accesses, row, 9))
         let key = ownership_access_key(accesses, row, file)
-        if start > block && stop < close && !ownership_in_lambda(facts, par, start) {
+        if start > block && stop < close && !ownership_in_lambda(facts, par_index, start) {
             actions = actions + 1
             if !starts_with(key, "U") {
                 names = names + ownership_names(key, scoped_hir_display(source, hir_binding_declaration_start(hir, hir_field(accesses, row, 3))),
@@ -29042,7 +29042,7 @@ fn ownership_scope(source: Text, hir: Text, facts: Text, accesses: Text, path: T
             # closure, a returned lambda) may run any effect there, including
             # after scope exit, so it takes an explicit unknown place.
             let call = ownership_call_key(file, start, stop)
-            if start > block && stop < close && !ownership_in_lambda(facts, par, start) {
+            if start > block && stop < close && !ownership_in_lambda(facts, par_index, start) {
                 actions = actions + 1
                 events = events + "ev|" + scoped_hir_hex(start, 8) + "1|act|take|" + call + "|" + to_text(start) + "\n"
             }
@@ -29050,7 +29050,7 @@ fn ownership_scope(source: Text, hir: Text, facts: Text, accesses: Text, path: T
                 after = after + "ev|" + scoped_hir_hex(start, 8) + "1|act|take|" + call + "|" + to_text(start) + "\n"
             }
         }
-        if start > block && stop < close && hir_field(accesses, row, 2) == "take" && loop >= 0 && ownership_in_lambda(facts, par, start) &&
+        if start > block && stop < close && hir_field(accesses, row, 2) == "take" && loop >= 0 && ownership_in_lambda(facts, par_index, start) &&
             (starts_with(key, "U") || hir_binding_declaration_start(hir, hir_field(accesses, row, 3)) < loop) {
             return ownership_error("E2S123", "a par in a loop cannot repeatedly take an enclosing binding", start)
         }
@@ -29090,7 +29090,7 @@ fn ownership_scope(source: Text, hir: Text, facts: Text, accesses: Text, path: T
     let mut tasks = ""
     task = hir_record_start(facts, "task", 0)
     while task >= 0 {
-        if hir_field(facts, task, 1) == par {
+        if hir_field(facts, task, 1) == par_index {
             let index = hir_field(facts, task, 2)
             let spawn = hir_field(steps, capture_fact(steps, "spawn", 1, index), 2)
             let joined = capture_fact(steps, "join", 1, index)
@@ -29203,7 +29203,7 @@ fn ownership_scope(source: Text, hir: Text, facts: Text, accesses: Text, path: T
         row = capture_line_end(unique_names, row) + 1
     }
     return "scope|" + status + "|" + first + "\n{\"after_scope_actions\":[" + after_json + "],\"decision\":{\"diagnostics\":[" + diagnostic_json + "],\"diagnostics_truncated\":" + truncated +
-        ",\"status\":\"" + status + "\"},\"derivation\":\"" + derivation + "\",\"lexical_index\":" + par +
+        ",\"status\":\"" + status + "\"},\"derivation\":\"" + derivation + "\",\"lexical_index\":" + par_index +
         ",\"model_input\":{\"schema\":\"kofun.scoped-parallelism-model/v1\",\"scope\":{\"exit_step\":" + to_text(exit) +
         ",\"parent_actions\":[" + act_json + "],\"tasks\":[" + task_json + "]}},\"names\":[" + name_json + "]}"
 }
@@ -29236,13 +29236,13 @@ fn check_scoped_ownership_file(input: Text, output: Text, logical_path: Text) ->
     # Handle escape is decided before capture derivation, which cannot type
     # an escaping handle; such a file reports lifecycle facts only.
     let mut escapes = ""
-    let mut par = hir_record_start(facts, "par", 0)
-    while par >= 0 {
-        let token = ownership_token_escape(source, hir, facts, par)
+    let mut par_row = hir_record_start(facts, "par", 0)
+    while par_row >= 0 {
+        let token = ownership_token_escape(source, hir, facts, par_row)
         if len(token) > 0 { print(token)
             return 1 }
-        escapes = escapes + ownership_escapes(source, hir, facts, par)
-        par = hir_record_start(facts, "par", par + 1)
+        escapes = escapes + ownership_escapes(source, hir, facts, par_row)
+        par_row = hir_record_start(facts, "par", par_row + 1)
     }
     let derived = len(escapes) == 0
     let mut accesses = ""
@@ -29264,10 +29264,10 @@ fn check_scoped_ownership_file(input: Text, output: Text, logical_path: Text) ->
     let mut scopes = ""
     let mut status = "accepted"
     let mut first = ""
-    par = hir_record_start(facts, "par", 0)
-    while par >= 0 {
-        let scope = ownership_scope(source, hir, facts, accesses, logical_path, par,
-            ownership_escapes(source, hir, facts, par), derived)
+    par_row = hir_record_start(facts, "par", 0)
+    while par_row >= 0 {
+        let scope = ownership_scope(source, hir, facts, accesses, logical_path, par_row,
+            ownership_escapes(source, hir, facts, par_row), derived)
         if starts_with(scope, "error[") { print(scope)
             return 1 }
         if hir_field(scope, 0, 1) == "rejected" {
@@ -29276,7 +29276,7 @@ fn check_scoped_ownership_file(input: Text, output: Text, logical_path: Text) ->
         }
         if len(scopes) > 0 { scopes = scopes + "," }
         scopes = scopes + capture_tail(scope)
-        par = hir_record_start(facts, "par", par + 1)
+        par_row = hir_record_start(facts, "par", par_row + 1)
     }
     write_text(output, "{\"profile\":\"kofun.stage2-analysis/scoped-ownership/v1\",\"schema\":\"kofun-scoped-ownership/v1\",\"scopes\":[" +
         scopes + "],\"status\":\"" + status + "\"}\n")

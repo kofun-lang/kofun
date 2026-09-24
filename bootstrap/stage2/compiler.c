@@ -38342,11 +38342,11 @@ static const char * ownership_previous_token(CheckedPlaceArena *a, const char * 
     return capture_return_text(a, mark, v_previous);
 }
 
-static bool ownership_in_lambda(CheckedPlaceArena *a, const char * v_facts, const char * v_par, int64_t v_at) {
+static bool ownership_in_lambda(CheckedPlaceArena *a, const char * v_facts, const char * v_par_index, int64_t v_at) {
     CheckedPlaceText *mark = a->texts;
     int64_t v_task = hir_record_start(v_facts, "task", 0);
     while (v_task >= 0) {
-        if (((strcmp(cp_field(a, v_facts, v_task, 1), v_par) == 0) && (v_at >= decimal_value(cp_field(a, v_facts, v_task, 5)))) &&
+        if (((strcmp(cp_field(a, v_facts, v_task, 1), v_par_index) == 0) && (v_at >= decimal_value(cp_field(a, v_facts, v_task, 5)))) &&
             (v_at < decimal_value(cp_field(a, v_facts, v_task, 6)))) {
             return capture_return_integer(a, mark, true);
         }
@@ -38400,7 +38400,7 @@ static const char * ownership_call_key(CheckedPlaceArena *a, const char * v_file
 
 static const char * ownership_escapes(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_facts, int64_t v_par_row) {
     CheckedPlaceText *mark = a->texts;
-    const char * v_par = cp_field(a, v_facts, v_par_row, 1);
+    const char * v_par_index = cp_field(a, v_facts, v_par_row, 1);
     int64_t v_close = decimal_value(cp_field(a, v_facts, v_par_row, 3));
     int64_t v_name = decimal_value(cp_field(a, v_facts, v_par_row, 6));
     int64_t v_block = skip_trivia(v_source, token_end(v_source, skip_trivia(v_source, token_end(v_source, v_name))));
@@ -38408,7 +38408,7 @@ static const char * ownership_escapes(CheckedPlaceArena *a, const char * v_sourc
     const char * v_result = "";
     int64_t v_task = hir_record_start(v_facts, "task", 0);
     while (v_task >= 0) {
-        if ((strcmp(cp_field(a, v_facts, v_task, 1), v_par) == 0) && (decimal_value(cp_field(a, v_facts, v_task, 8)) >= 0)) {
+        if ((strcmp(cp_field(a, v_facts, v_task, 1), v_par_index) == 0) && (decimal_value(cp_field(a, v_facts, v_task, 8)) >= 0)) {
             const char * v_binding = cp_field(a, v_facts, v_task, 7);
             int64_t v_first = -1;
             const char * v_kind = "";
@@ -38822,7 +38822,7 @@ static const char * ownership_decide(CheckedPlaceArena *a, const char * v_rows, 
 static const char * ownership_scope(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_facts, const char * v_accesses, const char * v_path, int64_t v_par_row, const char * v_escapes, bool v_derived) {
     CheckedPlaceText *mark = a->texts;
     const char * v_file = cp_keep(a, scoped_hir_file_id(v_path));
-    const char * v_par = cp_field(a, v_facts, v_par_row, 1);
+    const char * v_par_index = cp_field(a, v_facts, v_par_row, 1);
     int64_t v_close = decimal_value(cp_field(a, v_facts, v_par_row, 3));
     int64_t v_name = decimal_value(cp_field(a, v_facts, v_par_row, 6));
     int64_t v_block = skip_trivia(v_source, token_end(v_source, skip_trivia(v_source, token_end(v_source, v_name))));
@@ -38832,7 +38832,7 @@ static const char * ownership_scope(CheckedPlaceArena *a, const char * v_source,
     const char * v_names = "";
     int64_t v_task = hir_record_start(v_facts, "task", 0);
     while (v_task >= 0) {
-        if (strcmp(cp_field(a, v_facts, v_task, 1), v_par) == 0) {
+        if (strcmp(cp_field(a, v_facts, v_task, 1), v_par_index) == 0) {
             const char * v_index = cp_field(a, v_facts, v_task, 2);
             v_events = capture_append(a, &builder_events, v_events, cp_format(a, "%s%s%s%s%s", "ev|", cp_keep(a, scoped_hir_hex(decimal_value(cp_field(a, v_facts, v_task, 4)), 8)), "0|spawn|", v_index, "\n"));
             int64_t v_join = scoped_hir_fact(v_facts, "join", 1, cp_field(a, v_facts, v_task, 7));
@@ -38874,7 +38874,7 @@ static const char * ownership_scope(CheckedPlaceArena *a, const char * v_source,
         int64_t v_start = decimal_value(cp_field(a, v_accesses, v_row, 8));
         int64_t v_stop = decimal_value(cp_field(a, v_accesses, v_row, 9));
         const char * v_key = ownership_access_key(a, v_accesses, v_row, v_file);
-        if (((v_start > v_block) && (v_stop < v_close)) && (!ownership_in_lambda(a, v_facts, v_par, v_start))) {
+        if (((v_start > v_block) && (v_stop < v_close)) && (!ownership_in_lambda(a, v_facts, v_par_index, v_start))) {
             v_actions = (v_actions + 1);
             if (!(strncmp(v_key, "U", strlen("U")) == 0)) {
                 v_names = capture_append(a, &builder_names, v_names, ownership_names(a, v_key, cp_keep(a, scoped_hir_display(v_source, hir_binding_declaration_start(v_hir, cp_field(a, v_accesses, v_row, 3)))),
@@ -38899,7 +38899,7 @@ static const char * ownership_scope(CheckedPlaceArena *a, const char * v_source,
         }
         if ((strcmp(cp_field(a, v_accesses, v_row, 4), "Fn") == 0) && (!ownership_pure_callable(a, v_source, v_hir, v_accesses, cp_field(a, v_accesses, v_row, 3)))) {
             const char * v_call = ownership_call_key(a, v_file, v_start, v_stop);
-            if (((v_start > v_block) && (v_stop < v_close)) && (!ownership_in_lambda(a, v_facts, v_par, v_start))) {
+            if (((v_start > v_block) && (v_stop < v_close)) && (!ownership_in_lambda(a, v_facts, v_par_index, v_start))) {
                 v_actions = (v_actions + 1);
                 v_events = capture_append(a, &builder_events, v_events, cp_format(a, "%s%s%s%s%s%s", "ev|", cp_keep(a, scoped_hir_hex(v_start, 8)), "1|act|take|", v_call, "|", cp_format(a, "%" PRId64 "\n", v_start)));
             }
@@ -38907,7 +38907,7 @@ static const char * ownership_scope(CheckedPlaceArena *a, const char * v_source,
                 v_after = capture_append(a, &builder_after, v_after, cp_format(a, "%s%s%s%s%s%s", "ev|", cp_keep(a, scoped_hir_hex(v_start, 8)), "1|act|take|", v_call, "|", cp_format(a, "%" PRId64 "\n", v_start)));
             }
         }
-        if ((((((v_start > v_block) && (v_stop < v_close)) && (strcmp(cp_field(a, v_accesses, v_row, 2), "take") == 0)) && (v_loop >= 0)) && ownership_in_lambda(a, v_facts, v_par, v_start)) &&
+        if ((((((v_start > v_block) && (v_stop < v_close)) && (strcmp(cp_field(a, v_accesses, v_row, 2), "take") == 0)) && (v_loop >= 0)) && ownership_in_lambda(a, v_facts, v_par_index, v_start)) &&
             ((strncmp(v_key, "U", strlen("U")) == 0) || (hir_binding_declaration_start(v_hir, cp_field(a, v_accesses, v_row, 3)) < v_loop))) {
             return capture_return_text(a, mark, ownership_error(a, "E2S123", "a par in a loop cannot repeatedly take an enclosing binding", v_start));
         }
@@ -38953,7 +38953,7 @@ static const char * ownership_scope(CheckedPlaceArena *a, const char * v_source,
     const char * v_tasks = "";
     v_task = hir_record_start(v_facts, "task", 0);
     while (v_task >= 0) {
-        if (strcmp(cp_field(a, v_facts, v_task, 1), v_par) == 0) {
+        if (strcmp(cp_field(a, v_facts, v_task, 1), v_par_index) == 0) {
             const char * v_index = cp_field(a, v_facts, v_task, 2);
             const char * v_spawn = cp_field(a, v_steps, capture_fact(a, v_steps, "spawn", 1, v_index), 2);
             int64_t v_joined = capture_fact(a, v_steps, "join", 1, v_index);
@@ -39097,7 +39097,7 @@ static const char * ownership_scope(CheckedPlaceArena *a, const char * v_source,
         v_row = (capture_line_end(a, v_unique_names, v_row) + 1);
     }
     return capture_return_text(a, mark, cp_format(a, "scope|%s|%s\n{\"after_scope_actions\":[%s],\"decision\":{\"diagnostics\":[%s],\"diagnostics_truncated\":%s,\"status\":\"%s\"},\"derivation\":\"%s\",\"lexical_index\":%s,\"model_input\":{\"schema\":\"kofun.scoped-parallelism-model/v1\",\"scope\":{\"exit_step\":%" PRId64 ",\"parent_actions\":[%s],\"tasks\":[%s]}},\"names\":[%s]}",
-        v_status, v_first, v_after_json, v_diagnostic_json, v_truncated, v_status, v_derivation, v_par, v_exit, v_act_json, v_task_json, v_name_json));
+        v_status, v_first, v_after_json, v_diagnostic_json, v_truncated, v_status, v_derivation, v_par_index, v_exit, v_act_json, v_task_json, v_name_json));
 }
 
 static int check_scoped_ownership_file(const char *input, const char *output, const char *logical_path) {
@@ -39142,9 +39142,9 @@ static int check_scoped_ownership_file(const char *input, const char *output, co
      * an escaping handle; such a file reports lifecycle facts only. */
     const char *refusal = "";
     const char *escapes = "";
-    for (int64_t par = hir_record_start(facts, "par", 0); par >= 0 && refusal[0] == '\0'; par = hir_record_start(facts, "par", par + 1)) {
-        refusal = ownership_token_escape(a, source, hir, facts, par);
-        escapes = cp_format(a, "%s%s", escapes, ownership_escapes(a, source, hir, facts, par));
+    for (int64_t par_row = hir_record_start(facts, "par", 0); par_row >= 0 && refusal[0] == '\0'; par_row = hir_record_start(facts, "par", par_row + 1)) {
+        refusal = ownership_token_escape(a, source, hir, facts, par_row);
+        escapes = cp_format(a, "%s%s", escapes, ownership_escapes(a, source, hir, facts, par_row));
     }
     bool derived = escapes[0] == '\0';
     const char *accesses = "";
@@ -39166,8 +39166,8 @@ static int check_scoped_ownership_file(const char *input, const char *output, co
         }
     }
     const char *scopes = "", *status = "accepted", *first = "";
-    for (int64_t par = hir_record_start(facts, "par", 0); par >= 0 && refusal[0] == '\0'; par = hir_record_start(facts, "par", par + 1)) {
-        const char *scope = ownership_scope(a, source, hir, facts, accesses, logical_path, par, ownership_escapes(a, source, hir, facts, par), derived);
+    for (int64_t par_row = hir_record_start(facts, "par", 0); par_row >= 0 && refusal[0] == '\0'; par_row = hir_record_start(facts, "par", par_row + 1)) {
+        const char *scope = ownership_scope(a, source, hir, facts, accesses, logical_path, par_row, ownership_escapes(a, source, hir, facts, par_row), derived);
         if (cp_error_p(scope)) { refusal = scope; break; }
         if (strcmp(cp_field(a, scope, 0, 1), "rejected") == 0) {
             status = "rejected";
