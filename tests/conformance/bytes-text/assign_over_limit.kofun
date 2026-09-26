@@ -1,0 +1,10 @@
+# #1660, decision (b). A Text literal over 255 bytes cannot be stored through
+# `stage2_bytes_assign_text`; the bridge raises R033 and stops rather than
+# returning a status the discarded statement then drops. 256 bytes: one over the profile.
+fn main() -> Int {
+    let bytes = stage2_bytes_empty()
+    let wide: Text = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    stage2_bytes_assign_text(bytes, wide)
+    print(stage2_bytes_len(bytes))
+    return 0
+}

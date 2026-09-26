@@ -18,7 +18,7 @@
 #
 #   1. the source surface: a fixture that assigns, converts, and prints, at
 #      both optimisation levels under the sanitizers, against its golden;
-#   2. the four runtime refusals (R029..R032) are each exact stderr, exit 1,
+#   2. the five runtime refusals (R029..R033) are each exact stderr, exit 1,
 #      and nothing printed after them; and the private-status operation is
 #      refused as a value (E2S179) with no artifact;
 #   3. the runtime: the three bridge functions are defined exactly once, after
@@ -114,6 +114,33 @@ runtime_refusal text_out_of_range R029
 runtime_refusal text_over_limit R030
 runtime_refusal text_contains_nul R031
 runtime_refusal text_not_utf8 R032
+runtime_refusal assign_over_limit R033
+
+# The 65,537-byte case is over the 65,536 capacity as well as the 255 profile,
+# and takes the same `width > 255` branch. It cannot go through
+# `runtime_refusal`: that helper compiles the emitted C under
+# `-pedantic -Werror`, where a 65,537-byte string literal trips
+# `-Woverlength-strings` — a property of the literal, not of this refusal.
+# `bin/kofun build` compiles the emitted C with its own flags, so the program
+# is built and run here instead.
+"$KOFUN" build "$CASES/assign_over_capacity.kofun" -o "$WORK/assign_over_capacity" \
+    >"$WORK/assign_over_capacity.build.stdout" \
+    2>"$WORK/assign_over_capacity.build.stderr" ||
+    fail "assign_over_capacity did not build: $(head -n 1 "$WORK/assign_over_capacity.build.stderr")"
+for run in first second
+do
+    set +e
+    "$WORK/assign_over_capacity" >"$WORK/assign_over_capacity.$run.stdout" \
+        2>"$WORK/assign_over_capacity.$run.stderr"
+    status=$?
+    set -e
+    test "$status" -eq 1 ||
+        fail "assign_over_capacity exited $status instead of 1 on its $run run"
+    cmp "$CASES/assign_over_capacity.stderr" "$WORK/assign_over_capacity.$run.stderr" >/dev/null ||
+        fail 'assign_over_capacity did not report its golden diagnostic'
+    test ! -s "$WORK/assign_over_capacity.$run.stdout" ||
+        fail 'assign_over_capacity printed after its refusal'
+done
 
 # The private-status operation as a value: refused at compile time, by the
 # same rule as the mutation family (#1559), and no C is committed.
@@ -247,6 +274,6 @@ test ! -s "$WORK/driver.oom.stderr" ||
 
 printf '%s\n' \
     'PASS: a Text crosses into a Bytes carrier as its exact bytes and a checked range crosses back as Text, at both optimisation levels under the sanitizers' \
-    'PASS: range, limit, NUL, and UTF-8 refusals are named runtime diagnostics (R029..R032) with nothing printed after them, and assign_text as a value is E2S179 with no artifact' \
+    'PASS: range, limit, NUL, UTF-8, and assign_text over-bound refusals are named runtime diagnostics (R029..R033) with nothing printed after them, and assign_text as a value is E2S179 with no artifact' \
     'PASS: the bridge is emitted once, after the mutation family, is the only producer of tags 6..8, and both pair halves and the runtime name the same two operations' \
     'PASS: every range rule, the limit and its precedence, every UTF-8 family with its absolute detail, earliest-wins, and a refused allocation hold in the emitted C'
