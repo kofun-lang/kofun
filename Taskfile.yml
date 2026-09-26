@@ -1446,17 +1446,17 @@ tasks:
   # every check in it to carry its own failure action, and then *runs* the guard
   # in each available shell instead of only finding it.
   #
-  # #1685 moved steps 2-5 into `release/prepare.sh`, so this target also runs
-  # that command's own refusal proof. Moving a check out of the document must
-  # not move it out of the proving: the self-test drives a scratch repository
-  # and asserts the dirty tree, the bad version, the existing tag and the
-  # unbound pack are each refused, and that the honest path writes exactly the
-  # two reviewable commits without pushing.
+  # #1685 moved steps 2-5 into `release/prepare.sh` and step 4's publication
+  # block into `release/verify-publication.sh`, so this target also runs both
+  # commands' refusal proofs. Moving a check out of the document must not move
+  # it out of the proving: the self-tests drive scratch fixtures and assert
+  # each refusal, and that the honest paths pass.
   release-procedure:
     desc: "Prove docs/RELEASING.md's blocks cannot report PASS while failing"
     cmds:
       - "node tests/release/procedure-blocks.mjs"
       - "sh tests/release/prepare-self-test.sh"
+      - "sh tests/release/publication-self-test.sh"
 
   # `docs/RELEASING.md` steps 2-5 as one command. It refreshes the evidence
   # pack, writes VERSION, re-binds the pack to the new number, commits the two
@@ -1467,6 +1467,16 @@ tasks:
     desc: "RELEASING.md steps 2-5: VERSION, evidence binding, repository-check"
     cmds:
       - 'sh release/prepare.sh "${RELEASE_VERSION:?set RELEASE_VERSION to the version, e.g. 0.13.3-seed}"'
+
+  # `docs/RELEASING.md` step 4's publication verification as one command: local
+  # HEAD, remote main and the remote tag agree on the release commit, the
+  # release is a nondraft pre-release with exactly nine expected assets, and
+  # both digest manifests verify the seven payloads. It creates and pushes
+  # nothing; placing the tag stays a deliberate act in the document.
+  release-verify-publication:
+    desc: "RELEASING.md step 4: verify the published release, assets and digests"
+    cmds:
+      - "sh release/verify-publication.sh"
 
   # The release lane: regenerate the reviewable pack. `release-claims` then fails
   # until the regenerated pack is committed, so the two cannot diverge.

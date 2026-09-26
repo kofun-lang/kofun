@@ -818,7 +818,7 @@
   ],
   "evidence_digests": {
     ".github/workflows/native-hosts.yml": "ce5a6b7cc1f5034a1eb97e2fdac7e4db2a540c78086ad91a0da1cc95d8627153",
-    "Taskfile.yml": "c4110f28e4108d11ce5e2c6f3cc748cdc296b2575a95dda908401bf70d2192a5",
+    "Taskfile.yml": "85f4d031a3dc79220cb0b757286a72a4ea233534cd9476424a7799be9007e1b2",
     "bootstrap/native/README.md": "6c470b203c3dbc327c6b601ab958c754e6f82be78c255d442307ad0c7691bc21",
     "bootstrap/native/check-macho64-signed.sh": "6fc51ddfec599ea85b8b06a5c16d68b6fdc994621cdb8ca4267e20be38141393",
     "bootstrap/native/check-macho64.sh": "d6bd52e3f6756aa607a2dc44a0117defeaaa55e64fa3f4221986da6406251e15",

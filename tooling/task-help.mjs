@@ -124,7 +124,7 @@ export const GROUPS = Object.freeze([
             'example-law-evidence',
             'backlog', 'backlog-refresh',
             'release-claims', 'release-evidence', 'release-prepare',
-            'release-procedure',
+            'release-procedure', 'release-verify-publication',
             'rfc-registry', 'clean'
         ]
     }

@@ -599,6 +599,7 @@ shell-build-driver	source	1	required-today	required	spec/wasi-command-projection
 shell-build-driver	source	1	required-today	required	spec/wasi-host-matrix-v1/check.sh
 shell-build-driver	source	1	required-today	required	spec/wasm-host-abi-v1/check.sh
 shell-build-driver	source	1	required-today	required	spec/wasm-host-profile-v1/check.sh
+shell-build-driver	source	1	required-today	required	release/prepare.sh
 shell-build-driver	source	1	required-today	required	stdlib/array/tests/verify.sh
 shell-build-driver	source	1	required-today	required	stdlib/binary_heap/tests/verify.sh
 shell-build-driver	source	1	required-today	required	stdlib/buffered_io/tests/verify.sh
@@ -760,6 +761,7 @@ shell-build-driver	source	1	required-today	required	tests/pair-coverage/mirror.s
 shell-build-driver	source	1	required-today	off-path	tests/pair-coverage/prove.sh
 shell-build-driver	source	1	required-today	required	tests/preflight/check.sh
 shell-build-driver	source	1	required-today	required	tests/release/check-claims.sh
+shell-build-driver	source	1	required-today	required	tests/release/prepare-self-test.sh
 shell-build-driver	source	1	required-today	required	tests/rfc/check-registry.sh
 shell-build-driver	source	1	required-today	required	tests/security/generated-meta-access.sh
 shell-build-driver	source	1	required-today	required	tests/security/module-interface-artifact.sh
@@ -819,6 +821,7 @@ go-task	invoke	1	required-today	required	.github/workflows/fuzz.yml
 go-task	invoke	1	required-today	required	.github/workflows/native-hosts.yml
 go-task	invoke	2	required-today	required	.github/workflows/release.yml
 go-task	invoke	5	required-today	required	bootstrap/stage2/verify-runner.sh
+go-task	invoke	5	required-today	required	release/prepare.sh
 go-task	invoke	1	required-today	required	tests/pair-coverage/measure.sh
 go-task	invoke	2	required-today	required	tests/tooling/task-help/check.sh
 go-task	invoke	1	required-today	required	tooling/task-help.mjs
