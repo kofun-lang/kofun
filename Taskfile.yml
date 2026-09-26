@@ -1445,10 +1445,28 @@ tasks:
   # `docs/RELEASING.md`, requires each to open with the fail-closed guard and
   # every check in it to carry its own failure action, and then *runs* the guard
   # in each available shell instead of only finding it.
+  #
+  # #1685 moved steps 2-5 into `release/prepare.sh`, so this target also runs
+  # that command's own refusal proof. Moving a check out of the document must
+  # not move it out of the proving: the self-test drives a scratch repository
+  # and asserts the dirty tree, the bad version, the existing tag and the
+  # unbound pack are each refused, and that the honest path writes exactly the
+  # two reviewable commits without pushing.
   release-procedure:
     desc: "Prove docs/RELEASING.md's blocks cannot report PASS while failing"
     cmds:
       - "node tests/release/procedure-blocks.mjs"
+      - "sh tests/release/prepare-self-test.sh"
+
+  # `docs/RELEASING.md` steps 2-5 as one command. It refreshes the evidence
+  # pack, writes VERSION, re-binds the pack to the new number, commits the two
+  # reviewable commits and runs `task repository-check`. It never pushes, so
+  # step 6's push stays the one deliberate act that crosses to the remote.
+  # Invoke as `RELEASE_VERSION=0.13.3-seed task release-prepare`.
+  release-prepare:
+    desc: "RELEASING.md steps 2-5: VERSION, evidence binding, repository-check"
+    cmds:
+      - 'sh release/prepare.sh "${RELEASE_VERSION:?set RELEASE_VERSION to the version, e.g. 0.13.3-seed}"'
 
   # The release lane: regenerate the reviewable pack. `release-claims` then fails
   # until the regenerated pack is committed, so the two cannot diverge.
