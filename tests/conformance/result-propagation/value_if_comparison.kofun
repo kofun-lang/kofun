@@ -1,0 +1,7 @@
+# #1679/#1681: a value `if` is measured by `value_end`/`value_if_end`. The
+# Kofun half's locals shadowed the function name they called, so the
+# interpreter read the local before it was initialised and the compile aborted.
+fn main() -> Int {
+    let c = if 1 < 2 { 1 } else { 2 }
+    return c
+}
