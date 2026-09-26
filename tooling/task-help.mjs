@@ -123,7 +123,8 @@ export const GROUPS = Object.freeze([
             'tests-kofun',
             'example-law-evidence',
             'backlog', 'backlog-refresh',
-            'release-claims', 'release-evidence', 'release-procedure',
+            'release-claims', 'release-evidence', 'release-prepare',
+            'release-procedure', 'release-verify-publication',
             'rfc-registry', 'clean'
         ]
     }
