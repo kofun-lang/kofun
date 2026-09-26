@@ -1,0 +1,9 @@
+# #1679/#1681: `value_if_end` walked from a `condition_end` that answers -1 for
+# a bare Bool binding, indexed with -1, and aborted the driver with `compiler
+# index out of bounds`. Both halves now refuse the unsupported statement
+# identically instead of one of them crashing.
+fn main() -> Int {
+    let flag = 1 < 2
+    let c = if flag { 1 } else { 2 }
+    return c
+}

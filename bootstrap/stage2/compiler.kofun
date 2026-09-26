@@ -11087,6 +11087,14 @@ fn value_if_branch_end(source: Text, start: Int) -> Int {
 fn value_if_end(source: Text, start: Int) -> Int {
     let condition_start = skip_trivia(source, token_end(source, start))
     let condition_close = condition_end(source, condition_start)
+    # `condition_end` answers -1 for a condition it does not recognise, and the
+    # walk below would then index with -1 and abort the whole driver with
+    # `compiler index out of bounds` (#1679, consolidated #1681). The statement
+    # walk `if_then_branch_end` already returns -1 for the same input; a value
+    # `if` whose condition cannot be measured has no measured end either.
+    if condition_close < 0 {
+        return -1
+    }
     let then_open = skip_trivia(source, condition_close)
     let then_start = skip_trivia(source, token_end(source, then_open))
     let then_end = value_if_branch_end(source, then_start)
@@ -13722,6 +13730,13 @@ fn initializer_type_bounded(
     }
     if kind == "float" {
         return "Float"
+    }
+    # The C half has classified a string literal as `Text` since #658
+    # (`initializer_type_bounded`); this rule was missing here, so
+    # `let a: Text = "x"` was refused with `E2S15 initializer type mismatch`
+    # while the C half compiled it (#1679).
+    if kind == "string" {
+        return "Text"
     }
     let cursor_text = token_text(source, cursor)
     if cursor_text == "true" || cursor_text == "false" {
@@ -16699,12 +16714,12 @@ fn lower_body(
                 if starts_with(value_check, "error[") {
                     return value_check
                 }
-                let value_end = value_end(source, value_start)
+                let value_scope_end = value_end(source, value_start)
                 let produced = emit_value_into(
                     source,
                     hir,
                     value_start,
-                    value_end,
+                    value_scope_end,
                     storage,
                     failure_result
                 )
@@ -16714,7 +16729,7 @@ fn lower_body(
                 }
                 emitted = emitted + "    int64_t " + storage +
                 " = INT64_C(0);\n" + produced
-                cursor = skip_trivia(source, value_end)
+                cursor = skip_trivia(source, value_scope_end)
             } else {
                 let value_end = expression_end(source, value_start)
                 if value_end < 0 {
@@ -16872,8 +16887,8 @@ fn lower_body(
                 if starts_with(value_check, "error[") {
                     return value_check
                 }
-                let value_end = value_end(source, value_start)
-                let call_close = skip_trivia(source, value_end)
+                let value_scope_end = value_end(source, value_start)
+                let call_close = skip_trivia(source, value_scope_end)
                 if call_close >= len(source) ||
                    token_text(source, call_close) != ")" {
                     return "error[E2S13]: expected `)` at byte " +
@@ -16883,7 +16898,7 @@ fn lower_body(
                     source,
                     hir,
                     value_start,
-                    value_end,
+                    value_scope_end,
                     "kofun_value",
                     failure_result
                 )
@@ -17620,12 +17635,12 @@ fn lower_body(
                 if starts_with(value_check, "error[") {
                     return value_check
                 }
-                let value_end = value_end(source, value_start)
+                let value_scope_end = value_end(source, value_start)
                 let produced = emit_value_into(
                     source,
                     hir,
                     value_start,
-                    value_end,
+                    value_scope_end,
                     "kofun_result",
                     failure_result
                 )
@@ -17773,12 +17788,12 @@ fn lower_body(
                     if starts_with(value_check, "error[") {
                         return value_check
                     }
-                    let value_end = value_end(source, value_start)
+                    let value_scope_end = value_end(source, value_start)
                     let produced = emit_value_into(
                         source,
                         hir,
                         value_start,
-                        value_end,
+                        value_scope_end,
                         "kofun_replacement",
                         failure_result
                     )
@@ -17792,7 +17807,7 @@ fn lower_body(
                     produced +
                     "        k_b" + binding_id + " = kofun_replacement;\n" +
                     "    }\n"
-                    cursor = skip_trivia(source, value_end)
+                    cursor = skip_trivia(source, value_scope_end)
                 } else {
                     let value_end = expression_end(source, value_start)
                     if value_end < 0 {

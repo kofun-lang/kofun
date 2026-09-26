@@ -1,0 +1,8 @@
+# #1679: a Text-annotated binding initialised from a string literal. The C half
+# has classified a string literal as `Text` since #658; the Kofun half's
+# `initializer_type_bounded` had no string rule and refused with `E2S15`.
+fn main() -> Int {
+    let a: Text = "x"
+    print(a)
+    return 0
+}
