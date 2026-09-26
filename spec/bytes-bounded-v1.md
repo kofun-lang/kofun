@@ -269,13 +269,18 @@ Two operations (#1322) connect the carrier to `Text`, and neither is the
 public `Bytes` identity or a generic `Result`.
 
 `assign_text(edit destination, read value: Text)` replaces the carrier's bytes
-and length with the Text's exact UTF-8 bytes and no terminator. A valid Text
-is at most 255 bytes, so the capacity ceiling is unreachable; the one
-reachable failure is allocation (5, the growth target), and it is
-transactional through the same growth path `append` uses: length, capacity,
-pointer, and bytes are exactly as they were. Like the mutations beside it,
-its status is private and a source program uses it only as a discarded
-statement (E2S179 otherwise).
+and length with the Text's exact UTF-8 bytes and no terminator. A valid Text is
+at most 255 bytes, and an input over that bound is refused **by name**:
+`assign_text` raises `R033` (`error[R033]: bounded Bytes text assignment
+exceeds 255 bytes`) through `kofun_error` and stops, the shape every other
+unrepresentable input already takes. A width the 65,536 capacity cannot hold is
+over 255 as well, so `R033` is the one refusal. Within the bound, the one
+reachable failure is allocation (5, the growth target), and it is transactional
+through the same growth path `append` uses: length, capacity, pointer, and bytes
+are exactly as they were. Like the mutations beside it, its status is private
+and a source program uses it only as a discarded statement (E2S179 otherwise);
+`task bytes-text` fails if a 256-byte or a 65,537-byte Text reaches `assign_text`
+without `R033` on stderr and exit 1.
 
 `text(read source, offset: Int, count: Int) -> Text` converts a byte range to
 a Text, in this precedence:
@@ -343,11 +348,13 @@ works is the kind of published promise this repository gates against:
   read over an open handle, so a file longer than the ceiling cannot be
   digested by a compiled program at all; it is refused by name (§6.6).
 - **The Text bridge is one Text at a time and at most 255 bytes each way.**
-  It is the bounded Text profile's limit, not a new one, and it is why the
-  exact tag/detail statuses stay private: surfacing them would need a
-  compiler-owned outcome type, which §7 explains Stage 2 cannot declare.
-  Nothing Bytes-bearing crosses in a record, an ADT, a list, an optional, or
-  a generic `Result` (#1315).
+  It is the bounded Text profile's limit, not a new one, and both directions
+  now enforce it by name: `assign_text` refuses an over-bound input with `R033`
+  (§6.7), and `text` refuses a >255-byte range with `R030`. It is why the exact
+  tag/detail statuses stay private: surfacing them would need a compiler-owned
+  outcome type, which §7 explains Stage 2 cannot declare. Nothing Bytes-bearing
+  crosses in a record, an ADT, a list, an optional, or a generic `Result`
+  (#1315).
 
 - **Positional move checking remains a bounded source-order rule**, not a
   general CFG, alias, lifetime or cleanup analysis. #1540 closes the direct,

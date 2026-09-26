@@ -19492,6 +19492,10 @@ fn bytes_text_bridge_prelude() -> Text {
     "static inline KofunBytesStatus stage2_bytes_assign_text(\n" +
     "    KofunBytesValue *value, const char *text) {\n" +
     "    size_t width = strlen(text);\n" +
+    "    if (width > 255) {\n" +
+    "        kofun_error(\"error[R033]: bounded Bytes text assignment exceeds 255 bytes\");\n" +
+    "        return kofun_bytes_status(KOFUN_BYTES_TEXT_LIMIT_EXCEEDED, 0);\n" +
+    "    }\n" +
     "    KofunBytesStatus grown = kofun_bytes_grow(value, (int64_t)width);\n" +
     "    if (grown.tag != KOFUN_BYTES_SUCCEEDED) return grown;\n" +
     "    if (width > 0) memcpy(value->data, text, width);\n" +

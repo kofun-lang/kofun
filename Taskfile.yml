@@ -1195,7 +1195,7 @@ tasks:
   # checked range out as Text, with range, limit, NUL, and UTF-8 refusals
   # named at runtime and the exact tag/detail contract proved in the emitted C.
   bytes-text:
-    desc: "Verify the Bytes[65536] Text bridge: exact assignment, checked UTF-8 range conversion, and its four named refusals"
+    desc: "Verify the Bytes[65536] Text bridge: exact assignment, checked UTF-8 range conversion, and its five named refusals"
     cmds:
       - "sh tests/conformance/bytes-text/run.sh"
 
