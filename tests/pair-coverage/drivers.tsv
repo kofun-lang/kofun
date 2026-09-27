@@ -21,6 +21,7 @@ assertions
 atomic-publish-if-absent-decision
 atomic-write-authority-contract
 audited-claim
+authority-structural-kind
 authority-type-carrier
 backlog
 benchmark-report
@@ -108,10 +109,10 @@ process-capture-carrier-decision
 pure-boundary
 raw-imports
 raw-re-exports
-records
-record-values
 re-exports
 re-exports-spec
+record-values
+records
 release-claims
 release-procedure
 repository-check
@@ -159,11 +160,11 @@ tour
 trait-dictionary-c11
 traits
 tui-framework
+type-reduction-trace
 typed-sidecar-captures
 typed-sidecar-codec
 typed-sidecar-projector
 typed-sidecar-spec
-type-reduction-trace
 tzdb
 unicode
 unused-function

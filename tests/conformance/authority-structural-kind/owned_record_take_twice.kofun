@@ -1,0 +1,13 @@
+type Holder = { slot: RootAuthority }
+fn consume(take value: Holder) -> Int {
+    return 0
+}
+fn twice(take value: Holder) -> Int {
+    consume(value)
+    consume(value)
+    return 0
+}
+
+fn main() -> Int {
+    return 0
+}

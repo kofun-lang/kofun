@@ -102,7 +102,7 @@ const mutations = [
   ['mode-check', 'if (!taken) return false;', 'if (false && !taken) return false;'],
   ['direct-resolution', 'if (!direct) { free(name); return false; }', 'if (false && !direct) { free(name); return false; }'],
   ['bare-binding', 'if (expression_end(source, cursor) != token_end(source, cursor)) return false;', 'if (false && expression_end(source, cursor) != token_end(source, cursor)) return false;'],
-  ['type-bound', 'bool admitted = strcmp(type, "Bytes") == 0 || move_trivial_record(source, type);', 'bool admitted = true || strcmp(type, "Bytes") == 0 || move_trivial_record(source, type);'],
+  ['type-bound', 'bool admitted = strcmp(type, "Bytes") == 0 || move_nominal_type(source, type);', 'bool admitted = true || strcmp(type, "Bytes") == 0 || move_nominal_type(source, type);'],
   ['borrowed-owner', 'if (borrowed) return false;', 'if (false && borrowed) return false;'],
   ['straight-line', 'return admitted && move_straight_line_position(source, cursor);', 'return admitted && (true || move_straight_line_position(source, cursor));'],
   ['binding-id', "bool same = left[0] != '\\0' && strcmp(left, right) == 0;", "bool same = left[0] != '\\0' && (true || strcmp(left, right) == 0);"],

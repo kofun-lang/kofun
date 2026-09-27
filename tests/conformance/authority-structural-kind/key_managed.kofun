@@ -1,0 +1,9 @@
+type Holder = { slot: EnvironmentKey }
+fn copy(value: Holder) -> Int {
+    let alias = value
+    return 0
+}
+
+fn main() -> Int {
+    return 0
+}

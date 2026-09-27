@@ -1,1 +1,1 @@
-error[E2S15]: operator `==` is not defined on Holder and Holder at byte 322
+error[E353]: Holder.slot -> RootAuthority is owned and has no equality; compare the capability you derived from it instead at byte 328

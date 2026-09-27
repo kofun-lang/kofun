@@ -1313,6 +1313,16 @@ tasks:
     cmds:
       - "sh tests/conformance/move-call-crossings/run.sh"
 
+  # #1243. A nominal record or ADT that can contain an authority is Owned; a
+  # copy, an equality, or a mode-less parameter head of one refuses E353, and
+  # the move and edit rules that already fire for a Managed record fire for it
+  # too. The gate pins the RFC-0004 causal path it renders and the Managed
+  # controls that must not move.
+  authority-structural-kind:
+    desc: "Verify Owned/Managed structural classification and the E353/E2S123/E2S181 refusals for Owned composites"
+    cmds:
+      - "sh tests/conformance/authority-structural-kind/run.sh"
+
   # A gate that fails without printing anything turns a specific defect into a
   # bare exit code, and #814 counted 460 assertions that do exactly that. This
   # holds every script to a recorded budget in both directions, so the number
@@ -1549,6 +1559,7 @@ tasks:
             adt \
             records \
             move-call-crossings \
+            authority-structural-kind \
             aggregate-bridge \
             generics \
             const-generics \

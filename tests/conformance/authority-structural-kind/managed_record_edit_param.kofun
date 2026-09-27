@@ -1,0 +1,8 @@
+type Point = { value: Int }
+fn look(edit value: Point) -> Int {
+    return 0
+}
+
+fn main() -> Int {
+    return 0
+}

@@ -1,0 +1,5 @@
+type Loop = | More(value: Loop) | Stop
+
+fn main() -> Int {
+    return 0
+}

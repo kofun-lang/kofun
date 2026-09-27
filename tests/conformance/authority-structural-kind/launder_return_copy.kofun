@@ -1,0 +1,14 @@
+type Holder = { slot: RootAuthority }
+fn relay(take value: Holder) -> Holder {
+    return value
+}
+fn launder(take value: Holder) -> Int {
+    let out: Holder = relay(value)
+    let copy = out
+    let again = out
+    return 0
+}
+
+fn main() -> Int {
+    return 0
+}

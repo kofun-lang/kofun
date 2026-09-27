@@ -1,0 +1,8 @@
+type Holder = { slot: RootAuthority }
+fn look(edit value: Holder) -> Int {
+    return 0
+}
+
+fn main() -> Int {
+    return 0
+}

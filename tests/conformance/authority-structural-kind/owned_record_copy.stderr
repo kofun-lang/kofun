@@ -1,0 +1,1 @@
+error[E353]: Holder.slot -> RootAuthority is owned and cannot be copied; pass it with `take` or borrow it at byte 86

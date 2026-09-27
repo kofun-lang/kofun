@@ -1,9 +1,9 @@
 # diagnostic-mode: compile
-# expect-code: E2S15
-# expect-span: byte 322
-# #1658, with #1243's `owned_record_equality_int`. An authority-bearing
-# record is refused by the general record rule; #1243 may order E353
-# ahead of it later.
+# expect-code: E353
+# expect-span: byte 328
+# #1243's `owned_record_equality_int`. An authority-bearing record is Owned,
+# so `==` on it refuses the E353 equality wording ahead of #1658's general
+# record-operand rule.
 type Holder = { slot: RootAuthority }
 fn same(read value: Holder) -> Int {
     if value == value {
