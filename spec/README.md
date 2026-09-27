@@ -61,6 +61,13 @@ executable bootstrap implementation.
   operand, optional operand, `?` on a pipeline stage), gated by
   `tests/conformance/result-propagation/`; positive lowering and the
   non-Result function refusal are pending in #1250.
+- `c11-command-io-v1.md` fixes the bounded C11 command-I/O surface for issue
+  #1665: operands as `Text` (at most 256, 255 bytes each, `argv[0]` observable),
+  standard input and standard error as bounded host-boundary operations, the
+  65,536-byte ceiling kept for the single `read_file` with a new bounded chunk
+  operation past it, and an `Int` status for a failed operation. Its gates
+  `task command-operands` (#1666) and `task bytes-read-stream` (#1667) do not
+  exist yet.
 - `type-level-programming-v1.md` defines the Type-only, named, structurally
   terminating type-function profile, its fixed reduction/display budgets, and
   the requirement that type-level features ship with inspectable traces. No
