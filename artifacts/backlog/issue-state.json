@@ -1,6 +1,6 @@
 {
   "schema": "kofun.backlog-issue-state/v1",
-  "repository": "kofun-lang/kofun",
+  "repository": "hjosugi/kofun",
   "state_labels": [
     "ready",
     "blocked",
@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 88,
+  "open_issues": 95,
   "issues": [
     {
       "number": 26,
@@ -363,12 +363,12 @@
       "number": 883,
       "title": "Typed upgrade patches slice 3: explicitly authorized exact-type apply, recovery, and durable undo",
       "state_labels": [
-        "blocked"
+        "deferred"
       ],
-      "state_line": "blocked",
+      "state_line": "deferred",
       "blocked_by": [
         884,
-        1532
+        885
       ],
       "evidence_commits": [
         "20cee8101c2792e0725fb6dd2211d1b0bfcec500"
@@ -396,9 +396,9 @@
       "number": 884,
       "title": "Typed upgrade patches slice 2: deterministic read-only CLI and LSP preview",
       "state_labels": [
-        "blocked"
+        "deferred"
       ],
-      "state_line": "blocked",
+      "state_line": "deferred",
       "blocked_by": [
         885
       ],
@@ -481,72 +481,13 @@
       ]
     },
     {
-      "number": 1161,
-      "title": "Scoped parallelism: derive task captures from checked bodies and resolved calls",
-      "state_labels": [
-        "blocked"
-      ],
-      "state_line": "blocked",
-      "blocked_by": [
-        1220,
-        1221,
-        1222,
-        1223,
-        1225
-      ],
-      "evidence_commits": [
-        "037b78cc5456b294e4daf1a15f2555fccb3296ae",
-        "e72095a76b9bed9632226d388dd43e62b72fa9a8"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-design-1161-captures-20260811",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-design-1161-captures-20260811",
-          "status": "released"
-        }
-      ]
-    },
-    {
-      "number": 1162,
-      "title": "Scoped parallelism: enforce liveness, overlap, take, and parent conflicts in the ownership checker",
-      "state_labels": [
-        "blocked"
-      ],
-      "state_line": "blocked",
-      "blocked_by": [
-        1223
-      ],
-      "evidence_commits": [
-        "037b78cc5456b294e4daf1a15f2555fccb3296ae"
-      ]
-    },
-    {
-      "number": 1163,
-      "title": "Scoped parallelism: allocate stable compiler diagnostics for the six contract classes",
-      "state_labels": [
-        "blocked"
-      ],
-      "state_line": "blocked",
-      "blocked_by": [
-        1162
-      ],
-      "evidence_commits": [
-        "37905efa0e4fcf1b821a97e2799722a47ab942f2"
-      ]
-    },
-    {
       "number": 1164,
       "title": "Scoped parallelism: bounded scheduler, scope-exit drain, panic precedence, and cancellation",
       "state_labels": [
-        "blocked"
+        "needs-detail"
       ],
-      "state_line": "blocked",
-      "blocked_by": [
-        1163
-      ],
+      "state_line": "needs-detail",
+      "blocked_by": [],
       "evidence_commits": [
         "37905efa0e4fcf1b821a97e2799722a47ab942f2"
       ]
@@ -688,79 +629,6 @@
       ]
     },
     {
-      "number": 1222,
-      "title": "Scoped captures: derive direct task-body read, edit, and take sets",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [
-        1221
-      ],
-      "evidence_commits": [
-        "80918191814c5c974f4c1c832e2eee4cd33ce3e8"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-steady-20260923",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-steady-20260923",
-          "status": "pr-open"
-        }
-      ]
-    },
-    {
-      "number": 1223,
-      "title": "Scoped captures: propagate same-unit call summaries to a fixed point",
-      "state_labels": [
-        "blocked"
-      ],
-      "state_line": "blocked",
-      "blocked_by": [
-        1222
-      ],
-      "evidence_commits": [
-        "037b78cc5456b294e4daf1a15f2555fccb3296ae"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-takeover-20260923",
-          "status": "active"
-        }
-      ]
-    },
-    {
-      "number": 1225,
-      "title": "Scoped captures: wire compiler facts into KSE2 and typed sidecar",
-      "state_labels": [
-        "blocked"
-      ],
-      "state_line": "blocked",
-      "blocked_by": [
-        1223
-      ],
-      "evidence_commits": [
-        "037b78cc5456b294e4daf1a15f2555fccb3296ae",
-        "e72095a76b9bed9632226d388dd43e62b72fa9a8"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-steady-20260923",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-steady-20260923",
-          "status": "pr-open"
-        },
-        {
-          "agent_id": "codex-steady-20260923",
-          "status": "merged"
-        }
-      ]
-    },
-    {
       "number": 1232,
       "title": "linux_x86_64 process: start authorized exact executables and reap exactly once",
       "state_labels": [
@@ -875,53 +743,13 @@
       ]
     },
     {
-      "number": 1243,
-      "title": "Stage 2 authority kind: propagate Owned through shipped composites",
+      "number": 1244,
+      "title": "Stage 2 affine authority state: control-flow cleanup and escape refusal",
       "state_labels": [
         "needs-detail"
       ],
       "state_line": "needs-detail",
       "blocked_by": [],
-      "evidence_commits": [
-        "855ca05a6cf6a01c404585cddc48443e9177086c"
-      ],
-      "claims": [
-        {
-          "agent_id": "claude-opus-5-b326d627",
-          "status": "active"
-        },
-        {
-          "agent_id": "claude-opus-5-b326d627",
-          "status": "released"
-        },
-        {
-          "agent_id": "claude-1243-authority-structural-kind-20260820",
-          "status": "active"
-        },
-        {
-          "agent_id": "claude-1243-authority-structural-kind-20260820",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-takeover-20260923",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-takeover-20260923",
-          "status": "released"
-        }
-      ]
-    },
-    {
-      "number": 1244,
-      "title": "Stage 2 affine authority state: control-flow cleanup and escape refusal",
-      "state_labels": [
-        "blocked"
-      ],
-      "state_line": "blocked",
-      "blocked_by": [
-        1243
-      ],
       "evidence_commits": [
         "20cee8101c2792e0725fb6dd2211d1b0bfcec500"
       ],
@@ -999,9 +827,12 @@
         "needs-detail"
       ],
       "state_line": "needs-detail",
-      "blocked_by": [],
+      "blocked_by": [
+        1662
+      ],
       "evidence_commits": [
-        "05f4f1d7e8387d4f4e9a1f07280f982089b9256b"
+        "05f4f1d7e8387d4f4e9a1f07280f982089b9256b",
+        "fe1142a7039a0862ac3558729ab2477bb7a604d6"
       ],
       "claims": [
         {
@@ -1075,12 +906,10 @@
         "needs-detail"
       ],
       "state_line": "needs-detail",
-      "blocked_by": [
-        1322,
-        1641
-      ],
+      "blocked_by": [],
       "evidence_commits": [
-        "3f72c7df8f5c87a7c92a96ff62042bb6cca2745e"
+        "04003d9b153a09967723a0313016b7a78e55d2cd",
+        "fe1142a7039a0862ac3558729ab2477bb7a604d6"
       ]
     },
     {
@@ -1161,10 +990,14 @@
       "number": 1268,
       "title": "Generics v1: production nominal binders, constructed TypeRefs, and typed HIR",
       "state_labels": [
-        "needs-detail"
+        "blocked"
       ],
-      "state_line": "needs-detail",
-      "blocked_by": [],
+      "state_line": "blocked",
+      "blocked_by": [
+        1673,
+        1674,
+        1675
+      ],
       "evidence_commits": [
         "f80d9f0c656f2f05b2ab31f923e557893e27ad60"
       ],
@@ -1352,8 +1185,7 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1268,
-        1281
+        1268
       ],
       "evidence_commits": [
         "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
@@ -1381,7 +1213,6 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1281,
         1284
       ],
       "evidence_commits": [
@@ -1396,7 +1227,6 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1281,
         1285
       ],
       "evidence_commits": [
@@ -1727,16 +1557,22 @@
       "number": 1455,
       "title": "Replace bin/kofun-digest with a Kofun digest command",
       "state_labels": [
-        "needs-detail"
+        "blocked"
       ],
-      "state_line": "needs-detail",
+      "state_line": "blocked",
       "blocked_by": [
-        1499,
-        1636
+        1665,
+        1666,
+        1667,
+        1668
       ],
       "evidence_commits": [
         "0d7d53039a439bbcfc38befd461ee9b29130ed29",
-        "9e3b85328a710b3a2335e2dee8d72b3ac6fb71e1"
+        "1dfe393464249ae564514cd925e06f308555d3b5",
+        "21e89ecb8807606712c902481a6b39f82a190c79",
+        "555ab69a54342f069e51d1729e71750d5ac680fe",
+        "9e3b85328a710b3a2335e2dee8d72b3ac6fb71e1",
+        "fe1142a7039a0862ac3558729ab2477bb7a604d6"
       ],
       "claims": [
         {
@@ -2039,6 +1875,195 @@
           "status": "merged"
         }
       ]
+    },
+    {
+      "number": 1664,
+      "title": "Stage 2 Decimal Fixed[S]: read/edit/take parameters, direct record fields, borrowing match, and explicit clone",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1250
+      ],
+      "evidence_commits": [
+        "fe1142a7039a0862ac3558729ab2477bb7a604d6"
+      ]
+    },
+    {
+      "number": 1666,
+      "title": "Stage 2 C11: a compiled program receives its operands and writes a line to standard error",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "1dfe393464249ae564514cd925e06f308555d3b5",
+        "fe1142a7039a0862ac3558729ab2477bb7a604d6"
+      ]
+    },
+    {
+      "number": 1667,
+      "title": "Stage 2 C11: read a file or standard input past 65,536 bytes in bounded chunks, with a failure the program can observe",
+      "state_labels": [
+        "ready"
+      ],
+      "state_line": "ready",
+      "blocked_by": [],
+      "evidence_commits": [
+        "1dfe393464249ae564514cd925e06f308555d3b5",
+        "fe1142a7039a0862ac3558729ab2477bb7a604d6"
+      ]
+    },
+    {
+      "number": 1674,
+      "title": "Generics v1: production generic-record HIR and the shared nominal identity core",
+      "state_labels": [
+        "needs-detail"
+      ],
+      "state_line": "needs-detail",
+      "blocked_by": [],
+      "evidence_commits": [
+        "57600b24bf97afdb130c084c6f5a23fd9b807261"
+      ]
+    },
+    {
+      "number": 1675,
+      "title": "Generics v1: production generic-ADT HIR on the frozen nominal identity core",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1674
+      ],
+      "evidence_commits": [
+        "57600b24bf97afdb130c084c6f5a23fd9b807261"
+      ]
+    },
+    {
+      "number": 1679,
+      "title": "Stage 2 pair divergences: Text-literal initializers and value `if`/`match` end positions",
+      "state_labels": [
+        "in-progress"
+      ],
+      "state_line": "in-progress",
+      "blocked_by": [],
+      "evidence_commits": [],
+      "claims": [
+        {
+          "agent_id": "grok-opencode-pair-divergence-1679-20260926",
+          "status": "active"
+        },
+        {
+          "agent_id": "grok-opencode-pair-divergence-1679-20260926",
+          "status": "pr-open"
+        },
+        {
+          "agent_id": "grok-opencode-pair-divergence-1679-20260926",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "number": 1684,
+      "title": "CI: shard `task verify` across parallel runners with a bidirectional gate ledger",
+      "state_labels": [
+        "needs-detail"
+      ],
+      "state_line": "needs-detail",
+      "blocked_by": [],
+      "evidence_commits": [
+        "8f708f0c0769413eaa33f541f9dcf5dfd2318dd6"
+      ]
+    },
+    {
+      "number": 1689,
+      "title": "RFC-0017 amendment: KIF v3 domains and the #303 frame for the generic identity pair (#1673)",
+      "state_labels": [
+        "in-progress"
+      ],
+      "state_line": "in-progress",
+      "blocked_by": [],
+      "evidence_commits": [],
+      "claims": [
+        {
+          "agent_id": "opencode-1689-rfc0017-identity-20260927",
+          "status": "active"
+        },
+        {
+          "agent_id": "opencode-1689-rfc0017-identity-20260927",
+          "status": "pr-open"
+        }
+      ]
+    },
+    {
+      "number": 1690,
+      "title": "Stage 2: a bounded include form to replace build-time SHA-256 block extraction (#1668)",
+      "state_labels": [
+        "needs-detail"
+      ],
+      "state_line": "needs-detail",
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 1694,
+      "title": "Stage 2 C11: a `Bytes` field in a nominal record, and the AggregateLayout kind it needs (#1258)",
+      "state_labels": [
+        "needs-detail"
+      ],
+      "state_line": "needs-detail",
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 1695,
+      "title": "Stage 2 C11: a bounded list of nominal records at `List[Header]` capacity 128 (#1258)",
+      "state_labels": [
+        "needs-detail"
+      ],
+      "state_line": "needs-detail",
+      "blocked_by": [
+        1694
+      ],
+      "evidence_commits": []
+    },
+    {
+      "number": 1696,
+      "title": "HTTP origin child: `HttpOrigin` and the profile limits on C11 Stage 2 (#1258)",
+      "state_labels": [
+        "needs-detail"
+      ],
+      "state_line": "needs-detail",
+      "blocked_by": [
+        1694
+      ],
+      "evidence_commits": []
+    },
+    {
+      "number": 1697,
+      "title": "HTTP errors child: the closed `HttpError` ADT on C11 Stage 2 (#1258)",
+      "state_labels": [
+        "needs-detail"
+      ],
+      "state_line": "needs-detail",
+      "blocked_by": [],
+      "evidence_commits": []
+    },
+    {
+      "number": 1698,
+      "title": "HTTP headers child: `Header` and a bounded `List[Header]` at 128 on C11 Stage 2 (#1258)",
+      "state_labels": [
+        "needs-detail"
+      ],
+      "state_line": "needs-detail",
+      "blocked_by": [
+        1694,
+        1695
+      ],
+      "evidence_commits": []
     }
   ]
 }
