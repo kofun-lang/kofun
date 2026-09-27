@@ -192,7 +192,16 @@
         "D002",
         "D003",
         "D004"
-      ]
+      ],
+      "decimal_error_shape": "opaque-nominal-with-code-accessor",
+      "decimal_error_members": ["D001", "D002", "D003", "D004"],
+      "decimal_error_ownership": "unrestricted-copyable-never-allocates",
+      "decimal_error_observation": "code-accessor-only-match-and-print-deferred-to-1253",
+      "decimal_error_scope": "reserved-for-fixed-operations-in-v1",
+      "clone_form": "Fixed.clone(value)-read",
+      "format_form": "Decimal.format(value, display_scale)",
+      "spelling_authority": "RFC-0015-over-docs-DECIMAL.md",
+      "decimal_error_spec": "spec/decimal-error-v1.md"
     },
     "decimal_backends": {
       "issue": 1255,

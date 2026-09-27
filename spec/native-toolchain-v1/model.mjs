@@ -133,6 +133,14 @@ export function validateContract(contract) {
     equal(fixed.scale_max, 6144, 'fixed_decimal.scale_max')
     equal(fixed.operations.divide, 'deferred-use-Decimal.divide-with-explicit-scale-and-rounding', 'fixed_decimal.operations.divide')
     hasAll(fixed.failures, ['D001', 'D002', 'D003', 'D004'], 'fixed_decimal.failures')
+    equal(fixed.decimal_error_shape, 'opaque-nominal-with-code-accessor', 'fixed_decimal.decimal_error_shape')
+    hasAll(fixed.decimal_error_members, ['D001', 'D002', 'D003', 'D004'], 'fixed_decimal.decimal_error_members')
+    equal(fixed.decimal_error_ownership, 'unrestricted-copyable-never-allocates', 'fixed_decimal.decimal_error_ownership')
+    equal(fixed.decimal_error_observation, 'code-accessor-only-match-and-print-deferred-to-1253', 'fixed_decimal.decimal_error_observation')
+    equal(fixed.decimal_error_scope, 'reserved-for-fixed-operations-in-v1', 'fixed_decimal.decimal_error_scope')
+    equal(fixed.clone_form, 'Fixed.clone(value)-read', 'fixed_decimal.clone_form')
+    equal(fixed.format_form, 'Decimal.format(value, display_scale)', 'fixed_decimal.format_form')
+    equal(fixed.spelling_authority, 'RFC-0015-over-docs-DECIMAL.md', 'fixed_decimal.spelling_authority')
 
     const decimal = decisions.decimal_backends
     equal(decimal.bare_wasm32, 'permanent-bounded-numeric-profile-no-Decimal-claim', 'decimal_backends.bare_wasm32')
