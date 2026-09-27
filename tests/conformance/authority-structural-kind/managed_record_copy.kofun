@@ -1,0 +1,9 @@
+type Point = { value: Int }
+fn copy(value: Point) -> Int {
+    let alias = value
+    return 0
+}
+
+fn main() -> Int {
+    return 0
+}

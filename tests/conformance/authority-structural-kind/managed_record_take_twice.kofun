@@ -1,0 +1,13 @@
+type Point = { value: Int }
+fn consume(take value: Point) -> Int {
+    return 0
+}
+fn twice(take value: Point) -> Int {
+    consume(value)
+    consume(value)
+    return 0
+}
+
+fn main() -> Int {
+    return 0
+}

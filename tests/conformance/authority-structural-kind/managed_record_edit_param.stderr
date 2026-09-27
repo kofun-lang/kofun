@@ -1,0 +1,1 @@
+error[E2S181]: nominal-record parameter `value` cannot use `edit` in the Stage 2 v1 by-value ABI; use `read` or consuming `take` at bytes 36..40

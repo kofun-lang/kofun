@@ -2778,6 +2778,86 @@ fn authority_type_is_owned(name: Text) -> Bool {
     return name == "RootAuthority" || name == "EnvironmentAuthority"
 }
 
+# #1243. The RFC-0004 causal path from a nominal record or ADT to the first
+# Owned component it can contain, rendered in RFC-0004's name notation
+# (`Type.field -> Next.field -> RootAuthority`), or "" when the type is
+# Managed. `visited` is `|T|U|` of the types already on the path, so the D2.2
+# rule -- the first Owned component that does not re-enter a type already on
+# the path -- terminates on cycles.
+fn composite_owned_path(source: Text, type_name: Text, visited: Text) -> Text {
+    if len(type_name) == 0 || contains(visited, "|" + type_name + "|") {
+        return ""
+    }
+    let on_path = visited + "|" + type_name + "|"
+    let fields = record_field_count(source, type_name)
+    if fields >= 0 {
+        let mut index = 0
+        while index < fields {
+            let field = record_field_text(source, type_name, index, false)
+            let field_type = record_field_text(source, type_name, index, true)
+            if authority_type_is_owned(field_type) {
+                return type_name + "." + field + " -> " + field_type
+            }
+            let nested = composite_owned_path(source, field_type, on_path)
+            if len(nested) > 0 {
+                return type_name + "." + field + " -> " + nested
+            }
+            index = index + 1
+        }
+        return ""
+    }
+    return enum_owned_path(source, type_name, on_path)
+}
+
+# The payload type name of a constructor payload `(name: Type)`, or "".
+fn enum_payload_type_name(source: Text, open: Int) -> Text {
+    let field = skip_trivia(source, token_end(source, open))
+    let colon = skip_trivia(source, token_end(source, field))
+    if colon >= len(source) || token_text(source, colon) != ":" {
+        return ""
+    }
+    let type_at = skip_trivia(source, token_end(source, colon))
+    if type_at >= len(source) || token_kind(source, type_at) != "identifier" {
+        return ""
+    }
+    return token_text(source, type_at)
+}
+
+# The first Owned payload of an ADT, in declaration order; a payload-free
+# constructor is skipped, so K-ANY's `type Loop = | More(value: Loop) | Stop`
+# stays Managed.
+fn enum_owned_path(source: Text, enum_type: Text, on_path: Text) -> Text {
+    let declaration = enum_declaration_start(source, enum_type)
+    if declaration < 0 {
+        return ""
+    }
+    let name = skip_trivia(source, token_end(source, declaration))
+    let equals = skip_trivia(source, token_end(source, name))
+    let mut pipe = skip_trivia(source, token_end(source, equals))
+    let end = type_declaration_end(source, declaration)
+    while pipe < end && token_text(source, pipe) == "|" {
+        let constructor = skip_trivia(source, token_end(source, pipe))
+        let open = skip_trivia(source, token_end(source, constructor))
+        if open < end && token_text(source, open) == "(" {
+            let payload = enum_payload_type_name(source, open)
+            if authority_type_is_owned(payload) {
+                return enum_type + "." + token_text(source, constructor) +
+                ".value -> " + payload
+            }
+            let nested = composite_owned_path(source, payload, on_path)
+            if len(nested) > 0 {
+                return enum_type + "." + token_text(source, constructor) +
+                ".value -> " + nested
+            }
+        }
+        pipe = skip_trivia(
+            source,
+            enum_constructor_token_end(source, constructor)
+        )
+    }
+    return ""
+}
+
 # A word in a parameter head, which is an identifier *or* a keyword. `in` is a
 # keyword here, so counting only identifiers made the contract's own headline
 # example `fn replace(in text: Text, ...)` read as one word: no refusal fired
@@ -9222,6 +9302,22 @@ fn core_parameters(
             return "error[E2S10]: unsupported Core parameter type " +
             token_text(source, type_cursor) + " at byte " +
             to_text(type_cursor)
+        }
+        # #1243. A nominal record or ADT that can contain an Owned authority is
+        # itself Owned; a mode-less parameter head copies it, which RFC-0002
+        # forbids. The refusal names the RFC-0004 causal path (D2) and uses the
+        # composite-only 32-byte remedy (D3b).
+        if type_end >= 0 && !ownership_mode_token(source, cursor) {
+            let composite_path = composite_owned_path(
+                source,
+                token_text(source, type_cursor),
+                ""
+            )
+            if len(composite_path) > 0 {
+                return "error[E353]: " + composite_path +
+                " is owned and cannot be copied; pass it with `take` or" +
+                " borrow it at byte " + to_text(cursor)
+            }
         }
         if type_end < 0 {
             return "error[E2S15]: Core parameters must have type Int, Text, a concrete enum, or a nominal record at byte " +
@@ -19949,13 +20045,21 @@ fn move_trivial_record(source: Text, type_spelling: Text) -> Bool {
     return true
 }
 
+# #1243. A nominal type whose values are moved whole: a Managed record of
+# Int/Bool fields, or an Owned record/ADT that can contain an authority. The
+# move, edit, and copy rules apply to both; only the refusal differs.
+fn move_nominal_type(source: Text, type_spelling: Text) -> Bool {
+    return move_trivial_record(source, type_spelling) ||
+    len(composite_owned_path(source, type_spelling, "")) > 0
+}
+
 fn move_positional_owner(source: Text, hir: Text, binding: Text) -> Bool {
     let mode = hir_binding_field(hir, binding, 6)
     if mode == "read" || mode == "edit" {
         return false
     }
     let type_spelling = hir_binding_field(hir, binding, 5)
-    return type_spelling == "Bytes" || move_trivial_record(source, type_spelling)
+    return type_spelling == "Bytes" || move_nominal_type(source, type_spelling)
 }
 
 # Exclude conditional/loop bodies and conditional expression operands. This
@@ -20042,7 +20146,7 @@ fn validate_move_record_modes(source: Text) -> Text {
             if token_text(source, cursor) == "edit" {
                 let type_at = parameter_type_start(source, cursor, close)
                 if type_at >= 0 &&
-                   move_trivial_record(source, token_text(source, type_at)) {
+                   move_nominal_type(source, token_text(source, type_at)) {
                     let name_at = parameter_internal_start(source, cursor, close)
                     # The seed's structured-diagnostic observer also records
                     # this exact edit-token span for semantic-event consumers.
@@ -20775,6 +20879,8 @@ fn authority_binding_misuse(
     binding: Text,
     authority: Text
 ) -> Text {
+    let owned_path = composite_owned_path(source, authority, "")
+    let is_composite = len(owned_path) > 0
     let mut cursor = skip_trivia(source, body_start)
     let mut previous = ""
     while cursor < body_end {
@@ -20786,13 +20892,24 @@ fn authority_binding_misuse(
                 following = token_text(source, after)
             }
             # `==` and `!=` are one token, so this cannot collide with `=`.
+            # Ordered ahead of #1658's general record-operand refusal.
             if following == "==" || following == "!=" || previous == "==" ||
                previous == "!=" {
+                if is_composite {
+                    return "error[E353]: " + owned_path +
+                    " is owned and has no equality; compare the capability" +
+                    " you derived from it instead at byte " + to_text(cursor)
+                }
                 return "error[E353]: " + authority + " is an Owned authority" +
                 " and has no equality; compare the capability you derived" +
                 " from it instead at byte " + to_text(cursor)
             }
-            if previous == "=" {
+            if previous == "=" && following != "." {
+                if is_composite {
+                    return "error[E353]: " + owned_path +
+                    " is owned and cannot be copied; pass it with `take` or" +
+                    " borrow it at byte " + to_text(cursor)
+                }
                 return "error[E353]: " + authority + " is an Owned authority" +
                 " and cannot be copied; pass it with `take`, or borrow it" +
                 " with `read` or `edit` at byte " + to_text(cursor)
@@ -21068,8 +21185,9 @@ fn validate_authority_uses(source: Text) -> Text {
         let mut previous_name = ""
         while cursor < parameters_close {
             let text = token_text(source, cursor)
-            if authority_type_name(text) && previous_text == ":" &&
-               previous_name != "" {
+            if (authority_type_name(text) ||
+                len(composite_owned_path(source, text, "")) > 0) &&
+               previous_text == ":" && previous_name != "" {
                 let misuse = authority_binding_misuse(
                     source,
                     parameters_close,
@@ -21087,6 +21205,40 @@ fn validate_authority_uses(source: Text) -> Text {
             }
             previous_text = text
             cursor = skip_trivia(source, token_end(source, cursor))
+        }
+        # #1243. A local `let name: T` whose T is an Owned composite binds an
+        # Owned value; copying it later is the same misuse the parameter head
+        # check catches for a parameter.
+        let mut local = skip_trivia(source, token_end(source, parameters_close))
+        while local < function_close {
+            if token_text(source, local) == "let" {
+                let local_name_at = skip_trivia(source, token_end(source, local))
+                let local_colon = skip_trivia(
+                    source,
+                    token_end(source, local_name_at)
+                )
+                if token_kind(source, local_name_at) == "identifier" &&
+                   token_text(source, local_colon) == ":" {
+                    let local_type_at = skip_trivia(
+                        source,
+                        token_end(source, local_colon)
+                    )
+                    let local_type = token_text(source, local_type_at)
+                    if len(composite_owned_path(source, local_type, "")) > 0 {
+                        let misuse = authority_binding_misuse(
+                            source,
+                            parameters_close,
+                            function_close,
+                            token_text(source, local_name_at),
+                            local_type
+                        )
+                        if misuse != "ok" {
+                            return misuse
+                        }
+                    }
+                }
+            }
+            local = skip_trivia(source, token_end(source, local))
         }
         function_start = next_function_start(source, function_close)
     }

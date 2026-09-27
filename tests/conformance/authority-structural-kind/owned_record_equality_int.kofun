@@ -1,0 +1,11 @@
+type Holder = { slot: RootAuthority }
+fn same(read value: Holder) -> Int {
+    if value == value {
+        return 1
+    }
+    return 0
+}
+
+fn main() -> Int {
+    return 0
+}

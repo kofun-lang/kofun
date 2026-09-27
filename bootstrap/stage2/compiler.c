@@ -3623,6 +3623,158 @@ static bool authority_type_is_owned(const char *name) {
            strcmp(name, "EnvironmentAuthority") == 0;
 }
 
+/* #1243. The RFC-0004 causal path from a nominal record or ADT to the first
+ * Owned component it can contain, rendered in RFC-0004's name notation, or ""
+ * when the type is Managed. `visited` is "|T|U|" of the types already on the
+ * path, so the D2.2 rule terminates on cycles. */
+static char *composite_owned_path(
+    const char *source,
+    const char *type_name,
+    const char *visited
+);
+
+static char *enum_payload_type_name(const char *source, int64_t open) {
+    int64_t field = skip_trivia(source, token_end(source, open));
+    int64_t colon = skip_trivia(source, token_end(source, field));
+    if (!token_equal(source, colon, ":")) return owned_text("");
+    int64_t type_at = skip_trivia(source, token_end(source, colon));
+    if (strcmp(token_kind(source, type_at), "identifier") != 0) {
+        return owned_text("");
+    }
+    return token_copy(source, type_at);
+}
+
+/* The first Owned payload of an ADT, in declaration order; a payload-free
+ * constructor is skipped, so K-ANY's `type Loop = | More(value: Loop) | Stop`
+ * stays Managed. */
+static char *enum_owned_path(
+    const char *source,
+    const char *enum_type,
+    const char *visited
+) {
+    int64_t declaration = enum_declaration_start(source, enum_type);
+    if (declaration < 0) return owned_text("");
+    int64_t name = skip_trivia(source, token_end(source, declaration));
+    int64_t equals = skip_trivia(source, token_end(source, name));
+    int64_t pipe = skip_trivia(source, token_end(source, equals));
+    int64_t end = type_declaration_end(source, declaration);
+    while (pipe < end && token_equal(source, pipe, "|")) {
+        int64_t constructor = skip_trivia(source, token_end(source, pipe));
+        int64_t open = skip_trivia(source, token_end(source, constructor));
+        if (open < end && token_equal(source, open, "(")) {
+            char *payload = enum_payload_type_name(source, open);
+            char *constructor_name = token_copy(source, constructor);
+            if (authority_type_is_owned(payload)) {
+                Buffer result;
+                buffer_init(&result);
+                buffer_format(
+                    &result,
+                    "%s.%s.value -> %s",
+                    enum_type,
+                    constructor_name,
+                    payload
+                );
+                free(payload);
+                free(constructor_name);
+                return result.data;
+            }
+            char *nested = composite_owned_path(source, payload, visited);
+            if (nested[0] != '\0') {
+                Buffer result;
+                buffer_init(&result);
+                buffer_format(
+                    &result,
+                    "%s.%s.value -> %s",
+                    enum_type,
+                    constructor_name,
+                    nested
+                );
+                free(payload);
+                free(constructor_name);
+                free(nested);
+                return result.data;
+            }
+            free(nested);
+            free(payload);
+            free(constructor_name);
+        }
+        pipe = skip_trivia(
+            source,
+            enum_constructor_token_end(source, constructor)
+        );
+    }
+    return owned_text("");
+}
+
+static char *composite_owned_path(
+    const char *source,
+    const char *type_name,
+    const char *visited
+) {
+    if (type_name == NULL || type_name[0] == '\0') return owned_text("");
+    Buffer needle;
+    buffer_init(&needle);
+    buffer_format(&needle, "|%s|", type_name);
+    bool seen = strstr(visited, needle.data) != NULL;
+    free(needle.data);
+    if (seen) return owned_text("");
+    Buffer on_path;
+    buffer_init(&on_path);
+    buffer_format(&on_path, "%s|%s|", visited, type_name);
+    int64_t fields = record_field_count(source, type_name);
+    if (fields >= 0) {
+        for (int64_t index = 0; index < fields; ++index) {
+            char *field = record_field_text(source, type_name, index, false);
+            char *field_type = record_field_text(
+                source,
+                type_name,
+                index,
+                true
+            );
+            if (authority_type_is_owned(field_type)) {
+                Buffer result;
+                buffer_init(&result);
+                buffer_format(
+                    &result,
+                    "%s.%s -> %s",
+                    type_name,
+                    field,
+                    field_type
+                );
+                free(field);
+                free(field_type);
+                free(on_path.data);
+                return result.data;
+            }
+            char *nested = composite_owned_path(source, field_type, on_path.data);
+            if (nested[0] != '\0') {
+                Buffer result;
+                buffer_init(&result);
+                buffer_format(
+                    &result,
+                    "%s.%s -> %s",
+                    type_name,
+                    field,
+                    nested
+                );
+                free(field);
+                free(field_type);
+                free(nested);
+                free(on_path.data);
+                return result.data;
+            }
+            free(nested);
+            free(field);
+            free(field_type);
+        }
+        free(on_path.data);
+        return owned_text("");
+    }
+    char *result = enum_owned_path(source, type_name, on_path.data);
+    free(on_path.data);
+    return result;
+}
+
 /*
  * #1243. The authority names are reserved for the same reason `Int` is:
  * they are built-in nominal types and a declaration that reuses the name
@@ -14146,6 +14298,36 @@ static char *core_parameters(
                 return error;
             }
             free(authority_name);
+        }
+        /* #1243. A nominal record or ADT that can contain an Owned authority
+         * is itself Owned; a mode-less parameter head copies it, which
+         * RFC-0002 forbids. */
+        if (type_end >= 0 && !ownership_mode_token(source, cursor)) {
+            char *parameter_type = token_copy(source, type_cursor);
+            char *composite_path = composite_owned_path(
+                source,
+                parameter_type,
+                ""
+            );
+            free(parameter_type);
+            if (composite_path[0] != '\0') {
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(
+                    &message,
+                    "%s is owned and cannot be copied; pass it with `take` or "
+                    "borrow it",
+                    composite_path
+                );
+                char *error = lower_error("E353", message.data, cursor);
+                free(message.data);
+                free(composite_path);
+                free(declarator);
+                free(name);
+                free(emitted.data);
+                return error;
+            }
+            free(composite_path);
         }
         if (type_end < 0) {
             free(declarator);
@@ -28914,13 +29096,23 @@ static bool move_trivial_record(const char *source, const char *type) {
     return true;
 }
 
+/* #1243. A nominal type whose values are moved whole: a Managed record of
+ * Int/Bool fields, or an Owned record/ADT that can contain an authority. */
+static bool move_nominal_type(const char *source, const char *type) {
+    if (move_trivial_record(source, type)) return true;
+    char *path = composite_owned_path(source, type, "");
+    bool owned = path[0] != '\0';
+    free(path);
+    return owned;
+}
+
 static bool move_positional_owner(const char *source, const char *hir, const char *binding) {
     char *mode = hir_binding_field(hir, binding, 6);
     bool borrowed = strcmp(mode, "read") == 0 || strcmp(mode, "edit") == 0;
     free(mode);
     if (borrowed) return false;
     char *type = hir_binding_field(hir, binding, 5);
-    bool admitted = strcmp(type, "Bytes") == 0 || move_trivial_record(source, type);
+    bool admitted = strcmp(type, "Bytes") == 0 || move_nominal_type(source, type);
     free(type);
     return admitted;
 }
@@ -29005,7 +29197,7 @@ static char *validate_move_record_modes(const char *source) {
             if (token_equal(source, cursor, "edit")) {
                 int64_t type_at = parameter_type_start(source, cursor, close);
                 char *type = type_at < 0 ? owned_text("") : token_copy(source, type_at);
-                bool trivial = move_trivial_record(source, type);
+                bool trivial = move_nominal_type(source, type);
                 free(type);
                 if (trivial) {
                     int64_t name_at = parameter_internal_start(source, cursor, close);
@@ -30962,6 +31154,8 @@ static char *authority_binding_misuse(
     const char *binding,
     const char *authority
 ) {
+    char *owned_path = composite_owned_path(source, authority, "");
+    bool is_composite = owned_path[0] != '\0';
     int64_t cursor = skip_trivia(source, body_start);
     char *previous = owned_text("");
     while (cursor < body_end) {
@@ -30972,22 +31166,39 @@ static char *authority_binding_misuse(
             char *following = after < body_end
                 ? token_copy(source, after)
                 : owned_text("");
-            /* `==` and `!=` are one token, so this cannot collide with `=`. */
-            bool compared = strcmp(following, "==") == 0 ||
-                            strcmp(following, "!=") == 0 ||
-                            strcmp(previous, "==") == 0 ||
-                            strcmp(previous, "!=") == 0;
-            bool copied = strcmp(previous, "=") == 0;
+            /* `==` and `!=` are one token, so this cannot collide with `=`.
+             * Ordered ahead of #1658's general record-operand refusal. */
+            bool compared =
+                strcmp(following, "==") == 0 ||
+                strcmp(following, "!=") == 0 ||
+                strcmp(previous, "==") == 0 ||
+                strcmp(previous, "!=") == 0;
+            bool copied = strcmp(previous, "=") == 0 &&
+                          strcmp(following, ".") != 0;
             free(following);
             if (compared || copied) {
                 Buffer message;
                 buffer_init(&message);
-                if (compared) {
+                if (compared && is_composite) {
+                    buffer_format(
+                        &message,
+                        "%s is owned and has no equality; compare the "
+                        "capability you derived from it instead",
+                        owned_path
+                    );
+                } else if (compared) {
                     buffer_format(
                         &message,
                         "%s is an Owned authority and has no equality; compare "
                         "the capability you derived from it instead",
                         authority
+                    );
+                } else if (is_composite) {
+                    buffer_format(
+                        &message,
+                        "%s is owned and cannot be copied; pass it with `take` "
+                        "or borrow it",
+                        owned_path
                     );
                 } else {
                     buffer_format(
@@ -31001,6 +31212,7 @@ static char *authority_binding_misuse(
                 free(message.data);
                 free(text);
                 free(previous);
+                free(owned_path);
                 return error;
             }
         }
@@ -31009,6 +31221,7 @@ static char *authority_binding_misuse(
         cursor = skip_trivia(source, token_end(source, cursor));
     }
     free(previous);
+    free(owned_path);
     return owned_text("ok");
 }
 
@@ -31334,7 +31547,10 @@ static char *validate_authority_uses(const char *source) {
         char *previous_name = owned_text("");
         while (cursor < parameters_close) {
             char *text = token_copy(source, cursor);
-            if (authority_type_name(text) &&
+            char *type_path = composite_owned_path(source, text, "");
+            bool is_owned_composite = type_path[0] != '\0';
+            free(type_path);
+            if ((authority_type_name(text) || is_owned_composite) &&
                 strcmp(previous_text, ":") == 0 &&
                 strcmp(previous_name, "") != 0) {
                 char *misuse = authority_binding_misuse(
@@ -31363,6 +31579,61 @@ static char *validate_authority_uses(const char *source) {
         }
         free(previous_text);
         free(previous_name);
+        /* #1243. A local `let name: T` whose T is an Owned composite binds an
+         * Owned value; copying it later is the same misuse the parameter head
+         * check catches for a parameter. */
+        {
+            int64_t local = skip_trivia(
+                source,
+                token_end(source, parameters_close)
+            );
+            while (local < function_close) {
+                if (token_equal(source, local, "let")) {
+                    int64_t local_name_at = skip_trivia(
+                        source,
+                        token_end(source, local)
+                    );
+                    int64_t local_colon = skip_trivia(
+                        source,
+                        token_end(source, local_name_at)
+                    );
+                    if (strcmp(token_kind(source, local_name_at), "identifier") == 0 &&
+                        token_equal(source, local_colon, ":")) {
+                        int64_t local_type_at = skip_trivia(
+                            source,
+                            token_end(source, local_colon)
+                        );
+                        char *local_type = token_copy(source, local_type_at);
+                        char *local_name = token_copy(source, local_name_at);
+                        char *local_path = composite_owned_path(
+                            source,
+                            local_type,
+                            ""
+                        );
+                        if (local_path[0] != '\0') {
+                            char *misuse = authority_binding_misuse(
+                                source,
+                                parameters_close,
+                                function_close,
+                                local_name,
+                                local_type
+                            );
+                            if (strcmp(misuse, "ok") != 0) {
+                                free(local_path);
+                                free(local_name);
+                                free(local_type);
+                                return misuse;
+                            }
+                            free(misuse);
+                        }
+                        free(local_path);
+                        free(local_name);
+                        free(local_type);
+                    }
+                }
+                local = skip_trivia(source, token_end(source, local));
+            }
+        }
         function_start = next_function_start(source, function_close);
     }
     return owned_text("ok");

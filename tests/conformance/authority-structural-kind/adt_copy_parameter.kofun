@@ -1,0 +1,8 @@
+type Maybe = | No | Some(value: RootAuthority)
+fn use(value: Maybe) -> Int {
+    return 0
+}
+
+fn main() -> Int {
+    return 0
+}

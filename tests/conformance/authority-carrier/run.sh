@@ -218,7 +218,7 @@ status=$(outcome "$WORK/case.kofun")
 test "$status" -eq 1 ||
     fail "a copy through a shadowing Holder exited $status, not 1"
 case $(first_line) in
-    "error[E353]: RootAuthority is an Owned authority and cannot be copied"*) ;;
+    "error[E353]: Holder.slot -> RootAuthority is owned and cannot be copied"*) ;;
     *) fail "a copy through a shadowing Holder reported $(first_line)" ;;
 esac
 
