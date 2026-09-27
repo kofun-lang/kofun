@@ -5,6 +5,11 @@
 - Status: accepted
 - Decided: 2026-08-11
 
+> **Amended: `RFC-0017/A01` (2026-09-27).** The accepted text below is
+> preserved as written. It is no longer the complete current contract for the
+> canonical identity framing or the `TypeParameterId` and `ConstructedTypeId`
+> domains; the ledger amendment is authoritative for those changes.
+
 This RFC jointly decides
 [#1265](https://github.com/kofun-lang/kofun/issues/1265),
 [#1266](https://github.com/kofun-lang/kofun/issues/1266), and
@@ -113,6 +118,30 @@ Paths, spans, display names, source order, import/re-export order, hash-table
 order, host addresses, and compiler process identity are excluded. Semantic
 body/interface/compiler digests remain separate facts; one ID never does two
 jobs.
+
+#### Amendment RFC-0017/A01 — canonical identity framing and domains
+
+Recorded 2026-09-27 for
+[#1689](https://github.com/kofun-lang/kofun/issues/1689). The paragraph above
+gives `frame(label, bytes)` unsigned 64-bit label and value lengths and the
+`/v1` domain spellings, but the only executable generic identity,
+[`spec/kif-generics-v1/model.mjs`](../spec/kif-generics-v1/model.mjs), already
+frames with `"KOFUN\0"`, a u16 big-endian domain length, and a u32 big-endian
+payload length, and names the `/v3` domains.
+
+The active semantics for these two IDs are the #303 frame
+[`spec/modules/module-identity.md`](../spec/modules/module-identity.md) §Hash
+construction fixes — `"KOFUN\0"`, domain-length u16 big-endian, ASCII domain,
+payload-length u32 big-endian, then the exact canonical payload — with domains
+`kofun.id.type-parameter/v3` and `kofun.id.constructed-type/v3`. A spelling
+that carries a display name, such as the standalone checkpoint's
+`type-parameter:function:NAME:ORD`, is refused as an identity, because the
+paragraph above excludes display names and source order.
+
+This supersedes the `frame(label, bytes)` wording and the two `/v1` domain
+spellings for `TypeParameterId` and `ConstructedTypeId` only; the other rows in
+the table keep their own encodings. The ledger entry records the preserved
+original wording and the compatibility analysis.
 
 ### 3. Substitution, layout, ownership, and effects
 
