@@ -68,6 +68,13 @@ executable bootstrap implementation.
   operation past it, and an `Int` status for a failed operation. Its gates
   `task command-operands` (#1666) and `task bytes-read-stream` (#1667) do not
   exist yet.
+- `decimal-error-v1.md` records the source-level answers RFC-0015 names but does
+  not define for `kofun.fixed-decimal/v1`: `DecimalError` is an opaque nominal
+  value with a `D00x` code accessor reserved for `Fixed` in v1, the clone form
+  is `Fixed.clone(value)` with `read`, and the format form is
+  `Decimal.format(value, display_scale)`. It is listed in RFC-0015's
+  `normative_spec`, and `spec/native-toolchain-v1/contract.json` with
+  `model.mjs` assert every answer under `task fixed-decimal-profile`.
 - `type-level-programming-v1.md` defines the Type-only, named, structurally
   terminating type-function profile, its fixed reduction/display budgets, and
   the requirement that type-level features ship with inspectable traces. No

@@ -1021,8 +1021,9 @@
       "normative_spec": [
         "rfcs/0015-decimal-fixed-backend-profiles.md",
         "docs/DECIMAL.md",
-        "spec/native-toolchain-v1/contract.json"
-      ],
+        "spec/native-toolchain-v1/contract.json",
+    "spec/decimal-error-v1.md"
+  ],
       "compatibility": {
         "category": "additive",
         "statement": "No current compiler implements Decimal-backed `Fixed[S]`, and direct native and Wasm Decimal inputs remain unsupported, so no accepted executable program changes meaning. Existing C11 Decimal v1 values, bytes, limits, and D001-D007 retain their exact meaning. The design-era Fixed example gains an explicit typed-result boundary before it becomes executable."
