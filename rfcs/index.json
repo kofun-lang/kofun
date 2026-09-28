@@ -1076,7 +1076,20 @@
       "compatibility": {
         "category": "additive",
         "statement": "Production paths currently refuse the new generic and trait shapes or stop before backend output. KIF v1/v2, const-generic identities, standalone frontend goldens, the bounded self-host fixed point, and law-evidence v2 remain byte-identical, and no old artifact is reinterpreted as v3."
-      }
+      },
+      "amendments": [
+        {
+          "id": "A01",
+          "recorded_on": "2026-09-27",
+          "change": "https://github.com/kofun-lang/kofun/issues/1689",
+          "delta": "The active framing for `TypeParameterId` and `ConstructedTypeId` is the #303 frame `spec/modules/module-identity.md` fixes — `\"KOFUN\\0\"`, a u16 big-endian domain length, the ASCII domain, a u32 big-endian payload length, then the exact canonical payload — with domains `kofun.id.type-parameter/v3` and `kofun.id.constructed-type/v3`, the `DOMAINS` values `spec/kif-generics-v1/model.mjs` already computes. The `frame(label, bytes)` sentence's unsigned 64-bit label and value lengths, and the two `/v1` domain spellings, are superseded for these two IDs. A spelling that carries a display name, such as the standalone checkpoint's `type-parameter:function:NAME:ORD`, is refused as an identity.",
+          "original_semantics": "Every preimage uses length framing: `frame(label, bytes)` is UTF-8 label length,\nlabel bytes, value length, then value bytes, all lengths unsigned big-endian\n64-bit. Concatenation without frames is forbidden. IDs are SHA-256 over an\nASCII domain plus framed fields.\n\n| `TypeParameterId` | `kofun.type-parameter/v1`, owner DeclarationId, kind, ordinal |\n| `ConstructedTypeId` | `kofun.constructed-type/v1`, declaration TypeId, ordered canonical TypeRefs |",
+          "compatibility": {
+            "category": "none",
+            "statement": "No production compiler and no released artifact emits a generic identity, so no program changes meaning or stops compiling. The only executable generic identity, `spec/kif-generics-v1/model.mjs`, already frames with `\"KOFUN\\0\"` and the `/v3` domains, and the amendment moves the normative text onto that encoding; the other ID rows in §2 are unchanged. The standalone checkpoint's name-bearing `type-parameter:function:NAME:ORD` spelling was never an identity."
+          }
+        }
+      ]
     },
     {
       "id": "RFC-0018",
