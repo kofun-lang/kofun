@@ -323,7 +323,7 @@ printf '%s\n' \
 # mutation corpus made only of things that must fail cannot see that.
 tolerated() {
     cp "$MATRIX" "$WORK/tolerated.tsv"
-    sed -i 's|^\(concurrency\t[a-z]*\tplanned\t\)[^\t]*\t|\1#231 #1162\t|' \
+    sed -i 's|^\(concurrency\t[a-z]*\tplanned\t\)[^\t]*\t|\1#231 #1164\t|' \
         "$WORK/tolerated.tsv"
     validate_complete "$WORK/tolerated.tsv" >/dev/null 2>&1 ||
         fail 'a row citing one closed issue beside an open one was refused'
