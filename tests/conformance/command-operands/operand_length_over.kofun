@@ -1,0 +1,7 @@
+# #1666. Each operand is at most 255 bytes. The gate supplies a 256-byte
+# `argv[1]`, so the read is refused rather than truncated to the first 255
+# bytes, and nothing prints after the diagnostic.
+fn main() -> Int {
+    print(stage2_command_operand_text(1))
+    return 0
+}

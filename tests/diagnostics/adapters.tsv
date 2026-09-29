@@ -5,6 +5,7 @@ affine-resource-handle	tests/ownership/affine-resource-handle/check.sh	verify	te
 bytes-read-file	tests/conformance/bytes-read-file/run.sh	verify	tests/diagnostics/reports/bytes-read-file.tsv
 bytes-text	tests/conformance/bytes-text/run.sh	verify	tests/diagnostics/reports/bytes-text.tsv
 c-abi	tests/diagnostics/c-abi/run.sh	verify	tests/diagnostics/reports/c-abi.tsv
+command-operands	tests/conformance/command-operands/run.sh	verify	tests/diagnostics/reports/command-operands.tsv
 const-generics	tests/conformance/const-generics/run.sh	verify	tests/diagnostics/reports/const-generics.tsv
 driver	tests/diagnostics/driver/run.sh	verify	tests/diagnostics/reports/driver.tsv
 generics	tests/conformance/generics/run.sh	verify	tests/diagnostics/reports/generics.tsv

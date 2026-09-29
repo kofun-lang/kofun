@@ -39,6 +39,7 @@ capabilities
 check
 cli-framework
 clock-adapters
+command-operands
 concurrency-capture-contract
 concurrency-capture-events
 concurrency-captures

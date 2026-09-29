@@ -444,6 +444,13 @@ tests/conformance/bytes-text/text_contains_nul.kofun
 tests/conformance/bytes-text/text_not_utf8.kofun
 tests/conformance/bytes-text/text_out_of_range.kofun
 tests/conformance/bytes-text/text_over_limit.kofun
+tests/conformance/command-operands/args_unsupported.kofun
+tests/conformance/command-operands/operand_count_over.kofun
+tests/conformance/command-operands/operand_index_out.kofun
+tests/conformance/command-operands/operand_length_over.kofun
+tests/conformance/command-operands/operands.kofun
+tests/conformance/command-operands/stderr_line.kofun
+tests/conformance/command-operands/stderr_line_over.kofun
 tests/conformance/call-arguments/assigned_lambda.kofun
 tests/conformance/call-arguments/block_lambda_argument_position.kofun
 tests/conformance/call-arguments/block_lambda_let_position.kofun

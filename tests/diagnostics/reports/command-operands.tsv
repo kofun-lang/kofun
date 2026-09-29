@@ -1,0 +1,5 @@
+# code	adapter	channel	exit	primary-span	secondary-span	artifact
+R034	command-operands	stderr	1	not-applicable	not-applicable	required
+R035	command-operands	stderr	1	not-applicable	not-applicable	required
+R036	command-operands	stderr	1	not-applicable	not-applicable	required
+R037	command-operands	stderr	1	not-applicable	not-applicable	required

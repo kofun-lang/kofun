@@ -1191,6 +1191,11 @@ tasks:
     cmds:
       - "sh tests/conformance/bytes-read-file/run.sh"
 
+  command-operands:
+    desc: "Verify a compiled program receives its operands and writes a line to standard error"
+    cmds:
+      - "sh tests/conformance/command-operands/run.sh"
+
   # #1322. The Text bridge over the carrier: a Text in as its exact bytes, a
   # checked range out as Text, with range, limit, NUL, and UTF-8 refusals
   # named at runtime and the exact tag/detail contract proved in the emitted C.
@@ -1582,6 +1587,7 @@ tasks:
             unused-function \
             authority-type-carrier \
             bounded-bytes \
+            command-operands \
             while-list-int \
             else-if-chain \
             list-int-signatures \
