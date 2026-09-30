@@ -1,0 +1,8 @@
+# #1666. A `Text` line of at most 255 bytes plus a terminating newline to
+# file descriptor 2, and `print` still writes file descriptor 1 only. The gate
+# captures the two streams separately, so a byte on the wrong descriptor fails.
+fn main() -> Int {
+    let status = stage2_command_stderr("stderr line")
+    print("stdout line")
+    return status
+}

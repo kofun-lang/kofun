@@ -10322,6 +10322,67 @@ static char *emit_primary(
             free(name);
             return call;
         }
+        /* #1666. The bounded C11 command surface, lowered directly to its own
+         * runtime helpers. All three are ordinary expressions: the count is
+         * `Int`, the operand read is `Text`, and the standard-error line is
+         * the `Int` status #1665's Q6 records, so each can be held, compared,
+         * and acted on. The argument checks run through the same `error[`
+         * guard every other direct branch uses, so a refused argument is a
+         * diagnostic rather than C source. */
+        if (
+            open < end && token_equal(source, open, "(") &&
+            strcmp(name, "stage2_command_operand_count") == 0 &&
+            call_resolves_to_builtin(source, hir, cursor, name)
+        ) {
+            free(name);
+            return owned_text("stage2_command_operand_count()");
+        }
+        if (
+            open < end && token_equal(source, open, "(") &&
+            strcmp(name, "stage2_command_operand_text") == 0 &&
+            call_resolves_to_builtin(source, hir, cursor, name)
+        ) {
+            int64_t value = skip_trivia(source, token_end(source, open));
+            char *emitted = emit_expression(
+                source,
+                hir,
+                value,
+                argument_end(source, value)
+            );
+            if (strncmp(emitted, "error[", 6) == 0) {
+                free(name);
+                return emitted;
+            }
+            Buffer call;
+            buffer_init(&call);
+            buffer_format(&call, "stage2_command_operand_text(%s)", emitted);
+            free(emitted);
+            free(name);
+            return call.data;
+        }
+        if (
+            open < end && token_equal(source, open, "(") &&
+            strcmp(name, "stage2_command_stderr") == 0 &&
+            call_resolves_to_builtin(source, hir, cursor, name)
+        ) {
+            int64_t value = skip_trivia(source, token_end(source, open));
+            char *emitted = emit_expression(
+                source,
+                hir,
+                value,
+                argument_end(source, value)
+            );
+            if (strncmp(emitted, "error[", 6) == 0) {
+                free(name);
+                return emitted;
+            }
+            Buffer call;
+            buffer_init(&call);
+            buffer_format(&call, "stage2_command_stderr(%s)", emitted);
+            free(emitted);
+            free(name);
+            return call.data;
+        }
         if (
             open < end && token_equal(source, open, "(") &&
             strcmp(name, "to_text") == 0
@@ -11524,6 +11585,11 @@ static int64_t builtin_arity(const char *name) {
          * `Text`, `text` the carrier and a byte range. */
         {"stage2_bytes_assign_text", 2},
         {"stage2_bytes_text", 3},
+        /* #1666. The bounded C11 command surface: a zero-argument count, a
+         * one-argument operand read, and a one-argument standard-error line. */
+        {"stage2_command_operand_count", 0},
+        {"stage2_command_operand_text", 1},
+        {"stage2_command_stderr", 1},
         {"starts_with", 2},
         {"text_slice", 3},
         {"to_text", 1},
@@ -11612,6 +11678,12 @@ static const char *builtin_parameter_types(const char *name) {
         {"stage2_bytes_append_range", "Bytes|Bytes|Int|Int"},
         {"stage2_bytes_assign_text", "Bytes|Text"},
         {"stage2_bytes_text", "Bytes|Int|Int"},
+        /* #1666. The bounded C11 command surface. The count is zero-argument,
+         * the operand read takes an `Int` index, and the standard-error line
+         * takes the `Text` it writes. */
+        {"stage2_command_operand_count", ""},
+        {"stage2_command_operand_text", "Int"},
+        {"stage2_command_stderr", "Text"},
         {"starts_with", "Text|Text"},
         {"text_slice", "Text|Int|Int"},
         {"to_text", "Int"},
@@ -13118,6 +13190,9 @@ static char *validate_core_calls(const char *source, const char *hir) {
                         strcmp(name, "to_text") == 0 ||
                         strcmp(name, "stage2_bytes_empty") == 0 ||
                         strcmp(name, "stage2_bytes_assign_zeroed") == 0 ||
+                        strcmp(name, "stage2_command_operand_count") == 0 ||
+                        strcmp(name, "stage2_command_operand_text") == 0 ||
+                        strcmp(name, "stage2_command_stderr") == 0 ||
                         bytes_family_builtin(name)
                     ) {
                         expected = builtin_expected;
@@ -18111,6 +18186,13 @@ static const char *builtin_return_type(const char *name) {
          * driver. */
         {"stage2_bytes_assign_text", "Void"},
         {"stage2_bytes_text", "Text"},
+        /* #1666. The bounded C11 command surface. The count and the operand
+         * read are ordinary values; the standard-error line returns the `Int`
+         * status #1665's Q6 records, so a failure is a value a program can
+         * observe rather than only a terminal diagnostic. */
+        {"stage2_command_operand_count", "Int"},
+        {"stage2_command_operand_text", "Text"},
+        {"stage2_command_stderr", "Int"},
         {"starts_with", "Bool"},
         {"text_slice", "Text"},
         {"to_text", "Text"},
@@ -30087,6 +30169,14 @@ static char *lower_c_body(
      * only for a source that can reach them. `calloc`/`free` in every program
      * is degradation the call-arguments gate correctly refuses. */
     bool uses_bytes = source_uses_bytes(source, hir);
+    /* #1666. The bounded C11 command surface is emitted only for a source
+     * that can reach it, the way the Bytes carrier is: a program that never
+     * spells `stage2_command_` keeps `int main(void)` and carries no argument
+     * globals, so a program using neither surface is byte-for-byte what it
+     * was before. The test is the same raw-source substring test in both
+     * halves of the pair, so the two cannot disagree about whether to emit
+     * the surface. */
+    bool uses_command = strstr(source, "stage2_command_") != NULL;
     /* #946: the move rule runs before the assertion, so a use-after-move is
      * reported as itself rather than as whatever the erased statement leaves
      * behind. */
@@ -30427,7 +30517,12 @@ static char *lower_c_body(
         if (is_main) {
             buffer_append(
                 &bodies,
-                "int main(void) {\n"
+                uses_command
+                    ? "int main(int argc, char **argv) {\n"
+                    : "int main(void) {\n"
+            );
+            buffer_append(
+                &bodies,
                 "    (void)kofun_failed;\n"
                 "    (void)kofun_add;\n"
                 "    (void)kofun_sub;\n"
@@ -30444,6 +30539,13 @@ static char *lower_c_body(
                 "    (void)kofun_bit_rotr;\n"
                 "    (void)kofun_bit_wrapping_add;\n"
             );
+            if (uses_command) {
+                buffer_append(
+                    &bodies,
+                    "    kofun_command_argc = (int64_t)argc;\n"
+                    "    kofun_command_argv = argv;\n"
+                );
+            }
             {
                 char *references = emit_function_references(source);
                 buffer_append(&bodies, references);
@@ -30961,6 +31063,57 @@ static char *lower_c_body(
         "    memcpy(slot, left, left_width); memcpy(slot + left_width, right, right_width);\n"
         "    slot[left_width + right_width] = '\\0'; return slot;\n"
         "}\n"
+    );
+    /* #1666. The bounded C11 command surface, emitted only for a source that
+     * can reach it. The operand count, the indexed operand read, and the
+     * standard-error line all live here; the argument globals are seeded in
+     * `main`, which only takes `argc`/`argv` when this block is emitted. */
+    if (uses_command) {
+        buffer_append(
+            &output,
+            "enum {\n"
+            "    KOFUN_COMMAND_OPERAND_LIMIT = 256,\n"
+            "    KOFUN_COMMAND_OPERAND_BYTES = 255\n"
+            "};\n"
+            "static int64_t kofun_command_argc;\n"
+            "static char **kofun_command_argv;\n"
+            "static inline int64_t stage2_command_operand_count(void) {\n"
+            "    if (kofun_command_argc > KOFUN_COMMAND_OPERAND_LIMIT) {\n"
+            "        kofun_error(\"error[R034]: bounded command operand count exceeds 256\");\n"
+            "        return 0;\n"
+            "    }\n"
+            "    return kofun_command_argc;\n"
+            "}\n"
+            "static inline const char *stage2_command_operand_text(int64_t index) {\n"
+            "    if (index < 0 || index >= kofun_command_argc) {\n"
+            "        kofun_error(\"error[R035]: bounded command operand index out of range\");\n"
+            "        return \"\";\n"
+            "    }\n"
+            "    size_t width = strlen(kofun_command_argv[index]);\n"
+            "    if (width > KOFUN_COMMAND_OPERAND_BYTES) {\n"
+            "        kofun_error(\"error[R036]: bounded command operand exceeds 255 bytes\");\n"
+            "        return \"\";\n"
+            "    }\n"
+            "    char *slot = kofun_text_temporary();\n"
+            "    if (slot == NULL) return \"\";\n"
+            "    memcpy(slot, kofun_command_argv[index], width);\n"
+            "    slot[width] = '\\0';\n"
+            "    return slot;\n"
+            "}\n"
+            "static inline int64_t stage2_command_stderr(const char *text) {\n"
+            "    size_t width = strlen(text);\n"
+            "    if (width > KOFUN_COMMAND_OPERAND_BYTES) {\n"
+            "        kofun_error(\"error[R037]: bounded command stderr line exceeds 255 bytes\");\n"
+            "        return 1;\n"
+            "    }\n"
+            "    fwrite(text, 1, width, stderr);\n"
+            "    fputc('\\n', stderr);\n"
+            "    return 0;\n"
+            "}\n"
+        );
+    }
+    buffer_append(
+        &output,
         "static inline int64_t kofun_add(int64_t a, int64_t b) {\n"
         "    int64_t r; if (__builtin_add_overflow(a, b, &r)) {\n"
         "        kofun_error(\"error[R010]: integer overflow in operator `+`\"); return 0;\n"

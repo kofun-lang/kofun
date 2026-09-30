@@ -1,0 +1,7 @@
+# #1666. A program receives at most 256 operands. The gate supplies 257 -- the
+# program name plus 256 arguments -- so the count is refused rather than
+# truncated to 256, and nothing prints after the diagnostic.
+fn main() -> Int {
+    print(stage2_command_operand_count())
+    return 0
+}

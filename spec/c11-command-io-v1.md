@@ -17,6 +17,21 @@ the `#1243 → #1244/#1246 → #1536` authority chain lands and a C11
 arguments/stdio grant derived from `RootAuthority` exists (the grant #1293
 option A describes). Until then #1666 and #1667 do not wait on #1536.
 
+## Source surface (#1666, gate `task command-operands`)
+
+The three operations #1666 lowers on the C11 Stage 2 Core path are named here
+so the specification and the pair cannot drift into different spellings:
+
+- `stage2_command_operand_count() -> Int` — the operand count, including
+  `argv[0]`;
+- `stage2_command_operand_text(index: Int) -> Text` — one operand;
+- `stage2_command_stderr(text: Text) -> Int` — the standard-error line's
+  status, `0` on success.
+
+Their runtime refusals are R034 (count over 256), R035 (index out of range),
+R036 (operand over 255 bytes), and R037 (line over 255 bytes). `args()` keeps
+its own `List[Text]` disposition and is not an operand alias.
+
 ## Operands (#1666, gate `task command-operands`)
 
 - **An operand is `Text`.** A normative program observes operands as `Text`

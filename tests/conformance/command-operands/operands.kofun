@@ -1,0 +1,14 @@
+# #1666. The operand surface, as decidated by #1665 and recorded in
+# spec/c11-command-io-v1.md. The count includes `argv[0]`, which is observable;
+# the gate runs this with 0, 1 and 3 operands after the program name and
+# compares every printed line to the process's real `argv`, so a truncation,
+# a reorder, or a dropped empty operand fails.
+fn main() -> Int {
+    let count = stage2_command_operand_count()
+    let mut index = 0
+    while index < count {
+        print(stage2_command_operand_text(index))
+        index = index + 1
+    }
+    return 0
+}

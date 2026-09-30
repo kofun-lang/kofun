@@ -1,0 +1,10 @@
+# #1666. `args()` keeps its own disposition on the ordinary Core path: it is the
+# profile's `List[Text]` surface, which this bounded C11 slice does not execute,
+# so it stays `E2S10` with exit 3 rather than becoming an operand alias. The
+# operand surface is named `stage2_command_operand_count` /
+# `stage2_command_operand_text` instead. The gate pins that this expectation was
+# moved into the new gate rather than deleted.
+fn main() -> Int {
+    args()
+    return 0
+}
