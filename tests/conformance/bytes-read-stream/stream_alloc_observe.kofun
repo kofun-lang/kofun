@@ -1,0 +1,12 @@
+# #1667. A spent allocator is observable too: the docstring above records why
+# `stage2_bytes_read_file` ends the program on R028, and this surface instead
+# reports the failure as the negative status #1665 selects. The gate compiles
+# the same emitted C with `KOFUN_BYTES_INJECT_ALLOC_BUDGET=0` so the carrier's
+# growth cannot allocate; the program must print the open status `0` and then
+# the read status `-2`, and exit with the status it chooses.
+fn main() -> Int {
+    let bytes = stage2_bytes_empty()
+    print(stage2_bytes_stream_open("message.bin"))
+    print(stage2_bytes_stream_read(bytes))
+    return 0
+}

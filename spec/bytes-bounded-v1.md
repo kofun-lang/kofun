@@ -259,9 +259,12 @@ a compiled program has no driver, and a read that failed silently would leave
 it digesting the carrier it started with as if it were the file. The file read
 is therefore the one operation whose refusal a program meets as a named exit,
 and `task bytes-read-file` proves each of the three by supplying the file,
-the missing path, and a spent allocator. It does not establish reading a file
-in chunks, a file longer than the ceiling in any form, or a path that has
-crossed an attenuated filesystem authority (§8).
+the missing path, and a spent allocator. The read stays whole-file and at most
+65,536 bytes; reading an input of any length in bounded chunks is the separate
+open-stream surface #1667 adds, specified in
+[`c11-command-io-v1.md`](c11-command-io-v1.md) §"Reads past the ceiling" and
+gated by `task bytes-read-stream`. A path that has crossed an attenuated
+filesystem authority remains out of scope (§8).
 
 ### 6.7 The Text bridge
 
@@ -344,9 +347,14 @@ works is the kind of published promise this repository gates against:
   file handle for it to take. #1499's thread records that prerequisite as
   unowned. Until it lands, the read is a bounded host-boundary operation of
   the C11 backend, not a capability of the language.
-- **A file read is whole-file and at most 65,536 bytes.** There is no chunked
-  read over an open handle, so a file longer than the ceiling cannot be
-  digested by a compiled program at all; it is refused by name (§6.6).
+- **A file read is whole-file and at most 65,536 bytes.** Reading an input of
+  any length is the bounded chunked surface #1667 adds
+  ([`c11-command-io-v1.md`](c11-command-io-v1.md) §"Reads past the ceiling"),
+  gated by `task bytes-read-stream`: one open stream at a time, a regular file
+  named by path or standard input, at most 65,536 bytes per read, end of input
+  a zero-byte chunk, and a failed open, unreadable stream, or spent allocator
+  an `Int` status rather than a terminal diagnostic. The single positional
+  `read_file` keeps its own ceiling, proved by `task bounded-bytes`.
 - **The Text bridge is one Text at a time and at most 255 bytes each way.**
   It is the bounded Text profile's limit, not a new one, and both directions
   now enforce it by name: `assign_text` refuses an over-bound input with `R033`

@@ -32,6 +32,27 @@ Their runtime refusals are R034 (count over 256), R035 (index out of range),
 R036 (operand over 255 bytes), and R037 (line over 255 bytes). `args()` keeps
 its own `List[Text]` disposition and is not an operand alias.
 
+## Source surface (#1667, gate `task bytes-read-stream`)
+
+The three operations #1667 lowers on the C11 Stage 2 Core path are named here
+so the specification and the pair cannot drift into different spellings. They
+are a family in the `stage2_bytes_*` style, not more names in the mutation
+table, because the open and the standard-input selection take no carrier:
+
+- `stage2_bytes_stream_open(path: Text) -> Int` — publishes the named file as
+  the one open stream, `0` when it opens and `1` when it is refused;
+- `stage2_bytes_stream_stdin() -> Int` — publishes standard input as the one
+  open stream, always `0`;
+- `stage2_bytes_stream_read(carrier: Bytes) -> Int` — replaces the carrier's
+  bytes with at most 65,536 from the open stream and returns the count, `0` at
+  end of input, and a negative status on a read error (`-1`) or a spent
+  allocator (`-2`).
+
+Opening a new stream releases the previous one; a standard input selected this
+way is never closed. No operation in the family is a registered R-code: its
+failures are the statuses above, which is what #1665's failure observability
+records, and a program keeps running past each one.
+
 ## Operands (#1666, gate `task command-operands`)
 
 - **An operand is `Text`.** A normative program observes operands as `Text`

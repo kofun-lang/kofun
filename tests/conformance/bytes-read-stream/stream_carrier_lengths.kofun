@@ -1,0 +1,16 @@
+# #1667. No read places more than 65,536 bytes in the carrier. This program
+# reads `large.bin` one chunk at a time and prints the carrier length after
+# every read, so the gate can assert every printed length is at or under the
+# ceiling rather than trusting the return value alone. The final `0` is the
+# end-of-input chunk.
+fn main() -> Int {
+    let bytes = stage2_bytes_empty()
+    print(stage2_bytes_stream_open("large.bin"))
+    let mut n = stage2_bytes_stream_read(bytes)
+    while n > 0 {
+        print(stage2_bytes_len(bytes))
+        n = stage2_bytes_stream_read(bytes)
+    }
+    print(n)
+    return 0
+}

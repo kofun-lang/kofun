@@ -1,0 +1,15 @@
+# #1667. The three bounded chunked-read operations on a named file, run from
+# the directory that holds it: the open status, one chunk's byte count, the
+# carrier length after the read, and the first byte. The length assertion is
+# repeated under a longer input by `stream_carrier_lengths.kofun`, where more
+# than one chunk is read.
+fn main() -> Int {
+    let bytes = stage2_bytes_empty()
+    let opened = stage2_bytes_stream_open("message.bin")
+    print(opened)
+    let n = stage2_bytes_stream_read(bytes)
+    print(n)
+    print(stage2_bytes_len(bytes))
+    print(stage2_bytes_byte_at(bytes, 0))
+    return 0
+}
