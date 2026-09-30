@@ -1191,6 +1191,14 @@ tasks:
     cmds:
       - "sh tests/conformance/bytes-read-file/run.sh"
 
+  # #1667. The chunked read past the 65,536-byte read_file ceiling, from a
+  # named file or from standard input, with end of input an observable
+  # zero-byte chunk and a failure an Int status the program continues past.
+  bytes-read-stream:
+    desc: "Verify a compiled program digests any-length input in bounded chunks, from a file or standard input, observing failed reads as statuses"
+    cmds:
+      - "sh tests/conformance/bytes-read-stream/run.sh"
+
   command-operands:
     desc: "Verify a compiled program receives its operands and writes a line to standard error"
     cmds:
@@ -1205,11 +1213,12 @@ tasks:
       - "sh tests/conformance/bytes-text/run.sh"
 
   bounded-bytes:
-    desc: "Verify the fixture-bounded Bytes[65536] carrier, mutation, file-read, and Text-bridge checkpoint"
+    desc: "Verify the fixture-bounded Bytes[65536] carrier, mutation, file-read, stream-read, and Text-bridge checkpoint"
     cmds:
       - task: bytes-carrier
       - task: bytes-mutation
       - task: bytes-read-file
+      - task: bytes-read-stream
       - task: bytes-text
 
   call-arguments:

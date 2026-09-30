@@ -1,0 +1,18 @@
+# #1667. Standard input is the same one open stream the file path publishes:
+# selecting it returns `0`, and the loop digests the piped bytes until a
+# zero-byte chunk reports end of input. The gate pipes each input to this
+# program and compares the printed total against the input's own length, so a
+# read that dropped or duplicated a chunk is visible.
+fn main() -> Int {
+    let bytes = stage2_bytes_empty()
+    let opened = stage2_bytes_stream_stdin()
+    print(opened)
+    let mut total = 0
+    let mut n = stage2_bytes_stream_read(bytes)
+    while n > 0 {
+        total = total + stage2_bytes_len(bytes)
+        n = stage2_bytes_stream_read(bytes)
+    }
+    print(total)
+    return 0
+}

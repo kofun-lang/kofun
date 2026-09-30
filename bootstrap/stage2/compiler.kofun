@@ -5553,8 +5553,21 @@ fn bytes_text_builtin(name: Text) -> Bool {
     name == "stage2_bytes_text"
 }
 
+# #1667. The bounded chunked-read surface: open a file as the one open stream,
+# select standard input as it, and read a chunk into the carrier. It is its own
+# family for the reason the Text bridge is one -- `bytes-mutation` derives the
+# mutation vocabulary from `bytes_mutation_builtin`, so these three rows must
+# not live there -- but it lowers through the same call shape, which is why
+# `bytes_family_builtin` is what the dispatch sites read.
+fn bytes_stream_builtin(name: Text) -> Bool {
+    return name == "stage2_bytes_stream_open" ||
+    name == "stage2_bytes_stream_stdin" ||
+    name == "stage2_bytes_stream_read"
+}
+
 fn bytes_family_builtin(name: Text) -> Bool {
-    return bytes_mutation_builtin(name) || bytes_text_builtin(name)
+    return bytes_mutation_builtin(name) || bytes_text_builtin(name) ||
+    bytes_stream_builtin(name)
 }
 
 # #1560. Whether a direct call spelling denotes a compiler builtin after the
@@ -5733,6 +5746,12 @@ fn bytes_mutation_carriers(name: Text) -> Int {
     if name == "stage2_bytes_append_range" {
         return 2
     }
+    # #1667. The stream open and the standard-input selection take no carrier;
+    # only the chunk read does, and it edits the carrier it fills.
+    if name == "stage2_bytes_stream_open" ||
+       name == "stage2_bytes_stream_stdin" {
+        return 0
+    }
     if bytes_family_builtin(name) {
         return 1
     }
@@ -5762,6 +5781,7 @@ fn bytes_mutation_required_access(name: Text, index: Int) -> Text {
        name == "stage2_bytes_append" ||
        name == "stage2_bytes_append_self" ||
        name == "stage2_bytes_read_file" ||
+       name == "stage2_bytes_stream_read" ||
        name == "stage2_bytes_assign_text" {
         return "edit"
     }
@@ -8012,6 +8032,16 @@ fn builtin_arity(name: Text) -> Int {
        name == "stage2_command_stderr" {
         return 1
     }
+    # #1667. The chunked-read surface: selecting standard input is the
+    # zero-argument operation; opening a path and reading a chunk each take
+    # one argument.
+    if name == "stage2_bytes_stream_stdin" {
+        return 0
+    }
+    if name == "stage2_bytes_stream_open" ||
+       name == "stage2_bytes_stream_read" {
+        return 1
+    }
     if name == "stage2_bytes_assign_zeroed" {
         return 2
     }
@@ -8072,6 +8102,17 @@ fn builtin_parameter_types(name: Text) -> Text {
     }
     if name == "stage2_command_stderr" {
         return "Text"
+    }
+    # #1667. Selecting standard input takes no argument; opening a path takes a
+    # `Text`; the chunk read takes the `Bytes` carrier it fills.
+    if name == "stage2_bytes_stream_stdin" {
+        return ""
+    }
+    if name == "stage2_bytes_stream_open" {
+        return "Text"
+    }
+    if name == "stage2_bytes_stream_read" {
+        return "Bytes"
     }
     if name == "stage2_bytes_assign_zeroed" {
         return "Bytes|Int"
@@ -13442,6 +13483,14 @@ fn builtin_return_type(name: Text) -> Text {
     }
     if name == "stage2_command_operand_text" {
         return "Text"
+    }
+    # #1667. All three chunked-read operations report an `Int`: the open status,
+    # the standard-input status, and the chunk's byte count (0 at end of
+    # stream, negative for a failure the program continues past).
+    if name == "stage2_bytes_stream_open" ||
+       name == "stage2_bytes_stream_stdin" ||
+       name == "stage2_bytes_stream_read" {
+        return "Int"
     }
     if name == "contains" || name == "is_digit" || name == "is_space" ||
        name == "is_xid_continue" || name == "starts_with" {
@@ -20520,6 +20569,58 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
         "    return 0;\n" +
         "}\n"
     }
+    # #1667. The bounded chunked-read surface, emitted only for a source that
+    # can reach it, the way the Bytes and command surfaces are. One stream is
+    # open at a time: `stream_open` publishes a file named by path, and
+    # `stream_stdin` publishes standard input. `stream_read` refills the
+    # carrier -- never more than its 65,536-byte ceiling -- and reports the
+    # count, 0 at end of stream, or a negative status a program can observe
+    # and keep running past. The test is the same raw-source substring test in
+    # both halves of the pair.
+    let mut stream_prelude = ""
+    if contains(source, "stage2_bytes_stream_") {
+        stream_prelude =
+        "static FILE *kofun_stream_current;\n" +
+        "static int kofun_stream_is_stdin;\n" +
+        "static inline void kofun_stream_release(void) {\n" +
+        "    if (kofun_stream_current != NULL && !kofun_stream_is_stdin) {\n" +
+        "        fclose(kofun_stream_current);\n" +
+        "    }\n" +
+        "    kofun_stream_current = NULL;\n" +
+        "    kofun_stream_is_stdin = 0;\n" +
+        "}\n" +
+        "static inline int64_t stage2_bytes_stream_open(const char *path) {\n" +
+        "    kofun_stream_release();\n" +
+        "    FILE *opened = fopen(path, \"rb\");\n" +
+        "    if (opened == NULL) {\n" +
+        "        return 1;\n" +
+        "    }\n" +
+        "    kofun_stream_current = opened;\n" +
+        "    return 0;\n" +
+        "}\n" +
+        "static inline int64_t stage2_bytes_stream_stdin(void) {\n" +
+        "    kofun_stream_release();\n" +
+        "    kofun_stream_current = stdin;\n" +
+        "    kofun_stream_is_stdin = 1;\n" +
+        "    return 0;\n" +
+        "}\n" +
+        "static inline int64_t stage2_bytes_stream_read(KofunBytesValue *value) {\n" +
+        "    if (kofun_stream_current == NULL) {\n" +
+        "        return 0 - 1;\n" +
+        "    }\n" +
+        "    KofunBytesStatus grown = kofun_bytes_grow(value, KOFUN_BYTES_CAPACITY_LIMIT);\n" +
+        "    if (grown.tag != KOFUN_BYTES_SUCCEEDED) {\n" +
+        "        return 0 - 2;\n" +
+        "    }\n" +
+        "    size_t got = fread(value->data, 1, (size_t)KOFUN_BYTES_CAPACITY_LIMIT, kofun_stream_current);\n" +
+        "    if (ferror(kofun_stream_current)) {\n" +
+        "        value->length = UINT64_C(0);\n" +
+        "        return 0 - 1;\n" +
+        "    }\n" +
+        "    value->length = (uint64_t)got;\n" +
+        "    return (int64_t)got;\n" +
+        "}\n"
+    }
     # #1662. After the move rules (#946 still runs first) and before every
     # typing and lowering validator: each of those reads the expression around
     # a `?` as if the `?` were not there, so `x?` with `x: Int?` was an
@@ -20856,6 +20957,7 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     "    slot[left_width + right_width] = '\\0'; return slot;\n" +
     "}\n" +
     command_prelude +
+    stream_prelude +
     "static inline int64_t kofun_add(int64_t a, int64_t b) {\n" +
     "    int64_t r; if (__builtin_add_overflow(a, b, &r)) {\n" +
     "        kofun_error(\"error[R010]: integer overflow in operator `+`\"); return 0;\n" +

@@ -1,0 +1,87 @@
+# #1667. Appended by tests/conformance/bytes-read-stream/run.sh to the SHA-256
+# block it extracts from bootstrap/stage2/compiler.kofun. The input is read one
+# chunk at a time -- the chunk is at most 65,536 bytes, a multiple of 64 except
+# the last, so only the final chunk leaves a partial block -- and every whole
+# block is absorbed with the pair's own `sha256_absorb`. The one line that
+# differs between the file and the standard-input programs is @@OPEN@@.
+
+fn stream_block_from_carrier(read message: Bytes, base: Int) -> List[Int] {
+    let mut bytes: List[Int] = [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    ]
+    let mut offset = 0
+    while offset < 64 {
+        bytes[offset] = stage2_bytes_byte_at(message, base + offset)
+        offset = offset + 1
+    }
+    return bytes
+}
+
+# The final block, padded: the carried bytes, then one `0x80`, then zeros, then
+# the whole message's bit length in eight big-endian bytes. `tail_len` is in
+# `0..63`, so `0x80` needs a second block exactly when `tail_len >= 56`. The
+# padding is written inside `stream_digest` rather than in a helper because a
+# `List[Int]` parameter is a read view and the pad mutates it.
+fn stream_digest() -> List[Int] {
+    let message = stage2_bytes_empty()
+    let mut state = sha256_initial_state()
+    let mut tail: List[Int] = [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    ]
+    let mut tail_len = 0
+    let mut total = 0
+    let mut n = stage2_bytes_stream_read(message)
+    while n > 0 {
+        let blocks = n // 64
+        let mut block = 0
+        while block < blocks {
+            state = sha256_absorb(
+                state,
+                stream_block_from_carrier(message, block * 64)
+            )
+            block = block + 1
+        }
+        let mut rest = blocks * 64
+        let mut carried = 0
+        while rest < n {
+            tail[carried] = stage2_bytes_byte_at(message, rest)
+            carried = carried + 1
+            rest = rest + 1
+        }
+        tail_len = carried
+        total = total + n
+        n = stage2_bytes_stream_read(message)
+    }
+    tail[tail_len] = 128
+    let mut zero = tail_len + 1
+    while zero < 64 {
+        tail[zero] = 0
+        zero = zero + 1
+    }
+    if tail_len >= 56 {
+        state = sha256_absorb(state, tail)
+        let mut reset = 0
+        while reset < 64 {
+            tail[reset] = 0
+            reset = reset + 1
+        }
+    }
+    let mut place = 0
+    while place < 8 {
+        tail[56 + place] = total.shl(3).shr((7 - place) * 8).and(255)
+        place = place + 1
+    }
+    return sha256_absorb(state, tail)
+}
+
+fn main() -> Int {
+@@OPEN@@
+    print(sha256_hex(stream_digest()))
+    return 0
+}

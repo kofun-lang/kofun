@@ -11590,6 +11590,11 @@ static int64_t builtin_arity(const char *name) {
         {"stage2_command_operand_count", 0},
         {"stage2_command_operand_text", 1},
         {"stage2_command_stderr", 1},
+        /* #1667. The chunked-read surface: selecting standard input takes no
+         * argument; opening a path and reading a chunk each take one. */
+        {"stage2_bytes_stream_stdin", 0},
+        {"stage2_bytes_stream_open", 1},
+        {"stage2_bytes_stream_read", 1},
         {"starts_with", 2},
         {"text_slice", 3},
         {"to_text", 1},
@@ -11684,6 +11689,11 @@ static const char *builtin_parameter_types(const char *name) {
         {"stage2_command_operand_count", ""},
         {"stage2_command_operand_text", "Int"},
         {"stage2_command_stderr", "Text"},
+        /* #1667. Selecting standard input takes no argument; opening a path
+         * takes a `Text`; the chunk read takes the `Bytes` carrier it fills. */
+        {"stage2_bytes_stream_stdin", ""},
+        {"stage2_bytes_stream_open", "Text"},
+        {"stage2_bytes_stream_read", "Bytes"},
         {"starts_with", "Text|Text"},
         {"text_slice", "Text|Int|Int"},
         {"to_text", "Int"},
@@ -13370,8 +13380,34 @@ static bool bytes_text_builtin(const char *name) {
     return false;
 }
 
+/*
+ * #1667. The bounded chunked-read surface: open a file as the one open stream,
+ * select standard input as it, and read a chunk into the carrier. It is its own
+ * family for the reason the Text bridge is one -- `bytes-mutation` derives the
+ * mutation vocabulary from the mutation table, so these three rows must not
+ * live there -- but it lowers through the same call shape.
+ */
+static const char *const kofun_bytes_stream_operations[] = {
+    "stage2_bytes_stream_open",
+    "stage2_bytes_stream_stdin",
+    "stage2_bytes_stream_read",
+};
+#define KOFUN_BYTES_STREAM_OPERATION_COUNT \
+    (sizeof(kofun_bytes_stream_operations) / \
+     sizeof(kofun_bytes_stream_operations[0]))
+
+static bool bytes_stream_builtin(const char *name) {
+    for (size_t index = 0; index < KOFUN_BYTES_STREAM_OPERATION_COUNT; ++index) {
+        if (strcmp(name, kofun_bytes_stream_operations[index]) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static bool bytes_family_builtin(const char *name) {
-    return bytes_mutation_builtin(name) || bytes_text_builtin(name);
+    return bytes_mutation_builtin(name) || bytes_text_builtin(name) ||
+        bytes_stream_builtin(name);
 }
 
 /*
@@ -13590,6 +13626,12 @@ static char *validate_bytes_private_results(
  */
 static int64_t bytes_mutation_carriers(const char *name) {
     if (strcmp(name, "stage2_bytes_append_range") == 0) return 2;
+    /* #1667. The stream open and the standard-input selection take no carrier;
+     * only the chunk read does, and it edits the carrier it fills. */
+    if (
+        strcmp(name, "stage2_bytes_stream_open") == 0 ||
+        strcmp(name, "stage2_bytes_stream_stdin") == 0
+    ) return 0;
     if (bytes_family_builtin(name)) return 1;
     return 0;
 }
@@ -13620,6 +13662,7 @@ static const char *bytes_mutation_required_access(
         strcmp(name, "stage2_bytes_append") == 0 ||
         strcmp(name, "stage2_bytes_append_self") == 0 ||
         strcmp(name, "stage2_bytes_read_file") == 0 ||
+        strcmp(name, "stage2_bytes_stream_read") == 0 ||
         strcmp(name, "stage2_bytes_assign_text") == 0
     ) return "edit";
     return "";
@@ -18193,6 +18236,12 @@ static const char *builtin_return_type(const char *name) {
         {"stage2_command_operand_count", "Int"},
         {"stage2_command_operand_text", "Text"},
         {"stage2_command_stderr", "Int"},
+        /* #1667. All three chunked-read operations report an `Int`: the open
+         * status, the standard-input status, and the chunk's byte count (0 at
+         * end of stream, negative for a failure the program continues past). */
+        {"stage2_bytes_stream_open", "Int"},
+        {"stage2_bytes_stream_stdin", "Int"},
+        {"stage2_bytes_stream_read", "Int"},
         {"starts_with", "Bool"},
         {"text_slice", "Text"},
         {"to_text", "Text"},
@@ -30177,6 +30226,10 @@ static char *lower_c_body(
      * halves of the pair, so the two cannot disagree about whether to emit
      * the surface. */
     bool uses_command = strstr(source, "stage2_command_") != NULL;
+    /* #1667. The bounded chunked-read surface is emitted only for a source
+     * that can reach it, the way the Bytes and command surfaces are. The test
+     * is the same raw-source substring test in both halves of the pair. */
+    bool uses_stream = strstr(source, "stage2_bytes_stream_") != NULL;
     /* #946: the move rule runs before the assertion, so a use-after-move is
      * reported as itself rather than as whatever the erased statement leaves
      * behind. */
@@ -31109,6 +31162,57 @@ static char *lower_c_body(
             "    fwrite(text, 1, width, stderr);\n"
             "    fputc('\\n', stderr);\n"
             "    return 0;\n"
+            "}\n"
+        );
+    }
+    /* #1667. The bounded chunked-read surface, emitted only for a source that
+     * can reach it. One stream is open at a time: `stream_open` publishes a
+     * file named by path, and `stream_stdin` publishes standard input.
+     * `stream_read` refills the carrier -- never more than its 65,536-byte
+     * ceiling -- and reports the count, 0 at end of stream, or a negative
+     * status a program can observe and keep running past. */
+    if (uses_stream) {
+        buffer_append(
+            &output,
+            "static FILE *kofun_stream_current;\n"
+            "static int kofun_stream_is_stdin;\n"
+            "static inline void kofun_stream_release(void) {\n"
+            "    if (kofun_stream_current != NULL && !kofun_stream_is_stdin) {\n"
+            "        fclose(kofun_stream_current);\n"
+            "    }\n"
+            "    kofun_stream_current = NULL;\n"
+            "    kofun_stream_is_stdin = 0;\n"
+            "}\n"
+            "static inline int64_t stage2_bytes_stream_open(const char *path) {\n"
+            "    kofun_stream_release();\n"
+            "    FILE *opened = fopen(path, \"rb\");\n"
+            "    if (opened == NULL) {\n"
+            "        return 1;\n"
+            "    }\n"
+            "    kofun_stream_current = opened;\n"
+            "    return 0;\n"
+            "}\n"
+            "static inline int64_t stage2_bytes_stream_stdin(void) {\n"
+            "    kofun_stream_release();\n"
+            "    kofun_stream_current = stdin;\n"
+            "    kofun_stream_is_stdin = 1;\n"
+            "    return 0;\n"
+            "}\n"
+            "static inline int64_t stage2_bytes_stream_read(KofunBytesValue *value) {\n"
+            "    if (kofun_stream_current == NULL) {\n"
+            "        return 0 - 1;\n"
+            "    }\n"
+            "    KofunBytesStatus grown = kofun_bytes_grow(value, KOFUN_BYTES_CAPACITY_LIMIT);\n"
+            "    if (grown.tag != KOFUN_BYTES_SUCCEEDED) {\n"
+            "        return 0 - 2;\n"
+            "    }\n"
+            "    size_t got = fread(value->data, 1, (size_t)KOFUN_BYTES_CAPACITY_LIMIT, kofun_stream_current);\n"
+            "    if (ferror(kofun_stream_current)) {\n"
+            "        value->length = UINT64_C(0);\n"
+            "        return 0 - 1;\n"
+            "    }\n"
+            "    value->length = (uint64_t)got;\n"
+            "    return (int64_t)got;\n"
             "}\n"
         );
     }

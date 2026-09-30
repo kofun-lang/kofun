@@ -1,0 +1,14 @@
+# #1667. An unreadable path is observable too, and the program keeps running.
+# The gate supplies a directory named `unreadable.d`; on a platform where
+# `fopen` refuses it the open status is `1`, and where `fopen` accepts it the
+# following read is the failure (`-1`). Either way the fixture prints the two
+# statuses and exits with the status it chooses, rather than ending on a
+# diagnostic.
+fn main() -> Int {
+    let bytes = stage2_bytes_empty()
+    let opened = stage2_bytes_stream_open("unreadable.d")
+    let n = stage2_bytes_stream_read(bytes)
+    print(opened)
+    print(n)
+    return 0
+}

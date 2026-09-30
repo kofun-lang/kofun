@@ -1,0 +1,13 @@
+# #1667. A failed open is a status the program continues past, not a terminal
+# diagnostic: `missing.bin` does not exist, so the first status is `1`; the
+# second open succeeds with `0`, and the chunk that follows is read from the
+# present file rather than from the failed attempt. #1665 records this as the
+# `Int` status a failed command-I/O operation reports.
+fn main() -> Int {
+    let bytes = stage2_bytes_empty()
+    print(stage2_bytes_stream_open("missing.bin"))
+    print(stage2_bytes_stream_open("message.bin"))
+    let n = stage2_bytes_stream_read(bytes)
+    print(n)
+    return 0
+}
