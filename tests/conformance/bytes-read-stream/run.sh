@@ -351,7 +351,7 @@ cmp "$WORK/cli/probe.expected" "$WORK/cli/probe.out" >/dev/null ||
 node "$CASES/pair.mjs" "$COMPILER" "$WORK/pair" "$CASES"/*.kofun
 
 printf '%s\n' \
-    "PASS: a compiled program reads a file in 65,536-byte chunks and digests it with the pair's sha256_* functions, matching bin/kofun for 0, 65,535, 65,536, 65,537 and 131,073 bytes and for bootstrap/stage2/compiler.{kofun,c} read at run time" \
+    "PASS: a compiled program reads a file in 65,536-byte chunks and digests it with the pair's sha256_* functions, matching `kofun digest` for 0, 65,535, 65,536, 65,537 and 131,073 bytes and for bootstrap/stage2/compiler.{kofun,c} read at run time" \
     'PASS: the same program reading piped standard input matches bin/kofun at the same sizes, and no read places more than 65,536 bytes in the carrier' \
     'PASS: a mutant that stops after the first chunk is right at 65,536 bytes and wrong at 65,537, while the real program is right at both' \
     'PASS: a missing path, an unreadable path, and a spent allocator are each an Int status the program observes and keeps running past, and a program that opens no stream is unchanged'

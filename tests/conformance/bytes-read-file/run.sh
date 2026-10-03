@@ -160,6 +160,6 @@ digests four_blocks.bin
 digests at_bound.bin
 
 printf '%s\n' \
-    "PASS: a compiled program reads a file into a Bytes[65536] carrier and digests it with the pair's sha256_* functions, matching bin/kofun for an empty, a one-block, a four-block, and a 65536-byte file" \
+    "PASS: a compiled program reads a file into a Bytes[65536] carrier and digests it with the pair's sha256_* functions, matching `kofun digest` for an empty, a one-block, a four-block, and a 65536-byte file" \
     'PASS: a byte read outside the carrier, a missing path, a file over the 65536-byte bound, and a read under a spent allocator each end the program with exit 1 and exactly their registered runtime diagnostic (R025, R026, R027, R028), print nothing after it, and report identically on a second run' \
     'PASS: the allocation-refusal fixture reads its file under the ordinary allocator'
