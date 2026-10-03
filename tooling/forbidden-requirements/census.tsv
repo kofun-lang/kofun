@@ -149,6 +149,7 @@ cc	invoke	1	required-today	required	tests/conformance/bytes-read-stream/run.sh
 cc	invoke	5	required-today	required	tests/conformance/bytes-text/run.sh
 cc	invoke	2	required-today	required	tests/conformance/call-arguments/run.sh
 cc	invoke	1	required-today	required	tests/conformance/command-operands/run.sh
+cc	invoke	1	required-today	required	tests/conformance/record-bytes-fields/run.sh
 cc	invoke	5	required-today	required	tests/conformance/codegen/dense-enum-dispatch/run.sh
 cc	invoke	1	required-today	required	tests/conformance/concurrency/ownership/check.mjs
 cc	invoke	6	required-today	required	tests/conformance/const-generics/run.sh
@@ -303,6 +304,7 @@ node	invoke	1	required-today	unknown	tests/conformance/backends/wasm32-node.sh
 node	invoke	2	required-today	required	tests/conformance/bytes-read-stream/run.sh
 node	invoke	1	required-today	required	tests/conformance/call-arguments/run.sh
 node	invoke	2	required-today	required	tests/conformance/command-operands/run.sh
+node	invoke	2	required-today	required	tests/conformance/record-bytes-fields/run.sh
 node	invoke	1	required-today	required	tests/conformance/concurrency/ownership/run.sh
 node	invoke	4	required-today	required	tests/conformance/effects/pure-boundary/run.sh
 node	invoke	5	required-today	required	tests/conformance/effects/pure-io/run.sh
@@ -439,6 +441,7 @@ node	source	1	required-today	required	tests/conformance/aggregate-bridge/check-p
 node	source	1	required-today	required	tests/conformance/aggregate-bridge/check-sidecar.mjs
 node	source	1	required-today	required	tests/conformance/bytes-read-stream/pair.mjs
 node	source	1	required-today	required	tests/conformance/command-operands/pair.mjs
+node	source	1	required-today	required	tests/conformance/record-bytes-fields/pair.mjs
 node	source	1	required-today	required	tests/conformance/concurrency/ownership/check.mjs
 node	source	1	required-today	required	tests/conformance/concurrency/ownership/normalize.mjs
 node	source	1	required-today	required	tests/conformance/effects/pure-boundary/report.mjs
@@ -655,6 +658,7 @@ shell-build-driver	source	1	required-today	required	tests/conformance/bytes-read
 shell-build-driver	source	1	required-today	required	tests/conformance/bytes-text/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/call-arguments/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/command-operands/run.sh
+shell-build-driver	source	1	required-today	required	tests/conformance/record-bytes-fields/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/capabilities_test.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/check-capabilities.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/codegen/dense-enum-dispatch/run.sh

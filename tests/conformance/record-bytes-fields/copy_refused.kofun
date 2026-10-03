@@ -1,0 +1,16 @@
+# #1694. A copy of a record with a managed `Bytes` field is refused like any
+# other non-Copy owner: the second binding would alias unique-owner storage.
+# The inferred-`let` spelling.
+type Header = {
+    name: Bytes,
+    value: Bytes,
+}
+
+fn main() -> Int {
+    let name = stage2_bytes_empty()
+    let value = stage2_bytes_empty()
+    let a: Header = Header(name: name, value: value)
+    let b = a
+    print(stage2_bytes_len(b.name))
+    return 0
+}

@@ -1,0 +1,16 @@
+# #1694. The same copy, annotated. `let b: Header = a` must be refused by the
+# validation pass before any C is emitted, because the emitter's inferred-`let`
+# check does not see an annotation.
+type Header = {
+    name: Bytes,
+    value: Bytes,
+}
+
+fn main() -> Int {
+    let name = stage2_bytes_empty()
+    let value = stage2_bytes_empty()
+    let a: Header = Header(name: name, value: value)
+    let b: Header = a
+    print(stage2_bytes_len(b.name))
+    return 0
+}

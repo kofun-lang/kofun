@@ -423,21 +423,16 @@ done
 cmp "$WORK/repeat.1" "$WORK/repeat.2" ||
     fail 'the same refusal reported differently on a second run'
 
-# Two of the nine reasons have no source program that reaches them, and this
-# records which rule gets there first. `escaping store` and `escaping capture`
-# would need `Bytes` to be an admitted record field type and a capturable
-# binding; both are refused earlier, under messages that name the actual rule
-# rather than a backend limit.
-#
-# Asserting E2S170 for either would have produced a fixture that passes today
-# against a compiler that never implements that reason.
+# #1694 admits a `Bytes` record field as a managed inline carrier, so the shape
+# that used to stop at E2S32 now compiles. The two reasons `escaping store` and
+# `escaping capture` still have no source program that reaches them: a stored
+# `Bytes` field is admitted and is not an escaping store, and a captured `Bytes`
+# owner is refused earlier as E2S96.
 printf 'type Box = { held: Bytes }\nfn main() -> Int {\n    print(0)\n    return 0\n}\n' \
     >"$WORK/stored.kofun"
 "$ROOT/bin/kofun" build "$WORK/stored.kofun" -o "$WORK/stored.bin" \
-    >"$WORK/stored.stdout" 2>"$WORK/stored.stderr" &&
-    fail 'a Bytes record field was accepted'
-grep -q 'E2S32' "$WORK/stored.stdout" "$WORK/stored.stderr" ||
-    fail 'a Bytes record field no longer stops at E2S32; escaping store may now be reachable'
+    >"$WORK/stored.stdout" 2>"$WORK/stored.stderr" ||
+    fail 'a Bytes record field was refused after #1694 admitted it'
 
 printf 'fn apply(v: Int, f: Int -> Int) -> Int {\n    return f(v)\n}\nfn peek(read b: Bytes) -> Int {\n    return 1\n}\nfn main() -> Int {\n    let owned = stage2_bytes_empty()\n    print(apply(1, (x) => peek(owned)))\n    return 0\n}\n' \
     >"$WORK/captured.kofun"
@@ -456,5 +451,5 @@ printf '%s\n' \
     'PASS: the 0..8 status declaration is emitted once and carries no consumed tag' \
     'PASS: the take crossing and the terminal return are visible in the emitted C as take-then-release-then-return, and the injected allocation failure edge is sanitizer-clean' \
     'PASS: a refusal reports identically on a second run' \
-    'PASS: seven refusal shapes each report their own E2S170 reason and commit no C; escaping store and escaping capture are refused earlier, by E2S32 and E2S96' \
+    'PASS: seven refusal shapes each report their own E2S170 reason and commit no C; a stored Bytes field is admitted by #1694 and escaping capture is refused earlier by E2S96' \
     'PASS: read/edit/take temporary arguments refuse as E2S177 with no C or executable; argument 2 and the golden are pinned; all three missing-guard mutants restore the host-C lvalue failure'

@@ -1204,6 +1204,13 @@ tasks:
     cmds:
       - "sh tests/conformance/command-operands/run.sh"
 
+  # #1694. A `Bytes` field in a nominal record: the AggregateLayout kind and
+  # drop class #1258's Q4 fixed, with the borrowed `read` view the owner chose.
+  record-bytes-fields:
+    desc: "Verify a Bytes field in a nominal record constructs, reads as a borrowed view, moves whole, and refuses a copy"
+    cmds:
+      - "sh tests/conformance/record-bytes-fields/run.sh"
+
   # #1322. The Text bridge over the carrier: a Text in as its exact bytes, a
   # checked range out as Text, with range, limit, NUL, and UTF-8 refusals
   # named at runtime and the exact tag/detail contract proved in the emitted C.
@@ -1597,6 +1604,7 @@ tasks:
             authority-type-carrier \
             bounded-bytes \
             command-operands \
+            record-bytes-fields \
             while-list-int \
             else-if-chain \
             list-int-signatures \

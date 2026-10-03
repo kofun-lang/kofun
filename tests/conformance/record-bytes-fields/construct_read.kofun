@@ -1,0 +1,14 @@
+# #1694. A nominal record with a managed `Bytes` field constructs and reads the
+# field through a borrowed `read` view of the carrier the record still owns.
+type Header = {
+    name: Bytes,
+    value: Bytes,
+}
+
+fn main() -> Int {
+    let name = stage2_bytes_empty()
+    let value = stage2_bytes_empty()
+    let header: Header = Header(name: name, value: value)
+    print(stage2_bytes_len(header.name))
+    return 0
+}
