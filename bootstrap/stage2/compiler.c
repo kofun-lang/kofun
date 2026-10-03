@@ -3219,6 +3219,32 @@ static int64_t record_field_index(
     return -1;
 }
 
+/*
+ * #1694. Whether a nominal record holds a managed `Bytes` carrier inline. Such
+ * a record is not Copy: its `data` pointer is unique-owner storage, so a
+ * second binding initialized from it would be an alias, refused as `E2S170`
+ * like a bare `Bytes` alias. The field itself is admitted by
+ * `record_field_count`.
+ */
+static bool record_has_bytes_field(
+    const char *source,
+    const char *record_type
+) {
+    int64_t count = record_field_count(source, record_type);
+    for (int64_t index = 0; index < count; ++index) {
+        char *field_type = record_field_text(
+            source,
+            record_type,
+            index,
+            true
+        );
+        bool bytes = strcmp(field_type, "Bytes") == 0;
+        free(field_type);
+        if (bytes) return true;
+    }
+    return false;
+}
+
 static int64_t top_level_end(const char *source, int64_t start) {
     int64_t type_start = type_declaration_start(source, start);
     if (type_start >= 0) {
@@ -24857,8 +24883,9 @@ static char *lower_body_with_workspace(
             /* #1315. A nested block's owner would have to be reclaimed at
              * the block's end rather than the body's, and the funnel keys on
              * the function body. Refusing is honest until it does. */
+            bool managed_record = record_has_bytes_field(source, binding_type);
             if (
-                strcmp(binding_type, "Bytes") == 0 &&
+                (strcmp(binding_type, "Bytes") == 0 || managed_record) &&
                 !token_equal(
                     source,
                     skip_trivia(source, value_start),
@@ -24885,6 +24912,16 @@ static char *lower_body_with_workspace(
                     char *producer = token_copy(source, origin);
                     reason = bytes_producer_refusal(source, hir, producer);
                     free(producer);
+                }
+                /*
+                 * #1694. A record's own constructor `Header(...)` is a fresh
+                 * value, not an alias; only an initializer that names storage
+                 * that already has an owner is one.
+                 */
+                if (managed_record) {
+                    char *origin_text = token_copy(source, origin);
+                    if (strcmp(origin_text, binding_type) == 0) reason = "";
+                    free(origin_text);
                 }
                 if (reason[0] == '\0') {
                     /* A proven-fresh producer: this binding owns what the
@@ -29462,6 +29499,69 @@ static char *validate_move_record_modes(const char *source) {
     return owned_text("");
 }
 
+/*
+ * #1694. A nominal record with a managed `Bytes` field is not Copy, so a
+ * second binding initialized from an existing one aliases unique-owner storage.
+ * The inferred-`let` path refuses it in the emitter; this pass covers the
+ * annotated form, `let b: Header = a`, before any C is emitted. A record's own
+ * construction `Header(...)` and a producer call are fresh values, not aliases.
+ */
+static char *validate_managed_record_copies(const char *source) {
+    int64_t length = source_length(source);
+    int64_t cursor = 0;
+    while (cursor < length) {
+        if (!token_equal(source, cursor, "let")) {
+            cursor = skip_trivia(source, token_end(source, cursor));
+            continue;
+        }
+        int64_t name = skip_trivia(source, token_end(source, cursor));
+        if (token_equal(source, name, "mut")) {
+            name = skip_trivia(source, token_end(source, name));
+        }
+        int64_t after_name = skip_trivia(source, token_end(source, name));
+        if (!token_equal(source, after_name, ":")) {
+            cursor = skip_trivia(source, token_end(source, cursor));
+            continue;
+        }
+        int64_t type_cursor = skip_trivia(
+            source,
+            token_end(source, after_name)
+        );
+        int64_t type_end = annotation_type_end(source, type_cursor);
+        if (type_end < 0) {
+            cursor = skip_trivia(source, token_end(source, cursor));
+            continue;
+        }
+        char *type_text = annotation_type_text(source, type_cursor);
+        bool managed = record_has_bytes_field(source, type_text);
+        free(type_text);
+        int64_t equals = skip_trivia(source, type_end);
+        if (!managed || !token_equal(source, equals, "=")) {
+            cursor = skip_trivia(source, token_end(source, cursor));
+            continue;
+        }
+        int64_t value = skip_trivia(source, token_end(source, equals));
+        if (strcmp(token_kind(source, value), "identifier") == 0) {
+            int64_t after_value = skip_trivia(
+                source,
+                token_end(source, value)
+            );
+            if (!token_equal(source, after_value, "(")) {
+                char *name_text = token_copy(source, name);
+                char *error = bytes_alias_error(
+                    name_text,
+                    "alias initializer",
+                    value
+                );
+                free(name_text);
+                return error;
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return owned_text("");
+}
+
 static bool move_call_binding(
     const char *source,
     const char *hir,
@@ -30346,6 +30446,9 @@ static char *lower_c_body(
     char *record_mode_check = validate_move_record_modes(source);
     if (record_mode_check[0] != '\0') return record_mode_check;
     free(record_mode_check);
+    char *managed_copy_check = validate_managed_record_copies(source);
+    if (managed_copy_check[0] != '\0') return managed_copy_check;
+    free(managed_copy_check);
     char *move_use_check = validate_move_uses(source, hir);
     if (strncmp(move_use_check, "error[", 6) == 0) return move_use_check;
     free(move_use_check);

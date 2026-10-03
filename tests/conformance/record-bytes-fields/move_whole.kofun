@@ -1,0 +1,18 @@
+# #1694. The record moves whole through a `take` parameter; the callee reads the
+# field it now owns. This is the move-whole half of the acceptance.
+type Header = {
+    name: Bytes,
+    value: Bytes,
+}
+
+fn consume(take h: Header) -> Int {
+    print(stage2_bytes_len(h.name))
+    return 0
+}
+
+fn main() -> Int {
+    let name = stage2_bytes_empty()
+    let value = stage2_bytes_empty()
+    let header: Header = Header(name: name, value: value)
+    return consume(header)
+}

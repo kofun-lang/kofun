@@ -89,7 +89,7 @@ descriptor.
 | Field | Meaning |
 |---|---|
 | `id` | type identity |
-| `kind` | `scalar`, `text`, `list`, `bounded_list`, `record`, `adt`, or `optional` |
+| `kind` | `scalar`, `text`, `list`, `bounded_list`, `bytes`, `record`, `adt`, or `optional` |
 | `size` | total bytes, always a multiple of `align` |
 | `align` | alignment in bytes, a power of two |
 | `fields` | records only: `name`, `type`, `offset`, `size` in declaration order |
@@ -175,6 +175,16 @@ in 520 bytes while this contract described every list value as one reference.
 own `_Static_assert` numbers, so the carrier and the contract cannot drift
 apart again. Added by RFC-0011 and recorded as the ledger amendment
 `DD-033/A01`; the `list` kind is unchanged.
+
+**`bytes`.** A bounded `Bytes[65536]` carrier stored inline in a nominal
+record, added by `DD-033/A02` for [#1694](https://github.com/kofun-lang/kofun/issues/1694).
+It is three 8-byte words — `length` at offset 0, `capacity` at 8, and a `data`
+pointer at 16 — so its size is 24 and its alignment 8. Its pointer bitmap holds
+the `data` word, so its drop is `managed` and a record containing one is not
+`Copy`: a second binding initialized from such a record is refused rather than
+aliased. A read of the field is a non-escaping `read` view of the carrier the
+record still owns, not a copy and not a move. This kind is the field's layout
+only; `List[Bytes]` and a `Bytes` ADT payload are not admitted by it.
 
 An object has no trailing padding: it is individually referenced and never
 inlined into an array, so nothing follows it that would need alignment.

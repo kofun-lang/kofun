@@ -466,6 +466,17 @@ Stage 2 C11 bootstrap profile lowers a `List[Int]` record field to
 `bounded_list[Int, 64]`; that mapping belongs to the profile, not to `List[Int]`
 in the language, and no other element type is admitted.
 
+**Amended: `DD-033/A02` (2026-10-03).** Adds a seventh value kind, `bytes`: the
+bounded `Bytes[65536]` carrier stored inline as a nominal-record field. It is
+three 8-byte words — `length` at offset 0, `capacity` at 8, and a `data`
+pointer at 16 — so its size is 24, its alignment is 8, and its pointer bitmap
+holds the `data` word, giving `managed` drop. A record containing one is
+therefore not `Copy`, and a second binding initialized from it is refused rather
+than aliased; a read of the field is a non-escaping `read` view of the carrier
+the record still owns. Recorded for
+[#1694](https://github.com/kofun-lang/kofun/issues/1694), from #1258's Q4. The
+`list` and `bounded_list` kinds are unchanged.
+
 ## DD-034: Validation accumulates in `Validated`, not `Result`
 
 `Validated[T, E]` is `Valid(T)`, `Disputed(T, Issues[E])`, or
