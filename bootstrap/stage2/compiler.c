@@ -3006,6 +3006,21 @@ static bool admissible_composite_member_token(
 }
 
 /*
+ * #1694. The record-field types #1258's Q4 admits beyond the shared composite
+ * set. A `Bytes` field is a managed, inline carrier; the ADT payload position
+ * keeps its own narrower set (that slice is #1697's), so admitting a record
+ * field must not widen a payload by accident. Kept a separate predicate for
+ * exactly that reason.
+ */
+static bool admissible_record_field_token(
+    const char *source,
+    int64_t index
+) {
+    if (token_equal(source, index, "Bytes")) return true;
+    return admissible_composite_member_token(source, index);
+}
+
+/*
  * #1465. The first token of a constructor payload member that names its type.
  * Both spellings are in the corpus and both have to work: `Wrap(value: Inner)`
  * and `Admitted(Int)`. Returns the type token, or -1 when the member is empty.
@@ -3114,7 +3129,7 @@ static int64_t record_field_count(
                 free(covered.data);
                 return -2;
             }
-        } else if (!admissible_composite_member_token(source, field_type)) {
+        } else if (!admissible_record_field_token(source, field_type)) {
             free(covered.data);
             return -2;
         }
@@ -13763,6 +13778,71 @@ static char *bytes_named_carrier_binding(
     return hir_use_binding_id(hir, cursor);
 }
 
+/*
+ * #1694. A `Bytes` field read is a borrowed `read` view of the carrier the
+ * record still owns (owner decision recorded on #1694). It is neither a named
+ * carrier binding nor a copy, so the mutation family resolves `record.field`
+ * here when the field is a `Bytes` field of the record's type. The identity
+ * returned is the record's BindingId, so two reads of one record are the same
+ * carrier and two records stay distinct.
+ *
+ * Returns an owned empty string when the argument is not a `Bytes` field read.
+ */
+static char *bytes_field_read_binding(
+    const char *source,
+    const char *hir,
+    int64_t start,
+    int64_t end
+) {
+    int64_t cursor = optional_int_coalescing_transparent_bound(
+        source,
+        start,
+        end,
+        true
+    );
+    int64_t stop = optional_int_coalescing_transparent_bound(
+        source,
+        start,
+        end,
+        false
+    );
+    if (strcmp(token_kind(source, cursor), "identifier") != 0) {
+        return owned_text("");
+    }
+    int64_t dot = skip_trivia(source, token_end(source, cursor));
+    if (dot >= stop || !token_equal(source, dot, ".")) {
+        return owned_text("");
+    }
+    int64_t field = skip_trivia(source, token_end(source, dot));
+    if (
+        strcmp(token_kind(source, field), "identifier") != 0 ||
+        token_end(source, field) != stop
+    ) {
+        return owned_text("");
+    }
+    char *binding_id = hir_use_binding_id(hir, cursor);
+    if (binding_id[0] == '\0') {
+        free(binding_id);
+        return owned_text("");
+    }
+    char *record_type = hir_binding_field(hir, binding_id, 5);
+    char *field_name = token_copy(source, field);
+    char *field_type = record_field_type_named(
+        source,
+        record_type,
+        field_name
+    );
+    bool is_bytes_field = strcmp(field_type, "Bytes") == 0;
+    free(field_type);
+    free(field_name);
+    free(record_type);
+    if (!is_bytes_field) {
+        free(binding_id);
+        return owned_text("");
+    }
+    return binding_id;
+}
+
 static char *bytes_borrow_address(
     const char *source,
     const char *hir,
@@ -13892,6 +13972,17 @@ static char *emit_bytes_mutation_call(
                 argument,
                 argument_stop
             );
+            bool field_view = false;
+            if (resolved[0] == '\0') {
+                free(resolved);
+                resolved = bytes_field_read_binding(
+                    source,
+                    hir,
+                    argument,
+                    argument_stop
+                );
+                field_view = resolved[0] != '\0';
+            }
             if (resolved[0] == '\0') {
                 free(resolved);
                 free(rendered.data);
@@ -13899,12 +13990,24 @@ static char *emit_bytes_mutation_call(
                 free(lender);
                 return bytes_unresolved_carrier_error(call_start);
             }
+            const char *required = bytes_mutation_required_access(name, index);
+            if (field_view && strcmp(required, "edit") == 0) {
+                free(resolved);
+                free(rendered.data);
+                free(destination);
+                free(lender);
+                return lower_error(
+                    "E2S178",
+                    "a `Bytes` record-field read is a read view; an edit "
+                    "operation requires an owning or `edit` carrier",
+                    argument
+                );
+            }
             if (index == 0) {
                 destination = resolved;
             } else {
                 lender = resolved;
             }
-            const char *required = bytes_mutation_required_access(name, index);
             const char *role = strcmp(required, "read") == 0
                 ? "source" : "destination";
             Buffer slot;
@@ -28729,15 +28832,21 @@ static char *emit_record_c_declaration(
                     strcmp(field_type, "Text") == 0 ? "const char *" :
                     strcmp(field_type, "List[Int]") == 0
                         ? "KofunIntListValue" :
+                    strcmp(field_type, "Bytes") == 0
+                        ? "KofunBytesValue" :
                     "int64_t";
                 /*
                  * #1183 / RFC-0011: the bounded list is stored inline, by
                  * value.  This is the first field whose size and alignment
                  * differ, which is why they are separate quantities here.
+                 *
+                 * #1694: an inline managed `Bytes[65536]` field is three
+                 * 8-byte words, so it is 24 bytes at 8-byte alignment.
                  */
                 int64_t field_size =
                     strcmp(field_type, "Bool") == 0 ? 1 :
-                    strcmp(field_type, "List[Int]") == 0 ? 520 : 8;
+                    strcmp(field_type, "List[Int]") == 0 ? 520 :
+                    strcmp(field_type, "Bytes") == 0 ? 24 : 8;
                 int64_t field_alignment =
                     strcmp(field_type, "Bool") == 0 ? 1 : 8;
                 int64_t offset = record_align_up(
@@ -28784,7 +28893,8 @@ static char *emit_record_c_declaration(
                  */
                 int64_t field_size =
                     strcmp(field_type, "Bool") == 0 ? 1 :
-                    strcmp(field_type, "List[Int]") == 0 ? 520 : 8;
+                    strcmp(field_type, "List[Int]") == 0 ? 520 :
+                    strcmp(field_type, "Bytes") == 0 ? 24 : 8;
                 int64_t field_alignment =
                     strcmp(field_type, "Bool") == 0 ? 1 : 8;
                 int64_t offset = record_align_up(running, field_alignment);
