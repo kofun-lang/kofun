@@ -21,8 +21,9 @@
  *   - a ledger row whose use is gone is an improvement that was not recorded.
  *
  * The second direction is the one that is usually missing, and this repository
- * has already paid for its absence. #1213 replaced GNU `sha256sum` with
- * `bin/kofun-digest` so digests depend on nothing the project does not own, and
+ * has already paid for its absence. #1213 replaced GNU `sha256sum` with the
+ * repository's own digest tool so digests depend on nothing the project does
+ * not own, and
  * #1395 then found a release claim still asserting the removed dependency. The
  * removal happened; the record did not follow. A one-directional sweep would
  * not have caught it.

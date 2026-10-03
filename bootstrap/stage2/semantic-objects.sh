@@ -134,13 +134,13 @@ kofun_stage2_semantic_digest_file() {
     kofun_semantic_digest_root=$1
     kofun_semantic_digest_path=$2
     kofun_semantic_digest_label=$3
-    test -x "$kofun_semantic_digest_root/bin/kofun-digest" || {
+    test -x "$kofun_semantic_digest_root/bin/kofun" || {
         kofun_stage2_semantic_object_fail \
             'repository digest tool is unavailable'
         return 1
     }
     kofun_semantic_digest_output=$(
-        "$kofun_semantic_digest_root/bin/kofun-digest" \
+        "$kofun_semantic_digest_root/bin/kofun" digest \
             "$kofun_semantic_digest_path"
     ) || {
         kofun_stage2_semantic_object_fail \
@@ -506,7 +506,7 @@ kofun_stage2_semantic_executable_identity() {
     fi
     kofun_semantic_link_identity_output=$(
         printf '%s' "$kofun_semantic_link_material" |
-            "$kofun_semantic_link_root/bin/kofun-digest"
+            "$kofun_semantic_link_root/bin/kofun" digest
     ) || {
         kofun_stage2_semantic_object_fail \
             'cannot derive semantic executable identity'
@@ -639,7 +639,7 @@ kofun_stage2_semantic_objects_validate() {
     }
     kofun_semantic_expected_marker_output=$(
         printf '%s\n' 'kofun.stage2-semantic-objects/v2' |
-            "$kofun_semantic_object_root/bin/kofun-digest"
+            "$kofun_semantic_object_root/bin/kofun" digest
     ) || return 1
     kofun_semantic_expected_marker=${kofun_semantic_expected_marker_output%% *}
     kofun_semantic_actual_marker=$(
@@ -661,7 +661,7 @@ kofun_stage2_semantic_objects_validate() {
     ) || return 1
     kofun_semantic_expected_manifest_output=$(
         printf '%s\n' "$kofun_semantic_expected_manifest" |
-            "$kofun_semantic_object_root/bin/kofun-digest"
+            "$kofun_semantic_object_root/bin/kofun" digest
     ) || return 1
     kofun_semantic_expected_manifest_digest=${kofun_semantic_expected_manifest_output%% *}
     kofun_semantic_actual_manifest_digest=$(
@@ -703,7 +703,7 @@ kofun_stage2_semantic_objects_validate() {
     done
     kofun_semantic_identity_output=$(
         printf '%s' "$kofun_semantic_identity_material" |
-            "$kofun_semantic_object_root/bin/kofun-digest"
+            "$kofun_semantic_object_root/bin/kofun" digest
     ) || {
         kofun_stage2_semantic_object_fail \
             'cannot derive object bundle identity'

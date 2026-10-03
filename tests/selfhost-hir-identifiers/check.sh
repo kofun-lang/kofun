@@ -23,7 +23,7 @@ cd "$ROOT"
     bootstrap/stage2/compiler.c -o "$WORK/stage2"
 
 accepted=bootstrap/selfhost/frontend/accept_long_identifiers.kofun
-accepted_digest=$("$ROOT/bin/kofun-digest" "$accepted" | awk '{ print $1 }')
+accepted_digest=$("$ROOT/bin/kofun" digest "$accepted" | awk '{ print $1 }')
 ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 \
     "$WORK/stage2" --emit-selfhost-hir "$accepted" \
     "$WORK/accepted.hir" "$accepted_digest" >"$WORK/accepted.stdout" \
@@ -50,7 +50,7 @@ LC_ALL=C awk -F '|' '
     fail 'name bytes and source spans disagree at the 64/255 boundaries'
 
 rejected=bootstrap/selfhost/frontend/reject_long_prefix.kofun
-rejected_digest=$("$ROOT/bin/kofun-digest" "$rejected" | awk '{ print $1 }')
+rejected_digest=$("$ROOT/bin/kofun" digest "$rejected" | awk '{ print $1 }')
 set +e
 ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 \
     "$WORK/stage2" --emit-selfhost-hir "$rejected" \
@@ -68,7 +68,7 @@ grep -F 'error[E2S35]: unknown lexical binding' "$WORK/rejected.stdout" \
 long_function=$(sed -n 's/^fn \([^ (]*\).*/\1/p' "$accepted" | head -1)
 printf 'fn %s() -> Int {\n    return 1\n}\nfn %s() -> Int {\n    return 2\n}\nfn main() {\n    print("x")\n}\n' \
     "$long_function" "$long_function" >"$WORK/duplicate.kofun"
-duplicate_digest=$("$ROOT/bin/kofun-digest" "$WORK/duplicate.kofun" |
+duplicate_digest=$("$ROOT/bin/kofun" digest "$WORK/duplicate.kofun" |
     awk '{ print $1 }')
 set +e
 ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 \

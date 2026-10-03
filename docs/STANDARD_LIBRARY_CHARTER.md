@@ -123,7 +123,7 @@ crypto/TLS are `deferred`; database drivers are a `non-goal`.
 
 Three of those deserve their reason stated. **Hashes and checksums** are
 deferred because there is no consumer — the toolchain's digests come from
-`bin/kofun-digest`, a bounded internal CLI over the Stage 2 SHA-256 code rather
+`kofun digest`, a bounded internal CLI over the Stage 2 SHA-256 code rather
 than a standard-library API, and a standard hash API written before something
 needs it will be the wrong API. **MIME** is deferred to the HTTP client contract, because content
 negotiation is where it acquires meaning. **Crypto and TLS** are deferred *and*

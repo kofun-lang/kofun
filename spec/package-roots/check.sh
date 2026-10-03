@@ -43,7 +43,7 @@ anonymous_payload() {
 }
 
 payload_fingerprint() {
-    "$ROOT/bin/kofun-digest" | sed 's/[[:space:]].*//'
+    "$ROOT/bin/kofun" digest | sed 's/[[:space:]].*//'
 }
 
 valid_logical_path() {

@@ -692,11 +692,10 @@ expect_invalid_bundle root-mode "$root_mode" \
 source_probe=$WORK/source-probe
 mkdir -p "$source_probe/bin"
 printf '%s\n' '#!/bin/sh' \
-    'exec "$KOFUN_FUZZ_SOURCE_PROBE_DIGEST" "$@"' \
-    >"$source_probe/bin/kofun-digest"
-chmod 0755 "$source_probe/bin/kofun-digest"
-KOFUN_FUZZ_SOURCE_PROBE_DIGEST=$ROOT/bin/kofun-digest
-export KOFUN_FUZZ_SOURCE_PROBE_DIGEST
+    'if test "${1:-}" = digest; then shift; fi' \
+    "exec \"$ROOT/bin/kofun\" digest \"\$@\"" \
+    >"$source_probe/bin/kofun"
+chmod 0755 "$source_probe/bin/kofun"
 for source_path in $(kofun_stage2_fuzz_sanitizer_source_paths)
 do
     mkdir -p "$source_probe/$(dirname -- "$source_path")"

@@ -80,7 +80,8 @@ mkdir -p "$work"
     declare_file sums bootstrap/stage1/SHA256SUMS
     declare_file sums bootstrap/stage2/SHA256SUMS
 
-    # Both sums files are verified with `"$repo_root/bin/kofun-digest" -c`, which reads every file
+    # Both sums files are verified with the pre-build C seed verifier
+    # (`kofun_seed_digest_build` over `sha256_tool.c`), which reads every file
     # they list, so every listed file is an input whether or not the chain
     # names it directly. Omitting these two made the acquisition set
     # insufficient: a builder who obtained exactly the manifest failed at
@@ -101,14 +102,18 @@ mkdir -p "$work"
         bootstrap/selfhost/check-a1-a2.sh \
         bootstrap/selfhost/check-fixed-point.sh \
         bootstrap/stage2/build.sh \
-        bin/kofun-digest; do
+        bootstrap/stage2/semantic-objects.sh \
+        bootstrap/digest/build.sh \
+        bootstrap/digest/command.kofun.in \
+        bin/kofun; do
         declare_file command "$script"
     done
-    # `bin/kofun-digest` computes every digest the chain compares (#1213), so a
-    # reproducer needs the sources it builds itself from. Declaring the command
-    # without them reproduces nothing: the B6 gate copies exactly the declared
-    # set into a clean tree, and a chain that cannot build its own digest tool
-    # cannot verify a single generation.
+    # `bin/kofun digest` computes every digest the chain compares (#1455), so a
+    # reproducer needs the sources it builds itself from: the dispatcher, the
+    # command template, and the builder that extracts the SHA-256 block. The C
+    # seed verifier below stays because the pre-build checks still build it
+    # (#1668); declaring the command without these reproduces nothing, because
+    # the B6 gate copies exactly the declared set into a clean tree.
     declare_file seed-unit bootstrap/stage2/sha256_tool.c
     declare_file seed-unit bootstrap/stage2/sha256.c
     declare_file seed-unit bootstrap/stage2/sha256.h

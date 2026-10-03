@@ -215,7 +215,7 @@ done <"$tmp_dir/file_roundtrip.packed"
     fail 'native file round-trip ELF has the wrong size'
 (
     cd "$tmp_dir"
-    "$repo_dir/bin/kofun-digest" -c "$stdlib_dir/tests/SHA256SUMS"
+    "$repo_dir/bin/kofun" digest -c "$stdlib_dir/tests/SHA256SUMS"
 ) >/dev/null
 
 # Unconditional: the requirement is declared at the top of this file (#1496).

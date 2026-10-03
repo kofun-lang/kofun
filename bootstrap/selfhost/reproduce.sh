@@ -151,7 +151,7 @@ closure_digest=$(
         printf '%s\n' "$(manifest_closure_value c1_sha256)"
         printf '%s\n' "$(manifest_closure_value c2_sha256)"
         printf '%s\n' "$(manifest_closure_value c3_sha256)"
-    } | "$repo_root/bin/kofun-digest" | awk '{ print $1 }'
+    } | "$repo_root/bin/kofun" digest | awk '{ print $1 }'
 )
 
 work="$output/.report.$$"
@@ -235,7 +235,7 @@ result_digest=$(digest_of "$work/result.tsv")
         fi
         printf ''
     )"
-    printf 'provenance|digest_tool|%s\n' "$(digest_of bin/kofun-digest)"
+    printf 'provenance|digest_tool|%s\n' "$(digest_of bin/kofun)"
 } >"$work/provenance.tsv"
 
 {

@@ -106,6 +106,9 @@ usage:
       functions); see tooling/kotest/README.md.
   kofun bootstrap
   kofun emit-c INPUT.kofun OUTPUT.c
+  kofun digest [FILE...|-] [-c|--check SUMS]
+      The repository's own SHA-256, compiled from Kofun by the C11 Stage 2
+      backend.
   kofun bindgen-c HEADER.h --out-dir DIR [--module NAME]
                   [-D NAME[=VALUE]]... [-I DIR]... [--std STD]
                   [--target TRIPLE] [--sysroot DIR] [--clang PATH]
@@ -1158,6 +1161,40 @@ case ${1-} in
         }
         exec node "$ROOT/tooling/bindgen-c/bindgen-c.mjs" "$@"
         ;;
+    digest)
+        # #1455. The command is Kofun compiled by the C11 Stage 2 backend, not
+        # the C `sha256_tool.c` the retired wrapper used to build.
+        # `KOFUN_DIGEST_TOOL` still names an already-built binary; the cache
+        # path is unchanged so the callers that override the build directory
+        # keep working.
+        shift
+        if test -n "${KOFUN_DIGEST_TOOL:-}" &&
+           test -x "${KOFUN_DIGEST_TOOL}"
+        then
+            exec "$KOFUN_DIGEST_TOOL" "$@"
+        fi
+        . "$ROOT/bootstrap/digest/build.sh"
+        DIGEST_BUILD_DIR=${KOFUN_DIGEST_BUILD_DIR:-"$ROOT/build/digest"}
+        DIGEST_TOOL="$DIGEST_BUILD_DIR/kofun-digest"
+        digest_stale=false
+        if test ! -x "$DIGEST_TOOL"; then
+            digest_stale=true
+        fi
+        for digest_source in \
+            "$ROOT/bootstrap/stage2/compiler.kofun" \
+            "$ROOT/bootstrap/stage2/compiler.c" \
+            "$ROOT/bootstrap/digest/command.kofun.in" \
+            "$ROOT/bootstrap/digest/build.sh"
+        do
+            if test "$digest_source" -nt "$DIGEST_TOOL"; then
+                digest_stale=true
+            fi
+        done
+        if test "$digest_stale" = true; then
+            kofun_digest_build "$ROOT" "$DIGEST_TOOL" || exit 1
+        fi
+        exec "$DIGEST_TOOL" "$@"
+        ;;
     package)
         shift
         exec sh "$PACKAGE_MANAGER" "$@"
@@ -1456,7 +1493,7 @@ $2"
                                 "kofun: manifest validation reported no memoryPages" >&2
                             exit 1
                         }
-                        manifest_digest=$("$ROOT/bin/kofun-digest" "$wasi_manifest" | awk '{ print $1 }')
+                        manifest_digest=$("$ROOT/bin/kofun" digest "$wasi_manifest" | awk '{ print $1 }')
                     fi
                     build_wasm_file "$input" "$output" wasi-command1 "$manifest_digest" "$manifest_pages"
                     ;;

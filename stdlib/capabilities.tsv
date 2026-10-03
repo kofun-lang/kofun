@@ -55,7 +55,7 @@ buffered-io	portable	implemented	task stdlib	line reader over an open File; capa
 url	portable	planned	#1258	parsing and normalisation; owned by the HTTP client contract, not independent
 secure-randomness	adapter	implemented	task stdlib	entropy_fill obtains getrandom(2) bytes completely or returns an error; not a CSPRNG, not a portable Random replacement, Linux x86-64 only
 temporary-files	adapter	planned	#1457	decided (#1463): a partial file never occupies a final name, every read re-verifies the digest that names it, a collision refuses the publish and re-verifies rather than overwriting; recovery from a mismatch is #1457's to build
-hashes-checksums	portable	deferred	#1455	no consumer yet; the toolchain digests with the repository's own bin/kofun-digest, not a stdlib API
+hashes-checksums	portable	deferred	#1455	no consumer yet; the toolchain digests with the repository's own kofun digest, not a stdlib API
 compression-archive	module	deferred	#644	gzip response decompression is named by the accepted http-client contract; no archive format has a consumer and tar is not in scope
 mime	module	deferred	#644	only meaningful once the HTTP client contract fixes content negotiation
 crypto-tls	module	deferred	#644	security-critical and independently versioned; must not enter the portable tier

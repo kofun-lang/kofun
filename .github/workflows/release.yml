@@ -84,7 +84,7 @@ jobs:
           manifest="$output/kofun-native-checkpoint-$version-SHA256SUMS"
           : >"$manifest"
           for asset in "$output"/*.elf "$output"/*.exe "$output"/*.macho; do
-            digest=$(./bin/kofun-digest "$asset" | awk '{ print $1 }')
+            digest=$(./bin/kofun digest "$asset" | awk '{ print $1 }')
             printf '%s  %s\n' "$digest" "${asset##*/}" >>"$manifest"
           done
           test "$(wc -l <"$manifest" | tr -d ' ')" -eq 6
@@ -99,7 +99,7 @@ jobs:
           archive="kofun-$version.tar.gz"
           git archive --format=tar --prefix="kofun-$version/" "$GITHUB_REF_NAME" \
             | gzip -n >"$archive"
-          ./bin/kofun-digest "$archive" >"$archive.sha256"
+          ./bin/kofun digest "$archive" >"$archive.sha256"
           printf 'archive: %s\n' "$(cat "$archive.sha256")"
 
       - name: Attach source and native checkpoint assets to the release
