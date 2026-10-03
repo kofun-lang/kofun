@@ -120,6 +120,7 @@ export const GROUPS = Object.freeze([
         hint: 'Repository policy, claim/evidence joins, decisions, generated evidence, and cleanup.',
         tasks: [
             'repository-check', 'assertions', 'audited-claim', 'digest',
+            'verify-shards', 'verify-shard',
             'tests-kofun',
             'example-law-evidence',
             'backlog', 'backlog-refresh',

@@ -7,8 +7,19 @@ on:
   workflow_dispatch:
 
 jobs:
-  verify:
-    name: Kofun verification
+  # #1684. `task verify` is split across runners so its wall-clock is the
+  # longest shard rather than the whole lane. Three jobs keep it one required
+  # check: `prepare` builds the shared pre-lane once, the `shard` matrix runs
+  # the committed partition, and the `verify` aggregate runs the
+  # census-dependent gates over the union of those censuses. The aggregate
+  # keeps the "Kofun verification" name, so branch protection and
+  # docs/RELEASING.md step 3 name the same check they always did.
+  #
+  # The matrix shard list must match `tests/verify-shards/partition.tsv`; the
+  # aggregate fails when the downloaded shards are not exactly the declared
+  # set, so a matrix that stopped covering a shard is red rather than silent.
+  verify-prepare:
+    name: Kofun verification prepare
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -21,7 +32,80 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends qemu-user
-      - run: task verify
+      - name: Build the shared pre-lane
+        env:
+          KOFUN_VERIFY_PREPARE_ARCHIVE: ${{ github.workspace }}/build/prepare
+        run: sh bootstrap/stage2/verify-runner.sh "$PWD" 3 help
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prepare
+          path: build/prepare
+          if-no-files-found: error
+
+  verify-shard:
+    name: Kofun verification shard ${{ matrix.shard }}
+    needs: verify-prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install go-task
+        uses: arduino/setup-task@c0bc642852239c2689f73f4ea6459c29405f3c52 # v3.0.0
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install AArch64 user-mode emulator
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends qemu-user
+      - uses: actions/download-artifact@v4
+        with:
+          name: prepare
+          path: build/prepare
+      - name: Run shard ${{ matrix.shard }}
+        env:
+          KOFUN_VERIFY_REUSE_DIR: ${{ github.workspace }}/build/prepare
+          KOFUN_VERIFY_SHARD: ${{ matrix.shard }}
+          KOFUN_VERIFY_SHARD_ARCHIVE: ${{ github.workspace }}/build/shard-${{ matrix.shard }}
+        run: task verify-shard
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shard-${{ matrix.shard }}
+          path: build/shard-${{ matrix.shard }}
+          if-no-files-found: error
+
+  verify:
+    name: Kofun verification
+    needs: verify-shard
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install go-task
+        uses: arduino/setup-task@c0bc642852239c2689f73f4ea6459c29405f3c52 # v3.0.0
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install AArch64 user-mode emulator
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends qemu-user
+      - name: Require every shard
+        if: needs.verify-shard.result != 'success'
+        run: |
+          echo "shard matrix result: ${{ needs.verify-shard.result }}" >&2
+          exit 1
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "*"
+          path: build/aggregate
+      - name: Run the shard aggregate
+        env:
+          KOFUN_VERIFY_AGGREGATE_DIR: ${{ github.workspace }}/build/aggregate
+        run: sh tests/verify-shards/aggregate.sh
       - name: Build and run Kofun Core
         run: |
           ./bin/kofun build bootstrap/fixtures/answer.kofun -o build/answer

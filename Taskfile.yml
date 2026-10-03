@@ -1550,6 +1550,7 @@ tasks:
       - cmd: |-
           sh "$PWD/bootstrap/stage2/verify-runner.sh" \
             "$PWD" "${VERIFY_JOBS:-3}" \
+            verify-shards \
             test \
             diagnostics \
             fuzz \
@@ -1731,3 +1732,17 @@ tasks:
             release-claims \
             release-procedure \
             rfc-registry
+
+  # #1684. The bidirectional shard ledger and the per-shard entry point.
+  # `verify-shards` is in `verify`'s declared set, so CI enforces that every
+  # task verify runs is assigned to exactly one shard. `verify-shard` is not:
+  # it is how a shard is executed, never a gate in its own right.
+  verify-shards:
+    desc: "Bind every task verify runs to exactly one shard"
+    cmds:
+      - "sh tests/verify-shards/check.sh --prove"
+
+  verify-shard:
+    desc: "Run one shard of task verify (KOFUN_VERIFY_SHARD=i)"
+    cmds:
+      - "sh tests/verify-shards/run-shard.sh"
