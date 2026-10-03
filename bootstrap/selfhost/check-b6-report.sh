@@ -233,7 +233,7 @@ awk -F '|' 'BEGIN { OFS = "|" }
     }
     { print }' "$WORK/report.tsv" >"$WORK/other-subject.rows"
 grep '^result|' "$WORK/other-subject.rows" >"$WORK/other-subject.result"
-other_identity=$("$ROOT/bin/kofun-digest" "$WORK/other-subject.result" |
+other_identity=$("$ROOT/bin/kofun" digest "$WORK/other-subject.result" |
     awk '{ print $1 }')
 awk -F '|' -v identity="$other_identity" 'BEGIN { OFS = "|" }
     $1 == "result_sha256" { print $1, identity; next }
@@ -264,7 +264,7 @@ awk -F '|' 'BEGIN { OFS = "|" }
     { print }
 ' "$WORK/report.tsv" >"$WORK/policy-stale.rows"
 grep '^result|' "$WORK/policy-stale.rows" >"$WORK/policy-stale.result"
-policy_stale_identity=$("$ROOT/bin/kofun-digest" "$WORK/policy-stale.result" |
+policy_stale_identity=$("$ROOT/bin/kofun" digest "$WORK/policy-stale.result" |
     awk '{ print $1 }')
 awk -F '|' -v identity="$policy_stale_identity" 'BEGIN { OFS = "|" }
     $1 == "result_sha256" { print $1, identity; next }

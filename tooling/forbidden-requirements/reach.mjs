@@ -217,7 +217,7 @@ export function reachability(root, rawFiles) {
      * The needles are the candidate basenames themselves, not a guess at what a
      * filename looks like. The first version of this index extracted
      * `[\w.@+-]+\.(sh|mjs|js|ya?ml)` and lost every file that has no
-     * extension — `bin/kofun-digest` and `tooling/lsp/kofun-lsp` are found by
+     * extension — `bin/kofun` and `tooling/lsp/kofun-lsp` are found by
      * shebang, and three rows flipped to `unknown`. The census caught it in one
      * diff, which is what a both-directions ledger is for.
      *

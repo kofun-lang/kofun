@@ -134,7 +134,7 @@ require_line "$report" '"trust": "raw-trusted-foreign"' \
 triple=$(clang -print-effective-triple)
 header_sha=$(
     CDPATH= cd -- "$CASES" &&
-        "$ROOT/bin/kofun-digest" fixture/kbfix.h | cut -d' ' -f1
+        "$ROOT/bin/kofun" digest fixture/kbfix.h | cut -d' ' -f1
 )
 require_line "$module" "target:   $triple" \
     'module does not record the effective target triple'

@@ -2,8 +2,9 @@
 set -eu
 
 # The repository computes SHA-256 in two places: `bootstrap/stage2/sha256.c`,
-# reached through `bin/kofun-digest`, and Node's `crypto.createHash` in the
-# `.mjs` tooling. Before #1213 there was a third, GNU `sha256sum`, and nothing
+# kept for the pre-build seed checks, and the Kofun `kofun digest` command the
+# C11 Stage 2 backend builds, plus Node's `crypto.createHash` in the `.mjs`
+# tooling. Before #1213 there was a third, GNU `sha256sum`, and nothing
 # compared any of them.
 #
 # This gate pins the implementation to published SHA-256
@@ -13,9 +14,16 @@ set -eu
 # mutated file rather than reporting OK.
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-DIGEST="$ROOT/bin/kofun-digest"
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/kofun-digest.XXXXXX")
 trap 'rm -rf "$WORK"' 0 1 2 15
+
+# The gate drives the command the way every call site does, through
+# `kofun digest`, so the dispatcher and the cache are exercised too. The
+# launcher's own name is not what `argv[0]` reports: `bin/kofun` execs the
+# built command, so `program` below is that binary's path.
+DIGEST="$WORK/kofun-digest"
+printf '#!/bin/sh\nexec "%s" digest "$@"\n' "$ROOT/bin/kofun" >"$DIGEST"
+chmod +x "$DIGEST"
 
 fail() {
     printf 'FAIL: digest: %s\n' "$1" >&2

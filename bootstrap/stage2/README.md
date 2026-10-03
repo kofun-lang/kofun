@@ -546,7 +546,7 @@ structurally valid non-Core function verifies explicit lowering rejection.
 Dedicated positive and negative fixtures exercise the ownership slice both
 through the Stage 2 seed and `kofun check`; unrelated structural programs are
 explicitly rejected as outside that slice. The gate uses only POSIX shell, a
-C11 compiler, the repository's own `bin/kofun-digest`, and standard
+C11 compiler, the repository's own `bin/kofun`, and standard
 comparison/search tools.
 
 `tests/conformance/modules/visibility-syntax/run.sh` separately covers all

@@ -26,7 +26,7 @@ kofun_discovery_sanitizer_digest_file() {
     kofun_discovery_sanitizer_digest_path=$2
     kofun_discovery_sanitizer_digest_label=$3
     kofun_discovery_sanitizer_digest_output=$(
-        "$kofun_discovery_sanitizer_digest_root/bin/kofun-digest" \
+        "$kofun_discovery_sanitizer_digest_root/bin/kofun" digest \
             "$kofun_discovery_sanitizer_digest_path"
     ) || {
         kofun_discovery_sanitizer_fail \
@@ -184,7 +184,7 @@ kofun_discovery_sanitizer_objects_validate() {
 
     kofun_discovery_sanitizer_expected_marker=$(
         printf '%s\n' 'kofun.discovery-sanitizer-objects/v1' |
-            "$kofun_discovery_sanitizer_object_root/bin/kofun-digest"
+            "$kofun_discovery_sanitizer_object_root/bin/kofun" digest
     ) || return 1
     kofun_discovery_sanitizer_expected_marker=${kofun_discovery_sanitizer_expected_marker%% *}
     kofun_discovery_sanitizer_actual_marker=$(
@@ -207,7 +207,7 @@ kofun_discovery_sanitizer_objects_validate() {
     ) || return 1
     kofun_discovery_sanitizer_expected_manifest_digest=$(
         printf '%s\n' "$kofun_discovery_sanitizer_expected_manifest" |
-            "$kofun_discovery_sanitizer_object_root/bin/kofun-digest"
+            "$kofun_discovery_sanitizer_object_root/bin/kofun" digest
     ) || return 1
     kofun_discovery_sanitizer_expected_manifest_digest=${kofun_discovery_sanitizer_expected_manifest_digest%% *}
     kofun_discovery_sanitizer_actual_manifest_digest=$(

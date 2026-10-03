@@ -20,7 +20,6 @@ trap 'rm -rf "$WORK"' EXIT HUP INT TERM
 repo="$WORK/repo"
 mkdir -p "$repo/release" "$repo/bin" "$WORK/bin"
 cp "$ROOT/release/verify-publication.sh" "$ROOT/release/fail-closed.sh" "$repo/release/"
-cp "$ROOT/bin/kofun-digest" "$repo/bin/kofun-digest"
 printf '0.0.1-seed\n' >"$repo/VERSION"
 printf 'payload\n' >"$repo/payload.txt"
 

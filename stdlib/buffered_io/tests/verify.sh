@@ -179,7 +179,7 @@ for pair in "portable_sha256 $portable" "adapter_sha256 $adapter" \
 do
     key=${pair%% *}
     path=${pair#* }
-    hash=$("$repo_dir/bin/kofun-digest" "$path" | awk '{ print $1 }')
+    hash=$("$repo_dir/bin/kofun" digest "$path" | awk '{ print $1 }')
     grep -Fq "\"$key\": \"$hash\"" "$binding" ||
         fail "the oracle binding does not name the current $key"
 done

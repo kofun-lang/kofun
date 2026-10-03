@@ -39,7 +39,7 @@ for fixture in \
     bootstrap/selfhost/c11/trap_division.kofun \
     bootstrap/selfhost/c11/trap_list_index.kofun; do
     stem=$(basename "$fixture" .kofun)
-    digest=$("$repo_root/bin/kofun-digest" "$fixture" | awk '{ print $1 }')
+    digest=$("$repo_root/bin/kofun" digest "$fixture" | awk '{ print $1 }')
     "$temporary/kofun-stage2" --emit-selfhost-hir \
         "$fixture" "$temporary/$stem.hir" "$digest" >/dev/null
     cmp "bootstrap/selfhost/c11/$stem.hir" "$temporary/$stem.hir" ||
@@ -95,7 +95,7 @@ expect() {
         fail "$document diagnostic drifted: $(cat "$temporary/negative.stdout")"
 }
 
-reject_digest=$("$repo_root/bin/kofun-digest" bootstrap/selfhost/c11/reject_missing_return.kofun |
+reject_digest=$("$repo_root/bin/kofun" digest bootstrap/selfhost/c11/reject_missing_return.kofun |
     awk '{ print $1 }')
 "$temporary/kofun-stage2" --emit-selfhost-hir \
     bootstrap/selfhost/c11/reject_missing_return.kofun \

@@ -98,8 +98,8 @@ the full source/gate map.
 
 The core gates require [go-task](https://taskfile.dev), a POSIX shell, a C11
 compiler, Node.js, and Linux x86-64 tooling. Digests are computed by the
-repository's own `bin/kofun-digest`, built from the checked-in Stage 2 SHA-256
-implementation, so no host `sha256sum` is needed.
+repository's own `kofun digest` command, compiled from Kofun by the C11
+Stage 2 backend, so no host `sha256sum` is needed.
 
 ```sh
 task --list          # available gates

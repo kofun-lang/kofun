@@ -113,7 +113,8 @@ for this rewrite specifically.
 liveness. It is hermetic and cannot ask GitHub.
 
 `hashes-checksums` is the sharpest instance. It is `deferred` against closed
-#636, while `bin/kofun-digest` exists and #1213 removed GNU `sha256sum`
+#636, while the repository's own digest command exists and #1213 removed GNU
+`sha256sum`
 precisely so digests would depend on nothing the project does not own. The row
 describes a state the repository left behind.
 

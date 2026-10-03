@@ -13,7 +13,8 @@ set -eu
 #
 #   1. `bootstrap/stage2/compiler.kofun`  nineteen `sha256_*` functions
 #   2. `bootstrap/stage2/compiler.c`      `#include "sha256.c"`
-#   3. `bootstrap/stage2/sha256.c`        the oracle, reached via bin/kofun-digest
+#   3. `bootstrap/stage2/sha256.c`        the oracle, reached through the C
+#                                          seed verifier (`sha256_tool.c`)
 #
 # Three copies are safe only while something compares them, which is why this
 # gate compares all three rather than any two.
@@ -33,6 +34,13 @@ mkdir -p "$WORK"
 
 CC=${CC:-cc}
 command -v "$CC" >/dev/null 2>&1 || assert_fail 'a C11 compiler is required'
+
+# The oracle is `bootstrap/stage2/sha256.c`, reached through the C seed
+# verifier. `kofun digest` would be the pair's own Kofun block, so comparing
+# against it would be comparing the block with itself (#1455).
+. "$ROOT/bootstrap/stage2/build.sh"
+kofun_seed_digest_build "$ROOT" "$WORK/oracle" ||
+    assert_fail 'the C seed oracle did not build'
 
 PAIR_KOFUN="$ROOT/bootstrap/stage2/compiler.kofun"
 PAIR_C="$ROOT/bootstrap/stage2/compiler.c"
@@ -83,7 +91,7 @@ printf '%s%s' \
 compared=0
 for name in empty abc nist448 nist896
 do
-    oracle=$("$ROOT/bin/kofun-digest" "$WORK/$name.bin" | cut -d' ' -f1)
+    oracle=$("$WORK/oracle" "$WORK/$name.bin" | cut -d' ' -f1)
     pair=$(grep "^$name " "$WORK/kofun.digests" | cut -d' ' -f2)
     assert_nonempty "the oracle digested $name" "$oracle"
     assert_nonempty "the pair digested $name" "$pair"
@@ -108,7 +116,7 @@ assert_not_grep 'the mutation changed the block' -Fq -- '1116352408' "$WORK/muta
 "$WORK/mutant" >"$WORK/mutant.digests"
 
 mutant_abc=$(grep '^abc ' "$WORK/mutant.digests" | cut -d' ' -f2)
-oracle_abc=$("$ROOT/bin/kofun-digest" "$WORK/abc.bin" | cut -d' ' -f1)
+oracle_abc=$("$WORK/oracle" "$WORK/abc.bin" | cut -d' ' -f1)
 assert_nonempty 'the mutant produced a digest' "$mutant_abc"
 assert_ne 'a flipped round constant does not reproduce the oracle digest' \
     "$mutant_abc" "$oracle_abc"

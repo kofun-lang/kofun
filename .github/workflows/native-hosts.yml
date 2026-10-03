@@ -87,10 +87,10 @@ jobs:
           # The repository's own SHA-256, not the host's (#1213). This
           # comparison decides whether the six-host evidence a release binds is
           # accepted, so it must not be settled by a tool the project neither
-          # ships nor tests. `bin/kofun-digest` builds from
+          # ships nor tests. `bin/kofun` builds from
           # `bootstrap/stage2/sha256.c` with the C11 compiler the bootstrap
           # already requires and prints GNU's format, so the `awk` is unchanged.
-          actual=$(./bin/kofun-digest "$IMAGE" | awk '{ print $1 }')
+          actual=$(./bin/kofun digest "$IMAGE" | awk '{ print $1 }')
           test "$actual" = "$expected"
           chmod +x "$IMAGE"
           set +e
@@ -150,7 +150,7 @@ jobs:
           # supply the C11 compiler the bootstrap already requires. Keep this
           # comparison under the repository's tested SHA-256 implementation,
           # exactly like the Linux and macOS lanes (#1213, #1606).
-          actual=$(CC=gcc ./bin/kofun-digest "$IMAGE" | awk '{ print $1 }')
+          actual=$(CC=gcc ./bin/kofun digest "$IMAGE" | awk '{ print $1 }')
           test "$actual" = "$expected"
           printf 'KOFUN_IMAGE_DIGEST=%s\n' "$actual" >>"$GITHUB_ENV"
       - name: Verify architecture and execution
@@ -237,7 +237,7 @@ jobs:
           # Same reason as the Linux lane above, reached by the other
           # spelling: this host has no GNU `sha256sum`, so it used BSD `shasum
           # -a 256` instead of the repository's own SHA-256 (#1213).
-          actual=$(./bin/kofun-digest "$IMAGE" | awk '{ print $1 }')
+          actual=$(./bin/kofun digest "$IMAGE" | awk '{ print $1 }')
           test "$actual" = "$expected"
           chmod +x "$IMAGE"
           codesign --verify --strict --verbose=4 "$IMAGE"
