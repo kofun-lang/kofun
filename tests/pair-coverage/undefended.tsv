@@ -6,9 +6,11 @@
 # that either half is correct, or that a covered path agrees with its peer.
 #
 # A ROW IS NOT AUTOMATICALLY WORK. Some branches cannot be reached because
-# an earlier rule refuses first. #1315's escaping-store/capture branches are
-# examples: Bytes record fields/captures are rejected by E2S32/E2S96 first.
-# Before writing a fixture to retire a row, establish that it can reach it.
+# an earlier rule refuses first. #1315's escaping-capture branch is an
+# example: a captured Bytes owner is refused by E2S96 first. (#1694 admits a
+# stored Bytes field as a managed inline carrier, so the escaping-store branch
+# is no longer refused by E2S32.) Before writing a fixture to retire a row,
+# establish that it can reach it.
 # Regional classification and semantic agreement remain separate obligations.
 #
 # INSTRUMENTATION SCOPE. The host-primitives gate now honors the instrumented
