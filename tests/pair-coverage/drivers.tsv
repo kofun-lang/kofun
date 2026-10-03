@@ -54,6 +54,7 @@ decimal-arithmetic
 decimal-fixed-runtime
 diagnostics
 digest
+digest-command
 directory-enumeration-carrier-decision
 discovery
 documentation-index

@@ -2,8 +2,9 @@
  * No tracked file computes a digest with a tool the host happens to provide
  * (#1213).
  *
- * #1213 replaced GNU `sha256sum` with `bin/kofun-digest`, and the census, the
- * package manager, and this gate's own header all state it as done. It was
+ * #1213 replaced GNU `sha256sum` with the repository's own digest tool, and the
+ * census, the package manager, and this gate's own header all state it as done.
+ * It was
  * not: `.github/workflows/native-hosts.yml` still verified each emitted native
  * image against `bootstrap/native/SHA256SUMS` with `sha256sum` on the Linux
  * hosts and `shasum -a 256` on the macOS ones, and that comparison is what
@@ -130,7 +131,7 @@ for (const { path, body } of files) {
     for (const { spelling, text } of invocationsIn(path, body)) {
         fail(
             `${path} computes a digest with \`${spelling}\` (${text.trim()}); ` +
-                'use `bin/kofun-digest`, which prints the same format (#1213)',
+                'use `kofun digest`, which prints the same format (#1213)',
         )
     }
 }

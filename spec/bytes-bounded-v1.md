@@ -333,7 +333,7 @@ boundary as an `Int` with a runtime diagnostic rather than as a carrier: the
 value it needed already has a shape (a `List[Int]` element) and so does the
 failure (`R023`). `task bytes-read-file` proves a compiled program reads a
 file into a carrier and digests it with the pair's own `sha256_*` functions,
-matching `bin/kofun-digest` on the same file.
+matching `kofun digest` on the same file.
 
 ## 8. Known gaps
 

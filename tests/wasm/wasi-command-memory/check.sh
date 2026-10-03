@@ -40,7 +40,7 @@ export KOFUN_ROOT KOFUN_WORK
 ASSERT_CONTEXT='wasi command memory'
 . "$ROOT/tests/assertions/assert.sh"
 
-for tool in "$CC" node cmp "$ROOT/bin/kofun-digest"
+for tool in "$CC" node cmp "$ROOT/bin/kofun"
 do
     command -v "$tool" >/dev/null 2>&1 || {
         printf '%s\n' "wasi command memory gate requires $tool" >&2
@@ -149,11 +149,11 @@ done
 "$WORK/compiler" --hostabi1 "$ROOT/bootstrap/wasm/fixtures/hostabi1_empty.kofun" \
     "$WORK/hostabi1-empty.wasm"
 assert_eq "wasm32-hostabi1 empty module digest" \
-    "$("$ROOT/bin/kofun-digest" "$WORK/hostabi1-empty.wasm" | cut -d ' ' -f 1)" \
+    "$("$ROOT/bin/kofun" digest "$WORK/hostabi1-empty.wasm" | cut -d ' ' -f 1)" \
     4ffbb355c39e1f4cad8a707b143b22d61b9eb59184428904b0f89b17fa62f4af
 "$WORK/compiler" "$ROOT/examples/wasm_arithmetic.kofun" "$WORK/legacy.wasm"
 assert_eq "legacy wasm32 sample digest" \
-    "$("$ROOT/bin/kofun-digest" "$WORK/legacy.wasm" | cut -d ' ' -f 1)" \
+    "$("$ROOT/bin/kofun" digest "$WORK/legacy.wasm" | cut -d ' ' -f 1)" \
     ead99da7862aee50ec77099e16d8382cd5ef3b75920136c78734e788525856da
 
 # The production change: a manifest's page ceiling is the command module's

@@ -133,8 +133,8 @@ printf 'entropy C11 differential oracle: PASS\n'
 # them together, which is the point: an oracle that drifts silently is worse
 # than none, because it still prints PASS.
 binding="$entropy_dir/tests/oracle-binding.json"
-adapter_hash=$("$repo_dir/bin/kofun-digest" "$adapter" | awk '{ print $1 }')
-oracle_hash=$("$repo_dir/bin/kofun-digest" \
+adapter_hash=$("$repo_dir/bin/kofun" digest "$adapter" | awk '{ print $1 }')
+oracle_hash=$("$repo_dir/bin/kofun" digest \
     "$entropy_dir/tests/entropy_reference.c" | awk '{ print $1 }')
 grep -Fq "\"adapter_sha256\": \"$adapter_hash\"" "$binding" ||
     fail 'the oracle binding does not name the current adapter'

@@ -87,4 +87,4 @@ for source in "$CORPUS"/*.kofun; do
     cat "$work/stderr" >>"$contract"
 done
 
-"$ROOT/bin/kofun-digest" "$contract" | awk '{ print $1 }'
+"$ROOT/bin/kofun" digest "$contract" | awk '{ print $1 }'

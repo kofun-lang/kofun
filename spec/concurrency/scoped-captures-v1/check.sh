@@ -19,7 +19,7 @@ fail() {
 check_frozen_v1() {
     manifest=$1
     report=$2
-    if "$ROOT/bin/kofun-digest" -c "$manifest" >"$report" 2>&1; then
+    if "$ROOT/bin/kofun" digest -c "$manifest" >"$report" 2>&1; then
         return 0
     fi
     printf '%s\n' \
@@ -108,7 +108,7 @@ test "$v1_refs" -eq 10 ||
 test "$v1_node_refs" -eq 1 ||
     fail "typed-sidecar v2 has $v1_node_refs references to frozen v1 nodes; expected 1"
 
-# `bin/kofun-digest -c`, not GNU `sha256sum`: #1213 replaced that dependency
+# `bin/kofun -c`, not GNU `sha256sum`: #1213 replaced that dependency
 # with the repository's own tool precisely because `sha256sum` is absent
 # outside a GNU userland, and this gate was the last caller it left behind.
 # Four other gates already check their SHA256SUMS this way.

@@ -36,7 +36,7 @@ cache_root() {
 KOFUN_TOOLCHAIN_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
 sha256_file() {
-    "$KOFUN_TOOLCHAIN_ROOT/bin/kofun-digest" "$1" | awk '{ print $1 }'
+    "$KOFUN_TOOLCHAIN_ROOT/bin/kofun" digest "$1" | awk '{ print $1 }'
 }
 
 parse_manifest() {

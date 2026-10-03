@@ -11,7 +11,7 @@
 # Three things are proved here, each one the issue named:
 #
 #   1. a compiled program reads a file and digests it with the pair's own
-#      `sha256_*` functions, matching `bin/kofun-digest` on the same file.
+#      `sha256_*` functions, matching `bin/kofun` on the same file.
 #      The SHA-256 block is extracted from `compiler.kofun` exactly as
 #      `tests/stage2/sha256-pair/check.sh` extracts it, so this digests with
 #      the shipped functions, not a copy of them;
@@ -149,7 +149,7 @@ digests() {
         fail "the digest program for $input did not run: $(head -n 1 "$WORK/$stem.stderr")"
     test ! -s "$WORK/$stem.stderr" ||
         fail "the digest program for $input wrote to stderr"
-    expected=$("$ROOT/bin/kofun-digest" "$INPUTS/$input" | cut -d' ' -f1)
+    expected=$("$ROOT/bin/kofun" digest "$INPUTS/$input" | cut -d' ' -f1)
     test "$(cat "$WORK/$stem.stdout")" = "$expected" ||
         fail "the digest program for $input printed $(cat "$WORK/$stem.stdout"); kofun-digest says $expected"
 }
@@ -160,6 +160,6 @@ digests four_blocks.bin
 digests at_bound.bin
 
 printf '%s\n' \
-    "PASS: a compiled program reads a file into a Bytes[65536] carrier and digests it with the pair's sha256_* functions, matching bin/kofun-digest for an empty, a one-block, a four-block, and a 65536-byte file" \
+    "PASS: a compiled program reads a file into a Bytes[65536] carrier and digests it with the pair's sha256_* functions, matching bin/kofun for an empty, a one-block, a four-block, and a 65536-byte file" \
     'PASS: a byte read outside the carrier, a missing path, a file over the 65536-byte bound, and a read under a spent allocator each end the program with exit 1 and exactly their registered runtime diagnostic (R025, R026, R027, R028), print nothing after it, and report identically on a second run' \
     'PASS: the allocation-refusal fixture reads its file under the ordinary allocator'

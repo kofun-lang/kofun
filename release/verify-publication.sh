@@ -76,7 +76,12 @@ done | LC_ALL=C sort) || fail 'listing the downloaded assets'
 test "$actual_assets" = "$expected_assets" ||
     fail 'the published assets are not the nine expected names'
 
-digest_tool=$root/bin/kofun-digest || fail 'resolving the checkout root'
+digest_tool=$root/bin/kofun || fail 'resolving the checkout root'
+digest_subcommand=digest
+if test -n "${KOFUN_DIGEST_TOOL:-}" && test -x "${KOFUN_DIGEST_TOOL}"; then
+    digest_tool=$KOFUN_DIGEST_TOOL
+    digest_subcommand=
+fi
 (
     cd "$asset_dir" || fail "entering $asset_dir"
     source_sums="kofun-$version.tar.gz.sha256"
@@ -100,9 +105,9 @@ digest_tool=$root/bin/kofun-digest || fail 'resolving the checkout root'
         LC_ALL=C sort) || fail "reading the payload names from $native_sums"
     test "$actual_native_payloads" = "$expected_native_payloads" ||
         fail "$native_sums does not name the six checkpoint images"
-    "$digest_tool" -c "$source_sums" ||
+    "$digest_tool" $digest_subcommand -c "$source_sums" ||
         fail 'the published source archive does not match its digest'
-    "$digest_tool" -c "$native_sums" ||
+    "$digest_tool" $digest_subcommand -c "$native_sums" ||
         fail 'a published checkpoint image does not match its digest'
 ) || exit 1
 

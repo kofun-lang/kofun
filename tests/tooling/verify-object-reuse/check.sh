@@ -1663,7 +1663,7 @@ else
     had_expected_cc_identity=0
 fi
 KOFUN_VERIFY_REAL_CC_PATH=$(command -v /bin/true)
-true_digest_output=$("$ROOT/bin/kofun-digest" "$KOFUN_VERIFY_REAL_CC_PATH")
+true_digest_output=$("$ROOT/bin/kofun" digest "$KOFUN_VERIFY_REAL_CC_PATH")
 KOFUN_VERIFY_REAL_CC_SHA256=${true_digest_output%% *}
 export KOFUN_VERIFY_REAL_CC_PATH KOFUN_VERIFY_REAL_CC_SHA256
 KOFUN_STAGE2_COMMON_LINK_ID=incremental/graph \
@@ -2035,7 +2035,7 @@ awk -F '\t' '$1 == "input" { print $2 "\t" $3 }' \
 cmp "$WORK/manifest-inputs.expected" "$WORK/manifest-inputs.actual"
 
 manifest_digest_of() {
-    manifest_digest_output=$("$ROOT/bin/kofun-digest" "$1")
+    manifest_digest_output=$("$ROOT/bin/kofun" digest "$1")
     printf '%s\n' "${manifest_digest_output%% *}"
 }
 while IFS='	' read -r manifest_key manifest_role manifest_path \
@@ -2593,7 +2593,11 @@ assert_ne 'content identity changes despite equal mtimes' \
 # top-level source or included header changes.
 kif_identity_root=$WORK/kif-link-identity-root
 mkdir -p "$kif_identity_root/bin"
-cp "$ROOT/bin/kofun-digest" "$kif_identity_root/bin/kofun-digest"
+printf '%s\n' '#!/bin/sh' \
+    'if test "${1:-}" = digest; then shift; fi' \
+    "exec \"$ROOT/build/digest/kofun-digest\" \"\$@\"" \
+    >"$kif_identity_root/bin/kofun"
+chmod 0755 "$kif_identity_root/bin/kofun"
 kofun_stage2_semantic_kif_source_paths |
 while IFS= read -r kif_identity_source_path; do
     mkdir -p "$kif_identity_root/$(dirname -- "$kif_identity_source_path")"
@@ -2804,7 +2808,11 @@ cp "$ROOT/bootstrap/stage2/fuzz-sanitizer-cc-wrapper.sh" \
     "$probe_root/bootstrap/stage2/fuzz-sanitizer-cc-wrapper.sh"
 cp "$ROOT/bootstrap/stage2/verify-cc-wrapper.sh" \
     "$probe_root/bootstrap/stage2/verify-cc-wrapper.sh"
-cp "$ROOT/bin/kofun-digest" "$probe_root/bin/kofun-digest"
+printf '%s\n' '#!/bin/sh' \
+    'if test "${1:-}" = digest; then shift; fi' \
+    "exec \"$ROOT/build/digest/kofun-digest\" \"\$@\"" \
+    >"$probe_root/bin/kofun"
+chmod 0755 "$probe_root/bin/kofun"
 chmod 0755 \
     "$probe_root/bootstrap/stage2/fuzz-sanitizer-cc-wrapper.sh" \
     "$probe_root/bootstrap/stage2/verify-cc-wrapper.sh"

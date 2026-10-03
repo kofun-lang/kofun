@@ -287,7 +287,7 @@ assert_not_grep "an int64_t carrier still holds a List[Int]" \
 
 (
     cd "$root"
-    "$root/bin/kofun-digest" -c bootstrap/stage2/SHA256SUMS
+    "$root/bin/kofun" digest -c bootstrap/stage2/SHA256SUMS
 )
 
 echo "PASS: Stage 2 List[Int] locals, bounded literals, len, and checked indexing"

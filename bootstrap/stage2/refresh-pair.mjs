@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('../../', import.meta.url));
 if (process.argv.length !== 2) throw new Error('usage: node bootstrap/stage2/refresh-pair.mjs');
 const files = ['bootstrap/stage2/compiler.kofun', 'bootstrap/stage2/compiler.c'];
-const result = spawnSync(`${root}bin/kofun-digest`, files, {cwd:root, encoding:'utf8'});
+const result = spawnSync(`${root}bin/kofun`, ['digest', ...files], {cwd:root, encoding:'utf8'});
 if (result.error) throw result.error;
 if (result.status !== 0) throw new Error(`pair digest failed: ${result.stderr}`);
 const rows = result.stdout.trimEnd().split('\n');

@@ -527,8 +527,8 @@ const endsWith = (list) => (path) => list.some((ext) => path.endsWith(ext))
 
 /*
  * `source` detectors need the interpreter a shebang names, because three of
- * this repository's drivers carry no extension at all: `bin/kofun`,
- * `bin/kofun-digest`, and `tooling/lsp/kofun-lsp`. A file-extension file set
+ * this repository's drivers carry no extension at all: `bin/kofun` and
+ * `tooling/lsp/kofun-lsp`. A file-extension file set
  * misses the CLI driver, which is the largest single shell surface in the tree.
  */
 const shebangNames = (body, ...names) => {

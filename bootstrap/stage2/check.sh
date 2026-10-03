@@ -6,11 +6,6 @@ stage2="$root/bootstrap/stage2"
 ASSERT_CONTEXT=stage2
 . "$root/tests/assertions/assert.sh"
 
-(
-    cd "$root"
-    "$root/bin/kofun-digest" -c bootstrap/stage2/SHA256SUMS
-)
-
 if command -v cc >/dev/null 2>&1; then
     compiler=cc
 elif command -v clang >/dev/null 2>&1; then
@@ -27,6 +22,15 @@ trap 'rm -rf "$temporary"' EXIT HUP INT TERM
 mkdir -p "$temporary"
 
 . "$root/bootstrap/stage2/build.sh"
+kofun_seed_digest_build "$root" "$temporary/seed-digest" ||
+    {
+        echo "stage2 check: the pre-build seed verifier did not build" >&2
+        exit 1
+    }
+(
+    cd "$root"
+    "$temporary/seed-digest" -c bootstrap/stage2/SHA256SUMS
+)
 kofun_stage2_build "$root" "$temporary/kofun-stage2" ||
     { echo "stage2 check: the Stage 2 compiler did not build" >&2; exit 1; }
 

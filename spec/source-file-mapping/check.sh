@@ -83,7 +83,7 @@ anonymous_module_id_input() {
 }
 
 fingerprint() {
-    "$ROOT/bin/kofun-digest" | sed 's/[[:space:]].*//'
+    "$ROOT/bin/kofun" digest | sed 's/[[:space:]].*//'
 }
 
 ascii_identifier() {

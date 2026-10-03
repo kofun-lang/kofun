@@ -45,11 +45,18 @@ kofun_generations_toolchain
 
 # Every declared source, seed, profile, and evidence digest, before any
 # build. The sums files are authoritative; the profile pin must agree with
-# them rather than being hashed a second time.
-(cd bootstrap/stage1 && "$repo_root/bin/kofun-digest" -c SHA256SUMS >/dev/null) ||
+# them rather than being hashed a second time. The verifier is the C seed
+# tool, not `kofun digest`: the Kofun command is an output of the seed being
+# checked here (#1668).
+seed_work=$(mktemp -d "${TMPDIR:-/tmp}/kofun-seed-digest.XXXXXX") ||
+    fail "cannot create a pre-build seed verifier directory"
+kofun_seed_digest_build "$repo_root" "$seed_work/seed-digest" ||
+    fail "cannot build the pre-build seed verifier"
+(cd bootstrap/stage1 && "$seed_work/seed-digest" -c SHA256SUMS >/dev/null) ||
     fail "bootstrap/stage1/SHA256SUMS does not match the checkout"
-"$repo_root/bin/kofun-digest" -c bootstrap/stage2/SHA256SUMS >/dev/null ||
+"$seed_work/seed-digest" -c bootstrap/stage2/SHA256SUMS >/dev/null ||
     fail "bootstrap/stage2/SHA256SUMS does not match the checkout"
+rm -rf "$seed_work"
 
 profile_digest=$(recorded_value bootstrap/selfhost/profile.meta source_sha256)
 stage1_declared_digest=$(awk '$2 == "compiler.kofun" { print $1 }' \

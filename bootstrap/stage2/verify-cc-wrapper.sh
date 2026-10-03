@@ -591,7 +591,7 @@ if test "$common_identity_required" -eq 1; then
     wrapper_root=$(CDPATH= cd -P -- "$wrapper_dir/../.." && pwd) || exit 2
     compiler_digest_output=$(
         CC="$KOFUN_VERIFY_REAL_CC" \
-            "$wrapper_root/bin/kofun-digest" "$compiler_path"
+            "$wrapper_root/bin/kofun" digest "$compiler_path"
     ) || {
         printf '%s\n' \
             'verify compiler wrapper: cannot digest the resolved compiler' >&2
