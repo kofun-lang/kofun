@@ -443,6 +443,20 @@
             "result": "`19` and `11` at 43d53d38, the audited commit. Nineteen record fields across six tracked files are typed `List[Int]`, and eleven standard-library verify scripts assert the current refusal verbatim; four of those eleven — `stdlib/array`, `stdlib/binary_heap`, `stdlib/set` and `stdlib/vector` — guard records whose refused field is one of the nineteen, so the count of tracked sources whose Stage 2 result changes is 4.",
             "evidence": "spec/aggregate-layout-v1/layout.mjs"
           }
+        },
+        {
+          "id": "A02",
+          "recorded_on": "2026-10-03",
+          "change": "https://github.com/kofun-lang/kofun/issues/1694",
+          "delta": "AggregateLayout v1 admits a seventh value kind, `bytes`: the bounded `Bytes[65536]` carrier stored inline as a nominal-record field. It is three 8-byte words — `length` at offset 0, `capacity` at 8, and a `data` pointer at 16 — so its size is 24, its alignment is 8, and its pointer bitmap holds the `data` word, giving `managed` drop. A record containing one is therefore not `Copy`, and a second binding initialized from it is refused as `E2S170` rather than aliased; a read of the field is a non-escaping `read` view of the carrier the record still owns. `List[Bytes]` and a `Bytes` ADT payload are not admitted by this kind. The `list` and `bounded_list` kinds are unchanged, and the target-parameterization decision stands as written.",
+          "original_semantics": "`Text`, `List`, flat records, and flat ADT variants get deterministic byte layouts computed from a declared `TargetDataLayout`. Layout identity is the v1 schema plus the complete target parameters plus type identity, so one type on two targets is two descriptors and neither is privileged: a 32-bit target gets 4-byte references and a 64-bit target 8-byte references without either one changing source semantics. One byte-identical layout on every target is rejected — it decides wasm32 pointer width in advance and hides that decision inside a diff that looks like formatting. An opaque handle for every aggregate is rejected as the default representation, because it costs an allocation and a dereference per aggregate and forfeits the predictable native layout this contract exists to give.",
+          "compatibility": {
+            "category": "additive",
+            "statement": "No tracked program changes meaning and none stops compiling. `bytes` is a new kind name reachable from no existing layout vector, and the `list`, `bounded_list`, `text`, `scalar`, `record`, `adt` and `optional` kinds are unchanged, so the committed golden vectors and the target-divergence assertion in `spec/aggregate-layout-v1/check.sh` are unaffected. The change is additive in the direction that matters: record fields that the Stage 2 backend refuses today become lowerable, and nothing that lowers today is refused.",
+            "corpus_query": "git grep -nE '^[[:space:]]*[a-z_][A-Za-z0-9_]*:[[:space:]]*Bytes' -- '*.kofun' | wc -l",
+            "result": "`4` at `feddb49e`, the audited commit: four record fields across four tracked files are typed `Bytes`, and the Stage 2 backend refuses each as `E2S32`. They are the ones this amendment admits.",
+            "evidence": "tests/conformance/record-bytes-fields/run.sh"
+          }
         }
       ]
     },
