@@ -1,9 +1,9 @@
 {
   "schema": "kofun.release-evidence/v1",
   "manifest_version": 1,
-  "version": "0.13.3-seed",
+  "version": "0.13.4-seed",
   "inputs": {
-    "VERSION": "b604fbcecf120ea14db814e7a043ddea8f29765ada4b475c95f99ba12f7476db",
+    "VERSION": "0d9e7f5459c6199bd4daabcf5429550b3c8e789cd11a72c92c18bc3f5963b440",
     "release/claims.json": "dfb7822cb44fedabd0a7f953164d053f5e903f0cee7dfa92fafa24191a81d95f",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
     "bootstrap/manifest.json": "60596a441b99ee574d23911c93f812269e12e3126228c13dc0cd40b213e4816c"
