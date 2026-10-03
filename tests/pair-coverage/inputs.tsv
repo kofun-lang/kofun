@@ -457,6 +457,10 @@ tests/conformance/command-operands/operand_length_over.kofun
 tests/conformance/command-operands/operands.kofun
 tests/conformance/command-operands/stderr_line.kofun
 tests/conformance/command-operands/stderr_line_over.kofun
+tests/conformance/record-bytes-fields/copy_annotated_refused.kofun
+tests/conformance/record-bytes-fields/copy_refused.kofun
+tests/conformance/record-bytes-fields/construct_read.kofun
+tests/conformance/record-bytes-fields/move_whole.kofun
 tests/conformance/call-arguments/assigned_lambda.kofun
 tests/conformance/call-arguments/block_lambda_argument_position.kofun
 tests/conformance/call-arguments/block_lambda_let_position.kofun
