@@ -78,7 +78,12 @@
 # the place the third region *is* checked is `release/claims.json`'s
 # `reproduction.prerequisites`.
 #
-# unknown-ceiling: 31
+# #1684 added the one new `unknown`: `tests/verify-shards/partition.mjs` is the
+# generator a maintainer runs by hand, and no task on the verify path names
+# it, so the reach rules cannot place it. The bound moved 31 -> 32 with that
+# row.
+#
+# unknown-ceiling: 32
 #
 # The bound on `unknown`, checked in BOTH directions like
 # tests/assertions/budget.tsv: over it is a use the rules could not classify
@@ -148,9 +153,8 @@ cc	invoke	2	required-today	required	tests/conformance/bytes-read-file/run.sh
 cc	invoke	1	required-today	required	tests/conformance/bytes-read-stream/run.sh
 cc	invoke	5	required-today	required	tests/conformance/bytes-text/run.sh
 cc	invoke	2	required-today	required	tests/conformance/call-arguments/run.sh
-cc	invoke	1	required-today	required	tests/conformance/command-operands/run.sh
-cc	invoke	1	required-today	required	tests/conformance/record-bytes-fields/run.sh
 cc	invoke	5	required-today	required	tests/conformance/codegen/dense-enum-dispatch/run.sh
+cc	invoke	1	required-today	required	tests/conformance/command-operands/run.sh
 cc	invoke	1	required-today	required	tests/conformance/concurrency/ownership/check.mjs
 cc	invoke	6	required-today	required	tests/conformance/const-generics/run.sh
 cc	invoke	1	required-today	required	tests/conformance/decimal-fixed/runtime/check.sh
@@ -183,6 +187,7 @@ cc	invoke	3	required-today	required	tests/conformance/optional-coalescing/run.sh
 cc	invoke	2	required-today	required	tests/conformance/optional-construction/run.sh
 cc	invoke	3	required-today	required	tests/conformance/optional-narrowing/run.sh
 cc	invoke	3	required-today	required	tests/conformance/optional/run.sh
+cc	invoke	1	required-today	required	tests/conformance/record-bytes-fields/run.sh
 cc	invoke	5	required-today	required	tests/conformance/records/run.sh
 cc	invoke	1	required-today	required	tests/conformance/result-propagation/run.sh
 cc	invoke	1	required-today	required	tests/conformance/stage1-adapter/check.sh
@@ -304,13 +309,13 @@ node	invoke	1	required-today	unknown	tests/conformance/backends/wasm32-node.sh
 node	invoke	2	required-today	required	tests/conformance/bytes-read-stream/run.sh
 node	invoke	1	required-today	required	tests/conformance/call-arguments/run.sh
 node	invoke	2	required-today	required	tests/conformance/command-operands/run.sh
-node	invoke	2	required-today	required	tests/conformance/record-bytes-fields/run.sh
 node	invoke	1	required-today	required	tests/conformance/concurrency/ownership/run.sh
 node	invoke	4	required-today	required	tests/conformance/effects/pure-boundary/run.sh
 node	invoke	5	required-today	required	tests/conformance/effects/pure-io/run.sh
 node	invoke	3	required-today	required	tests/conformance/int-bits/run.sh
 node	invoke	1	required-today	required	tests/conformance/move-call-crossings/run.sh
 node	invoke	3	required-today	required	tests/conformance/optional-construction/run.sh
+node	invoke	2	required-today	required	tests/conformance/record-bytes-fields/run.sh
 node	invoke	2	required-today	required	tests/conformance/result-propagation/run.sh
 node	invoke	7	required-today	optional	tests/digest/check.sh
 node	invoke	5	required-today	required	tests/docs/documentation-index.sh
@@ -441,13 +446,13 @@ node	source	1	required-today	required	tests/conformance/aggregate-bridge/check-p
 node	source	1	required-today	required	tests/conformance/aggregate-bridge/check-sidecar.mjs
 node	source	1	required-today	required	tests/conformance/bytes-read-stream/pair.mjs
 node	source	1	required-today	required	tests/conformance/command-operands/pair.mjs
-node	source	1	required-today	required	tests/conformance/record-bytes-fields/pair.mjs
 node	source	1	required-today	required	tests/conformance/concurrency/ownership/check.mjs
 node	source	1	required-today	required	tests/conformance/concurrency/ownership/normalize.mjs
 node	source	1	required-today	required	tests/conformance/effects/pure-boundary/report.mjs
 node	source	1	required-today	required	tests/conformance/effects/pure-io/report.mjs
 node	source	1	required-today	required	tests/conformance/int-bits/check-pair.mjs
 node	source	1	required-today	required	tests/conformance/move-call-crossings/check.mjs
+node	source	1	required-today	required	tests/conformance/record-bytes-fields/pair.mjs
 node	source	1	required-today	required	tests/conformance/result-propagation/pair.mjs
 node	source	1	required-today	required	tests/digest/no-host-digest-tools.mjs
 node	source	1	required-today	required	tests/docs/audited-claim-metadata.mjs
@@ -491,6 +496,7 @@ node	source	1	required-today	required	tests/typed-sidecar/captures_test.mjs
 node	source	1	required-today	required	tests/typed-sidecar/codec_test.mjs
 node	source	1	required-today	required	tests/typed-sidecar/producer_races_test.mjs
 node	source	1	required-today	required	tests/typed-sidecar/stage2_projector_test.mjs
+node	source	1	required-today	unknown	tests/verify-shards/partition.mjs
 node	source	1	required-today	required	tests/wasm-list-v1/run.mjs
 node	source	1	required-today	required	tests/wasm-text-v1/run.mjs
 node	source	1	required-today	required	tests/wasm/wasi-command-memory/memory_check.mjs
@@ -578,6 +584,8 @@ shell-build-driver	source	1	required-today	required	framework/tui/build.sh
 shell-build-driver	source	1	required-today	required	framework/tui/check.sh
 shell-build-driver	source	1	required-today	required	package/manager.sh
 shell-build-driver	source	1	required-today	required	release/fail-closed.sh
+shell-build-driver	source	1	required-today	required	release/prepare.sh
+shell-build-driver	source	1	required-today	required	release/verify-publication.sh
 shell-build-driver	source	1	required-today	off-path	scripts/graphify.sh
 shell-build-driver	source	1	required-today	required	spec/adt-match-v2/check.sh
 shell-build-driver	source	1	required-today	required	spec/aggregate-layout-v1/check.sh
@@ -608,8 +616,6 @@ shell-build-driver	source	1	required-today	required	spec/wasi-command-projection
 shell-build-driver	source	1	required-today	required	spec/wasi-host-matrix-v1/check.sh
 shell-build-driver	source	1	required-today	required	spec/wasm-host-abi-v1/check.sh
 shell-build-driver	source	1	required-today	required	spec/wasm-host-profile-v1/check.sh
-shell-build-driver	source	1	required-today	required	release/prepare.sh
-shell-build-driver	source	1	required-today	required	release/verify-publication.sh
 shell-build-driver	source	1	required-today	required	stdlib/array/tests/verify.sh
 shell-build-driver	source	1	required-today	required	stdlib/binary_heap/tests/verify.sh
 shell-build-driver	source	1	required-today	required	stdlib/buffered_io/tests/verify.sh
@@ -657,11 +663,10 @@ shell-build-driver	source	1	required-today	required	tests/conformance/bytes-read
 shell-build-driver	source	1	required-today	required	tests/conformance/bytes-read-stream/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/bytes-text/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/call-arguments/run.sh
-shell-build-driver	source	1	required-today	required	tests/conformance/command-operands/run.sh
-shell-build-driver	source	1	required-today	required	tests/conformance/record-bytes-fields/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/capabilities_test.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/check-capabilities.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/codegen/dense-enum-dispatch/run.sh
+shell-build-driver	source	1	required-today	required	tests/conformance/command-operands/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/concurrency/ownership/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/const-generics/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/decimal-fixed/runtime/check.sh
@@ -697,6 +702,7 @@ shell-build-driver	source	1	required-today	required	tests/conformance/optional-c
 shell-build-driver	source	1	required-today	required	tests/conformance/optional-narrowing/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/optional/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/patterns/run.sh
+shell-build-driver	source	1	required-today	required	tests/conformance/record-bytes-fields/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/records/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/result-propagation/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/run.sh
@@ -821,6 +827,11 @@ shell-build-driver	source	1	required-today	required	tests/typed-sidecar/stage2-e
 shell-build-driver	source	1	required-today	required	tests/typed-sidecar/stage2-projector.sh
 shell-build-driver	source	1	required-today	required	tests/unicode/run.sh
 shell-build-driver	source	1	required-today	required	tests/usability/check.sh
+shell-build-driver	source	1	required-today	required	tests/verify-shards/aggregate.sh
+shell-build-driver	source	1	required-today	required	tests/verify-shards/check.sh
+shell-build-driver	source	1	required-today	required	tests/verify-shards/run-shard.sh
+shell-build-driver	source	1	required-today	required	tests/verify-shards/self-test.sh
+shell-build-driver	source	1	required-today	required	tests/verify-shards/time-tasks.sh
 shell-build-driver	source	1	required-today	required	tests/wasm-list-v1/check.sh
 shell-build-driver	source	1	required-today	required	tests/wasm-text-v1/check.sh
 shell-build-driver	source	1	required-today	required	tests/wasm/wasi-command-memory/check.sh
@@ -835,10 +846,11 @@ go-task	invoke	4	required-today	required	.github/workflows/ci.yml
 go-task	invoke	1	required-today	required	.github/workflows/fuzz.yml
 go-task	invoke	1	required-today	required	.github/workflows/native-hosts.yml
 go-task	invoke	2	required-today	required	.github/workflows/release.yml
-go-task	invoke	5	required-today	required	bootstrap/stage2/verify-runner.sh
+go-task	invoke	6	required-today	required	bootstrap/stage2/verify-runner.sh
 go-task	invoke	5	required-today	required	release/prepare.sh
 go-task	invoke	1	required-today	required	tests/pair-coverage/measure.sh
 go-task	invoke	2	required-today	required	tests/tooling/task-help/check.sh
+go-task	invoke	4	required-today	required	tests/verify-shards/aggregate.sh
 go-task	invoke	1	required-today	required	tooling/task-help.mjs
 go-task	source	1	required-today	required	Taskfile.yml
 system-sdk	invoke	1	required-today	required	bin/kofun

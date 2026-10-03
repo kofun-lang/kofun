@@ -98,6 +98,36 @@ check_driver_failures() {
 # read it was a measurement that takes hours, so #1321 pinning a new `verify`
 # task and not this file was discovered at the top of a 2.5-hour run. The
 # comparison itself is milliseconds. Reaching it in milliseconds is #1596.
+# The verify task list, as Taskfile.yml states it. `roadmap` is run by
+# verify-runner.sh after the parallel lane, so it is part of what verify
+# executes even though it is not in that list.
+#
+# Defined once, and reached by both `check_drivers` below and the shard ledger
+# through `--print-verify-tasks`. The shard ledger's whole claim is that its
+# basis is the same rule this file enforces, so transcribing the extraction
+# into a second script would prove the transcription rather than the property.
+extract_verify_tasks() {
+    evt_out=$1
+    awk '/^  verify:/{f=1}
+         f&&/^      - cmd: \|-/{c=1;next}
+         c&&/^ {10}/{print}
+         c&&!/^ {10}/&&!/^[[:space:]]*$/{exit}' "$ROOT/Taskfile.yml" |
+        sed 's/\\$//' | tr -s ' \n' ' ' |
+        sed 's/sh "[^"]*" "[^"]*" "[^"]*" //' | tr ' ' '\n' |
+        grep -vE '^$|verify-runner|PWD|VERIFY_JOBS' >"$evt_out"
+    echo roadmap >>"$evt_out"
+    sort -u "$evt_out" -o "$evt_out"
+
+    # An extraction that silently matched nothing would compare a pinned list
+    # against an empty one and report every driver as stale, which reads as a
+    # regenerated Taskfile rather than as a moved anchor.
+    test -s "$evt_out" || {
+        echo "measure.sh: the verify task list could not be read from Taskfile.yml;" >&2
+        echo "  its anchor moved. Fix the extraction in measure.sh's extract_verify_tasks." >&2
+        return 1
+    }
+}
+
 check_drivers() {
     cd_work=$1
     # The pinned list is an argument rather than an environment seam, for the
@@ -106,27 +136,7 @@ check_drivers() {
     # so nothing can quietly check a file against itself.
     cd_drivers=${2:-$DRIVERS}
 
-    # The verify task list, as Taskfile.yml states it. `roadmap` is run by
-    # verify-runner.sh after the parallel lane, so it is part of what verify
-    # executes even though it is not in that list.
-    awk '/^  verify:/{f=1}
-         f&&/^      - cmd: \|-/{c=1;next}
-         c&&/^ {10}/{print}
-         c&&!/^ {10}/&&!/^[[:space:]]*$/{exit}' "$ROOT/Taskfile.yml" |
-        sed 's/\\$//' | tr -s ' \n' ' ' |
-        sed 's/sh "[^"]*" "[^"]*" "[^"]*" //' | tr ' ' '\n' |
-        grep -vE '^$|verify-runner|PWD|VERIFY_JOBS' >"$cd_work/verify-tasks.txt"
-    echo roadmap >>"$cd_work/verify-tasks.txt"
-    sort -u "$cd_work/verify-tasks.txt" -o "$cd_work/verify-tasks.txt"
-
-    # An extraction that silently matched nothing would compare a pinned list
-    # against an empty one and report every driver as stale, which reads as a
-    # regenerated Taskfile rather than as a moved anchor.
-    test -s "$cd_work/verify-tasks.txt" || {
-        echo "measure.sh: the verify task list could not be read from Taskfile.yml;" >&2
-        echo "  its anchor moved. Fix the extraction in measure.sh's check_drivers." >&2
-        return 1
-    }
+    extract_verify_tasks "$cd_work/verify-tasks.txt" || return 1
 
     strip_comments "$cd_drivers" >"$cd_work/pinned-drivers.txt"
     cd_undriven=$(comm -13 "$cd_work/pinned-drivers.txt" "$cd_work/verify-tasks.txt")
@@ -165,6 +175,19 @@ if test "${1:-}" = "--check-drivers"; then
     }
     check_drivers "$cd_dir" "${2:-}"
     echo "PASS: drivers.tsv pins exactly the tasks verify runs"
+    exit 0
+fi
+
+# The verify task list on stdout, so a caller that needs the basis itself has
+# one source for it. `tests/verify-shards/check.sh` is the caller this exists
+# for; it must partition exactly the set `verify` runs, and reading Taskfile.yml
+# through `extract_verify_tasks` is how it gets the same list `check_drivers`
+# compares against rather than a second, drifting copy.
+if test "${1:-}" = "--print-verify-tasks"; then
+    pvt_dir=$(mktemp -d "${TMPDIR:-/tmp}/kofun-verify-tasks.XXXXXX")
+    trap 'rm -rf "$pvt_dir"' 0 1 2 15
+    extract_verify_tasks "$pvt_dir/verify-tasks.txt" || exit 1
+    cat "$pvt_dir/verify-tasks.txt"
     exit 0
 fi
 
