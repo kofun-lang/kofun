@@ -156,6 +156,7 @@ cc	invoke	2	required-today	required	tests/conformance/call-arguments/run.sh
 cc	invoke	5	required-today	required	tests/conformance/codegen/dense-enum-dispatch/run.sh
 cc	invoke	1	required-today	required	tests/conformance/command-operands/run.sh
 cc	invoke	1	required-today	required	tests/conformance/concurrency/ownership/check.mjs
+cc	invoke	1	required-today	required	tests/conformance/concurrency/runtime/run.sh
 cc	invoke	6	required-today	required	tests/conformance/const-generics/run.sh
 cc	invoke	1	required-today	required	tests/conformance/decimal-fixed/runtime/check.sh
 cc	invoke	4	required-today	required	tests/conformance/decimal/run.sh
@@ -311,6 +312,7 @@ node	invoke	2	required-today	required	tests/conformance/bytes-read-stream/run.sh
 node	invoke	1	required-today	required	tests/conformance/call-arguments/run.sh
 node	invoke	2	required-today	required	tests/conformance/command-operands/run.sh
 node	invoke	1	required-today	required	tests/conformance/concurrency/ownership/run.sh
+node	invoke	2	required-today	required	tests/conformance/concurrency/runtime/run.sh
 node	invoke	7	required-today	required	tests/conformance/effects/pure-boundary/run.sh
 node	invoke	5	required-today	required	tests/conformance/effects/pure-io/run.sh
 node	invoke	3	required-today	required	tests/conformance/int-bits/run.sh
@@ -450,6 +452,7 @@ node	source	1	required-today	required	tests/conformance/bytes-read-stream/pair.m
 node	source	1	required-today	required	tests/conformance/command-operands/pair.mjs
 node	source	1	required-today	required	tests/conformance/concurrency/ownership/check.mjs
 node	source	1	required-today	required	tests/conformance/concurrency/ownership/normalize.mjs
+node	source	1	required-today	required	tests/conformance/concurrency/runtime/check-model.mjs
 node	source	1	required-today	required	tests/conformance/effects/pure-boundary/report.mjs
 node	source	1	required-today	required	tests/conformance/effects/pure-io/report.mjs
 node	source	1	required-today	required	tests/conformance/int-bits/check-pair.mjs
@@ -671,6 +674,7 @@ shell-build-driver	source	1	required-today	required	tests/conformance/check-capa
 shell-build-driver	source	1	required-today	required	tests/conformance/codegen/dense-enum-dispatch/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/command-operands/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/concurrency/ownership/run.sh
+shell-build-driver	source	1	required-today	required	tests/conformance/concurrency/runtime/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/const-generics/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/decimal-fixed/runtime/check.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/decimal/run.sh
