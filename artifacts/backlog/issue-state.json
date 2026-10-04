@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 95,
+  "open_issues": 99,
   "issues": [
     {
       "number": 26,
@@ -484,12 +484,13 @@
       "number": 1164,
       "title": "Scoped parallelism: bounded scheduler, scope-exit drain, panic precedence, and cancellation",
       "state_labels": [
-        "needs-detail"
+        "ready"
       ],
-      "state_line": "needs-detail",
+      "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
-        "37905efa0e4fcf1b821a97e2799722a47ab942f2"
+        "37905efa0e4fcf1b821a97e2799722a47ab942f2",
+        "638842470f622bbabb50c34a8bd9540e61dcbf33"
       ]
     },
     {
@@ -746,12 +747,13 @@
       "number": 1244,
       "title": "Stage 2 affine authority state: control-flow cleanup and escape refusal",
       "state_labels": [
-        "needs-detail"
+        "in-progress"
       ],
-      "state_line": "needs-detail",
+      "state_line": "in-progress",
       "blocked_by": [],
       "evidence_commits": [
-        "20cee8101c2792e0725fb6dd2211d1b0bfcec500"
+        "20cee8101c2792e0725fb6dd2211d1b0bfcec500",
+        "638842470f622bbabb50c34a8bd9540e61dcbf33"
       ],
       "claims": [
         {
@@ -769,6 +771,10 @@
         {
           "agent_id": "codex-root-1244-1540-boundary-20260821",
           "status": "released"
+        },
+        {
+          "agent_id": "deepseek-1244-affine-authority-20261004",
+          "status": "active"
         }
       ]
     },
@@ -824,14 +830,15 @@
       "number": 1250,
       "title": "Stage 2 Decimal Fixed[S]: nominal carrier, construction, and scale identity",
       "state_labels": [
-        "needs-detail"
+        "ready"
       ],
-      "state_line": "needs-detail",
+      "state_line": "ready",
       "blocked_by": [
         1662
       ],
       "evidence_commits": [
         "05f4f1d7e8387d4f4e9a1f07280f982089b9256b",
+        "638842470f622bbabb50c34a8bd9540e61dcbf33",
         "fe1142a7039a0862ac3558729ab2477bb7a604d6"
       ],
       "claims": [
@@ -1557,22 +1564,18 @@
       "number": 1455,
       "title": "Replace bin/kofun-digest with a Kofun digest command",
       "state_labels": [
-        "blocked"
+        "in-progress"
       ],
-      "state_line": "blocked",
-      "blocked_by": [
-        1665,
-        1666,
-        1667,
-        1668
-      ],
+      "state_line": "in-progress",
+      "blocked_by": [],
       "evidence_commits": [
         "0d7d53039a439bbcfc38befd461ee9b29130ed29",
         "1dfe393464249ae564514cd925e06f308555d3b5",
         "21e89ecb8807606712c902481a6b39f82a190c79",
         "555ab69a54342f069e51d1729e71750d5ac680fe",
         "9e3b85328a710b3a2335e2dee8d72b3ac6fb71e1",
-        "fe1142a7039a0862ac3558729ab2477bb7a604d6"
+        "fe1142a7039a0862ac3558729ab2477bb7a604d6",
+        "feddb49e65178d6b1916218c3c55c6e73948475f"
       ],
       "claims": [
         {
@@ -1594,6 +1597,14 @@
         {
           "agent_id": "codex-issues-steady-digest-20260923",
           "status": "merged"
+        },
+        {
+          "agent_id": "opencode-digest-command-1455-20261003",
+          "status": "active"
+        },
+        {
+          "agent_id": "opencode-digest-command-1455-20261003",
+          "status": "pr-open"
         }
       ]
     },
@@ -1686,6 +1697,7 @@
       "blocked_by": [],
       "evidence_commits": [
         "1dfe393464249ae564514cd925e06f308555d3b5",
+        "638842470f622bbabb50c34a8bd9540e61dcbf33",
         "86740fe2d4156ac8ea92389e4e0576842c0705f9",
         "d42d2e4c98d66ece506802fbaaa83419f604b8bd"
       ],
@@ -1891,41 +1903,16 @@
       ]
     },
     {
-      "number": 1666,
-      "title": "Stage 2 C11: a compiled program receives its operands and writes a line to standard error",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "1dfe393464249ae564514cd925e06f308555d3b5",
-        "fe1142a7039a0862ac3558729ab2477bb7a604d6"
-      ]
-    },
-    {
-      "number": 1667,
-      "title": "Stage 2 C11: read a file or standard input past 65,536 bytes in bounded chunks, with a failure the program can observe",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "1dfe393464249ae564514cd925e06f308555d3b5",
-        "fe1142a7039a0862ac3558729ab2477bb7a604d6"
-      ]
-    },
-    {
       "number": 1674,
       "title": "Generics v1: production generic-record HIR and the shared nominal identity core",
       "state_labels": [
-        "needs-detail"
+        "ready"
       ],
-      "state_line": "needs-detail",
+      "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
-        "57600b24bf97afdb130c084c6f5a23fd9b807261"
+        "57600b24bf97afdb130c084c6f5a23fd9b807261",
+        "638842470f622bbabb50c34a8bd9540e61dcbf33"
       ]
     },
     {
@@ -1967,38 +1954,6 @@
       ]
     },
     {
-      "number": 1684,
-      "title": "CI: shard `task verify` across parallel runners with a bidirectional gate ledger",
-      "state_labels": [
-        "needs-detail"
-      ],
-      "state_line": "needs-detail",
-      "blocked_by": [],
-      "evidence_commits": [
-        "8f708f0c0769413eaa33f541f9dcf5dfd2318dd6"
-      ]
-    },
-    {
-      "number": 1689,
-      "title": "RFC-0017 amendment: KIF v3 domains and the #303 frame for the generic identity pair (#1673)",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [],
-      "claims": [
-        {
-          "agent_id": "opencode-1689-rfc0017-identity-20260927",
-          "status": "active"
-        },
-        {
-          "agent_id": "opencode-1689-rfc0017-identity-20260927",
-          "status": "pr-open"
-        }
-      ]
-    },
-    {
       "number": 1690,
       "title": "Stage 2: a bounded include form to replace build-time SHA-256 block extraction (#1668)",
       "state_labels": [
@@ -2006,51 +1961,48 @@
       ],
       "state_line": "needs-detail",
       "blocked_by": [],
-      "evidence_commits": []
-    },
-    {
-      "number": 1694,
-      "title": "Stage 2 C11: a `Bytes` field in a nominal record, and the AggregateLayout kind it needs (#1258)",
-      "state_labels": [
-        "needs-detail"
-      ],
-      "state_line": "needs-detail",
-      "blocked_by": [],
-      "evidence_commits": []
-    },
-    {
-      "number": 1695,
-      "title": "Stage 2 C11: a bounded list of nominal records at `List[Header]` capacity 128 (#1258)",
-      "state_labels": [
-        "needs-detail"
-      ],
-      "state_line": "needs-detail",
-      "blocked_by": [
-        1694
-      ],
-      "evidence_commits": []
+      "evidence_commits": [],
+      "claims": [
+        {
+          "agent_id": "deepseek-1690-include-form-20261004",
+          "status": "active"
+        },
+        {
+          "agent_id": "deepseek-1690-include-form-20261004",
+          "status": "pr-open"
+        },
+        {
+          "agent_id": "deepseek-1690-include-form-20261004",
+          "status": "released"
+        }
+      ]
     },
     {
       "number": 1696,
       "title": "HTTP origin child: `HttpOrigin` and the profile limits on C11 Stage 2 (#1258)",
       "state_labels": [
-        "needs-detail"
+        "ready"
       ],
-      "state_line": "needs-detail",
+      "state_line": "ready",
       "blocked_by": [
-        1694
+        1694,
+        1707
       ],
-      "evidence_commits": []
+      "evidence_commits": [
+        "638842470f622bbabb50c34a8bd9540e61dcbf33"
+      ]
     },
     {
       "number": 1697,
       "title": "HTTP errors child: the closed `HttpError` ADT on C11 Stage 2 (#1258)",
       "state_labels": [
-        "needs-detail"
+        "ready"
       ],
-      "state_line": "needs-detail",
+      "state_line": "ready",
       "blocked_by": [],
-      "evidence_commits": []
+      "evidence_commits": [
+        "638842470f622bbabb50c34a8bd9540e61dcbf33"
+      ]
     },
     {
       "number": 1698,
@@ -2064,6 +2016,188 @@
         1695
       ],
       "evidence_commits": []
+    },
+    {
+      "number": 1711,
+      "title": "`pure fn` accepts a function that passes an `io` function by name as a callable argument — it prints at run time",
+      "state_labels": [
+        "in-progress"
+      ],
+      "state_line": "in-progress",
+      "blocked_by": [],
+      "evidence_commits": [
+        "638842470f622bbabb50c34a8bd9540e61dcbf33"
+      ],
+      "claims": [
+        {
+          "agent_id": "deepseek-1711-pure-value-ref-20261004",
+          "status": "active"
+        },
+        {
+          "agent_id": "claude-kofun-a3-1711-20261004",
+          "status": "active"
+        },
+        {
+          "agent_id": "deepseek-1711-pure-value-ref-20261004",
+          "status": "released"
+        }
+      ]
+    },
+    {
+      "number": 1712,
+      "title": "[Decision] Who may let a dependency contain foreign code: per-dependency trust grants, propagation, and default (Flix security contexts)",
+      "state_labels": [
+        "in-progress"
+      ],
+      "state_line": "in-progress",
+      "blocked_by": [],
+      "evidence_commits": [
+        "638842470f622bbabb50c34a8bd9540e61dcbf33"
+      ],
+      "claims": [
+        {
+          "agent_id": "claude-kofun-a3-1712-20261004",
+          "status": "active"
+        },
+        {
+          "agent_id": "claude-kofun-a3-1712-20261004",
+          "status": "pr-open"
+        }
+      ]
+    },
+    {
+      "number": 1714,
+      "title": "[Decision] A statement that discards a `pure` call result: refusal, nothing, or a lint (Flix useless expressions and @MustUse)",
+      "state_labels": [
+        "in-progress"
+      ],
+      "state_line": "in-progress",
+      "blocked_by": [],
+      "evidence_commits": [
+        "638842470f622bbabb50c34a8bd9540e61dcbf33"
+      ],
+      "claims": [
+        {
+          "agent_id": "claude-kofun-a3-1714-20261004",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "number": 1715,
+      "title": "[Research] Value-level structural termination: reuse the type-level rule for ordinary functions? (Flix @Terminates)",
+      "state_labels": [
+        "in-progress"
+      ],
+      "state_line": "in-progress",
+      "blocked_by": [],
+      "evidence_commits": [
+        "638842470f622bbabb50c34a8bd9540e61dcbf33"
+      ],
+      "claims": [
+        {
+          "agent_id": "claude-kofun-a3-1715-20261004",
+          "status": "active"
+        },
+        {
+          "agent_id": "claude-kofun-a3-1715-20261004",
+          "status": "pr-open"
+        }
+      ]
+    },
+    {
+      "number": 1718,
+      "title": "Decide value-level structural termination: inferred fact, assertive boundary, and refusals",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        30
+      ],
+      "evidence_commits": [
+        "638842470f622bbabb50c34a8bd9540e61dcbf33"
+      ]
+    },
+    {
+      "number": 1719,
+      "title": "Propose callable purity requirements: `pure` callable types, `pure` trait methods, argument refusals, and their KIF encoding",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1711
+      ],
+      "evidence_commits": [
+        "638842470f622bbabb50c34a8bd9540e61dcbf33"
+      ]
+    },
+    {
+      "number": 1720,
+      "title": "Stage 2: an uncalled `let`-bound lambda passes check and fails at cc (#1358 for lifted lambdas)",
+      "state_labels": [
+        "in-progress"
+      ],
+      "state_line": "in-progress",
+      "blocked_by": [],
+      "evidence_commits": [
+        "8a05a3ddb795bb46b7f40bed001154c8c54abb9d"
+      ],
+      "claims": [
+        {
+          "agent_id": "deepseek-http-c11-batch-20261003",
+          "status": "active"
+        },
+        {
+          "agent_id": "deepseek-http-c11-batch-20261003",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "number": 1723,
+      "title": "Package manifest `format = 2`: a per-dependency `plain`/`foreign` grant, with native artifacts requiring `foreign` (RFC-0019)",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1457
+      ],
+      "evidence_commits": [
+        "7d2caf6f3fa3bf733533b08ccf20b6551c3e13f0"
+      ]
+    },
+    {
+      "number": 1724,
+      "title": "Package-resolution diagnostic band: stable codes for the RFC-0019 manifest grant refusals",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1723
+      ],
+      "evidence_commits": [
+        "7d2caf6f3fa3bf733533b08ccf20b6551c3e13f0"
+      ]
+    },
+    {
+      "number": 1725,
+      "title": "Package resolver: effective `plain`/`foreign` grants over the dependency graph, checked from KIF `0x800A` without source (RFC-0019)",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1457,
+        1723,
+        1724
+      ],
+      "evidence_commits": [
+        "7d2caf6f3fa3bf733533b08ccf20b6551c3e13f0"
+      ]
     }
   ]
 }
