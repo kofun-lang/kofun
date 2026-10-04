@@ -1185,6 +1185,31 @@
           }
         }
       ]
+    },
+    {
+      "id": "RFC-0019",
+      "title": "A dependency contains foreign code only under its consumer's `foreign` grant",
+      "provenance": "rfc",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "rfcs/0019-dependency-foreign-grants.md",
+      "document": "rfcs/0019-dependency-foreign-grants.md",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/1712",
+      "dates": {
+        "opened_on": "2026-10-04",
+        "review_closed_on": "2026-10-04",
+        "decided_on": "2026-10-04"
+      },
+      "normative_spec": [
+        "rfcs/0019-dependency-foreign-grants.md"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "No tracked program or manifest changes meaning, and none stops resolving or compiling. `kofun.packages.toml` `format = 1` keeps its exact meaning: it has no transitive resolution, only the root declares artifacts, and a grant written in it stays refused as unsupported manifest syntax, as today. Grants exist only from `format = 2`, which the current resolver refuses outright (`bin/kofun package lock` on a `format = 2` manifest exits 2 with `unsupported manifest syntax` at 7d2caf6f); from that format a native-artifact entry needs an explicit `foreign` grant and is never grandfathered. No source packages exist, so no dependency acquires a `plain` default it could fail. The package being built is always `foreign`, so `kofun build --package` and every root C ABI program are unaffected. KIF is unchanged: the check reads RFC-0012's existing required tag `0x800A` and adds no tag, so no artifact rebuilds.",
+        "corpus_query": "base=7d2caf6f3fa3bf733533b08ccf20b6551c3e13f0; git ls-tree -r --name-only \"$base\" | grep -c 'kofun.packages.toml$'; git grep -h -o -E 'format = [0-9]+' \"$base\" -- '*.sh' '*.md' '*.toml' | sort | uniq -c",
+        "result": "`0`, then `7 format = 1` and no other format value, at 7d2caf6f3fa3bf733533b08ccf20b6551c3e13f0, the audited commit. No tracked manifest exists. The seven `format = 1` spellings are the resolver's own parser and lock writer (five in `package/manager.sh`), its README example (one in `package/README.md`), and the manifest `tests/package_manager.sh` writes (one). No tracked file spells `format = 2`.",
+        "evidence": "package/manager.sh"
+      }
     }
   ]
 }
