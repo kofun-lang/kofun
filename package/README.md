@@ -91,3 +91,33 @@ digest mismatch recoverable rather than fatal, are #1457's.
 These constraints keep resolution a sorted lock scan plus SHA-256 cache lookup,
 make offline behavior auditable, and avoid adding a runtime or Python
 dependency.
+
+## Target guidance: a core package and an adapter package
+
+> **Not implemented.** This is guidance for when source packages exist,
+> recorded with [RFC-0019](../rfcs/0019-dependency-foreign-grants.md). Today the
+> resolver reads only `format = 1` native artifacts. It has no source packages
+> and no grants.
+
+Under RFC-0019, a consumer gives each dependency a grant: `plain`, the default,
+or `foreign`. A `plain` package may contain no foreign code. That means no
+`trust raw-foreign` module, no `extern "C"` declaration, and no native
+artifact. No package can grant more than it was given.
+
+A library that needs foreign code should ship as two packages:
+
+| Package | Holds | Grant |
+|---|---|---|
+| core | the library's logic; it takes the RFC-0014 authority values it needs as parameters | `plain` |
+| adapter | the `trust raw-foreign` module, its `extern "C"` declarations or native artifact, and the reviewed façade over them | `foreign` |
+
+**The core never depends on the adapter.** A `plain` package cannot grant
+`foreign`, so a core that depended on its adapter would need `foreign` itself.
+The adapter may depend on the core. The application depends on both. It is
+always `foreign`, so it can grant `foreign` to the adapter, and it connects the
+two.
+
+The split keeps most of the code where a `plain` grant checks it. A consumer
+grants `foreign` only to the small adapter, which is the part worth reviewing.
+A consumer who does not trust that adapter can write their own and keep the
+core.
