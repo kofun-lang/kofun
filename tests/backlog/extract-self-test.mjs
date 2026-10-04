@@ -1,4 +1,4 @@
-import { claimEvents, inertClaimComments } from './extract.mjs'
+import { claimEvents, inertClaimComments, evidenceCommits } from './extract.mjs'
 
 function equal(actual, expected, name) {
     if (JSON.stringify(actual) !== JSON.stringify(expected)) {
@@ -71,6 +71,19 @@ equal(
     ]),
     [],
     'prose about the format is not an inert claim',
+)
+
+// A 40-hex token introduced by `/` is a URL path segment, not an evidence
+// stamp. Counting one made an external `github.com/<other>/…/blob/<sha>` link
+// read as a Kofun stamp the history does not contain.
+equal(
+    evidenceCommits(
+        'Audited against: `origin/main@638842470f622bbabb50c34a8bd9540e61dcbf33`.\n' +
+            'External: [`flix/book@687ccf7c`]' +
+            '(https://github.com/flix/book/blob/687ccf7c6bd6a9872568c4dd8b2def7a7665c614/src/redundancy.md).',
+    ),
+    ['638842470f622bbabb50c34a8bd9540e61dcbf33'],
+    'a URL path commit segment is not an evidence stamp',
 )
 
 process.stdout.write('PASS: canonical claim comments extract once and legacy wrappers stay inert, and an inert claim is told from prose about one\n')
