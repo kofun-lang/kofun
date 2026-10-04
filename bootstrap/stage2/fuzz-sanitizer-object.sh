@@ -220,7 +220,7 @@ kofun_stage2_fuzz_sanitizer_objects_validate() {
 
     kofun_fuzz_validate_expected_marker_output=$(
         printf '%s\n' 'kofun.stage2-fuzz-sanitizer-object/v1' |
-            "$kofun_fuzz_validate_root/bin/kofun-digest"
+            "$kofun_fuzz_validate_root/bin/kofun" digest
     ) || return 1
     kofun_fuzz_validate_expected_marker=${kofun_fuzz_validate_expected_marker_output%% *}
     kofun_fuzz_validate_actual_marker=$(
@@ -244,7 +244,7 @@ kofun_stage2_fuzz_sanitizer_objects_validate() {
     ) || return 1
     kofun_fuzz_validate_expected_manifest_output=$(
         printf '%s\n' "$kofun_fuzz_validate_expected_manifest" |
-            "$kofun_fuzz_validate_root/bin/kofun-digest"
+            "$kofun_fuzz_validate_root/bin/kofun" digest
     ) || return 1
     kofun_fuzz_validate_expected_manifest_digest=${kofun_fuzz_validate_expected_manifest_output%% *}
     kofun_fuzz_validate_actual_manifest_digest=$(
@@ -277,7 +277,7 @@ kofun_stage2_fuzz_sanitizer_objects_validate() {
     done
     kofun_fuzz_validate_identity_output=$(
         printf '%s' "$kofun_fuzz_validate_identity_material" |
-            "$kofun_fuzz_validate_root/bin/kofun-digest"
+            "$kofun_fuzz_validate_root/bin/kofun" digest
     ) || return 1
     KOFUN_STAGE2_FUZZ_SANITIZER_OBJECT_ID=${kofun_fuzz_validate_identity_output%% *}
     case $KOFUN_STAGE2_FUZZ_SANITIZER_OBJECT_ID in

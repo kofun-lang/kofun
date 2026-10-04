@@ -13,7 +13,7 @@ set -eu
 #     anchor is the standard rather than agreement between two implementations
 #     that live in the same repository;
 #   * every corpus message is digested by `bootstrap/stage2/sha256.c` through
-#     `bin/kofun-digest` and required to match byte for byte, which is the
+#     the C seed verifier and required to match byte for byte, which is the
 #     differential the issue asks for and keeps the C implementation as oracle;
 #   * both sides of every padding boundary run — 55, 56, 63, 64, and 65 — and
 #     65 is the length that cannot fit one `List[Int]`, so it exercises the
@@ -47,6 +47,12 @@ elif command -v gcc >/dev/null 2>&1; then
 else
     assert_fail 'a C11 compiler is required'
 fi
+
+# The oracle is the C implementation, reached through the seed verifier.
+# `kofun digest` would be a Kofun SHA-256, which is what this gate is testing.
+. "$ROOT/bootstrap/stage2/build.sh"
+CC=$compiler kofun_seed_digest_build "$ROOT" "$WORK/oracle" ||
+    assert_fail 'the C seed oracle did not build'
 
 model="$CASES/sha256.kofun"
 corpus="$CASES/corpus.mjs"
@@ -127,7 +133,7 @@ done <"$WORK/published"
 : >"$WORK/differential"
 while read -r name
 do
-    c_digest=$("$ROOT/bin/kofun-digest" "$WORK/messages/$name.bin" | cut -d' ' -f1)
+    c_digest=$("$WORK/oracle" "$WORK/messages/$name.bin" | cut -d' ' -f1)
     kofun_digest=$(grep "^$name " "$WORK/digests.stdout" | cut -d' ' -f2)
     assert_nonempty "the C oracle digested $name" "$c_digest"
     assert_nonempty "the model digested $name" "$kofun_digest"

@@ -1,0 +1,358 @@
+# `kofun digest` (#1455).
+#
+# This file is appended, at build time, after the SHA-256 block extracted from
+# `bootstrap/stage2/compiler.kofun`, and the result is compiled by the C11
+# Stage 2 backend. The command it produces is byte-compatible with the C tool
+# `bootstrap/stage2/sha256_tool.c` on the contract `tests/digest/check.sh`
+# pins, which is what lets every call site of the retired wrapper move at once.
+#
+# The surface is deliberately small. The C11 Core path lowers `len`,
+# `text_slice`, `==`, `+`, `to_text`, the bounded `stage2_bytes_*` family, and
+# the command-I/O family from `spec/c11-command-io-v1.md`; it does not lower
+# `contains`, `find`, `chars`, `is_digit`, `trim`, or `read_text` (`E2S10`).
+# Everything below is written against the lowered set, so the scanning is
+# character by character.
+
+# One byte's hex value, or `-1`. Both cases are accepted, as GNU `sha256sum`
+# writes. Working on the byte rather than a one-character `Text` avoids the
+# 31-byte slice bound and the temporary-slot budget for the 64 digits of every
+# manifest line.
+fn digest_hex_byte(b: Int) -> Int {
+    if b == 48 { return 0 }
+    if b == 49 { return 1 }
+    if b == 50 { return 2 }
+    if b == 51 { return 3 }
+    if b == 52 { return 4 }
+    if b == 53 { return 5 }
+    if b == 54 { return 6 }
+    if b == 55 { return 7 }
+    if b == 56 { return 8 }
+    if b == 57 { return 9 }
+    if b == 97 { return 10 }
+    if b == 98 { return 11 }
+    if b == 99 { return 12 }
+    if b == 100 { return 13 }
+    if b == 101 { return 14 }
+    if b == 102 { return 15 }
+    if b == 65 { return 10 }
+    if b == 66 { return 11 }
+    if b == 67 { return 12 }
+    if b == 68 { return 13 }
+    if b == 69 { return 14 }
+    if b == 70 { return 15 }
+    return 0 - 1
+}
+
+# The lowercase spelling of an uppercase hex digit; every other character is
+# returned unchanged.
+fn digest_lower_hex(c: Text) -> Text {
+    if c == "A" { return "a" }
+    if c == "B" { return "b" }
+    if c == "C" { return "c" }
+    if c == "D" { return "d" }
+    if c == "E" { return "e" }
+    if c == "F" { return "f" }
+    return c
+}
+
+# The index of the first byte in `manifest[ start..stop ]` that is neither a
+# space nor a tab, or `stop`. This is the separator between a line's digest and
+# its path.
+fn digest_skip_bytes(read manifest: Bytes, stop: Int, start: Int) -> Int {
+    let mut p = start
+    while p < stop {
+        let b = stage2_bytes_byte_at(manifest, p)
+        if b == 32 {
+            p = p + 1
+        } else if b == 9 {
+            p = p + 1
+        } else {
+            return p
+        }
+    }
+    return p
+}
+
+# Case-insensitive equality of two 64-character hex digests. The computed side
+# is lowercase; the manifest side may be uppercase because GNU accepts it.
+fn digest_hex_equal(expected: Text, actual: Text) -> Int {
+    let mut i = 0
+    while i < 64 {
+        if digest_lower_hex(text_slice(expected, i, i + 1)) !=
+            text_slice(actual, i, i + 1) {
+            return 0
+        }
+        i = i + 1
+    }
+    return 1
+}
+
+# One 64-byte block read from the carrier. Copied from the `bytes-read-stream`
+# gate's template, where it is proven against the C oracle over the compiler
+# sources.
+fn digest_block(read message: Bytes, base: Int) -> List[Int] {
+    let mut bytes: List[Int] = [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    ]
+    let mut offset = 0
+    while offset < 64 {
+        bytes[offset] = stage2_bytes_byte_at(message, base + offset)
+        offset = offset + 1
+    }
+    return bytes
+}
+
+# The digest of the stream that is currently open, read one chunk at a time and
+# absorbed whole-block by whole-block with the pair's own `sha256_absorb`. The
+# one open stream is a file handle or standard input, selected by the caller.
+fn digest_open_stream() -> List[Int] {
+    let message = stage2_bytes_empty()
+    let mut state = sha256_initial_state()
+    let mut tail: List[Int] = [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    ]
+    let mut tail_len = 0
+    let mut total = 0
+    let mut n = stage2_bytes_stream_read(message)
+    while n > 0 {
+        let blocks = n // 64
+        let mut block = 0
+        while block < blocks {
+            state = sha256_absorb(
+                state,
+                digest_block(message, block * 64)
+            )
+            block = block + 1
+        }
+        let mut rest = blocks * 64
+        let mut carried = 0
+        while rest < n {
+            tail[carried] = stage2_bytes_byte_at(message, rest)
+            carried = carried + 1
+            rest = rest + 1
+        }
+        tail_len = carried
+        total = total + n
+        n = stage2_bytes_stream_read(message)
+    }
+    tail[tail_len] = 128
+    let mut zero = tail_len + 1
+    while zero < 64 {
+        tail[zero] = 0
+        zero = zero + 1
+    }
+    if tail_len >= 56 {
+        state = sha256_absorb(state, tail)
+        let mut reset = 0
+        while reset < 64 {
+            tail[reset] = 0
+            reset = reset + 1
+        }
+    }
+    let mut place = 0
+    while place < 8 {
+        tail[56 + place] = total.shl(3).shr((7 - place) * 8).and(255)
+        place = place + 1
+    }
+    return sha256_absorb(state, tail)
+}
+
+# Publish `path` as the one open stream, with `-` selecting standard input.
+# Returns 0 on success and 1 when the path cannot be opened.
+fn digest_open(path: Text) -> Int {
+    if path == "-" {
+        return stage2_bytes_stream_stdin()
+    }
+    return stage2_bytes_stream_open(path)
+}
+
+# The hex digest of `path`, or the empty string when it cannot be read. A real
+# digest is never empty, so the caller uses that as the failure signal.
+fn digest_path_hex(path: Text) -> Text {
+    let opened = digest_open(path)
+    if opened != 0 {
+        return ""
+    }
+    return sha256_hex(digest_open_stream())
+}
+
+# `<hex>  <path>` for each operand, or `<hex>  -` for standard input. A missing
+# operand writes its diagnostic to standard error and does not stop the later
+# operands; the exit status is 1 when any operand failed.
+fn digest_mode(count: Int, program: Text) -> Int {
+    if count == 1 {
+        let opened = stage2_bytes_stream_stdin()
+        if opened != 0 {
+            stage2_command_stderr(program + ": cannot read standard input")
+            return 1
+        }
+        print(sha256_hex(digest_open_stream()) + "  -")
+        return 0
+    }
+    let mut failures = 0
+    let mut index = 1
+    while index < count {
+        let path = stage2_command_operand_text(index)
+        let hex = digest_path_hex(path)
+        if hex == "" {
+            stage2_command_stderr(program + ": cannot read: " + path)
+            failures = 1
+        } else {
+            print(hex + "  " + path)
+        }
+        index = index + 1
+    }
+    return failures
+}
+
+# One manifest line, `manifest[ start..last ]`, classified:
+#   0  a blank line, ignored;
+#   1  a well-formed entry whose digest matched (prints `<path>: OK`);
+#   2  a well-formed entry whose digest did not match, or whose file could not
+#      be opened (prints `<path>: FAILED` or `<path>: FAILED open or read`);
+#   3  a malformed line.
+fn digest_check_line(read manifest: Bytes, start: Int, last: Int) -> Int {
+    let mut stop = last
+    if stop > start {
+        if stage2_bytes_byte_at(manifest, stop - 1) == 13 {
+            stop = stop - 1
+        }
+    }
+    let length = stop - start
+    if length == 0 {
+        return 0
+    }
+    if length < 66 {
+        return 3
+    }
+    if length > 255 {
+        return 3
+    }
+    let mut index = 0
+    while index < 64 {
+        if digest_hex_byte(stage2_bytes_byte_at(manifest, start + index)) < 0 {
+            return 3
+        }
+        index = index + 1
+    }
+    let mut p = digest_skip_bytes(manifest, stop, start + 64)
+    if p < stop {
+        if stage2_bytes_byte_at(manifest, p) == 42 {
+            p = p + 1
+        }
+    }
+    if p >= stop {
+        return 3
+    }
+    let path = stage2_bytes_text(manifest, p, stop - p)
+    let actual = digest_path_hex(path)
+    if actual == "" {
+        print(path + ": FAILED open or read")
+        return 2
+    }
+    let expected = stage2_bytes_text(manifest, start, 64)
+    if digest_hex_equal(expected, actual) == 1 {
+        print(path + ": OK")
+        return 1
+    }
+    print(path + ": FAILED")
+    return 2
+}
+
+# Verify every entry of `sums` (a file, or `-` for standard input). The manifest
+# is read to its end before any entry is digested, because the backend has one
+# open stream and `-c -` must not lose standard input to the first entry.
+fn digest_check_mode(sums: Text, program: Text) -> Int {
+    let opened = digest_open(sums)
+    if opened != 0 {
+        stage2_command_stderr(program + ": cannot read: " + sums)
+        return 1
+    }
+    let manifest = stage2_bytes_empty()
+    let page = stage2_bytes_empty()
+    let mut n = stage2_bytes_stream_read(page)
+    while n > 0 {
+        stage2_bytes_append_range(manifest, page, 0, n)
+        n = stage2_bytes_stream_read(page)
+    }
+    let total = stage2_bytes_len(manifest)
+    let mut malformed = 0
+    let mut failures = 0
+    let mut checked = 0
+    let mut start = 0
+    let mut cursor = 0
+    while cursor < total {
+        if stage2_bytes_byte_at(manifest, cursor) == 10 {
+            let status = digest_check_line(manifest, start, cursor)
+            if status == 1 {
+                checked = checked + 1
+            } else if status == 2 {
+                checked = checked + 1
+                failures = failures + 1
+            } else if status == 3 {
+                malformed = malformed + 1
+            }
+            start = cursor + 1
+        }
+        cursor = cursor + 1
+    }
+    if start < total {
+        let status = digest_check_line(manifest, start, total)
+        if status == 1 {
+            checked = checked + 1
+        } else if status == 2 {
+            checked = checked + 1
+            failures = failures + 1
+        } else if status == 3 {
+            malformed = malformed + 1
+        }
+    }
+    if malformed > 0 {
+        stage2_command_stderr(
+            program + ": WARNING: " + to_text(malformed) +
+            " line(s) are improperly formatted"
+        )
+    }
+    if failures > 0 {
+        stage2_command_stderr(
+            program + ": WARNING: " + to_text(failures) +
+            " computed checksum(s) did NOT match"
+        )
+        return 1
+    }
+    if checked == 0 {
+        stage2_command_stderr(
+            program + ": no properly formatted checksum lines found: " + sums
+        )
+        return 1
+    }
+    return 0
+}
+
+fn main() -> Int {
+    let count = stage2_command_operand_count()
+    let program = stage2_command_operand_text(0)
+    if count >= 2 {
+        let first = stage2_command_operand_text(1)
+        if first == "-c" {
+            if count != 3 {
+                stage2_command_stderr(program + ": usage: sha256-tool -c SHA256SUMS")
+                return 1
+            }
+            return digest_check_mode(stage2_command_operand_text(2), program)
+        } else if first == "--check" {
+            if count != 3 {
+                stage2_command_stderr(program + ": usage: sha256-tool -c SHA256SUMS")
+                return 1
+            }
+            return digest_check_mode(stage2_command_operand_text(2), program)
+        }
+    }
+    return digest_mode(count, program)
+}

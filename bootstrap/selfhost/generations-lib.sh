@@ -70,7 +70,7 @@ bounded() {
 }
 
 digest_of() {
-    "$repo_root/bin/kofun-digest" "$1" | awk '{ print $1 }'
+    "$repo_root/bin/kofun" digest "$1" | awk '{ print $1 }'
 }
 
 # One digest over a set of files, independent of glob order. The build gate
@@ -93,8 +93,8 @@ tree_digest() {
         test -f "$tree_digest_path" ||
             fail "tree_digest cannot read \`$tree_digest_path\` as a file"
     done
-    "$repo_root/bin/kofun-digest" "$@" | LC_ALL=C sort |
-        "$repo_root/bin/kofun-digest" | awk '{ print $1 }'
+    "$repo_root/bin/kofun" digest "$@" | LC_ALL=C sort |
+        "$repo_root/bin/kofun" digest | awk '{ print $1 }'
 }
 
 corpus_digest() {

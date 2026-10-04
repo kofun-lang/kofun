@@ -15,7 +15,7 @@
 #
 #   1. a compiled program reads a named file in chunks, absorbs every block
 #      with the pair's own `sha256_absorb`, and prints the same digest as
-#      `bin/kofun-digest`. The SHA-256 block is extracted from
+#      `bin/kofun`. The SHA-256 block is extracted from
 #      `compiler.kofun` exactly as `tests/stage2/sha256-pair/check.sh` extracts
 #      it, so this digests with the shipped functions, not a copy of them;
 #   2. the same program reading standard input -- piped, not `/dev/stdin` by
@@ -152,7 +152,7 @@ digest_file() {
         fail "the file digest for $stem did not run: $(head -n 1 "$WORK/digest_$stem.err")"
     test ! -s "$WORK/digest_$stem.err" ||
         fail "the file digest for $stem wrote to stderr"
-    expected=$("$ROOT/bin/kofun-digest" "$path" | cut -d' ' -f1)
+    expected=$("$ROOT/bin/kofun" digest "$path" | cut -d' ' -f1)
     test "$(cat "$WORK/digest_$stem.out")" = "$expected" ||
         fail "the file digest for $stem printed $(cat "$WORK/digest_$stem.out"); kofun-digest says $expected"
 }
@@ -179,7 +179,7 @@ digest_stdin() {
         fail "the stdin digest for $stem did not run: $(head -n 1 "$WORK/stdin_$stem.err")"
     test ! -s "$WORK/stdin_$stem.err" ||
         fail "the stdin digest for $stem wrote to stderr"
-    expected=$("$ROOT/bin/kofun-digest" "$path" | cut -d' ' -f1)
+    expected=$("$ROOT/bin/kofun" digest "$path" | cut -d' ' -f1)
     test "$(cat "$WORK/stdin_$stem.out")" = "$expected" ||
         fail "the stdin digest for $stem printed $(cat "$WORK/stdin_$stem.out"); kofun-digest says $expected"
 }
@@ -207,7 +207,7 @@ build "$WORK/digest_recover" "$WORK/digest_recover.kofun"
 (cd "$INPUTS" && "$WORK/digest_recover" >"$WORK/recover.out" 2>"$WORK/recover.err") ||
     fail 'the recover program exited non-zero'
 test ! -s "$WORK/recover.err" || fail 'the recover program wrote to stderr'
-expected=$("$ROOT/bin/kofun-digest" "$INPUTS/message.bin" | cut -d' ' -f1)
+expected=$("$ROOT/bin/kofun" digest "$INPUTS/message.bin" | cut -d' ' -f1)
 {
     printf '%s\n' '1'
     printf '%s\n' '0'
@@ -295,12 +295,12 @@ mutant "$WORK/digest_over_bound"
 mutant "$WORK/digest_at_bound"
 (cd "$INPUTS" && "$WORK/mutant_digest_at_bound" >"$WORK/mutant_at_bound.out") ||
     fail 'the mutant did not run at 65,536 bytes'
-expected=$("$ROOT/bin/kofun-digest" "$INPUTS/at_bound.bin" | cut -d' ' -f1)
+expected=$("$ROOT/bin/kofun" digest "$INPUTS/at_bound.bin" | cut -d' ' -f1)
 test "$(cat "$WORK/mutant_at_bound.out")" = "$expected" ||
     fail 'the mutant stopped after the first chunk at 65,536 bytes, where one chunk is the whole input'
 (cd "$INPUTS" && "$WORK/mutant_digest_over_bound" >"$WORK/mutant_over_bound.out") ||
     fail 'the mutant did not run at 65,537 bytes'
-expected=$("$ROOT/bin/kofun-digest" "$INPUTS/over_bound.bin" | cut -d' ' -f1)
+expected=$("$ROOT/bin/kofun" digest "$INPUTS/over_bound.bin" | cut -d' ' -f1)
 test "$(cat "$WORK/mutant_over_bound.out")" != "$expected" ||
     fail 'the mutant that stops after the first chunk passed at 65,537 bytes'
 
@@ -351,7 +351,7 @@ cmp "$WORK/cli/probe.expected" "$WORK/cli/probe.out" >/dev/null ||
 node "$CASES/pair.mjs" "$COMPILER" "$WORK/pair" "$CASES"/*.kofun
 
 printf '%s\n' \
-    "PASS: a compiled program reads a file in 65,536-byte chunks and digests it with the pair's sha256_* functions, matching bin/kofun-digest for 0, 65,535, 65,536, 65,537 and 131,073 bytes and for bootstrap/stage2/compiler.{kofun,c} read at run time" \
-    'PASS: the same program reading piped standard input matches bin/kofun-digest at the same sizes, and no read places more than 65,536 bytes in the carrier' \
+    "PASS: a compiled program reads a file in 65,536-byte chunks and digests it with the pair's sha256_* functions, matching `kofun digest` for 0, 65,535, 65,536, 65,537 and 131,073 bytes and for bootstrap/stage2/compiler.{kofun,c} read at run time" \
+    'PASS: the same program reading piped standard input matches bin/kofun at the same sizes, and no read places more than 65,536 bytes in the carrier' \
     'PASS: a mutant that stops after the first chunk is right at 65,536 bytes and wrong at 65,537, while the real program is right at both' \
     'PASS: a missing path, an unreadable path, and a spent allocator are each an Int status the program observes and keeps running past, and a program that opens no stream is unchanged'

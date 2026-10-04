@@ -19,7 +19,7 @@ mkdir -p "$WORK"
 
 (
     cd "$ROOT/bootstrap/c_abi"
-    "$ROOT/bin/kofun-digest" -c SHA256SUMS
+    "$ROOT/bin/kofun" digest -c SHA256SUMS
 )
 
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
