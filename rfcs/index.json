@@ -642,6 +642,27 @@
       }
     },
     {
+      "id": "DD-042",
+      "title": "A discarded `pure` call result is refused",
+      "provenance": "migrated",
+      "state": "accepted",
+      "shepherd": "hjosugi",
+      "source": "docs/DESIGN_DECISIONS.md",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/1714",
+      "dates": {
+        "recorded_on": "2026-10-04"
+      },
+      "normative_spec": [
+        "spec/effects/pure-io-v1.md"
+      ],
+      "compatibility": {
+        "category": "conditional",
+        "statement": "No accepted program changes until the refusal is implemented, and no compiler implements it. Once implemented, it is breaking for one shape: a statement that is only a call, whose result is not `Unit`, whose callee is a top-level function published `pure` with status `validated`, and whose every argument is `pure`. Such a program stops compiling, and `let _ = e` is its rewrite. When the callee writes through an `edit` parameter, the statement cannot be deleted. The specification records that case as an open conflict for the decision owner, not as a rewrite.",
+        "corpus_query": "git grep -nE '^[[:space:]]+[a-z_][A-Za-z0-9_]*\\(.*\\)[[:space:]]*$' -- '*.kofun' | grep -vE ':[[:space:]]+print\\(' | wc -l; git grep -nE '^[[:space:]]+(ignored|edit_relay|codec_put16)\\(' -- '*.kofun'",
+        "result": "A grep heuristic, not a census, at `7d2caf6f`. The first query counts 1352 single-line call statements other than `print` in 1421 tracked sources. A script narrowed these to 350 statements in 26 files whose callee is declared in the same file with a non-`Unit` result, and each file was checked with `bin/kofun check --emit-typed-sidecar`. Six statements in three Stage 2 programs meet all three conditions, and the second query lists them. `ignored()` in `bootstrap/stage2/functions_fixture.kofun` is deletable. It is that fixture's deliberate ignored call, and `task stage2` and `task effect-inference` compile it. `edit_relay(spare)` in `tests/conformance/bytes-mutation/borrowed_carrier.kofun` and four `codec_put16` statements in `tests/stdlib/benchmark-report-codec/codec.kofun` write through an `edit` parameter. No sidecar could be emitted for the concatenated codec program (ETS04: 103 functions, and the producer projects 64), so its callee is `pure` by the specification's definition rather than by a published fact. Of the other 344, 273 have an `io` callee: 250 by the published fact, and 23 by a body that calls `print` where no sidecar could be emitted. Four are `if`/`match` arm values or continuation lines that the heuristic misreads. The remaining 67 sit in files that Stage 2 refuses or does not compile standalone. Callees declared in another file of a concatenated program are outside the heuristic."
+      }
+    },
+    {
       "id": "RFC-0001",
       "title": "Allocator choice is a scoped, effect-tracked capability",
       "provenance": "rfc",

@@ -649,3 +649,34 @@ privileged host tuning, and an embedded profiler are rejected.
 executable report-profile amendment: the accepted 100-sample ceiling remains,
 canonical bytes and closed errors are fixed, and its pure gate makes no
 production runner or release claim.
+
+## DD-042: A discarded `pure` call result is refused
+
+A statement that discards the non-`Unit` result of a call is a fatal refusal
+when the call can have no effect. That holds when the callee's published
+`effect` fact is `pure` with status `validated` and every argument's own
+summary is `pure`. An argument that names a top-level function counts as that
+function's effect, so `forward(noisy, 7)` is accepted although `forward` is
+`pure`. A `Unit`-returning call is exempt, because pure-io-v1 keeps panic
+`pure` and such a call is an invariant check. `let _ = e` is the explicit
+discard; no new form is added. The refusal acts only on a `validated` answer,
+and it is implemented only after #1711, before which a call that prints can be
+published `pure`.
+
+Doing nothing is rejected, because the compiler already publishes the fact
+that makes the statement useless. A non-fatal diagnostic class is rejected
+because Kofun has none, and inventing one is a decision of its own. A lint
+outside the compiler, after the shadowing precedent, is rejected because that
+precedent governs an opinion and this is a published fact. Must-use for
+`Result` and `Validated` is deferred to #1729 and will start from a
+compiler-known set of types.
+
+Measurement found two premises that do not hold as stated. A `pure` callee can
+still write through an `edit` parameter, so the refusal as accepted would
+reject a statement whose deletion changes what the program prints. And `_` in
+`let _` is an ordinary binding, so the sanctioned discard can be written once
+per scope. The specification records both as open for the decision owner and
+resolves neither.
+
+[`spec/effects/pure-io-v1.md`](../spec/effects/pure-io-v1.md) § Discarded pure
+results is normative. No compiler implements it; #1730 is the implementation.
