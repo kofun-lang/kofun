@@ -1,0 +1,20 @@
+# #1711. A function passed by name is charged where the value is created. The
+# call `f(x)` inside `apply` names no top-level function, so without the
+# value-reference edge `quiet` was certified `pure`, published as `pure`, and
+# printed at run time.
+fn noisy(x: Int) -> Int {
+    print(x)
+    return x
+}
+
+fn apply(f: (Int) -> Int, x: Int) -> Int {
+    return f(x)
+}
+
+pure fn quiet(x: Int) -> Int {
+    return apply(noisy, x)
+}
+
+fn main() -> Int {
+    return quiet(7)
+}

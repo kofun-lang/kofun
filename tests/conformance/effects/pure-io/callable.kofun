@@ -1,0 +1,33 @@
+# #1711. A top-level function named in value position is a may-call edge from
+# the function whose body names it. `quiet` passes the io `noisy` and is `io`
+# through it; `calm` passes the pure `double` and stays `pure`; `apply` calls
+# only its parameter, which names no top-level function, so it is `pure`
+# whatever it is handed. `relay` shows the edge composes like any other.
+fn noisy(x: Int) -> Int {
+    print(x)
+    return x
+}
+
+fn double(x: Int) -> Int {
+    return x * 2
+}
+
+fn apply(f: (Int) -> Int, x: Int) -> Int {
+    return f(x)
+}
+
+fn quiet(x: Int) -> Int {
+    return apply(noisy, x)
+}
+
+fn calm(x: Int) -> Int {
+    return apply(double, x)
+}
+
+fn relay(x: Int) -> Int {
+    return quiet(x)
+}
+
+fn main() -> Int {
+    return calm(7)
+}

@@ -1,0 +1,16 @@
+# #1711. The root named as a value is the root reached: passing `print` by
+# name is refused as directly as calling it. It is the last argument here, so
+# a value closed by `)` is charged as one closed by `,` is in
+# `callable_argument`. (`print` as a value is otherwise not a lowerable
+# function value at all; this pins only the boundary's answer.)
+fn apply(x: Int, f: (Int) -> Int) -> Int {
+    return f(x)
+}
+
+pure fn quiet(x: Int) -> Int {
+    return apply(x, print)
+}
+
+fn main() -> Int {
+    return quiet(7)
+}

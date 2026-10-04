@@ -1,0 +1,7 @@
+apply|pure|-|-
+calm|pure|-|-
+double|pure|-|-
+main|pure|-|-
+noisy|io|effect-io-root-print|print
+quiet|io|effect-io-callee|noisy
+relay|io|effect-io-callee|quiet

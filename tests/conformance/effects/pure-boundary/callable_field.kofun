@@ -1,0 +1,19 @@
+# #1711. A record field of callable type would carry a function value through
+# a labelled construction, which no whole-argument rule sees. The field type is
+# refused at the declaration. Admitting it must add the edge where the record
+# is built.
+fn noisy(x: Int) -> Int {
+    print(x)
+    return x
+}
+
+type Box = { f: (Int) -> Int }
+
+pure fn quiet(x: Int) -> Int {
+    let box = Box(f: noisy)
+    return box.f(x)
+}
+
+fn main() -> Int {
+    return quiet(7)
+}

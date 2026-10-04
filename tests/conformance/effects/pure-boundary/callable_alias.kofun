@@ -1,0 +1,16 @@
+# #1711. A local binding of a function name would be a function value created
+# outside a call argument; the name is not a lexical binding, so it is refused
+# before the effect boundary is asked. Admitting it must add the edge.
+fn noisy(x: Int) -> Int {
+    print(x)
+    return x
+}
+
+pure fn quiet(x: Int) -> Int {
+    let g = noisy
+    return g(x)
+}
+
+fn main() -> Int {
+    return quiet(7)
+}

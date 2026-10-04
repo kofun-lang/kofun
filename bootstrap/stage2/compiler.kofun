@@ -21693,6 +21693,32 @@ fn source_function_count(source: Text) -> Int {
     return count
 }
 
+# #1711. Whether the identifier at `cursor` names a function as a value.
+#
+# A function value comes from exactly two places in this profile: a lambda,
+# whose body lies inside the enclosing function's text and is scanned with it,
+# and a bare top-level function name, which the compiler accepts as a value
+# only as a whole call argument -- `call_argument_position`; anywhere else the
+# name is E2S35. A call `f(x)` through a callable parameter names no top-level
+# function, so it adds no edge and `apply` stays `pure`. The effect is charged
+# where the value is created instead: `quiet` passing `noisy` to `apply`
+# reaches `noisy` exactly as `noisy(x)` would, and passing the root `print` by
+# name reaches the root.
+#
+# The predicate is the compiler's own: the same `call_argument_position` that
+# decides the bare name is a value at all, so the boundary cannot charge a
+# different set of names than the compiler accepts. Every caller has already
+# matched the token to an identifier naming a function. The `,`/`)` test is
+# only the cheap exit: `call_argument_position` rescans from byte zero, and an
+# ordinary argument such as `x` in `f(x)` has the same shape.
+fn names_function_value(source: Text, cursor: Int) -> Bool {
+    let after = skip_trivia(source, token_end(source, cursor))
+    if token_text(source, after) != "," && token_text(source, after) != ")" {
+        return false
+    }
+    return call_argument_position(source, cursor)
+}
+
 # #1245. The explicit `pure` boundary over the effects the compiler already
 # infers. The io root is a parameter: a function that reaches it, directly or
 # through any chain of calls, is io, and an annotated function that is io is a
@@ -21704,7 +21730,8 @@ fn source_function_count(source: Text) -> Int {
 #
 # The callee is found by the shape an identifier followed by `(` -- the same
 # shape the rest of this file uses -- and `fn` before the name excludes the
-# declaration itself.
+# declaration itself. Each edge is a may-call (#1711): the name passed as a
+# value counts as well, which `names_function_value` above decides.
 fn function_calls_name(
     source: Text,
     body_start: Int,
@@ -21721,6 +21748,9 @@ fn function_calls_name(
             if after < body_end && token_text(source, after) == "(" {
                 return true
             }
+            if names_function_value(source, cursor) {
+                return true
+            }
         }
         previous = text
         cursor = skip_trivia(source, token_end(source, cursor))
@@ -21731,7 +21761,9 @@ fn function_calls_name(
 # The first call in this body, in source order, that the io set already holds.
 # Source order and not declaration order: criterion 5 asks for the same
 # diagnostic after the declarations are reordered, and reordering moves
-# declaration order while leaving the body exactly as it was.
+# declaration order while leaving the body exactly as it was. A name passed as
+# a value counts as the call it may become (#1711), so `apply(noisy, x)` names
+# `noisy` rather than leaving the refusal without a callee.
 fn first_io_callee(
     source: Text,
     body_start: Int,
@@ -21747,6 +21779,9 @@ fn first_io_callee(
            contains(io_set, "|" + text + "|") {
             let after = skip_trivia(source, token_end(source, cursor))
             if after < body_end && token_text(source, after) == "(" {
+                return text
+            }
+            if names_function_value(source, cursor) {
                 return text
             }
         }

@@ -62,7 +62,7 @@ compile() {
 # The two programs the boundary must not touch: one that keeps its promise, and
 # one that never made it.
 
-for stem in accept identifier; do
+for stem in accept identifier callable_argument_pure; do
     compile "$stem"
     assert_num "$stem exit" "$compile_status" -eq 0
     assert_file_nonempty "$stem C output" "$WORK/$stem.c"
@@ -76,16 +76,37 @@ done
 identifier_output=$("$WORK/identifier")
 assert_eq 'pure as an identifier still computes' "$identifier_output" 42
 
+# #1711. A `pure` function passed by name keeps its caller `pure`: the
+# value-reference edge charges what the name reaches, and `double` reaches
+# nothing. Running it is what proves the value still calls the function.
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror "$WORK/callable_argument_pure.c" \
+    -o "$WORK/callable_argument_pure"
+callable_output=$("$WORK/callable_argument_pure")
+assert_eq 'a pure function passed by name still computes' \
+    "$callable_output" 42
+
 # ------------------------------------------------------------------ negatives
 #
 # Each case names the shape it pins. The goldens carry the whole message
 # because the callee it names is the part a reader acts on, and a message that
 # said only "this is io" would pass a check for the code alone.
 #
-# The last five are precedence, position, and spelling rather than
+# The next five are precedence, position, and spelling rather than
 # reachability: a violated boundary must not answer for a fault that is
 # diagnosed earlier, the annotation must not be accepted where an effect cannot
 # be asserted, and `io` in the same position stays the unknown modifier it was.
+#
+# The `callable_` cases are #1711: a function value is charged where it is
+# created. `callable_argument` passes an io function by name and
+# `callable_root` passes the root itself; both are refused. `callable_unused`
+# is the deliberate over-approximation: the receiver never calls the value,
+# and naming it is refused anyway. `callable_lambda` is the control the edge
+# did not change -- a let-bound lambda's body call was already the enclosing
+# function's. The other five are every other way a function value could be
+# created, each refused today -- returned by name, bound to a local, passed
+# after a label, bound at module level, stored in a record field. Their goldens
+# are tripwires: admitting any of those surfaces changes the answer here, and
+# the change has to bring the edge with it.
 
 negatives='
 direct:E2S176
@@ -100,6 +121,15 @@ annotated_type:E2S33
 annotated_parameter:E2S164
 annotated_expression:E2S35
 io_annotation:E2S33
+callable_argument:E2S176
+callable_root:E2S176
+callable_unused:E2S176
+callable_lambda:E2S176
+callable_return:E2S35
+callable_alias:E2S35
+callable_labelled:E2S35
+callable_module:E2S159
+callable_field:E2S32
 '
 
 previous_ifs=$IFS
@@ -195,6 +225,23 @@ node "$CASES/report.mjs" "$WORK/accept.json" "$CASES/accept.kofun" \
 cmp "$CASES/accept.expected" "$WORK/accept.report" ||
     fail 'the published effect facts changed'
 
+# #1711. The accepted callable program publishes what the boundary accepted:
+# `quiet` passes `double` by name and is `pure`, and so is `apply`.
+"$WORK/kofun-stage2-semantic-events" \
+    "$CASES/callable_argument_pure.kofun" src/callable_argument_pure.kofun \
+    "$WORK/callable_argument_pure.kse" 1
+node "$ROOT/tooling/typed-sidecar/emit-stage2.mjs" \
+    "$WORK/callable_argument_pure.kse" "$WORK/callable_argument_pure.json" \
+    "$CASES/callable_argument_pure.kofun"
+node "$ROOT/spec/typed-sidecar/validate.mjs" validate \
+    "$WORK/callable_argument_pure.json" >/dev/null
+node "$CASES/report.mjs" "$WORK/callable_argument_pure.json" \
+    "$CASES/callable_argument_pure.kofun" \
+    >"$WORK/callable_argument_pure.report"
+cmp "$CASES/callable_argument_pure.expected" \
+    "$WORK/callable_argument_pure.report" ||
+    fail 'the published effect facts of a pure callable argument changed'
+
 # The same program through the other compile pipeline. `semantic_producer.c`
 # calls `stage2_compile_outcome`, the copy of the pipeline behind
 # `KOFUN_STAGE2_AUTHORITY_API` that the CLI never takes, so a boundary wired
@@ -215,6 +262,20 @@ cmp "$CASES/one_hop.stderr" "$WORK/one_hop.producer" ||
 if grep -a 'effect-io-' "$WORK/one_hop.kse" >/dev/null 2>&1; then
     fail 'a refused program published an effect fact'
 fi
+
+# #1711. The value-reference refusals through the producer's pipeline too:
+# the edge is asked in both, so both must refuse with the CLI's golden.
+for stem in callable_argument callable_root; do
+    set +e
+    "$WORK/kofun-stage2-semantic-events" \
+        "$CASES/$stem.kofun" "src/$stem.kofun" "$WORK/$stem.kse" 1 \
+        >"$WORK/$stem.producer" 2>"$WORK/$stem.producer.internal"
+    producer_status=$?
+    set -e
+    assert_num "producer exit for $stem" "$producer_status" -eq 1
+    cmp "$CASES/$stem.stderr" "$WORK/$stem.producer" ||
+        fail "the two compile pipelines disagree about $stem"
+done
 
 # ------------------------------------------------------------------ mutations
 #
@@ -321,6 +382,27 @@ mutate single-round \
 mutant_disagrees single-round back_edge
 mutant_agrees single-round one_hop
 
+# The value-reference edge (#1711). Without it a function passed by name is
+# invisible to the call graph, so `quiet` handing `noisy` to `apply` is
+# accepted -- the defect itself -- and handing over the root is too, while
+# every ordinary call edge survives.
+mutate no-value-edge \
+    's/^    return call_argument_position(source, cursor);$/    (void)source; (void)cursor; return false;/'
+mutant_disagrees no-value-edge callable_argument
+mutant_disagrees no-value-edge callable_root
+mutant_disagrees no-value-edge callable_unused
+mutant_agrees no-value-edge one_hop
+mutant_agrees no-value-edge callable_lambda
+mutant_agrees no-value-edge callable_argument_pure
+
+# The explanation. The edge alone refuses `callable_argument`, but a refusal
+# that cannot say which name carried the effect says `through ``` -- the value
+# reference has to count as the forcing callee as well as the edge.
+mutate no-value-callee \
+    's/^                names_function_value(source, cursor)) {$/                false) {/'
+mutant_disagrees no-value-callee callable_argument
+mutant_agrees no-value-callee one_hop
+
 # Precedence. Running the boundary before the authority check answers with the
 # effect for a program whose carrier misuse is diagnosed first.
 mutate boundary-first \
@@ -329,7 +411,8 @@ mutant_disagrees boundary-first authority_precedence
 
 printf '%s\n' \
     'PASS: direct, one-hop, multi-hop, back-edge, self- and mutually recursive boundaries are refused' \
+    'PASS: a function or the root passed by name is charged to its caller; every other function-value route is refused' \
     'PASS: unannotated, unresolved, and identifier uses of `pure` are unchanged' \
     'PASS: the refusal survives reordering, remapping, repetition, and O0/O2' \
     'PASS: an accepted program keeps its inferred effect facts and both pipelines agree' \
-    'PASS: five mutations of the boundary are each caught by a named fixture'
+    'PASS: seven mutations of the boundary are each caught by a named fixture'

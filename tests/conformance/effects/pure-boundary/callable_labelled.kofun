@@ -1,0 +1,19 @@
+# #1711. A labelled argument is not a whole call argument, so a function name
+# after a label is not a value and is refused before the effect boundary is
+# asked. Admitting it must add the edge the positional argument adds.
+fn noisy(x: Int) -> Int {
+    print(x)
+    return x
+}
+
+fn apply(f: (Int) -> Int, x: Int) -> Int {
+    return f(x)
+}
+
+pure fn quiet(x: Int) -> Int {
+    return apply(f: noisy, x: x)
+}
+
+fn main() -> Int {
+    return quiet(7)
+}

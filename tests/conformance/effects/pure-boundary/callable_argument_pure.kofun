@@ -1,0 +1,20 @@
+# #1711. The accepted counterpart of `callable_argument`: a `pure` function
+# passed by name keeps its caller `pure`. `apply` is `pure` whatever it is
+# handed, because the effect is charged to the function that names the value,
+# not to the one that later calls it.
+fn double(x: Int) -> Int {
+    return x * 2
+}
+
+fn apply(f: (Int) -> Int, x: Int) -> Int {
+    return f(x)
+}
+
+pure fn quiet(x: Int) -> Int {
+    return apply(double, x)
+}
+
+fn main() -> Int {
+    print(quiet(21))
+    return 0
+}
