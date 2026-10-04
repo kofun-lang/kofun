@@ -1,0 +1,15 @@
+# #1695. A copy of a managed record list is refused: the second binding would
+# alias the elements' `Bytes` storage.
+type Header = {
+    name: Bytes,
+    value: Bytes,
+}
+
+fn main() -> Int {
+    let a: Header = Header(name: stage2_bytes_empty(), value: stage2_bytes_empty())
+    let b: Header = Header(name: stage2_bytes_empty(), value: stage2_bytes_empty())
+    let headers: List[Header] = [a, b]
+    let other = headers
+    print(len(other))
+    return 0
+}

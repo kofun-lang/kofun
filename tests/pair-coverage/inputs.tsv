@@ -461,6 +461,10 @@ tests/conformance/record-bytes-fields/copy_annotated_refused.kofun
 tests/conformance/record-bytes-fields/copy_refused.kofun
 tests/conformance/record-bytes-fields/construct_read.kofun
 tests/conformance/record-bytes-fields/move_whole.kofun
+tests/conformance/record-list/construct.kofun
+tests/conformance/record-list/copy_refused.kofun
+tests/conformance/record-list/index.kofun
+tests/conformance/record-list/move.kofun
 tests/conformance/call-arguments/assigned_lambda.kofun
 tests/conformance/call-arguments/block_lambda_argument_position.kofun
 tests/conformance/call-arguments/block_lambda_let_position.kofun

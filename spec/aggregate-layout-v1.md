@@ -186,6 +186,15 @@ aliased. A read of the field is a non-escaping `read` view of the carrier the
 record still owns, not a copy and not a move. This kind is the field's layout
 only; `List[Bytes]` and a `Bytes` ADT payload are not admitted by it.
 
+**A bounded list of records is capacity 128.** The per-element profile row
+#1258 Q3(a) chose gives a bounded list of a declared nominal record capacity
+128, while `List[Int]` keeps capacity 64. Capacity stays part of type identity
+because it is named in the element type's profile row. The carrier is
+`{ uint64_t length; KofunRecord_Header elements[128]; }` — 6,152 bytes for the
+two-`Bytes`-field `Header` — 8-aligned with `managed` drop, because each
+element holds `Bytes` storage, so the list is not `Copy`. Added for
+[#1695](https://github.com/kofun-lang/kofun/issues/1695).
+
 An object has no trailing padding: it is individually referenced and never
 inlined into an array, so nothing follows it that would need alignment.
 

@@ -45,7 +45,7 @@ function callCount(source, name) {
 }
 
 const minimumCalls = new Map([
-  ["list_int_type_end", { c: 13, kofun: 13 }],
+  ["list_int_type_end", { c: 8, kofun: 8 }],
   ["validate_list_int_annotations", { c: 4, kofun: 3 }],
   ["fixed_slot_call_shape", { c: 2, kofun: 2 }],
   // #1228 added one dispatch per half, in `emit_expression`, where `|>` is
@@ -110,8 +110,8 @@ const semanticAnchors = [
   },
   {
     id: "ownership-mode-refusal",
-    c: "ownership_mode_token(source, parameter) && list_int_type_end(source, type_start) >= 0",
-    kofun: "ownership_mode_token(source, parameter) && list_int_type_end(source, type_start) >= 0",
+    c: "ownership_mode_token(source, parameter) && list_type_end(source, type_start) >= 0",
+    kofun: "ownership_mode_token(source, parameter) && list_type_end(source, type_start) >= 0",
   },
   {
     id: "function-local-source-order-temporaries",
@@ -210,7 +210,7 @@ function verifyPair(cText, kofunText) {
     ["lambda literal refusal", "List[Int] literals inside lambdas"],
     ["lambda binding refusal", "List[Int] binding uses inside lambdas"],
     ["lambda result refusal", "List[Int] direct results inside lambdas"],
-    ["ownership-mode refusal", "List[Int] function parameters support only the immutable"],
+    ["ownership-mode refusal", "list function parameters support only the immutable"],
     ["runtime bounds", "R023"],
   ]) {
     if (!cText.includes(token)) failures.push(`C missing ${label}: ${token}`);

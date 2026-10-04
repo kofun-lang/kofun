@@ -112,6 +112,7 @@ pure-boundary
 raw-imports
 raw-re-exports
 record-bytes-fields
+record-list
 records
 record-values
 re-exports

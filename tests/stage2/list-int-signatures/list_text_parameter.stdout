@@ -1,1 +1,1 @@
-error[E2S157]: Stage 2 function list signatures require exactly List[Int] at byte 17
+error[E2S157]: Stage 2 function list signatures require List[Int] or a bounded record list at byte 17

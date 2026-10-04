@@ -1,0 +1,13 @@
+# #1695. A bounded list of nominal records at capacity 128 constructs.
+type Header = {
+    name: Bytes,
+    value: Bytes,
+}
+
+fn main() -> Int {
+    let a: Header = Header(name: stage2_bytes_empty(), value: stage2_bytes_empty())
+    let b: Header = Header(name: stage2_bytes_empty(), value: stage2_bytes_empty())
+    let headers: List[Header] = [a, b]
+    print(len(headers))
+    return 0
+}

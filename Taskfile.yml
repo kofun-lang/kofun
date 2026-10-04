@@ -1211,6 +1211,13 @@ tasks:
     cmds:
       - "sh tests/conformance/record-bytes-fields/run.sh"
 
+  # #1695. A bounded list of nominal records at capacity 128, the per-element
+  # profile row #1258 Q3(a) chose.
+  record-list:
+    desc: "Verify a bounded list of nominal records at capacity 128 constructs, indexes, moves whole, and refuses a copy"
+    cmds:
+      - "sh tests/conformance/record-list/run.sh"
+
   # #1322. The Text bridge over the carrier: a Text in as its exact bytes, a
   # checked range out as Text, with range, limit, NUL, and UTF-8 refusals
   # named at runtime and the exact tag/detail contract proved in the emitted C.
@@ -1606,6 +1613,7 @@ tasks:
             bounded-bytes \
             command-operands \
             record-bytes-fields \
+            record-list \
             while-list-int \
             else-if-chain \
             list-int-signatures \
