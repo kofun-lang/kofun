@@ -5712,6 +5712,7 @@ fn call_resolves_to_builtin(
 # read a file into a carrier needs one way to hold a byte it read.
 fn bytes_private_result_builtin(name: Text) -> Bool {
     return name == "stage2_bytes_assign_zeroed" ||
+    name == "stage2_list_append" ||
     name == "stage2_bytes_assign_text" ||
     (bytes_mutation_builtin(name) &&
      name != "stage2_bytes_len" &&
@@ -6819,6 +6820,57 @@ fn emit_list_record_literal(
     return emitted + "}})"
 }
 
+# #1698. `stage2_list_append(list, element)`: the validated append on a bounded
+# record list. Both arguments are bindings, because the list is edited in place
+# and the element record is moved into the next slot by value. A full list
+# appends nothing and fails with R038, the runtime diagnostic the other bounded
+# carriers use, so the 129th entry is never written.
+fn emit_record_list_append(
+    source: Text,
+    hir: Text,
+    call_name: Int,
+    open: Int
+) -> Text {
+    let list = skip_trivia(source, token_end(source, open))
+    let list_end = argument_end(source, list)
+    let separator = skip_trivia(source, list_end)
+    let element = skip_trivia(source, token_end(source, separator))
+    let element_end = argument_end(source, element)
+    if token_kind(source, list) != "identifier" ||
+       token_end(source, list) != list_end ||
+       token_kind(source, element) != "identifier" ||
+       token_end(source, element) != element_end {
+        return lower_error(
+            "E2S15",
+            "builtin `stage2_list_append` takes a list binding and a record binding",
+            call_name
+        )
+    }
+    let function_open = enclosing_function_open(source, call_name)
+    let list_type = initializer_type(source, hir, function_open, list)
+    let element_type = initializer_type(source, hir, function_open, element)
+    if text_slice(list_type, 5, len(list_type) - 1) != element_type {
+        return lower_error(
+            "E2S15",
+            "builtin `stage2_list_append` cannot append " + element_type +
+            " to " + list_type,
+            element
+        )
+    }
+    let list_value = emit_expression(source, hir, list, list_end)
+    if starts_with(list_value, "error[") {
+        return list_value
+    }
+    let element_value = emit_expression(source, hir, element, element_end)
+    if starts_with(element_value, "error[") {
+        return element_value
+    }
+    return "((" + list_value + ").length < UINT64_C(128) ? ((" + list_value +
+        ").elements[(" + list_value + ").length] = " + element_value +
+        ", (" + list_value + ").length += 1, 0) : (kofun_error(\"error[R038]: bounded " +
+        list_type + " append exceeds capacity 128\"), 0))"
+}
+
 fn emit_list_int_literal(
     source: Text,
     hir: Text,
@@ -7439,6 +7491,11 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
             }
             return "stage2_bytes_assign_zeroed(" + carrier + ", " +
                 length + ")"
+        }
+        if open < end && token_text(source, open) == "(" &&
+           name == "stage2_list_append" &&
+           call_resolves_to_builtin(source, hir, cursor, name) {
+            return emit_record_list_append(source, hir, cursor, open)
         }
         # #1321. The bounded mutation surface, lowered through one function.
         # Its carriers take the same address treatment the producer above
@@ -8362,6 +8419,11 @@ fn builtin_arity(name: Text) -> Int {
        name == "stage2_command_stderr" {
         return 1
     }
+    # #1698. The bounded record-list append takes the list and the element
+    # record it moves in.
+    if name == "stage2_list_append" {
+        return 2
+    }
     # #1667. The chunked-read surface: selecting standard input is the
     # zero-argument operation; opening a path and reading a chunk each take
     # one argument.
@@ -8432,6 +8494,12 @@ fn builtin_parameter_types(name: Text) -> Text {
     }
     if name == "stage2_command_stderr" {
         return "Text"
+    }
+    # #1698. A bounded list of one declared record, then a record of that
+    # element type; the element agreement is checked where the call lowers,
+    # because a parameter row cannot name the list's element.
+    if name == "stage2_list_append" {
+        return "RecordList|Record"
     }
     # #1667. Selecting standard input takes no argument; opening a path takes a
     # `Text`; the chunk read takes the `Bytes` carrier it fills.
@@ -8571,6 +8639,12 @@ fn builtin_argument_check(
             if expected == "TextOrList" {
                 matches = actual == "Text" || actual == "List" ||
                 starts_with(actual, "List[")
+            } else if expected == "RecordList" {
+                # #1698. The capacity-128 record row, never `List[Int]`.
+                matches = starts_with(actual, "List[") &&
+                actual != "List[Int]"
+            } else if expected == "Record" {
+                matches = record_declaration_start(source, actual) >= 0
             }
             if !matches {
                 return "error[E2S15]: builtin `" + name + "` expects " +
@@ -9528,6 +9602,7 @@ fn validate_core_calls(source: Text, hir: Text) -> Text {
                        name == "stage2_command_operand_count" ||
                        name == "stage2_command_operand_text" ||
                        name == "stage2_command_stderr" ||
+                       name == "stage2_list_append" ||
                        bytes_family_builtin(name) {
                         expected = builtin_expected
                     } else {
@@ -13885,6 +13960,11 @@ fn builtin_return_type(name: Text) -> Text {
     if name == "stage2_bytes_text" {
         return "Text"
     }
+    # #1698. Private-status like the Bytes mutations: a full list is a runtime
+    # diagnostic, so the call has no source value.
+    if name == "stage2_list_append" {
+        return "Void"
+    }
     return ""
 }
 
@@ -17343,6 +17423,25 @@ fn lower_body(
                     return initializer
                 }
                 let inferred_type = hir_binding_field(hir, binding_id, 5)
+                # #1698. `let headers: List[Header] = []` is the empty carrier
+                # the annotation names. A bare `[]` has no element to type, so
+                # the annotation is the only source of the record row, and an
+                # unannotated `[]` stays the `List[Int]` it always was.
+                let mut empty_record_list = false
+                let empty_close = skip_trivia(
+                    source,
+                    token_end(source, value_start)
+                )
+                if starts_with(inferred_type, "List[") &&
+                   inferred_type != "List[Int]" &&
+                   token_text(source, value_start) == "[" &&
+                   token_text(source, empty_close) == "]" &&
+                   token_end(source, empty_close) == value_end {
+                    initializer = "((" + record_list_c_type(
+                        text_slice(inferred_type, 5, len(inferred_type) - 1)
+                    ) + "){0})"
+                    empty_record_list = true
+                }
                 # #1315, first slice. The carrier, its frozen field order, and
                 # the nine status tags are in place, but the cleanup funnel is
                 # not: every `return`, every fallthrough, and every
@@ -17416,7 +17515,7 @@ fn lower_body(
                     function_open,
                     value_start
                 )
-                if actual_type != inferred_type {
+                if actual_type != inferred_type && !empty_record_list {
                     return "error[E2S15]: initializer type mismatch at byte " +
                     to_text(value_start)
                 }

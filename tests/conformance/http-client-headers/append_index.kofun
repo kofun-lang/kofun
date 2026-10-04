@@ -1,0 +1,24 @@
+# #1698. An empty `List[Header]` takes appended headers in order: the length
+# grows, and an index reads each element's `Bytes` field through a borrowed
+# `read` view.
+type Header = {
+    name: Bytes,
+    value: Bytes,
+}
+
+fn main() -> Int {
+    let headers: List[Header] = []
+    print(len(headers))
+    let host_name = stage2_bytes_empty()
+    stage2_bytes_assign_text(host_name, "host")
+    let host: Header = Header(name: host_name, value: stage2_bytes_empty())
+    stage2_list_append(headers, host)
+    let accept_name = stage2_bytes_empty()
+    stage2_bytes_assign_text(accept_name, "accept")
+    let accept: Header = Header(name: accept_name, value: stage2_bytes_empty())
+    stage2_list_append(headers, accept)
+    print(len(headers))
+    print(stage2_bytes_text(headers[0].name, 0, stage2_bytes_len(headers[0].name)))
+    print(stage2_bytes_text(headers[1].name, 0, stage2_bytes_len(headers[1].name)))
+    return 0
+}

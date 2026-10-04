@@ -64,7 +64,7 @@ export const GROUPS = Object.freeze([
             'optional', 'optional-narrowing',
             'optional-construction', 'optional-coalescing', 'optional-pair',
             'result-propagation',
-            'text-results', 'int-bits', 'int-bits-lowering', 'list-int-values', 'record-values', 'text-escapes', 'unused-function', 'bounded-bytes', 'bytes-carrier', 'bytes-mutation', 'bytes-read-file', 'bytes-read-stream', 'bytes-text', 'command-operands', 'record-bytes-fields', 'record-list', 'authority-type-carrier', 'while-list-int', 'else-if-chain',
+            'text-results', 'int-bits', 'int-bits-lowering', 'list-int-values', 'record-values', 'text-escapes', 'unused-function', 'bounded-bytes', 'bytes-carrier', 'bytes-mutation', 'bytes-read-file', 'bytes-read-stream', 'bytes-text', 'command-operands', 'record-bytes-fields', 'record-list', 'http-client-carriers', 'http-client-headers', 'authority-type-carrier', 'while-list-int', 'else-if-chain',
             'list-int-signatures',
             'adt-exhaustiveness', 'adt-usefulness-v2',
             'enum-match-value', 'module-constants',

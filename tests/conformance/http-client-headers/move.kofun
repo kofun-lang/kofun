@@ -1,0 +1,22 @@
+# #1698. A list built by appends moves whole through a `List[Header]`
+# parameter, exactly as a literal-built one does.
+type Header = {
+    name: Bytes,
+    value: Bytes,
+}
+
+fn count(headers: List[Header]) -> Int {
+    return len(headers)
+}
+
+fn main() -> Int {
+    let headers: List[Header] = []
+    let first: Header = Header(name: stage2_bytes_empty(), value: stage2_bytes_empty())
+    stage2_list_append(headers, first)
+    let second: Header = Header(name: stage2_bytes_empty(), value: stage2_bytes_empty())
+    stage2_list_append(headers, second)
+    let third: Header = Header(name: stage2_bytes_empty(), value: stage2_bytes_empty())
+    stage2_list_append(headers, third)
+    print(count(headers))
+    return 0
+}

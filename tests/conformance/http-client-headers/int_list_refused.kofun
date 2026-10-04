@@ -1,0 +1,12 @@
+# #1698. `List[Int]` is not the record row: the append is refused E2S15.
+type Header = {
+    name: Bytes,
+    value: Bytes,
+}
+
+fn main() -> Int {
+    let values: List[Int] = [1, 2]
+    let entry: Header = Header(name: stage2_bytes_empty(), value: stage2_bytes_empty())
+    stage2_list_append(values, entry)
+    return 0
+}

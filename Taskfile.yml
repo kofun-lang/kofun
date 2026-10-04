@@ -1236,6 +1236,16 @@ tasks:
     cmds:
       - "sh tests/conformance/bytes-text/run.sh"
 
+  http-client-carriers:
+    desc: "Verify the HTTP client carriers on C11 Stage 2 (#1258): headers, and the origin and error children as they land"
+    cmds:
+      - task: http-client-headers
+
+  http-client-headers:
+    desc: "Verify Header and a bounded List[Header] at 128: append, read, index, lookup, move, and the R038 refusal"
+    cmds:
+      - "sh tests/conformance/http-client-headers/run.sh"
+
   bounded-bytes:
     desc: "Verify the fixture-bounded Bytes[65536] carrier, mutation, file-read, stream-read, and Text-bridge checkpoint"
     cmds:
@@ -1627,6 +1637,7 @@ tasks:
             unused-function \
             authority-type-carrier \
             bounded-bytes \
+            http-client-carriers \
             command-operands \
             record-bytes-fields \
             record-list \
