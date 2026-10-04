@@ -74,9 +74,16 @@ export function blockedBy(body) {
 // Full 40-hex object names. Rule 2 of the Definition of Ready asks a
 // current-behavior claim to name the commit it was measured on; this is how
 // the gate sees whether one is there at all.
+//
+// A token introduced by `/` is not a stamp: it is the commit segment of a URL
+// (`https://github.com/other/repo/blob/<sha>/…`), which names a commit in some
+// other repository. Counting it read an external reference as a Kofun evidence
+// stamp and failed the live backlog with "not in this repository" for a token
+// the issue never meant as evidence. Kofun stamps are `origin/main@<sha>`, a
+// backticked `<sha>`, or a bare one, and none of those is introduced by `/`.
 export function evidenceCommits(body) {
     const found = new Set()
-    for (const match of (body ?? '').matchAll(/\b[0-9a-f]{40}\b/g)) {
+    for (const match of (body ?? '').matchAll(/(?<!\/)\b[0-9a-f]{40}\b/g)) {
         found.add(match[0])
     }
     return [...found].sort()
