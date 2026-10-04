@@ -668,7 +668,7 @@ that makes the statement useless. A non-fatal diagnostic class is rejected
 because Kofun has none, and inventing one is a decision of its own. A lint
 outside the compiler, after the shadowing precedent, is rejected because that
 precedent governs an opinion and this is a published fact. Must-use for
-`Result` and `Validated` is deferred to its own issue and will start from a
+`Result` and `Validated` is deferred to #1729 and will start from a
 compiler-known set of types.
 
 Measurement found two premises that do not hold as stated. A `pure` callee can
@@ -679,4 +679,4 @@ per scope. The specification records both as open for the decision owner and
 resolves neither.
 
 [`spec/effects/pure-io-v1.md`](../spec/effects/pure-io-v1.md) § Discarded pure
-results is normative. No compiler implements it.
+results is normative. No compiler implements it; #1730 is the implementation.

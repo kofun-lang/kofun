@@ -82,7 +82,7 @@ records the decision on
 owner accepted on 2026-10-04 as amended by the argument-effect rule. The ledger
 indexes it as `DD-042`. Until the refusal is implemented, every program this
 section refuses still compiles, as measured below. The implementation is
-ordered after #1711.
+#1730, which is ordered after #1711.
 
 ### Current behavior
 
@@ -223,20 +223,20 @@ condition 3 the same edge that the published fact charges.
 ### Must-use is deferred
 
 This section does not refuse discarding a `Result` or `Validated` from an `io`
-call, which Flix does with `@MustUse`. Must-use is deferred to a separate issue.
-When it is taken up, it starts from a compiler-known set of types, not a
+call, which Flix does with `@MustUse`. Must-use is deferred to #1729. When it
+is taken up, it starts from a compiler-known set of types, not a
 user-declared attribute. Stage 2 has no `Result` runtime yet, and DD-036's `?`
 is the primary consumer.
 
 `spec/effects/validation-accumulation.md` (DD-034) already lists *"a
 `Validated` result dropped without observing its state"* as a must-use refusal
 condition of its own first implementation. This section does not amend that
-text. The overlap is recorded on the deferred issue.
+text. The overlap is recorded on #1729.
 
 ### Open conflicts
 
 These are recorded here, not resolved. Each needs the decision owner's answer
-before the refusal is enabled, and the implementation issue carries both.
+before the refusal is enabled, and #1730 carries both.
 
 **Mutation through a borrow.** The decision rests on a discarded `pure` call
 being deletable without changing what the program does. In this profile `pure`
