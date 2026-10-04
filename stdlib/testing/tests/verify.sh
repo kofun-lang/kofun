@@ -78,7 +78,7 @@ set -e
 [ ! -s "$work/canonical.check.stdout" ] ||
     fail 'canonical ADT refusal unexpectedly wrote stdout'
 printf '%s\n' \
-    'error[E2S157]: Stage 2 function list signatures require exactly List[Int] at byte 2328' |
+    'error[E2S157]: Stage 2 function list signatures require List[Int] or a bounded record list at byte 2328' |
     cmp - "$work/canonical.check.stderr" ||
     fail 'canonical ADT source did not expose the documented list boundary'
 

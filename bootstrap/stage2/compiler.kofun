@@ -2360,6 +2360,20 @@ fn record_has_bytes_field(source: Text, record_type: Text) -> Bool {
     return false
 }
 
+# #1695. Whether a bounded record list's element type is managed, so the list
+# is not Copy: its elements carry `Bytes` storage.
+fn list_record_has_managed_element(source: Text, list_type: Text) -> Bool {
+    if !starts_with(list_type, "List[") ||
+       list_type == "List[Int]" ||
+       text_slice(list_type, len(list_type) - 1, len(list_type)) != "]" {
+        return false
+    }
+    return record_has_bytes_field(
+        source,
+        text_slice(list_type, 5, len(list_type) - 1)
+    )
+}
+
 fn top_level_end(source: Text, start: Int) -> Int {
     let type_start = type_declaration_start(source, start)
     if type_start >= 0 {
@@ -4121,7 +4135,21 @@ fn field_read_postfix_end(source: Text, primary: Int) -> Int {
     let dot = skip_trivia(source, primary)
     if dot < len(source) && token_text(source, dot) == "[" &&
        source_has_list_int_local(source) {
-        return balanced_end(source, dot, "[", "]")
+        let close = balanced_end(source, dot, "[", "]")
+        if close < 0 {
+            return close
+        }
+        if source_has_list_record_local(source) {
+            let after = skip_trivia(source, close)
+            if after < len(source) && token_text(source, after) == "." {
+                let field = skip_trivia(source, token_end(source, after))
+                if field < len(source) &&
+                   token_kind(source, field) == "identifier" {
+                    return token_end(source, field)
+                }
+            }
+        }
+        return close
     }
     if dot >= len(source) || token_text(source, dot) != "." {
         return primary
@@ -4168,6 +4196,47 @@ fn list_int_type_end(source: Text, type_start: Int) -> Int {
     return token_end(source, close)
 }
 
+# #1695. The per-element-type profile: a bounded list of a declared nominal
+# record at capacity 128. `List[Int]` keeps its own capacity-64 row; this is
+# the record row #1258 Q3(a) chose, and capacity stays part of type identity.
+fn list_record_type_end(source: Text, type_start: Int) -> Int {
+    if type_start >= len(source) ||
+       token_text(source, type_start) != "List" {
+        return -1
+    }
+    let open = skip_trivia(source, token_end(source, type_start))
+    let element = skip_trivia(source, token_end(source, open))
+    let close = skip_trivia(source, token_end(source, element))
+    if open >= len(source) || token_text(source, open) != "[" ||
+       element >= len(source) ||
+       token_kind(source, element) != "identifier" ||
+       close >= len(source) || token_text(source, close) != "]" ||
+       token_text(source, element) == "Int" {
+        return -1
+    }
+    if record_declaration_start(source, token_text(source, element)) < 0 {
+        return -1
+    }
+    return token_end(source, close)
+}
+
+# #1695. The element type name of a `List[<record>]` type position.
+fn list_record_element_text(source: Text, type_start: Int) -> Text {
+    let open = skip_trivia(source, token_end(source, type_start))
+    let element = skip_trivia(source, token_end(source, open))
+    return token_text(source, element)
+}
+
+# #1695. Whether a type position is a list this backend lowers: the capacity-64
+# `List[Int]` row or the capacity-128 record row.
+fn list_type_end(source: Text, type_start: Int) -> Int {
+    let int_end = list_int_type_end(source, type_start)
+    if int_end >= 0 {
+        return int_end
+    }
+    return list_record_type_end(source, type_start)
+}
+
 fn source_has_list_int_local(source: Text) -> Bool {
     let mut cursor = skip_trivia(source, 0)
     while cursor < len(source) {
@@ -4179,7 +4248,7 @@ fn source_has_list_int_local(source: Text) -> Bool {
             let mut after = skip_trivia(source, token_end(source, name))
             if after < len(source) && token_text(source, after) == ":" {
                 let type_start = skip_trivia(source, token_end(source, after))
-                let type_finish = list_int_type_end(source, type_start)
+                let type_finish = list_type_end(source, type_start)
                 if type_finish >= 0 {
                     return true
                 }
@@ -4188,6 +4257,29 @@ fn source_has_list_int_local(source: Text) -> Bool {
             if after < len(source) && token_text(source, after) == "=" {
                 let value = skip_trivia(source, token_end(source, after))
                 if value < len(source) && token_text(source, value) == "[" {
+                    return true
+                }
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return false
+}
+
+# #1695. Whether any local is annotated with a bounded list of a declared
+# record. Used by the postfix reader to admit `binding[i].field`.
+fn source_has_list_record_local(source: Text) -> Bool {
+    let mut cursor = skip_trivia(source, 0)
+    while cursor < len(source) {
+        if token_text(source, cursor) == "let" {
+            let mut name = skip_trivia(source, token_end(source, cursor))
+            if token_text(source, name) == "mut" {
+                name = skip_trivia(source, token_end(source, name))
+            }
+            let after = skip_trivia(source, token_end(source, name))
+            if after < len(source) && token_text(source, after) == ":" {
+                let type_start = skip_trivia(source, token_end(source, after))
+                if list_record_type_end(source, type_start) >= 0 {
                     return true
                 }
             }
@@ -4288,13 +4380,13 @@ fn validate_list_int_annotations(source: Text) -> Text {
                 continue
             }
             if ownership_mode_token(source, parameter) &&
-               list_int_type_end(source, type_start) >= 0 {
-                return "error[E2S157]: List[Int] function parameters support only the immutable copy mode at byte " +
+               list_type_end(source, type_start) >= 0 {
+                return "error[E2S157]: list function parameters support only the immutable copy mode at byte " +
                 to_text(parameter)
             }
             if type_start >= 0 && token_text(source, type_start) == "List" &&
-               list_int_type_end(source, type_start) < 0 {
-                return "error[E2S157]: Stage 2 function list signatures require exactly List[Int] at byte " +
+               list_type_end(source, type_start) < 0 {
+                return "error[E2S157]: Stage 2 function list signatures require List[Int] or a bounded record list at byte " +
                 to_text(type_start)
             }
             let mut type_end = parameter_list_type_end(
@@ -4320,8 +4412,8 @@ fn validate_list_int_annotations(source: Text) -> Text {
         if after < len(source) && token_text(source, after) == "->" {
             let result = skip_trivia(source, token_end(source, after))
             if token_text(source, result) == "List" &&
-               list_int_type_end(source, result) < 0 {
-                return "error[E2S157]: Stage 2 function list signatures require exactly List[Int] at byte " +
+               list_type_end(source, result) < 0 {
+                return "error[E2S157]: Stage 2 function list signatures require List[Int] or a bounded record list at byte " +
                 to_text(result)
             }
         }
@@ -4344,8 +4436,8 @@ fn validate_list_int_annotations(source: Text) -> Text {
                     token_end(source, colon)
                 )
                 if token_text(source, type_start) == "List" &&
-                   list_int_type_end(source, type_start) < 0 {
-                    return "error[E2S157]: Stage 2 local lists require exactly List[Int] at byte " +
+                   list_type_end(source, type_start) < 0 {
+                    return "error[E2S157]: Stage 2 local lists require List[Int] or a bounded record list at byte " +
                     to_text(type_start)
                 }
             }
@@ -5917,20 +6009,41 @@ fn bytes_field_read_binding(
     if token_kind(source, cursor) != "identifier" {
         return ""
     }
-    let dot = skip_trivia(source, token_end(source, cursor))
-    if dot >= stop || token_text(source, dot) != "." {
-        return ""
-    }
-    let field = skip_trivia(source, token_end(source, dot))
-    if token_kind(source, field) != "identifier" ||
-       token_end(source, field) != stop {
-        return ""
-    }
     let binding_id = hir_use_binding_id(hir, cursor)
     if len(binding_id) == 0 {
         return ""
     }
-    let record_type = hir_binding_field(hir, binding_id, 5)
+    let after = skip_trivia(source, token_end(source, cursor))
+    let mut record_type = ""
+    let mut field = -1
+    if after < stop && token_text(source, after) == "." {
+        record_type = hir_binding_field(hir, binding_id, 5)
+        field = skip_trivia(source, token_end(source, after))
+    } else if after < stop && token_text(source, after) == "[" {
+        # #1695. A `Bytes` field of one element of a bounded record list:
+        # `list[index].field`. The element record is the list's profile row.
+        let close = balanced_end(source, after, "[", "]")
+        if close < 0 {
+            return ""
+        }
+        let dot = skip_trivia(source, close)
+        if dot >= stop || token_text(source, dot) != "." {
+            return ""
+        }
+        field = skip_trivia(source, token_end(source, dot))
+        let list_type = hir_binding_field(hir, binding_id, 5)
+        if !starts_with(list_type, "List[") {
+            return ""
+        }
+        record_type = text_slice(list_type, 5, len(list_type) - 1)
+    } else {
+        return ""
+    }
+    if field < 0 ||
+       token_kind(source, field) != "identifier" ||
+       token_end(source, field) != stop {
+        return ""
+    }
     let field_name = token_text(source, field)
     if record_field_type_named(source, record_type, field_name) != "Bytes" {
         return ""
@@ -6639,6 +6752,73 @@ fn list_int_constant_index(
     )
 }
 
+# #1695. The C carrier name for a bounded list of one declared record.
+fn record_list_c_type(record_type: Text) -> Text {
+    return "KofunRecordList_" + record_type
+}
+
+# #1695. A bracketed literal whose elements are one declared nominal record,
+# stored by value in a capacity-128 carrier.
+fn emit_list_record_literal(
+    source: Text,
+    hir: Text,
+    open: Int
+) -> Text {
+    let count = list_int_literal_count(source, open)
+    if count < 0 {
+        return "error[E2S157]: malformed record-list literal at byte " +
+        to_text(open)
+    }
+    if count == 0 {
+        return "error[E2S157]: an empty record-list literal needs an annotated element type at byte " +
+        to_text(open)
+    }
+    if count > 128 {
+        return "error[E2S157]: List[<record>] literal capacity is 128 elements at byte " +
+        to_text(open)
+    }
+    let first = skip_trivia(source, token_end(source, open))
+    let element_type = initializer_type(
+        source,
+        hir,
+        enclosing_function_open(source, first),
+        first
+    )
+    if record_declaration_start(source, element_type) < 0 {
+        return "error[E2S157]: record-list element is not a nominal record at byte " +
+        to_text(first)
+    }
+    let list_type = record_list_c_type(element_type)
+    let mut emitted = "((" + list_type + "){UINT64_C(" + to_text(count) + "), {"
+    let mut element = first
+    let mut index = 0
+    while index < count {
+        let bound = expression_end(source, element)
+        let actual = initializer_type(
+            source,
+            hir,
+            enclosing_function_open(source, element),
+            element
+        )
+        if actual != element_type {
+            return "error[E2S157]: record-list element must have type " +
+            element_type + ", got " + actual + " at byte " + to_text(element)
+        }
+        let value = emit_expression(source, hir, element, bound)
+        if starts_with(value, "error[") {
+            return value
+        }
+        if index > 0 {
+            emitted = emitted + ", "
+        }
+        emitted = emitted + value
+        index = index + 1
+        let separator = skip_trivia(source, bound)
+        element = skip_trivia(source, token_end(source, separator))
+    }
+    return emitted + "}})"
+}
+
 fn emit_list_int_literal(
     source: Text,
     hir: Text,
@@ -7070,6 +7250,18 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
     }
     let kind = token_kind(source, cursor)
     if token_text(source, cursor) == "[" {
+        let first = skip_trivia(source, token_end(source, cursor))
+        if first < end && token_text(source, first) != "]" {
+            let element_type = initializer_type(
+                source,
+                hir,
+                enclosing_function_open(source, first),
+                first
+            )
+            if record_declaration_start(source, element_type) >= 0 {
+                return emit_list_record_literal(source, hir, cursor)
+            }
+        }
         return emit_list_int_literal(source, hir, cursor)
     }
     if kind == "decimal" {
@@ -7142,12 +7334,13 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
         if open < end && token_text(source, open) == "(" && name == "len" {
             let value = skip_trivia(source, token_end(source, open))
             let value_end = argument_end(source, value)
-            if initializer_type(
+            let len_type = initializer_type(
                 source,
                 hir,
                 enclosing_function_open(source, value),
                 value
-            ) == "List[Int]" {
+            )
+            if len_type == "List[Int]" {
                 if token_text(source, value) == "[" {
                     return "((int64_t)kofun_list_int_length(" +
                     emit_list_int_literal(source, hir, value) + "))"
@@ -7164,6 +7357,15 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
                 }
                 return "((int64_t)kofun_list_int_value_length(" +
                 list_value + "))"
+            }
+            if starts_with(len_type, "List[") && len_type != "List[Int]" {
+                # #1695. A bounded list of records is stored by value, so its
+                # length is the carrier's own `length` word.
+                let measured = emit_expression(source, hir, value, value_end)
+                if starts_with(measured, "error[") {
+                    return measured
+                }
+                return "((int64_t)(" + measured + ").length)"
             }
             # `len`, `to_text` and `text_slice` each appended their argument
             # without inspecting it, so a refused argument became C source: the
@@ -7326,7 +7528,11 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
         }
         if open >= end || token_text(source, open) != "(" {
             let binding_id = hir_use_binding_id(hir, cursor)
-            if open < end && token_text(source, open) == "[" {
+            let subscript_type = hir_binding_field(hir, binding_id, 5)
+            let record_subscript = starts_with(subscript_type, "List[") &&
+                subscript_type != "List[Int]"
+            if open < end && token_text(source, open) == "[" &&
+               record_subscript == false {
                 let index_value = emit_list_int_index_value(
                     source, hir, cursor, open
                 )
@@ -7336,6 +7542,36 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
                 return "kofun_list_int_index(kofun_list_int_view(&k_b" +
                 binding_id + ")" +
                 ", " + index_value + ")"
+            }
+            if open < end && token_text(source, open) == "[" &&
+               record_subscript {
+                # #1695. Indexing a bounded list of records yields the element
+                # record, and a field read on that element is a borrowed read.
+                let index_start = skip_trivia(source, token_end(source, open))
+                let index_end = expression_end(source, index_start)
+                let index_value = emit_expression(
+                    source, hir, index_start, index_end
+                )
+                if starts_with(index_value, "error[") {
+                    return index_value
+                }
+                let close_bracket = skip_trivia(source, index_end)
+                let mut after_index = close_bracket
+                if token_text(source, close_bracket) == "]" {
+                    after_index = skip_trivia(
+                        source, token_end(source, close_bracket)
+                    )
+                }
+                let mut field_suffix = ""
+                if token_text(source, after_index) == "." {
+                    let field_cursor = skip_trivia(
+                        source, token_end(source, after_index)
+                    )
+                    field_suffix = "." +
+                    record_c_field_name(token_text(source, field_cursor))
+                }
+                return "k_b" + binding_id + ".elements[" + index_value + "]" +
+                field_suffix
             }
             if open < end && token_text(source, open) == "." {
                 let field_cursor = skip_trivia(
@@ -8334,7 +8570,7 @@ fn builtin_argument_check(
             let mut matches = actual == expected
             if expected == "TextOrList" {
                 matches = actual == "Text" || actual == "List" ||
-                actual == "List[Int]"
+                starts_with(actual, "List[")
             }
             if !matches {
                 return "error[E2S15]: builtin `" + name + "` expects " +
@@ -9399,10 +9635,16 @@ fn core_parameters(
             type_end = token_end(source, type_cursor)
             declarator = "const char *k_b" +
             hir_definition_id_at(hir, name_at)
-        } else if list_int_type_end(source, type_cursor) >= 0 {
-            type_end = list_int_type_end(source, type_cursor)
-            declarator = "KofunIntListValue k_b" +
-            hir_definition_id_at(hir, name_at)
+        } else if list_type_end(source, type_cursor) >= 0 {
+            type_end = list_type_end(source, type_cursor)
+            if list_int_type_end(source, type_cursor) >= 0 {
+                declarator = "KofunIntListValue k_b" +
+                hir_definition_id_at(hir, name_at)
+            } else {
+                declarator = record_list_c_type(
+                    list_record_element_text(source, type_cursor)
+                ) + " k_b" + hir_definition_id_at(hir, name_at)
+            }
         } else if token_text(source, type_cursor) == "Bytes" {
             # #1315. A Managed Bytes parameter is a borrow or a transfer and
             # never a copy. Copying the three-word carrier duplicates the
@@ -13667,8 +13909,12 @@ fn function_return_type(source: Text, wanted: Text) -> Text {
                     token_end(source, after)
                 )
                 if type_cursor < len(source) {
-                    if list_int_type_end(source, type_cursor) >= 0 {
-                        return "List[Int]"
+                    if list_type_end(source, type_cursor) >= 0 {
+                        if list_int_type_end(source, type_cursor) >= 0 {
+                            return "List[Int]"
+                        }
+                        return "List[" +
+                        list_record_element_text(source, type_cursor) + "]"
                     }
                     return annotation_type_text(source, type_cursor)
                 }
@@ -14005,6 +14251,18 @@ fn initializer_type_bounded(
         return "Int"
     }
     if token_text(source, cursor) == "[" {
+        let first = skip_trivia(source, token_end(source, cursor))
+        if first < end && token_text(source, first) != "]" {
+            let element_type = initializer_type(
+                source,
+                hir,
+                function_open,
+                first
+            )
+            if record_declaration_start(source, element_type) >= 0 {
+                return "List[" + element_type + "]"
+            }
+        }
         return "List[Int]"
     }
     let conversion_type = numeric_conversion_result(
@@ -14126,6 +14384,35 @@ fn initializer_type_bounded(
                 if binding_type == "List[Int]" && open < len(source) &&
                    token_text(source, open) == "[" {
                     return "Int"
+                }
+                if starts_with(binding_type, "List[") &&
+                   binding_type != "List[Int]" &&
+                   open < len(source) &&
+                   token_text(source, open) == "[" {
+                    # #1695. Indexing a bounded list of records yields the
+                    # element record; a field read on it is a borrowed read.
+                    let element = text_slice(
+                        binding_type, 5, len(binding_type) - 1
+                    )
+                    let close = balanced_end(source, open, "[", "]")
+                    if close >= 0 {
+                        let after = skip_trivia(source, close)
+                        if after < len(source) &&
+                           token_text(source, after) == "." {
+                            let field_cursor = skip_trivia(
+                                source, token_end(source, after)
+                            )
+                            let field_type = record_field_type_named(
+                                source,
+                                element,
+                                token_text(source, field_cursor)
+                            )
+                            if len(field_type) > 0 {
+                                return field_type
+                            }
+                        }
+                    }
+                    return element
                 }
                 # Indexing the profile's List[Text] yields its Text element.
                 if binding_type == "List" && open < len(source) &&
@@ -16715,9 +17002,14 @@ fn lower_body(
                     binding_type = "Int?"
                     cursor = skip_trivia(source, optional_end)
                 } else {
-                    list_end = list_int_type_end(source, cursor)
+                    list_end = list_type_end(source, cursor)
                     if list_end >= 0 {
-                        binding_type = "List[Int]"
+                        if list_int_type_end(source, cursor) >= 0 {
+                            binding_type = "List[Int]"
+                        } else {
+                            binding_type = "List[" +
+                            list_record_element_text(source, cursor) + "]"
+                        }
                     } else {
                         binding_type = annotation_type_text(source, cursor)
                     }
@@ -16734,6 +17026,7 @@ fn lower_body(
                    binding_type != "Int?" &&
                    binding_type != "Text" &&
                    binding_type != "List[Int]" &&
+                   !starts_with(binding_type, "List[") &&
                    binding_type != "Decimal" &&
                    binding_type != "Float" &&
                    binding_type != "DecimalResult" &&
@@ -16836,6 +17129,7 @@ fn lower_body(
             } else if binding_type != "Int" &&
                binding_type != "Text" &&
                binding_type != "List[Int]" &&
+               !starts_with(binding_type, "List[") &&
                binding_type != "Decimal" &&
                binding_type != "Float" &&
                binding_type != "DecimalResult" {
@@ -17074,7 +17368,12 @@ fn lower_body(
                 # invisible with an empty carrier because releasing
                 # {0,0,NULL} twice is two no-ops.
                 let managed_record = record_has_bytes_field(source, inferred_type)
-                if (inferred_type == "Bytes" || managed_record) &&
+                let managed_list = list_record_has_managed_element(
+                    source, inferred_type
+                )
+                if (inferred_type == "Bytes" ||
+                    managed_record ||
+                    managed_list) &&
                    token_text(source, skip_trivia(source, value_start)) !=
                        "stage2_bytes_empty" {
                     let origin = skip_trivia(source, value_start)
@@ -17089,6 +17388,11 @@ fn lower_body(
                     # names storage that already has an owner is one.
                     if managed_record &&
                        token_text(source, origin) == inferred_type {
+                        reason = ""
+                    }
+                    # #1695. A bracketed literal is the only fresh origin for a
+                    # bounded record list.
+                    if managed_list && token_text(source, origin) == "[" {
                         reason = ""
                     }
                     if reason != "" {
@@ -17155,6 +17459,10 @@ fn lower_body(
                     c_type = "const char *"
                 } else if inferred_type == "List[Int]" {
                     c_type = "KofunIntListValue"
+                } else if starts_with(inferred_type, "List[") {
+                    c_type = record_list_c_type(
+                        text_slice(inferred_type, 5, len(inferred_type) - 1)
+                    )
                 } else if inferred_type == "Bytes" {
                     c_type = "KofunBytesValue"
                 } else if record_declaration_start(source, inferred_type) >= 0 {
@@ -19878,6 +20186,22 @@ fn record_align_up(value: Int, alignment: Int) -> Int {
 # One struct per emitted type. A const-parameterized declaration produces one
 # per distinct literal, which is the specialization itself; every other record
 # produces exactly one, as before.
+fn record_used_as_list_element(source: Text, record_type: Text) -> Bool {
+    let mut cursor = 0
+    while cursor < len(source) {
+        if token_text(source, cursor) == "List" {
+            let open = skip_trivia(source, token_end(source, cursor))
+            let element = skip_trivia(source, token_end(source, open))
+            if token_text(source, open) == "[" &&
+               token_text(source, element) == record_type {
+                return true
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return false
+}
+
 fn emit_record_c_declarations(source: Text) -> Text {
     let mut declarations = ""
     let mut cursor = after_optional_module_header(source, 0)
@@ -19903,11 +20227,27 @@ fn emit_record_c_declarations(source: Text) -> Text {
                     instance = instance + 1
                 }
             } else {
+                let c_type = record_c_type_name(record_type)
                 declarations = declarations + emit_record_c_declaration(
                     source,
                     record_type,
-                    record_c_type_name(record_type)
+                    c_type
                 )
+                if record_used_as_list_element(source, record_type) {
+                    let list_c_type = record_list_c_type(record_type)
+                    declarations = declarations +
+                    "typedef struct { uint64_t length; " + c_type +
+                    " elements[128]; } " + list_c_type + ";\n" +
+                    "_Static_assert(offsetof(" + list_c_type +
+                    ", length) == 0, \"bounded record list length offset\");\n" +
+                    "_Static_assert(offsetof(" + list_c_type +
+                    ", elements) == 8, \"bounded record list payload offset\");\n" +
+                    "_Static_assert(sizeof(" + list_c_type +
+                    ") == 8 + 128 * sizeof(" + c_type +
+                    "), \"bounded record list size\");\n" +
+                    "_Static_assert(_Alignof(" + list_c_type +
+                    ") == 8, \"bounded record list alignment\");\n\n"
+                }
             }
         }
         let end = top_level_end(source, cursor)

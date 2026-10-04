@@ -1,0 +1,17 @@
+# #1695. The list moves whole through a function parameter.
+type Header = {
+    name: Bytes,
+    value: Bytes,
+}
+
+fn count(headers: List[Header]) -> Int {
+    return len(headers)
+}
+
+fn main() -> Int {
+    let a: Header = Header(name: stage2_bytes_empty(), value: stage2_bytes_empty())
+    let b: Header = Header(name: stage2_bytes_empty(), value: stage2_bytes_empty())
+    let headers: List[Header] = [a, b]
+    print(count(headers))
+    return 0
+}

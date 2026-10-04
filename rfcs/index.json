@@ -457,6 +457,20 @@
             "result": "`4` at `feddb49e`, the audited commit: four record fields across four tracked files are typed `Bytes`, and the Stage 2 backend refuses each as `E2S32`. They are the ones this amendment admits.",
             "evidence": "tests/conformance/record-bytes-fields/run.sh"
           }
+        },
+        {
+          "id": "A03",
+          "recorded_on": "2026-10-04",
+          "change": "https://github.com/kofun-lang/kofun/issues/1695",
+          "delta": "The per-element profile row #1258 Q3(a) chose gives a bounded list of a declared nominal record capacity 128, while `List[Int]` keeps capacity 64. Capacity stays part of type identity because it is named in the element type's profile row. The carrier is `{ uint64_t length; KofunRecord_Header elements[128]; }` — 6,152 bytes for the two-`Bytes`-field `Header` — 8-aligned with `managed` drop, so the list is not `Copy`; a copy is refused as `E2S170`, and `list[i]` yields the element record with `list[i].field` a borrowed `read` view. The `bytes`, `list` and `bounded_list` kinds are unchanged, and the target-parameterization decision stands as written.",
+          "original_semantics": "`Text`, `List`, flat records, and flat ADT variants get deterministic byte layouts computed from a declared `TargetDataLayout`. Layout identity is the v1 schema plus the complete target parameters plus type identity, so one type on two targets is two descriptors and neither is privileged: a 32-bit target gets 4-byte references and a 64-bit target 8-byte references without either one changing source semantics. One byte-identical layout on every target is rejected — it decides wasm32 pointer width in advance and hides that decision inside a diff that looks like formatting. An opaque handle for every aggregate is rejected as the default representation, because it costs an allocation and a dereference per aggregate and forfeits the predictable native layout this contract exists to give.",
+          "compatibility": {
+            "category": "additive",
+            "statement": "No tracked program changes meaning and none stops compiling. The record row is a new profile mapping reachable from no existing layout vector, and `List[Int]` keeps capacity 64. Record-list source the Stage 2 backend refuses today becomes lowerable, and nothing that lowers today is refused.",
+            "corpus_query": "git grep -nE 'List\\[Header\\]' -- '*.kofun' | wc -l",
+            "result": "`0` at `56b2678c`; no tracked source spelled `List[Header]` before this change, so the mapping admits new source only.",
+            "evidence": "tests/conformance/record-list/run.sh"
+          }
         }
       ]
     },

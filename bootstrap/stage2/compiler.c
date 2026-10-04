@@ -3245,6 +3245,28 @@ static bool record_has_bytes_field(
     return false;
 }
 
+/* #1695. Whether a bounded record list's element type is managed, so the list
+ * is not Copy: its elements carry `Bytes` storage. */
+static bool list_record_has_managed_element(
+    const char *source,
+    const char *list_type
+) {
+    if (
+        strncmp(list_type, "List[", 5) != 0 ||
+        strcmp(list_type, "List[Int]") == 0 ||
+        list_type[strlen(list_type) - 1] != ']'
+    ) {
+        return false;
+    }
+    size_t inner = strlen(list_type) - 6;
+    char *element = malloc(inner + 1);
+    memcpy(element, list_type + 5, inner);
+    element[inner] = '\0';
+    bool managed = record_has_bytes_field(source, element);
+    free(element);
+    return managed;
+}
+
 static int64_t top_level_end(const char *source, int64_t start) {
     int64_t type_start = type_declaration_start(source, start);
     if (type_start >= 0) {
@@ -5875,6 +5897,8 @@ static int64_t hir_binding_declaration_start(
     const char *binding_id
 );
 static bool source_has_list_int_local(const char *source);
+static bool source_has_list_record_local(const char *source);
+static int64_t list_record_type_end(const char *source, int64_t type_start);
 static char *lower_error(
     const char *code,
     const char *message,
@@ -7270,7 +7294,21 @@ static int64_t field_read_postfix_end(
         dot < length && token_equal(source, dot, "[") &&
         source_has_list_int_local(source)
     ) {
-        return balanced_end(source, dot, "[", "]");
+        int64_t close = balanced_end(source, dot, "[", "]");
+        if (close < 0) return close;
+        if (source_has_list_record_local(source)) {
+            int64_t after = skip_trivia(source, close);
+            if (after < length && token_equal(source, after, ".")) {
+                int64_t field = skip_trivia(source, token_end(source, after));
+                if (
+                    field < length &&
+                    strcmp(token_kind(source, field), "identifier") == 0
+                ) {
+                    return token_end(source, field);
+                }
+            }
+        }
+        return close;
     }
     if (dot >= length || !token_equal(source, dot, ".")) return primary;
     int64_t field = skip_trivia(source, token_end(source, dot));
@@ -7323,6 +7361,51 @@ static int64_t list_int_type_end(const char *source, int64_t type_start) {
     return token_end(source, close);
 }
 
+/*
+ * #1695. The per-element-type profile: a bounded list of a declared nominal
+ * record at capacity 128. `List[Int]` keeps its own capacity-64 row; this is
+ * the record row #1258 Q3(a) chose, and capacity stays part of type identity
+ * because it is named in the element type's profile row.
+ */
+static int64_t list_record_type_end(const char *source, int64_t type_start) {
+    int64_t length = source_length(source);
+    if (type_start >= length || !token_equal(source, type_start, "List")) {
+        return -1;
+    }
+    int64_t open = skip_trivia(source, token_end(source, type_start));
+    int64_t element = skip_trivia(source, token_end(source, open));
+    int64_t close = skip_trivia(source, token_end(source, element));
+    if (
+        open >= length || !token_equal(source, open, "[") ||
+        element >= length ||
+        strcmp(token_kind(source, element), "identifier") != 0 ||
+        close >= length || !token_equal(source, close, "]") ||
+        token_equal(source, element, "Int")
+    ) {
+        return -1;
+    }
+    char *name = token_copy(source, element);
+    bool declared = record_declaration_start(source, name) >= 0;
+    free(name);
+    if (!declared) return -1;
+    return token_end(source, close);
+}
+
+/* #1695. The element type name of a `List[<record>]` type position. */
+static char *list_record_element_text(const char *source, int64_t type_start) {
+    int64_t open = skip_trivia(source, token_end(source, type_start));
+    int64_t element = skip_trivia(source, token_end(source, open));
+    return token_copy(source, element);
+}
+
+/* #1695. Whether a type position is a list this backend lowers: the capacity-64
+ * `List[Int]` row or the capacity-128 record row. */
+static int64_t list_type_end(const char *source, int64_t type_start) {
+    int64_t int_end = list_int_type_end(source, type_start);
+    if (int_end >= 0) return int_end;
+    return list_record_type_end(source, type_start);
+}
+
 static bool source_has_list_int_local(const char *source) {
     int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, 0);
@@ -7338,7 +7421,7 @@ static bool source_has_list_int_local(const char *source) {
                     source,
                     token_end(source, after)
                 );
-                int64_t type_finish = list_int_type_end(source, type_start);
+                int64_t type_finish = list_type_end(source, type_start);
                 if (type_finish >= 0) return true;
                 after = skip_trivia(source, token_end(source, type_start));
             }
@@ -7348,6 +7431,33 @@ static bool source_has_list_int_local(const char *source) {
                     token_end(source, after)
                 );
                 if (value < length && token_equal(source, value, "[")) {
+                    return true;
+                }
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return false;
+}
+
+/* #1695. Whether any local is annotated with a bounded list of a declared
+ * record. Used by the postfix reader to admit `binding[i].field`. */
+static bool source_has_list_record_local(const char *source) {
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, 0);
+    while (cursor < length) {
+        if (token_equal(source, cursor, "let")) {
+            int64_t name = skip_trivia(source, token_end(source, cursor));
+            if (token_equal(source, name, "mut")) {
+                name = skip_trivia(source, token_end(source, name));
+            }
+            int64_t after = skip_trivia(source, token_end(source, name));
+            if (after < length && token_equal(source, after, ":")) {
+                int64_t type_start = skip_trivia(
+                    source,
+                    token_end(source, after)
+                );
+                if (list_record_type_end(source, type_start) >= 0) {
                     return true;
                 }
             }
@@ -7459,22 +7569,23 @@ static char *validate_list_int_annotations(const char *source) {
             if (type_start < 0) break;
             if (
                 ownership_mode_token(source, parameter) &&
-                list_int_type_end(source, type_start) >= 0
+                list_type_end(source, type_start) >= 0
             ) {
                 return lower_error(
                     "E2S157",
-                    "List[Int] function parameters support only the immutable "
+                    "list function parameters support only the immutable "
                     "copy mode",
                     parameter
                 );
             }
             if (
                 token_equal(source, type_start, "List") &&
-                list_int_type_end(source, type_start) < 0
+                list_type_end(source, type_start) < 0
             ) {
                 return lower_error(
                     "E2S157",
-                    "Stage 2 function list signatures require exactly List[Int]",
+                    "Stage 2 function list signatures require List[Int] or a "
+                    "bounded record list",
                     type_start
                 );
             }
@@ -7497,11 +7608,12 @@ static char *validate_list_int_annotations(const char *source) {
             int64_t result = skip_trivia(source, token_end(source, after));
             if (
                 token_equal(source, result, "List") &&
-                list_int_type_end(source, result) < 0
+                list_type_end(source, result) < 0
             ) {
                 return lower_error(
                     "E2S157",
-                    "Stage 2 function list signatures require exactly List[Int]",
+                    "Stage 2 function list signatures require List[Int] or a "
+                    "bounded record list",
                     result
                 );
             }
@@ -7526,11 +7638,12 @@ static char *validate_list_int_annotations(const char *source) {
                 );
                 if (
                     token_equal(source, type_start, "List") &&
-                    list_int_type_end(source, type_start) < 0
+                    list_type_end(source, type_start) < 0
                 ) {
                     return lower_error(
                         "E2S157",
-                        "Stage 2 local lists require exactly List[Int]",
+                        "Stage 2 local lists require List[Int] or a bounded "
+                        "record list",
                         type_start
                     );
                 }
@@ -9361,6 +9474,110 @@ static bool list_int_constant_index(
     return true;
 }
 
+/* #1695. The C carrier name for a bounded list of one declared record. The
+ * capacity lives in the profile (128 for a record row), so it is not in the
+ * name; the element type is. */
+static char *record_list_c_type(const char *record_type) {
+    Buffer name;
+    buffer_init(&name);
+    buffer_format(&name, "KofunRecordList_%s", record_type);
+    return name.data;
+}
+
+/* #1695. A bracketed literal whose elements are one declared nominal record,
+ * stored by value in a capacity-128 carrier. */
+static char *emit_list_record_literal(
+    const char *source,
+    const char *hir,
+    int64_t open
+) {
+    int64_t bad = open;
+    int64_t count = list_int_literal_count(source, open, &bad);
+    if (count < 0) {
+        return lower_error("E2S157", "malformed record-list literal", bad);
+    }
+    if (count == 0) {
+        return lower_error(
+            "E2S157",
+            "an empty record-list literal needs an annotated element type",
+            open
+        );
+    }
+    if (count > 128) {
+        return lower_error(
+            "E2S157",
+            "List[<record>] literal capacity is 128 elements",
+            open
+        );
+    }
+    int64_t first = skip_trivia(source, token_end(source, open));
+    char *element_type = initializer_type(
+        source,
+        hir,
+        enclosing_function_open(source, first),
+        first
+    );
+    if (record_declaration_start(source, element_type) < 0) {
+        free(element_type);
+        return lower_error(
+            "E2S157",
+            "record-list element is not a nominal record",
+            first
+        );
+    }
+    char *list_type = record_list_c_type(element_type);
+    Buffer output;
+    buffer_init(&output);
+    buffer_format(
+        &output,
+        "((%s){UINT64_C(%" PRId64 "), {",
+        list_type,
+        count
+    );
+    free(list_type);
+    int64_t element = first;
+    for (int64_t index = 0; index < count; ++index) {
+        int64_t bound = expression_end(source, element);
+        char *actual = initializer_type(
+            source,
+            hir,
+            enclosing_function_open(source, element),
+            element
+        );
+        if (strcmp(actual, element_type) != 0) {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(
+                &message,
+                "record-list element must have type %s, got %s",
+                element_type,
+                actual
+            );
+            free(actual);
+            free(element_type);
+            free(output.data);
+            char *error = lower_error("E2S157", message.data, element);
+            free(message.data);
+            return error;
+        }
+        free(actual);
+        char *value = emit_expression(source, hir, element, bound);
+        if (strncmp(value, "error[", 6) == 0) {
+            free(element_type);
+            free(output.data);
+            return value;
+        }
+        if (index > 0) buffer_append(&output, ", ");
+        buffer_append(&output, value);
+        free(value);
+        int64_t separator = skip_trivia(source, bound);
+        element = skip_trivia(source, token_end(source, separator));
+    }
+    buffer_append(&output, "}})");
+    free(element_type);
+    return output.data;
+}
+
 static char *emit_list_int_literal(
     const char *source,
     const char *hir,
@@ -10013,6 +10230,23 @@ static char *emit_primary(
      * sees the subject. Dispatching again here would be a second path to the
      * same emitter, which is exactly what this slice must not add. */
     if (token_equal(source, cursor, "[")) {
+        int64_t first = skip_trivia(source, token_end(source, cursor));
+        if (first < end && !token_equal(source, first, "]")) {
+            char *element_type = initializer_type(
+                source,
+                hir,
+                enclosing_function_open(source, first),
+                first
+            );
+            bool record_element = record_declaration_start(
+                source,
+                element_type
+            ) >= 0;
+            free(element_type);
+            if (record_element) {
+                return emit_list_record_literal(source, hir, cursor);
+            }
+        }
         return emit_list_int_literal(source, hir, cursor);
     }
     if (strcmp(kind, "decimal") == 0) {
@@ -10220,6 +10454,10 @@ static char *emit_primary(
                         emitted
                     );
                 }
+            } else if (strncmp(actual, "List[", 5) == 0) {
+                /* #1695. A bounded list of records is stored by value, so its
+                 * length is the carrier's own `length` word. */
+                buffer_format(&length, "((int64_t)(%s).length)", emitted);
             } else if (strncmp(emitted, "error[", 6) == 0) {
                 /*
                  * `len`, `to_text` and `text_slice` each appended their
@@ -10505,7 +10743,16 @@ static char *emit_primary(
         buffer_init(&output);
         if (open >= end || !token_equal(source, open, "(")) {
             char *binding_id = hir_use_binding_id(hir, cursor);
-            if (open < end && token_equal(source, open, "[")) {
+            char *subscript_type = hir_binding_field(hir, binding_id, 5);
+            bool record_subscript =
+                strncmp(subscript_type, "List[", 5) == 0 &&
+                strcmp(subscript_type, "List[Int]") != 0;
+            free(subscript_type);
+            if (
+                open < end &&
+                token_equal(source, open, "[") &&
+                !record_subscript
+            ) {
                 char *index_value = emit_list_int_index_value(
                     source,
                     hir,
@@ -10529,6 +10776,69 @@ static char *emit_primary(
                 free(name);
                 return output.data;
             }
+            char *indexed_binding_type = hir_binding_field(
+                hir,
+                binding_id,
+                5
+            );
+            if (
+                open < end &&
+                token_equal(source, open, "[") &&
+                strncmp(indexed_binding_type, "List[", 5) == 0 &&
+                strcmp(indexed_binding_type, "List[Int]") != 0
+            ) {
+                free(indexed_binding_type);
+                int64_t index_start = skip_trivia(
+                    source,
+                    token_end(source, open)
+                );
+                int64_t index_end = expression_end(source, index_start);
+                char *index_value = emit_expression(
+                    source,
+                    hir,
+                    index_start,
+                    index_end
+                );
+                if (strncmp(index_value, "error[", 6) == 0) {
+                    free(binding_id);
+                    free(name);
+                    free(output.data);
+                    return index_value;
+                }
+                int64_t close_bracket = skip_trivia(source, index_end);
+                int64_t after_index = token_equal(source, close_bracket, "]")
+                    ? skip_trivia(source, token_end(source, close_bracket))
+                    : close_bracket;
+                if (token_equal(source, after_index, ".")) {
+                    int64_t field_cursor = skip_trivia(
+                        source,
+                        token_end(source, after_index)
+                    );
+                    char *field = token_copy(source, field_cursor);
+                    char *c_field = record_c_field_name(field);
+                    buffer_format(
+                        &output,
+                        "k_b%s.elements[%s].%s",
+                        binding_id,
+                        index_value,
+                        c_field
+                    );
+                    free(c_field);
+                    free(field);
+                } else {
+                    buffer_format(
+                        &output,
+                        "k_b%s.elements[%s]",
+                        binding_id,
+                        index_value
+                    );
+                }
+                free(index_value);
+                free(binding_id);
+                free(name);
+                return output.data;
+            }
+            free(indexed_binding_type);
             if (open < end && token_equal(source, open, ".")) {
                 int64_t field_cursor = skip_trivia(
                     source,
@@ -11819,7 +12129,7 @@ static char *builtin_argument_check(
             if (strncmp(expected, "TextOrList", expected_length) == 0) {
                 matches = strcmp(actual, "Text") == 0 ||
                     strcmp(actual, "List") == 0 ||
-                    strcmp(actual, "List[Int]") == 0;
+                    strncmp(actual, "List[", 5) == 0;
             } else {
                 matches =
                     strlen(actual) == expected_length &&
@@ -13835,23 +14145,57 @@ static char *bytes_field_read_binding(
     if (strcmp(token_kind(source, cursor), "identifier") != 0) {
         return owned_text("");
     }
-    int64_t dot = skip_trivia(source, token_end(source, cursor));
-    if (dot >= stop || !token_equal(source, dot, ".")) {
-        return owned_text("");
-    }
-    int64_t field = skip_trivia(source, token_end(source, dot));
-    if (
-        strcmp(token_kind(source, field), "identifier") != 0 ||
-        token_end(source, field) != stop
-    ) {
-        return owned_text("");
-    }
     char *binding_id = hir_use_binding_id(hir, cursor);
     if (binding_id[0] == '\0') {
         free(binding_id);
         return owned_text("");
     }
-    char *record_type = hir_binding_field(hir, binding_id, 5);
+    int64_t after = skip_trivia(source, token_end(source, cursor));
+    char *record_type = NULL;
+    int64_t field = -1;
+    if (after < stop && token_equal(source, after, ".")) {
+        /* A `Bytes` field of a named record binding. */
+        record_type = hir_binding_field(hir, binding_id, 5);
+        field = skip_trivia(source, token_end(source, after));
+    } else if (after < stop && token_equal(source, after, "[")) {
+        /* #1695. A `Bytes` field of one element of a bounded record list:
+         * `list[index].field`. The element record is the list's profile row,
+         * so its field type is read from that record's declaration. */
+        int64_t close = balanced_end(source, after, "[", "]");
+        if (close < 0) {
+            free(binding_id);
+            return owned_text("");
+        }
+        int64_t dot = skip_trivia(source, close);
+        if (dot >= stop || !token_equal(source, dot, ".")) {
+            free(binding_id);
+            return owned_text("");
+        }
+        field = skip_trivia(source, token_end(source, dot));
+        char *list_type = hir_binding_field(hir, binding_id, 5);
+        if (strncmp(list_type, "List[", 5) != 0) {
+            free(list_type);
+            free(binding_id);
+            return owned_text("");
+        }
+        size_t inner = strlen(list_type) - 6;
+        record_type = malloc(inner + 1);
+        memcpy(record_type, list_type + 5, inner);
+        record_type[inner] = '\0';
+        free(list_type);
+    } else {
+        free(binding_id);
+        return owned_text("");
+    }
+    if (
+        field < 0 ||
+        strcmp(token_kind(source, field), "identifier") != 0 ||
+        token_end(source, field) != stop
+    ) {
+        free(record_type);
+        free(binding_id);
+        return owned_text("");
+    }
     char *field_name = token_copy(source, field);
     char *field_type = record_field_type_named(
         source,
@@ -14378,11 +14722,24 @@ static char *core_parameters(
             buffer_init(&plain);
             buffer_format(&plain, "const char *k_b%s", binding_id);
             declarator = plain.data;
-        } else if (list_int_type_end(source, type_cursor) >= 0) {
-            type_end = list_int_type_end(source, type_cursor);
+        } else if (list_type_end(source, type_cursor) >= 0) {
+            type_end = list_type_end(source, type_cursor);
             Buffer list;
             buffer_init(&list);
-            buffer_format(&list, "KofunIntListValue k_b%s", binding_id);
+            if (list_int_type_end(source, type_cursor) >= 0) {
+                buffer_format(&list, "KofunIntListValue k_b%s", binding_id);
+            } else {
+                char *element = list_record_element_text(source, type_cursor);
+                char *list_c_type = record_list_c_type(element);
+                buffer_format(
+                    &list,
+                    "%s k_b%s",
+                    list_c_type,
+                    binding_id
+                );
+                free(list_c_type);
+                free(element);
+            }
             declarator = list.data;
         } else if (token_equal(source, type_cursor, "Bytes")) {
             /*
@@ -18840,6 +19197,23 @@ static char *initializer_type_bounded(
     }
     if (cursor >= end) return owned_text("Int");
     if (token_equal(source, cursor, "[")) {
+        int64_t first = skip_trivia(source, token_end(source, cursor));
+        if (first < end && !token_equal(source, first, "]")) {
+            char *element_type = initializer_type(
+                source,
+                hir,
+                function_open,
+                first
+            );
+            if (record_declaration_start(source, element_type) >= 0) {
+                Buffer text;
+                buffer_init(&text);
+                buffer_format(&text, "List[%s]", element_type);
+                free(element_type);
+                return text.data;
+            }
+            free(element_type);
+        }
         return owned_text("List[Int]");
     }
     {
@@ -18974,6 +19348,43 @@ static char *initializer_type_bounded(
                 if (indexed && strcmp(type, "List[Int]") == 0) {
                     free(type);
                     return owned_text("Int");
+                }
+                if (
+                    indexed &&
+                    strncmp(type, "List[", 5) == 0 &&
+                    strcmp(type, "List[Int]") != 0
+                ) {
+                    /* #1695. Indexing a bounded list of records yields the
+                     * element record, and a field read on that element is a
+                     * borrowed read of the record. */
+                    size_t inner = strlen(type) - 6;
+                    char *element = malloc(inner + 1);
+                    memcpy(element, type + 5, inner);
+                    element[inner] = '\0';
+                    free(type);
+                    int64_t index_close = balanced_end(source, open, "[", "]");
+                    if (index_close >= 0) {
+                        int64_t after = skip_trivia(source, index_close);
+                        if (after < length && token_equal(source, after, ".")) {
+                            int64_t field_cursor = skip_trivia(
+                                source,
+                                token_end(source, after)
+                            );
+                            char *field = token_copy(source, field_cursor);
+                            char *field_type = record_field_type_named(
+                                source,
+                                element,
+                                field
+                            );
+                            free(field);
+                            if (field_type[0] != '\0') {
+                                free(element);
+                                return field_type;
+                            }
+                            free(field_type);
+                        }
+                    }
+                    return element;
                 }
                 /* Indexing the profile's List[Text] yields its Text
                  * element. */
@@ -24233,6 +24644,7 @@ static char *lower_body_with_workspace(
             char *authority_type = NULL;
             bool optional_int = false;
             bool list_int = false;
+            bool list_record = false;
             bool annotated = false;
             cursor = skip_trivia(source, token_end(source, cursor));
             if (cursor < length && token_equal(source, cursor, ":")) {
@@ -24269,11 +24681,19 @@ static char *lower_body_with_workspace(
                  * `Fixed`. */
                 int64_t list_end = optional_int
                     ? -1
+                    : list_type_end(source, cursor);
+                int64_t list_int_finish = optional_int
+                    ? -1
                     : list_int_type_end(source, cursor);
                 char *declared_type = optional_int
                     ? owned_text("Int")
                     : (list_end >= 0
-                        ? owned_text("List[Int]")
+                        ? (list_int_finish >= 0
+                            ? owned_text("List[Int]")
+                            : constructed_list_type_text(
+                                source,
+                                cursor,
+                                length))
                         : annotation_type_text(source, cursor));
                 if (
                     !optional_int &&
@@ -24281,8 +24701,11 @@ static char *lower_body_with_workspace(
                 ) {
                     list_int = true;
                 }
+                if (list_end >= 0 && list_int_finish < 0) {
+                    list_record = true;
+                }
                 if (
-                    !optional_int && !list_int &&
+                    !optional_int && !list_int && !list_record &&
                     strcmp(declared_type, "Int") != 0
                 ) {
                     if (
@@ -24884,8 +25307,14 @@ static char *lower_body_with_workspace(
              * the block's end rather than the body's, and the funnel keys on
              * the function body. Refusing is honest until it does. */
             bool managed_record = record_has_bytes_field(source, binding_type);
+            bool managed_list = list_record_has_managed_element(
+                source,
+                binding_type
+            );
             if (
-                (strcmp(binding_type, "Bytes") == 0 || managed_record) &&
+                (strcmp(binding_type, "Bytes") == 0 ||
+                 managed_record ||
+                 managed_list) &&
                 !token_equal(
                     source,
                     skip_trivia(source, value_start),
@@ -24923,12 +25352,21 @@ static char *lower_body_with_workspace(
                     if (strcmp(origin_text, binding_type) == 0) reason = "";
                     free(origin_text);
                 }
+                /* #1695. A bracketed literal is the only fresh origin for a
+                 * bounded record list; any other initializer names storage
+                 * that already has an owner. */
+                if (managed_list && token_equal(source, origin, "[")) {
+                    reason = "";
+                }
                 if (reason[0] == '\0') {
                     /* A proven-fresh producer: this binding owns what the
                      * helper handed back, exactly as if it had called
-                     * `stage2_bytes_empty()` itself. */
-                    free(binding_type);
-                    binding_type = owned_text("Bytes");
+                     * `stage2_bytes_empty()` itself. A record list keeps its
+                     * own type; only a `Bytes` binding is spelled `Bytes`. */
+                    if (strcmp(binding_type, "Bytes") == 0) {
+                        free(binding_type);
+                        binding_type = owned_text("Bytes");
+                    }
                 } else {
                 char *refusal = bytes_alias_error(name, reason, value_start);
                 free(binding_type);
@@ -25025,6 +25463,14 @@ static char *lower_body_with_workspace(
                 c_type = "const char *";
             } else if (strcmp(binding_type, "List[Int]") == 0) {
                 c_type = "KofunIntListValue";
+            } else if (strncmp(binding_type, "List[", 5) == 0) {
+                size_t inner = strlen(binding_type) - 6;
+                char *element = malloc(inner + 1);
+                memcpy(element, binding_type + 5, inner);
+                element[inner] = '\0';
+                record_type_owned = record_list_c_type(element);
+                free(element);
+                c_type = record_type_owned;
             } else if (strcmp(binding_type, "Bytes") == 0) {
                 c_type = "KofunBytesValue";
             } else if (record_declaration_start(source, binding_type) >= 0) {
@@ -28963,6 +29409,28 @@ static char *emit_record_c_declaration(
 /* One struct per emitted type. A const-parameterized declaration produces one
  * per distinct literal, which is the specialization itself; every other record
  * produces exactly one, as before. */
+static bool record_used_as_list_element(
+    const char *source,
+    const char *record_type
+) {
+    int64_t length = source_length(source);
+    int64_t cursor = 0;
+    while (cursor < length) {
+        if (token_equal(source, cursor, "List")) {
+            int64_t open = skip_trivia(source, token_end(source, cursor));
+            int64_t element = skip_trivia(source, token_end(source, open));
+            if (
+                token_equal(source, open, "[") &&
+                token_equal(source, element, record_type)
+            ) {
+                return true;
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return false;
+}
+
 static char *emit_record_c_declarations(const char *source) {
     int64_t length = (int64_t)strlen(source);
     int64_t cursor = after_optional_module_header(source, 0);
@@ -29004,6 +29472,29 @@ static char *emit_record_c_declarations(const char *source) {
                 );
                 buffer_append(&declarations, emitted);
                 free(emitted);
+                if (record_used_as_list_element(source, record_type)) {
+                    char *list_c_type = record_list_c_type(record_type);
+                    buffer_format(
+                        &declarations,
+                        "typedef struct { uint64_t length; %s elements[128]; } %s;\n"
+                        "_Static_assert(offsetof(%s, length) == 0, "
+                        "\"bounded record list length offset\");\n"
+                        "_Static_assert(offsetof(%s, elements) == 8, "
+                        "\"bounded record list payload offset\");\n"
+                        "_Static_assert(sizeof(%s) == 8 + 128 * sizeof(%s), "
+                        "\"bounded record list size\");\n"
+                        "_Static_assert(_Alignof(%s) == 8, "
+                        "\"bounded record list alignment\");\n\n",
+                        c_type,
+                        list_c_type,
+                        list_c_type,
+                        list_c_type,
+                        list_c_type,
+                        c_type,
+                        list_c_type
+                    );
+                    free(list_c_type);
+                }
                 free(c_type);
             }
             free(parameter);
@@ -32139,10 +32630,10 @@ static bool unsupported_lowering_error(const char *diagnostic) {
            ) == 0 ||
            strncmp(
                diagnostic,
-               "error[E2S157]: List[Int] function parameters support only "
+               "error[E2S157]: list function parameters support only "
                "the immutable copy mode",
                strlen(
-                   "error[E2S157]: List[Int] function parameters support only "
+                   "error[E2S157]: list function parameters support only "
                    "the immutable copy mode"
                )
            ) == 0;

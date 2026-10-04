@@ -188,6 +188,7 @@ cc	invoke	2	required-today	required	tests/conformance/optional-construction/run.
 cc	invoke	3	required-today	required	tests/conformance/optional-narrowing/run.sh
 cc	invoke	3	required-today	required	tests/conformance/optional/run.sh
 cc	invoke	1	required-today	required	tests/conformance/record-bytes-fields/run.sh
+cc	invoke	1	required-today	required	tests/conformance/record-list/run.sh
 cc	invoke	5	required-today	required	tests/conformance/records/run.sh
 cc	invoke	1	required-today	required	tests/conformance/result-propagation/run.sh
 cc	invoke	1	required-today	required	tests/conformance/stage1-adapter/check.sh
@@ -316,6 +317,7 @@ node	invoke	3	required-today	required	tests/conformance/int-bits/run.sh
 node	invoke	1	required-today	required	tests/conformance/move-call-crossings/run.sh
 node	invoke	3	required-today	required	tests/conformance/optional-construction/run.sh
 node	invoke	2	required-today	required	tests/conformance/record-bytes-fields/run.sh
+node	invoke	2	required-today	required	tests/conformance/record-list/run.sh
 node	invoke	2	required-today	required	tests/conformance/result-propagation/run.sh
 node	invoke	7	required-today	optional	tests/digest/check.sh
 node	invoke	5	required-today	required	tests/docs/documentation-index.sh
@@ -453,6 +455,7 @@ node	source	1	required-today	required	tests/conformance/effects/pure-io/report.m
 node	source	1	required-today	required	tests/conformance/int-bits/check-pair.mjs
 node	source	1	required-today	required	tests/conformance/move-call-crossings/check.mjs
 node	source	1	required-today	required	tests/conformance/record-bytes-fields/pair.mjs
+node	source	1	required-today	required	tests/conformance/record-list/pair.mjs
 node	source	1	required-today	required	tests/conformance/result-propagation/pair.mjs
 node	source	1	required-today	required	tests/digest/no-host-digest-tools.mjs
 node	source	1	required-today	required	tests/docs/audited-claim-metadata.mjs
@@ -703,6 +706,7 @@ shell-build-driver	source	1	required-today	required	tests/conformance/optional-n
 shell-build-driver	source	1	required-today	required	tests/conformance/optional/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/patterns/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/record-bytes-fields/run.sh
+shell-build-driver	source	1	required-today	required	tests/conformance/record-list/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/records/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/result-propagation/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/run.sh

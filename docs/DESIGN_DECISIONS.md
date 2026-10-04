@@ -477,6 +477,18 @@ the record still owns. Recorded for
 [#1694](https://github.com/kofun-lang/kofun/issues/1694), from #1258's Q4. The
 `list` and `bounded_list` kinds are unchanged.
 
+**Amended: `DD-033/A03` (2026-10-04).** Adds the per-element profile row
+[#1258](https://github.com/kofun-lang/kofun/issues/1258)'s Q3(a) chose: a
+bounded list of a declared nominal record gets capacity 128, while `List[Int]`
+keeps capacity 64. Capacity stays part of type identity because it is named in
+the element type's profile row. The carrier is
+`{ uint64_t length; KofunRecord_Header elements[128]; }` — 6,152 bytes for the
+two-`Bytes`-field `Header` — 8-aligned with `managed` drop, so the list is not
+`Copy`; a copy is refused as `E2S170`, and `list[i]` yields the element record
+with `list[i].field` a borrowed `read` view. Recorded for
+[#1695](https://github.com/kofun-lang/kofun/issues/1695). The `bytes`, `list`
+and `bounded_list` kinds are unchanged.
+
 ## DD-034: Validation accumulates in `Validated`, not `Result`
 
 `Validated[T, E]` is `Valid(T)`, `Disputed(T, Issues[E])`, or
