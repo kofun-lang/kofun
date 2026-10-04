@@ -20,7 +20,8 @@ Keep one addition: a one-bit `pure` requirement, written on a callable type
 (`f: pure (Int) -> Int`) and on a trait method declaration, so that a callee can
 refuse an impure argument. Its consumers are comparators and equality, explicit
 parallel library variants, and generic rewrite laws over callable binders. Its
-next artifact is RFC-0019, opened after #1711 merges (see
+next artifact is a proposed RFC, "the callable-purity RFC" below, tracked as
+#1719 and opened after #1711 merges. Its number is assigned when it opens (see
 [Follow-up](#follow-up)).
 
 Defer effect variables and associated effects. While `pure < io` is the whole
@@ -37,12 +38,15 @@ compile time instead of silently running sequentially.
 
 Flix is the reference because it ships all four mechanisms in one language,
 with complete Hindley–Milner inference ([`DIDYOUKNOW.md`][dyk-hm]) over effect
-set formulas ([`effect-polymorphism.md`][poly-formulas]) represented as BDDs
-since 0.35.0 ([`CHANGELOG.md`][changelog-bdd]). Kofun adopts its pure-argument
-requirement — Flix enforces that equality and ordering functions are pure
+set formulas ([`effect-polymorphism.md`][poly-formulas]). At the pinned commit
+those formulas are unified in a Zhegalkin algebra
+([`EffUnification3.scala`][eff-zhegalkin]); the BDD representation that 0.35.0
+introduced ([`CHANGELOG.md`][changelog-bdd]) is history. This note keeps Flix's
+pure-argument requirement for the proposed RFC to specify, and none of the
+rest. Flix enforces that equality and ordering functions are pure
 ([`DIDYOUKNOW.md`][dyk-eq]), and `Eq.eq`, `Order.compare`, and
 `List.sortWith`'s comparator carry no effect variable ([`Eq.flix`][eq],
-[`Order.flix`][order], [`List.flix`][list-sort]) — and none of the rest.
+[`Order.flix`][order], [`List.flix`][list-sort]).
 
 ## What creation-site charging means
 
@@ -59,7 +63,8 @@ Three consequences of #1711's rule settle most of the questions below.
    lambda written, in its arguments. `forward(noisy, 7)` has a `pure` callee and
    prints `7` (x16). A consumer that reads only the callee's fact is unsound for
    higher-order calls. #1714's discarded-pure-call rule is the first such
-   consumer and must use the joined effect.
+   consumer; this point is recorded on #1714
+   ([comment](https://github.com/kofun-lang/kofun/issues/1714#issuecomment-5977026701)).
 3. **When a requirement is needed.** A consumer needs a purity requirement on a
    callable parameter exactly when it must decide purity *inside the callee*,
    where the argument is a parameter rather than a creation site. Any call site
@@ -80,8 +85,11 @@ refuses each form other than the two it charges:
 - a callable record field: x12, `E2S32`.
 
 What remains is naming a function as an argument, which #1711 charges, and a
-lambda, whose calls are already charged to the enclosing function (x03,
-`E2S176`).
+lambda, whose calls are already charged to the enclosing function. A lambda
+bound with `let` and passed to `apply` is refused inside a `pure fn` (x03,
+`E2S176`). The same function without `pure` checks `ok` and prints `7` (x25).
+A lambda written directly as an argument is not expressible: it is refused with
+`E2S12` even without `pure` (x27).
 
 Both alternatives are worse for v1. Charging an unknown call through a
 parameter as `io` makes every higher-order function `io`, so `pure fn quiet`
@@ -90,20 +98,39 @@ effect variables are precise, but they need effect-carrying callable types and
 inference machinery (question 3).
 
 The rule over-approximates in the cases below. Each program cannot print
-through the charged path.
+through the charged path. Every `pure fn` below is a valid program without the
+annotation: the "Without `pure`" column checks the same body unannotated.
 
-| Case | Example | Today | After #1711 (predicted) |
-|---|---|---|---|
-| a named function passed and never called | x05, `ignore(noisy, x)` | `ok`; `run` prints nothing | `E2S176` naming `noisy` |
-| a named function called only on an untaken path | x09, `choose(0, noisy, inc, x)` | `ok`; `run` prints nothing | `E2S176` naming `noisy` |
-| a lambda passed and never called | x06 | `E2S176` | unchanged |
-| a lambda bound and never called | x07 | `E2S176` | unchanged |
-| a direct call on an untaken path, not callable-specific | x08, `if false { return noisy(x) }` | `E2S176` | unchanged |
-| a function value stored or returned and never called | x10–x12, x24 | not expressible | #1711 adds the edge or keeps the form refused |
+| Case | Example | Today, in a `pure fn` | Without `pure` | After #1711 (predicted) |
+|---|---|---|---|---|
+| a named function passed and never called | x05, `ignore(noisy, x)` | `ok`; `run` prints nothing | — | `E2S176` naming `noisy` |
+| a named function called only on an untaken path | x09, `choose(0, noisy, inc, x)` | `ok`; `run` prints nothing | — | `E2S176` naming `noisy` |
+| a `let`-bound lambda passed and never called | x06, `ignore(g, x)` | `E2S176` | x26: `ok`; `run` prints nothing | unchanged |
+| a `let`-bound lambda never passed or called | x07 | `E2S176` | x28: `ok` | unchanged |
+| a direct call on an untaken path, not callable-specific | x08, `if false { return noisy(x) }` | `E2S176` | x29: `ok`; `run` prints nothing | unchanged |
+| a function value stored or returned and never called | x10–x12, x24 | not expressible | — | #1711 adds the edge or keeps the form refused |
 
 Rows three to five already happen today: the lambda rule and the
 flow-insensitive direct-call rule over-approximate the same way. #1711 extends
 an existing precision class to names instead of creating a new one.
+
+The second row has an in-tree instance. `stub_unreachable` in the test
+library prints when called and exists to be passed as an `Int -> Int`
+collaborator that must not be called
+([`stdlib/testing/kotest.kofun:342-351`](../../stdlib/testing/kotest.kofun#L342-L351)).
+`examples/stdlib/testing_sample_test.kofun:30` passes it to `line_subtotal`
+with a quantity of `0`. `line_subtotal` calls its price book only for a
+positive quantity
+([`examples/stdlib/testing_sample.kofun:39-44`](../../examples/stdlib/testing_sample.kofun#L39-L44)),
+so the stub is never called. Under #1711 the test function that names the stub
+is charged `io` for it (predicted). Nothing observable changes there: the same
+function already calls `expect_eq_int`, which prints, and it is not `pure fn`.
+A `pure fn` written the same way would be refused.
+
+`bin/kofun run` on x28 fails in the C compiler: the unused lifted lambda trips
+`-Werror=unused-function` (`program.c:218:16: error: 'kofun_lambda_12'
+defined but not used`). That is a separate lowering defect in the class of
+#1358, and is not an effect question.
 
 Flix's effect variables would remove the never-called rows, because creating a
 lambda or passing a function has no effect there: `List.map` with a pure
@@ -112,10 +139,10 @@ untaken-path rows. A callee that mentions an argument's effect variable in its
 own effect is charged it whether the call runs or not, as the union in `>>`'s
 `ef1 + ef2` shows ([`effect-polymorphism.md`][poly-compose]).
 
-Next artifact: #1711 itself. Proposed note for #1714: use the joined
-call-expression effect (consequence 2).
+Next artifact: #1711 itself. For #1714, the joined call-expression effect
+(consequence 2) is already recorded there.
 
-### 2. Parameter purity — keep, as a one-bit requirement (RFC-0019)
+### 2. Parameter purity — keep, as a one-bit requirement (proposed RFC, #1719)
 
 A callable type should be able to carry `pure`. Without it, none of the
 question 4 consumers that decide purity inside a callee can be written. With it,
@@ -145,18 +172,18 @@ reinterpret it as an inferred variable, which accepts more programs (x05 after
 The requirement also separates two meanings of `pure fn`.
 `pure fn forward(f: pure (Int) -> Int, x: Int) -> Int` is pure outright, while
 `pure fn forward(f: (Int) -> Int, x: Int) -> Int` stays "pure apart from `f`"
-(consequence 1). RFC-0019 must not reinterpret the second.
+(consequence 1). The callable-purity RFC must not reinterpret the second.
 
 **Spelling.** #1241 froze `pure`, before `fn`, as the only effect word
 ([`pure-io-v1.md` § The `pure fn` boundary](../../spec/effects/pure-io-v1.md#the-pure-fn-boundary)).
 [`TYPE_SYSTEM.md` § Effects](../TYPE_SYSTEM.md#effects) still says the keyword
 "will be decided after evaluating effect inference and diagnostic UX". That
-sentence predates #1241, and RFC-0019 should replace it.
+sentence predates #1241, and the callable-purity RFC should replace it.
 
 | Spelling | Current surface | Decision |
 |---|---|---|
-| `f: pure (Int) -> Int` | refused, `E2S35` malformed parameter head (x13); the position is free | keep: it reuses the frozen word as a prefix, as `pure fn` does |
-| `f: (Int) -> Int ! io` or `! {}` | refused, `E2S35` (x14); free | defer: the conceptual effect-row form of `TYPE_SYSTEM.md` § Effects. With one bit it would spell `pure` as `! {}`. RFC-0019 must leave the suffix position free for rows |
+| `f: pure (Int) -> Int` | refused, `E2S35` malformed parameter head (x13); this exact form is unused, but `pure` is not reserved in types (x30) | keep: it reuses the frozen word as a prefix, as `pure fn` does |
+| `f: (Int) -> Int ! io` or `! {}` | refused, `E2S35` (x14); free | defer: the conceptual effect-row form of `TYPE_SYSTEM.md` § Effects. With one bit it would spell `pure` as `! {}`. The callable-purity RFC must leave the suffix position free for rows |
 | `pure f: (Int) -> Int` | taken: `pure` there is an external label (x15, `E2S164`; also [`annotated_parameter.stderr`](../../tests/conformance/effects/pure-boundary/annotated_parameter.stderr)) | reject |
 | `io` in any position | `io fn` is the unknown visibility modifier `E2S33` ([`io_annotation.stderr`](../../tests/conformance/effects/pure-boundary/io_annotation.stderr)) | reject: `pure-io-v1.md` names one spelling |
 
@@ -165,6 +192,15 @@ because `->` is the lowest-precedence type operator. `pure Int -> Int` is a pure
 unary callable, `Int -> pure Int -> Int` is `Int -> (pure (Int -> Int))`, and an
 optional pure callable is `(pure (Int) -> Int)?`.
 
+`pure` is not free in type position. `type pure = { a: Int, }` checks `ok`
+(x30), and `pure-io-v1.md` says `pure` outside the position before `fn`
+"remains an ordinary identifier". x13's refusal lands on the `(` after `pure`,
+so the parser read `pure` as a type name. A callable parameter over that type,
+`f: pure -> Int`, is refused today (x31, `E2S35` at the `->`), so no accepted
+program spells the ambiguous form yet. The callable-purity RFC must still make
+`pure` contextual in type position, and say what an existing type named `pure`
+means there.
+
 **KIF.** No callable effect can cross a package boundary today, for three
 independent reasons:
 
@@ -172,7 +208,11 @@ independent reasons:
   function with a callable parameter fails with `EKI02: KIF v2 supports only
   complete Int or flat nominal function signatures`, exit 3 (x19). The same
   shape with an `Int` parameter emits (x22).
-- KIF v2 has no effect field: `grep -c -i effect` prints `0` for
+- KIF v2 refuses effect components outright.
+  `bootstrap/stage2/semantic_producer.c` lines 515–520 refuse `async`,
+  `effect`, and `throws` in a published signature with `EKI02` and the message
+  "KIF v2 does not support effect components in published signatures". The
+  codec has no effect field: `grep -c -i effect` prints `0` for
   `bootstrap/stage2/kif_v1.c`, `bootstrap/stage2/kif_v1.h`, and
   `bootstrap/stage2/stage2_kif_producer.c`.
 - A public function cannot be `pure`: `pub pure fn` is `E2S33` (x20), and
@@ -185,7 +225,7 @@ Its codec model encodes each as an uninterpreted `u16`. It writes `0` when the
 field is absent (`spec/kif-generics-v1/model.mjs:255`) and reads the value back
 without validation (`model.mjs:1057`). Its mutation suite only requires that
 changing the field to `7` moves the digest (`spec/kif-generics-v1/check.mjs:188`).
-RFC-0019 must:
+The callable-purity RFC must:
 
 1. assign two values, *no requirement* and *`pure`*, and refuse every other
    value on read;
@@ -201,14 +241,15 @@ RFC-0019 must:
    ([`effect-polymorphism.md`][poly-default]), and it is never widened
    ([`effect-polymorphism.md`][poly-toplevel]). Within one package the inferred
    summary stays the input;
-4. choose the order of `pub` and `pure` (x20, x21);
+4. choose the order of `pub` and `pure` (x20, x21), and make `pure`
+   contextual in type position (x30);
 5. version the typed sidecar to display callable parameter types. It shows
    them as `Fn` today, so `apply`'s published type is `(Fn, Int) -> Int` (x02)
    and a requirement would be invisible to tooling. `pure-io-v1.md` already
    states that publishing the `pure fn` assertion is a typed-sidecar version
    bump; displaying a requirement is the same kind of change.
 
-Next artifact: RFC-0019.
+Next artifact: the callable-purity RFC, tracked as #1719.
 
 ### 3. Effect variables — defer
 
@@ -227,9 +268,11 @@ variables add:
   pure under either design.
 
 That does not pay for generalization and instantiation at every call, a new
-binder kind in KIF v3's `TypeBinder`, and Boolean unification. Flix made that
-machinery fast with a BDD representation ([`CHANGELOG.md`][changelog-bdd]) and
-published the unification algorithm separately
+binder kind in KIF v3's `TypeBinder`, and Boolean unification. Flix has
+changed that machinery's representation at least once. 0.35.0 introduced BDDs
+([`CHANGELOG.md`][changelog-bdd]), and the pinned commit unifies effects in a
+Zhegalkin algebra ([`EffUnification3.scala`][eff-zhegalkin]). Its authors also
+published the unification algorithms separately
 ([`research-literature.md`][lit]).
 
 Variables start to pay at the first construct that **removes** an effect from
@@ -249,9 +292,9 @@ one. An effect variable on a callable argument would range over effect labels
 only, never over resumption linearity.
 
 Trigger to revisit: the first accepted proposal that adds an effect label
-beyond `io`, or a handler. RFC-0019 carries three forward-compatibility
-obligations: the *no requirement* reading of question 2, its distinct KIF
-value, and the free suffix position.
+beyond `io`, or a handler. The callable-purity RFC carries three
+forward-compatibility obligations: the *no requirement* reading of question 2,
+its distinct KIF value, and the free suffix position.
 
 ### 4. Consumers — a requirement for three of them, not for the others
 
@@ -261,7 +304,7 @@ The table applies consequence 3 to each consumer.
 |---|---|---|---|
 | law operations, equations, custom equality: the finite checks of [`LAW_SYSTEM.md`](../LAW_SYSTEM.md) | in the evaluator, which builds every argument: `all_functions` tables, or functions named in the `check laws` declaration | no | nothing, provided a `check laws` declaration owns an effect summary that the functions named in it are charged to (a requirement on the law implementation, not on callable types) |
 | generic `proven` rewrites over a callable binder ([RFC-0017 §5](../../rfcs/0017-generics-kif-proof-profile.md)) | at any call site, including a higher-order body where the argument is a parameter | **yes**, on the binder | a fusion law such as `map(map(xs, f), g) == map(xs, fn(x) => g(f(x)))` reorders the calls of an `io` argument. RFC-0017 v1 refuses effects in propositions but cannot say that a callable binder ranges over pure functions. Not expressible today: Stage 2 Core has no `map` (x23, `E2S16`) |
-| standard-library comparators, equality, hash | inside the library | **yes** | the library cannot refuse an `io` comparator, so the number and order of comparisons become observable and the sort algorithm becomes contract. None exists yet. The 19 callable parameters in `stdlib/` are `transform`, `predicate`, and `combine` callbacks, and set and map document their traversal order (`stdlib/set/set.kofun:3`, `:152`; `stdlib/map/map.kofun:181`), so those need no requirement. Flix splits the same way: `List.map` and `Set.exists` take `\ ef` ([`List.flix`][list-map], [`Set.flix`][set-exists]); `sortWith` does not ([`List.flix`][list-sort]) |
+| standard-library comparators, equality, hash | inside the library | **yes** | the library cannot refuse an `io` comparator, so the number and order of comparisons become observable and the sort algorithm becomes contract. None exists yet. The 21 callable parameters in `stdlib/` are `transform`, `predicate`, and `combine` callbacks, a test predicate, and an injected clock, and set and map document their traversal order (`stdlib/set/set.kofun:3`, `:152`; `stdlib/map/map.kofun:181`), so those need no requirement. Flix splits the same way: `List.map` and `Set.exists` take `\ ef` ([`List.flix`][list-map], [`Set.flix`][set-exists]); `sortWith` does not ([`List.flix`][list-sort]) |
 | explicit parallel library variants, such as a `par_count` beside `count` | inside the library | **yes** | an `io` callback run in parallel interleaves its output, a race condition the caller did not choose |
 | RFC-0003 `par` task bodies | nowhere: a task body may be `io` | no | nothing. RFC-0003 promises data-race freedom through ownership, not race-condition freedom, and does not "classify concurrency itself as `io`" ([RFC-0003 § Ownership and effects](../../rfcs/0003-scoped-parallelism.md#ownership-and-effects)). Flix separates the same two: `par-yield` accepts only pure expressions, and effectful parallelism uses threads ([`parallelism.md`][par]). `par` is not implemented (x17, `E2S154`) |
 | compile-time evaluation: `meta` and `const` ([`METAPROGRAMMING.md`](../METAPROGRAMMING.md)) | at the `meta` call site, which names every argument | no | nothing, if the evaluator asks for the joined effect of consequence 2 rather than the callee's summary |
@@ -274,9 +317,12 @@ Its library at the pinned commit made `Set.exists` effect-polymorphic anyway
 ([`Set.flix`][set-exists]). The requirement belongs where impurity would expose
 an algorithm, not on every callback.
 
-Next artifact: RFC-0019 for the three "yes" rows. Proposed notes: the law
-implementation ([`LAW_SYSTEM.md` § Implementation sequence](../LAW_SYSTEM.md#implementation-sequence),
-step 2) charges `check laws` declarations, and #1714 uses the joined effect.
+Next artifact: the callable-purity RFC (#1719) for the three "yes" rows.
+Proposed note: the law implementation
+([`LAW_SYSTEM.md` § Implementation sequence](../LAW_SYSTEM.md#implementation-sequence),
+step 2) charges `check laws` declarations. The joined effect for #1714 is
+already recorded there
+([comment](https://github.com/kofun-lang/kofun/issues/1714#issuecomment-5977026701)).
 
 ### 5. Purity reflection — reject
 
@@ -320,7 +366,8 @@ An optimizer that parallelizes a call whose argument is statically pure at that
 call site needs no source construct. DD-032's rule that a specialization cannot
 change the observable result bounds it, and it is out of scope here.
 
-Next artifact: none. The explicit parallel variant is covered by RFC-0019.
+Next artifact: none. The explicit parallel variant is covered by the
+callable-purity RFC (#1719).
 
 ### 6. Associated effects — defer
 
@@ -350,15 +397,15 @@ For DD-032 traits they buy nothing yet:
 
 What is needed now is the fixed form: a trait method declared `pure`, as
 Flix's `Eq.eq` and `Order.compare` are ([`Eq.flix`][eq],
-[`Order.flix`][order]), so a law or a comparator can require
-purity of every implementation. It uses the bit and KIF field of question 2
-(RFC-0017's `TraitMethod` effects) and is part of RFC-0019. Writing it as
+[`Order.flix`][order]), so a law or a comparator can require purity of every
+implementation. It uses the bit and KIF field of question 2 (RFC-0017's
+`TraitMethod` effects) and is part of the callable-purity RFC. Writing it as
 `pure fn` inside a `trait` body is not checkable today (x18).
 
 Trigger to revisit: associated types in the traits frontend, and an effect
 vocabulary beyond `pure < io`.
 
-### 7. Diagnostics — keep E2S176 unchanged; add argument refusals in RFC-0019
+### 7. Diagnostics — keep E2S176 unchanged; add argument refusals in the RFC
 
 E2S176 has two shapes today. Its byte offset is the annotated declaration's
 `fn` keyword, not the offending call:
@@ -378,9 +425,9 @@ After #1711 (predicted), x02 is refused with the second shape naming `noisy`;
 that is #1711's acceptance criterion. "through" then covers a reference that is
 not a call, and the span still points at `fn`. This is acceptable for #1711,
 which reuses the reason `effect-io-callee` to keep the closed reason vocabulary.
-RFC-0019 should add the reference's span as a related span.
+The callable-purity RFC should add the reference's span as a related span.
 
-RFC-0019 needs three refusals that E2S176 cannot express:
+The callable-purity RFC needs three refusals that E2S176 cannot express:
 
 | Refusal | Primary span | Related span | Example message |
 |---|---|---|---|
@@ -406,7 +453,7 @@ Rules for those refusals:
 - The published fact for a value-reference edge reuses `effect-io-callee`, as
   #1711 does.
 
-Next artifact: RFC-0019.
+Next artifact: the callable-purity RFC, tracked as #1719.
 
 ## Checked examples
 
@@ -457,7 +504,8 @@ fn main() -> Int {
 }
 # --- x03
 pure fn quiet(x: Int) -> Int {
-    return apply(fn(y: Int) => noisy(y), x)
+    let g = fn(y: Int) => noisy(y)
+    return apply(g, x)
 }
 
 fn main() -> Int {
@@ -482,7 +530,8 @@ fn main() -> Int {
 }
 # --- x06
 pure fn quiet(x: Int) -> Int {
-    return ignore(fn(y: Int) => noisy(y), x)
+    let g = fn(y: Int) => noisy(y)
+    return ignore(g, x)
 }
 
 fn main() -> Int {
@@ -634,21 +683,90 @@ let handler = noisy
 fn main() -> Int {
     return 0
 }
+# --- x25
+fn quiet(x: Int) -> Int {
+    let g = fn(y: Int) => noisy(y)
+    return apply(g, x)
+}
+
+fn main() -> Int {
+    return quiet(7)
+}
+# --- x26
+fn quiet(x: Int) -> Int {
+    let g = fn(y: Int) => noisy(y)
+    return ignore(g, x)
+}
+
+fn main() -> Int {
+    return quiet(7)
+}
+# --- x27
+fn quiet(x: Int) -> Int {
+    return apply(fn(y: Int) => noisy(y), x)
+}
+
+fn main() -> Int {
+    return quiet(7)
+}
+# --- x28
+fn quiet(x: Int) -> Int {
+    let later = fn(y: Int) => noisy(y)
+    return x
+}
+
+fn main() -> Int {
+    return quiet(7)
+}
+# --- x29
+fn quiet(x: Int) -> Int {
+    if false {
+        return noisy(x)
+    }
+    return x
+}
+
+fn main() -> Int {
+    return quiet(7)
+}
+# --- x30
+type pure = {
+    a: Int,
+}
+
+fn main() -> Int {
+    return 0
+}
+# --- x31
+type pure = {
+    a: Int,
+}
+
+fn take(f: pure -> Int) -> Int {
+    return 0
+}
+
+fn main() -> Int {
+    return 0
+}
 ```
 
-Every example was checked with `bin/kofun check FILE`. x02, x05, x09, and x16
-were also run with `bin/kofun run FILE`. x19 and x22 were also checked with
-`bin/kofun check FILE --emit-kif OUT.kif`, and x02 and x16 with
+x25, x26, x28, and x29 are x03, x06, x07, and x08 without `pure`, which shows
+that each refused program is otherwise valid.
+
+Every example was checked with `bin/kofun check FILE`. x02, x05, x09, x16, x25,
+x26, x28, and x29 were also run with `bin/kofun run FILE`. x19 and x22 were also
+checked with `bin/kofun check FILE --emit-kif OUT.kif`, and x02 and x16 with
 `bin/kofun check FILE --emit-typed-sidecar OUT.json --generation 1`.
 
 | ID | What it shows | `bin/kofun check` | Other commands |
 |---|---|---|---|
 | x01 | a callable parameter | `ok`, exit 0 | |
 | x02 | #1711's program | `ok`, exit 0 | `run` prints `7`, exit 7. Sidecar: `noisy` `io` (`effect-io-root-print`); `apply`, `ignore`, `choose`, `quiet`, `main` `pure`; `apply`'s type is `(Fn, Int) -> Int` |
-| x03 | a lambda argument that calls `noisy` | ``error[E2S176]: `pure fn quiet` reaches `print` through `noisy` at byte 362``, exit 1 (byte 362 starts `fn quiet`) | |
+| x03 | a `let`-bound lambda that calls `noisy`, passed to `apply` | ``error[E2S176]: `pure fn quiet` reaches `print` through `noisy` at byte 362``, exit 1 (byte 362 starts `fn quiet`) | |
 | x04 | a local `let` of a function name | ``error[E2S35]: unknown lexical binding `noisy` at byte 400``, exit 1 | |
 | x05 | a named function never called | `ok`, exit 0 | `run` prints nothing, exit 7 |
-| x06 | a lambda never called | same `E2S176` as x03, byte 362, exit 1 | |
+| x06 | a `let`-bound lambda passed to `ignore`, never called | same `E2S176` as x03, byte 362, exit 1 | |
 | x07 | a local lambda never called | same `E2S176` as x03, byte 362, exit 1 | |
 | x08 | a direct call on an untaken path | same `E2S176` as x03, byte 362, exit 1 | |
 | x09 | a named function on an untaken path | `ok`, exit 0 | `run` prints nothing, exit 8 |
@@ -667,21 +785,36 @@ were also run with `bin/kofun run FILE`. x19 and x22 were also checked with
 | x22 | KIF for an `Int` signature | `ok`, exit 0 | `--emit-kif`: `ok: ... (authoritative KIF v2)`, exit 0 |
 | x23 | the built-in `map` in Stage 2 Core | ``error[E2S16]: unknown Core function `map` at byte 405``, exit 1 | |
 | x24 | a module-level binding of a function name | ``error[E2S159]: module constant must be `let NAME = <integer literal>` at byte 357``, exit 1 | |
+| x25 | x03 without `pure` | `ok`, exit 0 | `run` prints `7`, exit 7 |
+| x26 | x06 without `pure` | `ok`, exit 0 | `run` prints nothing, exit 7 |
+| x27 | a lambda written directly as an argument, without `pure` | `error[E2S12]: invalid return expression at byte 394`, exit 1 | |
+| x28 | x07 without `pure` | `ok`, exit 0 | `run` exits 1: the C compiler reports `program.c:218:16: error: 'kofun_lambda_12' defined but not used [-Werror=unused-function]` |
+| x29 | x08 without `pure` | `ok`, exit 0 | `run` prints nothing, exit 7 |
+| x30 | a type named `pure` | `ok`, exit 0 | |
+| x31 | a callable parameter over the type named `pure` | `error[E2S35]: malformed parameter head at byte 402`, exit 1 (byte 402 is the `->`) | |
 
 The current surface cannot express an effect on a callable type (x13, x14), a
 trait method (x18), `par` (x17), a callable result, record field, or module
-binding (x10–x12, x24), a public `pure fn` (x20, x21), KIF for a callable
-signature (x19), or a generic `map` for a fusion law (x23). Those examples
-record the refusal that shows it.
+binding (x10–x12, x24), a lambda written directly as an argument (x27), a
+callable over a nominal record type (x31), a public `pure fn` (x20, x21), KIF
+for a callable signature (x19), or a generic `map` for a fusion law (x23).
+Those examples record the refusal that shows it.
 
 The other counts quoted above were measured with these commands. The Kofun
 rows ran in this repository at `638842470f622bbabb50c34a8bd9540e61dcbf33`; the
 Flix rows ran in a checkout of `flix/flix` at
 `35533f982dd75ee806dde039e60702c71a432c2d`.
 
+```sh
+git grep -n -E '[a-z_]+: *((fn)?\([^)]*\)|[A-Z][A-Za-z0-9_]*(\[[^]]*\])?) *-> *[A-Z(]' -- 'stdlib/*.kofun'
+# observed: 21 lines. 19 are `transform`, `transform_first`, `transform_second`,
+# `predicate`, or `combine` in array, list, map, set, tuple, and vector; the
+# other two are `predicate: Int -> Int` at stdlib/testing/kotest.kofun:126 and
+# `clock: Int -> Int` at stdlib/testing/tests/kotest_selfcheck_test.kofun:129
+```
+
 | Claim | Command | Result |
 |---|---|---|
-| callable parameters in `stdlib/` | `git grep -n -E '^\s*[a-z_]+: *(fn)?\([^)]*\) *->' -- 'stdlib/*.kofun'` | 19 lines, all `transform`, `transform_first`, `transform_second`, `predicate`, or `combine` |
 | KIF v2 effect field | `grep -c -i effect bootstrap/stage2/kif_v1.c bootstrap/stage2/kif_v1.h bootstrap/stage2/stage2_kif_producer.c` | `0` for each file |
 | last allocated RFC | `node -e 'const d=require("./rfcs/index.json"); console.log(d.rfcs.map(r=>r.id).filter(i=>/^RFC-/.test(i)).sort().at(-1))'` | `RFC-0018` |
 | Flix `@ParallelWhenPure` sites | `grep -rn '@ParallelWhenPure' main/src/library \| wc -l` | `27` |
@@ -690,18 +823,22 @@ Flix rows ran in a checkout of `flix/flix` at
 
 ## Follow-up
 
-1. **RFC-0019, callable purity requirements.** The number is the next
-   unallocated one at the audited commit; if another proposal takes it first,
-   the next free number applies. Scope: the `pure` callable type (question 2),
-   `pure` trait methods (question 6), the three refusals (question 7), the KIF
-   value assignment and the declared-purity rule, the order of `pub` and `pure`,
-   and the typed-sidecar version that displays callable types. It opens after
-   #1711 merges, because its semantics extend #1711's edge. It is not filed as
-   an issue now: an issue blocked by the open #1711 fails the Definition of
-   Ready, criterion 5 ([`ISSUE_READINESS.md`](../ISSUE_READINESS.md#5-nothing-open-blocks-it)).
+1. **The callable-purity RFC, tracked as #1719.** It is filed `blocked` on
+   #1711, because its argument rule extends #1711's edge.
+   - **Scope:**
+     - the `pure` callable type (question 2), including `pure` becoming
+       contextual in type position;
+     - `pure` trait methods (question 6);
+     - the three refusals (question 7);
+     - the KIF value assignment and the declared-purity rule;
+     - the order of `pub` and `pure`;
+     - the typed-sidecar version that displays callable types.
+   - **Number:** assigned when the RFC opens. `RFC-0018` is currently the last
+     entry in `rfcs/index.json`.
 2. Proposed notes on existing work, not new issues:
-   - #1714: a discarded call's effect is the joined call-expression effect,
-     not the callee's fact (consequence 2);
+   - #1714: a discarded call's effect is the joined call-expression effect, not
+     the callee's fact (consequence 2). This is already recorded there
+     ([comment](https://github.com/kofun-lang/kofun/issues/1714#issuecomment-5977026701));
    - the law implementation: a `check laws` declaration owns an effect summary,
      so the functions named in its domains and equality are charged to it;
    - RFC-0017 production (#1268–#1280): charge a selected implementation's
@@ -713,6 +850,7 @@ Flix rows ran in a checkout of `flix/flix` at
 [dyk-hints]: https://github.com/flix/flix/blob/35533f982dd75ee806dde039e60702c71a432c2d/docs/DIDYOUKNOW.md?plain=1#L167-L168
 [changelog-bdd]: https://github.com/flix/flix/blob/35533f982dd75ee806dde039e60702c71a432c2d/docs/CHANGELOG.md?plain=1#L316-L333
 [changelog-assoc]: https://github.com/flix/flix/blob/35533f982dd75ee806dde039e60702c71a432c2d/docs/CHANGELOG.md?plain=1#L204-L207
+[eff-zhegalkin]: https://github.com/flix/flix/blob/35533f982dd75ee806dde039e60702c71a432c2d/main/src/ca/uwaterloo/flix/language/phase/unification/EffUnification3.scala#L24-L26
 [eq]: https://github.com/flix/flix/blob/35533f982dd75ee806dde039e60702c71a432c2d/main/src/library/Eq.flix#L13-L18
 [order]: https://github.com/flix/flix/blob/35533f982dd75ee806dde039e60702c71a432c2d/main/src/library/Order.flix#L13-L18
 [list-map]: https://github.com/flix/flix/blob/35533f982dd75ee806dde039e60702c71a432c2d/main/src/library/List.flix#L427
