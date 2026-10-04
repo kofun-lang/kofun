@@ -68,7 +68,7 @@ cmp "$CASES/codes.txt" "$WORK/observed.codes" ||
     fail 'focused diagnostic code inventory differs from the collector'
 
 id_for() {
-    printf '%s' "$1" | "$ROOT/bin/kofun-digest" | awk '{ print $1 }'
+    printf '%s' "$1" | "$ROOT/bin/kofun" digest | awk '{ print $1 }'
 }
 
 write_one_inventory() {
@@ -150,7 +150,7 @@ framed_hash() {
         u32be "$(wc -c <"$payload" | tr -d '[:space:]')"
         dd if="$payload" bs=4096 2>/dev/null
     } >"$output.preimage"
-    "$ROOT/bin/kofun-digest" "$output.preimage" | awk '{ print $1 }'
+    "$ROOT/bin/kofun" digest "$output.preimage" | awk '{ print $1 }'
 }
 
 printf '%s\n' \

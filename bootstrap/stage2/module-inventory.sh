@@ -22,7 +22,7 @@ LC_ALL=C
 export LC_ALL
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-DIGEST="$ROOT/bin/kofun-digest"
+DIGEST="$ROOT/bin/kofun"
 
 usage() {
     printf '%s\n' \
@@ -68,7 +68,7 @@ framed_hash() {
         u32be "$(byte_count "$fh_payload")"
         cat "$fh_payload"
     } >"$work/preimage"
-    "$DIGEST" "$work/preimage" | awk '{ print $1 }'
+    "$DIGEST" digest "$work/preimage" | awk '{ print $1 }'
 }
 
 # The canonical PackageIdPayload. `source=workspace-root` and

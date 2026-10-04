@@ -1,0 +1,13 @@
+# #1720. A `let`-bound lambda nobody calls. Lifted lambdas are top-level
+# `static` functions, so before this the program passed `check` and failed at
+# `cc` with `-Werror=unused-function`, exactly as #1358's top-level-function
+# case did. Two lambdas rather than one: the reference is emitted per lifted
+# lambda, so a fix that referenced only the first would leave the second
+# unbuildable.
+
+fn main() {
+    let unused_first = fn(y: Int) => y + 1
+    let unused_second = fn(y: Int) => y + 2
+    let used = fn(y: Int) => y * 2
+    print(to_text(used(21)))
+}

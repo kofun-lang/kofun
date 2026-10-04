@@ -12,7 +12,7 @@ Every digest that anchors this project — `bootstrap/stage2/SHA256SUMS`,
 (ModuleId, FileId, SymbolId, and scope-HIR v2's ParId/TaskId/JoinId) — is a
 SHA-256 preimage. Until RFC-0013 gave `Int` its eight bit operations, the
 language could not spell a rotation, so that hash had to be C. This is the
-Kofun one. It does **not** replace `bin/kofun-digest`, assign compiler
+Kofun one. It does **not** replace `kofun digest`, assign compiler
 identities, or claim a capability; those are downstream and separately
 authorized.
 
@@ -23,7 +23,7 @@ authorized.
   standard, not agreement between two implementations that live in one
   repository.
 - **Every corpus message is digested by `bootstrap/stage2/sha256.c`** through
-  `bin/kofun-digest` and must match byte for byte. The C implementation stays
+  the C seed verifier and must match byte for byte. The C implementation stays
   the oracle.
 - **`corpus.json` is the single source of the message bytes.** `corpus.mjs`
   writes them out for the C oracle *and* checks that the literals inside

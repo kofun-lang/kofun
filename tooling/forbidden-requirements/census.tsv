@@ -11,9 +11,9 @@
 # do: a use that is not listed is a dependency that arrived unrecorded, and a
 # listed row whose use is gone is an improvement that was not recorded. The
 # second direction is the one that is usually missing, and this repository has
-# already paid for its absence — #1213 replaced GNU `sha256sum` with
-# `bin/kofun-digest`, and #1395 then found a release claim still asserting the
-# removed dependency.
+# already paid for its absence — #1213 replaced GNU `sha256sum` with the
+# repository's own digest tool, and #1395 then found a release claim still
+# asserting the removed dependency.
 #
 # Regenerate the rows with `--count`. Print the file set and every pattern with
 # `--predicates`: a count is only meaningful with its predicate attached, and
@@ -99,8 +99,8 @@
 #
 # requirement	kind	count	class	need	path
 cc	invoke	11	required-today	required	bin/kofun
-cc	invoke	1	required-today	required	bin/kofun-digest
 cc	invoke	3	required-today	required	bootstrap/c_abi/check.sh
+cc	invoke	1	required-today	required	bootstrap/digest/build.sh
 cc	invoke	4	required-today	required	bootstrap/native/check.sh
 cc	invoke	1	required-today	required	bootstrap/selfhost/build-a1-a2.sh
 cc	invoke	5	required-today	required	bootstrap/selfhost/c11/check-c11.sh
@@ -113,7 +113,7 @@ cc	invoke	5	required-today	required	bootstrap/selfhost/generations-lib.sh
 cc	invoke	2	required-today	required	bootstrap/selfhost/native/check-native-corpus.sh
 cc	invoke	1	required-today	required	bootstrap/stage1/build.sh
 cc	invoke	11	required-today	required	bootstrap/stage1/check.sh
-cc	invoke	1	required-today	required	bootstrap/stage2/build.sh
+cc	invoke	2	required-today	required	bootstrap/stage2/build.sh
 cc	invoke	14	required-today	required	bootstrap/stage2/check.sh
 cc	invoke	1	required-today	required	bootstrap/stage2/fuzz-sanitizer-cc-wrapper.sh
 cc	invoke	2	required-today	required	bootstrap/stage2/fuzz-sanitizer-object.sh
@@ -540,8 +540,8 @@ node	source	1	required-today	required	tooling/wasi-command/validate-manifest.mjs
 python	invoke	6	required-today	off-path	scripts/graphify.sh
 python	invoke	1	required-today	required	tests/conformance/int-bits-lowering/check.sh
 shell-build-driver	source	1	required-today	required	bin/kofun
-shell-build-driver	source	1	required-today	required	bin/kofun-digest
 shell-build-driver	source	1	required-today	required	bootstrap/c_abi/check.sh
+shell-build-driver	source	1	required-today	required	bootstrap/digest/build.sh
 shell-build-driver	source	1	required-today	required	bootstrap/native/check-macho64-signed.sh
 shell-build-driver	source	1	required-today	required	bootstrap/native/check-macho64.sh
 shell-build-driver	source	1	required-today	required	bootstrap/native/check-pe32plus.sh
@@ -735,6 +735,7 @@ shell-build-driver	source	1	required-today	unknown	tests/diagnostics/stage2/run.
 shell-build-driver	source	1	required-today	unknown	tests/diagnostics/unicode/run.sh
 shell-build-driver	source	1	required-today	required	tests/diagnostics/visibility-api-leaks.sh
 shell-build-driver	source	1	required-today	required	tests/digest/check.sh
+shell-build-driver	source	1	required-today	required	tests/digest/command.sh
 shell-build-driver	source	1	required-today	required	tests/docs/audited-claim.sh
 shell-build-driver	source	1	required-today	required	tests/docs/documentation-index.sh
 shell-build-driver	source	1	required-today	required	tests/emission/check.sh

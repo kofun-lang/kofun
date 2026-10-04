@@ -43,7 +43,7 @@ build_tool() {
 build_tool "$ROOT/bootstrap/stage2/re_exports.c" "$WORK/tool"
 
 id_for() {
-    printf '%s' "$1" | "$ROOT/bin/kofun-digest" | awk '{ print $1 }'
+    printf '%s' "$1" | "$ROOT/bin/kofun" digest | awk '{ print $1 }'
 }
 
 PACKAGE_ID=$(id_for 'raw-re-exports')

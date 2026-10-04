@@ -1166,6 +1166,11 @@ tasks:
     cmds:
       - "sh tests/digest/check.sh"
 
+  digest-command:
+    desc: "Build the Kofun digest command without the wrapper and verify the tracked manifests"
+    cmds:
+      - "sh tests/digest/command.sh"
+
   tests-kofun:
     desc: "Verify the tests/kofun corpus runs or refuses as recorded"
     cmds:
@@ -1734,6 +1739,7 @@ tasks:
             artifact-qualification \
             syntax \
             digest \
+            digest-command \
             tests-kofun \
             call-arguments \
             call-arguments-spec \
