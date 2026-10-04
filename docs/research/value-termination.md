@@ -18,29 +18,36 @@ Flix's `@Terminates`. It needs two things and today has neither:
   claims no termination. No compile-time path evaluates value-level code. No
   optimization is promised.
 
-Reject the computed law evidence levels and optimization as consumers, a
-`total` boundary, Flix's annotation surface, Flix's any-argument descent rule,
-and Flix's unchecked mutual recursion.
+Reject these as consumers: the computed law evidence levels, optimization, and
+`pure fn` itself. Reject the name `total`, Flix's annotation surface, Flix's
+any-argument descent rule, and Flix's unchecked mutual recursion. A termination
+boundary is deferred with the check, not rejected (question 1).
 
 Keep, as the starting constraints of the RFC this deferral names, the rule
 changes of question 2, the inferred fact with an assertive boundary of
 question 3, the diagnostics of question 4, and the cost statement of
-question 5. The next artifact is a proposed RFC, *value-level structural
-termination*, to be opened only when both triggers hold:
+question 5. The next artifact is that RFC. It is tracked as #1718, which is
+`blocked` on #30, and it should be opened only when both triggers hold:
 
 1. Stage 2 accepts a recursive enum payload; and
-2. a consumer needs a source-level refusal. The likely first one is generic
-   proof (#1278, #1279): RFC-0017 §5 already restricts propositions to "pure
-   total typed Core" and refuses "general recursion", without defining either
-   at value level.
+2. a consumer needs a source-level refusal. Generic proof is not that
+   consumer yet. RFC-0017 §5 restricts propositions to "pure total typed Core"
+   and refuses "general recursion" without defining either at value level,
+   but its v1 certificates do no recursive unfolding (lines 263–264) and defer
+   recursion (lines 360–362). The likely first consumer is a later proof
+   profile that admits recursion, or an RFC that lets compile-time code call a
+   value-level function.
 
 Flix and Kofun hold the same rule at opposite levels. Flix checks structural
 recursion on ordinary functions
 ([book `termination-checking.md`](https://github.com/flix/book/blob/687ccf7c6bd6a9872568c4dd8b2def7a7665c614/src/termination-checking.md?plain=1#L3-L16)).
-Its type-level programming is Boolean formulas decided by equivalence, with no
-type functions to terminate
-([book `type-level-programming.md`](https://github.com/flix/book/blob/687ccf7c6bd6a9872568c4dd8b2def7a7665c614/src/type-level-programming.md?plain=1#L8-L19)).
-Kofun decided structural termination for `type fn` (DD-031,
+`@Terminates` is an annotation on `def`s, so it does not cover Flix's
+type-level features. Those are Boolean formulas decided by equivalence
+([book `type-level-programming.md`](https://github.com/flix/book/blob/687ccf7c6bd6a9872568c4dd8b2def7a7665c614/src/type-level-programming.md?plain=1#L8-L19))
+and associated types chosen per trait instance
+([book `associated-types.md`](https://github.com/flix/book/blob/687ccf7c6bd6a9872568c4dd8b2def7a7665c614/src/associated-types.md?plain=1#L1-L5)).
+This note did not examine how Flix bounds associated-type reduction. Kofun
+decided structural termination for `type fn` (DD-031,
 `spec/type-level-programming-v1.md` lines 166–183, RFC-0008) and has nothing at
 value level. The Flix evidence below comes from reading its book and checker
 at the pinned commits. Flix was not built or run for this note.
@@ -49,7 +56,9 @@ at the pinned commits. Flix was not built or run for this note.
 
 `git rev-parse HEAD` printed `638842470f622bbabb50c34a8bd9540e61dcbf33`. Each
 row is `bin/kofun check FILE` on the probe of that name. The appendix gives
-every source exactly, and byte offsets refer to those files.
+every source exactly, and byte offsets refer to those files. E10b was added
+after review. It was measured at `d2be8d45e85009913f681d662d009c1bc0ee44a0`,
+which differs from that commit only by this note.
 
 | # | Probe | Result |
 | --- | --- | --- |
@@ -64,6 +73,7 @@ every source exactly, and byte offsets refer to those files.
 | E8 | `recursive_enum`: `type Nat = \| Zero \| Succ(prev: Nat)`, declared and unused | `ok`, exit 0 |
 | E9 | `nat_use2`: E8 plus `Succ(p) => { result = 1 + depth(p) }` | `` error[E2S32]: constructor `Succ` of enum `Nat` declares a payload outside this Core slice; one `Int` field is supported at byte 153 ``, exit 1 |
 | E10 | `landin_knot`: `let mut g = fn(y: Int) => y`, then `g = fn(y: Int) => g(y)` | `error[E2S12]: invalid Int expression at byte 70` (the reassigned lambda), exit 1 |
+| E10b | `lambda_reassign`: E10 with the plain reassignment `g = fn(y: Int) => y + 1` | `error[E2S12]: invalid Int expression at byte 70`, exit 1: the same refusal without a knot |
 | E11 | `lambda_local`: `return apply(fn(y: Int) => y + 1, x)` | `error[E2S12]: invalid return expression at byte 103`, exit 1 |
 
 Two further measurements on the same commit:
@@ -97,9 +107,11 @@ The book is pinned at `flix/book@687ccf7c`, and the compiler at
 2. **Multiple parameters.** The book says only one parameter needs to
    decrease, and *"the other parameters may be passed unchanged"*
    ([book L61–L82](https://github.com/flix/book/blob/687ccf7c6bd6a9872568c4dd8b2def7a7665c614/src/termination-checking.md?plain=1#L61-L82)).
-   The implementation accepts more than that sentence describes. It accepts a
-   call when `argInfos.exists(_.status == Decreasing)` and constrains no other
-   argument
+   That is a permission, not a restriction: the book's own `loop(xs, acc + 1)`
+   grows an accumulator
+   ([book L102–L108](https://github.com/flix/book/blob/687ccf7c6bd6a9872568c4dd8b2def7a7665c614/src/termination-checking.md?plain=1#L102-L108)).
+   The implementation accepts a call when
+   `argInfos.exists(_.status == Decreasing)` and constrains no other argument
    ([L371–L390](https://github.com/flix/flix/blob/35533f982dd75ee806dde039e60702c71a432c2d/main/src/ca/uwaterloo/flix/language/phase/Terminator.scala#L371-L390)).
    This admits accumulators such as `rev(xs, Cons(x, acc))`
    ([Test.Terminator.flix L29–L32](https://github.com/flix/flix/blob/35533f982dd75ee806dde039e60702c71a432c2d/main/test/flix/Test.Terminator.flix#L29-L32)).
@@ -148,7 +160,7 @@ The book is pinned at `flix/book@687ccf7c`, and the compiler at
    [L34–L35](https://github.com/flix/flix/blob/35533f982dd75ee806dde039e60702c71a432c2d/main/src/ca/uwaterloo/flix/language/phase/Terminator.scala#L34-L35)).
 8. **Integers.** Only constructor (`Tag`) patterns yield strict
    substructures. A constant pattern adds nothing
-   ([L976–L990](https://github.com/flix/flix/blob/35533f982dd75ee806dde039e60702c71a432c2d/main/src/ca/uwaterloo/flix/language/phase/Terminator.scala#L976-L990)).
+   ([L962–L990](https://github.com/flix/flix/blob/35533f982dd75ee806dde039e60702c71a432c2d/main/src/ca/uwaterloo/flix/language/phase/Terminator.scala#L962-L990)).
    Flix's own tests recurse on a user-declared
    `enum Nat { case Zero, case Succ(Nat) }`
    ([Test.Terminator.flix L6, L66–L77](https://github.com/flix/flix/blob/35533f982dd75ee806dde039e60702c71a432c2d/main/test/flix/Test.Terminator.flix#L66-L77)).
@@ -187,26 +199,31 @@ The book is pinned at `flix/book@687ccf7c`, and the compiler at
   evaluator would accept.
 - **Law `proven`: defer.** RFC-0017 §5 (lines 221–233) admits propositions
   over *"pure total typed Core"* and refuses *"general recursion"*. Lines
-  319–322 deny that the kernel is *"a termination checker"*. At value level,
-  this note's fact is the natural definition of "total". It is not sufficient,
-  though: the v1 certificate rules (lines 240–257) include ADT case reduction
-  but no induction, so nothing about a recursive function over an infinite
-  carrier could be proven anyway. The trigger is #1278 deciding whether a
-  proposition may mention a recursive user function.
-- **`pure fn`, or a `total` boundary beside it: reject.** `pure fn` exists
-  because a consumer needed a place to refuse. RFC-0014 (lines 51–52) selects
-  the assertion. Lines 199–201 reject inference-only purity because
+  319–322 say `proven` does not mean *"a general theorem prover, termination
+  checker, or mathematics"* beyond the closed rule set. At value level, this
+  note's fact is the natural definition of "total". It is not sufficient,
+  though. The v1 certificate rules (lines 240–257) include ADT case reduction
+  but no induction. *"No recursive unfolding occurs in v1 certificates"*
+  (lines 263–264), and recursion is deferred (lines 360–362). So v1 generic
+  proof, #1278 included, is not the consumer. The trigger is a later proof
+  profile that admits recursion.
+- **`pure fn`: reject as a consumer and leave it unchanged.** `pure fn` does
+  not need termination, and pure-io-v1's divergence sentence stays as written.
+- **A termination boundary beside `pure fn`: defer, with the check.** An
+  assertive boundary earns its place only when a consumer needs a place to
+  refuse. That is how `pure fn` was justified: RFC-0014 (lines 51–52) selects
+  the assertion, and lines 201–202 reject inference-only purity because
   *"authority would be invisible and E356 unexpressible"*. Nothing refuses a
-  program because a function might diverge, so termination has no analogue of
-  E356.
+  program today because a function might diverge, so termination has no
+  analogue of E356 yet. That is trigger 2 of the deferral. Question 3 keeps
+  the boundary's shape and question 4 keeps its refusals, both for the RFC.
 
-  Reject the name `total` as well. The check bounds recursion only. It says
-  nothing about `R010`, stack exhaustion, or other runtime errors, and
-  RFC-0017 lines 232–233 already refuse to *"pretend an overflowing operation is
-  total"*.
+  Reject the name `total`. The check bounds recursion only. It says nothing
+  about `R010`, stack exhaustion, or other runtime errors, and RFC-0017 lines
+  232–233 already refuse to *"pretend an overflowing operation is total"*.
 - **Compile-time evaluation, and type-level functions calling value-level
   ones: defer.** No such path exists. Type-level v1 rejects value reflection
-  (`spec/type-level-programming-v1.md` line 148). RFC-0008 line 398 says
+  (`spec/type-level-programming-v1.md` line 148). RFC-0008 line 399 says
   reduction *"introduces no value"*. A module-level binding is one integer
   literal (RFC-0006, `docs/SYNTAX.md` § *Module constants*).
 
@@ -226,8 +243,11 @@ The book is pinned at `flix/book@687ccf7c`, and the compiler at
 ### 2. Rule
 
 The type-level steps cannot be reused unchanged. Steps 4 and 5 (build the
-complete call graph; reject every inter-function cycle) carry over as they
-are, once the graph includes value references. Step 6 changes:
+complete call graph; reject every inter-function cycle) carry over in content
+but not in reach. At type level they apply to every declaration. At value
+level DD-009 keeps the unrestricted default, so they apply only to the graph
+reachable from asserted functions, with value references counted as edges. A
+cycle elsewhere in the program is not an error. Step 6 changes:
 
 | Concern | Type-level rule | Value-level form | Verdict |
 | --- | --- | --- | --- |
@@ -240,10 +260,13 @@ are, once the graph includes value references. Step 6 changes:
 
 **Several parameters.** Read literally, the type-level sentence forbids an
 unchanged or accumulating second argument, which ordinary value code needs.
-Read as a rule, Flix's book sentence (others *"passed unchanged"*) would be
-sound but would refuse accumulators. Flix's implementation accepts
-accumulators but is unsound (item 2). A fixed structural parameter is sound
-and accepts both. For a one-parameter declaration it coincides with the
+Flix accepts accumulators. Its book's *"may be passed unchanged"* is a
+permission, not a restriction, and its own `loop(xs, acc + 1)` example grows
+one
+([book L91–L113](https://github.com/flix/book/blob/687ccf7c6bd6a9872568c4dd8b2def7a7665c614/src/termination-checking.md?plain=1#L91-L113)).
+But its implementation lets two call sites decrease different positions,
+which is unsound (item 2). A fixed structural parameter is sound and accepts
+accumulators. For a one-parameter declaration it coincides with the
 type-level rule. Select it deterministically: the first parameter, in
 declaration order, that decreases at every self-call. Aliases are tracked as
 Flix tracks them. E7's `other` is an alias of `signal`, so `settle(other)` is
@@ -252,8 +275,10 @@ accepted today and would be refused.
 **Loops.** DD-009 keeps `for` and `while` for ordinary code. The restriction
 applies only inside a function that asserts termination.
 
-- A `List` is an immutable managed value (`docs/MEMORY_MODEL.md` lines 45–47),
-  so `for` over one runs a fixed number of times.
+- `for` over a `List` runs a fixed number of times only if the list cannot
+  change during the loop. `docs/MEMORY_MODEL.md` lines 45–47 says only that
+  the surface is *"immutable by default"*, so the RFC must require the
+  iterated value to be fixed at loop entry, as the table says.
 - For a range, `spec/semantics.md` line 67 does not say that `start .. end` is
   evaluated once. The RFC must pin that.
 - `while` has no measure. A user-written measure would be a proof
@@ -299,19 +324,34 @@ effects:
 - a call through a callable parameter adds no edge;
 - a lambda body's calls are attributed to the enclosing function.
 
-Reusing that edge makes the termination fact unconditional for every root
-whose graph is checked, because every callable that reaches a checked
-function was created in a checked body. E6 shows the effect: `knot` passes
-itself to `apply` and is accepted today. Under the rule, naming `knot` inside
-`knot` is a self-edge that is not a call on a strict subterm, so it is
-refused.
+Reusing that edge does not make the fact unconditional. A call through a
+callable parameter adds no edge, so an asserted `apply(f, x)` or `map(f, xs)`
+is accepted. An unchecked caller can then pass it a diverging function such
+as `spin`. The fact for a function with callable parameters is therefore
+conditional on its callable arguments, exactly as Flix's is.
+
+The edge buys something narrower: the fact is unconditional at a closed root.
+A closed root is an asserted function with no callable inputs, whose
+reachable graph is all checked. Every callable that reaches a function during
+such a root's execution was created inside that checked graph. It was either
+named, which is an edge to a checked function, or written as a lambda, whose
+calls are attributed to its checked enclosing function. A consumer that
+quantifies over function-typed values must check its callable inputs itself.
+
+E6 shows the edge at work: `knot` passes itself to `apply` and is accepted
+today. Under the rule, naming `knot` inside `knot` is a self-edge that is not
+a call on a strict subterm, so it is refused.
 
 Three preconditions remain:
 
 - #1711's list of creation sites must be complete: module-level callable
   bindings (RFC-0006), callable record fields, and returned function names.
-- A callable binding must not be reassignable inside a checked function. E10
-  shows Landin's knot is refused today, at the reassignment.
+- A callable binding must not be reassignable inside a checked function.
+  E10 shows Landin's knot is refused today at the reassignment, but E10b
+  shows the refusal is incidental. A plain lambda reassignment is refused
+  identically, because assignment in this slice accepts only `Int`. The RFC
+  has to make the refusal a rule, so a wider assignment slice cannot admit the
+  knot.
 - Strict positivity applies once a recursive payload can be callable (item 7).
 
 E11 shows that a lambda as a call argument is not lowered today in that
@@ -431,27 +471,35 @@ statement.** Cost is not the reason to defer.
 
 | Item | Decision | Next artifact |
 | --- | --- | --- |
-| value-level structural termination check | defer | proposed RFC, opened when both triggers in *Decision* hold |
+| value-level structural termination check | defer | #1718 (the RFC), `blocked` on #30; opened when both triggers in *Decision* hold |
 | law `bounded-exhaustive` / `proven-finite` consumer | reject | none |
-| law `proven` consumer | defer | #1278's refinement decides whether propositions may mention recursive functions |
-| `pure fn` change, or a `total` boundary | reject | none; pure-io-v1 stays as written |
+| law `proven` consumer | defer | a later proof profile that admits recursion; RFC-0017 v1, and so #1278, does not |
+| `pure fn` as the consumer, or any change to `pure fn` | reject | none; pure-io-v1 stays as written |
+| a termination boundary beside `pure fn` | defer | #1718; its trigger is a consumer that needs a refusal |
+| the name `total` | reject | none |
 | compile-time / type-level consumer | defer | the RFC that first lets compile-time code call a value function |
 | optimization | reject | none |
 | rule changes (question 2), surface (question 3), diagnostics (question 4), cost (question 5) | keep | sections of the proposed RFC |
 | Flix annotation surface, any-argument rule, unchecked mutual recursion | reject | none |
 
-No issue is filed. The RFC has no consumer yet, so it does not meet
-`docs/ISSUE_READINESS.md`'s Definition of Ready. These follow-ups are proposed:
+The RFC is filed as #1718. Its state is `blocked` and its `Blocked by` line
+names #30, the open umbrella that owns widening production ADT payloads beyond
+one `Int`. No open child of #30 plans a self-referential payload yet: #1270's
+acceptance criteria refuse a "recursive infinite layout". So #1718 says to
+re-refine rather than promote it when #30 closes. Trigger 2 is recorded there
+as a precondition, not a tracker item.
 
-1. The RFC above, seeded from questions 2–5.
-2. When #1278 is refined, it should cite this note for what "total" means at
-   value level, together with the missing induction rule.
+One further follow-up is proposed rather than filed. Whichever proof profile
+first admits recursion should cite this note for what "total" means at value
+level, together with the induction rule that RFC-0017 v1 lacks.
 
 ## Validation
 
-Run on `638842470f622bbabb50c34a8bd9540e61dcbf33`:
+Run on `638842470f622bbabb50c34a8bd9540e61dcbf33`, and E10b on
+`d2be8d45e85009913f681d662d009c1bc0ee44a0`:
 
-- `bin/kofun check FILE` on each probe in the appendix reproduces E1–E11.
+- `bin/kofun check FILE` on each probe in the appendix reproduces E1–E11 and
+  E10b.
 - `bin/kofun check examples/lawful_list_monad.kofun` reproduces `E2S02`.
 - The `grep` for a component pass prints nothing.
 
@@ -616,6 +664,20 @@ fn main() -> Int {
 pure fn knot(x: Int) -> Int {
     let mut g = fn(y: Int) => y
     g = fn(y: Int) => g(y)
+    return g(x)
+}
+
+fn main() -> Int {
+    return 0
+}
+```
+
+`lambda_reassign.kofun` (E10b):
+
+```kofun
+pure fn knot(x: Int) -> Int {
+    let mut g = fn(y: Int) => y
+    g = fn(y: Int) => y + 1
     return g(x)
 }
 
