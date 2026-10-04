@@ -1,0 +1,8 @@
+# The same program with every lambda called. It built before this change and
+# must keep building: the reference is additional, not a replacement, and a
+# duplicate reference to a lambda that is also called is still valid C.
+
+fn main() {
+    let twice = fn(y: Int) => y * 2
+    print(to_text(twice(21)))
+}

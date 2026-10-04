@@ -30900,6 +30900,66 @@ static char *emit_function_references(const char *source) {
     return references.data;
 }
 
+/*
+ * #1720. Lifted lambdas are top-level `static` functions, and a binding that is
+ * never called leaves an unreferenced static function behind, which `cc`
+ * refuses under `-Werror=unused-function`. #1380 fixed the top-level-function
+ * case by having `main` reference every user function; this is the same fix for
+ * the lifted lambda, using the prototype's exact symbol spelling.
+ */
+static char *emit_lambda_references(const char *source, const char *hir) {
+    Buffer references;
+    buffer_init(&references);
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, 0);
+    while (cursor < length) {
+        if (!token_equal(source, cursor, "let")) {
+            cursor = skip_trivia(source, token_end(source, cursor));
+            continue;
+        }
+        int64_t name_start = skip_trivia(source, token_end(source, cursor));
+        if (token_equal(source, name_start, "mut")) {
+            name_start = skip_trivia(source, token_end(source, name_start));
+        }
+        if (
+            name_start >= length ||
+            strcmp(token_kind(source, name_start), "identifier") != 0
+        ) {
+            cursor = skip_trivia(source, token_end(source, cursor));
+            continue;
+        }
+        int64_t equals = skip_trivia(source, token_end(source, name_start));
+        if (equals < length && token_equal(source, equals, ":")) {
+            int64_t annotation = skip_trivia(
+                source,
+                token_end(source, equals)
+            );
+            equals = skip_trivia(source, token_end(source, annotation));
+        }
+        if (equals >= length || !token_equal(source, equals, "=")) {
+            cursor = skip_trivia(source, token_end(source, cursor));
+            continue;
+        }
+        int64_t open = lambda_initializer_open(
+            source,
+            skip_trivia(source, token_end(source, equals))
+        );
+        if (open < 0) {
+            cursor = skip_trivia(source, token_end(source, cursor));
+            continue;
+        }
+        char *binding_id = hir_definition_id_at(hir, name_start);
+        buffer_format(
+            &references,
+            "    (void)kofun_lambda_%s;\n",
+            binding_id
+        );
+        free(binding_id);
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return references.data;
+}
+
 typedef struct {
     char *record_result_types[128];
     int64_t record_result_count;
@@ -31307,6 +31367,11 @@ static char *lower_c_body(
                 char *references = emit_function_references(source);
                 buffer_append(&bodies, references);
                 free(references);
+            }
+            {
+                char *lambda_references = emit_lambda_references(source, hir);
+                buffer_append(&bodies, lambda_references);
+                free(lambda_references);
             }
             if (fractional_values) {
                 buffer_append(
