@@ -32187,6 +32187,36 @@ static char *authority_binding_misuse(
 }
 
 /*
+ * #1711. Whether the identifier at `cursor` names a function as a value.
+ *
+ * A function value comes from exactly two places in this profile: a lambda,
+ * whose body lies inside the enclosing function's text and is scanned with
+ * it, and a bare top-level function name, which the compiler accepts as a
+ * value only as a whole call argument -- `call_argument_position`; anywhere
+ * else the name is E2S35. A call `f(x)` through a callable parameter names no
+ * top-level function, so it adds no edge and `apply` stays `pure`. The effect
+ * is charged where the value is created instead: `quiet` passing `noisy` to
+ * `apply` reaches `noisy` exactly as `noisy(x)` would, and passing the root
+ * `print` by name reaches the root.
+ *
+ * The predicate is the compiler's own: the same `call_argument_position` that
+ * decides the bare name is a value at all, so the boundary cannot charge a
+ * different set of names than the compiler accepts. `semantic_producer.c`
+ * includes this file and asks this function for its published edges, so the
+ * boundary and the `effect` fact agree by construction. Every caller has
+ * already matched the token to an identifier naming a function. The `,`/`)`
+ * test is only the cheap exit: `call_argument_position` rescans from byte
+ * zero, and an ordinary argument such as `x` in `f(x)` has the same shape.
+ */
+static bool names_function_value(const char *source, int64_t cursor) {
+    int64_t after = skip_trivia(source, token_end(source, cursor));
+    if (!token_equal(source, after, ",") && !token_equal(source, after, ")")) {
+        return false;
+    }
+    return call_argument_position(source, cursor);
+}
+
+/*
  * #1245. The explicit `pure` boundary over the effects the compiler already
  * infers. The io root is a parameter: a function that reaches it, directly or
  * through any chain of calls, is io, and an annotated function that is io is a
@@ -32195,6 +32225,9 @@ static char *authority_binding_misuse(
  * Reachability is a fixed point over a text set rather than a recursion,
  * because the set is what makes mutual recursion terminate: `a` calling `b`
  * calling `a` adds each once and then stops changing.
+ *
+ * Each edge is a may-call (#1711): a call `name(`, or the name passed as a
+ * value, which `names_function_value` above decides.
  */
 static bool function_calls_name(
     const char *source,
@@ -32213,6 +32246,7 @@ static bool function_calls_name(
             strcmp(token_kind(source, cursor), "identifier") == 0) {
             int64_t after = skip_trivia(source, token_end(source, cursor));
             if (after < body_end && token_equal(source, after, "(")) found = true;
+            if (!found && names_function_value(source, cursor)) found = true;
         }
         free(previous);
         previous = text;
@@ -32271,7 +32305,9 @@ static int64_t source_function_count(const char *source) {
  * The first call in this body, in source order, that the io set already holds.
  * Source order and not declaration order: criterion 5 asks for the same
  * diagnostic after the declarations are reordered, and reordering moves
- * declaration order while leaving the body exactly as it was.
+ * declaration order while leaving the body exactly as it was. A name passed
+ * as a value counts as the call it may become (#1711), so `apply(noisy, x)`
+ * names `noisy` rather than leaving the refusal without a callee.
  */
 static char *first_io_callee(
     const char *source,
@@ -32291,7 +32327,8 @@ static char *first_io_callee(
             strcmp(token_kind(source, cursor), "identifier") == 0 &&
             strstr(io_set, key.data) != NULL) {
             int64_t after = skip_trivia(source, token_end(source, cursor));
-            if (after < body_end && token_equal(source, after, "(")) {
+            if ((after < body_end && token_equal(source, after, "(")) ||
+                names_function_value(source, cursor)) {
                 free(key.data);
                 free(previous);
                 return text;

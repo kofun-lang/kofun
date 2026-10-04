@@ -1,0 +1,1 @@
+error[E2S159]: module constant must be `let NAME = <integer literal>` at byte 323

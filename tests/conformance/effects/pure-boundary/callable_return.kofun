@@ -1,0 +1,18 @@
+# #1711. Returning a function by name would create a function value outside a
+# call argument. This profile has no such value: a bare function name is a
+# value only as a whole call argument, so `return noisy` is an unknown lexical
+# binding even inside a `pure fn`. If this surface is admitted it must charge
+# the same edge an argument does -- `pick` is then `io` -- and this golden
+# changing is what says so.
+fn noisy(x: Int) -> Int {
+    print(x)
+    return x
+}
+
+pure fn pick() -> (Int) -> Int {
+    return noisy
+}
+
+fn main() -> Int {
+    return 0
+}

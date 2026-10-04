@@ -9,10 +9,13 @@ pure < io
 
 `print` is the only direct `io` root in this profile. A caller is `io` when it
 can reach that root through the compiler's resolved top-level function-call
-observations; otherwise it is `pure`. The monotone analysis computes the least
-fixed point, so self-recursive and mutually recursive components without a
-root stay `pure`, while a root makes every reaching caller `io`. Divergence and
-panic remain `pure`: this summary does not claim termination or totality.
+observations; otherwise it is `pure`. A value reference — a top-level function
+named in value position — is one of those observations, as
+[Function values](#function-values) defines. The monotone analysis computes
+the least fixed point, so self-recursive and mutually recursive components
+without a root stay `pure`, while a root makes every reaching caller `io`.
+Divergence and panic remain `pure`: this summary does not claim termination or
+totality.
 
 The result is emitted as the existing typed-sidecar `effect` fact on each
 function declaration. Its display is exactly `pure` or `io`. Direct roots use
@@ -33,6 +36,48 @@ handlers, resumptions, capability checking, runtime change, or optimization
 promise. The representation can be widened by a later version, but `pure` and
 `io` are the complete executable set in v1.
 
+## Function values
+
+An edge is a may-call. A top-level function `g` named in value position inside
+the body of `f` — passed by name as a callable argument, as in
+`apply(noisy, x)` — adds the edge `f → g`, exactly as the call `g(...)` would.
+Naming the root as a value, `apply(print, x)`, reaches the root directly.
+Value position is the one place this profile accepts a bare function name as a
+value: a whole call argument, decided by the compiler's own
+`call_argument_position`. Anywhere else the name is refused (`E2S35`), so no
+program using it there compiles and there is no other value position to
+observe. The `pure fn` boundary below and the published `effect` fact ask this
+one predicate, so they charge the same names.
+
+The effect is charged where the value is created, not where it is called. A
+call through a callable parameter — `f(x)` inside `apply` — names no top-level
+function and adds no edge, so `apply` itself stays `pure` whatever it is
+handed. That is sound rather than optimistic: every caller that hands `apply`
+an `io` function has already named that function, and is `io` through the
+value it named. Passing a `pure` function keeps the caller `pure`. The charge
+does not ask whether the receiver ever calls the value: `ignore(noisy, x)`,
+where `ignore` never calls its callable parameter, still makes its caller `io`.
+That over-approximation is the rule, not an accident of it; a summary for
+`apply` or `ignore` that depended on its argument would be effect
+polymorphism, which v1 does not have.
+
+A function value has exactly two origins in this profile: naming a top-level
+function, which adds the edge above, and a lambda, whose body lies inside the
+enclosing function, so its calls are already that function's observations —
+`let g = fn(y: Int) => noisy(y)` followed by `apply(g, x)` makes the
+enclosing function `io` through `noisy` without any value edge.
+Returning a function by name, binding one to a local, passing one after an
+argument label, binding one at module level, and storing one in a record field
+are each refused, so no program carrying one compiles; admitting any of them
+has to add the same edge, and `task pure-boundary` pins each refusal so that
+admitting one changes a golden. The match is by name, as it is for calls: a
+parameter or local that shadows a top-level function's name is charged as that
+function, which over-approximates and never classifies optimistically.
+
+A callee reached through a value reference is explained like any other:
+`effect-io-callee`, with the fact dependency naming the referenced function's
+node. The reason vocabulary is unchanged.
+
 ## The `pure fn` boundary
 
 The inference above is a summary this slice computes; it decides nothing. #1245
@@ -43,7 +88,7 @@ It introduces no effect semantics of its own. The lattice, the root, and the
 least fixed point are the ones defined above; the boundary asks that same
 question at compile time, before a semantic-event stream exists, and refuses
 the program when the answer is `io` — naming the root reached directly, or the
-first call in the body that carries it, as `E2S176`. Because the answer is one
+first call or value reference in the body that carries it, as `E2S176`. Because the answer is one
 question asked in two places, an accepted program's published `effect` fact and
 the boundary's silence have to agree, and `task pure-boundary` compiles the
 same sources through both to check that they do.

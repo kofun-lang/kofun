@@ -1,0 +1,18 @@
+# #1711. A module-level binding of callable type (RFC-0006) would let a
+# function value be created outside every function body. v1 admits only an
+# integer constant, so the binding is refused by name. Admitting it must decide
+# which function the edge is charged to.
+fn noisy(x: Int) -> Int {
+    print(x)
+    return x
+}
+
+let handler = noisy
+
+pure fn quiet(x: Int) -> Int {
+    return handler(x)
+}
+
+fn main() -> Int {
+    return quiet(7)
+}

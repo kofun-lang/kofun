@@ -162,7 +162,7 @@ cc	invoke	4	required-today	required	tests/conformance/decimal/run.sh
 cc	invoke	10	required-today	required	tests/conformance/discovery/run.sh
 cc	invoke	1	required-today	required	tests/conformance/discovery/sanitizer-cc-wrapper.sh
 cc	invoke	2	required-today	required	tests/conformance/discovery/sanitizer-objects.sh
-cc	invoke	4	required-today	required	tests/conformance/effects/pure-boundary/run.sh
+cc	invoke	5	required-today	required	tests/conformance/effects/pure-boundary/run.sh
 cc	invoke	1	required-today	required	tests/conformance/effects/pure-io/run.sh
 cc	invoke	3	required-today	required	tests/conformance/generics/run.sh
 cc	invoke	4	required-today	required	tests/conformance/incremental/run.sh
@@ -311,7 +311,7 @@ node	invoke	2	required-today	required	tests/conformance/bytes-read-stream/run.sh
 node	invoke	1	required-today	required	tests/conformance/call-arguments/run.sh
 node	invoke	2	required-today	required	tests/conformance/command-operands/run.sh
 node	invoke	1	required-today	required	tests/conformance/concurrency/ownership/run.sh
-node	invoke	4	required-today	required	tests/conformance/effects/pure-boundary/run.sh
+node	invoke	7	required-today	required	tests/conformance/effects/pure-boundary/run.sh
 node	invoke	5	required-today	required	tests/conformance/effects/pure-io/run.sh
 node	invoke	3	required-today	required	tests/conformance/int-bits/run.sh
 node	invoke	1	required-today	required	tests/conformance/move-call-crossings/run.sh

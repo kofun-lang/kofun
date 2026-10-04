@@ -1,0 +1,21 @@
+# #1711. The control: a lambda's body lies inside the enclosing function, so
+# its call to `noisy` was already this function's observation before the
+# value-reference edge existed, and stays one. Without `pure` this program is
+# accepted and prints 7.
+fn noisy(x: Int) -> Int {
+    print(x)
+    return x
+}
+
+fn apply(f: (Int) -> Int, x: Int) -> Int {
+    return f(x)
+}
+
+pure fn quiet(x: Int) -> Int {
+    let g = fn(y: Int) => noisy(y)
+    return apply(g, x)
+}
+
+fn main() -> Int {
+    return quiet(7)
+}

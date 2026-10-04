@@ -1,0 +1,1 @@
+error[E2S176]: `pure fn quiet` reaches `print` through `noisy` at byte 430

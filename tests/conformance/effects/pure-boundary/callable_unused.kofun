@@ -1,0 +1,20 @@
+# #1711. The over-approximation, chosen rather than incidental: the effect is
+# charged where the function value is created, so naming `noisy` is refused
+# even though `ignore` never calls its callable parameter. Deciding whether the
+# receiver calls it is effect polymorphism, which pure/io v1 does not have.
+fn noisy(x: Int) -> Int {
+    print(x)
+    return x
+}
+
+fn ignore(f: (Int) -> Int, x: Int) -> Int {
+    return x
+}
+
+pure fn quiet(x: Int) -> Int {
+    return ignore(noisy, x)
+}
+
+fn main() -> Int {
+    return quiet(7)
+}

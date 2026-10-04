@@ -563,6 +563,16 @@ tests/conformance/effects/pure-boundary/annotated_parameter.kofun
 tests/conformance/effects/pure-boundary/annotated_type.kofun
 tests/conformance/effects/pure-boundary/authority_precedence.kofun
 tests/conformance/effects/pure-boundary/back_edge.kofun
+tests/conformance/effects/pure-boundary/callable_alias.kofun
+tests/conformance/effects/pure-boundary/callable_argument.kofun
+tests/conformance/effects/pure-boundary/callable_argument_pure.kofun
+tests/conformance/effects/pure-boundary/callable_field.kofun
+tests/conformance/effects/pure-boundary/callable_labelled.kofun
+tests/conformance/effects/pure-boundary/callable_lambda.kofun
+tests/conformance/effects/pure-boundary/callable_module.kofun
+tests/conformance/effects/pure-boundary/callable_return.kofun
+tests/conformance/effects/pure-boundary/callable_root.kofun
+tests/conformance/effects/pure-boundary/callable_unused.kofun
 tests/conformance/effects/pure-boundary/direct.kofun
 tests/conformance/effects/pure-boundary/identifier.kofun
 tests/conformance/effects/pure-boundary/io_annotation.kofun
@@ -573,6 +583,7 @@ tests/conformance/effects/pure-boundary/order_a.kofun
 tests/conformance/effects/pure-boundary/order_b.kofun
 tests/conformance/effects/pure-boundary/self_recursive.kofun
 tests/conformance/effects/pure-boundary/unknown_call.kofun
+tests/conformance/effects/pure-io/callable.kofun
 tests/conformance/effects/pure-io/focus.kofun
 tests/conformance/effects/pure-io/order-a.kofun
 tests/conformance/effects/pure-io/order-b.kofun

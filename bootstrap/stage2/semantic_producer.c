@@ -1728,6 +1728,11 @@ static ProducerFunction *producer_function_for_node(
     return NULL;
 }
 
+/*
+ * The root, called or -- #1711 -- passed by name as a value. The value test
+ * is the boundary's own `names_function_value` from compiler.c, so the
+ * published fact and the `pure fn` boundary charge the same names.
+ */
 static bool producer_function_has_print(
     const Producer *producer,
     const ProducerFunction *function
@@ -1741,11 +1746,60 @@ static bool producer_function_has_print(
                 token_equal(producer->source, open, "(")) {
                 return true;
             }
+            if (names_function_value(producer->source, cursor)) return true;
         }
         if (next <= cursor) return false;
         cursor = skip_trivia(producer->source, next);
     }
     return false;
+}
+
+/*
+ * #1711. A top-level function named in value position inside `caller`'s body
+ * -- passed by name as a callable argument -- is a may-call edge from
+ * `caller`, exactly as a call would be. The call through the callable
+ * parameter that later receives it names no top-level function, so it adds no
+ * edge: `apply(f, x)` stays `pure`, and the effect is charged to the function
+ * that created the value. A lambda needs nothing here, because its body calls
+ * are already observed inside the enclosing function's span.
+ *
+ * The position test is `names_function_value`, the one the `pure fn` boundary
+ * asks in compiler.c, so the two consumers of pure-io-v1 cannot disagree about
+ * which names are values. It is asked only of a token that names a top-level
+ * function: an ordinary argument such as `x` in `f(x)` is the same shape, and
+ * the position test rescans from byte zero. The explanation is the existing
+ * `effect-io-callee`, whose dependency then names the referenced function.
+ */
+static void producer_add_value_reference_edges(
+    Producer *producer,
+    KofunEffectGraph *graph
+) {
+    size_t caller_index;
+    for (caller_index = 0u;
+         caller_index < producer->function_count;
+         caller_index += 1u) {
+        const ProducerFunction *caller = &producer->functions[caller_index];
+        int64_t cursor = skip_trivia(producer->source, caller->body_open);
+        while (cursor >= 0 && cursor < caller->end) {
+            int64_t next = token_end(producer->source, cursor);
+            if (strcmp(token_kind(producer->source, cursor), "identifier") ==
+                0) {
+                char *name = token_copy(producer->source, cursor);
+                ProducerFunction *callee = producer_find_function(
+                    producer,
+                    name
+                );
+                free(name);
+                if (callee != NULL &&
+                    names_function_value(producer->source, cursor)) {
+                    graph->calls[caller_index]
+                        [(size_t)(callee - producer->functions)] = true;
+                }
+            }
+            if (next <= cursor) break;
+            cursor = skip_trivia(producer->source, next);
+        }
+    }
 }
 
 static bool producer_add_effect_facts(Producer *producer) {
@@ -1793,6 +1847,7 @@ static bool producer_add_effect_facts(Producer *producer) {
             }
         }
     }
+    producer_add_value_reference_edges(producer, &graph);
     if (!kofun_effect_infer(&graph, &result)) return false;
     for (function_index = 0u;
          function_index < graph.function_count;

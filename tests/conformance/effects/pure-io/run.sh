@@ -48,6 +48,15 @@ project "$ROOT/tests/conformance/effects/pure-io/focus.kofun" \
 cmp "$ROOT/tests/conformance/effects/pure-io/focus.expected" \
     "$WORK/focus.report"
 
+# #1711. A function passed by name is a may-call edge from the function that
+# names it: `quiet` is `io` through `noisy` (`effect-io-callee`, depending on
+# `noisy`'s node), while `apply`, which only calls its parameter, stays `pure`.
+project "$ROOT/tests/conformance/effects/pure-io/callable.kofun" \
+    callable src/callable.kofun
+cmp "$ROOT/tests/conformance/effects/pure-io/callable.expected" \
+    "$WORK/callable.report" ||
+    fail 'pure/io: the value-reference edge facts changed (callable.expected)'
+
 project "$ROOT/tests/conformance/effects/pure-io/order-a.kofun" \
     order-a src/order.kofun
 project "$ROOT/tests/conformance/effects/pure-io/order-b.kofun" \
@@ -90,6 +99,7 @@ fi
 
 printf '%s\n' \
     'PASS: bounded pure/io effects propagate through calls and recursive SCCs' \
+    'PASS: a function passed by name charges its caller; the receiver stays pure' \
     'PASS: effect reports are declaration-order and absolute-path independent' \
     'PASS: tracked Stage 2 corpus is 5 pure / 1 io / 6 total (83.33% pure)' \
     'PASS: typed-sidecar facts retain root/callee explanations'
