@@ -216,10 +216,10 @@ A grant is a property of a **dependency edge**, written by the consumer:
   entry, which needs an explicit `foreign` (§5).
 - Its values are spelled exactly `"plain"` and `"foreign"`.
 
-The accepted answers fix this shape, not the key's spelling. The manifest-field
-implementation issue chooses the key, within the constraints above. The first
-source-package manifest carries the grant (answer 1). Nothing else about
-`format = 2` is decided here.
+The accepted answers fix this shape, not the key's spelling. The
+manifest-field implementation issue, #1723, chooses the key within the
+constraints above. The first source-package manifest carries the grant
+(answer 1). Nothing else about `format = 2` is decided here.
 
 ### 3. Propagation
 
@@ -403,16 +403,19 @@ publishes no lock file and no build output.
 
 This RFC chooses the band's kind. It does not allocate its prefix or numbers.
 Following RFC-0012's precedent, codes are allocated in
-`tests/diagnostics/registry.tsv` at implementation time, by the diagnostics
-implementation issue, within these constraints:
+`tests/diagnostics/registry.tsv` at implementation time, within these
+constraints:
+
+- #1724 creates the band and codes the manifest refusals.
+- #1725 codes its own two refusals when it lands.
 
 - **One prefix, owned by the resolver.** It is distinct from `E2S`, the Stage 2
   compiler's codes, and from the `E3xx`/`E4xx` design identities, because the
   emitter is not the compiler.
 - **A registry phase for resolution.** The registry's phase vocabulary is
   closed: `compile|frontend|backend|runtime|host-io`
-  (`tests/diagnostics/check.sh`). None of these is package resolution, so the
-  diagnostics issue widens it or records why an existing phase is right.
+  (`tests/diagnostics/check.sh`). None of these is package resolution, so
+  #1724 widens it or records why an existing phase is right.
 - **Executable evidence.** Each code has a fixture owner, a fixture, and a
   golden, like every other registered code.
 - **Deterministic reporting.** Reporting order does not depend on the order in
@@ -556,25 +559,29 @@ Migration: none today. A manifest that later moves from `format = 1` to
 Acceptance commits to no schedule. Three implementation issues carry the work,
 each with its own gate:
 
-1. **The manifest field.** This covers:
+1. **The manifest field: #1723.** This covers:
    - `format = 2`;
    - the grant key and its closed values;
    - the explicit-`foreign` rule for native artifacts;
    - an unchanged `format = 1`.
 
-   It lands in the resolver that `bin/kofun package` runs at the time.
-2. **The resolver/KIF check.** This covers:
+   It lands in the Kofun resolver after #1457. That is a sequencing choice:
+   #1457 ports `package/manager.sh` byte for byte, and keeps format changes
+   out of its own scope.
+2. **The diagnostics band: #1724.** This covers:
+   - the package-resolution band;
+   - its registry phase;
+   - a registered code with executable evidence for each of #1723's refusals.
+
+   It depends on #1723.
+3. **The resolver/KIF check: #1725.** This covers:
    - effective grants;
    - the escalation refusal;
    - the `0x800A` check over every module of every `plain` package.
 
-   It needs source-package resolution. No issue owns that yet. When an issue
-   is filed for it, that issue becomes this check's blocker.
-3. **The diagnostics.** This covers:
-   - the package-resolution band;
-   - its registry phase;
-   - a registered code with executable evidence for every refusal in
-     *Diagnostics*.
+   It registers its own two refusals in #1724's band. It depends on #1723,
+   #1724, and #1457. It also needs source-package resolution, which no issue
+   owns yet; when one is filed, it becomes #1725's blocker.
 
 The core/adapter guidance of answer 8 is recorded in `package/README.md` with
 this RFC. It is not an implementation step.
@@ -586,19 +593,19 @@ in the ledger, because nothing is implemented.
 
 The implementation issues own the executable gates:
 
-- **The manifest field: `task packages`, extended.**
+- **The manifest field (#1723): `task packages`, extended.**
   - A `format = 1` lock stays byte-identical.
   - A `format = 2` native artifact is refused without `foreign` and accepted
     with it.
   - An unknown grant value is refused.
-- **The resolver check: a gate it adds.**
+- **The diagnostics (#1724, #1725): `task diagnostics`.** Every code is
+  registered with its fixture and golden.
+- **The resolver check (#1725): a gate it adds.**
   - **The façade fixture.** A dependency whose only foreign code is a
     `trust raw-foreign` module behind an ordinary façade must be refused under
     `plain`, with the dependency's source absent and only its KIF present. A
     version of the gate that omits this fixture proves nothing this RFC adds.
   - **The escalation fixture.** It mirrors `museum` → `museum-restaurant`.
-- **The diagnostics: `task diagnostics`.** Every code is registered with its
-  fixture and golden.
 
 Existing gates that must stay green: `task kif-module-trust-profile`,
 `task raw-imports`, `task raw-re-exports`, `task packages`, and
@@ -606,14 +613,13 @@ Existing gates that must stay green: `task kif-module-trust-profile`,
 
 ## Unresolved questions
 
-- **The manifest key's spelling.** Left to the manifest-field issue (§2). One
-  consideration it must weigh: RFC-0012 already uses `trust` and `trusted` for
-  the orthogonal module mechanism.
-- **The band's prefix and numbers.** Left to the diagnostics issue
-  (*Diagnostics*).
+- **The manifest key's spelling.** Left to #1723 (§2). One consideration it
+  must weigh: RFC-0012 already uses `trust` and `trusted` for the orthogonal
+  module mechanism.
+- **The band's prefix and numbers.** Left to #1724 (*Diagnostics*).
 - **Source-package resolution.** No issue owns it at the audited commit.
   `format = 2`'s source dependency kind, versions, and transitive graph are a
-  separate decision. The resolver check cannot start before it.
+  separate decision. #1725 cannot start before it.
 - **Macros and answer 9.** Answer 9 groups macros with law evaluation under
   *"the empty-effect sandbox (`docs/LAW_SYSTEM.md`)"*. The accepted macro text
   (DD-013, normative spec `docs/METAPROGRAMMING.md` § *Sandboxing*) is a
