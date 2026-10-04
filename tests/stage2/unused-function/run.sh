@@ -52,6 +52,24 @@ builds uncalled
 builds all_called
 builds unused_parameter
 
+# #1720. A `let`-bound lambda nobody calls. The reference is emitted per lifted
+# lambda, so the fixture binds two uncalled ones: a fix that referenced only
+# the first would leave the second unbuildable. The symbol is read out of the
+# emitted C rather than hard-coded, because a fixture that pins `kofun_lambda_1`
+# starts testing the HIR binding numbering instead of the rule.
+builds uncalled_lambda
+builds called_lambda
+for stem in uncalled_lambda called_lambda; do
+    assert_grep "$stem lifts a lambda" \
+        -Fq -- 'static int64_t kofun_lambda_' "$work/$stem.c"
+done
+lambda_refs=$(
+    grep -oE '\(void\)kofun_lambda_[0-9]+;' "$work/uncalled_lambda.c" |
+        sort -u | grep -c . || true
+)
+test "$lambda_refs" -ge 2 ||
+    assert_fail "uncalled_lambda references fewer than two lifted lambdas (saw $lambda_refs)"
+
 # The mechanism, not just the outcome. Each non-`main` function gets its own
 # reference, so a fix that emitted one line for the first function would leave
 # the second unbuildable on a host that reports the warning -- and this gate

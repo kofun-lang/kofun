@@ -20990,6 +20990,56 @@ fn emit_function_references(source: Text) -> Text {
     return references
 }
 
+# #1720. The binding id of the lifted lambda a `let` at `cursor` declares, or
+# empty text. Mirrors `emit_lifted_lambdas`'s detection.
+fn lifted_lambda_binding_at(source: Text, hir: Text, cursor: Int) -> Text {
+    let mut name_start = skip_trivia(source, token_end(source, cursor))
+    if token_text(source, name_start) == "mut" {
+        name_start = skip_trivia(source, token_end(source, name_start))
+    }
+    if name_start >= len(source) ||
+       token_kind(source, name_start) != "identifier" {
+        return ""
+    }
+    let mut equals = skip_trivia(source, token_end(source, name_start))
+    if equals < len(source) && token_text(source, equals) == ":" {
+        let annotation = skip_trivia(source, token_end(source, equals))
+        equals = skip_trivia(source, token_end(source, annotation))
+    }
+    if equals >= len(source) || token_text(source, equals) != "=" {
+        return ""
+    }
+    let open = lambda_initializer_open(
+        source,
+        skip_trivia(source, token_end(source, equals))
+    )
+    if open < 0 {
+        return ""
+    }
+    return hir_definition_id_at(hir, name_start)
+}
+
+# #1720. Lifted lambdas are top-level `static` functions, and a binding that is
+# never called leaves an unreferenced static function behind, which `cc`
+# refuses under `-Werror=unused-function`. #1380 fixed the top-level-function
+# case by having `main` reference every user function; this is the same fix for
+# the lifted lambda, using the prototype's exact symbol spelling.
+fn emit_lambda_references(source: Text, hir: Text) -> Text {
+    let mut references = ""
+    let mut cursor = skip_trivia(source, 0)
+    while cursor < len(source) {
+        if token_text(source, cursor) == "let" {
+            let binding = lifted_lambda_binding_at(source, hir, cursor)
+            if len(binding) > 0 {
+                references = references + "    (void)kofun_lambda_" +
+                    binding + ";\n"
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return references
+}
+
 fn lower_c_body(source: Text, hir: Text) -> Text {
     let identity_check = validate_struct_identity(source)
     if len(identity_check) > 0 {
@@ -21341,6 +21391,7 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
             "    (void)kofun_bit_wrapping_add;\n" +
             command_main_setup +
             emit_function_references(source) +
+            emit_lambda_references(source, hir) +
             decimal_cleanup + body + "}\n"
         } else {
             bodies = bodies + "static " + c_result + " kofun_fn_" + c_identifier_name(name) +

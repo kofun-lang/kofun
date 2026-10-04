@@ -1390,6 +1390,8 @@ tests/stage2/text-escapes/reject_unknown.kofun
 tests/stage2/unused-function/all_called.kofun
 tests/stage2/unused-function/uncalled.kofun
 tests/stage2/unused-function/unused_parameter.kofun
+tests/stage2/unused-function/called_lambda.kofun
+tests/stage2/unused-function/uncalled_lambda.kofun
 tests/stage2/while-list-int/binary_search.kofun
 tests/stage2/while-list-int/index_in_condition.kofun
 tests/stage2/while-list-int/out_of_range.kofun
