@@ -8,7 +8,7 @@
 #
 # shards: 4
 # shard 0: 2374.1 s
-# shard 1: 1744.0 s
+# shard 1: 1744.1 s
 # shard 2: 1744.1 s
 # shard 3: 1744.1 s
 # task	shard
@@ -26,6 +26,7 @@ assertions	3
 atomic-publish-if-absent-decision	1
 atomic-write-authority-contract	1
 audited-claim	2
+authority-affine-state	3
 authority-structural-kind	2
 authority-type-carrier	3
 backlog	3
@@ -183,7 +184,7 @@ verify-shards	1
 visibility-access	3
 visibility-api-leaks	1
 visibility-filtering	2
-visibility-spec	3
+visibility-spec	1
 visibility-syntax	3
 wasi-command-backend-shell	3
 wasi-command-memory	1

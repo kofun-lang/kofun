@@ -1,0 +1,7 @@
+fn transfer(take root: RootAuthority) -> RootAuthority {
+    return root
+}
+
+fn main() -> Int {
+    return 0
+}

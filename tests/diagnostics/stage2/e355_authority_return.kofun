@@ -1,0 +1,10 @@
+# diagnostic-mode: compile
+# expect-code: E355
+# expect-span: byte 161
+fn read_escape(read authority: EnvironmentAuthority) -> EnvironmentAuthority {
+    return authority
+}
+
+fn main() -> Int {
+    return 0
+}

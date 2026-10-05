@@ -22,6 +22,7 @@ assertions
 atomic-publish-if-absent-decision
 atomic-write-authority-contract
 audited-claim
+authority-affine-state
 authority-structural-kind
 authority-type-carrier
 backlog

@@ -1356,6 +1356,11 @@ tasks:
     cmds:
       - "sh tests/conformance/authority-structural-kind/run.sh"
 
+  authority-affine-state:
+    desc: "Verify the E355 direct-return escape of a read/edit authority parameter"
+    cmds:
+      - "sh tests/conformance/authority-affine-state/run.sh"
+
   # A gate that fails without printing anything turns a specific defect into a
   # bare exit code, and #814 counted 460 assertions that do exactly that. This
   # holds every script to a recorded budget in both directions, so the number
@@ -1594,6 +1599,7 @@ tasks:
             records \
             move-call-crossings \
             authority-structural-kind \
+            authority-affine-state \
             aggregate-bridge \
             generics \
             const-generics \
