@@ -1,0 +1,7 @@
+fn edit_escape(edit authority: EnvironmentAuthority) -> EnvironmentAuthority {
+    return authority
+}
+
+fn main() -> Int {
+    return 0
+}

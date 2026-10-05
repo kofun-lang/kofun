@@ -21657,12 +21657,26 @@ fn emit_kofun(source: Text, ir: Text) -> Text {
 # Measured before writing this: without the pass, `let r2 = root` and
 # `root == root` both report the carrier refusal, because the parameter is
 # refused before the body is read.
+# #1244. Whether the token after a returned identifier continues an expression
+# (`value.slot + 1`) rather than ending a direct return (`return value`). E355
+# is only the direct-return escape of the bare borrow.
+fn authority_return_continues(token: Text) -> Bool {
+    if token == "." || token == "+" || token == "-" || token == "*" ||
+       token == "/" || token == "%" || token == "==" || token == "!=" ||
+       token == "<" || token == ">" || token == "<=" || token == ">=" ||
+       token == "&&" || token == "||" || token == "(" || token == "[" {
+        return true
+    }
+    return false
+}
+
 fn authority_binding_misuse(
     source: Text,
     body_start: Int,
     body_end: Int,
     binding: Text,
-    authority: Text
+    authority: Text,
+    mode: Text
 ) -> Text {
     let owned_path = composite_owned_path(source, authority, "")
     let is_composite = len(owned_path) > 0
@@ -21671,6 +21685,15 @@ fn authority_binding_misuse(
     while cursor < body_end {
         let text = token_text(source, cursor)
         if text == binding && token_kind(source, cursor) == "identifier" {
+            # #1244. A `read`/`edit` authority parameter is a frame-bounded
+            # borrow; returning it would escape the frame as an owned value.
+            # This is the one E355 shape reachable before carrier lowering.
+            if previous == "return" && (mode == "read" || mode == "edit") &&
+               !authority_return_continues(following) {
+                return "error[E355]: `" + binding + "` is a " + mode +
+                " authority borrow and cannot be returned as an owned value at byte " +
+                to_text(cursor)
+            }
             let after = skip_trivia(source, token_end(source, cursor))
             let mut following = ""
             if after < body_end {
@@ -22003,6 +22026,7 @@ fn validate_authority_uses(source: Text) -> Text {
         let mut cursor = skip_trivia(source, token_end(source, parameters))
         let mut previous_text = ""
         let mut previous_name = ""
+        let mut previous_mode = ""
         while cursor < parameters_close {
             let text = token_text(source, cursor)
             if (authority_type_name(text) ||
@@ -22013,7 +22037,8 @@ fn validate_authority_uses(source: Text) -> Text {
                     parameters_close,
                     function_close,
                     previous_name,
-                    text
+                    text,
+                    previous_mode
                 )
                 if misuse != "ok" {
                     return misuse
@@ -22021,6 +22046,15 @@ fn validate_authority_uses(source: Text) -> Text {
             }
             if token_kind(source, cursor) == "identifier" &&
                previous_text != ":" {
+                # #1244. The token before the binding name is its declared mode
+                # when it is `read`, `edit`, or `take`; E355 distinguishes a
+                # `read`/`edit` borrow from a `take` owner.
+                if previous_text == "read" || previous_text == "edit" ||
+                   previous_text == "take" {
+                    previous_mode = previous_text
+                } else {
+                    previous_mode = ""
+                }
                 previous_name = text
             }
             previous_text = text
@@ -22050,7 +22084,8 @@ fn validate_authority_uses(source: Text) -> Text {
                             parameters_close,
                             function_close,
                             token_text(source, local_name_at),
-                            local_type
+                            local_type,
+                            ""
                         )
                         if misuse != "ok" {
                             return misuse

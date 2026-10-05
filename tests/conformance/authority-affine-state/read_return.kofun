@@ -1,0 +1,7 @@
+fn read_escape(read authority: EnvironmentAuthority) -> EnvironmentAuthority {
+    return authority
+}
+
+fn main() -> Int {
+    return 0
+}

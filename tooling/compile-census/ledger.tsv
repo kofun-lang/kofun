@@ -42,14 +42,13 @@
 # #1455 adds one family. `kofun_seed_digest_build` compiles
 # `bootstrap/stage2/sha256.c` together with `sha256_tool.c` for the
 # non-circular pre-build seed checks and for the gates that use the C seed
-# verifier as their oracle. Measured on the sharded CI aggregate (run
-# 37216425217), which is what gates `main`: 159 invocations, 136 compiles of
-# tracked sources, 11 of run-scoped sources, 12 pure links, 12 codegen
-# profiles, 0 failures. 67 distinct families, 69 repeats. The aggregate builds
-# this family eight times because `selfhost-fixed-point` (shard 1) rebuilds
-# the generation bundle that a single `task verify` shares with
-# `selfhost-generations` (shard 3), and every `build-a1-a2.sh` invocation
-# rebuilds the seed verifier.
+# verifier as their oracle. Measured on a clean single `task verify` with
+# `build/` removed: 155 invocations, 135 compiles of tracked sources, 11 of
+# run-scoped sources, 9 pure links, 12 codegen profiles, 0 failures. 67
+# distinct families, 68 repeats. The partition keeps `selfhost-generations`
+# with its dependent `selfhost-fixed-point`, so the shard aggregate cuts the
+# same count; splitting them rebuilds the generation bundle in another shard
+# and adds one build.
 #
 # What is left is not object redundancy of the kind #1205 removed. Every row is
 # a gate compiling its own driver together with the shared sources, and the
@@ -57,7 +56,7 @@
 # removing it means not running the gate twice rather than not compiling the
 # source twice.
 #
-# repeated-ceiling: 69
+# repeated-ceiling: 68
 #
 # count	profile	macros	sources	reason
 4	-O0 -fanalyzer	-	bootstrap/stage2/imports_selective.c	compiled by 2 gates: tests/conformance/modules/import-aliases/run.sh tests/conformance/modules/imports-selective/run.sh
@@ -79,7 +78,7 @@
 2	-O0 -fanalyzer	-	bootstrap/stage2/module_symbols.c	compiled by 4 gates: tests/conformance/adt-exhaustiveness/run.sh tests/conformance/modules/imports-qualified/run.sh tests/conformance/modules/raw-imports/run.sh tests/conformance/modules/top-level-declarations/run.sh
 3	-	-	bootstrap/stage2/imports_qualified.c bootstrap/stage2/kif_v1.c bootstrap/stage2/sha256.c bootstrap/stage2/visibility_access.c unicode/kofun_unicode.c	compiled by 4 gates: tests/conformance/modules/import-aliases/run.sh tests/conformance/modules/imports-qualified/run.sh tests/conformance/modules/raw-imports/run.sh tests/modules/inventory/check.sh
 2	-O2	-	bootstrap/stage2/module_symbols.c bootstrap/stage2/sha256.c unicode/kofun_unicode.c	compiled by 4 gates: tests/conformance/adt-exhaustiveness/run.sh tests/conformance/modules/imports-qualified/run.sh tests/conformance/modules/raw-imports/run.sh tests/conformance/modules/top-level-declarations/run.sh
-8	-O2	-	bootstrap/stage2/sha256.c bootstrap/stage2/sha256_tool.c	compiled by 2 gates: tests/digest/check.sh tests/stage2/sha256-pair/check.sh
+7	-O2	-	bootstrap/stage2/sha256.c bootstrap/stage2/sha256_tool.c	compiled by 2 gates: tests/digest/check.sh tests/stage2/sha256-pair/check.sh
 3	-O2	-DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY	bootstrap/stage2/kif_v1.c bootstrap/stage2/stage2_kif_producer.c	compiled by 2 gates: tests/conformance/modules/stage2-kif-producer/run.sh tests/tooling/verify-object-reuse/check.sh
 2	-O2	-	bootstrap/stage2/confusable_visible_set.c bootstrap/stage2/sha256.c tests/conformance/modules/confusable-visible-set/driver.c unicode/kofun_unicode.c	compiled by 2 gates: tests/conformance/modules/confusable-visible-set/run.sh tests/diagnostics/unicode/run.sh
 2	-	-	bootstrap/stage2/kif_v1.c bootstrap/stage2/re_exports.c bootstrap/stage2/sha256.c bootstrap/stage2/visibility_access.c unicode/kofun_unicode.c	compiled by 2 gates: tests/conformance/modules/raw-re-exports/run.sh tests/conformance/modules/re-exports/run.sh

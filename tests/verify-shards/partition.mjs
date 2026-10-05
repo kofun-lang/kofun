@@ -8,6 +8,13 @@
  * greedy rule whose makespan is within 4/3 of optimal and, unlike a
  * name-ordered split, actually reads the numbers.
  *
+ * A task and every verify task it lists in `deps:` form one cluster that is
+ * binned whole. go-task runs a dependency inside whichever shard runs its
+ * dependent task, so splitting a dependency across shards makes each of them
+ * run it: the concatenated census would then count work twice that a single
+ * `verify` invocation runs once (`run: once`), and the aggregate's contract
+ * that the union reproduces the single-run census would not hold.
+ *
  * The partition is a derived artifact, so it is regenerated, never hand-edited;
  * `--check` re-derives it and fails if the committed copy differs, which is the
  * same regenerate-never-merge rule `artifacts/release-evidence/index.json`
@@ -24,6 +31,8 @@ import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+import { taskfileCommands } from '../lib/taskfile.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(HERE, '..', '..')
@@ -97,20 +106,51 @@ if (extra.length > 0) {
     process.exit(1)
 }
 
-// Longest processing time first, deterministic tie-break by task name.
-const ordered = [...verifyTasks].sort((a, b) => {
-    const byTime = timing.get(b) - timing.get(a)
-    return byTime !== 0 ? byTime : a.localeCompare(b)
+// Longest processing time first over dependency clusters, deterministic
+// tie-break by the cluster's first task name.
+const commands = taskfileCommands(ROOT)
+const verifySet = new Set(verifyTasks)
+const parent = new Map(verifyTasks.map((task) => [task, task]))
+const find = (task) => {
+    let root = task
+    while (parent.get(root) !== root) root = parent.get(root)
+    while (parent.get(task) !== root) {
+        const next = parent.get(task)
+        parent.set(task, root)
+        task = next
+    }
+    return root
+}
+for (const task of verifyTasks) {
+    for (const dep of commands.get(task)?.deps ?? []) {
+        if (!verifySet.has(dep)) continue
+        const a = find(task)
+        const b = find(dep)
+        if (a !== b) parent.set(a, b)
+    }
+}
+const clusters = new Map()
+for (const task of verifyTasks) {
+    const root = find(task)
+    const cluster = clusters.get(root) ?? { members: [], time: 0 }
+    cluster.members.push(task)
+    cluster.time += timing.get(task)
+    clusters.set(root, cluster)
+}
+const ordered = [...clusters.values()].sort((a, b) => {
+    const byTime = b.time - a.time
+    if (byTime !== 0) return byTime
+    return [...a.members].sort()[0].localeCompare([...b.members].sort()[0])
 })
 const loads = new Array(shards).fill(0)
 const assignment = new Map()
-for (const task of ordered) {
+for (const cluster of ordered) {
     let target = 0
     for (let i = 1; i < shards; i += 1) {
         if (loads[i] < loads[target]) target = i
     }
-    assignment.set(task, target)
-    loads[target] += timing.get(task)
+    for (const task of cluster.members) assignment.set(task, target)
+    loads[target] += cluster.time
 }
 
 const header = [

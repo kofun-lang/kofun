@@ -32173,12 +32173,27 @@ static bool ends_with(const char *value, const char *suffix) {
  * `root == root` both report the carrier refusal, because the parameter is
  * refused before the body is read.
  */
+/* #1244. Whether the token after a returned identifier continues an expression
+ * (`value.slot + 1`) rather than ending a direct return (`return value`). E355
+ * is only the direct-return escape of the bare borrow. */
+static bool authority_return_continues(const char *token) {
+    return strcmp(token, ".") == 0 || strcmp(token, "+") == 0 ||
+           strcmp(token, "-") == 0 || strcmp(token, "*") == 0 ||
+           strcmp(token, "/") == 0 || strcmp(token, "%") == 0 ||
+           strcmp(token, "==") == 0 || strcmp(token, "!=") == 0 ||
+           strcmp(token, "<") == 0 || strcmp(token, ">") == 0 ||
+           strcmp(token, "<=") == 0 || strcmp(token, ">=") == 0 ||
+           strcmp(token, "&&") == 0 || strcmp(token, "||") == 0 ||
+           strcmp(token, "(") == 0 || strcmp(token, "[") == 0;
+}
+
 static char *authority_binding_misuse(
     const char *source,
     int64_t body_start,
     int64_t body_end,
     const char *binding,
-    const char *authority
+    const char *authority,
+    const char *mode
 ) {
     char *owned_path = composite_owned_path(source, authority, "");
     bool is_composite = owned_path[0] != '\0';
@@ -32192,6 +32207,30 @@ static char *authority_binding_misuse(
             char *following = after < body_end
                 ? token_copy(source, after)
                 : owned_text("");
+            /* #1244. A `read`/`edit` authority parameter is a frame-bounded
+             * borrow; returning it directly would escape the frame as an owned
+             * value. A token after it that continues an expression
+             * (`value.slot + 1`) is not a direct return. */
+            if (strcmp(previous, "return") == 0 &&
+                (strcmp(mode, "read") == 0 || strcmp(mode, "edit") == 0) &&
+                !authority_return_continues(following)) {
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(
+                    &message,
+                    "`%s` is a %s authority borrow and cannot be returned as "
+                    "an owned value",
+                    binding,
+                    mode
+                );
+                char *error = lower_error("E355", message.data, cursor);
+                free(message.data);
+                free(following);
+                free(text);
+                free(previous);
+                free(owned_path);
+                return error;
+            }
             /* `==` and `!=` are one token, so this cannot collide with `=`.
              * Ordered ahead of #1658's general record-operand refusal. */
             bool compared =
@@ -32608,6 +32647,7 @@ static char *validate_authority_uses(const char *source) {
         int64_t cursor = skip_trivia(source, token_end(source, parameters));
         char *previous_text = owned_text("");
         char *previous_name = owned_text("");
+        char *previous_mode = owned_text("");
         while (cursor < parameters_close) {
             char *text = token_copy(source, cursor);
             char *type_path = composite_owned_path(source, text, "");
@@ -32621,12 +32661,14 @@ static char *validate_authority_uses(const char *source) {
                     parameters_close,
                     function_close,
                     previous_name,
-                    text
+                    text,
+                    previous_mode
                 );
                 if (strcmp(misuse, "ok") != 0) {
                     free(text);
                     free(previous_text);
                     free(previous_name);
+                    free(previous_mode);
                     return misuse;
                 }
                 free(misuse);
@@ -32635,6 +32677,17 @@ static char *validate_authority_uses(const char *source) {
                 strcmp(previous_text, ":") != 0) {
                 free(previous_name);
                 previous_name = owned_text(text);
+                /* #1244. The token before the binding name is its declared
+                 * mode when it is `read`, `edit`, or `take`; E355 distinguishes
+                 * a `read`/`edit` borrow from a `take` owner. */
+                free(previous_mode);
+                if (strcmp(previous_text, "read") == 0 ||
+                    strcmp(previous_text, "edit") == 0 ||
+                    strcmp(previous_text, "take") == 0) {
+                    previous_mode = owned_text(previous_text);
+                } else {
+                    previous_mode = owned_text("");
+                }
             }
             free(previous_text);
             previous_text = text;
@@ -32642,6 +32695,7 @@ static char *validate_authority_uses(const char *source) {
         }
         free(previous_text);
         free(previous_name);
+        free(previous_mode);
         /* #1243. A local `let name: T` whose T is an Owned composite binds an
          * Owned value; copying it later is the same misuse the parameter head
          * check catches for a parameter. */
@@ -32679,7 +32733,8 @@ static char *validate_authority_uses(const char *source) {
                                 parameters_close,
                                 function_close,
                                 local_name,
-                                local_type
+                                local_type,
+                                ""
                             );
                             if (strcmp(misuse, "ok") != 0) {
                                 free(local_path);

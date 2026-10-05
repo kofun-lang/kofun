@@ -1,0 +1,9 @@
+type Holder = { slot: RootAuthority }
+
+fn use_borrow(read value: Holder) -> Int {
+    return value.slot
+}
+
+fn main() -> Int {
+    return 0
+}

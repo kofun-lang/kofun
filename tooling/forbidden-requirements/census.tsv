@@ -656,6 +656,7 @@ shell-build-driver	source	1	required-today	required	tests/conformance/adt-exhaus
 shell-build-driver	source	1	required-today	required	tests/conformance/adt-usefulness-v2/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/adt/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/aggregate-bridge/run.sh
+shell-build-driver	source	1	required-today	required	tests/conformance/authority-affine-state/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/authority-carrier/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/authority-structural-kind/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/backends/c11-stage1.sh
