@@ -195,6 +195,13 @@ two-`Bytes`-field `Header` — 8-aligned with `managed` drop, because each
 element holds `Bytes` storage, so the list is not `Copy`. Added for
 [#1695](https://github.com/kofun-lang/kofun/issues/1695).
 
+**The list grows by a validated append.** `stage2_list_append(list, element)`
+writes the element record by value into `elements[length]` and increments
+`length`, only while `length < 128`. A full list writes nothing and fails with
+the runtime diagnostic `R038`. An annotated `let list: List[Header] = []` is the
+empty carrier. The append has no source value. Added for
+[#1698](https://github.com/kofun-lang/kofun/issues/1698).
+
 An object has no trailing padding: it is individually referenced and never
 inlined into an array, so nothing follows it that would need alignment.
 

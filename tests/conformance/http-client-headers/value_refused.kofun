@@ -1,0 +1,12 @@
+# #1698. The append has no source value: binding its result is refused E2S179.
+type Header = {
+    name: Bytes,
+    value: Bytes,
+}
+
+fn main() -> Int {
+    let headers: List[Header] = []
+    let entry: Header = Header(name: stage2_bytes_empty(), value: stage2_bytes_empty())
+    let result = stage2_list_append(headers, entry)
+    return 0
+}

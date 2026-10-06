@@ -9578,6 +9578,95 @@ static char *emit_list_record_literal(
     return output.data;
 }
 
+/*
+ * #1698. `stage2_list_append(list, element)`: the validated append on a
+ * bounded record list. Both arguments are bindings, because the list is
+ * edited in place and the element record is moved into the next slot by
+ * value. A full list appends nothing and fails with R038, the runtime
+ * diagnostic the other bounded carriers use, so the 129th entry is never
+ * written.
+ */
+static char *emit_record_list_append(
+    const char *source,
+    const char *hir,
+    int64_t call_name,
+    int64_t open
+) {
+    int64_t list = skip_trivia(source, token_end(source, open));
+    int64_t list_end = argument_end(source, list);
+    int64_t separator = skip_trivia(source, list_end);
+    int64_t element = skip_trivia(source, token_end(source, separator));
+    int64_t element_end = argument_end(source, element);
+    if (
+        strcmp(token_kind(source, list), "identifier") != 0 ||
+        token_end(source, list) != list_end ||
+        strcmp(token_kind(source, element), "identifier") != 0 ||
+        token_end(source, element) != element_end
+    ) {
+        return lower_error(
+            "E2S15",
+            "builtin `stage2_list_append` takes a list binding and a record "
+            "binding",
+            call_name
+        );
+    }
+    int64_t function_open = enclosing_function_open(source, call_name);
+    char *list_type = initializer_type(source, hir, function_open, list);
+    char *element_type = initializer_type(source, hir, function_open, element);
+    size_t inner = strlen(list_type) - 6;
+    bool agrees =
+        strlen(element_type) == inner &&
+        strncmp(list_type + 5, element_type, inner) == 0;
+    if (!agrees) {
+        Buffer message;
+        buffer_init(&message);
+        buffer_format(
+            &message,
+            "builtin `stage2_list_append` cannot append %s to %s",
+            element_type,
+            list_type
+        );
+        free(list_type);
+        free(element_type);
+        char *error = lower_error("E2S15", message.data, element);
+        free(message.data);
+        return error;
+    }
+    char *list_value = emit_expression(source, hir, list, list_end);
+    if (strncmp(list_value, "error[", 6) == 0) {
+        free(list_type);
+        free(element_type);
+        return list_value;
+    }
+    char *element_value = emit_expression(source, hir, element, element_end);
+    if (strncmp(element_value, "error[", 6) == 0) {
+        free(list_value);
+        free(list_type);
+        free(element_type);
+        return element_value;
+    }
+    Buffer call;
+    buffer_init(&call);
+    buffer_format(
+        &call,
+        "((%s).length < UINT64_C(128) ? "
+        "((%s).elements[(%s).length] = %s, (%s).length += 1, 0) : "
+        "(kofun_error(\"error[R038]: bounded %s append exceeds capacity "
+        "128\"), 0))",
+        list_value,
+        list_value,
+        list_value,
+        element_value,
+        list_value,
+        list_type
+    );
+    free(list_value);
+    free(element_value);
+    free(list_type);
+    free(element_type);
+    return call.data;
+}
+
 static char *emit_list_int_literal(
     const char *source,
     const char *hir,
@@ -10579,6 +10668,15 @@ static char *emit_primary(
             free(carrier);
             free(name);
             return assigned.data;
+        }
+        if (
+            open < end && token_equal(source, open, "(") &&
+            strcmp(name, "stage2_list_append") == 0 &&
+            call_resolves_to_builtin(source, hir, cursor, name)
+        ) {
+            char *call = emit_record_list_append(source, hir, cursor, open);
+            free(name);
+            return call;
         }
         /*
          * #1321. The bounded mutation surface, lowered through one function.
@@ -11941,6 +12039,9 @@ static int64_t builtin_arity(const char *name) {
         {"stage2_command_operand_count", 0},
         {"stage2_command_operand_text", 1},
         {"stage2_command_stderr", 1},
+        /* #1698. The bounded record-list append takes the list and the
+         * element record it moves in. */
+        {"stage2_list_append", 2},
         /* #1667. The chunked-read surface: selecting standard input takes no
          * argument; opening a path and reading a chunk each take one. */
         {"stage2_bytes_stream_stdin", 0},
@@ -12040,6 +12141,10 @@ static const char *builtin_parameter_types(const char *name) {
         {"stage2_command_operand_count", ""},
         {"stage2_command_operand_text", "Int"},
         {"stage2_command_stderr", "Text"},
+        /* #1698. A bounded list of one declared record, then a record of
+         * that element type; the element agreement is checked where the call
+         * lowers, because a parameter row cannot name the list's element. */
+        {"stage2_list_append", "RecordList|Record"},
         /* #1667. Selecting standard input takes no argument; opening a path
          * takes a `Text`; the chunk read takes the `Bytes` carrier it fills. */
         {"stage2_bytes_stream_stdin", ""},
@@ -12130,6 +12235,18 @@ static char *builtin_argument_check(
                 matches = strcmp(actual, "Text") == 0 ||
                     strcmp(actual, "List") == 0 ||
                     strncmp(actual, "List[", 5) == 0;
+            } else if (
+                expected_length == 10 &&
+                strncmp(expected, "RecordList", expected_length) == 0
+            ) {
+                /* #1698. The capacity-128 record row, never `List[Int]`. */
+                matches = strncmp(actual, "List[", 5) == 0 &&
+                    strcmp(actual, "List[Int]") != 0;
+            } else if (
+                expected_length == 6 &&
+                strncmp(expected, "Record", expected_length) == 0
+            ) {
+                matches = record_declaration_start(source, actual) >= 0;
             } else {
                 matches =
                     strlen(actual) == expected_length &&
@@ -13554,6 +13671,7 @@ static char *validate_core_calls(const char *source, const char *hir) {
                         strcmp(name, "stage2_command_operand_count") == 0 ||
                         strcmp(name, "stage2_command_operand_text") == 0 ||
                         strcmp(name, "stage2_command_stderr") == 0 ||
+                        strcmp(name, "stage2_list_append") == 0 ||
                         bytes_family_builtin(name)
                     ) {
                         expected = builtin_expected;
@@ -13790,6 +13908,7 @@ static bool call_resolves_to_builtin(
  */
 static bool bytes_private_result_builtin(const char *name) {
     return strcmp(name, "stage2_bytes_assign_zeroed") == 0 ||
+           strcmp(name, "stage2_list_append") == 0 ||
            strcmp(name, "stage2_bytes_assign_text") == 0 ||
            (
                bytes_mutation_builtin(name) &&
@@ -18722,6 +18841,9 @@ static const char *builtin_return_type(const char *name) {
         {"stage2_command_operand_count", "Int"},
         {"stage2_command_operand_text", "Text"},
         {"stage2_command_stderr", "Int"},
+        /* #1698. Private-status like the Bytes mutations: a full list is a
+         * runtime diagnostic, so the call has no source value. */
+        {"stage2_list_append", "Void"},
         /* #1667. All three chunked-read operations report an `Int`: the open
          * status, the standard-input status, and the chunk's byte count (0 at
          * end of stream, negative for a failure the program continues past). */
@@ -25291,6 +25413,38 @@ static char *lower_body_with_workspace(
                 return value;
             }
             char *binding_type = hir_binding_field(hir, binding_id, 5);
+            /* #1698. `let headers: List[Header] = []` is the empty carrier
+             * the annotation names. A bare `[]` has no element to type, so
+             * the annotation is the only source of the record row, and an
+             * unannotated `[]` stays the `List[Int]` it always was. */
+            bool empty_record_list = false;
+            {
+                int64_t empty_close = skip_trivia(
+                    source,
+                    token_end(source, value_start)
+                );
+                if (
+                    strncmp(binding_type, "List[", 5) == 0 &&
+                    strcmp(binding_type, "List[Int]") != 0 &&
+                    token_equal(source, value_start, "[") &&
+                    token_equal(source, empty_close, "]") &&
+                    token_end(source, empty_close) == value_end
+                ) {
+                    size_t inner = strlen(binding_type) - 6;
+                    char *element = malloc(inner + 1);
+                    memcpy(element, binding_type + 5, inner);
+                    element[inner] = '\0';
+                    char *list_c_type = record_list_c_type(element);
+                    free(element);
+                    Buffer empty;
+                    buffer_init(&empty);
+                    buffer_format(&empty, "((%s){0})", list_c_type);
+                    free(list_c_type);
+                    free(value);
+                    value = empty.data;
+                    empty_record_list = true;
+                }
+            }
             /* #1315, first slice. The carrier, its frozen field order, and the
              * nine status tags are in place, but the cleanup funnel is not:
              * every `return`, every fallthrough, and every
@@ -25407,7 +25561,10 @@ static char *lower_body_with_workspace(
                 function_open,
                 value_start
             );
-            if (strcmp(actual_type, binding_type) != 0) {
+            if (
+                strcmp(actual_type, binding_type) != 0 &&
+                !empty_record_list
+            ) {
                 free(actual_type);
                 free(binding_type);
                 free(value);

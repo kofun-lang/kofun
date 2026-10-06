@@ -610,6 +610,14 @@ tests/conformance/generics/type_parameter_as_value.kofun
 tests/conformance/generics/type_parameter_limit.kofun
 tests/conformance/generics/unconstrained_type_parameter.kofun
 tests/conformance/generics/unknown_type_parameter.kofun
+tests/conformance/http-client-headers/append_index.kofun
+tests/conformance/http-client-headers/element_refused.kofun
+tests/conformance/http-client-headers/full.kofun
+tests/conformance/http-client-headers/int_list_refused.kofun
+tests/conformance/http-client-headers/lookup.kofun
+tests/conformance/http-client-headers/move.kofun
+tests/conformance/http-client-headers/over_capacity.kofun
+tests/conformance/http-client-headers/value_refused.kofun
 tests/conformance/incremental/fixtures/app.kofun
 tests/conformance/incremental/fixtures/core.kofun
 tests/conformance/incremental/fixtures/edits/app_selected_import_removed.kofun

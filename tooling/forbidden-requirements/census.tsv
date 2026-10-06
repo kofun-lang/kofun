@@ -166,6 +166,7 @@ cc	invoke	2	required-today	required	tests/conformance/discovery/sanitizer-object
 cc	invoke	5	required-today	required	tests/conformance/effects/pure-boundary/run.sh
 cc	invoke	1	required-today	required	tests/conformance/effects/pure-io/run.sh
 cc	invoke	3	required-today	required	tests/conformance/generics/run.sh
+cc	invoke	1	required-today	required	tests/conformance/http-client-headers/run.sh
 cc	invoke	4	required-today	required	tests/conformance/incremental/run.sh
 cc	invoke	3	required-today	required	tests/conformance/inference/hm-levels/run.sh
 cc	invoke	2	required-today	required	tests/conformance/int-bits/run.sh
@@ -315,6 +316,7 @@ node	invoke	1	required-today	required	tests/conformance/concurrency/ownership/ru
 node	invoke	2	required-today	required	tests/conformance/concurrency/runtime/run.sh
 node	invoke	7	required-today	required	tests/conformance/effects/pure-boundary/run.sh
 node	invoke	5	required-today	required	tests/conformance/effects/pure-io/run.sh
+node	invoke	2	required-today	required	tests/conformance/http-client-headers/run.sh
 node	invoke	3	required-today	required	tests/conformance/int-bits/run.sh
 node	invoke	1	required-today	required	tests/conformance/move-call-crossings/run.sh
 node	invoke	3	required-today	required	tests/conformance/optional-construction/run.sh
@@ -685,6 +687,7 @@ shell-build-driver	source	1	required-today	required	tests/conformance/discovery/
 shell-build-driver	source	1	required-today	required	tests/conformance/effects/pure-boundary/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/effects/pure-io/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/generics/run.sh
+shell-build-driver	source	1	required-today	required	tests/conformance/http-client-headers/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/incremental/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/inference/hm-levels/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/int-bits-lowering/check.sh
