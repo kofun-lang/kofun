@@ -49,6 +49,7 @@ concurrency-captures-direct
 concurrency-hir
 concurrency-ownership
 concurrency-places
+concurrency-runtime
 const-generics
 date-time
 decimal

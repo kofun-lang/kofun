@@ -1,0 +1,24 @@
+{
+  "schema": "kofun.scoped-parallelism-model/v1",
+  "scope": {
+    "exit_step": 6,
+    "tasks": [
+      {
+        "id": "left",
+        "spawn_step": 1,
+        "join_step": 3,
+        "captures": [{ "mode": "read", "place": { "base": "items" } }],
+        "outcome": "success",
+        "result": "125250"
+      },
+      {
+        "id": "right",
+        "spawn_step": 2,
+        "join_step": 4,
+        "captures": [{ "mode": "read", "place": { "base": "items" } }],
+        "outcome": "success",
+        "result": "375250"
+      }
+    ]
+  }
+}

@@ -688,6 +688,11 @@ tasks:
     cmds:
       - "sh tests/conformance/concurrency/ownership/run.sh"
 
+  concurrency-runtime:
+    desc: "Verify the scoped-parallel scheduler, scope-exit drain, and panic precedence under ThreadSanitizer"
+    cmds:
+      - "sh tests/conformance/concurrency/runtime/run.sh"
+
   concurrency-capture-contract:
     desc: "Verify the versioned scoped-capture HIR, KSE2, and sidecar contract"
     cmds:
@@ -1682,6 +1687,7 @@ tasks:
             concurrency-captures \
             concurrency-capture-events \
             concurrency-ownership \
+            concurrency-runtime \
             schedule-trace \
             type-reduction-trace \
             affine-resumption \

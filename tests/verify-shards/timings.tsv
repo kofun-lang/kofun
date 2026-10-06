@@ -39,6 +39,7 @@ concurrency-captures-direct	364662996101
 concurrency-hir	91548305762
 concurrency-ownership	53059697978
 concurrency-places	63542086200
+concurrency-runtime	2350672171
 const-generics	30518574833
 date-time	25239143095
 decimal	24384825879
