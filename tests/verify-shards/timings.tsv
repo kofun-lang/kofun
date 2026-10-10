@@ -59,6 +59,7 @@ extern-c	5156901017
 forbidden-requirements-census	27099432729
 fuzz	112308475892
 gate-reachability	264284279
+generic-record-hir	103059844
 generics	4498414757
 hm-levels	6275418914
 http	2220581373

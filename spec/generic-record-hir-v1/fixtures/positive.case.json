@@ -1,0 +1,42 @@
+{
+  "logical_path": "examples/generic_record.kofun",
+  "declarations": [
+    {
+      "name": "First",
+      "id": "1111111111111111111111111111111111111111111111111111111111111111",
+      "binders": ["T"],
+      "fields": [
+        { "name": "inner", "type": { "nominal": "Second", "arguments": [{ "parameter": "T" }] } }
+      ],
+      "applications": [{ "arguments": [{ "primitive": "Int" }] }]
+    },
+    {
+      "name": "Second",
+      "id": "2222222222222222222222222222222222222222222222222222222222222222",
+      "binders": ["U"],
+      "fields": [{ "name": "value", "type": { "parameter": "U" } }],
+      "applications": [{ "arguments": [{ "primitive": "Text" }] }]
+    },
+    {
+      "name": "Box",
+      "id": "3333333333333333333333333333333333333333333333333333333333333333",
+      "binders": ["T"],
+      "fields": [{ "name": "value", "type": { "parameter": "T" } }],
+      "applications": [
+        { "arguments": [{ "primitive": "Int" }] },
+        { "arguments": [{ "primitive": "Bool" }] },
+        { "arguments": [{ "nominal": "Box", "arguments": [{ "primitive": "Int" }] }] }
+      ]
+    },
+    {
+      "name": "Pair",
+      "id": "4444444444444444444444444444444444444444444444444444444444444444",
+      "binders": ["T", "U"],
+      "fields": [
+        { "name": "left", "type": { "parameter": "T" } },
+        { "name": "right", "type": { "parameter": "U" } }
+      ],
+      "applications": [{ "arguments": [{ "primitive": "Int" }, { "primitive": "Bool" }] }]
+    }
+  ]
+}

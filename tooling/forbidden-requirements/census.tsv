@@ -284,6 +284,7 @@ node	invoke	13	required-today	required	spec/concurrency/schedule-trace/check.sh
 node	invoke	4	required-today	optional	spec/concurrency/scoped-captures-v1/check.sh
 node	invoke	4	required-today	optional	spec/concurrency/scoped-parallelism-v1/check.sh
 node	invoke	4	required-today	required	spec/effects/affine-resumption/check.sh
+node	invoke	4	required-today	required	spec/generic-record-hir-v1/check.sh
 node	invoke	1	required-today	required	spec/kif-generics-v1/check.sh
 node	invoke	1	required-today	required	spec/native-toolchain-v1/check.sh
 node	invoke	9	required-today	required	spec/reuse-candidate-v1/check.sh
@@ -391,6 +392,8 @@ node	source	1	required-today	required	spec/concurrency/scoped-parallelism-v1/che
 node	source	1	required-today	required	spec/concurrency/scoped-parallelism-v1/model.mjs
 node	source	1	required-today	required	spec/decision-profiles-v1/check.mjs
 node	source	1	required-today	required	spec/effects/affine-resumption/model.mjs
+node	source	1	required-today	required	spec/generic-record-hir-v1/check.mjs
+node	source	1	required-today	required	spec/generic-record-hir-v1/model.mjs
 node	source	1	required-today	required	spec/kif-generics-v1/check.mjs
 node	source	1	required-today	required	spec/kif-generics-v1/fixture.mjs
 node	source	1	required-today	required	spec/kif-generics-v1/model.mjs
@@ -598,6 +601,7 @@ shell-build-driver	source	1	required-today	required	spec/concurrency/schedule-tr
 shell-build-driver	source	1	required-today	required	spec/concurrency/scoped-captures-v1/check.sh
 shell-build-driver	source	1	required-today	required	spec/concurrency/scoped-parallelism-v1/check.sh
 shell-build-driver	source	1	required-today	required	spec/effects/affine-resumption/check.sh
+shell-build-driver	source	1	required-today	required	spec/generic-record-hir-v1/check.sh
 shell-build-driver	source	1	required-today	required	spec/kif-generics-v1/check.sh
 shell-build-driver	source	1	required-today	required	spec/module-identity/check.sh
 shell-build-driver	source	1	required-today	required	spec/namespaces/check.sh

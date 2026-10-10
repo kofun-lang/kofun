@@ -114,6 +114,19 @@ executable bootstrap implementation.
   links, phase/order, bounds, privacy, typed-sidecar v2 `captures[]`, and the
   exact v1 contract bytes. It does not change the 46-row selfhost profile,
   accept `par`, or claim compiler, codec, runtime, or backend implementation.
+- `generic-record-hir-v1.md`, its closed JSON schema
+  `kofun.generic-record-hir.v1.schema.json`, independent `model.mjs` oracle, and
+  canonical positive golden freeze the generic-record analysis document for
+  issue #1674: record binders, canonical `TypeRef`s, derived `TypeParameterId`
+  and `ConstructedTypeId` under the #303 frame and the KIF v3 domains
+  (`kofun.id.type-parameter/v3`, `kofun.id.constructed-type/v3`), capture-
+  avoiding substitution, the parameter/instantiation/depth limits, and the
+  direct/mutual by-value cycle refusals. `task generic-record-hir` recomputes
+  every identity from its preimage and checks the limits and refusals. It is the
+  contract only: the compiler entry `--emit-generic-record-hir` that must
+  reproduce these goldens lands in the following slice, ordinary compilation
+  keeps refusing generic records (`E2S148`), and no C, KIF, or capability is
+  claimed here.
 - `concurrency/schedule-trace-v1.md` is the accepted deterministic testing
   contract for issue #736: stable scope/task identities, the canonical
   `kofun.schedule-trace/v1` and `kofun.schedule-witness/v1` bytes, FIFO, seeded,

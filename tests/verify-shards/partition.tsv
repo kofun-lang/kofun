@@ -26,7 +26,7 @@ assertions	2
 atomic-publish-if-absent-decision	3
 atomic-write-authority-contract	3
 audited-claim	3
-authority-affine-state	2
+authority-affine-state	3
 authority-structural-kind	1
 authority-type-carrier	2
 backlog	2
@@ -73,6 +73,7 @@ extern-c	1
 forbidden-requirements-census	1
 fuzz	1
 gate-reachability	1
+generic-record-hir	1
 generics	2
 hm-levels	1
 http	3
@@ -110,7 +111,7 @@ optional-narrowing	3
 optional-pair	3
 optional-tool-skips	3
 ownership-view	2
-package-roots	1
+package-roots	2
 packages	1
 patterns	3
 process-capture-carrier-decision	2
@@ -184,7 +185,7 @@ verify-shards	2
 visibility-access	2
 visibility-api-leaks	1
 visibility-filtering	3
-visibility-spec	3
+visibility-spec	2
 visibility-syntax	2
 wasi-command-backend-shell	2
 wasi-command-memory	3

@@ -276,6 +276,16 @@ tasks:
     cmds:
       - "sh tests/conformance/const-generics/run.sh"
 
+  # The generic-record HIR v1 contract (#1674). Producer-independent: the
+  # oracle recomputes every TypeParameterId and ConstructedTypeId from its
+  # preimage with the #303 frame and checks the canonical document, the
+  # substituted fields, the limits, and the refusals. The compiler entry that
+  # must reproduce these goldens lands next and joins this gate then.
+  generic-record-hir:
+    desc: "Verify the generic-record HIR v1 identities, limits, and refusals"
+    cmds:
+      - "sh spec/generic-record-hir-v1/check.sh"
+
   hm-levels:
     desc: "Verify bounded Algorithm J inference for local lambdas"
     cmds:
@@ -1603,6 +1613,7 @@ tasks:
             aggregate-bridge \
             generics \
             const-generics \
+            generic-record-hir \
             hm-levels \
             effect-inference \
             pure-boundary \

@@ -69,6 +69,7 @@ extern-c
 forbidden-requirements-census
 fuzz
 gate-reachability
+generic-record-hir
 generics
 hm-levels
 http
