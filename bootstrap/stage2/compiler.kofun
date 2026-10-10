@@ -30454,6 +30454,817 @@ fn scoped_hir_hash_frame(domain: Text, first: Text, second: Text, third: Text, f
 
 # ---------------------------------------------------------------- End scoped identity framing
 
+# ===== Generic-record HIR v1 analysis document (#1674) =====
+#
+# The canonical half of the production generic-record HIR entry. It parses the
+# bounded record surface, derives every TypeParameterId and ConstructedTypeId
+# from its #1673 preimage with the #303 frame, substitutes applications, and
+# classifies by-value cycles. The document is checked byte for byte against the
+# independent oracle in spec/generic-record-hir-v1/. Ordinary compilation is
+# unchanged: a generic record is still refused with E2S148.
+
+fn generic_record_refusal(code: Text, message: Text, at: Int) -> Text {
+    return "error[" + code + "]: " + message + " at byte " + to_text(at)
+}
+
+fn generic_record_primitive(name: Text) -> Bool {
+    return name == "Int" || name == "Bool" || name == "Text" || name == "Unit"
+}
+
+fn generic_record_primitive_id(name: Text) -> Text {
+    return scoped_hir_hash_frame(
+        "kofun.id.primitive/v1",
+        scoped_hir_text_hex(name),
+        "",
+        "",
+        ""
+    )
+}
+
+fn generic_record_parameter_id(owner: Text, ordinal: Int) -> Text {
+    return scoped_hir_hash_frame(
+        "kofun.id.type-parameter/v3",
+        owner,
+        "01" + scoped_hir_hex(ordinal, 4),
+        "",
+        ""
+    )
+}
+
+fn generic_record_lines(text: Text) -> Int {
+    if len(text) == 0 {
+        return 0
+    }
+    let mut count = 1
+    let mut at = 0
+    while at < len(text) {
+        if text_slice(text, at, at + 1) == "\n" {
+            count = count + 1
+        }
+        at = at + 1
+    }
+    return count
+}
+
+fn generic_record_line(text: Text, wanted: Int) -> Text {
+    let mut index = 0
+    let mut start = 0
+    let mut at = 0
+    while at <= len(text) {
+        if at == len(text) || text_slice(text, at, at + 1) == "\n" {
+            if index == wanted {
+                return text_slice(text, start, at)
+            }
+            index = index + 1
+            start = at + 1
+        }
+        at = at + 1
+    }
+    return ""
+}
+
+fn generic_record_comma_join(text: Text) -> Text {
+    let mut out = ""
+    let mut at = 0
+    while at < len(text) {
+        if text_slice(text, at, at + 1) == "\n" {
+            out = out + ","
+        } else {
+            out = out + text_slice(text, at, at + 1)
+        }
+        at = at + 1
+    }
+    return out
+}
+
+fn generic_record_comma_count(names: Text) -> Int {
+    if len(names) == 0 {
+        return 0
+    }
+    let mut count = 0
+    let mut at = 0
+    while at < len(names) {
+        if text_slice(names, at, at + 1) == "," {
+            count = count + 1
+        }
+        at = at + 1
+    }
+    return count + 1
+}
+
+fn generic_record_has_binder(names: Text, name: Text) -> Bool {
+    if len(names) == 0 {
+        return false
+    }
+    return contains("," + names + ",", "," + name + ",")
+}
+
+fn generic_record_binder_ordinal(names: Text, name: Text) -> Int {
+    if len(names) == 0 {
+        return -1
+    }
+    let mut index = 0
+    let mut start = 0
+    let mut at = 0
+    while at <= len(names) {
+        if at == len(names) || text_slice(names, at, at + 1) == "," {
+            if text_slice(names, start, at) == name {
+                return index
+            }
+            index = index + 1
+            start = at + 1
+        }
+        at = at + 1
+    }
+    return -1
+}
+
+# "" for a record with no ordinary type parameters, the comma list otherwise, or
+# an `error[...]`. A const-only parameter list is out of this analysis's scope
+# and reads as no ordinary binder.
+fn generic_record_binder_names(source: Text, decl: Int) -> Text {
+    let bracket = type_parameter_open(source, decl)
+    if bracket < 0 {
+        return ""
+    }
+    let close = balanced_end(source, bracket, "[", "]")
+    if close < 0 {
+        return generic_record_refusal("E2S202", "unterminated type parameter list", bracket)
+    }
+    let first = skip_trivia(source, token_end(source, bracket))
+    if first < len(source) && token_text(source, first) == "const" {
+        return ""
+    }
+    let mut names = ""
+    let mut count = 0
+    let mut cursor = first
+    while cursor < close {
+        if token_text(source, cursor) == "]" {
+            return names
+        }
+        if token_text(source, cursor) == "const" {
+            return generic_record_refusal("E2S202", "unsupported type parameter kind", cursor)
+        }
+        if token_kind(source, cursor) != "identifier" {
+            return generic_record_refusal("E2S202", "unsupported type parameter", cursor)
+        }
+        let name = token_text(source, cursor)
+        count = count + 1
+        if count > 2 {
+            return generic_record_refusal("E2S192", "a record declares more than two type parameters", cursor)
+        }
+        if generic_record_has_binder(names, name) {
+            return generic_record_refusal("E2S193", "duplicate type parameter `" + name + "`", cursor)
+        }
+        if count > 1 {
+            names = names + ","
+        }
+        names = names + name
+        cursor = skip_trivia(source, token_end(source, cursor))
+        if cursor < close && token_text(source, cursor) == "," {
+            cursor = skip_trivia(source, token_end(source, cursor))
+        }
+    }
+    return names
+}
+
+fn generic_record_declaration(source: Text, name: Text) -> Int {
+    if len(name) == 0 {
+        return -1
+    }
+    let mut cursor = after_optional_module_header(source, 0)
+    while cursor < len(source) {
+        let start = type_declaration_start(source, cursor)
+        if start >= 0 && record_declaration_at(source, start) &&
+           type_name(source, start) == name {
+            return start
+        }
+        let end = top_level_end(source, cursor)
+        if end <= cursor {
+            return -1
+        }
+        cursor = skip_trivia(source, end)
+    }
+    return -1
+}
+
+fn generic_record_declarations(source: Text) -> Text {
+    let mut out = ""
+    let mut cursor = after_optional_module_header(source, 0)
+    while cursor < len(source) {
+        let start = type_declaration_start(source, cursor)
+        if start >= 0 && record_declaration_at(source, start) {
+            let names = generic_record_binder_names(source, start)
+            if starts_with(names, "error[") {
+                return names
+            }
+            if generic_record_comma_count(names) > 0 {
+                if len(out) > 0 {
+                    out = out + "\n"
+                }
+                out = out + type_name(source, start)
+            }
+        }
+        let end = top_level_end(source, cursor)
+        if end <= cursor {
+            return generic_record_refusal("E2S201", "malformed source", cursor)
+        }
+        cursor = skip_trivia(source, end)
+    }
+    return out
+}
+
+fn generic_record_type_id(path: Text, name: Text) -> Text {
+    return checked_place_type_id(path, name)
+}
+
+fn generic_record_constructed_id(owner: Text, hexes: Text) -> Text {
+    let count = generic_record_lines(hexes)
+    let mut payload = owner + scoped_hir_hex(count, 4)
+    let mut index = 0
+    while index < count {
+        payload = payload + generic_record_line(hexes, index)
+        index = index + 1
+    }
+    return scoped_hir_hash_frame(
+        "kofun.id.constructed-type/v3",
+        payload,
+        "",
+        "",
+        ""
+    )
+}
+
+fn generic_record_type_end(source: Text, at: Int, limit: Int) -> Int {
+    let after = skip_trivia(source, token_end(source, at))
+    if after < limit && token_text(source, after) == "[" {
+        return balanced_end(source, after, "[", "]")
+    }
+    return token_end(source, at)
+}
+
+# A TypeRef as "json\nhex", or "error[...]". `args_json`/`args_hex` are the
+# newline rows of a substituting application; empty means no substitution, so a
+# parameter leaf becomes its own TypeParameterId.
+fn generic_record_type(
+    source: Text,
+    at: Int,
+    limit: Int,
+    names: Text,
+    owner: Text,
+    path: Text,
+    args_json: Text,
+    args_hex: Text,
+    depth: Int
+) -> Text {
+    if depth > 8 {
+        return generic_record_refusal("E2S198", "constructed TypeRef depth above eight", at)
+    }
+    if at < 0 || at >= limit {
+        return generic_record_refusal("E2S201", "unsupported field type", at)
+    }
+    let token = token_text(source, at)
+    if generic_record_primitive(token) {
+        let id = generic_record_primitive_id(token)
+        return "{\"id\":\"" + id + "\",\"tag\":\"primitive\"}\n" + "01" + id
+    }
+    let ordinal = generic_record_binder_ordinal(names, token)
+    if ordinal >= 0 {
+        if len(args_json) > 0 {
+            return generic_record_line(args_json, ordinal) + "\n" +
+            generic_record_line(args_hex, ordinal)
+        }
+        let id = generic_record_parameter_id(owner, ordinal)
+        return "{\"id\":\"" + id + "\",\"tag\":\"parameter\"}\n" + "02" + id
+    }
+    let after = skip_trivia(source, token_end(source, at))
+    if token_kind(source, at) == "identifier" &&
+       after < limit && token_text(source, after) == "[" {
+        let target = generic_record_declaration(source, token)
+        if target < 0 {
+            return generic_record_refusal("E2S196", "unknown nominal type `" + token + "`", at)
+        }
+        let close = balanced_end(source, after, "[", "]")
+        if close < 0 {
+            return generic_record_refusal("E2S201", "unterminated type arguments", after)
+        }
+        let child_limit = close - 1
+        let mut cursor = skip_trivia(source, token_end(source, after))
+        let mut jsons = ""
+        let mut hexes = ""
+        let mut count = 0
+        while cursor < child_limit && token_text(source, cursor) != "]" {
+            let child = generic_record_type(
+                source,
+                cursor,
+                child_limit,
+                names,
+                owner,
+                path,
+                args_json,
+                args_hex,
+                depth + 1
+            )
+            if starts_with(child, "error[") {
+                return child
+            }
+            if count > 0 {
+                jsons = jsons + "\n"
+                hexes = hexes + "\n"
+            }
+            jsons = jsons + generic_record_line(child, 0)
+            hexes = hexes + generic_record_line(child, 1)
+            count = count + 1
+            let child_end = generic_record_type_end(source, cursor, child_limit)
+            if child_end <= cursor {
+                return generic_record_refusal("E2S201", "malformed type argument", cursor)
+            }
+            cursor = skip_trivia(source, child_end)
+            if cursor < child_limit && token_text(source, cursor) == "," {
+                cursor = skip_trivia(source, token_end(source, cursor))
+            }
+        }
+        let target_names = generic_record_binder_names(source, target)
+        if starts_with(target_names, "error[") {
+            return target_names
+        }
+        let wanted = generic_record_comma_count(target_names)
+        if count != wanted {
+            return generic_record_refusal(
+                "E2S195",
+                "`" + token + "` expects " + to_text(wanted) +
+                " arguments, got " + to_text(count),
+                at
+            )
+        }
+        let tid = generic_record_type_id(path, token)
+        return "{\"arguments\":[" + generic_record_comma_join(jsons) + "],\"id\":\"" + tid +
+        "\",\"tag\":\"nominal\"}\n" + "03" + tid + scoped_hir_hex(count, 4) + hexes
+    }
+    if token_kind(source, at) == "identifier" {
+        let target = generic_record_declaration(source, token)
+        if target >= 0 {
+            let target_names = generic_record_binder_names(source, target)
+            let wanted = generic_record_comma_count(target_names)
+            if wanted != 0 {
+                return generic_record_refusal(
+                    "E2S195",
+                    "`" + token + "` expects " + to_text(wanted) + " arguments, got 0",
+                    at
+                )
+            }
+            let tid = generic_record_type_id(path, token)
+            return "{\"arguments\":[],\"id\":\"" + tid +
+            "\",\"tag\":\"nominal\"}\n" + "03" + tid + scoped_hir_hex(0, 4)
+        }
+        return generic_record_refusal("E2S194", "unbound type parameter `" + token + "`", at)
+    }
+    return generic_record_refusal("E2S201", "unsupported field type", at)
+}
+
+fn generic_record_fields_json(
+    source: Text,
+    decl: Int,
+    path: Text,
+    args_json: Text,
+    args_hex: Text
+) -> Text {
+    let equals = type_equals_token(source, decl)
+    if equals < 0 {
+        return generic_record_refusal("E2S201", "malformed record", decl)
+    }
+    let open = skip_trivia(source, token_end(source, equals))
+    let close = balanced_end(source, open, "{", "}")
+    if close < 0 {
+        return generic_record_refusal("E2S201", "unterminated record body", open)
+    }
+    let names = generic_record_binder_names(source, decl)
+    if starts_with(names, "error[") {
+        return names
+    }
+    let owner = generic_record_type_id(path, type_name(source, decl))
+    let limit = close - 1
+    let mut out = ""
+    let mut count = 0
+    let mut cursor = skip_trivia(source, token_end(source, open))
+    while cursor < limit {
+        if token_kind(source, cursor) != "identifier" {
+            return generic_record_refusal("E2S201", "malformed field", cursor)
+        }
+        let field = token_text(source, cursor)
+        let colon = skip_trivia(source, token_end(source, cursor))
+        if token_text(source, colon) != ":" {
+            return generic_record_refusal("E2S201", "field needs a type", colon)
+        }
+        let type_at = skip_trivia(source, token_end(source, colon))
+        if count >= 256 {
+            return generic_record_refusal("E2S201", "a record declares more than 256 fields", type_at)
+        }
+        let ref = generic_record_type(
+            source, type_at, limit, names, owner, path, args_json, args_hex, 0
+        )
+        if starts_with(ref, "error[") {
+            return ref
+        }
+        if count > 0 {
+            out = out + ","
+        }
+        out = out + "{\"name\":\"" + field + "\",\"type\":" +
+        generic_record_line(ref, 0) + "}"
+        count = count + 1
+        let type_end = generic_record_type_end(source, type_at, limit)
+        if type_end <= type_at {
+            return generic_record_refusal("E2S201", "malformed field type", type_at)
+        }
+        cursor = skip_trivia(source, type_end)
+        if cursor < limit && token_text(source, cursor) == "," {
+            cursor = skip_trivia(source, token_end(source, cursor))
+        }
+    }
+    return "[" + out + "]"
+}
+
+fn generic_record_binders_json(source: Text, decl: Int, path: Text) -> Text {
+    let names = generic_record_binder_names(source, decl)
+    if starts_with(names, "error[") {
+        return names
+    }
+    let owner = generic_record_type_id(path, type_name(source, decl))
+    let count = generic_record_comma_count(names)
+    let mut out = ""
+    let mut index = 0
+    while index < count {
+        if index > 0 {
+            out = out + ","
+        }
+        out = out + "{\"id\":\"" + generic_record_parameter_id(owner, index) +
+        "\",\"kind\":\"type\",\"ordinal\":" + to_text(index) + "}"
+        index = index + 1
+    }
+    return "[" + out + "]"
+}
+
+# One application's JSON, or "" when the arguments are not concrete or the
+# tuple is already recorded in `rows`.
+fn generic_record_application(
+    source: Text,
+    name: Text,
+    decl: Int,
+    args_start: Int,
+    args_limit: Int,
+    path: Text,
+    rows: Text
+) -> Text {
+    let names = generic_record_binder_names(source, decl)
+    if starts_with(names, "error[") {
+        return names
+    }
+    let wanted = generic_record_comma_count(names)
+    let mut cursor = skip_trivia(source, args_start)
+    let mut jsons = ""
+    let mut hexes = ""
+    let mut count = 0
+    while cursor < args_limit && token_text(source, cursor) != "]" {
+        let child = generic_record_type(source, cursor, args_limit, "", "", path, "", "", 0)
+        if starts_with(child, "error[") {
+            if starts_with(child, "error[E2S194]") {
+                return ""
+            }
+            return child
+        }
+        if count > 0 {
+            jsons = jsons + "\n"
+            hexes = hexes + "\n"
+        }
+        jsons = jsons + generic_record_line(child, 0)
+        hexes = hexes + generic_record_line(child, 1)
+        count = count + 1
+        let child_end = generic_record_type_end(source, cursor, args_limit)
+        if child_end <= cursor {
+            return ""
+        }
+        cursor = skip_trivia(source, child_end)
+        if cursor < args_limit && token_text(source, cursor) == "," {
+            cursor = skip_trivia(source, token_end(source, cursor))
+        }
+    }
+    if count != wanted {
+        return generic_record_refusal(
+            "E2S195",
+            "`" + name + "` expects " + to_text(wanted) +
+            " arguments, got " + to_text(count),
+            args_start
+        )
+    }
+    if count == 0 {
+        return ""
+    }
+    let owner = generic_record_type_id(path, name)
+    let id = generic_record_constructed_id(owner, hexes)
+    let fields = generic_record_fields_json(source, decl, path, jsons, hexes)
+    if starts_with(fields, "error[") {
+        return fields
+    }
+    let app = "{\"arguments\":[" + generic_record_comma_join(jsons) + "],\"fields\":" + fields +
+    ",\"id\":\"" + id + "\"}"
+    if contains(rows, name + "\t" + app) {
+        return ""
+    }
+    return app
+}
+
+fn generic_record_applications(source: Text, path: Text) -> Text {
+    let mut rows = ""
+    let mut cursor = after_optional_module_header(source, 0)
+    while cursor < len(source) {
+        let token = token_text(source, cursor)
+        let after = skip_trivia(source, token_end(source, cursor))
+        if token_kind(source, cursor) == "identifier" &&
+           after < len(source) && token_text(source, after) == "[" {
+            let decl = generic_record_declaration(source, token)
+            if decl >= 0 {
+                let names = generic_record_binder_names(source, decl)
+                if !starts_with(names, "error[") &&
+                   generic_record_comma_count(names) > 0 {
+                    let close = balanced_end(source, after, "[", "]")
+                    if close >= 0 {
+                        let app = generic_record_application(
+                            source, token, decl, token_end(source, after),
+                            close - 1, path, rows
+                        )
+                        if starts_with(app, "error[") {
+                            return app
+                        }
+                        if len(app) > 0 {
+                            if len(rows) > 0 {
+                                rows = rows + "\n"
+                            }
+                            rows = rows + token + "\t" + app
+                        }
+                    }
+                }
+            }
+        }
+        let end = token_end(source, cursor)
+        if end <= cursor {
+            return generic_record_refusal("E2S201", "malformed source", cursor)
+        }
+        cursor = skip_trivia(source, end)
+    }
+    return rows
+}
+
+fn generic_record_applications_json(apps: Text, name: Text, decl: Int) -> Text {
+    let total = generic_record_lines(apps)
+    let mut out = ""
+    let mut found = 0
+    let mut index = 0
+    while index < total {
+        let row = generic_record_line(apps, index)
+        let tab = find(row, "\t")
+        if tab >= 0 && text_slice(row, 0, tab) == name {
+            if found > 0 {
+                out = out + ","
+            }
+            out = out + text_slice(row, tab + 1, len(row))
+            found = found + 1
+            if found > 8 {
+                return generic_record_refusal(
+                    "E2S197",
+                    "`" + name + "` has more than 8 instantiations",
+                    decl
+                )
+            }
+        }
+        index = index + 1
+    }
+    return "[" + out + "]"
+}
+
+# Nominal target names of a type, one per line. Duplicates are harmless: the
+# cycle walk re-explores and is bounded by depth.
+fn generic_record_nominals(
+    source: Text,
+    at: Int,
+    limit: Int,
+    names: Text,
+    out: Text
+) -> Text {
+    let token = token_text(source, at)
+    if generic_record_primitive(token) {
+        return out
+    }
+    if generic_record_binder_ordinal(names, token) >= 0 {
+        return out
+    }
+    let after = skip_trivia(source, token_end(source, at))
+    if token_kind(source, at) == "identifier" &&
+       after < limit && token_text(source, after) == "[" {
+        let mut next = out
+        if len(next) > 0 {
+            next = next + "\n"
+        }
+        next = next + token
+        let close = balanced_end(source, after, "[", "]")
+        if close < 0 {
+            return next
+        }
+        let child_limit = close - 1
+        let mut cursor = skip_trivia(source, token_end(source, after))
+        while cursor < child_limit && token_text(source, cursor) != "]" {
+            next = generic_record_nominals(source, cursor, child_limit, names, next)
+            let child_end = generic_record_type_end(source, cursor, child_limit)
+            if child_end <= cursor {
+                return next
+            }
+            cursor = skip_trivia(source, child_end)
+            if cursor < child_limit && token_text(source, cursor) == "," {
+                cursor = skip_trivia(source, token_end(source, cursor))
+            }
+        }
+        return next
+    }
+    return out
+}
+
+fn generic_record_nominals_of(source: Text, decl: Int) -> Text {
+    let names = generic_record_binder_names(source, decl)
+    if starts_with(names, "error[") {
+        return names
+    }
+    let equals = type_equals_token(source, decl)
+    let open = skip_trivia(source, token_end(source, equals))
+    let close = balanced_end(source, open, "{", "}")
+    if close < 0 {
+        return generic_record_refusal("E2S201", "unterminated record body", open)
+    }
+    let limit = close - 1
+    let mut out = ""
+    let mut cursor = skip_trivia(source, token_end(source, open))
+    while cursor < limit {
+        let colon = skip_trivia(source, token_end(source, cursor))
+        let type_at = skip_trivia(source, token_end(source, colon))
+        out = generic_record_nominals(source, type_at, limit, names, out)
+        let type_end = generic_record_type_end(source, type_at, limit)
+        if type_end <= type_at {
+            return generic_record_refusal("E2S201", "malformed field type", type_at)
+        }
+        cursor = skip_trivia(source, type_end)
+        if cursor < limit && token_text(source, cursor) == "," {
+            cursor = skip_trivia(source, token_end(source, cursor))
+        }
+    }
+    return out
+}
+
+fn generic_record_cycle_visit(source: Text, name: Text, stack: Text, depth: Int) -> Text {
+    if depth > 64 {
+        return ""
+    }
+    let decl = generic_record_declaration(source, name)
+    if decl < 0 {
+        return ""
+    }
+    let targets = generic_record_nominals_of(source, decl)
+    if starts_with(targets, "error[") {
+        return targets
+    }
+    let count = generic_record_lines(targets)
+    let mut index = 0
+    while index < count {
+        let target = generic_record_line(targets, index)
+        if target == name {
+            return generic_record_refusal("E2S199", "`" + name + "` holds itself by value", decl)
+        }
+        if contains(stack, "|" + target + "|") {
+            return generic_record_refusal(
+                "E2S200",
+                "mutual by-value cycle through `" + name + "` and `" + target + "`",
+                decl
+            )
+        }
+        let deeper = generic_record_cycle_visit(source, target, stack + "|" + target + "|", depth + 1)
+        if len(deeper) > 0 {
+            return deeper
+        }
+        index = index + 1
+    }
+    return ""
+}
+
+fn generic_record_cycle(source: Text) -> Text {
+    let decls = generic_record_declarations(source)
+    if starts_with(decls, "error[") {
+        return decls
+    }
+    let count = generic_record_lines(decls)
+    let mut index = 0
+    while index < count {
+        let name = generic_record_line(decls, index)
+        let deeper = generic_record_cycle_visit(source, name, "|" + name + "|", 0)
+        if len(deeper) > 0 {
+            return deeper
+        }
+        index = index + 1
+    }
+    return ""
+}
+
+fn generic_record_limits_json() -> Text {
+    return "{\"binders_per_declaration\":2,\"constructed_depth\":8," +
+    "\"declarations\":64,\"display_bytes\":128,\"document_bytes\":1048576," +
+    "\"field_name_bytes\":65535,\"fields_per_declaration\":256," +
+    "\"instantiations_per_declaration\":8}"
+}
+
+fn generic_record_document(source: Text, path: Text) -> Text {
+    let decls = generic_record_declarations(source)
+    if starts_with(decls, "error[") {
+        return decls
+    }
+    let count = generic_record_lines(decls)
+    if count > 64 {
+        return generic_record_refusal("E2S201", "more than 64 declarations", 0)
+    }
+    let cycle = generic_record_cycle(source)
+    if len(cycle) > 0 {
+        return cycle
+    }
+    # Field materialization precedes application discovery so a too-deep or
+    # ill-formed field refuses with its own code before discovery can trip a
+    # different limit on the same bytes.
+    let mut check = 0
+    while check < count {
+        let check_decl = generic_record_declaration(source, generic_record_line(decls, check))
+        let check_fields = generic_record_fields_json(source, check_decl, path, "", "")
+        if starts_with(check_fields, "error[") {
+            return check_fields
+        }
+        check = check + 1
+    }
+    let apps = generic_record_applications(source, path)
+    if starts_with(apps, "error[") {
+        return apps
+    }
+    let mut rendered = ""
+    let mut index = 0
+    while index < count {
+        let name = generic_record_line(decls, index)
+        let decl = generic_record_declaration(source, name)
+        let binders = generic_record_binders_json(source, decl, path)
+        if starts_with(binders, "error[") {
+            return binders
+        }
+        let fields = generic_record_fields_json(source, decl, path, "", "")
+        if starts_with(fields, "error[") {
+            return fields
+        }
+        let applications = generic_record_applications_json(apps, name, decl)
+        if starts_with(applications, "error[") {
+            return applications
+        }
+        if index > 0 {
+            rendered = rendered + ","
+        }
+        rendered = rendered + "{\"applications\":" + applications +
+        ",\"binders\":" + binders + ",\"fields\":" + fields +
+        ",\"id\":\"" + generic_record_type_id(path, name) +
+        "\",\"kind\":\"record\",\"name\":\"" + name + "\"}"
+        index = index + 1
+    }
+    let document = "{\"declarations\":[" + rendered + "],\"file_id\":\"" +
+    scoped_hir_file_id(path) + "\",\"limits\":" + generic_record_limits_json() +
+    ",\"profile\":\"kofun.stage2-analysis/generic-record/v1\"," +
+    "\"schema\":\"kofun.generic-record-hir/v1\"}\n"
+    if len(document) > 1048576 {
+        return generic_record_refusal("E2S201", "document exceeds 1048576 bytes", 0)
+    }
+    return document
+}
+
+fn emit_generic_record_hir_file(input: Text, output: Text, logical_path: Text) -> Bool {
+    if stage2_same_file(input, output) == 1 {
+        print("error[E2S201]: generic-record HIR input and output must be distinct")
+        return false
+    }
+    if !scoped_hir_logical_path(logical_path) {
+        print("error[E2S201]: generic-record HIR logical path must be canonical relative UTF-8 (1..4096 bytes)")
+        return false
+    }
+    let source = read_text(input)
+    if len(source) > 4294967295 {
+        print("error[E2S201]: generic-record HIR source span exceeds u32")
+        return false
+    }
+    let document = generic_record_document(source, logical_path)
+    if starts_with(document, "error[") {
+        print(document)
+        return false
+    }
+    write_text(output, document)
+    return true
+}
+
 # ---------------------------------------------------------------- SHA-256
 #
 # RFC-0013 step 4 prerequisite (#1382). Every identity this compiler assigns —
@@ -30858,6 +31669,12 @@ fn main() -> Int {
         }
         return 0
     }
+    if len(arguments) == 4 && arguments[0] == "--emit-generic-record-hir" {
+        if !emit_generic_record_hir_file(arguments[1], arguments[2], arguments[3]) {
+            return 1
+        }
+        return 0
+    }
     if len(arguments) == 3 && arguments[0] == "--emit-scope-hir" {
         if !emit_scope_hir_file(arguments[1], arguments[2]) {
             return 1
@@ -30889,6 +31706,7 @@ fn main() -> Int {
             "       kofun-stage2 --parse-patterns INPUT.kofun OUTPUT.patterns\n" +
             "       kofun-stage2 --emit-scope-hir INPUT.kofun OUTPUT.scope-hir\n" +
             "       kofun-stage2 --emit-scope-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n" +
+            "       kofun-stage2 --emit-generic-record-hir INPUT.kofun OUTPUT.json LOGICAL-PATH\n" +
             "       kofun-stage2 --emit-capture-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n" +
             "       kofun-stage2 --emit-complete-capture-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n" +
             "       kofun-stage2 --check-scoped-ownership INPUT.kofun OUTPUT.json LOGICAL-PATH\n" +

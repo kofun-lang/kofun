@@ -79,7 +79,7 @@ if (fs.existsSync(goldenPath)) {
     fail("positive golden", `missing ${goldenPath}`);
 }
 
-validateDocument(JSON.parse(goldenText));
+validateDocument(JSON.parse(goldenText), positive.logical_path);
 pass(`every derived identity recomputes from its preimage and the limits hold`);
 if (Buffer.byteLength(goldenText) > LIMITS.document_bytes) {
     fail("document bytes", "over the limit");
@@ -142,12 +142,16 @@ if (canonicalJson(buildDocument(renamed)) !== canonicalJson(document)) {
     pass("renaming a binder does not change any derived identity");
 }
 
-/* A preimage mutation moves the identity. */
+/* A preimage mutation moves the identity: renaming the declaration changes the
+ * derived TypeId, and both TypeParameterId and ConstructedTypeId follow it. */
 const movedOwner = clone(positive);
-movedOwner.declarations[2].id = "ff".repeat(32);
+const boxDeclaration = movedOwner.declarations[2];
+boxDeclaration.name = "Crate";
+boxDeclaration.applications[2].arguments[0].nominal = "Crate";
 const moved = buildDocument(movedOwner);
-if (moved.declarations[2].binders[0].id !== box.binders[0].id &&
-    moved.declarations[2].applications[0].id !== box.applications[0].id) {
+const movedBox = moved.declarations.find((declaration) => declaration.name === "Crate");
+if (movedBox.binders[0].id !== box.binders[0].id &&
+    movedBox.applications[0].id !== box.applications[0].id) {
     pass("a mutated owner preimage moves both TypeParameterId and ConstructedTypeId");
 } else {
     fail("preimage sensitivity", "an owner mutation left a derived identity unchanged");
@@ -183,22 +187,22 @@ if (reorderedBox.binders[0].id === box.binders[0].id &&
 /* A mutated golden is refused by validation, not accepted as another value. */
 const tampered = clone(document);
 tampered.declarations[0].binders[0].id = "00".repeat(32);
-expectRefuse("internal", "a tampered binder id is refused", () => validateDocument(tampered));
+expectRefuse("internal", "a tampered binder id is refused", () => validateDocument(tampered, positive.logical_path));
 
 const tamperedApp = clone(document);
 tamperedApp.declarations[0].applications[0].id = "00".repeat(32);
-expectRefuse("internal", "a tampered constructed id is refused", () => validateDocument(tamperedApp));
+expectRefuse("internal", "a tampered constructed id is refused", () => validateDocument(tamperedApp, positive.logical_path));
 
 const tamperedSub = clone(document);
 tamperedSub.declarations[2].applications[0].fields[0].type = { id: primitiveTypeId("Text"), tag: "primitive" };
-expectRefuse("internal", "a tampered substitution is refused", () => validateDocument(tamperedSub));
+expectRefuse("internal", "a tampered substitution is refused", () => validateDocument(tamperedSub, positive.logical_path));
 
 /* ---------------------------------------------------------------- refusals */
 
 const base = {
     logical_path: "examples/generic_record.kofun",
     declarations: [
-        { name: "Box", id: "33".repeat(32), binders: ["T"], fields: [{ name: "value", type: { parameter: "T" } }], applications: [] },
+        { name: "Box", binders: ["T"], fields: [{ name: "value", type: { parameter: "T" } }], applications: [] },
     ],
 };
 
@@ -220,7 +224,7 @@ expectRefuse(CODES.unknownNominal, "an unknown nominal field is refused", () =>
     buildDocument(caseWith((value) => { value.declarations[0].fields[0].type = { nominal: "Nope", arguments: [] }; })));
 expectRefuse(CODES.arityMismatch, "a nominal field with the wrong arity is refused", () =>
     buildDocument(caseWith((value) => {
-        value.declarations.push({ name: "Wrap", id: "55".repeat(32), binders: ["T"], fields: [{ name: "v", type: { parameter: "T" } }], applications: [] });
+        value.declarations.push({ name: "Wrap", binders: ["T"], fields: [{ name: "v", type: { parameter: "T" } }], applications: [] });
         value.declarations[0].fields[0].type = { nominal: "Wrap", arguments: [] };
     })));
 expectRefuse(CODES.unsupportedField, "a function field is refused", () =>
@@ -270,8 +274,8 @@ expectRefuse(CODES.directCycle, "a direct by-value cycle is refused", () =>
 const mutualCycle = {
     logical_path: "examples/generic_record.kofun",
     declarations: [
-        { name: "A", id: "aa".repeat(32), binders: ["T"], fields: [{ name: "b", type: { nominal: "B", arguments: [{ parameter: "T" }] } }], applications: [] },
-        { name: "B", id: "bb".repeat(32), binders: ["U"], fields: [{ name: "a", type: { nominal: "A", arguments: [{ parameter: "U" }] } }], applications: [] },
+        { name: "A", binders: ["T"], fields: [{ name: "b", type: { nominal: "B", arguments: [{ parameter: "T" }] } }], applications: [] },
+        { name: "B", binders: ["U"], fields: [{ name: "a", type: { nominal: "A", arguments: [{ parameter: "U" }] } }], applications: [] },
     ],
 };
 expectRefuse(CODES.mutualCycle, "a mutual by-value cycle is refused", () =>
@@ -281,12 +285,74 @@ expectRefuse(CODES.mutualCycle, "a mutual by-value cycle is refused", () =>
 const acyclic = {
     logical_path: "examples/generic_record.kofun",
     declarations: [
-        { name: "A", id: "aa".repeat(32), binders: ["T"], fields: [{ name: "b", type: { nominal: "B", arguments: [{ parameter: "T" }] } }], applications: [] },
-        { name: "B", id: "bb".repeat(32), binders: ["U"], fields: [{ name: "v", type: { parameter: "U" } }], applications: [] },
+        { name: "A", binders: ["T"], fields: [{ name: "b", type: { nominal: "B", arguments: [{ parameter: "T" }] } }], applications: [] },
+        { name: "B", binders: ["U"], fields: [{ name: "v", type: { parameter: "U" } }], applications: [] },
     ],
 };
 recordCycle(buildDocument(acyclic).declarations);
 pass("an acyclic by-value reference graph is accepted beside the cycle refusals");
+
+/* --------------------------------------------- canonical Kofun half */
+
+/*
+ * The compiler entry that must reproduce the contract. This drives the
+ * canonical source through the bounded host driver, so a divergence between
+ * the contract and the implementation is caught here rather than only in a
+ * golden nobody compares. The C half joins this gate in the next slice.
+ */
+const { loadCompiler, bytes, text } = await import("../../bootstrap/stage2/host-driver.mjs");
+
+let printed = "";
+const kofun = loadCompiler({
+    print: (value) => { printed += text(value) + "\n"; },
+    validate() { return ""; },
+});
+
+function runCompiler(fixture, logicalPath) {
+    const out = `${HERE}fixtures/.compiler-${fixture}.out.json`;
+    fs.rmSync(out, { force: true });
+    printed = "";
+    const ok = kofun.emit_generic_record_hir_file(
+        bytes(`${HERE}fixtures/${fixture}`),
+        bytes(out),
+        bytes(logicalPath),
+    );
+    const artifact = fs.existsSync(out) ? fs.readFileSync(out, "latin1") : null;
+    fs.rmSync(out, { force: true });
+    return { artifact, ok: Boolean(ok), printed };
+}
+
+const compiled = runCompiler("positive.kofun", positive.logical_path);
+if (!compiled.ok || compiled.artifact !== goldenText) {
+    fail("compiler positive", `the canonical Kofun half does not reproduce the golden (${compiled.printed.trim()})`);
+} else {
+    pass("the canonical Kofun half reproduces the positive golden byte for byte");
+}
+
+const compilerRefusals = [
+    ["too_many_parameters.kofun", "E2S192"],
+    ["duplicate_parameter.kofun", "E2S193"],
+    ["unbound_parameter.kofun", "E2S194"],
+    ["arity_mismatch.kofun", "E2S195"],
+    ["unknown_nominal.kofun", "E2S196"],
+    ["instantiation_limit.kofun", "E2S197"],
+    ["depth_exceeded.kofun", "E2S198"],
+    ["direct_cycle.kofun", "E2S199"],
+    ["mutual_cycle.kofun", "E2S200"],
+    ["unsupported_field.kofun", "E2S201"],
+    ["unsupported_binder.kofun", "E2S202"],
+];
+for (const [fixture, code] of compilerRefusals) {
+    const result = runCompiler(fixture, positive.logical_path);
+    if (result.ok) {
+        fail(`compiler ${fixture}`, "accepted a source the contract refuses");
+    } else if (!result.printed.includes(`error[${code}]`)) {
+        fail(`compiler ${fixture}`, `expected ${code}, got: ${result.printed.trim()}`);
+    } else if (result.artifact !== null) {
+        fail(`compiler ${fixture}`, "wrote an artifact on refusal");
+    }
+}
+pass(`the canonical Kofun half refuses all ${compilerRefusals.length} negative fixtures with their codes and no artifact`);
 
 /* ------------------------------------------------------------------ output */
 

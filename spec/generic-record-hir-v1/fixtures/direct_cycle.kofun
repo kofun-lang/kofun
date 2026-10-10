@@ -1,0 +1,3 @@
+type X[T] = {
+    self: X[T],
+}

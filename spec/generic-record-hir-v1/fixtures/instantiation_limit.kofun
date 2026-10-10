@@ -1,0 +1,17 @@
+type Box[T] = {
+    value: T,
+}
+
+fn consume(
+    a: Box[Int],
+    b: Box[Bool],
+    c: Box[Text],
+    d: Box[Unit],
+    e: Box[Box[Int]],
+    f: Box[Box[Bool]],
+    g: Box[Box[Text]],
+    h: Box[Box[Unit]],
+    i: Box[Box[Box[Int]]],
+) -> Int {
+    return 0
+}

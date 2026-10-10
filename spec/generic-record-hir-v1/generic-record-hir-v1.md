@@ -10,9 +10,10 @@ and the independent oracle [`model.mjs`](model.mjs) all implement.
 It is a *contract* first: the artifact, the identity preimages, the limits and
 the refusal codes are frozen here, and the compiler agrees with this document
 rather than the document describing whatever the compiler happened to emit.
-The compiler entry lands in the following slice and is required to reproduce
-these goldens byte for byte; until then this gate proves only the contract and
-its oracle, and the compiler-agreement assertions are added beside it.
+The canonical Kofun half of the entry now reproduces these goldens byte for
+byte and refuses every negative fixture; the maintained C half is the next
+slice and joins the same gate then, so this gate currently proves the contract,
+its oracle, and the canonical half.
 
 ## Why an analysis document
 
@@ -198,3 +199,8 @@ addresses, wall-clock time, or process identity.
 `ConstructedTypeId` from its preimage with the frame above, checks the schema,
 the canonical order, every limit boundary, and every refusal, and applies
 mutations to the preimage so a name-based or discovery-order identity is caught.
+It then drives the canonical Kofun half of the entry through the bounded host
+driver, requires it to reproduce the positive golden byte for byte, and requires
+it to refuse each negative fixture with its registered code and no artifact. The
+maintained C half is the next slice; ordinary compilation keeps refusing every
+generic record with `E2S148`, and no C, KIF, or capability is claimed here.

@@ -140,6 +140,41 @@ export function fileId(logicalPath) {
     return framedHash("kofun.id.file/v1", Buffer.from(payload, "utf8"));
 }
 
+/*
+ * The nominal declaration identity for a record, mirroring
+ * `checked_place_type_id` in the canonical pair: the synthetic-root ModuleId,
+ * the tag-1 `type` NamespaceId, then the symbol TLV with declaration kind
+ * `record` and the declaration name. Derived here, not given, so the oracle
+ * binds the compiler's TypeId rather than sharing one.
+ */
+export function declarationTypeId(logicalPath, name) {
+    const packageBytes =
+        "kofun.package-id/v1\nkind=anonymous-single-file\nlogical-source=" + logicalPath + "\n";
+    const moduleId = framedHash(
+        "kofun.id.module/v1",
+        Buffer.from(
+            "kofun.module-id-input/v1\npackage-payload-begin\n" + packageBytes +
+                "package-payload-end\nkind=synthetic-root\n",
+            "utf8",
+        ),
+    );
+    const namespaceId = framedHash(
+        "kofun.id.namespace/v1",
+        Buffer.from("kofun.namespace-id/v1\ntag=1\nname=type\n", "utf8"),
+    );
+    const nameHex = Buffer.from(name, "utf8").toString("hex");
+    const payload =
+        "800100000020" + moduleId + "800200000020" + namespaceId +
+        "8003000000067265636f7264" + "8004" + hex32(Buffer.byteLength(name, "utf8")) + nameHex;
+    return framedHash("kofun.id.symbol/v1", Buffer.from(payload, "hex"));
+}
+
+function hex32(value) {
+    const bytes = Buffer.alloc(4);
+    bytes.writeUInt32BE(value >>> 0, 0);
+    return bytes.toString("hex");
+}
+
 export function typeParameterId(ownerHex, ordinal) {
     const payload = concat([identityBytes(ownerHex, "owner TypeId"), u8(1), u16be(ordinal)]);
     return framedHash(DOMAINS.typeParameter, payload);
@@ -225,6 +260,10 @@ export function buildDocument(caseValue) {
         refuse("internal", `more than ${LIMITS.declarations} declarations`);
     }
     const byName = new Map(declarations.map((declaration) => [declaration.name, declaration]));
+    const logicalPath = caseValue.logical_path ?? "input.kofun";
+    const derivedId = new Map(
+        declarations.map((declaration) => [declaration.name, declarationTypeId(logicalPath, declaration.name)]),
+    );
 
     const binderNames = (declaration) => {
         const binders = declaration.binders ?? [];
@@ -258,7 +297,7 @@ export function buildDocument(caseValue) {
             if (ordinal < 0) {
                 refuse(CODES.unboundParameter, `unbound type parameter \`${raw.parameter}\` in \`${declaration.name}\``);
             }
-            return { id: typeParameterId(declaration.id, ordinal), tag: "parameter" };
+            return { id: typeParameterId(derivedId.get(declaration.name), ordinal), tag: "parameter" };
         }
         if (raw && typeof raw === "object" && "nominal" in raw) {
             const target = byName.get(raw.nominal);
@@ -272,7 +311,7 @@ export function buildDocument(caseValue) {
             }
             return {
                 arguments: arguments_.map((argument) => materialize(argument, declaration, names, depth + 1)),
-                id: target.id,
+                id: derivedId.get(raw.nominal),
                 tag: "nominal",
             };
         }
@@ -288,11 +327,11 @@ export function buildDocument(caseValue) {
         return fields.map((field) => ({ name: fieldName(field.name), type: materialize(field.type, declaration, names, 0) }));
     };
 
-    const substitute = (fields, declaration, names, arguments_) => {
+    const substitute = (fields, owner, names, arguments_) => {
         const walk = (node) => {
             if (node.tag === "parameter") {
                 for (let ordinal = 0; ordinal < names.length; ordinal += 1) {
-                    if (typeParameterId(declaration.id, ordinal) === node.id) {
+                    if (typeParameterId(owner, ordinal) === node.id) {
                         return arguments_[ordinal];
                     }
                 }
@@ -307,6 +346,7 @@ export function buildDocument(caseValue) {
     };
 
     const out = declarations.map((declaration) => {
+        const owner = derivedId.get(declaration.name);
         const names = binderNames(declaration);
         const fields = fieldsOf(declaration, names);
         const applications = [];
@@ -327,19 +367,19 @@ export function buildDocument(caseValue) {
             }
             applications.push({
                 arguments: arguments_,
-                fields: substitute(fields, declaration, names, arguments_),
-                id: constructedTypeId(declaration.id, arguments_),
+                fields: substitute(fields, owner, names, arguments_),
+                id: constructedTypeId(owner, arguments_),
             });
         }
         return {
             applications,
             binders: names.map((_, ordinal) => ({
-                id: typeParameterId(declaration.id, ordinal),
+                id: typeParameterId(owner, ordinal),
                 kind: "type",
                 ordinal,
             })),
             fields,
-            id: declaration.id,
+            id: owner,
             kind: "record",
             name: declaration.name,
         };
@@ -393,11 +433,14 @@ function checkTypeRef(node, binders, idsByName) {
     }
 }
 
-export function validateDocument(document) {
+export function validateDocument(document, logicalPath) {
     if (!document || typeof document !== "object") refuse("internal", "document is not an object");
     if (document.schema !== "kofun.generic-record-hir/v1") refuse("internal", "wrong schema");
     if (document.profile !== "kofun.stage2-analysis/generic-record/v1") refuse("internal", "wrong profile");
     if (!/^[0-9a-f]{64}$/.test(document.file_id)) refuse("internal", "file_id is not an identity");
+    if (logicalPath !== undefined && document.file_id !== fileId(logicalPath)) {
+        refuse("internal", "file_id is not derived from its logical path");
+    }
     for (const [name, value] of Object.entries(LIMITS)) {
         if (document.limits?.[name] !== value) refuse("internal", `limit ${name} is not ${value}`);
     }
@@ -407,6 +450,10 @@ export function validateDocument(document) {
     for (const declaration of declarations) {
         if (declaration.kind !== "record") refuse("internal", "declaration kind is not record");
         if (!/^[0-9a-f]{64}$/.test(declaration.id)) refuse("internal", "declaration id is not an identity");
+        if (logicalPath !== undefined &&
+            declaration.id !== declarationTypeId(logicalPath, declaration.name)) {
+            refuse("internal", "declaration id is not derived from its name");
+        }
         const binders = declaration.binders ?? [];
         if (binders.length > LIMITS.binders_per_declaration) refuse(CODES.tooManyParameters, "too many parameters");
         binders.forEach((binder, ordinal) => {

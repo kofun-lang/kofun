@@ -122,11 +122,11 @@ executable bootstrap implementation.
   (`kofun.id.type-parameter/v3`, `kofun.id.constructed-type/v3`), capture-
   avoiding substitution, the parameter/instantiation/depth limits, and the
   direct/mutual by-value cycle refusals. `task generic-record-hir` recomputes
-  every identity from its preimage and checks the limits and refusals. It is the
-  contract only: the compiler entry `--emit-generic-record-hir` that must
-  reproduce these goldens lands in the following slice, ordinary compilation
-  keeps refusing generic records (`E2S148`), and no C, KIF, or capability is
-  claimed here.
+  every identity from its preimage, checks the limits and refusals, and drives
+  the canonical Kofun half of the `--emit-generic-record-hir` entry through the
+  host driver against the positive golden and the negative fixtures. The
+  maintained C half is the next slice; ordinary compilation keeps refusing
+  generic records (`E2S148`), and no C, KIF, or capability is claimed here.
 - `concurrency/schedule-trace-v1.md` is the accepted deterministic testing
   contract for issue #736: stable scope/task identities, the canonical
   `kofun.schedule-trace/v1` and `kofun.schedule-witness/v1` bytes, FIFO, seeded,
