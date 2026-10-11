@@ -1,0 +1,1 @@
+error[E2S192]: a record declares more than two type parameters at byte 13

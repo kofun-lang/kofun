@@ -345,12 +345,15 @@ const compilerRefusals = [
 ];
 for (const [fixture, code] of compilerRefusals) {
     const result = runCompiler(fixture, positive.logical_path);
+    const golden = fs.readFileSync(`${HERE}fixtures/${fixture.replace(/\.kofun$/, ".stderr")}`, "utf8");
     if (result.ok) {
         fail(`compiler ${fixture}`, "accepted a source the contract refuses");
     } else if (!result.printed.includes(`error[${code}]`)) {
         fail(`compiler ${fixture}`, `expected ${code}, got: ${result.printed.trim()}`);
     } else if (result.artifact !== null) {
         fail(`compiler ${fixture}`, "wrote an artifact on refusal");
+    } else if (result.printed !== golden) {
+        fail(`compiler ${fixture}`, `diagnostic differs from the golden: ${result.printed.trim()}`);
     }
 }
 pass(`the canonical Kofun half refuses all ${compilerRefusals.length} negative fixtures with their codes and no artifact`);
@@ -385,12 +388,15 @@ if (!stage2 || !fs.existsSync(stage2)) {
     let cRefusals = 0;
     for (const [fixture, code] of compilerRefusals) {
         const result = runC(fixture, positive.logical_path);
+        const golden = fs.readFileSync(`${HERE}fixtures/${fixture.replace(/\.kofun$/, ".stderr")}`, "utf8");
         if (result.status !== 1) {
             fail(`c ${fixture}`, `expected exit 1, got ${result.status}`);
         } else if (!result.stdout.includes(`error[${code}]`)) {
             fail(`c ${fixture}`, `expected ${code}, got: ${result.stdout.trim()}`);
         } else if (result.artifact !== null) {
             fail(`c ${fixture}`, "wrote an artifact on refusal");
+        } else if (result.stdout !== golden) {
+            fail(`c ${fixture}`, `diagnostic differs from the golden: ${result.stdout.trim()}`);
         } else {
             cRefusals += 1;
         }
