@@ -411,6 +411,51 @@ if (!stage2 || !fs.existsSync(stage2)) {
         }
     }
     pass(`the two halves agree on the diagnostic text of all ${agreed} refusals`);
+
+    /* Determinism: a repeat run and a logical-path remap (the same logical
+     * path from a different physical file) must be byte-identical. */
+    const repeat = runC("positive.kofun", positive.logical_path);
+    if (repeat.artifact !== goldenText) {
+        fail("c repeat", "a second run differs from the golden");
+    } else {
+        pass("a repeated run is byte-identical");
+    }
+
+    const remapPhysical = `${HERE}fixtures/.remap-positive.kofun`;
+    fs.copyFileSync(`${HERE}fixtures/positive.kofun`, remapPhysical);
+    const remapped = runC(".remap-positive.kofun", positive.logical_path);
+    fs.rmSync(remapPhysical, { force: true });
+    if (remapped.artifact !== goldenText) {
+        fail("c remap", "a physical-path remap changed the document");
+    } else {
+        pass("a physical-path remap under the same logical path is byte-identical");
+    }
+
+    const kofunRepeat = runCompiler("positive.kofun", positive.logical_path);
+    if (!kofunRepeat.ok || kofunRepeat.artifact !== goldenText) {
+        fail("kofun repeat", "a second canonical-half run differs from the golden");
+    } else {
+        pass("the canonical half is byte-identical on a repeated run");
+    }
+
+    const stage2O0 = process.env.KOFUN_GENERIC_RECORD_STAGE2_O0;
+    if (stage2O0 && fs.existsSync(stage2O0)) {
+        const out = `${HERE}fixtures/.o0-positive.out.json`;
+        fs.rmSync(out, { force: true });
+        const result = spawnSync(stage2O0, [
+            "--emit-generic-record-hir",
+            `${HERE}fixtures/positive.kofun`,
+            out,
+            positive.logical_path,
+        ], { encoding: "latin1" });
+        const artifact = fs.existsSync(out) ? fs.readFileSync(out, "latin1") : null;
+        fs.rmSync(out, { force: true });
+        if (result.status !== 0 || artifact !== goldenText) {
+            fail("c -O0", "the -O0 build differs from the -O2 golden");
+        } else {
+            pass("the -O0 and -O2 builds emit byte-identical documents");
+        }
+    }
 }
 
 /* ------------------------------------------------------------------ output */

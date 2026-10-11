@@ -30,5 +30,9 @@ node --check "$HERE/model.mjs"
 node --check "$HERE/check.mjs"
 
 kofun_stage2_build "$ROOT" "$WORK/kofun-stage2"
+"${CC:-cc}" -std=c11 -O0 -Wall -Wextra -Werror -pedantic \
+    "$ROOT/bootstrap/stage2/compiler.c" -o "$WORK/kofun-stage2-o0"
 
-KOFUN_GENERIC_RECORD_STAGE2="$WORK/kofun-stage2" node "$HERE/check.mjs"
+KOFUN_GENERIC_RECORD_STAGE2="$WORK/kofun-stage2" \
+KOFUN_GENERIC_RECORD_STAGE2_O0="$WORK/kofun-stage2-o0" \
+    node "$HERE/check.mjs"
