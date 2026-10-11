@@ -40583,6 +40583,841 @@ static int check_scoped_ownership_file(const char *input, const char *output, co
     return 0;
 }
 
+/* ===== Generic-record HIR v1 analysis document (#1674) =====
+ *
+ * The maintained C half of the canonical `--emit-generic-record-hir` entry.
+ * It mirrors `generic_record_*` in compiler.kofun: record binders, canonical
+ * TypeRefs, TypeParameterId and derived ConstructedTypeId under the #303 frame,
+ * capture-avoiding substitution, first-use application discovery, the
+ * 2/8/depth-8 limits, and direct/mutual by-value cycle classification. */
+static char *gr_refusal(const char *code, const char *message, int64_t at) {
+    Buffer error;
+    buffer_init(&error);
+    buffer_format(&error, "error[%s]: %s at byte %" PRId64, code, message, at);
+    return error.data;
+}
+
+static bool gr_primitive(const char *name) {
+    return strcmp(name, "Int") == 0 || strcmp(name, "Bool") == 0 ||
+        strcmp(name, "Text") == 0 || strcmp(name, "Unit") == 0;
+}
+
+static char *gr_primitive_id(const char *name) {
+    char *hex = scoped_hir_text_hex(name);
+    char *id = scoped_hir_hash_frame("kofun.id.primitive/v1", hex, "", "", "");
+    free(hex);
+    return id;
+}
+
+static char *gr_parameter_id(const char *owner, int64_t ordinal) {
+    char *kind = scoped_hir_hex(1, 2);
+    char *number = scoped_hir_hex(ordinal, 4);
+    Buffer payload;
+    buffer_init(&payload);
+    buffer_append(&payload, kind);
+    buffer_append(&payload, number);
+    char *id = scoped_hir_hash_frame("kofun.id.type-parameter/v3", owner, payload.data, "", "");
+    free(kind);
+    free(number);
+    free(payload.data);
+    return id;
+}
+
+static int64_t gr_lines(const char *text) {
+    if (text[0] == '\0') return 0;
+    int64_t count = 1;
+    for (const char *p = text; *p != '\0'; ++p) if (*p == '\n') ++count;
+    return count;
+}
+
+static char *gr_line(const char *text, int64_t wanted) {
+    int64_t index = 0, start = 0, at = 0, length = (int64_t)strlen(text);
+    while (at <= length) {
+        if (at == length || text[at] == '\n') {
+            if (index == wanted) {
+                char *out = allocate((size_t)(at - start) + 1);
+                memcpy(out, text + start, (size_t)(at - start));
+                out[at - start] = '\0';
+                return out;
+            }
+            ++index;
+            start = at + 1;
+        }
+        ++at;
+    }
+    return owned_text("");
+}
+
+static char *gr_comma_join(const char *text) {
+    Buffer out;
+    buffer_init(&out);
+    for (const char *p = text; *p != '\0'; ++p) {
+        if (*p == '\n') {
+            buffer_append(&out, ",");
+        } else {
+            char symbol[2] = {*p, '\0'};
+            buffer_append(&out, symbol);
+        }
+    }
+    return out.data;
+}
+
+static int64_t gr_comma_count(const char *names) {
+    if (names[0] == '\0') return 0;
+    int64_t count = 1;
+    for (const char *p = names; *p != '\0'; ++p) if (*p == ',') ++count;
+    return count;
+}
+
+static bool gr_has_binder(const char *names, const char *name) {
+    if (names[0] == '\0') return false;
+    Buffer covered, needle;
+    buffer_init(&covered);
+    buffer_init(&needle);
+    buffer_format(&covered, ",%s,", names);
+    buffer_format(&needle, ",%s,", name);
+    bool found = strstr(covered.data, needle.data) != NULL;
+    free(covered.data);
+    free(needle.data);
+    return found;
+}
+
+static int64_t gr_binder_ordinal(const char *names, const char *name) {
+    if (names[0] == '\0') return -1;
+    int64_t index = 0, start = 0, at = 0, length = (int64_t)strlen(names);
+    size_t wanted = strlen(name);
+    while (at <= length) {
+        if (at == length || names[at] == ',') {
+            size_t span = (size_t)(at - start);
+            if (span == wanted && strncmp(names + start, name, span) == 0) return index;
+            ++index;
+            start = at + 1;
+        }
+        ++at;
+    }
+    return -1;
+}
+
+static char *gr_binder_names(const char *source, int64_t decl) {
+    int64_t bracket = type_parameter_open(source, decl);
+    if (bracket < 0) return owned_text("");
+    int64_t close = balanced_end(source, bracket, "[", "]");
+    if (close < 0) return gr_refusal("E2S202", "unterminated type parameter list", bracket);
+    int64_t first = skip_trivia(source, token_end(source, bracket));
+    if (first < source_length(source) && token_equal(source, first, "const")) return owned_text("");
+    Buffer names;
+    buffer_init(&names);
+    int64_t count = 0, cursor = first;
+    while (cursor < close) {
+        if (token_equal(source, cursor, "]")) return names.data;
+        if (token_equal(source, cursor, "const")) {
+            free(names.data);
+            return gr_refusal("E2S202", "unsupported type parameter kind", cursor);
+        }
+        if (strcmp(token_kind(source, cursor), "identifier") != 0) {
+            free(names.data);
+            return gr_refusal("E2S202", "unsupported type parameter", cursor);
+        }
+        char *name = token_copy(source, cursor);
+        ++count;
+        if (count > 2) {
+            free(name); free(names.data);
+            return gr_refusal("E2S192", "a record declares more than two type parameters", cursor);
+        }
+        if (gr_has_binder(names.data, name)) {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(&message, "duplicate type parameter `%s`", name);
+            char *error = gr_refusal("E2S193", message.data, cursor);
+            free(message.data); free(name); free(names.data);
+            return error;
+        }
+        if (count > 1) buffer_append(&names, ",");
+        buffer_append(&names, name);
+        free(name);
+        cursor = skip_trivia(source, token_end(source, cursor));
+        if (cursor < close && token_equal(source, cursor, ",")) {
+            cursor = skip_trivia(source, token_end(source, cursor));
+        }
+    }
+    return names.data;
+}
+
+static int64_t gr_declaration(const char *source, const char *name) {
+    if (name[0] == '\0') return -1;
+    int64_t length = source_length(source);
+    int64_t cursor = after_optional_module_header(source, 0);
+    while (cursor < length) {
+        int64_t start = type_declaration_start(source, cursor);
+        if (start >= 0 && record_declaration_at(source, start)) {
+            char *found = type_name(source, start);
+            bool match = strcmp(found, name) == 0;
+            free(found);
+            if (match) return start;
+        }
+        int64_t end = top_level_end(source, cursor);
+        if (end <= cursor) return -1;
+        cursor = skip_trivia(source, end);
+    }
+    return -1;
+}
+
+static char *gr_declarations(const char *source) {
+    Buffer out;
+    buffer_init(&out);
+    int64_t length = source_length(source);
+    int64_t cursor = after_optional_module_header(source, 0);
+    while (cursor < length) {
+        int64_t start = type_declaration_start(source, cursor);
+        if (start >= 0 && record_declaration_at(source, start)) {
+            char *names = gr_binder_names(source, start);
+            if (strncmp(names, "error[", 6) == 0) { free(out.data); return names; }
+            if (gr_comma_count(names) > 0) {
+                if (out.length > 0) buffer_append(&out, "\n");
+                char *name = type_name(source, start);
+                buffer_append(&out, name);
+                free(name);
+            }
+            free(names);
+        }
+        int64_t end = top_level_end(source, cursor);
+        if (end <= cursor) { free(out.data); return gr_refusal("E2S201", "malformed source", cursor); }
+        cursor = skip_trivia(source, end);
+    }
+    return out.data;
+}
+
+static char *gr_type_id(const char *path, const char *name) {
+    Buffer package, module_payload, payload;
+    buffer_init(&package);
+    buffer_init(&module_payload);
+    buffer_init(&payload);
+    buffer_format(&package,
+        "kofun.package-id/v1\nkind=anonymous-single-file\nlogical-source=%s\n", path);
+    buffer_format(&module_payload,
+        "kofun.module-id-input/v1\npackage-payload-begin\n%s"
+        "package-payload-end\nkind=synthetic-root\n", package.data);
+    char *module_hex = scoped_hir_text_hex(module_payload.data);
+    char *module = scoped_hir_hash_frame("kofun.id.module/v1", module_hex, "", "", "");
+    char *namespace_hex = scoped_hir_text_hex("kofun.namespace-id/v1\ntag=1\nname=type\n");
+    char *namespace_id = scoped_hir_hash_frame("kofun.id.namespace/v1", namespace_hex, "", "", "");
+    char *name_hex = scoped_hir_text_hex(name);
+    buffer_format(&payload,
+        "800100000020%s800200000020%s8003000000067265636f72648004%08" PRIx64 "%s",
+        module, namespace_id, (uint64_t)strlen(name), name_hex);
+    char *id = scoped_hir_hash_frame("kofun.id.symbol/v1", payload.data, "", "", "");
+    free(package.data); free(module_payload.data); free(payload.data);
+    free(module_hex); free(module); free(namespace_hex); free(namespace_id); free(name_hex);
+    return id;
+}
+
+static char *gr_constructed_id(const char *owner, const char *hexes) {
+    int64_t count = gr_lines(hexes);
+    char *count_hex = scoped_hir_hex(count, 4);
+    Buffer payload;
+    buffer_init(&payload);
+    buffer_append(&payload, owner);
+    buffer_append(&payload, count_hex);
+    for (int64_t index = 0; index < count; ++index) {
+        char *line = gr_line(hexes, index);
+        buffer_append(&payload, line);
+        free(line);
+    }
+    char *id = scoped_hir_hash_frame("kofun.id.constructed-type/v3", payload.data, "", "", "");
+    free(count_hex);
+    free(payload.data);
+    return id;
+}
+
+static int64_t gr_type_end(const char *source, int64_t at, int64_t limit) {
+    int64_t after = skip_trivia(source, token_end(source, at));
+    if (after < limit && token_equal(source, after, "[")) return balanced_end(source, after, "[", "]");
+    return token_end(source, at);
+}
+
+static char *gr_type(const char *source, int64_t at, int64_t limit, const char *names,
+                     const char *owner, const char *path, const char *args_json,
+                     const char *args_hex, int64_t depth) {
+    if (depth > 8) return gr_refusal("E2S198", "constructed TypeRef depth above eight", at);
+    if (at < 0 || at >= limit) return gr_refusal("E2S201", "unsupported field type", at);
+    char *token = token_copy(source, at);
+    if (gr_primitive(token)) {
+        char *id = gr_primitive_id(token);
+        Buffer out;
+        buffer_init(&out);
+        buffer_format(&out, "{\"id\":\"%s\",\"tag\":\"primitive\"}\n01%s", id, id);
+        free(id);
+        free(token);
+        return out.data;
+    }
+    int64_t ordinal = gr_binder_ordinal(names, token);
+    if (ordinal >= 0) {
+        if (args_json[0] != '\0') {
+            char *json = gr_line(args_json, ordinal), *hex = gr_line(args_hex, ordinal);
+            Buffer out;
+            buffer_init(&out);
+            buffer_format(&out, "%s\n%s", json, hex);
+            free(json); free(hex); free(token);
+            return out.data;
+        }
+        char *id = gr_parameter_id(owner, ordinal);
+        Buffer out;
+        buffer_init(&out);
+        buffer_format(&out, "{\"id\":\"%s\",\"tag\":\"parameter\"}\n02%s", id, id);
+        free(id);
+        free(token);
+        return out.data;
+    }
+    int64_t after = skip_trivia(source, token_end(source, at));
+    if (strcmp(token_kind(source, at), "identifier") == 0 &&
+        after < limit && token_equal(source, after, "[")) {
+        int64_t target = gr_declaration(source, token);
+        if (target < 0) {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(&message, "unknown nominal type `%s`", token);
+            char *error = gr_refusal("E2S196", message.data, at);
+            free(message.data);
+            free(token);
+            return error;
+        }
+        int64_t close = balanced_end(source, after, "[", "]");
+        if (close < 0) { free(token); return gr_refusal("E2S201", "unterminated type arguments", after); }
+        int64_t child_limit = close - 1;
+        int64_t cursor = skip_trivia(source, token_end(source, after));
+        Buffer jsons, hexes;
+        buffer_init(&jsons);
+        buffer_init(&hexes);
+        int64_t count = 0;
+        while (cursor < child_limit && !token_equal(source, cursor, "]")) {
+            char *child = gr_type(source, cursor, child_limit, names, owner, path,
+                args_json, args_hex, depth + 1);
+            if (strncmp(child, "error[", 6) == 0) {
+                free(jsons.data); free(hexes.data); free(token);
+                return child;
+            }
+            if (count > 0) { buffer_append(&jsons, "\n"); buffer_append(&hexes, "\n"); }
+            char *json = gr_line(child, 0), *hex = gr_line(child, 1);
+            buffer_append(&jsons, json);
+            buffer_append(&hexes, hex);
+            free(json); free(hex); free(child);
+            ++count;
+            int64_t child_end = gr_type_end(source, cursor, child_limit);
+            if (child_end <= cursor) {
+                free(jsons.data); free(hexes.data); free(token);
+                return gr_refusal("E2S201", "malformed type argument", cursor);
+            }
+            cursor = skip_trivia(source, child_end);
+            if (cursor < child_limit && token_equal(source, cursor, ",")) {
+                cursor = skip_trivia(source, token_end(source, cursor));
+            }
+        }
+        char *target_names = gr_binder_names(source, target);
+        if (strncmp(target_names, "error[", 6) == 0) {
+            free(jsons.data); free(hexes.data); free(token);
+            return target_names;
+        }
+        int64_t wanted = gr_comma_count(target_names);
+        free(target_names);
+        if (count != wanted) {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(&message, "`%s` expects %" PRId64 " arguments, got %" PRId64,
+                token, wanted, count);
+            char *error = gr_refusal("E2S195", message.data, at);
+            free(message.data); free(jsons.data); free(hexes.data); free(token);
+            return error;
+        }
+        char *joined = gr_comma_join(jsons.data);
+        char *count_hex = scoped_hir_hex(count, 4);
+        char *type_id = gr_type_id(path, token);
+        Buffer out;
+        buffer_init(&out);
+        buffer_format(&out,
+            "{\"arguments\":[%s],\"id\":\"%s\",\"tag\":\"nominal\"}\n03%s%s%s",
+            joined, type_id, type_id, count_hex, hexes.data);
+        free(joined); free(count_hex); free(type_id);
+        free(jsons.data); free(hexes.data); free(token);
+        return out.data;
+    }
+    if (strcmp(token_kind(source, at), "identifier") == 0) {
+        int64_t target = gr_declaration(source, token);
+        if (target >= 0) {
+            char *target_names = gr_binder_names(source, target);
+            int64_t wanted = gr_comma_count(target_names);
+            free(target_names);
+            if (wanted != 0) {
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(&message, "`%s` expects %" PRId64 " arguments, got 0", token, wanted);
+                char *error = gr_refusal("E2S195", message.data, at);
+                free(message.data); free(token);
+                return error;
+            }
+            char *type_id = gr_type_id(path, token);
+            char *zero = scoped_hir_hex(0, 4);
+            Buffer out;
+            buffer_init(&out);
+            buffer_format(&out,
+                "{\"arguments\":[],\"id\":\"%s\",\"tag\":\"nominal\"}\n03%s%s",
+                type_id, type_id, zero);
+            free(type_id); free(zero); free(token);
+            return out.data;
+        }
+        Buffer message;
+        buffer_init(&message);
+        buffer_format(&message, "unbound type parameter `%s`", token);
+        char *error = gr_refusal("E2S194", message.data, at);
+        free(message.data);
+        free(token);
+        return error;
+    }
+    free(token);
+    return gr_refusal("E2S201", "unsupported field type", at);
+}
+
+static char *gr_fields_json(const char *source, int64_t decl, const char *path,
+                            const char *args_json, const char *args_hex) {
+    int64_t equals = type_equals_token(source, decl);
+    if (equals < 0) return gr_refusal("E2S201", "malformed record", decl);
+    int64_t open = skip_trivia(source, token_end(source, equals));
+    int64_t close = balanced_end(source, open, "{", "}");
+    if (close < 0) return gr_refusal("E2S201", "unterminated record body", open);
+    char *names = gr_binder_names(source, decl);
+    if (strncmp(names, "error[", 6) == 0) return names;
+    char *decl_name = type_name(source, decl);
+    char *owner = gr_type_id(path, decl_name);
+    free(decl_name);
+    int64_t limit = close - 1;
+    Buffer out;
+    buffer_init(&out);
+    buffer_append(&out, "[");
+    int64_t count = 0;
+    int64_t cursor = skip_trivia(source, token_end(source, open));
+    while (cursor < limit) {
+        if (strcmp(token_kind(source, cursor), "identifier") != 0) {
+            free(names); free(owner); free(out.data);
+            return gr_refusal("E2S201", "malformed field", cursor);
+        }
+        char *field = token_copy(source, cursor);
+        int64_t colon = skip_trivia(source, token_end(source, cursor));
+        if (!token_equal(source, colon, ":")) {
+            free(field); free(names); free(owner); free(out.data);
+            return gr_refusal("E2S201", "field needs a type", colon);
+        }
+        int64_t type_at = skip_trivia(source, token_end(source, colon));
+        if (count >= 256) {
+            free(field); free(names); free(owner); free(out.data);
+            return gr_refusal("E2S201", "a record declares more than 256 fields", type_at);
+        }
+        char *ref = gr_type(source, type_at, limit, names, owner, path, args_json, args_hex, 0);
+        if (strncmp(ref, "error[", 6) == 0) {
+            free(field); free(names); free(owner); free(out.data);
+            return ref;
+        }
+        if (count > 0) buffer_append(&out, ",");
+        char *json = gr_line(ref, 0);
+        buffer_format(&out, "{\"name\":\"%s\",\"type\":%s}", field, json);
+        free(json); free(ref); free(field);
+        ++count;
+        int64_t type_end = gr_type_end(source, type_at, limit);
+        if (type_end <= type_at) {
+            free(names); free(owner); free(out.data);
+            return gr_refusal("E2S201", "malformed field type", type_at);
+        }
+        cursor = skip_trivia(source, type_end);
+        if (cursor < limit && token_equal(source, cursor, ",")) {
+            cursor = skip_trivia(source, token_end(source, cursor));
+        }
+    }
+    buffer_append(&out, "]");
+    free(names);
+    free(owner);
+    return out.data;
+}
+
+static char *gr_binders_json(const char *source, int64_t decl, const char *path) {
+    char *names = gr_binder_names(source, decl);
+    if (strncmp(names, "error[", 6) == 0) return names;
+    char *decl_name = type_name(source, decl);
+    char *owner = gr_type_id(path, decl_name);
+    free(decl_name);
+    int64_t count = gr_comma_count(names);
+    Buffer out;
+    buffer_init(&out);
+    buffer_append(&out, "[");
+    for (int64_t index = 0; index < count; ++index) {
+        if (index > 0) buffer_append(&out, ",");
+        char *id = gr_parameter_id(owner, index);
+        buffer_format(&out, "{\"id\":\"%s\",\"kind\":\"type\",\"ordinal\":%" PRId64 "}", id, index);
+        free(id);
+    }
+    buffer_append(&out, "]");
+    free(names);
+    free(owner);
+    return out.data;
+}
+
+static char *gr_application(const char *source, const char *name, int64_t decl,
+                            int64_t args_start, int64_t args_limit, const char *path,
+                            const char *rows) {
+    char *names = gr_binder_names(source, decl);
+    if (strncmp(names, "error[", 6) == 0) return names;
+    int64_t wanted = gr_comma_count(names);
+    free(names);
+    int64_t cursor = skip_trivia(source, args_start);
+    Buffer jsons, hexes;
+    buffer_init(&jsons);
+    buffer_init(&hexes);
+    int64_t count = 0;
+    while (cursor < args_limit && !token_equal(source, cursor, "]")) {
+        char *child = gr_type(source, cursor, args_limit, "", "", path, "", "", 0);
+        if (strncmp(child, "error[", 6) == 0) {
+            if (strncmp(child, "error[E2S194]", 13) == 0) {
+                free(child); free(jsons.data); free(hexes.data);
+                return owned_text("");
+            }
+            free(jsons.data); free(hexes.data);
+            return child;
+        }
+        if (count > 0) { buffer_append(&jsons, "\n"); buffer_append(&hexes, "\n"); }
+        char *json = gr_line(child, 0), *hex = gr_line(child, 1);
+        buffer_append(&jsons, json);
+        buffer_append(&hexes, hex);
+        free(json); free(hex); free(child);
+        ++count;
+        int64_t child_end = gr_type_end(source, cursor, args_limit);
+        if (child_end <= cursor) { free(jsons.data); free(hexes.data); return owned_text(""); }
+        cursor = skip_trivia(source, child_end);
+        if (cursor < args_limit && token_equal(source, cursor, ",")) {
+            cursor = skip_trivia(source, token_end(source, cursor));
+        }
+    }
+    if (count != wanted) {
+        Buffer message;
+        buffer_init(&message);
+        buffer_format(&message, "`%s` expects %" PRId64 " arguments, got %" PRId64,
+            name, wanted, count);
+        char *error = gr_refusal("E2S195", message.data, args_start);
+        free(message.data); free(jsons.data); free(hexes.data);
+        return error;
+    }
+    if (count == 0) { free(jsons.data); free(hexes.data); return owned_text(""); }
+    char *owner = gr_type_id(path, name);
+    char *id = gr_constructed_id(owner, hexes.data);
+    char *fields = gr_fields_json(source, decl, path, jsons.data, hexes.data);
+    if (strncmp(fields, "error[", 6) == 0) {
+        free(owner); free(id); free(jsons.data); free(hexes.data);
+        return fields;
+    }
+    char *joined = gr_comma_join(jsons.data);
+    Buffer app, needle;
+    buffer_init(&app);
+    buffer_init(&needle);
+    buffer_format(&app, "{\"arguments\":[%s],\"fields\":%s,\"id\":\"%s\"}", joined, fields, id);
+    buffer_format(&needle, "%s\t%s", name, app.data);
+    bool seen = strstr(rows, needle.data) != NULL;
+    free(needle.data); free(joined); free(owner); free(id); free(fields);
+    free(jsons.data); free(hexes.data);
+    if (seen) { free(app.data); return owned_text(""); }
+    return app.data;
+}
+
+static char *gr_applications(const char *source, const char *path) {
+    Buffer rows;
+    buffer_init(&rows);
+    int64_t length = source_length(source);
+    int64_t cursor = after_optional_module_header(source, 0);
+    while (cursor < length) {
+        char *token = token_copy(source, cursor);
+        int64_t after = skip_trivia(source, token_end(source, cursor));
+        if (strcmp(token_kind(source, cursor), "identifier") == 0 &&
+            after < length && token_equal(source, after, "[")) {
+            int64_t decl = gr_declaration(source, token);
+            if (decl >= 0) {
+                char *names = gr_binder_names(source, decl);
+                if (strncmp(names, "error[", 6) != 0 && gr_comma_count(names) > 0) {
+                    int64_t close = balanced_end(source, after, "[", "]");
+                    if (close >= 0) {
+                        char *app = gr_application(source, token, decl,
+                            token_end(source, after), close - 1, path, rows.data);
+                        if (strncmp(app, "error[", 6) == 0) {
+                            free(names); free(token); free(rows.data);
+                            return app;
+                        }
+                        if (app[0] != '\0') {
+                            if (rows.length > 0) buffer_append(&rows, "\n");
+                            buffer_append(&rows, token);
+                            buffer_append(&rows, "\t");
+                            buffer_append(&rows, app);
+                        }
+                        free(app);
+                    }
+                }
+                free(names);
+            }
+        }
+        free(token);
+        int64_t end = token_end(source, cursor);
+        if (end <= cursor) { free(rows.data); return gr_refusal("E2S201", "malformed source", cursor); }
+        cursor = skip_trivia(source, end);
+    }
+    return rows.data;
+}
+
+static char *gr_applications_json(const char *apps, const char *name, int64_t decl) {
+    int64_t total = gr_lines(apps);
+    Buffer out;
+    buffer_init(&out);
+    buffer_append(&out, "[");
+    int64_t found = 0;
+    for (int64_t index = 0; index < total; ++index) {
+        char *row = gr_line(apps, index);
+        const char *tab = strchr(row, '\t');
+        if (tab != NULL) {
+            size_t head = (size_t)(tab - row);
+            if (strlen(name) == head && strncmp(row, name, head) == 0) {
+                if (found > 0) buffer_append(&out, ",");
+                buffer_append(&out, tab + 1);
+                ++found;
+                if (found > 8) {
+                    Buffer message;
+                    buffer_init(&message);
+                    buffer_format(&message, "`%s` has more than 8 instantiations", name);
+                    char *error = gr_refusal("E2S197", message.data, decl);
+                    free(message.data); free(row); free(out.data);
+                    return error;
+                }
+            }
+        }
+        free(row);
+    }
+    buffer_append(&out, "]");
+    return out.data;
+}
+
+static void gr_nominals(const char *source, int64_t at, int64_t limit,
+                        const char *names, Buffer *out) {
+    char *token = token_copy(source, at);
+    if (gr_primitive(token)) { free(token); return; }
+    if (gr_binder_ordinal(names, token) >= 0) { free(token); return; }
+    int64_t after = skip_trivia(source, token_end(source, at));
+    if (strcmp(token_kind(source, at), "identifier") == 0 &&
+        after < limit && token_equal(source, after, "[")) {
+        if (out->length > 0) buffer_append(out, "\n");
+        buffer_append(out, token);
+        int64_t close = balanced_end(source, after, "[", "]");
+        if (close >= 0) {
+            int64_t child_limit = close - 1;
+            int64_t cursor = skip_trivia(source, token_end(source, after));
+            while (cursor < child_limit && !token_equal(source, cursor, "]")) {
+                gr_nominals(source, cursor, child_limit, names, out);
+                int64_t child_end = gr_type_end(source, cursor, child_limit);
+                if (child_end <= cursor) break;
+                cursor = skip_trivia(source, child_end);
+                if (cursor < child_limit && token_equal(source, cursor, ",")) {
+                    cursor = skip_trivia(source, token_end(source, cursor));
+                }
+            }
+        }
+    }
+    free(token);
+}
+
+static char *gr_nominals_of(const char *source, int64_t decl) {
+    char *names = gr_binder_names(source, decl);
+    if (strncmp(names, "error[", 6) == 0) return names;
+    int64_t equals = type_equals_token(source, decl);
+    int64_t open = skip_trivia(source, token_end(source, equals));
+    int64_t close = balanced_end(source, open, "{", "}");
+    if (close < 0) { free(names); return gr_refusal("E2S201", "unterminated record body", open); }
+    int64_t limit = close - 1;
+    Buffer out;
+    buffer_init(&out);
+    int64_t cursor = skip_trivia(source, token_end(source, open));
+    while (cursor < limit) {
+        int64_t colon = skip_trivia(source, token_end(source, cursor));
+        int64_t type_at = skip_trivia(source, token_end(source, colon));
+        gr_nominals(source, type_at, limit, names, &out);
+        int64_t type_end = gr_type_end(source, type_at, limit);
+        if (type_end <= type_at) {
+            free(names); free(out.data);
+            return gr_refusal("E2S201", "malformed field type", type_at);
+        }
+        cursor = skip_trivia(source, type_end);
+        if (cursor < limit && token_equal(source, cursor, ",")) {
+            cursor = skip_trivia(source, token_end(source, cursor));
+        }
+    }
+    free(names);
+    return out.data;
+}
+
+static char *gr_cycle_visit(const char *source, const char *name, const char *stack,
+                            int64_t depth) {
+    if (depth > 64) return owned_text("");
+    int64_t decl = gr_declaration(source, name);
+    if (decl < 0) return owned_text("");
+    char *targets = gr_nominals_of(source, decl);
+    if (strncmp(targets, "error[", 6) == 0) return targets;
+    int64_t count = gr_lines(targets);
+    for (int64_t index = 0; index < count; ++index) {
+        char *target = gr_line(targets, index);
+        if (strcmp(target, name) == 0) {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(&message, "`%s` holds itself by value", name);
+            char *error = gr_refusal("E2S199", message.data, decl);
+            free(message.data); free(target); free(targets);
+            return error;
+        }
+        Buffer needle;
+        buffer_init(&needle);
+        buffer_format(&needle, "|%s|", target);
+        bool on_stack = strstr(stack, needle.data) != NULL;
+        free(needle.data);
+        if (on_stack) {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(&message, "mutual by-value cycle through `%s` and `%s`", name, target);
+            char *error = gr_refusal("E2S200", message.data, decl);
+            free(message.data); free(target); free(targets);
+            return error;
+        }
+        Buffer deeper_stack;
+        buffer_init(&deeper_stack);
+        buffer_format(&deeper_stack, "%s|%s|", stack, target);
+        char *deeper = gr_cycle_visit(source, target, deeper_stack.data, depth + 1);
+        free(deeper_stack.data);
+        free(target);
+        if (deeper[0] != '\0') { free(targets); return deeper; }
+        free(deeper);
+    }
+    free(targets);
+    return owned_text("");
+}
+
+static char *gr_cycle(const char *source) {
+    char *decls = gr_declarations(source);
+    if (strncmp(decls, "error[", 6) == 0) return decls;
+    int64_t count = gr_lines(decls);
+    for (int64_t index = 0; index < count; ++index) {
+        char *name = gr_line(decls, index);
+        Buffer stack;
+        buffer_init(&stack);
+        buffer_format(&stack, "|%s|", name);
+        char *deeper = gr_cycle_visit(source, name, stack.data, 0);
+        free(stack.data);
+        free(name);
+        if (deeper[0] != '\0') { free(decls); return deeper; }
+        free(deeper);
+    }
+    free(decls);
+    return owned_text("");
+}
+
+static char *gr_limits_json(void) {
+    return owned_text(
+        "{\"binders_per_declaration\":2,\"constructed_depth\":8,"
+        "\"declarations\":64,\"display_bytes\":128,\"document_bytes\":1048576,"
+        "\"field_name_bytes\":65535,\"fields_per_declaration\":256,"
+        "\"instantiations_per_declaration\":8}");
+}
+
+static char *gr_document(const char *source, const char *path) {
+    char *decls = gr_declarations(source);
+    if (strncmp(decls, "error[", 6) == 0) return decls;
+    int64_t count = gr_lines(decls);
+    if (count > 64) { free(decls); return gr_refusal("E2S201", "more than 64 declarations", 0); }
+    char *cycle = gr_cycle(source);
+    if (cycle[0] != '\0') { free(decls); return cycle; }
+    free(cycle);
+    for (int64_t check = 0; check < count; ++check) {
+        char *check_name = gr_line(decls, check);
+        int64_t check_decl = gr_declaration(source, check_name);
+        free(check_name);
+        char *check_fields = gr_fields_json(source, check_decl, path, "", "");
+        if (strncmp(check_fields, "error[", 6) == 0) { free(decls); return check_fields; }
+        free(check_fields);
+    }
+    char *apps = gr_applications(source, path);
+    if (strncmp(apps, "error[", 6) == 0) { free(decls); return apps; }
+    Buffer rendered;
+    buffer_init(&rendered);
+    buffer_append(&rendered, "[");
+    for (int64_t index = 0; index < count; ++index) {
+        char *name = gr_line(decls, index);
+        int64_t decl = gr_declaration(source, name);
+        char *binders = gr_binders_json(source, decl, path);
+        if (strncmp(binders, "error[", 6) == 0) {
+            free(name); free(apps); free(decls); free(rendered.data);
+            return binders;
+        }
+        char *fields = gr_fields_json(source, decl, path, "", "");
+        if (strncmp(fields, "error[", 6) == 0) {
+            free(name); free(binders); free(apps); free(decls); free(rendered.data);
+            return fields;
+        }
+        char *applications = gr_applications_json(apps, name, decl);
+        if (strncmp(applications, "error[", 6) == 0) {
+            free(name); free(binders); free(fields); free(apps); free(decls);
+            free(rendered.data);
+            return applications;
+        }
+        char *type_id = gr_type_id(path, name);
+        if (index > 0) buffer_append(&rendered, ",");
+        buffer_format(&rendered,
+            "{\"applications\":%s,\"binders\":%s,\"fields\":%s,\"id\":\"%s\","
+            "\"kind\":\"record\",\"name\":\"%s\"}",
+            applications, binders, fields, type_id, name);
+        free(name); free(binders); free(fields); free(applications); free(type_id);
+    }
+    buffer_append(&rendered, "]");
+    char *file = scoped_hir_file_id(path);
+    char *limits = gr_limits_json();
+    Buffer document;
+    buffer_init(&document);
+    buffer_format(&document,
+        "{\"declarations\":%s,\"file_id\":\"%s\",\"limits\":%s,"
+        "\"profile\":\"kofun.stage2-analysis/generic-record/v1\","
+        "\"schema\":\"kofun.generic-record-hir/v1\"}\n",
+        rendered.data, file, limits);
+    free(rendered.data); free(file); free(limits); free(apps); free(decls);
+    if (document.length > 1048576) {
+        free(document.data);
+        return gr_refusal("E2S201", "document exceeds 1048576 bytes", 0);
+    }
+    return document.data;
+}
+
+static int emit_generic_record_hir_file(const char *input, const char *output,
+                                        const char *logical_path) {
+    Stage2FileIdentity identity = stage2_same_file(input, output);
+    if (identity == STAGE2_FILE_LOOKUP_ERROR) { stage2_host_lookup_error(); return 2; }
+    if (identity == STAGE2_FILE_SAME) {
+        puts("error[E2S201]: generic-record HIR input and output must be distinct");
+        return 1;
+    }
+    if (!scoped_hir_logical_path(logical_path)) {
+        puts("error[E2S201]: generic-record HIR logical path must be canonical relative UTF-8 (1..4096 bytes)");
+        return 1;
+    }
+    size_t source_bytes = 0;
+    char *source = read_file_with_length(input, &source_bytes);
+    if (source_bytes > UINT32_MAX) {
+        puts("error[E2S201]: generic-record HIR source span exceeds u32");
+        free(source);
+        return 1;
+    }
+    char *document = gr_document(source, logical_path);
+    free(source);
+    if (strncmp(document, "error[", 6) == 0) { puts(document); free(document); return 1; }
+    bool written = write_file_transactional(output, document);
+    free(document);
+    if (!written) { puts("error[E2S201]: cannot commit generic-record HIR output"); return 1; }
+    return 0;
+}
+
 static int emit_scope_hir_v2_file(const char *input, const char *output, const char *logical_path) {
     Stage2FileIdentity identity = stage2_same_file(input, output);
     if (identity == STAGE2_FILE_LOOKUP_ERROR) { stage2_host_lookup_error(); return 2; }
@@ -41925,6 +42760,9 @@ int main(int argc, char **argv) {
     if (argc == 5 && strcmp(argv[1], "--emit-scope-hir-v2") == 0) {
         return emit_scope_hir_v2_file(argv[2], argv[3], argv[4]);
     }
+    if (argc == 5 && strcmp(argv[1], "--emit-generic-record-hir") == 0) {
+        return emit_generic_record_hir_file(argv[2], argv[3], argv[4]);
+    }
     if (argc == 4 && strcmp(argv[1], "--emit-scope-hir") == 0) {
         return emit_scope_hir_file(argv[2], argv[3]);
     }
@@ -41948,6 +42786,7 @@ int main(int argc, char **argv) {
             "       kofun-stage2 --parse-patterns INPUT.kofun OUTPUT.patterns\n"
             "       kofun-stage2 --emit-scope-hir INPUT.kofun OUTPUT.scope-hir\n"
             "       kofun-stage2 --emit-scope-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n"
+            "       kofun-stage2 --emit-generic-record-hir INPUT.kofun OUTPUT.json LOGICAL-PATH\n"
             "       kofun-stage2 --emit-capture-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n"
             "       kofun-stage2 --emit-complete-capture-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n"
             "       kofun-stage2 --check-scoped-ownership INPUT.kofun OUTPUT.json LOGICAL-PATH\n"

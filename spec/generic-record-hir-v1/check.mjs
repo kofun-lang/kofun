@@ -11,6 +11,7 @@
  */
 
 import fs from "node:fs";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -353,6 +354,64 @@ for (const [fixture, code] of compilerRefusals) {
     }
 }
 pass(`the canonical Kofun half refuses all ${compilerRefusals.length} negative fixtures with their codes and no artifact`);
+
+/* ------------------------------------------------- maintained C half */
+
+const stage2 = process.env.KOFUN_GENERIC_RECORD_STAGE2;
+if (!stage2 || !fs.existsSync(stage2)) {
+    fail("c half", "KOFUN_GENERIC_RECORD_STAGE2 is not a built binary");
+} else {
+    function runC(fixture, logicalPath) {
+        const out = `${HERE}fixtures/.c-${fixture}.out.json`;
+        fs.rmSync(out, { force: true });
+        const result = spawnSync(stage2, [
+            "--emit-generic-record-hir",
+            `${HERE}fixtures/${fixture}`,
+            out,
+            logicalPath,
+        ], { encoding: "latin1" });
+        const artifact = fs.existsSync(out) ? fs.readFileSync(out, "latin1") : null;
+        fs.rmSync(out, { force: true });
+        return { artifact, status: result.status, stdout: result.stdout ?? "" };
+    }
+
+    const cPositive = runC("positive.kofun", positive.logical_path);
+    if (cPositive.status !== 0 || cPositive.artifact !== goldenText) {
+        fail("c positive", `the maintained C half does not reproduce the golden (${cPositive.stdout.trim()})`);
+    } else {
+        pass("the maintained C half reproduces the positive golden byte for byte");
+    }
+
+    let cRefusals = 0;
+    for (const [fixture, code] of compilerRefusals) {
+        const result = runC(fixture, positive.logical_path);
+        if (result.status !== 1) {
+            fail(`c ${fixture}`, `expected exit 1, got ${result.status}`);
+        } else if (!result.stdout.includes(`error[${code}]`)) {
+            fail(`c ${fixture}`, `expected ${code}, got: ${result.stdout.trim()}`);
+        } else if (result.artifact !== null) {
+            fail(`c ${fixture}`, "wrote an artifact on refusal");
+        } else {
+            cRefusals += 1;
+        }
+    }
+    pass(`the maintained C half refuses ${cRefusals} of ${compilerRefusals.length} negative fixtures with their codes and no artifact`);
+
+    /* The two halves must agree on the outcome, not only each with the golden:
+     * a positive document that both write and a refusal whose diagnostic text
+     * differs are exactly the divergence the pair exists to catch. */
+    let agreed = 0;
+    for (const [fixture] of compilerRefusals) {
+        const c = runC(fixture, positive.logical_path);
+        const k = runCompiler(fixture, positive.logical_path);
+        if (c.status === 1 && !k.ok && c.stdout === k.printed) {
+            agreed += 1;
+        } else {
+            fail(`pair ${fixture}`, `the halves disagree: C(${c.status}) Kofun(${k.ok ? 0 : 1})`);
+        }
+    }
+    pass(`the two halves agree on the diagnostic text of all ${agreed} refusals`);
+}
 
 /* ------------------------------------------------------------------ output */
 
