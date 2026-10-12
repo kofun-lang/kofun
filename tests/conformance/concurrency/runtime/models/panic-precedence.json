@@ -1,0 +1,10 @@
+{
+  "schema": "kofun.scoped-parallelism-model/v1",
+  "scope": {
+    "exit_step": 6,
+    "tasks": [
+      { "id": "earlier", "spawn_step": 1, "captures": [], "outcome": "panic" },
+      { "id": "later", "spawn_step": 2, "captures": [], "outcome": "panic" }
+    ]
+  }
+}

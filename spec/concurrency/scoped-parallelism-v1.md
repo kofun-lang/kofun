@@ -279,8 +279,9 @@ frozen v1 node representation. Naming the construct replaces an incidental
 in the typed HIR would
 require `kofun.selfhost-hir/v2` and a profile revision, so the typed frontend
 still refuses it. Capture derivation and ownership checking have since landed
-as analysis-only entries (below); user-facing diagnostics for the §8 classes,
-scheduling, and backend lowering remain unimplemented.
+as analysis-only entries, and so have the §8 diagnostics and a scheduler
+runtime (below). Backend lowering remains unimplemented, so nothing calls the
+scheduler yet.
 
 A production implementation must be split into separately gated parser/HIR,
 ownership/place analysis, runtime/scheduler, diagnostics, and backend work. It
@@ -297,10 +298,22 @@ also carries its registered compiler code from the §8 table, which `kofun
 check` reports (#1163). The entry does not schedule or lower anything, and
 ordinary compilation still refuses `par` with `E2S154`.
 
+The runtime slice is in the tree as a library
+([#1164](https://github.com/kofun-lang/kofun/issues/1164)).
+`bootstrap/stage2/scoped_parallel_v1.{h,c}` is a bounded C11 scheduler for the
+Stage 2 host target. It has a fixed worker set and a fixed task array, the §7
+scope-exit join barrier, panic-over-cancellation precedence decided after that
+barrier, a cancellation token, and exactly the five logical anchors. `task
+concurrency-runtime` drives it with fixtures written as the calls a lowering
+will emit. It compares each fixture with this model and runs all of them under
+ThreadSanitizer. No compiler emits those calls yet
+([#1166](https://github.com/kofun-lang/kofun/issues/1166)).
+
 This document is the normative contract of accepted
 [`RFC-0003`](../../rfcs/0003-scoped-parallelism.md), decided 2026-08-09. The
-decision is in force; the feature is not shipped. No compiling parser,
-scheduler, or backend implements it (the ownership checker is analysis-only),
+decision is in force; the feature is not shipped. No compiling parser or
+backend implements it (the ownership checker is analysis-only, and the
+scheduler runtime has no caller),
 and the compiler refuses `par` by name
 with `E2S154` — which is the separation between an accepted decision and an
 implemented capability, not a gap in the decision.

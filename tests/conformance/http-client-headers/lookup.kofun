@@ -1,0 +1,48 @@
+# #1698. A lookup by name over appended headers: the first entry whose `name`
+# bytes equal the wanted bytes, and its `value`.
+type Header = {
+    name: Bytes,
+    value: Bytes,
+}
+
+fn main() -> Int {
+    let headers: List[Header] = []
+    let host_name = stage2_bytes_empty()
+    stage2_bytes_assign_text(host_name, "host")
+    let host_value = stage2_bytes_empty()
+    stage2_bytes_assign_text(host_value, "example.com")
+    let host: Header = Header(name: host_name, value: host_value)
+    stage2_list_append(headers, host)
+    let accept_name = stage2_bytes_empty()
+    stage2_bytes_assign_text(accept_name, "accept")
+    let accept_value = stage2_bytes_empty()
+    stage2_bytes_assign_text(accept_value, "*/*")
+    let accept: Header = Header(name: accept_name, value: accept_value)
+    stage2_list_append(headers, accept)
+    let wanted = stage2_bytes_empty()
+    stage2_bytes_assign_text(wanted, "accept")
+    let mut found = -1
+    let mut index = 0
+    while index < len(headers) {
+        let mut same = 0
+        if stage2_bytes_len(headers[index].name) == stage2_bytes_len(wanted) {
+            same = 1
+            let mut at = 0
+            while at < stage2_bytes_len(wanted) {
+                if stage2_bytes_byte_at(headers[index].name, at) != stage2_bytes_byte_at(wanted, at) {
+                    same = 0
+                }
+                at = at + 1
+            }
+        }
+        if same == 1 {
+            if found == -1 {
+                found = index
+            }
+        }
+        index = index + 1
+    }
+    print(found)
+    print(stage2_bytes_text(headers[found].value, 0, stage2_bytes_len(headers[found].value)))
+    return 0
+}

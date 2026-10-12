@@ -39,6 +39,7 @@ concurrency-captures-direct	364662996101
 concurrency-hir	91548305762
 concurrency-ownership	53059697978
 concurrency-places	63542086200
+concurrency-runtime	2350672171
 const-generics	30518574833
 date-time	25239143095
 decimal	24384825879
@@ -63,6 +64,7 @@ generic-record-hir	103059844
 generics	4498414757
 hm-levels	6275418914
 http	2220581373
+http-client-carriers	16057905336
 http-client-model	15198534107
 import-aliases	5457864029
 imports-qualified	4660189566

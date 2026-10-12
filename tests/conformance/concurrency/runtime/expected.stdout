@@ -1,0 +1,20 @@
+two-spawns-two-joins: runs=300 workers=1,2,4 outcome=success primary=- message=- related=- discards=0 trace=scope.enter,task.spawn:left,task.spawn:right,task.join.explicit:left,task.join.explicit:right,scope.exit
+model two-spawns-two-joins outcome=success primary=- joins=left:explicit:success:125250:kept,right:explicit:success:375250:kept
+result-join: runs=150 workers=1,2,4 outcome=success primary=- message=- related=- discards=0 trace=scope.enter,task.spawn:compute,task.join.explicit:compute,scope.exit
+model result-join outcome=success primary=- joins=compute:explicit:success:42:kept
+scope-exit-unused: runs=150 workers=1,2,4 outcome=success primary=- message=- related=- discards=1 trace=scope.enter,task.spawn:unused,task.join.scope-exit:unused,scope.exit
+model scope-exit-unused outcome=success primary=- joins=unused:scope-exit:success:-:discarded
+panic-drain: runs=150 workers=1,2,4 outcome=panicked primary=first message=first failed related=- discards=1 trace=scope.enter,task.spawn:first,task.spawn:sibling,task.join.scope-exit:first,task.join.scope-exit:sibling,scope.exit
+model panic-drain outcome=panicked primary=panic:first joins=first:scope-exit:panic:-:discarded,sibling:scope-exit:success:-:discarded
+panic-explicit-join: runs=150 workers=1,2,4 outcome=panicked primary=first message=first failed related=- discards=1 trace=scope.enter,task.spawn:first,task.spawn:sibling,task.join.explicit:first,task.join.scope-exit:sibling,scope.exit
+model panic-explicit-join outcome=panicked primary=panic:first joins=first:explicit:panic:-:kept,sibling:scope-exit:success:-:discarded
+cancellation-drain: runs=150 workers=1,2,4 outcome=cancelled primary=- message=- related=- discards=1 trace=scope.enter,task.spawn:observed,task.spawn:finished,task.join.scope-exit:observed,task.join.scope-exit:finished,scope.exit
+model cancellation-drain outcome=cancelled primary=cancellation joins=finished:scope-exit:success:-:discarded,observed:scope-exit:cancelled:-:discarded
+cancel-return-normally: runs=150 workers=1,2,4 outcome=cancelled primary=- message=- related=- discards=1 trace=scope.enter,task.spawn:normal,task.join.scope-exit:normal,scope.exit
+model cancel-return-normally outcome=cancelled primary=cancellation joins=normal:scope-exit:success:-:discarded
+panic-over-cancellation: runs=150 workers=1,2,4 outcome=panicked primary=panicked message=panicked failed related=- discards=1 trace=scope.enter,task.spawn:earlier,task.spawn:panicked,task.spawn:cancelled,task.join.scope-exit:earlier,task.join.scope-exit:panicked,task.join.scope-exit:cancelled,scope.exit
+model panic-over-cancellation outcome=panicked primary=panic:panicked joins=cancelled:scope-exit:cancelled:-:discarded,earlier:scope-exit:success:-:discarded,panicked:scope-exit:panic:-:discarded
+panic-precedence: runs=1000 later-finished-first=500 earlier-finished-first=500 workers=2,4 outcome=panicked primary=earlier message=earlier failed related=later discards=0 trace=scope.enter,task.spawn:earlier,task.spawn:later,task.join.scope-exit:earlier,task.join.scope-exit:later,scope.exit
+model panic-precedence outcome=panicked primary=panic:earlier joins=earlier:scope-exit:panic:-:discarded,later:scope-exit:panic:-:discarded
+refusals: zero-workers too-many-workers over-capacity-scope unknown-handle over-capacity-spawn double-join double-exit use-after-exit; refused calls emit no anchor; workers <= tasks; empty scope starts no thread; default workers within 1..16
+anchors: scope.enter task.spawn task.join.explicit task.join.scope-exit scope.exit

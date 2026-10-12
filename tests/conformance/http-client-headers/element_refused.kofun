@@ -1,0 +1,17 @@
+# #1698. A record of another type does not go into `List[Header]`: refused
+# E2S15 with both types named.
+type Header = {
+    name: Bytes,
+    value: Bytes,
+}
+
+type Other = {
+    label: Bytes,
+}
+
+fn main() -> Int {
+    let headers: List[Header] = []
+    let other: Other = Other(label: stage2_bytes_empty())
+    stage2_list_append(headers, other)
+    return 0
+}

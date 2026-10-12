@@ -1,0 +1,18 @@
+# #1698. The 129th append is refused at run time with R038; the list keeps its
+# 128 entries and the program prints nothing after the refusal.
+type Header = {
+    name: Bytes,
+    value: Bytes,
+}
+
+fn main() -> Int {
+    let headers: List[Header] = []
+    let mut count = 0
+    while count < 129 {
+        let entry: Header = Header(name: stage2_bytes_empty(), value: stage2_bytes_empty())
+        stage2_list_append(headers, entry)
+        count = count + 1
+    }
+    print(len(headers))
+    return 0
+}

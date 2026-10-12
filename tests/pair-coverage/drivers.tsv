@@ -32,6 +32,7 @@ bindgen-c
 bindgen-c-import-boundary
 bootstrap
 bounded-bytes
+http-client-carriers
 build-system
 c-abi
 call-arguments
@@ -49,6 +50,7 @@ concurrency-captures-direct
 concurrency-hir
 concurrency-ownership
 concurrency-places
+concurrency-runtime
 const-generics
 date-time
 decimal

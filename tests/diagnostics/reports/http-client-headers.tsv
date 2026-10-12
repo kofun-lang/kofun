@@ -1,0 +1,2 @@
+# code	adapter	channel	exit	primary-span	secondary-span	artifact
+R038	http-client-headers	stderr	1	not-applicable	not-applicable	required
