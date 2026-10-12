@@ -1,0 +1,7 @@
+type Box[T] = {
+    value: T,
+}
+
+type Deep[T] = {
+    v: Box[Box[Box[Box[Box[Box[Box[Box[Box[Int]]]]]]]]],
+}

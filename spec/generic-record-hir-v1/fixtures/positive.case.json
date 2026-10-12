@@ -1,0 +1,38 @@
+{
+  "logical_path": "examples/generic_record.kofun",
+  "declarations": [
+    {
+      "name": "First",
+      "binders": ["T"],
+      "fields": [
+        { "name": "inner", "type": { "nominal": "Second", "arguments": [{ "parameter": "T" }] } }
+      ],
+      "applications": [{ "arguments": [{ "primitive": "Int" }] }]
+    },
+    {
+      "name": "Second",
+      "binders": ["U"],
+      "fields": [{ "name": "value", "type": { "parameter": "U" } }],
+      "applications": [{ "arguments": [{ "primitive": "Text" }] }]
+    },
+    {
+      "name": "Box",
+      "binders": ["T"],
+      "fields": [{ "name": "value", "type": { "parameter": "T" } }],
+      "applications": [
+        { "arguments": [{ "primitive": "Int" }] },
+        { "arguments": [{ "primitive": "Bool" }] },
+        { "arguments": [{ "nominal": "Box", "arguments": [{ "primitive": "Int" }] }] }
+      ]
+    },
+    {
+      "name": "Pair",
+      "binders": ["T", "U"],
+      "fields": [
+        { "name": "left", "type": { "parameter": "T" } },
+        { "name": "right", "type": { "parameter": "U" } }
+      ],
+      "applications": [{ "arguments": [{ "primitive": "Int" }, { "primitive": "Bool" }] }]
+    }
+  ]
+}

@@ -1,0 +1,146 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "kofun.generic-record-hir.v1.schema.json",
+  "title": "kofun.generic-record-hir/v1",
+  "description": "Closed generic-record HIR analysis document (#1674). See generic-record-hir-v1.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "profile", "file_id", "limits", "declarations"],
+  "properties": {
+    "schema": { "const": "kofun.generic-record-hir/v1" },
+    "profile": { "const": "kofun.stage2-analysis/generic-record/v1" },
+    "file_id": { "$ref": "#/definitions/identity" },
+    "limits": { "$ref": "#/definitions/limits" },
+    "declarations": {
+      "type": "array",
+      "maxItems": 64,
+      "items": { "$ref": "#/definitions/declaration" }
+    }
+  },
+  "definitions": {
+    "identity": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "binders_per_declaration",
+        "instantiations_per_declaration",
+        "constructed_depth",
+        "declarations",
+        "fields_per_declaration",
+        "field_name_bytes",
+        "display_bytes",
+        "document_bytes"
+      ],
+      "properties": {
+        "binders_per_declaration": { "const": 2 },
+        "instantiations_per_declaration": { "const": 8 },
+        "constructed_depth": { "const": 8 },
+        "declarations": { "const": 64 },
+        "fields_per_declaration": { "const": 256 },
+        "field_name_bytes": { "const": 65535 },
+        "display_bytes": { "const": 128 },
+        "document_bytes": { "const": 1048576 }
+      }
+    },
+    "typeRef": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tag", "id"],
+          "properties": {
+            "tag": { "const": "primitive" },
+            "id": { "$ref": "#/definitions/identity" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tag", "id"],
+          "properties": {
+            "tag": { "const": "parameter" },
+            "id": { "$ref": "#/definitions/identity" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tag", "id", "arguments"],
+          "properties": {
+            "tag": { "const": "nominal" },
+            "id": { "$ref": "#/definitions/identity" },
+            "arguments": { "type": "array", "items": { "$ref": "#/definitions/typeRef" } }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tag", "id"],
+          "properties": {
+            "tag": { "const": "constructed" },
+            "id": { "$ref": "#/definitions/identity" }
+          }
+        }
+      ]
+    },
+    "field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "$ref": "#/definitions/typeRef" }
+      }
+    },
+    "binder": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "ordinal"],
+      "properties": {
+        "id": { "$ref": "#/definitions/identity" },
+        "kind": { "const": "type" },
+        "ordinal": { "type": "integer", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "application": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "arguments", "fields"],
+      "properties": {
+        "id": { "$ref": "#/definitions/identity" },
+        "arguments": { "type": "array", "items": { "$ref": "#/definitions/typeRef" } },
+        "fields": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "$ref": "#/definitions/field" }
+        }
+      }
+    },
+    "declaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "name", "binders", "fields", "applications"],
+      "properties": {
+        "id": { "$ref": "#/definitions/identity" },
+        "kind": { "const": "record" },
+        "name": { "type": "string" },
+        "binders": {
+          "type": "array",
+          "maxItems": 2,
+          "items": { "$ref": "#/definitions/binder" }
+        },
+        "fields": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "$ref": "#/definitions/field" }
+        },
+        "applications": {
+          "type": "array",
+          "maxItems": 8,
+          "items": { "$ref": "#/definitions/application" }
+        }
+      }
+    }
+  }
+}

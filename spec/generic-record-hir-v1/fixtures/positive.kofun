@@ -1,0 +1,27 @@
+type First[T] = {
+    inner: Second[T],
+}
+
+type Second[U] = {
+    value: U,
+}
+
+type Box[T] = {
+    value: T,
+}
+
+type Pair[T, U] = {
+    left: T,
+    right: U,
+}
+
+fn consume(
+    a: First[Int],
+    b: Second[Text],
+    c: Box[Int],
+    d: Box[Bool],
+    e: Box[Box[Int]],
+    f: Pair[Int, Bool],
+) -> Int {
+    return 0
+}

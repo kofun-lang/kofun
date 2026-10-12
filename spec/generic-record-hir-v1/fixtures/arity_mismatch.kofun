@@ -1,0 +1,7 @@
+type Y[T] = {
+    v: T,
+}
+
+type X[T] = {
+    v: Y[T, T],
+}

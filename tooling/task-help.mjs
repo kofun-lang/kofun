@@ -56,7 +56,7 @@ export const GROUPS = Object.freeze([
             'concurrency-captures-direct', 'concurrency-captures', 'concurrency-capture-events', 'concurrency-ownership',
             'concurrency-runtime',
             'schedule-trace', 'type-reduction-trace',
-            'generics', 'const-generics', 'hm-levels', 'effect-inference',
+            'generics', 'const-generics', 'generic-record-hir', 'hm-levels', 'effect-inference',
             'pure-boundary', 'traits',
             'trait-dictionary-c11',
             'fixed-decimal-profile', 'decimal-backend-profiles',

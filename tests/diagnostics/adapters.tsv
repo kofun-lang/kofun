@@ -8,6 +8,7 @@ c-abi	tests/diagnostics/c-abi/run.sh	verify	tests/diagnostics/reports/c-abi.tsv
 command-operands	tests/conformance/command-operands/run.sh	verify	tests/diagnostics/reports/command-operands.tsv
 const-generics	tests/conformance/const-generics/run.sh	verify	tests/diagnostics/reports/const-generics.tsv
 driver	tests/diagnostics/driver/run.sh	verify	tests/diagnostics/reports/driver.tsv
+generic-record-hir	spec/generic-record-hir-v1/check.sh	verify	tests/diagnostics/reports/generic-record-hir.tsv
 generics	tests/conformance/generics/run.sh	verify	tests/diagnostics/reports/generics.tsv
 hm-levels	tests/conformance/inference/hm-levels/run.sh	verify	tests/diagnostics/reports/hm-levels.tsv
 http-client-headers	tests/conformance/http-client-headers/run.sh	verify	tests/diagnostics/reports/http-client-headers.tsv
