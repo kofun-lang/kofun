@@ -40970,6 +40970,21 @@ static char *gr_comma_join(const char *text) {
     return out.data;
 }
 
+/* The rows of `text` (newline separated) concatenated without separators. A
+ * TypeRef's hex is one row, so a nominal type with several arguments must
+ * flatten its argument rows before it is nested in another type. */
+static char *gr_flatten(const char *text) {
+    Buffer out;
+    buffer_init(&out);
+    for (const char *p = text; *p != '\0'; ++p) {
+        if (*p != '\n') {
+            char symbol[2] = {*p, '\0'};
+            buffer_append(&out, symbol);
+        }
+    }
+    return out.data;
+}
+
 static int64_t gr_comma_count(const char *names) {
     if (names[0] == '\0') return 0;
     int64_t count = 1;
@@ -41238,13 +41253,14 @@ static char *gr_type(const char *source, int64_t at, int64_t limit, const char *
         }
         char *joined = gr_comma_join(jsons.data);
         char *count_hex = scoped_hir_hex(count, 4);
+        char *flat = gr_flatten(hexes.data);
         char *type_id = gr_type_id(path, token);
         Buffer out;
         buffer_init(&out);
         buffer_format(&out,
             "{\"arguments\":[%s],\"id\":\"%s\",\"tag\":\"nominal\"}\n03%s%s%s",
-            joined, type_id, type_id, count_hex, hexes.data);
-        free(joined); free(count_hex); free(type_id);
+            joined, type_id, type_id, count_hex, flat);
+        free(joined); free(count_hex); free(flat); free(type_id);
         free(jsons.data); free(hexes.data); free(token);
         return out.data;
     }
@@ -41633,6 +41649,11 @@ static char *gr_limits_json(void) {
 }
 
 static char *gr_document(const char *source, const char *path) {
+    /* Lexical errors first, as `compile_file` reports them: an unterminated
+     * string has no token end, and the scan below must never step from it. */
+    char *tokens = lex_source(source);
+    if (strncmp(tokens, "error[", 6) == 0) return tokens;
+    free(tokens);
     char *decls = gr_declarations(source);
     if (strncmp(decls, "error[", 6) == 0) return decls;
     int64_t count = gr_lines(decls);
@@ -41723,6 +41744,1133 @@ static int emit_generic_record_hir_file(const char *input, const char *output,
     bool written = write_file_transactional(output, document);
     free(document);
     if (!written) { puts("error[E2S201]: cannot commit generic-record HIR output"); return 1; }
+    return 0;
+}
+
+/* ===== Generic-ADT HIR v1 analysis document (#1675) =====
+ *
+ * The maintained C half of the canonical `--emit-generic-adt-hir` entry. It
+ * mirrors `generic_adt_*` in compiler.kofun and reuses the #1674 identity core
+ * (`gr_parameter_id`, `gr_primitive_id`, `gr_constructed_id` and the #303
+ * frame) unchanged. It adds ADT binders, constructor payload substitution over
+ * nested TypeRefs, and by-value cycle classification over records and ADTs
+ * together.
+ *
+ * Every record and ADT declaration is a node of the by-value graph and a legal
+ * nominal head. One scan reads them all into a declaration table -- name, kind,
+ * start, binder list, TypeId -- and validates every binder list, so a name is
+ * resolved by a table lookup rather than by re-reading the source, and every
+ * later phase reads binder lists without re-checking for an error. */
+static char *ga_type_id(const char *path, const char *name, const char *kind) {
+    if (strcmp(kind, "record") == 0) return gr_type_id(path, name);
+    Buffer package, module_payload, payload;
+    buffer_init(&package);
+    buffer_init(&module_payload);
+    buffer_init(&payload);
+    buffer_format(&package,
+        "kofun.package-id/v1\nkind=anonymous-single-file\nlogical-source=%s\n", path);
+    buffer_format(&module_payload,
+        "kofun.module-id-input/v1\npackage-payload-begin\n%s"
+        "package-payload-end\nkind=synthetic-root\n", package.data);
+    char *module_hex = scoped_hir_text_hex(module_payload.data);
+    char *module = scoped_hir_hash_frame("kofun.id.module/v1", module_hex, "", "", "");
+    char *namespace_hex = scoped_hir_text_hex("kofun.namespace-id/v1\ntag=1\nname=type\n");
+    char *namespace_id = scoped_hir_hash_frame("kofun.id.namespace/v1", namespace_hex, "", "", "");
+    char *name_hex = scoped_hir_text_hex(name);
+    buffer_format(&payload,
+        "800100000020%s800200000020%s8003000000036164748004%08" PRIx64 "%s",
+        module, namespace_id, (uint64_t)strlen(name), name_hex);
+    char *id = scoped_hir_hash_frame("kofun.id.symbol/v1", payload.data, "", "", "");
+    free(package.data); free(module_payload.data); free(payload.data);
+    free(module_hex); free(module); free(namespace_hex); free(namespace_id); free(name_hex);
+    return id;
+}
+
+/* "record", "adt", or "" for the `type` keyword at `start`. */
+static const char *ga_kind(const char *source, int64_t start) {
+    int64_t length = source_length(source);
+    if (start < 0 || !token_equal(source, start, "type")) return "";
+    int64_t equals = type_equals_token(source, start);
+    if (equals < 0 || equals >= length || !token_equal(source, equals, "=")) return "";
+    int64_t next = skip_trivia(source, token_end(source, equals));
+    if (next >= length) return "";
+    if (token_equal(source, next, "{")) return "record";
+    if (token_equal(source, next, "|")) return "adt";
+    return "";
+}
+
+/* The byte after the type that starts at `at`, or -1 when it does not advance
+ * (an argument list that never closes). Every loop over types steps with this,
+ * so a malformed list is refused instead of read at a negative offset. */
+static int64_t ga_type_stop(const char *source, int64_t at, int64_t limit) {
+    int64_t end = gr_type_end(source, at, limit);
+    return end <= at ? -1 : end;
+}
+
+/* Field `index` of a tab-separated row, as a fresh string. */
+static char *ga_field(const char *row, int64_t index) {
+    int64_t seen = 0, start = 0, at = 0, length = (int64_t)strlen(row);
+    while (at <= length) {
+        if (at == length || row[at] == '\t') {
+            if (seen == index) {
+                char *out = allocate((size_t)(at - start) + 1);
+                memcpy(out, row + start, (size_t)(at - start));
+                out[at - start] = '\0';
+                return out;
+            }
+            ++seen;
+            start = at + 1;
+        }
+        ++at;
+    }
+    return owned_text("");
+}
+
+/* The declaration table is "" for no declarations, otherwise one
+ * "\nname\tkind\tstart\tbinders\ttypeid" row per record or ADT declaration in
+ * source order, each led by its own newline so a name is found as "\nname\t".
+ * The row for `name`, or "". */
+static char *ga_row(const char *table, const char *name) {
+    Buffer needle;
+    buffer_init(&needle);
+    buffer_format(&needle, "\n%s\t", name);
+    const char *at = strstr(table, needle.data);
+    free(needle.data);
+    if (at == NULL) return owned_text("");
+    const char *begin = at + 1;
+    const char *end = strchr(begin, '\n');
+    size_t length = end == NULL ? strlen(begin) : (size_t)(end - begin);
+    char *row = allocate(length + 1);
+    memcpy(row, begin, length);
+    row[length] = '\0';
+    return row;
+}
+
+static int64_t ga_count(const char *table) {
+    return table[0] == '\0' ? 0 : gr_lines(table) - 1;
+}
+
+/* The row at `index`, as a fresh string. */
+static char *ga_row_at(const char *table, int64_t index) {
+    return gr_line(table, index + 1);
+}
+
+/* The decimal number field `index` of `row` spells. */
+static int64_t ga_number(const char *row, int64_t index) {
+    char *digits = ga_field(row, index);
+    int64_t value = (int64_t)strtoll(digits, NULL, 10);
+    free(digits);
+    return value;
+}
+
+/* Whether `haystack` holds `|name|`. */
+static bool ga_has_bar(const char *haystack, const char *name) {
+    Buffer needle;
+    buffer_init(&needle);
+    buffer_format(&needle, "|%s|", name);
+    bool found = strstr(haystack, needle.data) != NULL;
+    free(needle.data);
+    return found;
+}
+
+/* Whether `lines` (newline separated) holds `name` as one whole line. */
+static bool ga_has_line(const char *lines, const char *name) {
+    int64_t total = gr_lines(lines);
+    for (int64_t index = 0; index < total; ++index) {
+        char *line = gr_line(lines, index);
+        bool match = strcmp(line, name) == 0;
+        free(line);
+        if (match) return true;
+    }
+    return false;
+}
+
+/* `[const NAME: Int]` exactly, with `first` at the `const` keyword. */
+static bool ga_const_only(const char *source, int64_t first) {
+    int64_t length = source_length(source);
+    int64_t name = skip_trivia(source, token_end(source, first));
+    if (name >= length || strcmp(token_kind(source, name), "identifier") != 0) return false;
+    int64_t colon = skip_trivia(source, token_end(source, name));
+    if (colon >= length || !token_equal(source, colon, ":")) return false;
+    int64_t annotation = skip_trivia(source, token_end(source, colon));
+    if (annotation >= length || !token_equal(source, annotation, "Int")) return false;
+    int64_t end = skip_trivia(source, token_end(source, annotation));
+    return end < length && token_equal(source, end, "]");
+}
+
+/* "" for a declaration with no type binder, the comma list otherwise, or an
+ * `error[...]`. A const parameter is not a type binder: it is refused on an ADT
+ * and beside a type binder, and a record whose list is exactly one const
+ * parameter simply has no type binder. */
+static char *ga_binder_names(const char *source, int64_t decl, const char *kind) {
+    int64_t bracket = type_parameter_open(source, decl);
+    if (bracket < 0) return owned_text("");
+    int64_t close = balanced_end(source, bracket, "[", "]");
+    if (close < 0) return gr_refusal("E2S214", "unterminated type parameter list", bracket);
+    int64_t first = skip_trivia(source, token_end(source, bracket));
+    if (first < source_length(source) && token_equal(source, first, "const")) {
+        if (strcmp(kind, "record") == 0 && ga_const_only(source, first)) return owned_text("");
+        return gr_refusal("E2S214", "unsupported type parameter kind", first);
+    }
+    Buffer names;
+    buffer_init(&names);
+    int64_t count = 0, cursor = first;
+    while (cursor < close) {
+        if (token_equal(source, cursor, "]")) return names.data;
+        if (token_equal(source, cursor, "const")) {
+            free(names.data);
+            return gr_refusal("E2S214", "unsupported type parameter kind", cursor);
+        }
+        if (strcmp(token_kind(source, cursor), "identifier") != 0) {
+            free(names.data);
+            return gr_refusal("E2S214", "unsupported type parameter", cursor);
+        }
+        char *name = token_copy(source, cursor);
+        ++count;
+        if (count > 2) {
+            free(name); free(names.data);
+            return gr_refusal("E2S203", "a type declares more than two type parameters", cursor);
+        }
+        if (gr_has_binder(names.data, name)) {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(&message, "duplicate type parameter `%s`", name);
+            char *error = gr_refusal("E2S204", message.data, cursor);
+            free(message.data); free(name); free(names.data);
+            return error;
+        }
+        if (count > 1) buffer_append(&names, ",");
+        buffer_append(&names, name);
+        free(name);
+        cursor = skip_trivia(source, token_end(source, cursor));
+        if (cursor < close && token_equal(source, cursor, ",")) {
+            cursor = skip_trivia(source, token_end(source, cursor));
+        } else if (!token_equal(source, cursor, "]")) {
+            free(names.data);
+            return gr_refusal("E2S214", "unsupported type parameter list", cursor);
+        }
+    }
+    return names.data;
+}
+
+/* The declaration table, or an `error[...]`. Every record and ADT declaration
+ * is read, listed or not, so the 64-declaration bound applies to all of them. */
+static char *ga_table(const char *source, const char *path) {
+    Buffer out;
+    buffer_init(&out);
+    int64_t length = source_length(source), count = 0;
+    int64_t cursor = after_optional_module_header(source, 0);
+    while (cursor < length) {
+        int64_t start = type_declaration_start(source, cursor);
+        const char *kind = ga_kind(source, start);
+        if (kind[0] != '\0') {
+            char *name = type_name(source, start);
+            if (strlen(name) > 65535) {
+                free(name); free(out.data);
+                return gr_refusal("E2S217", "a declaration name exceeds 65535 bytes", start);
+            }
+            char *binders = ga_binder_names(source, start, kind);
+            if (strncmp(binders, "error[", 6) == 0) {
+                free(name); free(out.data);
+                return binders;
+            }
+            char *existing = ga_row(out.data, name);
+            bool duplicate = existing[0] != '\0';
+            free(existing);
+            if (duplicate) {
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(&message, "duplicate type declaration `%s`", name);
+                char *error = gr_refusal("E2S215", message.data, start);
+                free(message.data); free(name); free(binders); free(out.data);
+                return error;
+            }
+            ++count;
+            if (count > 64) {
+                free(name); free(binders); free(out.data);
+                return gr_refusal("E2S217", "more than 64 record and ADT declarations", start);
+            }
+            char *type_id = ga_type_id(path, name, kind);
+            buffer_format(&out, "\n%s\t%s\t%" PRId64 "\t%s\t%s", name, kind, start, binders, type_id);
+            free(type_id); free(binders); free(name);
+        }
+        int64_t end = top_level_end(source, cursor);
+        if (end == -2) {
+            free(out.data);
+            return gr_refusal("E2S217", "an ADT declares more than 64 constructors", cursor);
+        }
+        if (end <= cursor) {
+            free(out.data);
+            return gr_refusal("E2S213", "malformed source", cursor);
+        }
+        cursor = skip_trivia(source, end);
+    }
+    return out.data;
+}
+
+/* The names that carry a type binder, one per line, in source order. */
+static char *ga_listed(const char *table) {
+    int64_t count = ga_count(table);
+    Buffer out;
+    buffer_init(&out);
+    for (int64_t index = 0; index < count; ++index) {
+        char *row = ga_row_at(table, index);
+        char *binders = ga_field(row, 3);
+        if (gr_comma_count(binders) > 0) {
+            char *name = ga_field(row, 0);
+            if (out.length > 0) buffer_append(&out, "\n");
+            buffer_append(&out, name);
+            free(name);
+        }
+        free(binders);
+        free(row);
+    }
+    return out.data;
+}
+
+static char *ga_type(const char *source, const char *table, int64_t at, int64_t limit,
+                     const char *names, const char *owner, const char *args_json,
+                     const char *args_hex, int64_t depth) {
+    if (depth > 8) return gr_refusal("E2S209", "constructed TypeRef depth above eight", at);
+    if (at < 0 || at >= limit) return gr_refusal("E2S213", "unsupported payload or field type", at);
+    char *token = token_copy(source, at);
+    if (gr_primitive(token)) {
+        char *id = gr_primitive_id(token);
+        Buffer out;
+        buffer_init(&out);
+        buffer_format(&out, "{\"id\":\"%s\",\"tag\":\"primitive\"}\n01%s", id, id);
+        free(id);
+        free(token);
+        return out.data;
+    }
+    int64_t ordinal = gr_binder_ordinal(names, token);
+    if (ordinal >= 0) {
+        if (args_json[0] != '\0') {
+            char *json = gr_line(args_json, ordinal), *hex = gr_line(args_hex, ordinal);
+            Buffer out;
+            buffer_init(&out);
+            buffer_format(&out, "%s\n%s", json, hex);
+            free(json); free(hex); free(token);
+            return out.data;
+        }
+        char *id = gr_parameter_id(owner, ordinal);
+        Buffer out;
+        buffer_init(&out);
+        buffer_format(&out, "{\"id\":\"%s\",\"tag\":\"parameter\"}\n02%s", id, id);
+        free(id);
+        free(token);
+        return out.data;
+    }
+    int64_t after = skip_trivia(source, token_end(source, at));
+    char *row = ga_row(table, token);
+    if (strcmp(token_kind(source, at), "identifier") == 0 &&
+        after < limit && token_equal(source, after, "[")) {
+        if (row[0] == '\0') {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(&message, "unknown nominal type `%s`", token);
+            char *error = gr_refusal("E2S207", message.data, at);
+            free(message.data); free(row); free(token);
+            return error;
+        }
+        int64_t close = balanced_end(source, after, "[", "]");
+        if (close < 0) {
+            free(row); free(token);
+            return gr_refusal("E2S213", "unterminated type arguments", after);
+        }
+        int64_t child_limit = close - 1;
+        int64_t cursor = skip_trivia(source, token_end(source, after));
+        Buffer jsons, hexes;
+        buffer_init(&jsons);
+        buffer_init(&hexes);
+        int64_t count = 0;
+        while (cursor < child_limit && !token_equal(source, cursor, "]")) {
+            char *child = ga_type(source, table, cursor, child_limit, names, owner,
+                args_json, args_hex, depth + 1);
+            if (strncmp(child, "error[", 6) == 0) {
+                free(jsons.data); free(hexes.data); free(row); free(token);
+                return child;
+            }
+            if (count > 0) { buffer_append(&jsons, "\n"); buffer_append(&hexes, "\n"); }
+            char *json = gr_line(child, 0), *hex = gr_line(child, 1);
+            buffer_append(&jsons, json);
+            buffer_append(&hexes, hex);
+            free(json); free(hex); free(child);
+            ++count;
+            int64_t stop = ga_type_stop(source, cursor, child_limit);
+            if (stop < 0) {
+                free(jsons.data); free(hexes.data); free(row); free(token);
+                return gr_refusal("E2S213", "malformed type argument", cursor);
+            }
+            cursor = skip_trivia(source, stop);
+            if (cursor < child_limit && token_equal(source, cursor, ",")) {
+                cursor = skip_trivia(source, token_end(source, cursor));
+            }
+        }
+        char *binders = ga_field(row, 3);
+        int64_t wanted = gr_comma_count(binders);
+        free(binders);
+        if (count != wanted) {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(&message, "`%s` expects %" PRId64 " arguments, got %" PRId64,
+                token, wanted, count);
+            char *error = gr_refusal("E2S206", message.data, at);
+            free(message.data); free(jsons.data); free(hexes.data); free(row); free(token);
+            return error;
+        }
+        char *joined = gr_comma_join(jsons.data);
+        char *count_hex = scoped_hir_hex(count, 4);
+        char *flat = gr_flatten(hexes.data);
+        char *type_id = ga_field(row, 4);
+        Buffer out;
+        buffer_init(&out);
+        buffer_format(&out,
+            "{\"arguments\":[%s],\"id\":\"%s\",\"tag\":\"nominal\"}\n03%s%s%s",
+            joined, type_id, type_id, count_hex, flat);
+        free(joined); free(count_hex); free(flat); free(type_id);
+        free(jsons.data); free(hexes.data); free(row); free(token);
+        return out.data;
+    }
+    if (strcmp(token_kind(source, at), "identifier") == 0) {
+        if (row[0] != '\0') {
+            char *binders = ga_field(row, 3);
+            int64_t wanted = gr_comma_count(binders);
+            free(binders);
+            if (wanted != 0) {
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(&message, "`%s` expects %" PRId64 " arguments, got 0", token, wanted);
+                char *error = gr_refusal("E2S206", message.data, at);
+                free(message.data); free(row); free(token);
+                return error;
+            }
+            char *type_id = ga_field(row, 4);
+            char *zero = scoped_hir_hex(0, 4);
+            Buffer out;
+            buffer_init(&out);
+            buffer_format(&out,
+                "{\"arguments\":[],\"id\":\"%s\",\"tag\":\"nominal\"}\n03%s%s",
+                type_id, type_id, zero);
+            free(type_id); free(zero); free(row); free(token);
+            return out.data;
+        }
+        Buffer message;
+        buffer_init(&message);
+        buffer_format(&message, "unbound type parameter `%s`", token);
+        char *error = gr_refusal("E2S205", message.data, at);
+        free(message.data); free(row);
+        free(token);
+        return error;
+    }
+    free(row);
+    free(token);
+    return gr_refusal("E2S213", "unsupported payload or field type", at);
+}
+
+static char *ga_fields_json(const char *source, const char *table, int64_t decl,
+                            const char *args_json, const char *args_hex) {
+    int64_t equals = type_equals_token(source, decl);
+    int64_t open = skip_trivia(source, token_end(source, equals));
+    int64_t close = balanced_end(source, open, "{", "}");
+    char *decl_name = type_name(source, decl);
+    char *row = ga_row(table, decl_name);
+    free(decl_name);
+    char *names = ga_field(row, 3);
+    char *owner = ga_field(row, 4);
+    free(row);
+    int64_t limit = close - 1;
+    Buffer out;
+    buffer_init(&out);
+    buffer_append(&out, "[");
+    int64_t count = 0;
+    int64_t cursor = skip_trivia(source, token_end(source, open));
+    while (cursor < limit) {
+        if (strcmp(token_kind(source, cursor), "identifier") != 0) {
+            free(names); free(owner); free(out.data);
+            return gr_refusal("E2S213", "malformed field", cursor);
+        }
+        char *field = token_copy(source, cursor);
+        if (strlen(field) > 65535) {
+            free(field); free(names); free(owner); free(out.data);
+            return gr_refusal("E2S217", "a field name exceeds 65535 bytes", cursor);
+        }
+        int64_t colon = skip_trivia(source, token_end(source, cursor));
+        if (!token_equal(source, colon, ":")) {
+            free(field); free(names); free(owner); free(out.data);
+            return gr_refusal("E2S213", "field needs a type", colon);
+        }
+        int64_t type_at = skip_trivia(source, token_end(source, colon));
+        if (count >= 256) {
+            free(field); free(names); free(owner); free(out.data);
+            return gr_refusal("E2S217", "a record declares more than 256 fields", type_at);
+        }
+        char *ref = ga_type(source, table, type_at, limit, names, owner, args_json, args_hex, 0);
+        if (strncmp(ref, "error[", 6) == 0) {
+            free(field); free(names); free(owner); free(out.data);
+            return ref;
+        }
+        if (count > 0) buffer_append(&out, ",");
+        char *json = gr_line(ref, 0);
+        buffer_format(&out, "{\"name\":\"%s\",\"type\":%s}", field, json);
+        free(json); free(ref); free(field);
+        ++count;
+        int64_t stop = ga_type_stop(source, type_at, limit);
+        if (stop < 0) {
+            free(names); free(owner); free(out.data);
+            return gr_refusal("E2S213", "malformed field type", type_at);
+        }
+        cursor = skip_trivia(source, stop);
+        if (cursor < limit && token_equal(source, cursor, ",")) {
+            cursor = skip_trivia(source, token_end(source, cursor));
+        }
+    }
+    buffer_append(&out, "]");
+    free(names);
+    free(owner);
+    return out.data;
+}
+
+/* The shape of an ADT's constructor list: "" or an `error[...]`. Every
+ * constructor is an identifier with no payload or exactly one `name: Type`
+ * payload, no two share a name, and there are at least two. Types are
+ * materialized afterwards, so a shape refusal wins over a type refusal in the
+ * same declaration. */
+static char *ga_shape(const char *source, int64_t decl) {
+    int64_t length = source_length(source);
+    int64_t equals = type_equals_token(source, decl);
+    int64_t pipe = skip_trivia(source, token_end(source, equals));
+    Buffer seen;
+    buffer_init(&seen);
+    int64_t count = 0;
+    while (pipe < length && token_equal(source, pipe, "|")) {
+        int64_t constructor = skip_trivia(source, token_end(source, pipe));
+        if (constructor >= length || strcmp(token_kind(source, constructor), "identifier") != 0) {
+            free(seen.data);
+            return gr_refusal("E2S216", "malformed constructor", constructor);
+        }
+        char *name = token_copy(source, constructor);
+        if (strlen(name) > 65535) {
+            free(name); free(seen.data);
+            return gr_refusal("E2S217", "a constructor name exceeds 65535 bytes", constructor);
+        }
+        if (ga_has_bar(seen.data, name)) {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(&message, "duplicate constructor `%s`", name);
+            char *error = gr_refusal("E2S216", message.data, constructor);
+            free(message.data); free(name); free(seen.data);
+            return error;
+        }
+        buffer_format(&seen, "|%s|", name);
+        ++count;
+        int64_t after = skip_trivia(source, token_end(source, constructor));
+        if (after < length && token_equal(source, after, "(")) {
+            int64_t close = balanced_end(source, after, "(", ")");
+            int64_t limit = close - 1;
+            int64_t field = skip_trivia(source, token_end(source, after));
+            if (field >= limit || strcmp(token_kind(source, field), "identifier") != 0) {
+                free(name); free(seen.data);
+                return gr_refusal("E2S216", "malformed payload field", field);
+            }
+            char *field_name = token_copy(source, field);
+            bool field_long = strlen(field_name) > 65535;
+            free(field_name);
+            if (field_long) {
+                free(name); free(seen.data);
+                return gr_refusal("E2S217", "a payload field name exceeds 65535 bytes", field);
+            }
+            int64_t colon = skip_trivia(source, token_end(source, field));
+            if (colon >= limit || !token_equal(source, colon, ":")) {
+                free(name); free(seen.data);
+                return gr_refusal("E2S216", "payload field needs a type", colon);
+            }
+            int64_t type_at = skip_trivia(source, token_end(source, colon));
+            if (type_at >= limit) {
+                free(name); free(seen.data);
+                return gr_refusal("E2S216", "payload field needs a type", colon);
+            }
+            int64_t stop = ga_type_stop(source, type_at, limit);
+            if (stop < 0) {
+                free(name); free(seen.data);
+                return gr_refusal("E2S216", "malformed payload field", type_at);
+            }
+            int64_t next = skip_trivia(source, stop);
+            if (next < limit) {
+                if (!token_equal(source, next, ",")) {
+                    free(name); free(seen.data);
+                    return gr_refusal("E2S216", "malformed payload field", next);
+                }
+                int64_t more = skip_trivia(source, token_end(source, next));
+                if (more < limit) {
+                    Buffer message;
+                    buffer_init(&message);
+                    buffer_format(&message, "constructor `%s` has more than one payload field", name);
+                    char *error = gr_refusal("E2S216", message.data, more);
+                    free(message.data); free(name); free(seen.data);
+                    return error;
+                }
+            }
+            pipe = skip_trivia(source, close);
+        } else {
+            pipe = after;
+        }
+        free(name);
+    }
+    free(seen.data);
+    if (count < 2) {
+        char *decl_name = type_name(source, decl);
+        Buffer message;
+        buffer_init(&message);
+        buffer_format(&message, "`%s` must declare at least two constructors", decl_name);
+        char *error = gr_refusal("E2S216", message.data, decl);
+        free(message.data); free(decl_name);
+        return error;
+    }
+    return owned_text("");
+}
+
+static char *ga_constructors_json(const char *source, const char *table, int64_t decl,
+                                  const char *args_json, const char *args_hex) {
+    int64_t length = source_length(source);
+    char *decl_name = type_name(source, decl);
+    char *row = ga_row(table, decl_name);
+    free(decl_name);
+    char *names = ga_field(row, 3);
+    char *owner = ga_field(row, 4);
+    free(row);
+    int64_t equals = type_equals_token(source, decl);
+    int64_t pipe = skip_trivia(source, token_end(source, equals));
+    Buffer out;
+    buffer_init(&out);
+    buffer_append(&out, "[");
+    int64_t ordinal = 0;
+    while (pipe < length && token_equal(source, pipe, "|")) {
+        int64_t constructor = skip_trivia(source, token_end(source, pipe));
+        int64_t after = skip_trivia(source, token_end(source, constructor));
+        Buffer payload;
+        buffer_init(&payload);
+        int64_t next_pipe = after;
+        if (after < length && token_equal(source, after, "(")) {
+            int64_t close = balanced_end(source, after, "(", ")");
+            int64_t limit = close - 1;
+            int64_t field = skip_trivia(source, token_end(source, after));
+            int64_t colon = skip_trivia(source, token_end(source, field));
+            int64_t type_at = skip_trivia(source, token_end(source, colon));
+            char *ref = ga_type(source, table, type_at, limit, names, owner,
+                args_json, args_hex, 0);
+            if (strncmp(ref, "error[", 6) == 0) {
+                free(payload.data); free(names); free(owner); free(out.data);
+                return ref;
+            }
+            char *field_name = token_copy(source, field);
+            char *json = gr_line(ref, 0);
+            buffer_format(&payload, "{\"name\":\"%s\",\"type\":%s}", field_name, json);
+            free(field_name); free(json); free(ref);
+            next_pipe = skip_trivia(source, close);
+        }
+        if (ordinal > 0) buffer_append(&out, ",");
+        char *constructor_name = token_copy(source, constructor);
+        buffer_format(&out, "{\"name\":\"%s\",\"ordinal\":%" PRId64 ",\"payload\":[%s]}",
+            constructor_name, ordinal, payload.data);
+        free(constructor_name);
+        free(payload.data);
+        ++ordinal;
+        pipe = next_pipe;
+    }
+    buffer_append(&out, "]");
+    free(names);
+    free(owner);
+    return out.data;
+}
+
+/* `fields` for a record, `constructors` for an ADT. */
+static const char *ga_member_key(const char *kind) {
+    return strcmp(kind, "record") == 0 ? "fields" : "constructors";
+}
+
+/* The record field list or the ADT constructor list, substituted when the
+ * argument rows are non-empty, or an `error[...]`. */
+static char *ga_members_json(const char *source, const char *table, int64_t decl,
+                             const char *kind, const char *args_json, const char *args_hex) {
+    if (strcmp(kind, "record") == 0) return ga_fields_json(source, table, decl, args_json, args_hex);
+    char *shape = ga_shape(source, decl);
+    if (shape[0] != '\0') return shape;
+    free(shape);
+    return ga_constructors_json(source, table, decl, args_json, args_hex);
+}
+
+static char *ga_binders_json(const char *table, const char *name) {
+    char *row = ga_row(table, name);
+    char *names = ga_field(row, 3);
+    char *owner = ga_field(row, 4);
+    free(row);
+    int64_t count = gr_comma_count(names);
+    free(names);
+    Buffer out;
+    buffer_init(&out);
+    buffer_append(&out, "[");
+    for (int64_t index = 0; index < count; ++index) {
+        if (index > 0) buffer_append(&out, ",");
+        char *id = gr_parameter_id(owner, index);
+        buffer_format(&out, "{\"id\":\"%s\",\"kind\":\"type\",\"ordinal\":%" PRId64 "}", id, index);
+        free(id);
+    }
+    buffer_append(&out, "]");
+    free(owner);
+    return out.data;
+}
+
+/* One application's JSON, or "" when its arguments are not concrete. The
+ * arguments are read with no binders in scope, so a type parameter is unbound
+ * there and the application is skipped. */
+static char *ga_application(const char *source, const char *table, const char *name,
+                            int64_t decl, int64_t args_start, int64_t args_limit) {
+    char *row = ga_row(table, name);
+    char *kind = ga_field(row, 1);
+    char *binders = ga_field(row, 3);
+    int64_t wanted = gr_comma_count(binders);
+    free(binders);
+    int64_t cursor = skip_trivia(source, args_start);
+    Buffer jsons, hexes;
+    buffer_init(&jsons);
+    buffer_init(&hexes);
+    int64_t count = 0;
+    while (cursor < args_limit && !token_equal(source, cursor, "]")) {
+        char *child = ga_type(source, table, cursor, args_limit, "", "", "", "", 0);
+        if (strncmp(child, "error[", 6) == 0) {
+            free(jsons.data); free(hexes.data); free(kind); free(row);
+            if (strncmp(child, "error[E2S205]", 13) == 0) {
+                free(child);
+                return owned_text("");
+            }
+            return child;
+        }
+        if (count > 0) { buffer_append(&jsons, "\n"); buffer_append(&hexes, "\n"); }
+        char *json = gr_line(child, 0), *hex = gr_line(child, 1);
+        buffer_append(&jsons, json);
+        buffer_append(&hexes, hex);
+        free(json); free(hex); free(child);
+        ++count;
+        int64_t stop = ga_type_stop(source, cursor, args_limit);
+        if (stop < 0) {
+            free(jsons.data); free(hexes.data); free(kind); free(row);
+            return owned_text("");
+        }
+        cursor = skip_trivia(source, stop);
+        if (cursor < args_limit && token_equal(source, cursor, ",")) {
+            cursor = skip_trivia(source, token_end(source, cursor));
+        }
+    }
+    if (count != wanted) {
+        Buffer message;
+        buffer_init(&message);
+        buffer_format(&message, "`%s` expects %" PRId64 " arguments, got %" PRId64,
+            name, wanted, count);
+        char *error = gr_refusal("E2S206", message.data, args_start);
+        free(message.data); free(jsons.data); free(hexes.data); free(kind); free(row);
+        return error;
+    }
+    char *owner = ga_field(row, 4);
+    char *id = gr_constructed_id(owner, hexes.data);
+    char *members = ga_members_json(source, table, decl, kind, jsons.data, hexes.data);
+    if (strncmp(members, "error[", 6) == 0) {
+        free(owner); free(id); free(jsons.data); free(hexes.data); free(kind); free(row);
+        return members;
+    }
+    char *joined = gr_comma_join(jsons.data);
+    Buffer app;
+    buffer_init(&app);
+    buffer_format(&app, "{\"arguments\":[%s],\"%s\":%s,\"id\":\"%s\"}",
+        joined, ga_member_key(kind), members, id);
+    free(joined); free(owner); free(id); free(members);
+    free(jsons.data); free(hexes.data); free(kind); free(row);
+    return app.data;
+}
+
+/* The applications of the declaration `name`, as a JSON array or an
+ * `error[...]`: every concrete `name[...]` the file writes, in first-use order,
+ * each distinct argument tuple once. One pass of the file per declaration keeps
+ * the work linear in the declarations rather than in their applications, and
+ * the ninth distinct tuple refuses. */
+static char *ga_applications_of(const char *source, const char *table, const char *name) {
+    char *row = ga_row(table, name);
+    int64_t decl = ga_number(row, 2);
+    free(row);
+    Buffer out;
+    buffer_init(&out);
+    int64_t length = source_length(source), found = 0;
+    int64_t cursor = after_optional_module_header(source, 0);
+    while (cursor < length) {
+        int64_t after = skip_trivia(source, token_end(source, cursor));
+        if (token_equal(source, cursor, name) &&
+            strcmp(token_kind(source, cursor), "identifier") == 0 &&
+            after < length && token_equal(source, after, "[")) {
+            int64_t close = balanced_end(source, after, "[", "]");
+            if (close >= 0) {
+                char *app = ga_application(source, table, name, decl,
+                    token_end(source, after), close - 1);
+                if (strncmp(app, "error[", 6) == 0) {
+                    free(out.data);
+                    return app;
+                }
+                if (app[0] != '\0' && strstr(out.data, app) == NULL) {
+                    ++found;
+                    if (found > 8) {
+                        Buffer message;
+                        buffer_init(&message);
+                        buffer_format(&message, "`%s` has more than 8 instantiations", name);
+                        char *error = gr_refusal("E2S208", message.data, decl);
+                        free(message.data); free(app); free(out.data);
+                        return error;
+                    }
+                    if (out.length > 0) buffer_append(&out, ",");
+                    buffer_append(&out, app);
+                }
+                free(app);
+            }
+        }
+        cursor = after;
+    }
+    Buffer result;
+    buffer_init(&result);
+    buffer_format(&result, "[%s]", out.data);
+    free(out.data);
+    return result.data;
+}
+
+/* Declared nominal heads of one type appended to `out`, one per line, in
+ * first-use order and without repeats, including heads nested in type
+ * arguments: a constructed type holds its arguments by value. A primitive, a
+ * binder, and a name that is no record or ADT contribute no edge. */
+static void ga_nominals(const char *source, const char *table, int64_t at, int64_t limit,
+                        const char *names, Buffer *out) {
+    char *token = token_copy(source, at);
+    if (gr_primitive(token) || strcmp(token_kind(source, at), "identifier") != 0) {
+        free(token);
+        return;
+    }
+    if (gr_binder_ordinal(names, token) >= 0) { free(token); return; }
+    char *row = ga_row(table, token);
+    bool declared = row[0] != '\0';
+    free(row);
+    if (declared && !ga_has_line(out->data, token)) {
+        if (out->length > 0) buffer_append(out, "\n");
+        buffer_append(out, token);
+    }
+    free(token);
+    int64_t after = skip_trivia(source, token_end(source, at));
+    if (after < limit && token_equal(source, after, "[")) {
+        int64_t child_limit = balanced_end(source, after, "[", "]") - 1;
+        int64_t cursor = skip_trivia(source, token_end(source, after));
+        while (cursor < child_limit && !token_equal(source, cursor, "]")) {
+            ga_nominals(source, table, cursor, child_limit, names, out);
+            int64_t stop = ga_type_stop(source, cursor, child_limit);
+            if (stop < 0) return;
+            cursor = skip_trivia(source, stop);
+            if (cursor < child_limit && token_equal(source, cursor, ",")) {
+                cursor = skip_trivia(source, token_end(source, cursor));
+            }
+        }
+    }
+}
+
+/* The by-value edges of a declaration: a record's field types, or an ADT's
+ * constructor payload types, left to right. */
+static char *ga_nominals_of(const char *source, const char *table, int64_t decl) {
+    int64_t length = source_length(source);
+    const char *kind = ga_kind(source, decl);
+    char *decl_name = type_name(source, decl);
+    char *row = ga_row(table, decl_name);
+    free(decl_name);
+    char *names = ga_field(row, 3);
+    free(row);
+    int64_t equals = type_equals_token(source, decl);
+    Buffer out;
+    buffer_init(&out);
+    if (strcmp(kind, "record") == 0) {
+        int64_t open = skip_trivia(source, token_end(source, equals));
+        int64_t limit = balanced_end(source, open, "{", "}") - 1;
+        int64_t cursor = skip_trivia(source, token_end(source, open));
+        while (cursor < limit) {
+            int64_t colon = skip_trivia(source, token_end(source, cursor));
+            int64_t type_at = skip_trivia(source, token_end(source, colon));
+            if (type_at >= limit) { free(names); return out.data; }
+            ga_nominals(source, table, type_at, limit, names, &out);
+            int64_t stop = ga_type_stop(source, type_at, limit);
+            if (stop < 0) {
+                free(names); free(out.data);
+                return gr_refusal("E2S213", "malformed field type", type_at);
+            }
+            cursor = skip_trivia(source, stop);
+            if (cursor < limit && token_equal(source, cursor, ",")) {
+                cursor = skip_trivia(source, token_end(source, cursor));
+            }
+        }
+        free(names);
+        return out.data;
+    }
+    int64_t pipe = skip_trivia(source, token_end(source, equals));
+    while (pipe < length && token_equal(source, pipe, "|")) {
+        int64_t constructor = skip_trivia(source, token_end(source, pipe));
+        int64_t after = skip_trivia(source, token_end(source, constructor));
+        pipe = after;
+        if (after < length && token_equal(source, after, "(")) {
+            int64_t close = balanced_end(source, after, "(", ")");
+            int64_t limit = close - 1;
+            int64_t cursor = skip_trivia(source, token_end(source, after));
+            while (cursor < limit) {
+                int64_t colon = skip_trivia(source, token_end(source, cursor));
+                int64_t type_at = skip_trivia(source, token_end(source, colon));
+                if (type_at >= limit) { free(names); return out.data; }
+                ga_nominals(source, table, type_at, limit, names, &out);
+                int64_t stop = ga_type_stop(source, type_at, limit);
+                if (stop < 0) {
+                    free(names); free(out.data);
+                    return gr_refusal("E2S213", "malformed payload type", type_at);
+                }
+                cursor = skip_trivia(source, stop);
+                if (cursor < limit && token_equal(source, cursor, ",")) {
+                    cursor = skip_trivia(source, token_end(source, cursor));
+                }
+            }
+            pipe = skip_trivia(source, close);
+        }
+    }
+    free(names);
+    return out.data;
+}
+
+/* The refusal for a mutual cycle closed at `target`, which is on `stack`. The
+ * members are the stack from `target` through `name`. All ADTs: E2S211. All
+ * records: the generic-record contract's E2S200, unchanged. Both: E2S212. */
+static char *ga_cycle_refusal(const char *table, const char *name, const char *target,
+                              const char *stack, int64_t decl) {
+    Buffer needle;
+    buffer_init(&needle);
+    buffer_format(&needle, "|%s|", target);
+    const char *members = strstr(stack, needle.data);
+    free(needle.data);
+    int64_t adts = 0, records = 0, start = 0, at = 0;
+    int64_t length = (int64_t)strlen(members);
+    while (at < length) {
+        if (members[at] == '|') {
+            if (at > start) {
+                char *member = allocate((size_t)(at - start) + 1);
+                memcpy(member, members + start, (size_t)(at - start));
+                member[at - start] = '\0';
+                char *row = ga_row(table, member);
+                char *kind = ga_field(row, 1);
+                if (strcmp(kind, "adt") == 0) ++adts; else ++records;
+                free(kind); free(row); free(member);
+            }
+            start = at + 1;
+        }
+        ++at;
+    }
+    Buffer message;
+    buffer_init(&message);
+    const char *code = "E2S200";
+    if (adts > 0 && records > 0) {
+        code = "E2S212";
+        buffer_format(&message, "mixed record/ADT by-value cycle through `%s` and `%s`", name, target);
+    } else if (adts > 0) {
+        code = "E2S211";
+        buffer_format(&message, "mutual by-value ADT cycle through `%s` and `%s`", name, target);
+    } else {
+        buffer_format(&message, "mutual by-value cycle through `%s` and `%s`", name, target);
+    }
+    char *error = gr_refusal(code, message.data, decl);
+    free(message.data);
+    return error;
+}
+
+/* An `error[...]`, or the done set after exploring `name`: "|A|B|" of the
+ * declarations whose whole reachable subgraph holds no cycle. A finished
+ * declaration cannot reach an active one, so skipping it loses nothing and
+ * keeps the walk linear in edges rather than in paths. */
+static char *ga_cycle_visit(const char *source, const char *table, const char *name,
+                            const char *stack, const char *done) {
+    char *row = ga_row(table, name);
+    int64_t decl = ga_number(row, 2);
+    char *kind = ga_field(row, 1);
+    free(row);
+    char *targets = ga_nominals_of(source, table, decl);
+    if (strncmp(targets, "error[", 6) == 0) { free(kind); return targets; }
+    int64_t count = gr_lines(targets);
+    char *finished = owned_text(done);
+    for (int64_t index = 0; index < count; ++index) {
+        char *target = gr_line(targets, index);
+        if (strcmp(target, name) == 0) {
+            Buffer message;
+            buffer_init(&message);
+            buffer_format(&message, "`%s` holds itself by value", name);
+            char *error = gr_refusal(strcmp(kind, "adt") == 0 ? "E2S210" : "E2S199",
+                message.data, decl);
+            free(message.data); free(target); free(targets); free(finished); free(kind);
+            return error;
+        }
+        if (ga_has_bar(stack, target)) {
+            char *error = ga_cycle_refusal(table, name, target, stack, decl);
+            free(target); free(targets); free(finished); free(kind);
+            return error;
+        }
+        if (!ga_has_bar(finished, target)) {
+            Buffer deeper_stack;
+            buffer_init(&deeper_stack);
+            buffer_format(&deeper_stack, "%s%s|", stack, target);
+            char *deeper = ga_cycle_visit(source, table, target, deeper_stack.data, finished);
+            free(deeper_stack.data);
+            if (strncmp(deeper, "error[", 6) == 0) {
+                free(target); free(targets); free(finished); free(kind);
+                return deeper;
+            }
+            free(finished);
+            finished = deeper;
+        }
+        free(target);
+    }
+    free(targets);
+    free(kind);
+    Buffer result;
+    buffer_init(&result);
+    if (finished[0] == '\0') buffer_format(&result, "|%s|", name);
+    else buffer_format(&result, "%s%s|", finished, name);
+    free(finished);
+    return result.data;
+}
+
+static char *ga_cycle(const char *source, const char *table) {
+    int64_t count = ga_count(table);
+    char *done = owned_text("");
+    for (int64_t index = 0; index < count; ++index) {
+        char *row = ga_row_at(table, index);
+        char *name = ga_field(row, 0);
+        free(row);
+        if (!ga_has_bar(done, name)) {
+            Buffer stack;
+            buffer_init(&stack);
+            buffer_format(&stack, "|%s|", name);
+            char *next = ga_cycle_visit(source, table, name, stack.data, done);
+            free(stack.data);
+            if (strncmp(next, "error[", 6) == 0) {
+                free(name); free(done);
+                return next;
+            }
+            free(done);
+            done = next;
+        }
+        free(name);
+    }
+    free(done);
+    return owned_text("");
+}
+
+static char *ga_limits_json(void) {
+    return owned_text(
+        "{\"binders_per_declaration\":2,\"constructed_depth\":8,"
+        "\"constructors_per_declaration\":64,\"declarations\":64,"
+        "\"document_bytes\":1048576,\"fields_per_declaration\":256,"
+        "\"instantiations_per_declaration\":8,\"name_bytes\":65535,"
+        "\"payload_fields_per_constructor\":1}");
+}
+
+static char *ga_document(const char *source, const char *path) {
+    /* Lexical errors first, as `compile_file` reports them: an unterminated
+     * string has no token end, and the scan below must never step from it. */
+    char *tokens = lex_source(source);
+    if (strncmp(tokens, "error[", 6) == 0) return tokens;
+    free(tokens);
+    char *table = ga_table(source, path);
+    if (strncmp(table, "error[", 6) == 0) return table;
+    char *cycle = ga_cycle(source, table);
+    if (cycle[0] != '\0') { free(table); return cycle; }
+    free(cycle);
+    char *listed = ga_listed(table);
+    int64_t count = gr_lines(listed);
+    /* Member materialization precedes application discovery so a too-deep or
+     * ill-formed member refuses with its own code before discovery can trip a
+     * different limit on the same bytes. */
+    for (int64_t check = 0; check < count; ++check) {
+        char *check_name = gr_line(listed, check);
+        char *check_row = ga_row(table, check_name);
+        free(check_name);
+        char *check_kind = ga_field(check_row, 1);
+        int64_t check_decl = ga_number(check_row, 2);
+        free(check_row);
+        char *check_members = ga_members_json(source, table, check_decl, check_kind, "", "");
+        free(check_kind);
+        if (strncmp(check_members, "error[", 6) == 0) { free(listed); free(table); return check_members; }
+        free(check_members);
+    }
+    Buffer rendered;
+    buffer_init(&rendered);
+    buffer_append(&rendered, "[");
+    for (int64_t index = 0; index < count; ++index) {
+        char *name = gr_line(listed, index);
+        char *row = ga_row(table, name);
+        char *kind = ga_field(row, 1);
+        char *type_id = ga_field(row, 4);
+        int64_t decl = ga_number(row, 2);
+        char *applications = ga_applications_of(source, table, name);
+        if (strncmp(applications, "error[", 6) == 0) {
+            free(name); free(row); free(kind); free(type_id); free(listed); free(table);
+            free(rendered.data);
+            return applications;
+        }
+        char *members = ga_members_json(source, table, decl, kind, "", "");
+        char *binders = ga_binders_json(table, name);
+        if (index > 0) buffer_append(&rendered, ",");
+        buffer_format(&rendered,
+            "{\"applications\":%s,\"binders\":%s,\"%s\":%s,\"id\":\"%s\","
+            "\"kind\":\"%s\",\"name\":\"%s\"}",
+            applications, binders, ga_member_key(kind), members, type_id, kind, name);
+        free(name); free(row); free(kind); free(type_id);
+        free(applications); free(members); free(binders);
+    }
+    buffer_append(&rendered, "]");
+    char *file = scoped_hir_file_id(path);
+    char *limits = ga_limits_json();
+    Buffer document;
+    buffer_init(&document);
+    buffer_format(&document,
+        "{\"declarations\":%s,\"file_id\":\"%s\",\"limits\":%s,"
+        "\"profile\":\"kofun.stage2-analysis/generic-adt/v1\","
+        "\"schema\":\"kofun.generic-adt-hir/v1\"}\n",
+        rendered.data, file, limits);
+    free(rendered.data); free(file); free(limits); free(listed); free(table);
+    if (document.length > 1048576) {
+        free(document.data);
+        return gr_refusal("E2S217", "document exceeds 1048576 bytes", 0);
+    }
+    return document.data;
+}
+
+static int emit_generic_adt_hir_file(const char *input, const char *output,
+                                     const char *logical_path) {
+    Stage2FileIdentity identity = stage2_same_file(input, output);
+    if (identity == STAGE2_FILE_LOOKUP_ERROR) { stage2_host_lookup_error(); return 2; }
+    if (identity == STAGE2_FILE_SAME) {
+        puts("error[E2S217]: generic-ADT HIR input and output must be distinct");
+        return 1;
+    }
+    if (!scoped_hir_logical_path(logical_path)) {
+        puts("error[E2S217]: generic-ADT HIR logical path must be canonical relative UTF-8 (1..4096 bytes)");
+        return 1;
+    }
+    size_t source_bytes = 0;
+    char *source = read_file_with_length(input, &source_bytes);
+    if (source_bytes > UINT32_MAX) {
+        puts("error[E2S217]: generic-ADT HIR source span exceeds u32");
+        free(source);
+        return 1;
+    }
+    char *document = ga_document(source, logical_path);
+    free(source);
+    if (strncmp(document, "error[", 6) == 0) { puts(document); free(document); return 1; }
+    bool written = write_file_transactional(output, document);
+    free(document);
+    if (!written) { puts("error[E2S217]: cannot commit generic-ADT HIR output"); return 1; }
     return 0;
 }
 
@@ -43071,6 +44219,9 @@ int main(int argc, char **argv) {
     if (argc == 5 && strcmp(argv[1], "--emit-generic-record-hir") == 0) {
         return emit_generic_record_hir_file(argv[2], argv[3], argv[4]);
     }
+    if (argc == 5 && strcmp(argv[1], "--emit-generic-adt-hir") == 0) {
+        return emit_generic_adt_hir_file(argv[2], argv[3], argv[4]);
+    }
     if (argc == 4 && strcmp(argv[1], "--emit-scope-hir") == 0) {
         return emit_scope_hir_file(argv[2], argv[3]);
     }
@@ -43095,6 +44246,7 @@ int main(int argc, char **argv) {
             "       kofun-stage2 --emit-scope-hir INPUT.kofun OUTPUT.scope-hir\n"
             "       kofun-stage2 --emit-scope-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n"
             "       kofun-stage2 --emit-generic-record-hir INPUT.kofun OUTPUT.json LOGICAL-PATH\n"
+            "       kofun-stage2 --emit-generic-adt-hir INPUT.kofun OUTPUT.json LOGICAL-PATH\n"
             "       kofun-stage2 --emit-capture-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n"
             "       kofun-stage2 --emit-complete-capture-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n"
             "       kofun-stage2 --check-scoped-ownership INPUT.kofun OUTPUT.json LOGICAL-PATH\n"
