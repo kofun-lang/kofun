@@ -1,0 +1,11 @@
+type Opt[T] =
+    | None
+    | Some(value: T)
+
+type A[T] = {
+    b: B[T],
+}
+
+type B[U] = {
+    a: A[U],
+}

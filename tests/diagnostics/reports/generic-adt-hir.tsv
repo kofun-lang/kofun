@@ -1,0 +1,18 @@
+# code	adapter	channel	exit	primary-span	secondary-span	artifact
+E2S199	generic-adt-hir	stdout	1	required	not-applicable	forbidden
+E2S200	generic-adt-hir	stdout	1	required	not-applicable	forbidden
+E2S203	generic-adt-hir	stdout	1	required	not-applicable	forbidden
+E2S204	generic-adt-hir	stdout	1	required	not-applicable	forbidden
+E2S205	generic-adt-hir	stdout	1	required	not-applicable	forbidden
+E2S206	generic-adt-hir	stdout	1	required	not-applicable	forbidden
+E2S207	generic-adt-hir	stdout	1	required	not-applicable	forbidden
+E2S208	generic-adt-hir	stdout	1	required	not-applicable	forbidden
+E2S209	generic-adt-hir	stdout	1	required	not-applicable	forbidden
+E2S210	generic-adt-hir	stdout	1	required	not-applicable	forbidden
+E2S211	generic-adt-hir	stdout	1	required	not-applicable	forbidden
+E2S212	generic-adt-hir	stdout	1	required	not-applicable	forbidden
+E2S213	generic-adt-hir	stdout	1	required	not-applicable	forbidden
+E2S214	generic-adt-hir	stdout	1	required	not-applicable	forbidden
+E2S215	generic-adt-hir	stdout	1	required	not-applicable	forbidden
+E2S216	generic-adt-hir	stdout	1	required	not-applicable	forbidden
+E2S217	generic-adt-hir	stdout	1	required	not-applicable	forbidden

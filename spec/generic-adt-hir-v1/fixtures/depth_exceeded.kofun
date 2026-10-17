@@ -1,0 +1,7 @@
+type Opt[T] =
+    | None
+    | Some(value: T)
+
+type Deep[T] =
+    | Shallow
+    | Buried(value: Opt[Opt[Opt[Opt[Opt[Opt[Opt[Opt[Opt[Int]]]]]]]]])

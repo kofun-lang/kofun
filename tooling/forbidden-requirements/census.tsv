@@ -128,6 +128,7 @@ cc	invoke	7	required-today	required	framework/cli/check.sh
 cc	invoke	1	required-today	required	framework/http/build.sh
 cc	invoke	1	required-today	required	framework/tui/build.sh
 cc	invoke	2	required-today	required	framework/tui/check.sh
+cc	invoke	1	required-today	required	spec/generic-adt-hir-v1/check.sh
 cc	invoke	1	required-today	required	spec/generic-record-hir-v1/check.sh
 cc	invoke	1	required-today	required	spec/kif-generics-v1/check.mjs
 cc	invoke	1	required-today	required	spec/roadmap-31-34/verify-current-gates.sh
@@ -288,6 +289,7 @@ node	invoke	13	required-today	required	spec/concurrency/schedule-trace/check.sh
 node	invoke	4	required-today	optional	spec/concurrency/scoped-captures-v1/check.sh
 node	invoke	4	required-today	optional	spec/concurrency/scoped-parallelism-v1/check.sh
 node	invoke	4	required-today	required	spec/effects/affine-resumption/check.sh
+node	invoke	3	required-today	required	spec/generic-adt-hir-v1/check.sh
 node	invoke	3	required-today	required	spec/generic-record-hir-v1/check.sh
 node	invoke	1	required-today	required	spec/kif-generics-v1/check.sh
 node	invoke	1	required-today	required	spec/native-toolchain-v1/check.sh
@@ -399,6 +401,8 @@ node	source	1	required-today	required	spec/concurrency/scoped-parallelism-v1/che
 node	source	1	required-today	required	spec/concurrency/scoped-parallelism-v1/model.mjs
 node	source	1	required-today	required	spec/decision-profiles-v1/check.mjs
 node	source	1	required-today	required	spec/effects/affine-resumption/model.mjs
+node	source	1	required-today	required	spec/generic-adt-hir-v1/check.mjs
+node	source	1	required-today	required	spec/generic-adt-hir-v1/model.mjs
 node	source	1	required-today	required	spec/generic-record-hir-v1/check.mjs
 node	source	1	required-today	required	spec/generic-record-hir-v1/model.mjs
 node	source	1	required-today	required	spec/kif-generics-v1/check.mjs
@@ -609,6 +613,7 @@ shell-build-driver	source	1	required-today	required	spec/concurrency/schedule-tr
 shell-build-driver	source	1	required-today	required	spec/concurrency/scoped-captures-v1/check.sh
 shell-build-driver	source	1	required-today	required	spec/concurrency/scoped-parallelism-v1/check.sh
 shell-build-driver	source	1	required-today	required	spec/effects/affine-resumption/check.sh
+shell-build-driver	source	1	required-today	required	spec/generic-adt-hir-v1/check.sh
 shell-build-driver	source	1	required-today	required	spec/generic-record-hir-v1/check.sh
 shell-build-driver	source	1	required-today	required	spec/kif-generics-v1/check.sh
 shell-build-driver	source	1	required-today	required	spec/module-identity/check.sh

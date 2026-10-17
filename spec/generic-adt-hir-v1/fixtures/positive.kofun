@@ -1,0 +1,55 @@
+type Opt[T] =
+    | None
+    | Some(value: T)
+
+type Either[L, R] =
+    | Left(left: L)
+    | Right(right: R)
+
+type Box[T] = {
+    value: T,
+}
+
+type Wrapped[T] =
+    | Absent
+    | Present(inner: Opt[T])
+
+type Holder[T] =
+    | Empty
+    | Held(box: Box[T])
+
+type Slot[T] = {
+    content: Opt[T],
+}
+
+type Tagged[T] =
+    | Plain(value: T)
+    | Colored(color: Color)
+
+type Color =
+    | Red
+    | Green
+
+type Late[T] =
+    | Never
+    | Later(next: Opt[Opt[T]])
+
+type Nest[T] =
+    | Flat
+    | Deep(inner: Either[T, Opt[T]])
+
+fn consume(
+    a: Opt[Int],
+    b: Either[Int, Bool],
+    c: Wrapped[Text],
+    d: Holder[Int],
+    e: Slot[Bool],
+    f: Tagged[Int],
+    g: Opt[Opt[Int]],
+    h: Wrapped[Box[Int]],
+    i: Late[Unit],
+    j: Opt[Either[Int, Bool]],
+    k: Nest[Bool],
+) -> Int {
+    return 0
+}

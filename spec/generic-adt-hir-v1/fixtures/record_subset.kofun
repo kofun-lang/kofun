@@ -1,0 +1,20 @@
+type Box[T] = {
+    value: T,
+}
+
+type Pair[T, U] = {
+    left: T,
+    right: U,
+}
+
+type Wrap[T] = {
+    inner: Box[Pair[T, Int]],
+}
+
+fn consume(
+    a: Box[Pair[Int, Bool]],
+    b: Wrap[Text],
+    c: Pair[Box[Int], Pair[Bool, Text]],
+) -> Int {
+    return 0
+}
