@@ -62,8 +62,9 @@ choice. So this is **not** a new `kind` inside
 whose schema is frozen and closed (`"kind": {"const": "record"}`). The record
 entry `--emit-generic-record-hir` is unchanged in what it accepts: it still sees
 only record declarations, so a record field that names an ADT is still refused
-there as an unknown nominal (`E2S196`). The ADT entry's document lists records
-too, because a mixed cycle cannot be classified without them.
+there (`E2S196` for an applied name, `E2S194` for a bare one). The ADT entry's
+document lists records too, because a mixed cycle cannot be classified without
+them.
 
 The document is not the structural IR, not scope-HIR v1/v2, and not KIF.
 
@@ -94,9 +95,11 @@ this for the positive fixture in both halves.
 
 ## Source surface
 
-The analysis reads the bounded declaration surface below. Anything else at the
-top level is skipped over by the ordinary declaration walker; anything else
-inside a declaration that this analysis lists is refused.
+The analysis reads the bounded declaration surface below. Functions and module
+constants at the top level are stepped over by the ordinary declaration walker;
+a top-level item that walker cannot step over, a type alias among them
+(#1673 excludes aliases), is refused as malformed (`E2S213`); and anything
+unsupported inside a declaration this analysis lists is refused.
 
 ```text
 record := "type" Name [ "[" Binder ("," Binder)* "]" ] "=" "{" (field ("," field)* ","?)? "}"
