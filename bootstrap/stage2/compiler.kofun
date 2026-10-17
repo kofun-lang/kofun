@@ -30764,6 +30764,21 @@ fn generic_record_comma_join(text: Text) -> Text {
     return out
 }
 
+# The rows of `text` (newline separated) concatenated without separators. A
+# TypeRef's hex is one row, so a nominal type with several arguments must
+# flatten its argument rows before it is nested in another type.
+fn generic_record_flatten(text: Text) -> Text {
+    let mut out = ""
+    let mut at = 0
+    while at < len(text) {
+        if text_slice(text, at, at + 1) != "\n" {
+            out = out + text_slice(text, at, at + 1)
+        }
+        at = at + 1
+    }
+    return out
+}
+
 fn generic_record_comma_count(names: Text) -> Int {
     if len(names) == 0 {
         return 0
@@ -31026,7 +31041,7 @@ fn generic_record_type(
         }
         let tid = generic_record_type_id(path, token)
         return "{\"arguments\":[" + generic_record_comma_join(jsons) + "],\"id\":\"" + tid +
-        "\",\"tag\":\"nominal\"}\n" + "03" + tid + scoped_hir_hex(count, 4) + hexes
+        "\",\"tag\":\"nominal\"}\n" + "03" + tid + scoped_hir_hex(count, 4) + generic_record_flatten(hexes)
     }
     if token_kind(source, at) == "identifier" {
         let target = generic_record_declaration(source, token)
@@ -31405,6 +31420,12 @@ fn generic_record_limits_json() -> Text {
 }
 
 fn generic_record_document(source: Text, path: Text) -> Text {
+    # Lexical errors first, as `compile_file` reports them: an unterminated
+    # string has no token end, and the scan below must never step from it.
+    let tokens = lex(source)
+    if starts_with(tokens, "error[") {
+        return tokens
+    }
     let decls = generic_record_declarations(source)
     if starts_with(decls, "error[") {
         return decls
@@ -31484,6 +31505,1014 @@ fn emit_generic_record_hir_file(input: Text, output: Text, logical_path: Text) -
         return false
     }
     let document = generic_record_document(source, logical_path)
+    if starts_with(document, "error[") {
+        print(document)
+        return false
+    }
+    write_text(output, document)
+    return true
+}
+
+# ===== Generic-ADT HIR v1 analysis document (#1675) =====
+#
+# The canonical half of the production generic-ADT HIR entry. It reuses the
+# #1674 identity core unchanged -- generic_record_parameter_id,
+# generic_record_primitive_id, generic_record_constructed_id and the #303 frame
+# -- and adds ADT binders, constructor payload substitution over nested
+# TypeRefs, and by-value cycle classification over records and ADTs together.
+# The document is checked byte for byte against the independent oracle in
+# spec/generic-adt-hir-v1/. Ordinary compilation is unchanged: a generic ADT is
+# still refused with E2S148.
+#
+# Every record and ADT declaration in the file is a node of the by-value graph
+# and a legal nominal head. One scan reads them all into a declaration table --
+# name, kind, start, binder list, TypeId -- and validates every binder list, so
+# a name is resolved by a table lookup rather than by re-reading the source, and
+# every later phase reads binder lists without re-checking for an error.
+
+# The declaration kind is part of the SymbolId preimage, so a record and an ADT
+# of one spelling are different TypeIds. `record` is the exact preimage the
+# generic-record contract froze.
+fn generic_adt_type_id(path: Text, name: Text, kind: Text) -> Text {
+    if kind == "record" {
+        return generic_record_type_id(path, name)
+    }
+    let package = "kofun.package-id/v1\nkind=anonymous-single-file\nlogical-source=" + path + "\n"
+    let module_id = scoped_hir_hash_frame("kofun.id.module/v1", scoped_hir_text_hex(
+        "kofun.module-id-input/v1\npackage-payload-begin\n" + package +
+        "package-payload-end\nkind=synthetic-root\n"), "", "", "")
+    let namespace_id = scoped_hir_hash_frame("kofun.id.namespace/v1",
+        scoped_hir_text_hex("kofun.namespace-id/v1\ntag=1\nname=type\n"), "", "", "")
+    let payload = "800100000020" + module_id + "800200000020" + namespace_id +
+        "800300000003616474" + "8004" + scoped_hir_hex(len(name), 8) +
+        scoped_hir_text_hex(name)
+    return scoped_hir_hash_frame("kofun.id.symbol/v1", payload, "", "", "")
+}
+
+# "record", "adt", or "" for the `type` keyword at `start`.
+fn generic_adt_kind(source: Text, start: Int) -> Text {
+    if start < 0 || token_text(source, start) != "type" {
+        return ""
+    }
+    let equals = type_equals_token(source, start)
+    if equals < 0 || equals >= len(source) || token_text(source, equals) != "=" {
+        return ""
+    }
+    let next = skip_trivia(source, token_end(source, equals))
+    if next >= len(source) {
+        return ""
+    }
+    if token_text(source, next) == "{" {
+        return "record"
+    }
+    if token_text(source, next) == "|" {
+        return "adt"
+    }
+    return ""
+}
+
+# The byte after the type that starts at `at`, or -1 when it does not advance
+# (an argument list that never closes). Every loop over types steps with this,
+# so a malformed list is refused instead of read at a negative offset.
+fn generic_adt_type_stop(source: Text, at: Int, limit: Int) -> Int {
+    let end = generic_record_type_end(source, at, limit)
+    if end <= at {
+        return -1
+    }
+    return end
+}
+
+# The decimal number `digits` spells.
+fn generic_adt_number(digits: Text) -> Int {
+    let mut value = 0
+    let mut at = 0
+    while at < len(digits) {
+        value = value * 10 + find("0123456789", text_slice(digits, at, at + 1))
+        at = at + 1
+    }
+    return value
+}
+
+# Field `index` of a tab-separated row.
+fn generic_adt_field(row: Text, index: Int) -> Text {
+    let mut seen = 0
+    let mut start = 0
+    let mut at = 0
+    while at <= len(row) {
+        if at == len(row) || text_slice(row, at, at + 1) == "\t" {
+            if seen == index {
+                return text_slice(row, start, at)
+            }
+            seen = seen + 1
+            start = at + 1
+        }
+        at = at + 1
+    }
+    return ""
+}
+
+# The declaration table is "" for no declarations, otherwise one
+# "\nname\tkind\tstart\tbinders\ttypeid" row per record or ADT declaration in
+# source order, each led by its own newline so a name is found as "\nname\t".
+fn generic_adt_row(table: Text, name: Text) -> Text {
+    let at = find(table, "\n" + name + "\t")
+    if at < 0 {
+        return ""
+    }
+    let mut end = at + 1
+    while end < len(table) && text_slice(table, end, end + 1) != "\n" {
+        end = end + 1
+    }
+    return text_slice(table, at + 1, end)
+}
+
+fn generic_adt_count(table: Text) -> Int {
+    if len(table) == 0 {
+        return 0
+    }
+    return generic_record_lines(table) - 1
+}
+
+fn generic_adt_name_at(table: Text, index: Int) -> Text {
+    return generic_adt_field(generic_record_line(table, index + 1), 0)
+}
+
+# `[const NAME: Int]` exactly, with `first` at the `const` keyword.
+fn generic_adt_const_only(source: Text, first: Int) -> Bool {
+    let name = skip_trivia(source, token_end(source, first))
+    if name >= len(source) || token_kind(source, name) != "identifier" {
+        return false
+    }
+    let colon = skip_trivia(source, token_end(source, name))
+    if colon >= len(source) || token_text(source, colon) != ":" {
+        return false
+    }
+    let annotation = skip_trivia(source, token_end(source, colon))
+    if annotation >= len(source) || token_text(source, annotation) != "Int" {
+        return false
+    }
+    let end = skip_trivia(source, token_end(source, annotation))
+    return end < len(source) && token_text(source, end) == "]"
+}
+
+# "" for a declaration with no type binder, the comma list otherwise, or an
+# `error[...]`. A const parameter is not a type binder: it is refused on an ADT
+# and beside a type binder, and a record whose list is exactly one const
+# parameter simply has no type binder.
+fn generic_adt_binder_names(source: Text, decl: Int, kind: Text) -> Text {
+    let bracket = type_parameter_open(source, decl)
+    if bracket < 0 {
+        return ""
+    }
+    let close = balanced_end(source, bracket, "[", "]")
+    if close < 0 {
+        return generic_record_refusal("E2S214", "unterminated type parameter list", bracket)
+    }
+    let first = skip_trivia(source, token_end(source, bracket))
+    if first < len(source) && token_text(source, first) == "const" {
+        if kind == "record" && generic_adt_const_only(source, first) {
+            return ""
+        }
+        return generic_record_refusal("E2S214", "unsupported type parameter kind", first)
+    }
+    let mut names = ""
+    let mut count = 0
+    let mut cursor = first
+    while cursor < close {
+        if token_text(source, cursor) == "]" {
+            return names
+        }
+        if token_text(source, cursor) == "const" {
+            return generic_record_refusal("E2S214", "unsupported type parameter kind", cursor)
+        }
+        if token_kind(source, cursor) != "identifier" {
+            return generic_record_refusal("E2S214", "unsupported type parameter", cursor)
+        }
+        let name = token_text(source, cursor)
+        count = count + 1
+        if count > 2 {
+            return generic_record_refusal("E2S203", "a type declares more than two type parameters", cursor)
+        }
+        if generic_record_has_binder(names, name) {
+            return generic_record_refusal("E2S204", "duplicate type parameter `" + name + "`", cursor)
+        }
+        if count > 1 {
+            names = names + ","
+        }
+        names = names + name
+        cursor = skip_trivia(source, token_end(source, cursor))
+        if cursor < close && token_text(source, cursor) == "," {
+            cursor = skip_trivia(source, token_end(source, cursor))
+        } else if token_text(source, cursor) != "]" {
+            return generic_record_refusal("E2S214", "unsupported type parameter list", cursor)
+        }
+    }
+    return names
+}
+
+# The declaration table, or an `error[...]`. Every record and ADT declaration is
+# read, listed or not, so the 64-declaration bound applies to all of them.
+fn generic_adt_table(source: Text, path: Text) -> Text {
+    let mut out = ""
+    let mut count = 0
+    let mut cursor = after_optional_module_header(source, 0)
+    while cursor < len(source) {
+        let start = type_declaration_start(source, cursor)
+        let kind = generic_adt_kind(source, start)
+        if len(kind) > 0 {
+            let name = type_name(source, start)
+            if len(name) > 65535 {
+                return generic_record_refusal("E2S217", "a declaration name exceeds 65535 bytes", start)
+            }
+            let binders = generic_adt_binder_names(source, start, kind)
+            if starts_with(binders, "error[") {
+                return binders
+            }
+            if len(generic_adt_row(out, name)) > 0 {
+                return generic_record_refusal("E2S215", "duplicate type declaration `" + name + "`", start)
+            }
+            count = count + 1
+            if count > 64 {
+                return generic_record_refusal("E2S217", "more than 64 record and ADT declarations", start)
+            }
+            out = out + "\n" + name + "\t" + kind + "\t" + to_text(start) + "\t" + binders +
+            "\t" + generic_adt_type_id(path, name, kind)
+        }
+        let end = top_level_end(source, cursor)
+        if end == -2 {
+            return generic_record_refusal("E2S217", "an ADT declares more than 64 constructors", cursor)
+        }
+        if end <= cursor {
+            return generic_record_refusal("E2S213", "malformed source", cursor)
+        }
+        cursor = skip_trivia(source, end)
+    }
+    return out
+}
+
+# The names that carry a type binder, one per line, in source order.
+fn generic_adt_listed(table: Text) -> Text {
+    let count = generic_adt_count(table)
+    let mut out = ""
+    let mut index = 0
+    while index < count {
+        let row = generic_record_line(table, index + 1)
+        if generic_record_comma_count(generic_adt_field(row, 3)) > 0 {
+            if len(out) > 0 {
+                out = out + "\n"
+            }
+            out = out + generic_adt_field(row, 0)
+        }
+        index = index + 1
+    }
+    return out
+}
+
+# A TypeRef as "json\nhex", or "error[...]". `args_json`/`args_hex` are the
+# newline rows of a substituting application; empty means no substitution, so a
+# parameter leaf becomes its own TypeParameterId.
+fn generic_adt_type(
+    source: Text,
+    table: Text,
+    at: Int,
+    limit: Int,
+    names: Text,
+    owner: Text,
+    args_json: Text,
+    args_hex: Text,
+    depth: Int
+) -> Text {
+    if depth > 8 {
+        return generic_record_refusal("E2S209", "constructed TypeRef depth above eight", at)
+    }
+    if at < 0 || at >= limit {
+        return generic_record_refusal("E2S213", "unsupported payload or field type", at)
+    }
+    let token = token_text(source, at)
+    if generic_record_primitive(token) {
+        let id = generic_record_primitive_id(token)
+        return "{\"id\":\"" + id + "\",\"tag\":\"primitive\"}\n" + "01" + id
+    }
+    let ordinal = generic_record_binder_ordinal(names, token)
+    if ordinal >= 0 {
+        if len(args_json) > 0 {
+            return generic_record_line(args_json, ordinal) + "\n" +
+            generic_record_line(args_hex, ordinal)
+        }
+        let id = generic_record_parameter_id(owner, ordinal)
+        return "{\"id\":\"" + id + "\",\"tag\":\"parameter\"}\n" + "02" + id
+    }
+    let after = skip_trivia(source, token_end(source, at))
+    let row = generic_adt_row(table, token)
+    if token_kind(source, at) == "identifier" &&
+       after < limit && token_text(source, after) == "[" {
+        if len(row) == 0 {
+            return generic_record_refusal("E2S207", "unknown nominal type `" + token + "`", at)
+        }
+        let close = balanced_end(source, after, "[", "]")
+        if close < 0 {
+            return generic_record_refusal("E2S213", "unterminated type arguments", after)
+        }
+        let child_limit = close - 1
+        let mut cursor = skip_trivia(source, token_end(source, after))
+        let mut jsons = ""
+        let mut hexes = ""
+        let mut count = 0
+        while cursor < child_limit && token_text(source, cursor) != "]" {
+            let child = generic_adt_type(
+                source,
+                table,
+                cursor,
+                child_limit,
+                names,
+                owner,
+                args_json,
+                args_hex,
+                depth + 1
+            )
+            if starts_with(child, "error[") {
+                return child
+            }
+            if count > 0 {
+                jsons = jsons + "\n"
+                hexes = hexes + "\n"
+            }
+            jsons = jsons + generic_record_line(child, 0)
+            hexes = hexes + generic_record_line(child, 1)
+            count = count + 1
+            let stop = generic_adt_type_stop(source, cursor, child_limit)
+            if stop < 0 {
+                return generic_record_refusal("E2S213", "malformed type argument", cursor)
+            }
+            cursor = skip_trivia(source, stop)
+            if cursor < child_limit && token_text(source, cursor) == "," {
+                cursor = skip_trivia(source, token_end(source, cursor))
+            }
+        }
+        let wanted = generic_record_comma_count(generic_adt_field(row, 3))
+        if count != wanted {
+            return generic_record_refusal(
+                "E2S206",
+                "`" + token + "` expects " + to_text(wanted) +
+                " arguments, got " + to_text(count),
+                at
+            )
+        }
+        let tid = generic_adt_field(row, 4)
+        return "{\"arguments\":[" + generic_record_comma_join(jsons) + "],\"id\":\"" + tid +
+        "\",\"tag\":\"nominal\"}\n" + "03" + tid + scoped_hir_hex(count, 4) + generic_record_flatten(hexes)
+    }
+    if token_kind(source, at) == "identifier" {
+        if len(row) > 0 {
+            let wanted = generic_record_comma_count(generic_adt_field(row, 3))
+            if wanted != 0 {
+                return generic_record_refusal(
+                    "E2S206",
+                    "`" + token + "` expects " + to_text(wanted) + " arguments, got 0",
+                    at
+                )
+            }
+            let tid = generic_adt_field(row, 4)
+            return "{\"arguments\":[],\"id\":\"" + tid +
+            "\",\"tag\":\"nominal\"}\n" + "03" + tid + scoped_hir_hex(0, 4)
+        }
+        return generic_record_refusal("E2S205", "unbound type parameter `" + token + "`", at)
+    }
+    return generic_record_refusal("E2S213", "unsupported payload or field type", at)
+}
+
+fn generic_adt_fields_json(
+    source: Text,
+    table: Text,
+    decl: Int,
+    args_json: Text,
+    args_hex: Text
+) -> Text {
+    let equals = type_equals_token(source, decl)
+    let open = skip_trivia(source, token_end(source, equals))
+    let close = balanced_end(source, open, "{", "}")
+    let row = generic_adt_row(table, type_name(source, decl))
+    let names = generic_adt_field(row, 3)
+    let owner = generic_adt_field(row, 4)
+    let limit = close - 1
+    let mut out = ""
+    let mut count = 0
+    let mut cursor = skip_trivia(source, token_end(source, open))
+    while cursor < limit {
+        if token_kind(source, cursor) != "identifier" {
+            return generic_record_refusal("E2S213", "malformed field", cursor)
+        }
+        let field = token_text(source, cursor)
+        if len(field) > 65535 {
+            return generic_record_refusal("E2S217", "a field name exceeds 65535 bytes", cursor)
+        }
+        let colon = skip_trivia(source, token_end(source, cursor))
+        if token_text(source, colon) != ":" {
+            return generic_record_refusal("E2S213", "field needs a type", colon)
+        }
+        let type_at = skip_trivia(source, token_end(source, colon))
+        if count >= 256 {
+            return generic_record_refusal("E2S217", "a record declares more than 256 fields", type_at)
+        }
+        let ref = generic_adt_type(
+            source, table, type_at, limit, names, owner, args_json, args_hex, 0
+        )
+        if starts_with(ref, "error[") {
+            return ref
+        }
+        if count > 0 {
+            out = out + ","
+        }
+        out = out + "{\"name\":\"" + field + "\",\"type\":" +
+        generic_record_line(ref, 0) + "}"
+        count = count + 1
+        let stop = generic_adt_type_stop(source, type_at, limit)
+        if stop < 0 {
+            return generic_record_refusal("E2S213", "malformed field type", type_at)
+        }
+        cursor = skip_trivia(source, stop)
+        if cursor < limit && token_text(source, cursor) == "," {
+            cursor = skip_trivia(source, token_end(source, cursor))
+        }
+    }
+    return "[" + out + "]"
+}
+
+# The shape of an ADT's constructor list: "" or an `error[...]`. Every
+# constructor is an identifier with no payload or exactly one `name: Type`
+# payload, no two share a name, and there are at least two. Types are
+# materialized afterwards, so a shape refusal wins over a type refusal in the
+# same declaration.
+fn generic_adt_shape(source: Text, decl: Int) -> Text {
+    let equals = type_equals_token(source, decl)
+    let mut pipe = skip_trivia(source, token_end(source, equals))
+    let mut seen = ""
+    let mut count = 0
+    while pipe < len(source) && token_text(source, pipe) == "|" {
+        let constructor = skip_trivia(source, token_end(source, pipe))
+        if constructor >= len(source) || token_kind(source, constructor) != "identifier" {
+            return generic_record_refusal("E2S216", "malformed constructor", constructor)
+        }
+        let name = token_text(source, constructor)
+        if len(name) > 65535 {
+            return generic_record_refusal("E2S217", "a constructor name exceeds 65535 bytes", constructor)
+        }
+        if contains(seen, "|" + name + "|") {
+            return generic_record_refusal("E2S216", "duplicate constructor `" + name + "`", constructor)
+        }
+        seen = seen + "|" + name + "|"
+        count = count + 1
+        let after = skip_trivia(source, token_end(source, constructor))
+        if after < len(source) && token_text(source, after) == "(" {
+            let close = balanced_end(source, after, "(", ")")
+            let limit = close - 1
+            let field = skip_trivia(source, token_end(source, after))
+            if field >= limit || token_kind(source, field) != "identifier" {
+                return generic_record_refusal("E2S216", "malformed payload field", field)
+            }
+            if len(token_text(source, field)) > 65535 {
+                return generic_record_refusal("E2S217", "a payload field name exceeds 65535 bytes", field)
+            }
+            let colon = skip_trivia(source, token_end(source, field))
+            if colon >= limit || token_text(source, colon) != ":" {
+                return generic_record_refusal("E2S216", "payload field needs a type", colon)
+            }
+            let type_at = skip_trivia(source, token_end(source, colon))
+            if type_at >= limit {
+                return generic_record_refusal("E2S216", "payload field needs a type", colon)
+            }
+            let stop = generic_adt_type_stop(source, type_at, limit)
+            if stop < 0 {
+                return generic_record_refusal("E2S216", "malformed payload field", type_at)
+            }
+            let next = skip_trivia(source, stop)
+            if next < limit {
+                if token_text(source, next) != "," {
+                    return generic_record_refusal("E2S216", "malformed payload field", next)
+                }
+                let more = skip_trivia(source, token_end(source, next))
+                if more < limit {
+                    return generic_record_refusal(
+                        "E2S216",
+                        "constructor `" + name + "` has more than one payload field",
+                        more
+                    )
+                }
+            }
+            pipe = skip_trivia(source, close)
+        } else {
+            pipe = after
+        }
+    }
+    if count < 2 {
+        return generic_record_refusal(
+            "E2S216",
+            "`" + type_name(source, decl) + "` must declare at least two constructors",
+            decl
+        )
+    }
+    return ""
+}
+
+fn generic_adt_constructors_json(
+    source: Text,
+    table: Text,
+    decl: Int,
+    args_json: Text,
+    args_hex: Text
+) -> Text {
+    let row = generic_adt_row(table, type_name(source, decl))
+    let names = generic_adt_field(row, 3)
+    let owner = generic_adt_field(row, 4)
+    let equals = type_equals_token(source, decl)
+    let mut pipe = skip_trivia(source, token_end(source, equals))
+    let mut out = ""
+    let mut ordinal = 0
+    while pipe < len(source) && token_text(source, pipe) == "|" {
+        let constructor = skip_trivia(source, token_end(source, pipe))
+        let after = skip_trivia(source, token_end(source, constructor))
+        let mut payload = ""
+        let mut next_pipe = after
+        if after < len(source) && token_text(source, after) == "(" {
+            let close = balanced_end(source, after, "(", ")")
+            let limit = close - 1
+            let field = skip_trivia(source, token_end(source, after))
+            let colon = skip_trivia(source, token_end(source, field))
+            let type_at = skip_trivia(source, token_end(source, colon))
+            let ref = generic_adt_type(
+                source, table, type_at, limit, names, owner, args_json, args_hex, 0
+            )
+            if starts_with(ref, "error[") {
+                return ref
+            }
+            payload = "{\"name\":\"" + token_text(source, field) + "\",\"type\":" +
+            generic_record_line(ref, 0) + "}"
+            next_pipe = skip_trivia(source, close)
+        }
+        if ordinal > 0 {
+            out = out + ","
+        }
+        out = out + "{\"name\":\"" + token_text(source, constructor) +
+        "\",\"ordinal\":" + to_text(ordinal) + ",\"payload\":[" + payload + "]}"
+        ordinal = ordinal + 1
+        pipe = next_pipe
+    }
+    return "[" + out + "]"
+}
+
+# `fields` for a record, `constructors` for an ADT.
+fn generic_adt_member_key(kind: Text) -> Text {
+    if kind == "record" {
+        return "fields"
+    }
+    return "constructors"
+}
+
+# The record field list or the ADT constructor list, substituted when the
+# argument rows are non-empty, or an `error[...]`.
+fn generic_adt_members_json(
+    source: Text,
+    table: Text,
+    decl: Int,
+    kind: Text,
+    args_json: Text,
+    args_hex: Text
+) -> Text {
+    if kind == "record" {
+        return generic_adt_fields_json(source, table, decl, args_json, args_hex)
+    }
+    let shape = generic_adt_shape(source, decl)
+    if len(shape) > 0 {
+        return shape
+    }
+    return generic_adt_constructors_json(source, table, decl, args_json, args_hex)
+}
+
+fn generic_adt_binders_json(table: Text, name: Text) -> Text {
+    let row = generic_adt_row(table, name)
+    let count = generic_record_comma_count(generic_adt_field(row, 3))
+    let owner = generic_adt_field(row, 4)
+    let mut out = ""
+    let mut index = 0
+    while index < count {
+        if index > 0 {
+            out = out + ","
+        }
+        out = out + "{\"id\":\"" + generic_record_parameter_id(owner, index) +
+        "\",\"kind\":\"type\",\"ordinal\":" + to_text(index) + "}"
+        index = index + 1
+    }
+    return "[" + out + "]"
+}
+
+# One application's JSON, or "" when its arguments are not concrete. The
+# arguments are read with no binders in scope, so a type parameter is unbound
+# there and the application is skipped.
+fn generic_adt_application(
+    source: Text,
+    table: Text,
+    name: Text,
+    decl: Int,
+    args_start: Int,
+    args_limit: Int
+) -> Text {
+    let row = generic_adt_row(table, name)
+    let kind = generic_adt_field(row, 1)
+    let wanted = generic_record_comma_count(generic_adt_field(row, 3))
+    let mut cursor = skip_trivia(source, args_start)
+    let mut jsons = ""
+    let mut hexes = ""
+    let mut count = 0
+    while cursor < args_limit && token_text(source, cursor) != "]" {
+        let child = generic_adt_type(source, table, cursor, args_limit, "", "", "", "", 0)
+        if starts_with(child, "error[") {
+            if starts_with(child, "error[E2S205]") {
+                return ""
+            }
+            return child
+        }
+        if count > 0 {
+            jsons = jsons + "\n"
+            hexes = hexes + "\n"
+        }
+        jsons = jsons + generic_record_line(child, 0)
+        hexes = hexes + generic_record_line(child, 1)
+        count = count + 1
+        let stop = generic_adt_type_stop(source, cursor, args_limit)
+        if stop < 0 {
+            return ""
+        }
+        cursor = skip_trivia(source, stop)
+        if cursor < args_limit && token_text(source, cursor) == "," {
+            cursor = skip_trivia(source, token_end(source, cursor))
+        }
+    }
+    if count != wanted {
+        return generic_record_refusal(
+            "E2S206",
+            "`" + name + "` expects " + to_text(wanted) +
+            " arguments, got " + to_text(count),
+            args_start
+        )
+    }
+    let id = generic_record_constructed_id(generic_adt_field(row, 4), hexes)
+    let members = generic_adt_members_json(source, table, decl, kind, jsons, hexes)
+    if starts_with(members, "error[") {
+        return members
+    }
+    return "{\"arguments\":[" + generic_record_comma_join(jsons) + "],\"" +
+    generic_adt_member_key(kind) + "\":" + members + ",\"id\":\"" + id + "\"}"
+}
+
+# The applications of the declaration `name`, as a JSON array or an
+# `error[...]`: every concrete `name[...]` the file writes, in first-use order,
+# each distinct argument tuple once. One pass of the file per declaration keeps
+# the work linear in the declarations rather than in their applications, and
+# the ninth distinct tuple refuses.
+fn generic_adt_applications_of(source: Text, table: Text, name: Text) -> Text {
+    let decl = generic_adt_number(generic_adt_field(generic_adt_row(table, name), 2))
+    let mut out = ""
+    let mut found = 0
+    let mut cursor = after_optional_module_header(source, 0)
+    while cursor < len(source) {
+        let after = skip_trivia(source, token_end(source, cursor))
+        if token_text(source, cursor) == name &&
+           token_kind(source, cursor) == "identifier" &&
+           after < len(source) && token_text(source, after) == "[" {
+            let close = balanced_end(source, after, "[", "]")
+            if close >= 0 {
+                let app = generic_adt_application(
+                    source, table, name, decl, token_end(source, after), close - 1
+                )
+                if starts_with(app, "error[") {
+                    return app
+                }
+                if len(app) > 0 && !contains(out, app) {
+                    found = found + 1
+                    if found > 8 {
+                        return generic_record_refusal(
+                            "E2S208",
+                            "`" + name + "` has more than 8 instantiations",
+                            decl
+                        )
+                    }
+                    if len(out) > 0 {
+                        out = out + ","
+                    }
+                    out = out + app
+                }
+            }
+        }
+        cursor = after
+    }
+    return "[" + out + "]"
+}
+
+# Declared nominal heads of one type appended to `out`, one per line, in
+# first-use order and without repeats, including heads nested in type
+# arguments: a constructed type holds its arguments by value. A primitive, a
+# binder, and a name that is no record or ADT contribute no edge.
+fn generic_adt_nominals(
+    source: Text,
+    table: Text,
+    at: Int,
+    limit: Int,
+    names: Text,
+    out: Text
+) -> Text {
+    let token = token_text(source, at)
+    if generic_record_primitive(token) || token_kind(source, at) != "identifier" {
+        return out
+    }
+    if generic_record_binder_ordinal(names, token) >= 0 {
+        return out
+    }
+    let mut next = out
+    if len(generic_adt_row(table, token)) > 0 &&
+       !contains("\n" + next + "\n", "\n" + token + "\n") {
+        if len(next) > 0 {
+            next = next + "\n"
+        }
+        next = next + token
+    }
+    let after = skip_trivia(source, token_end(source, at))
+    if after < limit && token_text(source, after) == "[" {
+        let child_limit = balanced_end(source, after, "[", "]") - 1
+        let mut cursor = skip_trivia(source, token_end(source, after))
+        while cursor < child_limit && token_text(source, cursor) != "]" {
+            next = generic_adt_nominals(source, table, cursor, child_limit, names, next)
+            let stop = generic_adt_type_stop(source, cursor, child_limit)
+            if stop < 0 {
+                return next
+            }
+            cursor = skip_trivia(source, stop)
+            if cursor < child_limit && token_text(source, cursor) == "," {
+                cursor = skip_trivia(source, token_end(source, cursor))
+            }
+        }
+    }
+    return next
+}
+
+# The by-value edges of a declaration: a record's field types, or an ADT's
+# constructor payload types, left to right.
+fn generic_adt_nominals_of(source: Text, table: Text, decl: Int) -> Text {
+    let kind = generic_adt_kind(source, decl)
+    let names = generic_adt_field(generic_adt_row(table, type_name(source, decl)), 3)
+    let equals = type_equals_token(source, decl)
+    let mut out = ""
+    if kind == "record" {
+        let open = skip_trivia(source, token_end(source, equals))
+        let limit = balanced_end(source, open, "{", "}") - 1
+        let mut cursor = skip_trivia(source, token_end(source, open))
+        while cursor < limit {
+            let colon = skip_trivia(source, token_end(source, cursor))
+            let type_at = skip_trivia(source, token_end(source, colon))
+            if type_at >= limit {
+                return out
+            }
+            out = generic_adt_nominals(source, table, type_at, limit, names, out)
+            let stop = generic_adt_type_stop(source, type_at, limit)
+            if stop < 0 {
+                return generic_record_refusal("E2S213", "malformed field type", type_at)
+            }
+            cursor = skip_trivia(source, stop)
+            if cursor < limit && token_text(source, cursor) == "," {
+                cursor = skip_trivia(source, token_end(source, cursor))
+            }
+        }
+        return out
+    }
+    let mut pipe = skip_trivia(source, token_end(source, equals))
+    while pipe < len(source) && token_text(source, pipe) == "|" {
+        let constructor = skip_trivia(source, token_end(source, pipe))
+        let after = skip_trivia(source, token_end(source, constructor))
+        pipe = after
+        if after < len(source) && token_text(source, after) == "(" {
+            let close = balanced_end(source, after, "(", ")")
+            let limit = close - 1
+            let mut cursor = skip_trivia(source, token_end(source, after))
+            while cursor < limit {
+                let colon = skip_trivia(source, token_end(source, cursor))
+                let type_at = skip_trivia(source, token_end(source, colon))
+                if type_at >= limit {
+                    return out
+                }
+                out = generic_adt_nominals(source, table, type_at, limit, names, out)
+                let stop = generic_adt_type_stop(source, type_at, limit)
+                if stop < 0 {
+                    return generic_record_refusal("E2S213", "malformed payload type", type_at)
+                }
+                cursor = skip_trivia(source, stop)
+                if cursor < limit && token_text(source, cursor) == "," {
+                    cursor = skip_trivia(source, token_end(source, cursor))
+                }
+            }
+            pipe = skip_trivia(source, close)
+        }
+    }
+    return out
+}
+
+# The refusal for a mutual cycle closed at `target`, which is on `stack`. The
+# members are the stack from `target` through `name`. All ADTs: E2S211. All
+# records: the generic-record contract's E2S200, unchanged. Both: E2S212.
+fn generic_adt_cycle_refusal(
+    table: Text,
+    name: Text,
+    target: Text,
+    stack: Text,
+    decl: Int
+) -> Text {
+    let members = text_slice(stack, find(stack, "|" + target + "|"), len(stack))
+    let mut adts = 0
+    let mut records = 0
+    let mut start = 0
+    let mut at = 0
+    while at < len(members) {
+        if text_slice(members, at, at + 1) == "|" {
+            if at > start {
+                if generic_adt_field(generic_adt_row(table, text_slice(members, start, at)), 1) == "adt" {
+                    adts = adts + 1
+                } else {
+                    records = records + 1
+                }
+            }
+            start = at + 1
+        }
+        at = at + 1
+    }
+    if adts > 0 && records > 0 {
+        return generic_record_refusal(
+            "E2S212",
+            "mixed record/ADT by-value cycle through `" + name + "` and `" + target + "`",
+            decl
+        )
+    }
+    if adts > 0 {
+        return generic_record_refusal(
+            "E2S211",
+            "mutual by-value ADT cycle through `" + name + "` and `" + target + "`",
+            decl
+        )
+    }
+    return generic_record_refusal(
+        "E2S200",
+        "mutual by-value cycle through `" + name + "` and `" + target + "`",
+        decl
+    )
+}
+
+# An `error[...]`, or the done set after exploring `name`: "|A|B|" of the
+# declarations whose whole reachable subgraph holds no cycle. A finished
+# declaration cannot reach an active one, so skipping it loses nothing and
+# keeps the walk linear in edges rather than in paths.
+fn generic_adt_cycle_visit(source: Text, table: Text, name: Text, stack: Text, done: Text) -> Text {
+    let row = generic_adt_row(table, name)
+    let decl = generic_adt_number(generic_adt_field(row, 2))
+    let kind = generic_adt_field(row, 1)
+    let targets = generic_adt_nominals_of(source, table, decl)
+    if starts_with(targets, "error[") {
+        return targets
+    }
+    let count = generic_record_lines(targets)
+    let mut finished = done
+    let mut index = 0
+    while index < count {
+        let target = generic_record_line(targets, index)
+        if target == name {
+            if kind == "adt" {
+                return generic_record_refusal("E2S210", "`" + name + "` holds itself by value", decl)
+            }
+            return generic_record_refusal("E2S199", "`" + name + "` holds itself by value", decl)
+        }
+        if contains(stack, "|" + target + "|") {
+            return generic_adt_cycle_refusal(table, name, target, stack, decl)
+        }
+        if !contains(finished, "|" + target + "|") {
+            let deeper = generic_adt_cycle_visit(source, table, target, stack + target + "|", finished)
+            if starts_with(deeper, "error[") {
+                return deeper
+            }
+            finished = deeper
+        }
+        index = index + 1
+    }
+    if len(finished) == 0 {
+        return "|" + name + "|"
+    }
+    return finished + name + "|"
+}
+
+fn generic_adt_cycle(source: Text, table: Text) -> Text {
+    let count = generic_adt_count(table)
+    let mut done = ""
+    let mut index = 0
+    while index < count {
+        let name = generic_adt_name_at(table, index)
+        if !contains(done, "|" + name + "|") {
+            let next = generic_adt_cycle_visit(source, table, name, "|" + name + "|", done)
+            if starts_with(next, "error[") {
+                return next
+            }
+            done = next
+        }
+        index = index + 1
+    }
+    return ""
+}
+
+fn generic_adt_limits_json() -> Text {
+    return "{\"binders_per_declaration\":2,\"constructed_depth\":8," +
+    "\"constructors_per_declaration\":64,\"declarations\":64," +
+    "\"document_bytes\":1048576,\"fields_per_declaration\":256," +
+    "\"instantiations_per_declaration\":8,\"name_bytes\":65535," +
+    "\"payload_fields_per_constructor\":1}"
+}
+
+fn generic_adt_document(source: Text, path: Text) -> Text {
+    # Lexical errors first, as `compile_file` reports them: an unterminated
+    # string has no token end, and the scan below must never step from it.
+    let tokens = lex(source)
+    if starts_with(tokens, "error[") {
+        return tokens
+    }
+    let table = generic_adt_table(source, path)
+    if starts_with(table, "error[") {
+        return table
+    }
+    let cycle = generic_adt_cycle(source, table)
+    if len(cycle) > 0 {
+        return cycle
+    }
+    let listed = generic_adt_listed(table)
+    let count = generic_record_lines(listed)
+    # Member materialization precedes application discovery so a too-deep or
+    # ill-formed member refuses with its own code before discovery can trip a
+    # different limit on the same bytes.
+    let mut check = 0
+    while check < count {
+        let check_row = generic_adt_row(table, generic_record_line(listed, check))
+        let check_members = generic_adt_members_json(
+            source,
+            table,
+            generic_adt_number(generic_adt_field(check_row, 2)),
+            generic_adt_field(check_row, 1),
+            "",
+            ""
+        )
+        if starts_with(check_members, "error[") {
+            return check_members
+        }
+        check = check + 1
+    }
+    let mut rendered = ""
+    let mut index = 0
+    while index < count {
+        let name = generic_record_line(listed, index)
+        let row = generic_adt_row(table, name)
+        let kind = generic_adt_field(row, 1)
+        let applications = generic_adt_applications_of(source, table, name)
+        if starts_with(applications, "error[") {
+            return applications
+        }
+        let members = generic_adt_members_json(
+            source, table, generic_adt_number(generic_adt_field(row, 2)), kind, "", ""
+        )
+        if index > 0 {
+            rendered = rendered + ","
+        }
+        rendered = rendered + "{\"applications\":" + applications +
+        ",\"binders\":" + generic_adt_binders_json(table, name) + ",\"" +
+        generic_adt_member_key(kind) + "\":" + members + ",\"id\":\"" +
+        generic_adt_field(row, 4) + "\",\"kind\":\"" + kind + "\",\"name\":\"" + name + "\"}"
+        index = index + 1
+    }
+    let document = "{\"declarations\":[" + rendered + "],\"file_id\":\"" +
+    scoped_hir_file_id(path) + "\",\"limits\":" + generic_adt_limits_json() +
+    ",\"profile\":\"kofun.stage2-analysis/generic-adt/v1\"," +
+    "\"schema\":\"kofun.generic-adt-hir/v1\"}\n"
+    if len(document) > 1048576 {
+        return generic_record_refusal("E2S217", "document exceeds 1048576 bytes", 0)
+    }
+    return document
+}
+
+fn emit_generic_adt_hir_file(input: Text, output: Text, logical_path: Text) -> Bool {
+    if stage2_same_file(input, output) == 1 {
+        print("error[E2S217]: generic-ADT HIR input and output must be distinct")
+        return false
+    }
+    if !scoped_hir_logical_path(logical_path) {
+        print("error[E2S217]: generic-ADT HIR logical path must be canonical relative UTF-8 (1..4096 bytes)")
+        return false
+    }
+    let source = read_text(input)
+    if len(source) > 4294967295 {
+        print("error[E2S217]: generic-ADT HIR source span exceeds u32")
+        return false
+    }
+    let document = generic_adt_document(source, logical_path)
     if starts_with(document, "error[") {
         print(document)
         return false
@@ -31902,6 +32931,12 @@ fn main() -> Int {
         }
         return 0
     }
+    if len(arguments) == 4 && arguments[0] == "--emit-generic-adt-hir" {
+        if !emit_generic_adt_hir_file(arguments[1], arguments[2], arguments[3]) {
+            return 1
+        }
+        return 0
+    }
     if len(arguments) == 3 && arguments[0] == "--emit-scope-hir" {
         if !emit_scope_hir_file(arguments[1], arguments[2]) {
             return 1
@@ -31934,6 +32969,7 @@ fn main() -> Int {
             "       kofun-stage2 --emit-scope-hir INPUT.kofun OUTPUT.scope-hir\n" +
             "       kofun-stage2 --emit-scope-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n" +
             "       kofun-stage2 --emit-generic-record-hir INPUT.kofun OUTPUT.json LOGICAL-PATH\n" +
+            "       kofun-stage2 --emit-generic-adt-hir INPUT.kofun OUTPUT.json LOGICAL-PATH\n" +
             "       kofun-stage2 --emit-capture-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n" +
             "       kofun-stage2 --emit-complete-capture-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n" +
             "       kofun-stage2 --check-scoped-ownership INPUT.kofun OUTPUT.json LOGICAL-PATH\n" +
