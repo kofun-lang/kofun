@@ -1,0 +1,18 @@
+# #1696. A port outside `-1` or `0..65535` fails the checked construction with
+# R041.
+type HttpOrigin = {
+    host: Bytes,
+    target: Bytes,
+    port: Int,
+}
+
+fn main() -> Int {
+    let host = stage2_bytes_empty()
+    stage2_bytes_assign_text(host, "example.com")
+    let target = stage2_bytes_empty()
+    stage2_bytes_assign_text(target, "/")
+    let origin: HttpOrigin = HttpOrigin(host: host, target: target, port: 70000)
+    stage2_http_origin(origin)
+    print(origin.port)
+    return 0
+}

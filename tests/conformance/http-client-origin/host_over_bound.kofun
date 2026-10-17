@@ -1,0 +1,23 @@
+# #1696. A host over 255 bytes fails the checked construction with R039, and
+# nothing after the refusal runs. The host is grown past the bound with appends,
+# because `stage2_bytes_assign_text` refuses a Text over 255 bytes first.
+type HttpOrigin = {
+    host: Bytes,
+    target: Bytes,
+    port: Int,
+}
+
+fn main() -> Int {
+    let host = stage2_bytes_empty()
+    let mut at = 0
+    while at < 256 {
+        stage2_bytes_append(host, 97)
+        at = at + 1
+    }
+    let target = stage2_bytes_empty()
+    stage2_bytes_assign_text(target, "/")
+    let origin: HttpOrigin = HttpOrigin(host: host, target: target, port: 80)
+    stage2_http_origin(origin)
+    print(origin.port)
+    return 0
+}
