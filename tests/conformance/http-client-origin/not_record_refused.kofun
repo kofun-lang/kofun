@@ -1,0 +1,12 @@
+# #1696. The checked construction takes an `HttpOrigin` record binding, and a
+# non-record argument is refused E2S15 before any C.
+type HttpOrigin = {
+    host: Bytes,
+    target: Bytes,
+    port: Int,
+}
+
+fn main() -> Int {
+    stage2_http_origin(3)
+    return 0
+}

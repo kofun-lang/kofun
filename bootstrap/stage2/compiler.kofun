@@ -5713,6 +5713,7 @@ fn call_resolves_to_builtin(
 fn bytes_private_result_builtin(name: Text) -> Bool {
     return name == "stage2_bytes_assign_zeroed" ||
     name == "stage2_list_append" ||
+    name == "stage2_http_origin" ||
     name == "stage2_bytes_assign_text" ||
     (bytes_mutation_builtin(name) &&
      name != "stage2_bytes_len" &&
@@ -6871,6 +6872,64 @@ fn emit_record_list_append(
         list_type + " append exceeds capacity 128\"), 0))"
 }
 
+# #1696. Whether a nominal record is the `HttpOrigin` shape the checked
+# constructor fills: exactly `host: Bytes`, `target: Bytes`, `port: Int` in
+# that order. Structural rather than by name, like the record-list element row.
+fn http_origin_fields_ok(source: Text, record_type: Text) -> Bool {
+    if record_declaration_start(source, record_type) < 0 {
+        return false
+    }
+    if record_field_count(source, record_type) != 3 {
+        return false
+    }
+    return record_field_index(source, record_type, "host") == 0 &&
+    record_field_index(source, record_type, "target") == 1 &&
+    record_field_index(source, record_type, "port") == 2 &&
+    record_field_text(source, record_type, 0, true) == "Bytes" &&
+    record_field_text(source, record_type, 1, true) == "Bytes" &&
+    record_field_text(source, record_type, 2, true) == "Int"
+}
+
+# #1696. `stage2_http_origin(origin)`: the checked construction of the HTTP
+# origin carrier. The record is built by its own constructor and this validates
+# it in place, exactly as the R038 append validates a full list. A host over
+# 255 bytes or with a byte outside the visible-ASCII set (comma excluded), a
+# target that is not an origin-form `/`-prefixed path of at most 2048 bytes,
+# and a port outside `-1` or `0..65535` each fail with a named runtime
+# diagnostic and no mutation.
+fn emit_http_origin_check(
+    source: Text,
+    hir: Text,
+    call_name: Int,
+    open: Int
+) -> Text {
+    let origin = skip_trivia(source, token_end(source, open))
+    let origin_end = argument_end(source, origin)
+    if token_kind(source, origin) != "identifier" ||
+       token_end(source, origin) != origin_end {
+        return lower_error(
+            "E2S15",
+            "builtin `stage2_http_origin` takes an HttpOrigin record binding",
+            call_name
+        )
+    }
+    let function_open = enclosing_function_open(source, call_name)
+    let origin_type = initializer_type(source, hir, function_open, origin)
+    if !http_origin_fields_ok(source, origin_type) {
+        return lower_error(
+            "E2S15",
+            "builtin `stage2_http_origin` takes a record of `host: Bytes, target: Bytes, port: Int`",
+            origin
+        )
+    }
+    let origin_value = emit_expression(source, hir, origin, origin_end)
+    if starts_with(origin_value, "error[") {
+        return origin_value
+    }
+    return "(kofun_http_origin_check(&(" + origin_value + ").f_host, &(" +
+        origin_value + ").f_target, (" + origin_value + ").f_port), 0)"
+}
+
 fn emit_list_int_literal(
     source: Text,
     hir: Text,
@@ -7496,6 +7555,11 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
            name == "stage2_list_append" &&
            call_resolves_to_builtin(source, hir, cursor, name) {
             return emit_record_list_append(source, hir, cursor, open)
+        }
+        if open < end && token_text(source, open) == "(" &&
+           name == "stage2_http_origin" &&
+           call_resolves_to_builtin(source, hir, cursor, name) {
+            return emit_http_origin_check(source, hir, cursor, open)
         }
         # #1321. The bounded mutation surface, lowered through one function.
         # Its carriers take the same address treatment the producer above
@@ -8424,6 +8488,10 @@ fn builtin_arity(name: Text) -> Int {
     if name == "stage2_list_append" {
         return 2
     }
+    # #1696. The checked origin construction takes the record it validates.
+    if name == "stage2_http_origin" {
+        return 1
+    }
     # #1667. The chunked-read surface: selecting standard input is the
     # zero-argument operation; opening a path and reading a chunk each take
     # one argument.
@@ -8500,6 +8568,11 @@ fn builtin_parameter_types(name: Text) -> Text {
     # because a parameter row cannot name the list's element.
     if name == "stage2_list_append" {
         return "RecordList|Record"
+    }
+    # #1696. The checked origin construction takes one declared record; the
+    # `HttpOrigin` field shape is checked where the call lowers.
+    if name == "stage2_http_origin" {
+        return "Record"
     }
     # #1667. Selecting standard input takes no argument; opening a path takes a
     # `Text`; the chunk read takes the `Bytes` carrier it fills.
@@ -9603,6 +9676,7 @@ fn validate_core_calls(source: Text, hir: Text) -> Text {
                        name == "stage2_command_operand_text" ||
                        name == "stage2_command_stderr" ||
                        name == "stage2_list_append" ||
+                       name == "stage2_http_origin" ||
                        bytes_family_builtin(name) {
                         expected = builtin_expected
                     } else {
@@ -13963,6 +14037,11 @@ fn builtin_return_type(name: Text) -> Text {
     # #1698. Private-status like the Bytes mutations: a full list is a runtime
     # diagnostic, so the call has no source value.
     if name == "stage2_list_append" {
+        return "Void"
+    }
+    # #1696. Private-status like the append: an invalid origin is a runtime
+    # diagnostic, so the call has no source value.
+    if name == "stage2_http_origin" {
         return "Void"
     }
     return ""
@@ -20240,6 +20319,47 @@ fn bytes_text_bridge_prelude() -> Text {
     "}\n"
 }
 
+# #1696. The HTTP origin profile's admitted byte sets, frozen per #1258's Q2:
+# a host is 1..255 visible-ASCII bytes without a comma, a target is an
+# origin-form `/`-prefixed path of 1..2048 visible-ASCII bytes, and a port is
+# -1 (absent) or 0..65535. The three refusals are named runtime diagnostics in
+# the #1322/#1499 shape, so an invalid construction fails closed rather than
+# yielding an origin a transport would use.
+fn http_origin_prelude() -> Text {
+    return "static inline int kofun_http_origin_host_ok(const KofunBytesValue *host) {\n" +
+    "    if (host->length < UINT64_C(1) || host->length > UINT64_C(255)) return 0;\n" +
+    "    for (uint64_t at = 0; at < host->length; ++at) {\n" +
+    "        unsigned char byte = host->data[at];\n" +
+    "        if (byte < 0x21 || byte > 0x7E || byte == ',') return 0;\n" +
+    "    }\n" +
+    "    return 1;\n" +
+    "}\n" +
+    "static inline int kofun_http_origin_target_ok(const KofunBytesValue *target) {\n" +
+    "    if (target->length < UINT64_C(1) || target->length > UINT64_C(2048)) return 0;\n" +
+    "    if (target->data[0] != '/') return 0;\n" +
+    "    for (uint64_t at = 0; at < target->length; ++at) {\n" +
+    "        unsigned char byte = target->data[at];\n" +
+    "        if (byte < 0x21 || byte > 0x7E) return 0;\n" +
+    "    }\n" +
+    "    return 1;\n" +
+    "}\n" +
+    "static inline int kofun_http_origin_check(const KofunBytesValue *host, const KofunBytesValue *target, int64_t port) {\n" +
+    "    if (!kofun_http_origin_host_ok(host)) {\n" +
+    "        kofun_error(\"error[R039]: bounded HttpOrigin host must be 1..255 visible-ASCII bytes without a comma\");\n" +
+    "        return 0;\n" +
+    "    }\n" +
+    "    if (!kofun_http_origin_target_ok(target)) {\n" +
+    "        kofun_error(\"error[R040]: bounded HttpOrigin target must be an origin-form path of 1..2048 visible-ASCII bytes\");\n" +
+    "        return 0;\n" +
+    "    }\n" +
+    "    if (port < INT64_C(-1) || port > INT64_C(65535)) {\n" +
+    "        kofun_error(\"error[R041]: bounded HttpOrigin port must be -1 or 0..65535\");\n" +
+    "        return 0;\n" +
+    "    }\n" +
+    "    return 1;\n" +
+    "}\n"
+}
+
 fn source_uses_bytes(source: Text, hir: Text) -> Bool {
     let mut cursor = skip_trivia(source, 0)
     while cursor < len(source) {
@@ -21230,6 +21350,13 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
         "    return 0;\n" +
         "}\n"
     }
+    # #1696. The checked origin construction is emitted only for a source that
+    # can reach it, the way the Bytes and command surfaces are, and by the same
+    # raw-source substring test in both halves of the pair.
+    let mut origin_prelude = ""
+    if contains(source, "stage2_http_origin") {
+        origin_prelude = http_origin_prelude()
+    }
     # #1667. The bounded chunked-read surface, emitted only for a source that
     # can reach it, the way the Bytes and command surfaces are. One stream is
     # open at a time: `stream_open` publishes a file named by path, and
@@ -21620,6 +21747,7 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     "}\n" +
     command_prelude +
     stream_prelude +
+    origin_prelude +
     "static inline int64_t kofun_add(int64_t a, int64_t b) {\n" +
     "    int64_t r; if (__builtin_add_overflow(a, b, &r)) {\n" +
     "        kofun_error(\"error[R010]: integer overflow in operator `+`\"); return 0;\n" +

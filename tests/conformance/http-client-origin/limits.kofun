@@ -1,0 +1,70 @@
+# #1696. `CoreLimits` (the 15 `http_carrier.limits` ceilings) and the caller
+# limit map are values a program can declare, return, and read. The caller map
+# is #1258's Q2(e): `max_header_bytes` -> `header_total_bytes`,
+# `max_headers` -> `header_count`, `max_chunk_bytes` -> `chunk_bytes`,
+# `max_body_bytes` -> `read_all_hard_bytes`.
+type CoreLimits = {
+    request_bytes: Int,
+    header_count: Int,
+    header_name_bytes: Int,
+    header_value_bytes: Int,
+    header_total_bytes: Int,
+    status_line_bytes: Int,
+    chunk_line_bytes: Int,
+    chunk_count: Int,
+    chunk_bytes: Int,
+    trailer_count: Int,
+    trailer_total_bytes: Int,
+    buffered_body_bytes: Int,
+    read_all_hard_bytes: Int,
+    early_drain_bytes: Int,
+    script_operations: Int,
+}
+
+type CallerLimits = {
+    max_header_bytes: Int,
+    max_headers: Int,
+    max_chunk_bytes: Int,
+    max_body_bytes: Int,
+}
+
+fn core_limits() -> CoreLimits {
+    let limits: CoreLimits = CoreLimits(
+        request_bytes: 1048576,
+        header_count: 128,
+        header_name_bytes: 256,
+        header_value_bytes: 8192,
+        header_total_bytes: 65536,
+        status_line_bytes: 8192,
+        chunk_line_bytes: 8192,
+        chunk_count: 65536,
+        chunk_bytes: 8388608,
+        trailer_count: 64,
+        trailer_total_bytes: 32768,
+        buffered_body_bytes: 1048576,
+        read_all_hard_bytes: 67108864,
+        early_drain_bytes: 1048576,
+        script_operations: 4096,
+    )
+    return limits
+}
+
+fn caller_limits(core: CoreLimits) -> CallerLimits {
+    let limits: CallerLimits = CallerLimits(
+        max_header_bytes: core.header_total_bytes,
+        max_headers: core.header_count,
+        max_chunk_bytes: core.chunk_bytes,
+        max_body_bytes: core.read_all_hard_bytes,
+    )
+    return limits
+}
+
+fn main() -> Int {
+    let core: CoreLimits = core_limits()
+    let caller: CallerLimits = caller_limits(core)
+    print(caller.max_header_bytes)
+    print(caller.max_headers)
+    print(caller.max_chunk_bytes)
+    print(caller.max_body_bytes)
+    return 0
+}

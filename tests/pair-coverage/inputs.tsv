@@ -630,6 +630,16 @@ tests/conformance/http-client-headers/lookup.kofun
 tests/conformance/http-client-headers/move.kofun
 tests/conformance/http-client-headers/over_capacity.kofun
 tests/conformance/http-client-headers/value_refused.kofun
+tests/conformance/http-client-origin/absent_port.kofun
+tests/conformance/http-client-origin/construct.kofun
+tests/conformance/http-client-origin/host_comma_refused.kofun
+tests/conformance/http-client-origin/host_over_bound.kofun
+tests/conformance/http-client-origin/limits.kofun
+tests/conformance/http-client-origin/not_record_refused.kofun
+tests/conformance/http-client-origin/port_out_of_range_refused.kofun
+tests/conformance/http-client-origin/target_no_slash_refused.kofun
+tests/conformance/http-client-origin/target_over_bound.kofun
+tests/conformance/http-client-origin/wrong_shape_refused.kofun
 tests/conformance/incremental/fixtures/app.kofun
 tests/conformance/incremental/fixtures/core.kofun
 tests/conformance/incremental/fixtures/edits/app_selected_import_removed.kofun

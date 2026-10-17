@@ -1,0 +1,12 @@
+# #1696. A record that is not the `HttpOrigin` shape is refused E2S15 before any
+# C: the checked construction requires `host: Bytes, target: Bytes, port: Int`.
+type Point = {
+    x: Int,
+    y: Int,
+}
+
+fn main() -> Int {
+    let point: Point = Point(x: 1, y: 2)
+    stage2_http_origin(point)
+    return 0
+}

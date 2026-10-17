@@ -9667,6 +9667,91 @@ static char *emit_record_list_append(
     return call.data;
 }
 
+/*
+ * #1696. Whether a nominal record is the `HttpOrigin` shape the checked
+ * constructor fills: exactly `host: Bytes`, `target: Bytes`, `port: Int` in
+ * that order. Structural rather than by name, like the record-list element row.
+ */
+static bool http_origin_fields_ok(const char *source, const char *record_type) {
+    if (record_declaration_start(source, record_type) < 0) return false;
+    if (record_field_count(source, record_type) != 3) return false;
+    char *host = record_field_text(source, record_type, 0, false);
+    char *target = record_field_text(source, record_type, 1, false);
+    char *port = record_field_text(source, record_type, 2, false);
+    char *host_type = record_field_text(source, record_type, 0, true);
+    char *target_type = record_field_text(source, record_type, 1, true);
+    char *port_type = record_field_text(source, record_type, 2, true);
+    bool ok = strcmp(host, "host") == 0 &&
+        strcmp(target, "target") == 0 &&
+        strcmp(port, "port") == 0 &&
+        strcmp(host_type, "Bytes") == 0 &&
+        strcmp(target_type, "Bytes") == 0 &&
+        strcmp(port_type, "Int") == 0;
+    free(host);
+    free(target);
+    free(port);
+    free(host_type);
+    free(target_type);
+    free(port_type);
+    return ok;
+}
+
+/*
+ * #1696. `stage2_http_origin(origin)`: the checked construction of the HTTP
+ * origin carrier. The record is built by its own constructor and this
+ * validates it in place, exactly as the R038 append validates a full list. A
+ * host over 255 bytes or with a byte outside the visible-ASCII set (comma
+ * excluded), a target that is not an origin-form `/`-prefixed path of at most
+ * 2048 bytes, and a port outside `-1` or `0..65535` each fail with a named
+ * runtime diagnostic and no mutation.
+ */
+static char *emit_http_origin_check(
+    const char *source,
+    const char *hir,
+    int64_t call_name,
+    int64_t open
+) {
+    int64_t origin = skip_trivia(source, token_end(source, open));
+    int64_t origin_end = argument_end(source, origin);
+    if (
+        strcmp(token_kind(source, origin), "identifier") != 0 ||
+        token_end(source, origin) != origin_end
+    ) {
+        return lower_error(
+            "E2S15",
+            "builtin `stage2_http_origin` takes an HttpOrigin record binding",
+            call_name
+        );
+    }
+    int64_t function_open = enclosing_function_open(source, call_name);
+    char *origin_type = initializer_type(source, hir, function_open, origin);
+    if (!http_origin_fields_ok(source, origin_type)) {
+        free(origin_type);
+        return lower_error(
+            "E2S15",
+            "builtin `stage2_http_origin` takes a record of `host: Bytes, "
+            "target: Bytes, port: Int`",
+            origin
+        );
+    }
+    char *origin_value = emit_expression(source, hir, origin, origin_end);
+    free(origin_type);
+    if (strncmp(origin_value, "error[", 6) == 0) {
+        return origin_value;
+    }
+    Buffer call;
+    buffer_init(&call);
+    buffer_format(
+        &call,
+        "(kofun_http_origin_check(&(%s).f_host, &(%s).f_target, (%s).f_port), 0)",
+        origin_value,
+        origin_value,
+        origin_value
+    );
+    free(origin_value);
+    return call.data;
+}
+
 static char *emit_list_int_literal(
     const char *source,
     const char *hir,
@@ -10675,6 +10760,15 @@ static char *emit_primary(
             call_resolves_to_builtin(source, hir, cursor, name)
         ) {
             char *call = emit_record_list_append(source, hir, cursor, open);
+            free(name);
+            return call;
+        }
+        if (
+            open < end && token_equal(source, open, "(") &&
+            strcmp(name, "stage2_http_origin") == 0 &&
+            call_resolves_to_builtin(source, hir, cursor, name)
+        ) {
+            char *call = emit_http_origin_check(source, hir, cursor, open);
             free(name);
             return call;
         }
@@ -12042,6 +12136,9 @@ static int64_t builtin_arity(const char *name) {
         /* #1698. The bounded record-list append takes the list and the
          * element record it moves in. */
         {"stage2_list_append", 2},
+        /* #1696. The checked origin construction takes the record it
+         * validates. */
+        {"stage2_http_origin", 1},
         /* #1667. The chunked-read surface: selecting standard input takes no
          * argument; opening a path and reading a chunk each take one. */
         {"stage2_bytes_stream_stdin", 0},
@@ -12145,6 +12242,9 @@ static const char *builtin_parameter_types(const char *name) {
          * that element type; the element agreement is checked where the call
          * lowers, because a parameter row cannot name the list's element. */
         {"stage2_list_append", "RecordList|Record"},
+        /* #1696. The checked origin construction takes one declared record;
+         * the `HttpOrigin` field shape is checked where the call lowers. */
+        {"stage2_http_origin", "Record"},
         /* #1667. Selecting standard input takes no argument; opening a path
          * takes a `Text`; the chunk read takes the `Bytes` carrier it fills. */
         {"stage2_bytes_stream_stdin", ""},
@@ -13672,6 +13772,7 @@ static char *validate_core_calls(const char *source, const char *hir) {
                         strcmp(name, "stage2_command_operand_text") == 0 ||
                         strcmp(name, "stage2_command_stderr") == 0 ||
                         strcmp(name, "stage2_list_append") == 0 ||
+                        strcmp(name, "stage2_http_origin") == 0 ||
                         bytes_family_builtin(name)
                     ) {
                         expected = builtin_expected;
@@ -13909,6 +14010,7 @@ static bool call_resolves_to_builtin(
 static bool bytes_private_result_builtin(const char *name) {
     return strcmp(name, "stage2_bytes_assign_zeroed") == 0 ||
            strcmp(name, "stage2_list_append") == 0 ||
+           strcmp(name, "stage2_http_origin") == 0 ||
            strcmp(name, "stage2_bytes_assign_text") == 0 ||
            (
                bytes_mutation_builtin(name) &&
@@ -18844,6 +18946,9 @@ static const char *builtin_return_type(const char *name) {
         /* #1698. Private-status like the Bytes mutations: a full list is a
          * runtime diagnostic, so the call has no source value. */
         {"stage2_list_append", "Void"},
+        /* #1696. Private-status like the append: an invalid origin is a
+         * runtime diagnostic, so the call has no source value. */
+        {"stage2_http_origin", "Void"},
         /* #1667. All three chunked-read operations report an `Int`: the open
          * status, the standard-input status, and the chunk's byte count (0 at
          * end of stream, negative for a failure the program continues past). */
@@ -31148,6 +31253,9 @@ static char *lower_c_body(
      * that can reach it, the way the Bytes and command surfaces are. The test
      * is the same raw-source substring test in both halves of the pair. */
     bool uses_stream = strstr(source, "stage2_bytes_stream_") != NULL;
+    /* #1696. The checked origin construction is emitted only for a source that
+     * can reach it, by the same raw-source substring test as the Kofun half. */
+    bool uses_http_origin = strstr(source, "stage2_http_origin") != NULL;
     /* #946: the move rule runs before the assertion, so a use-after-move is
      * reported as itself rather than as whatever the erased statement leaves
      * behind. */
@@ -32139,6 +32247,49 @@ static char *lower_c_body(
             "    }\n"
             "    value->length = (uint64_t)got;\n"
             "    return (int64_t)got;\n"
+            "}\n"
+        );
+    }
+    /* #1696. The HTTP origin profile's admitted byte sets, frozen per #1258's
+     * Q2: a host is 1..255 visible-ASCII bytes without a comma, a target is an
+     * origin-form `/`-prefixed path of 1..2048 visible-ASCII bytes, and a port
+     * is -1 (absent) or 0..65535. The three refusals are named runtime
+     * diagnostics in the #1322/#1499 shape. The raw-source substring test is
+     * shared with the Kofun half. */
+    if (uses_http_origin) {
+        buffer_append(
+            &output,
+            "static inline int kofun_http_origin_host_ok(const KofunBytesValue *host) {\n"
+            "    if (host->length < UINT64_C(1) || host->length > UINT64_C(255)) return 0;\n"
+            "    for (uint64_t at = 0; at < host->length; ++at) {\n"
+            "        unsigned char byte = host->data[at];\n"
+            "        if (byte < 0x21 || byte > 0x7E || byte == ',') return 0;\n"
+            "    }\n"
+            "    return 1;\n"
+            "}\n"
+            "static inline int kofun_http_origin_target_ok(const KofunBytesValue *target) {\n"
+            "    if (target->length < UINT64_C(1) || target->length > UINT64_C(2048)) return 0;\n"
+            "    if (target->data[0] != '/') return 0;\n"
+            "    for (uint64_t at = 0; at < target->length; ++at) {\n"
+            "        unsigned char byte = target->data[at];\n"
+            "        if (byte < 0x21 || byte > 0x7E) return 0;\n"
+            "    }\n"
+            "    return 1;\n"
+            "}\n"
+            "static inline int kofun_http_origin_check(const KofunBytesValue *host, const KofunBytesValue *target, int64_t port) {\n"
+            "    if (!kofun_http_origin_host_ok(host)) {\n"
+            "        kofun_error(\"error[R039]: bounded HttpOrigin host must be 1..255 visible-ASCII bytes without a comma\");\n"
+            "        return 0;\n"
+            "    }\n"
+            "    if (!kofun_http_origin_target_ok(target)) {\n"
+            "        kofun_error(\"error[R040]: bounded HttpOrigin target must be an origin-form path of 1..2048 visible-ASCII bytes\");\n"
+            "        return 0;\n"
+            "    }\n"
+            "    if (port < INT64_C(-1) || port > INT64_C(65535)) {\n"
+            "        kofun_error(\"error[R041]: bounded HttpOrigin port must be -1 or 0..65535\");\n"
+            "        return 0;\n"
+            "    }\n"
+            "    return 1;\n"
             "}\n"
         );
     }

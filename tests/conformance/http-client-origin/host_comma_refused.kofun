@@ -1,0 +1,18 @@
+# #1696. A host byte outside the admitted set -- here a comma -- fails the
+# checked construction with the named runtime diagnostic R039.
+type HttpOrigin = {
+    host: Bytes,
+    target: Bytes,
+    port: Int,
+}
+
+fn main() -> Int {
+    let host = stage2_bytes_empty()
+    stage2_bytes_assign_text(host, "a,b")
+    let target = stage2_bytes_empty()
+    stage2_bytes_assign_text(target, "/")
+    let origin: HttpOrigin = HttpOrigin(host: host, target: target, port: 80)
+    stage2_http_origin(origin)
+    print(origin.port)
+    return 0
+}

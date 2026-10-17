@@ -1,0 +1,18 @@
+# #1696. The absent-port sentinel: `-1` is a valid `HttpOrigin` port and is
+# read back unchanged.
+type HttpOrigin = {
+    host: Bytes,
+    target: Bytes,
+    port: Int,
+}
+
+fn main() -> Int {
+    let host = stage2_bytes_empty()
+    stage2_bytes_assign_text(host, "example.com")
+    let target = stage2_bytes_empty()
+    stage2_bytes_assign_text(target, "/")
+    let origin: HttpOrigin = HttpOrigin(host: host, target: target, port: -1)
+    stage2_http_origin(origin)
+    print(origin.port)
+    return 0
+}

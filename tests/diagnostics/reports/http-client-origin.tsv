@@ -1,0 +1,4 @@
+# code	adapter	channel	exit	primary-span	secondary-span	artifact
+R039	http-client-origin	stderr	1	not-applicable	not-applicable	required
+R040	http-client-origin	stderr	1	not-applicable	not-applicable	required
+R041	http-client-origin	stderr	1	not-applicable	not-applicable	required

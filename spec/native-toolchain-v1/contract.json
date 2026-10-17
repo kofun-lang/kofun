@@ -264,7 +264,9 @@
         "buffered_body_bytes": 1048576,
         "read_all_hard_bytes": 67108864,
         "early_drain_bytes": 1048576,
-        "script_operations": 4096
+        "script_operations": 4096,
+        "host_bytes": 255,
+        "target_bytes": 2048
       }
     },
     "generics": {
