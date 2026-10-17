@@ -1,0 +1,7 @@
+type Opt[T] =
+    | None
+    | Some(value: T)
+
+type Node = {
+    next: Opt[Node],
+}

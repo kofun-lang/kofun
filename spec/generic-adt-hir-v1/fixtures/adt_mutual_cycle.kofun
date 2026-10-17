@@ -1,0 +1,7 @@
+type A[T] =
+    | Stop
+    | Step(b: B[T])
+
+type B[U] =
+    | Halt
+    | Hop(a: A[U])

@@ -128,6 +128,22 @@ executable bootstrap implementation.
   the positive golden and the negative fixtures, requiring the two halves to
   agree. Ordinary compilation keeps refusing generic records (`E2S148`), and no
   C, KIF, or capability is claimed here.
+- `generic-adt-hir-v1/generic-adt-hir-v1.md`, its closed JSON schema
+  `kofun.generic-adt-hir.v1.schema.json`, independent `model.mjs` oracle, and
+  canonical positive golden freeze the generic-ADT analysis document for issue
+  #1675 on the identity core #1674 froze, reused unchanged: ADT binders,
+  constructor payload substitution over nested `TypeRef`s, the declaration kind
+  in the nominal `TypeId`, and ADT-to-ADT and mixed record/ADT by-value cycle
+  classification (`E2S210`-`E2S212`) beside the record contract's own cycle
+  codes. `task generic-adt-hir` recomputes every identity from its preimage,
+  holds the document to its schema, checks every limit at its boundary and every
+  refusal (`E2S203`-`E2S217`), and drives both halves of the
+  `--emit-generic-adt-hir` entry against the golden and the negative fixtures,
+  requiring the halves to agree with each other, with the record entry on a
+  record-only file, and with ordinary compilation still refusing generic
+  sources (`E2S148`). Layout, matching, and backend emission are deferred
+  (#1269/#1270), as is exact per-instantiation layout-cycle classification; no
+  C, KIF, or capability is claimed here.
 - `concurrency/schedule-trace-v1.md` is the accepted deterministic testing
   contract for issue #736: stable scope/task identities, the canonical
   `kofun.schedule-trace/v1` and `kofun.schedule-witness/v1` bytes, FIFO, seeded,

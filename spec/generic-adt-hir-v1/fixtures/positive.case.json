@@ -1,0 +1,149 @@
+{
+  "logical_path": "examples/generic_adt.kofun",
+  "declarations": [
+    {
+      "name": "Opt",
+      "kind": "adt",
+      "binders": ["T"],
+      "constructors": [
+        { "name": "None", "payload": [] },
+        { "name": "Some", "payload": [{ "name": "value", "type": { "parameter": "T" } }] }
+      ],
+      "applications": [
+        { "arguments": [{ "primitive": "Int" }] },
+        { "arguments": [{ "nominal": "Opt", "arguments": [{ "primitive": "Int" }] }] },
+        {
+          "arguments": [
+            { "nominal": "Either", "arguments": [{ "primitive": "Int" }, { "primitive": "Bool" }] }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Either",
+      "kind": "adt",
+      "binders": ["L", "R"],
+      "constructors": [
+        { "name": "Left", "payload": [{ "name": "left", "type": { "parameter": "L" } }] },
+        { "name": "Right", "payload": [{ "name": "right", "type": { "parameter": "R" } }] }
+      ],
+      "applications": [{ "arguments": [{ "primitive": "Int" }, { "primitive": "Bool" }] }]
+    },
+    {
+      "name": "Box",
+      "kind": "record",
+      "binders": ["T"],
+      "fields": [{ "name": "value", "type": { "parameter": "T" } }],
+      "applications": [{ "arguments": [{ "primitive": "Int" }] }]
+    },
+    {
+      "name": "Wrapped",
+      "kind": "adt",
+      "binders": ["T"],
+      "constructors": [
+        { "name": "Absent", "payload": [] },
+        {
+          "name": "Present",
+          "payload": [
+            { "name": "inner", "type": { "nominal": "Opt", "arguments": [{ "parameter": "T" }] } }
+          ]
+        }
+      ],
+      "applications": [
+        { "arguments": [{ "primitive": "Text" }] },
+        { "arguments": [{ "nominal": "Box", "arguments": [{ "primitive": "Int" }] }] }
+      ]
+    },
+    {
+      "name": "Holder",
+      "kind": "adt",
+      "binders": ["T"],
+      "constructors": [
+        { "name": "Empty", "payload": [] },
+        {
+          "name": "Held",
+          "payload": [
+            { "name": "box", "type": { "nominal": "Box", "arguments": [{ "parameter": "T" }] } }
+          ]
+        }
+      ],
+      "applications": [{ "arguments": [{ "primitive": "Int" }] }]
+    },
+    {
+      "name": "Slot",
+      "kind": "record",
+      "binders": ["T"],
+      "fields": [
+        { "name": "content", "type": { "nominal": "Opt", "arguments": [{ "parameter": "T" }] } }
+      ],
+      "applications": [{ "arguments": [{ "primitive": "Bool" }] }]
+    },
+    {
+      "name": "Tagged",
+      "kind": "adt",
+      "binders": ["T"],
+      "constructors": [
+        { "name": "Plain", "payload": [{ "name": "value", "type": { "parameter": "T" } }] },
+        {
+          "name": "Colored",
+          "payload": [{ "name": "color", "type": { "nominal": "Color", "arguments": [] } }]
+        }
+      ],
+      "applications": [{ "arguments": [{ "primitive": "Int" }] }]
+    },
+    {
+      "name": "Color",
+      "kind": "adt",
+      "binders": [],
+      "constructors": [
+        { "name": "Red", "payload": [] },
+        { "name": "Green", "payload": [] }
+      ]
+    },
+    {
+      "name": "Late",
+      "kind": "adt",
+      "binders": ["T"],
+      "constructors": [
+        { "name": "Never", "payload": [] },
+        {
+          "name": "Later",
+          "payload": [
+            {
+              "name": "next",
+              "type": {
+                "nominal": "Opt",
+                "arguments": [{ "nominal": "Opt", "arguments": [{ "parameter": "T" }] }]
+              }
+            }
+          ]
+        }
+      ],
+      "applications": [{ "arguments": [{ "primitive": "Unit" }] }]
+    },
+    {
+      "name": "Nest",
+      "kind": "adt",
+      "binders": ["T"],
+      "constructors": [
+        { "name": "Flat", "payload": [] },
+        {
+          "name": "Deep",
+          "payload": [
+            {
+              "name": "inner",
+              "type": {
+                "nominal": "Either",
+                "arguments": [
+                  { "parameter": "T" },
+                  { "nominal": "Opt", "arguments": [{ "parameter": "T" }] }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "applications": [{ "arguments": [{ "primitive": "Bool" }] }]
+    }
+  ]
+}

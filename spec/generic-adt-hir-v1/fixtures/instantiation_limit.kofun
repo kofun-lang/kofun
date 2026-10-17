@@ -1,0 +1,17 @@
+type Opt[T] =
+    | None
+    | Some(value: T)
+
+fn consume(
+    a: Opt[Int],
+    b: Opt[Bool],
+    c: Opt[Text],
+    d: Opt[Unit],
+    e: Opt[Opt[Int]],
+    f: Opt[Opt[Bool]],
+    g: Opt[Opt[Text]],
+    h: Opt[Opt[Unit]],
+    i: Opt[Opt[Opt[Int]]],
+) -> Int {
+    return 0
+}
