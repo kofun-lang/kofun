@@ -645,6 +645,8 @@ tests/conformance/generics/type_parameter_limit.kofun
 tests/conformance/generics/unconstrained_type_parameter.kofun
 tests/conformance/generics/unknown_type_parameter.kofun
 tests/conformance/http-client-headers/append_index.kofun
+tests/conformance/http-client-headers/append_reuse_refused.kofun
+tests/conformance/http-client-headers/append_twice_refused.kofun
 tests/conformance/http-client-headers/element_refused.kofun
 tests/conformance/http-client-headers/full.kofun
 tests/conformance/http-client-headers/int_list_refused.kofun
@@ -917,8 +919,10 @@ tests/conformance/modules/visibility-syntax/rust_pub_crate_alias.kofun
 tests/conformance/modules/visibility-syntax/rust_pub_in_alias.kofun
 tests/conformance/modules/visibility-syntax/rust_pub_super_alias.kofun
 tests/conformance/move-call-crossings/accepted.kofun
+tests/conformance/move-call-crossings/append_use_after.kofun
 tests/conformance/move-call-crossings/bytes_double.kofun
 tests/conformance/move-call-crossings/bytes_edit_after.kofun
+tests/conformance/move-call-crossings/bytes_record_use_after.kofun
 tests/conformance/move-call-crossings/record_double.kofun
 tests/conformance/move-call-crossings/record_edit.kofun
 tests/conformance/move-call-crossings/record_use_after.kofun
@@ -1017,6 +1021,7 @@ tests/conformance/record-bytes-fields/construct_read.kofun
 tests/conformance/record-bytes-fields/copy_annotated_refused.kofun
 tests/conformance/record-bytes-fields/copy_refused.kofun
 tests/conformance/record-bytes-fields/move_whole.kofun
+tests/conformance/record-bytes-fields/use_after_take_refused.kofun
 tests/conformance/record-list/construct.kofun
 tests/conformance/record-list/copy_refused.kofun
 tests/conformance/record-list/index.kofun

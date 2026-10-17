@@ -1,0 +1,22 @@
+# #1737. A record with a managed `Bytes` field moves whole into a `take`
+# parameter, so the caller's binding holds nothing afterwards: reading it again
+# is refused E2S123, exactly as it is for a bare `Bytes` or an Int/Bool record.
+# Before #1737 this was accepted and the later read went through the moved
+# record's unique-owner `Bytes` storage.
+type Header = {
+    name: Bytes,
+    value: Bytes,
+}
+
+fn consume(take h: Header) -> Int {
+    return stage2_bytes_len(h.name)
+}
+
+fn main() -> Int {
+    let name = stage2_bytes_empty()
+    let value = stage2_bytes_empty()
+    let header: Header = Header(name: name, value: value)
+    print(consume(header))
+    print(stage2_bytes_len(header.name))
+    return 0
+}

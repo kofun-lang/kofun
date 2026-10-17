@@ -20840,7 +20840,7 @@ fn move_positional_owner(source: Text, hir: Text, binding: Text) -> Bool {
         return false
     }
     let type_spelling = hir_binding_field(hir, binding, 5)
-    return type_spelling == "Bytes" || move_nominal_type(source, type_spelling)
+    return type_spelling == "Bytes" || move_nominal_type(source, type_spelling) || record_has_bytes_field(source, type_spelling)
 }
 
 # Exclude conditional/loop bodies and conditional expression operands. This
@@ -20902,6 +20902,47 @@ fn move_positional_binding(source: Text, hir: Text, cursor: Int) -> Bool {
     let binding = hir_use_binding_id(hir, cursor)
     return move_positional_owner(source, hir, binding) &&
         move_straight_line_position(source, cursor)
+}
+
+# #1737. `stage2_list_append(list, element)` moves the element record into the
+# next slot by value, so its second argument is a whole-binding move exactly
+# like a bare binding in a `take` slot. The builtin has no declaration for the
+# slot walk to read a mode from, so the position is recognised here, with the
+# same argument grammar the emitter requires: a bare list binding, a comma,
+# then a bare element binding. The type bound and the straight-line scope are
+# the positional ones, so a loop or branch body is not inferred to move.
+fn move_append_element(source: Text, hir: Text, cursor: Int) -> Bool {
+    let position = call_argument_parameter_property(source, cursor, "callee")
+    if len(position) == 0 {
+        return false
+    }
+    let call = decimal_value(position)
+    if token_text(source, call) != "stage2_list_append" ||
+       len(hir_use_binding_id(hir, call)) > 0 {
+        return false
+    }
+    let open = skip_trivia(source, token_end(source, call))
+    if token_text(source, open) != "(" {
+        return false
+    }
+    let list = skip_trivia(source, token_end(source, open))
+    let list_end = argument_end(source, list)
+    let separator = skip_trivia(source, list_end)
+    if token_kind(source, list) != "identifier" ||
+       token_end(source, list) != list_end ||
+       token_text(source, separator) != "," {
+        return false
+    }
+    if skip_trivia(source, token_end(source, separator)) != cursor {
+        return false
+    }
+    let element_end = token_end(source, cursor)
+    if expression_end(source, cursor) != element_end {
+        return false
+    }
+    let binding = hir_use_binding_id(hir, cursor)
+    let owner = move_positional_owner(source, hir, binding)
+    return owner && move_straight_line_position(source, cursor)
 }
 
 # All move spellings invalidate one resolved BindingId, never a display name.
@@ -21012,8 +21053,12 @@ fn move_call_binding(
         return false
     }
     # Existing labelled and pipeline rules retain their type scope. Ordinary
-    # positional calls add only the #1540 direct, bare, owning v1 slice.
+    # positional calls add only the #1540 direct, bare, owning v1 slice, and
+    # a list append's element is that same slice (#1737).
     if pipeline_subject_take(source, cursor) {
+        return true
+    }
+    if move_append_element(source, hir, cursor) {
         return true
     }
     if call_argument_expected_mode(source, cursor) != "take" {

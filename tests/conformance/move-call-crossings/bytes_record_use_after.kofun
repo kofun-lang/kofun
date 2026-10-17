@@ -1,0 +1,12 @@
+type Header = { name: Bytes, value: Bytes }
+
+fn consume(take header: Header) -> Int {
+    return stage2_bytes_len(header.name)
+}
+
+fn main() -> Int {
+    let header: Header = Header(name: stage2_bytes_empty(), value: stage2_bytes_empty())
+    print(consume(header))
+    print(stage2_bytes_len(header.name))
+    return 0
+}
