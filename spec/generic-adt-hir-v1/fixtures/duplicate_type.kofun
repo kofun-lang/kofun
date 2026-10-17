@@ -1,0 +1,7 @@
+type X[T] =
+    | Empty
+    | Full(value: T)
+
+type X[U] = {
+    value: U,
+}

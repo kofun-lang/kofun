@@ -1,0 +1,7 @@
+type Slot[T] = {
+    item: Item[T],
+}
+
+type Item[T] =
+    | Nothing
+    | Something(slot: Slot[T])

@@ -286,6 +286,19 @@ tasks:
     cmds:
       - "sh spec/generic-record-hir-v1/check.sh"
 
+  # The generic-ADT HIR v1 contract (#1675) on the identity core #1674 froze.
+  # The oracle imports that core unchanged and recomputes every TypeParameterId
+  # and ConstructedTypeId from its preimage, checks the constructor payload
+  # substitution, the by-value cycle classes (ADT, record, mixed), the limits
+  # and the refusals. Both halves of `--emit-generic-adt-hir` must reproduce
+  # the golden byte for byte and agree with each other, with the record entry
+  # on a record-only file, and with ordinary compilation still refusing with
+  # E2S148.
+  generic-adt-hir:
+    desc: "Verify the generic-ADT HIR v1 identities, cycle classes, limits, and refusals"
+    cmds:
+      - "sh spec/generic-adt-hir-v1/check.sh"
+
   hm-levels:
     desc: "Verify bounded Algorithm J inference for local lambdas"
     cmds:
@@ -1635,6 +1648,7 @@ tasks:
             generics \
             const-generics \
             generic-record-hir \
+            generic-adt-hir \
             hm-levels \
             effect-inference \
             pure-boundary \

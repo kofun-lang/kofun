@@ -1,0 +1,3 @@
+type X[T] =
+    | Empty
+    | Full(value: Q)
