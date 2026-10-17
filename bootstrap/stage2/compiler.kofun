@@ -31541,8 +31541,9 @@ fn generic_adt_type_id(path: Text, name: Text, kind: Text) -> Text {
     let module_id = scoped_hir_hash_frame("kofun.id.module/v1", scoped_hir_text_hex(
         "kofun.module-id-input/v1\npackage-payload-begin\n" + package +
         "package-payload-end\nkind=synthetic-root\n"), "", "", "")
+    let namespace_payload = "kofun.namespace-id/v1\ntag=1\nname=type\n"
     let namespace_id = scoped_hir_hash_frame("kofun.id.namespace/v1",
-        scoped_hir_text_hex("kofun.namespace-id/v1\ntag=1\nname=type\n"), "", "", "")
+        scoped_hir_text_hex(namespace_payload), "", "", "")
     let payload = "800100000020" + module_id + "800200000020" + namespace_id +
         "800300000003616474" + "8004" + scoped_hir_hex(len(name), 8) +
         scoped_hir_text_hex(name)
