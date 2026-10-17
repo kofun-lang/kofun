@@ -202,6 +202,15 @@ the runtime diagnostic `R038`. An annotated `let list: List[Header] = []` is the
 empty carrier. The append has no source value. Added for
 [#1698](https://github.com/kofun-lang/kofun/issues/1698).
 
+**The append consumes its element.** The element record is moved into the slot,
+so the element binding holds nothing afterwards: reading it again, or appending
+it a second time, is E2S123 at compile time, keyed by BindingId, the same
+refusal as a use after a `take` parameter. The list argument is edited in place
+and is not consumed. The rule covers a record whose fields are all `Int`/`Bool`
+as well as one with a `Bytes` field, matching `take`; it applies to a bare
+binding in straight-line source order and is not inferred inside a loop or
+branch body. Added for [#1737](https://github.com/kofun-lang/kofun/issues/1737).
+
 An object has no trailing padding: it is individually referenced and never
 inlined into an array, so nothing follows it that would need alignment.
 
