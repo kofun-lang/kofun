@@ -23,7 +23,11 @@ jobs:
     name: Build verified site
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     env:
       KOFUN_SOURCE_SHA: >-
@@ -36,7 +40,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: kofun-lang/kofun-site
-          ref: 2878e8b5309b80bd88bcd85f8dccf072eda0a13c
+          ref: 31467e7b3650c2376d8486f8e9fc3d30f934ddc1
           path: site
           persist-credentials: false
       - name: Check out the verified Kofun source
