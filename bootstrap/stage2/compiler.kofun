@@ -2488,10 +2488,66 @@ fn enum_constructor_token_end(source: Text, constructor: Int) -> Int {
     return close
 }
 
-# The payload field this Core slice lowers is exactly `name: Int`.  The ADT
-# frontend already bounds a constructor to one field with `E2S41`; the extra
-# `Int` requirement here is what lets a constructor value be a tag and one
-# `Int`, so a wider field type must fail rather than lower.
+# #1697. Whether a nominal record is a flat payload record: a declared,
+# non-const-generic record with at least one field, every field `Int` or
+# `Bool`. Such a record is trivially copyable, so a constructor can carry it by
+# value with no cleanup. A `Text`, `List[Int]`, `Bytes`, nested-record, or enum
+# field is outside the slice, as is a const-parameterized record.
+fn enum_payload_record_flat(source: Text, record_type: Text) -> Bool {
+    let declaration = record_declaration_start(source, record_type)
+    if declaration < 0 {
+        return false
+    }
+    if len(const_parameter_name(source, declaration)) > 0 {
+        return false
+    }
+    let fields = record_field_count(source, record_type)
+    if fields < 1 {
+        return false
+    }
+    let mut index = 0
+    while index < fields {
+        let field_type = record_field_text(source, record_type, index, true)
+        if field_type != "Int" && field_type != "Bool" {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+# #1697. The flat payload record a constructor payload `(name: Record)` names,
+# or "" when the payload is not exactly one such record.
+fn enum_payload_field_record(source: Text, open: Int) -> Text {
+    let field = skip_trivia(source, token_end(source, open))
+    if field >= len(source) || token_kind(source, field) != "identifier" {
+        return ""
+    }
+    let colon = skip_trivia(source, token_end(source, field))
+    if colon >= len(source) || token_text(source, colon) != ":" {
+        return ""
+    }
+    let type_cursor = skip_trivia(source, token_end(source, colon))
+    if type_cursor >= len(source) ||
+       token_kind(source, type_cursor) != "identifier" {
+        return ""
+    }
+    let close = skip_trivia(source, token_end(source, type_cursor))
+    if close >= len(source) || token_text(source, close) != ")" {
+        return ""
+    }
+    let record_type = token_text(source, type_cursor)
+    if enum_payload_record_flat(source, record_type) {
+        return record_type
+    }
+    return ""
+}
+
+# The payload field this Core slice lowers is exactly `name: Int` or, since
+# #1697, `name: Record` for one flat `Int`/`Bool` record. The ADT frontend
+# already bounds a constructor to one field with `E2S41`; the type requirement
+# here is what lets a constructor value be a tag and one payload slot (an
+# `Int`, or one flat record), so a wider field type must fail rather than lower.
 fn enum_payload_field_supported(source: Text, open: Int) -> Bool {
     let field = skip_trivia(source, token_end(source, open))
     if field >= len(source) || token_kind(source, field) != "identifier" {
@@ -2502,11 +2558,14 @@ fn enum_payload_field_supported(source: Text, open: Int) -> Bool {
         return false
     }
     let type_cursor = skip_trivia(source, token_end(source, colon))
-    if type_cursor >= len(source) || token_text(source, type_cursor) != "Int" {
+    if type_cursor >= len(source) {
         return false
     }
-    let close = skip_trivia(source, token_end(source, type_cursor))
-    return close < len(source) && token_text(source, close) == ")"
+    if token_text(source, type_cursor) == "Int" {
+        let close = skip_trivia(source, token_end(source, type_cursor))
+        return close < len(source) && token_text(source, close) == ")"
+    }
+    return len(enum_payload_field_record(source, open)) > 0
 }
 
 fn enum_constructor_count(source: Text, enum_type: Text) -> Int {
@@ -2564,6 +2623,163 @@ fn enum_constructor_payload_arity(
         )
     }
     return -1
+}
+
+# #1697. The flat payload record one named constructor carries, or "" when it
+# is payload-free, carries an `Int`, or does not belong to the enum. A payload
+# arity of `1` is one payload operand; this says which kind it is.
+fn enum_constructor_payload_record(
+    source: Text,
+    enum_type: Text,
+    wanted: Text
+) -> Text {
+    let declaration = enum_declaration_start(source, enum_type)
+    if declaration < 0 {
+        return ""
+    }
+    let name = skip_trivia(source, token_end(source, declaration))
+    let equals = skip_trivia(source, token_end(source, name))
+    let mut pipe = skip_trivia(source, token_end(source, equals))
+    let end = type_declaration_end(source, declaration)
+    while pipe < end && token_text(source, pipe) == "|" {
+        let constructor = skip_trivia(source, token_end(source, pipe))
+        if token_text(source, constructor) == wanted {
+            let open = skip_trivia(source, token_end(source, constructor))
+            if open >= end || token_text(source, open) != "(" {
+                return ""
+            }
+            return enum_payload_field_record(source, open)
+        }
+        pipe = skip_trivia(
+            source,
+            enum_constructor_token_end(source, constructor)
+        )
+    }
+    return ""
+}
+
+# #1697. The members a widened `KofunEnumValue` union adds: one flat record
+# member per record-carrying constructor, in declaration order, named after the
+# constructor. Empty when no enum declares a record payload, which is exactly
+# when the classic two-word enum value is emitted unchanged.
+fn enum_record_payload_members(source: Text) -> Text {
+    let mut members = ""
+    let mut cursor = after_optional_module_header(source, 0)
+    while cursor < len(source) {
+        let type_start = type_declaration_start(source, cursor)
+        if type_start >= 0 && !record_declaration_at(source, type_start) {
+            let name = skip_trivia(source, token_end(source, type_start))
+            let equals = skip_trivia(source, token_end(source, name))
+            let mut pipe = skip_trivia(source, token_end(source, equals))
+            let declaration_end = type_declaration_end(source, type_start)
+            while pipe < declaration_end && token_text(source, pipe) == "|" {
+                let constructor = skip_trivia(source, token_end(source, pipe))
+                let open = skip_trivia(source, token_end(source, constructor))
+                if open < declaration_end && token_text(source, open) == "(" {
+                    let record_type = enum_payload_field_record(source, open)
+                    if len(record_type) > 0 {
+                        members = members + "        " +
+                        record_c_type_name(record_type) + " payload_" +
+                        c_identifier_name(token_text(source, constructor)) +
+                        ";\n"
+                    }
+                }
+                pipe = skip_trivia(
+                    source,
+                    enum_constructor_token_end(source, constructor)
+                )
+            }
+        }
+        let end = top_level_end(source, cursor)
+        if end <= cursor {
+            return members
+        }
+        cursor = skip_trivia(source, end)
+    }
+    return members
+}
+
+# Whether the emitted `KofunEnumValue` is the widened tagged union. Every enum
+# in the source then shares it, so one program never mixes the two spellings.
+fn enum_value_widened(source: Text) -> Bool {
+    return len(enum_record_payload_members(source)) > 0
+}
+
+# The brace initializer for one enum value whose payload is an `Int`
+# expression. The classic spelling is positional; the widened union names its
+# members, because positional braces would trip `-Wmissing-braces` on the
+# anonymous union.
+fn enum_value_braces(source: Text, tag: Int, payload: Text) -> Text {
+    if enum_value_widened(source) {
+        return "{.tag = INT64_C(" + to_text(tag) + "), .payload = " +
+        payload + "}"
+    }
+    return "{INT64_C(" + to_text(tag) + "), " + payload + "}"
+}
+
+# The brace initializer for one enum value carrying a flat record payload.
+fn enum_record_value_braces(
+    constructor: Text,
+    tag: Int,
+    record_value: Text
+) -> Text {
+    return "{.tag = INT64_C(" + to_text(tag) + "), .payload_" +
+    c_identifier_name(constructor) + " = " + record_value + "}"
+}
+
+# The local a match arm declares for its constructor payload, declared before
+# the guard so the guard and the body read the same local. A flat record
+# payload is a copy of the matched record, so it duplicates no owned value.
+fn enum_payload_declaration(
+    source: Text,
+    enum_type: Text,
+    constructor: Text,
+    payload_id: Text
+) -> Text {
+    let record_type = enum_constructor_payload_record(
+        source,
+        enum_type,
+        constructor
+    )
+    if len(record_type) > 0 {
+        return "            " + record_c_type_name(record_type) + " k_b" +
+        payload_id + " = kofun_match_value.payload_" +
+        c_identifier_name(constructor) + ";\n" +
+        "            (void)k_b" + payload_id + ";\n"
+    }
+    return "            int64_t k_b" + payload_id +
+    " = kofun_match_value.payload;\n" +
+    "            (void)k_b" + payload_id + ";\n"
+}
+
+# The widened typedef, or "" for a source with no record payload. It follows
+# the record declarations because its members are those record types.
+fn enum_widened_typedef(source: Text) -> Text {
+    let members = enum_record_payload_members(source)
+    if len(members) == 0 {
+        return ""
+    }
+    return "typedef struct {\n" +
+    "    int64_t tag;\n" +
+    "    union {\n" +
+    "        int64_t payload;\n" +
+    members +
+    "    };\n" +
+    "} KofunEnumValue;\n" +
+    "#define KOFUN_ENUM_ZERO ((KofunEnumValue){.tag = INT64_C(0), .payload = INT64_C(0)})\n\n"
+}
+
+# The classic typedef, emitted at the head of every translation unit whose
+# source declares no record payload.
+fn enum_classic_typedef(source: Text) -> Text {
+    if enum_value_widened(source) {
+        return ""
+    }
+    return "typedef struct {\n" +
+    "    int64_t tag;\n" +
+    "    int64_t payload;\n" +
+    "} KofunEnumValue;\n" +
+    "#define KOFUN_ENUM_ZERO ((KofunEnumValue){INT64_C(0), INT64_C(0)})\n\n"
 }
 
 fn enum_constructor_index(
@@ -4909,8 +5125,8 @@ fn emit_enum_value(
                 name
             )
             if bare_tag >= 0 && bare_arity == 0 {
-                return "((KofunEnumValue){INT64_C(" + to_text(bare_tag) +
-                    "), INT64_C(0)})"
+                return "((KofunEnumValue)" +
+                    enum_value_braces(source, bare_tag, "INT64_C(0)") + ")"
             }
             if bare_tag >= 0 {
                 # Named without its payload. The arity message below has
@@ -4941,7 +5157,7 @@ fn emit_enum_value(
             name
         )
         if arity < 0 {
-            return "error[E2S32]: constructor payload is outside the one-Int slice at byte " +
+            return "error[E2S32]: constructor payload is outside the Int and flat-record slice at byte " +
             to_text(cursor)
         }
         let payload_start = skip_trivia(
@@ -4951,7 +5167,17 @@ fn emit_enum_value(
         let empty =
             payload_start < len(source) &&
             token_text(source, payload_start) == ")"
+        let payload_record = enum_constructor_payload_record(
+            source,
+            enum_type,
+            name
+        )
         if (arity == 0) != empty {
+            if arity == 1 && len(payload_record) > 0 {
+                return "error[E2S32]: constructor takes one `" +
+                payload_record + "` record payload at byte " +
+                to_text(cursor)
+            }
             if arity == 1 {
                 return "error[E2S32]: constructor takes one Int payload at byte " +
                 to_text(cursor)
@@ -4966,6 +5192,26 @@ fn emit_enum_value(
             if payload_end >= 0 {
                 close = skip_trivia(source, payload_end)
             }
+            if len(payload_record) > 0 {
+                if payload_end < 0 || close >= len(source) ||
+                   token_text(source, close) != ")" {
+                    return "error[E2S32]: concrete enum payload must be one `" +
+                    payload_record + "` record value at byte " +
+                    to_text(payload_start)
+                }
+                let record_value = emit_record_value(
+                    source,
+                    hir,
+                    payload_start,
+                    payload_end,
+                    payload_record
+                )
+                if starts_with(record_value, "error[") {
+                    return record_value
+                }
+                return "((KofunEnumValue)" +
+                enum_record_value_braces(name, tag, record_value) + ")"
+            }
             if payload_end < 0 || close >= len(source) ||
                token_text(source, close) != ")" {
                 return "error[E2S32]: concrete enum payload must be one Int expression at byte " +
@@ -4978,8 +5224,8 @@ fn emit_enum_value(
                 payload_end
             )
         }
-        return "((KofunEnumValue){INT64_C(" + to_text(tag) + "), " +
-        payload + "})"
+        return "((KofunEnumValue)" +
+        enum_value_braces(source, tag, payload) + ")"
     }
     if function_return_type(source, name) == enum_type {
         return emit_primary(source, hir, cursor, end)
@@ -12108,13 +12354,22 @@ fn validate_value_enum_match(
             if arity < 0 {
                 return "error[E2S32]: constructor `" + pattern +
                 "` of enum `" + enum_type +
-                "` declares a payload outside this Core slice; one `Int` " +
-                "field is supported at byte " + to_text(pattern_start)
+                "` declares a payload outside this Core slice; one `Int` field or one flat `Int`/`Bool` " +
+                "record is supported at byte " + to_text(pattern_start)
             }
             if applied != (arity == 1) {
                 let mut arity_message = "constructor pattern `" + pattern +
                 "` takes no payload"
-                if arity == 1 {
+                let payload_record = enum_constructor_payload_record(
+                    source,
+                    enum_type,
+                    pattern
+                )
+                if arity == 1 && len(payload_record) > 0 {
+                    arity_message = "constructor pattern `" + pattern +
+                    "` must bind its one `" + payload_record +
+                    "` record payload or use `_`"
+                } else if arity == 1 {
                     arity_message = "constructor pattern `" + pattern +
                     "` must bind its one `Int` payload or use `_`"
                 }
@@ -12500,9 +12755,12 @@ fn emit_value_enum_match_into(
                 return "error[E2S32]: constructor payload binding is unresolved at byte " +
                 to_text(payload_name_start)
             }
-            payload_declaration = "            int64_t k_b" + payload_id +
-            " = kofun_match_value.payload;\n" +
-            "            (void)k_b" + payload_id + ";\n"
+            payload_declaration = enum_payload_declaration(
+                source,
+                enum_type,
+                pattern,
+                payload_id
+            )
         } else if catchall_name_start >= 0 {
             let catchall_id = hir_definition_id_at(
                 hir,
@@ -15826,6 +16084,21 @@ fn build_scope_hir_analysis_mode(
                                token_text(source, field) != "_" {
                                 binding_start = field
                                 pattern_binding_type = "Int"
+                                # #1697. A constructor that carries a flat
+                                # record binds that record, not an `Int`.
+                                let pattern_owner = enum_constructor_owner(
+                                    source,
+                                    token_text(source, arm_cursor)
+                                )
+                                let pattern_record =
+                                enum_constructor_payload_record(
+                                    source,
+                                    pattern_owner,
+                                    token_text(source, arm_cursor)
+                                )
+                                if len(pattern_record) > 0 {
+                                    pattern_binding_type = pattern_record
+                                }
                             } else if pattern_summary_kind(summary) ==
                                       "NamePattern" {
                                 let pattern_name = token_text(
@@ -16448,8 +16721,8 @@ fn lower_enum_match(
             if arity < 0 {
                 return "error[E2S32]: constructor `" + pattern +
                 "` of enum `" + enum_type +
-                "` declares a payload outside this Core slice; one `Int` " +
-                "field is supported at byte " + to_text(pattern_start)
+                "` declares a payload outside this Core slice; one `Int` field or one flat `Int`/`Bool` " +
+                "record is supported at byte " + to_text(pattern_start)
             }
             if arity != 0 {
                 dense_eligible = false
@@ -16457,7 +16730,16 @@ fn lower_enum_match(
             if applied != (arity == 1) {
                 let mut arity_message = "constructor pattern `" + pattern +
                 "` takes no payload"
-                if arity == 1 {
+                let payload_record = enum_constructor_payload_record(
+                    source,
+                    enum_type,
+                    pattern
+                )
+                if arity == 1 && len(payload_record) > 0 {
+                    arity_message = "constructor pattern `" + pattern +
+                    "` must bind its one `" + payload_record +
+                    "` record payload or use `_`"
+                } else if arity == 1 {
                     arity_message = "constructor pattern `" + pattern +
                     "` must bind its one `Int` payload or use `_`"
                 }
@@ -16556,9 +16838,12 @@ fn lower_enum_match(
                 return "error[E2S32]: constructor payload binding is unresolved at byte " +
                 to_text(payload_name_start)
             }
-            payload_declaration = "            int64_t k_b" + payload_id +
-            " = kofun_match_value.payload;\n" +
-            "            (void)k_b" + payload_id + ";\n"
+            payload_declaration = enum_payload_declaration(
+                source,
+                enum_type,
+                pattern,
+                payload_id
+            )
         } else if catchall_name_start >= 0 {
             let catchall_id = hir_definition_id_at(
                 hir,
@@ -17400,14 +17685,22 @@ fn lower_body(
                 if arity < 0 {
                     return "error[E2S32]: constructor `" + constructor +
                     "` of enum `" + binding_type +
-                    "` declares a payload outside this Core slice; one `Int` " +
-                    "field is supported at byte " + to_text(value_start)
+                    "` declares a payload outside this Core slice; one `Int` field or one flat `Int`/`Bool` " +
+                    "record is supported at byte " + to_text(value_start)
                 }
+                let payload_record = enum_constructor_payload_record(
+                    source,
+                    binding_type,
+                    constructor
+                )
                 if applied != (arity == 1) {
                     let mut arity_message = "constructor `" + constructor +
                     "` takes no payload"
                     let mut arity_byte = value_start
-                    if arity == 1 {
+                    if arity == 1 && len(payload_record) > 0 {
+                        arity_message = "constructor `" + constructor +
+                        "` takes one `" + payload_record + "` record payload"
+                    } else if arity == 1 {
                         arity_message = "constructor `" + constructor +
                         "` takes one `Int` payload"
                     } else {
@@ -17432,21 +17725,48 @@ fn lower_body(
                     if payload_end >= 0 {
                         close = skip_trivia(source, payload_end)
                     }
-                    if payload_end < 0 || close >= len(source) ||
-                       token_text(source, close) != ")" {
-                        return "error[E2S32]: concrete enum payload must be one Int expression at byte " +
-                        to_text(payload_start)
+                    if len(payload_record) > 0 {
+                        if payload_end < 0 || close >= len(source) ||
+                           token_text(source, close) != ")" {
+                            return "error[E2S32]: concrete enum payload must be one `" +
+                            payload_record + "` record value at byte " +
+                            to_text(payload_start)
+                        }
+                        let record_value = emit_record_value(
+                            source,
+                            hir,
+                            payload_start,
+                            payload_end,
+                            payload_record
+                        )
+                        if starts_with(record_value, "error[") {
+                            return record_value
+                        }
+                        emitted = emitted + "    KofunEnumValue " + storage +
+                        " = " +
+                        enum_record_value_braces(constructor, tag, record_value) +
+                        ";\n" +
+                        "    if (kofun_failed) return " + failure_result + ";\n"
+                        constructor_end = token_end(source, close)
+                    } else {
+                        if payload_end < 0 || close >= len(source) ||
+                           token_text(source, close) != ")" {
+                            return "error[E2S32]: concrete enum payload must be one Int expression at byte " +
+                            to_text(payload_start)
+                        }
+                        emitted = emitted + "    KofunEnumValue " + storage +
+                        " = " + enum_value_braces(
+                            source,
+                            tag,
+                            emit_expression(source, hir, payload_start, payload_end)
+                        ) + ";\n" +
+                        "    if (kofun_failed) return " + failure_result + ";\n"
+                        constructor_end = token_end(source, close)
                     }
-                    emitted = emitted + "    KofunEnumValue " + storage +
-                    " = {INT64_C(" + to_text(tag) + "), " +
-                    emit_expression(source, hir, payload_start, payload_end) +
-                    "};\n" +
-                    "    if (kofun_failed) return " + failure_result + ";\n"
-                    constructor_end = token_end(source, close)
                 } else {
                     emitted = emitted + "    KofunEnumValue " + storage +
-                    " = {INT64_C(" + to_text(tag) +
-                    "), INT64_C(0)};\n"
+                    " = " + enum_value_braces(source, tag, "INT64_C(0)") +
+                    ";\n"
                 }
                 emitted = emitted + unused_binding_discard(hir, binding_id)
                 cursor = skip_trivia(source, constructor_end)
@@ -21692,11 +22012,7 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     "#include <stdint.h>\n" +
     "#include <stdio.h>\n" +
     bytes_include + "#include <string.h>\n" + decimal_include + "\n" +
-    "typedef struct {\n" +
-    "    int64_t tag;\n" +
-    "    int64_t payload;\n" +
-    "} KofunEnumValue;\n" +
-    "#define KOFUN_ENUM_ZERO ((KofunEnumValue){INT64_C(0), INT64_C(0)})\n\n" +
+    enum_classic_typedef(source) +
     "typedef const unsigned char *KofunIntList;\n" +
     "typedef struct { uint64_t length; int64_t elements[64]; } KofunIntListValue;\n" +
     "#define KOFUN_LIST_INT_ZERO ((KofunIntListValue){UINT64_C(0), {INT64_C(0)}})\n" +
@@ -21834,6 +22150,7 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     "    return r;\n" +
     "}\n" + bytes_text_prelude + emit_int_bit_c_runtime() +
     "\n" + optional_declarations + emit_record_c_declarations(source) +
+    enum_widened_typedef(source) +
     prototypes + "\n" + bodies
 }
 
@@ -28087,6 +28404,9 @@ fn capture_call(source: Text, hir: Text, catalog: Text, first: Int, open: Int, e
             if len(owner) > 0 {
                 returned = owner
                 let arity = enum_constructor_payload_arity(source, owner, name)
+                if arity == 1 && len(enum_constructor_payload_record(source, owner, name)) > 0 {
+                    return capture_error("E2S154", "enum record payload profile is unavailable", first)
+                }
                 if arity == 1 { parameters = "formal|0||Int|read\n" }
                 else if arity != 0 { return capture_error("E2S154", "enum payload profile is unavailable", first) }
             } else if capture_fact(catalog, "type", 1, name) >= 0 {

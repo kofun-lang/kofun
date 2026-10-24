@@ -809,10 +809,10 @@
     {
       "id": "enum-matching",
       "public_wording": "concrete enum matching with one `Int` payload",
-      "public_status": "bounded Stage 2 C11 slice with constructor-set exhaustiveness; constructors and enum bindings cross ordinary function arguments and returns, `C(name)` exposes the payload to guards and arm bodies, and a binding catch-all may be re-matched. Wider payload types, more than one field, nested payload patterns, generics, and non-C11 backends stay outside it",
+      "public_status": "bounded Stage 2 C11 slice with constructor-set exhaustiveness; constructors and enum bindings cross ordinary function arguments and returns, `C(name)` exposes the payload to guards and arm bodies, and a binding catch-all may be re-matched. A constructor may instead carry one flat `Int`/`Bool` record (`spec/adt-record-payload-v1.md`, #1697). Any other payload type, more than one field, nested payload patterns, generics, and non-C11 backends stay outside it",
       "state": "checkpoint",
       "area": "frontend",
-      "bounded_capability": "Concrete enums match exhaustively over their constructor set. A constructor may declare one `Int` payload field and be constructed as `C(expr)` in an explicitly typed initializer, same-typed function argument, or same-typed return. Enum bindings pass to and return from same-typed functions. Matches accept `C(name)`, `C(_)`, `_`, and a binding catch-all that may be re-matched. Wider payload types, more than one payload field, nested payload patterns, generic enums, and non-C11 backends are outside the slice.",
+      "bounded_capability": "Concrete enums match exhaustively over their constructor set. A constructor may declare one `Int` payload field and be constructed as `C(expr)` in an explicitly typed initializer, same-typed function argument, or same-typed return. Enum bindings pass to and return from same-typed functions. Matches accept `C(name)`, `C(_)`, `_`, and a binding catch-all that may be re-matched. A constructor may instead declare one flat record of `Int` and `Bool` fields (`spec/adt-record-payload-v1.md`), constructed as `C(record)` from a record binding and matched as `C(name)` over a copy of it. Any other payload type, more than one payload field, nested payload patterns, generic enums, and non-C11 backends are outside the slice.",
       "targets": [
         "c11",
         "stage2"
@@ -828,7 +828,7 @@
       "negative_boundary": {
         "kind": "rejection",
         "evidence": "tests/conformance/syntax/issues_35_47/enum_payload_unsupported_field.kofun",
-        "observation": "Enum shapes outside the slice — a non-`Int` payload, more than one payload field, or a payload arity the pattern does not match — are refused rather than silently accepted."
+        "observation": "Enum shapes outside the slice — a payload that is neither an `Int` nor a flat `Int`/`Bool` record, more than one payload field, or a payload arity the pattern does not match — are refused rather than silently accepted."
       },
       "safety": {
         "classification": "none"

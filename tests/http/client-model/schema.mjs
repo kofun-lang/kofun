@@ -113,12 +113,14 @@ export const PHASES = ['write', 'head', 'body', 'drain']
 /*
  * One scripted operation. `deliver` hands the model bytes the peer sent;
  * `close` is a clean end of stream; `fail` is a transport error; `cancel` is
- * the caller withdrawing. The last three carry the phase they happen at, which
- * is checked against where the model actually is rather than assumed.
+ * the caller withdrawing; `deadline` is an injected deadline elapsing (#1697,
+ * RFC-0016's `Deadline(phase)`, never a wall-clock read). The last three carry
+ * the phase they happen at, which is checked against where the model actually
+ * is rather than assumed.
  */
 const operation = (path, value) => {
     const kind = enumeration(`${path}.op`, object(path, value, ['op'], ['bytes', 'at']).op,
-        ['deliver', 'close', 'fail', 'cancel'])
+        ['deliver', 'close', 'fail', 'cancel', 'deadline'])
     if (kind === 'deliver') {
         object(path, value, ['op', 'bytes'])
         return { op: kind, bytes: bytes(`${path}.bytes`, value.bytes) }

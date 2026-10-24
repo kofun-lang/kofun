@@ -1095,12 +1095,26 @@
       "normative_spec": [
         "rfcs/0016-http-c11-carrier-profile.md",
         "docs/stdlib/http-client.md",
+        "spec/http-error-v1.md",
         "spec/native-toolchain-v1/contract.json"
       ],
       "compatibility": {
         "category": "additive",
         "statement": "The portable HTTP client and its generic carriers are specified but unimplemented, so no accepted program changes meaning. Choosing the ordinary generic Stream avoids introducing and later removing a temporary monomorphic public API; existing server/framework checkpoints and live network capability claims remain unchanged."
-      }
+      },
+      "amendments": [
+        {
+          "id": "A01",
+          "recorded_on": "2026-10-18",
+          "change": "https://github.com/kofun-lang/kofun/issues/1697",
+          "delta": "The v1 `HttpError` is the four kinds the #1257 oracle can produce, in this order: `protocol`, `limit-exceeded`, `body-truncated`, `transport`. Each is one constructor carrying one flat record with an `Int` phase code, a `Bool` `retry_safe`, and its own fields (`offset`; `dimension`, `limit`, `observed_at_most`; `cause`, `offset`). Phase, cause, and dimension are `Int` codes in a registry that never assigns 0, held by `spec/native-toolchain-v1/contract.json` `http_carrier.error`, not enums. The other families are projected onto the four: `timeout` is `transport` with cause `deadline` and its phase, `cancelled` is `transport` with cause `cancelled`, connect/write/read are `transport` with cause `failed`, `invalid-reuse` and a malformed URL are `protocol`, a URL that does not resolve is `transport`, `limit` is `limit-exceeded`, and `truncated body` is `body-truncated`. The #1257 oracle gains a `deadline` operation, answered as kind `transport`.",
+          "original_semantics": "`HttpError` is a closed ADT whose families remain distinguishable: URL,\nconnect/write/read scripted transport, protocol/framing, timeout, cancelled,\nlimit, truncated body, and invalid reuse. Each variant carries an exact phase\nand a `retry_safe` fact; it is never collapsed to one Int code.",
+          "compatibility": {
+            "category": "none",
+            "statement": "No tracked program names `HttpError` in code: `git grep -nE 'HttpError' -- bootstrap tests stdlib` returned no match before this change, and the only executable carrier is the one this amendment defines. The nine families stay distinguishable, as a kind plus a cause or a phase, and the payload keeps phase and `retry_safe` as separate fields, so nothing the RFC forbids is introduced. The oracle's four error kinds and every committed result are unchanged; the `deadline` operation adds five scripts and changes no existing one."
+          }
+        }
+      ]
     },
     {
       "id": "RFC-0017",

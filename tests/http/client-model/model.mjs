@@ -348,6 +348,7 @@ export const runScript = (script) => {
     let framing = { kind: 'none', length: 0 }
     let body = []
     let cancelledAt = null
+    let deadlineAt = null
     let transportFailureAt = null
     /* Where the chunked reader is between deliveries. Carried here rather than
      * rediscovered, because rediscovering it is what read the body as a size. */
@@ -507,6 +508,14 @@ export const runScript = (script) => {
             if (operation.op === 'cancel') {
                 cancelledAt = stream.cursor
                 note(`cancel:${operation.at}`)
+            } else if (operation.op === 'deadline') {
+                /* An injected deadline is a transport failure with a different
+                 * cause: the RFC-0016 amendment (A01) projects `timeout` onto
+                 * kind `transport`, so the kind set stays four and the cause
+                 * is what tells a deadline from a failed or cancelled one. */
+                deadlineAt = stream.cursor
+                transportFailureAt = stream.cursor
+                note(`deadline:${operation.at}`)
             } else {
                 transportFailureAt = stream.cursor
                 note(`fail:${operation.at}`)
@@ -546,7 +555,9 @@ export const runScript = (script) => {
             outcome: 'error',
             error: {
                 kind: 'transport',
-                detail: 'the transport failed',
+                detail: deadlineAt === null
+                    ? 'the transport failed'
+                    : 'the deadline elapsed',
                 at: transportFailureAt,
             },
             framing: framing.kind,

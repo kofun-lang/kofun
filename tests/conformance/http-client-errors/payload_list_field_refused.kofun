@@ -1,0 +1,17 @@
+# #1697. A `List[Int]` field makes a record non-flat: it is a bounded inline
+# list, not a trivially copyable pair of scalars, so it is not a payload.
+
+type Samples = {
+    phase: Int,
+    values: List[Int],
+}
+
+type Sampled =
+    | Fine
+    | Broken(samples: Samples)
+
+fn main() -> Int {
+    let samples: Samples = Samples(phase: 1, values: [1, 2])
+    let value: Sampled = Broken(samples)
+    return 0
+}
