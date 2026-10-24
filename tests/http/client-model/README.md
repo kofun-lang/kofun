@@ -94,6 +94,18 @@ Three refusals with three different meanings, kept apart on purpose:
 A request that cannot be serialized never reaches a transport, so it produces no
 result at all. A result would say a transport was exercised.
 
+## Cancellation, failure, and deadline
+
+A script can end at a phase with `cancel`, `fail`, or `deadline`. All three name
+the phase they expect (`write`, `head`, `body`, `drain`), and all three are kind
+`transport`: a cancelled run is outcome `cancelled`, and a failed or timed-out
+run is outcome `error`, told apart by the detail (`the transport failed` or `the
+deadline elapsed`). `deadline` is RFC-0016's `Deadline(phase)` as an injected
+event (#1697); the model never reads a clock, and RFC-0016/A01 projects
+`timeout` onto kind `transport` so the four kinds stay four. A failure or a
+deadline before any response byte on a GET is `retry_safe`; a cancellation
+never is.
+
 ## Limits
 
 Every counter is checked before the bytes it would count are taken, so a refusal

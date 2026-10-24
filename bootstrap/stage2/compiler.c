@@ -3378,10 +3378,75 @@ static int64_t enum_constructor_token_end(
 }
 
 /*
- * The payload field this Core slice lowers is exactly `name: Int`.  The ADT
- * frontend already bounds a constructor to one field with `E2S41`; the extra
- * `Int` requirement here is what lets a constructor value be a tag and one
- * `int64_t`, so a wider field type must fail rather than lower.
+ * #1697. Whether a nominal record is a flat payload record: a declared,
+ * non-const-generic record with at least one field, every field `Int` or
+ * `Bool`. Such a record is trivially copyable, so a constructor can carry it by
+ * value with no cleanup. A `Text`, `List[Int]`, `Bytes`, nested-record, or enum
+ * field is outside the slice, as is a const-parameterized record.
+ */
+static bool enum_payload_record_flat(
+    const char *source,
+    const char *record_type
+) {
+    int64_t declaration = record_declaration_start(source, record_type);
+    if (declaration < 0) return false;
+    char *const_parameter = const_parameter_name(source, declaration);
+    bool parameterized = const_parameter[0] != '\0';
+    free(const_parameter);
+    if (parameterized) return false;
+    int64_t fields = record_field_count(source, record_type);
+    if (fields < 1) return false;
+    for (int64_t index = 0; index < fields; ++index) {
+        char *field_type = record_field_text(source, record_type, index, true);
+        bool flat =
+            strcmp(field_type, "Int") == 0 || strcmp(field_type, "Bool") == 0;
+        free(field_type);
+        if (!flat) return false;
+    }
+    return true;
+}
+
+/*
+ * #1697. The flat payload record a constructor payload `(name: Record)` names,
+ * or "" when the payload is not exactly one such record.
+ */
+static char *enum_payload_field_record(const char *source, int64_t open) {
+    int64_t length = source_length(source);
+    int64_t field = skip_trivia(source, token_end(source, open));
+    if (
+        field >= length ||
+        strcmp(token_kind(source, field), "identifier") != 0
+    ) {
+        return owned_text("");
+    }
+    int64_t colon = skip_trivia(source, token_end(source, field));
+    if (colon >= length || !token_equal(source, colon, ":")) {
+        return owned_text("");
+    }
+    int64_t type_cursor = skip_trivia(source, token_end(source, colon));
+    if (
+        type_cursor >= length ||
+        strcmp(token_kind(source, type_cursor), "identifier") != 0
+    ) {
+        return owned_text("");
+    }
+    int64_t close = skip_trivia(source, token_end(source, type_cursor));
+    if (close >= length || !token_equal(source, close, ")")) {
+        return owned_text("");
+    }
+    char *record_type = token_copy(source, type_cursor);
+    if (enum_payload_record_flat(source, record_type)) return record_type;
+    free(record_type);
+    return owned_text("");
+}
+
+/*
+ * The payload field this Core slice lowers is exactly `name: Int` or, since
+ * #1697, `name: Record` for one flat `Int`/`Bool` record. The ADT frontend
+ * already bounds a constructor to one field with `E2S41`; the type requirement
+ * here is what lets a constructor value be a tag and one payload slot (an
+ * `int64_t`, or one flat record), so a wider field type must fail rather than
+ * lower.
  */
 static bool enum_payload_field_supported(const char *source, int64_t open) {
     int64_t length = source_length(source);
@@ -3395,11 +3460,15 @@ static bool enum_payload_field_supported(const char *source, int64_t open) {
     int64_t colon = skip_trivia(source, token_end(source, field));
     if (colon >= length || !token_equal(source, colon, ":")) return false;
     int64_t type_cursor = skip_trivia(source, token_end(source, colon));
-    if (type_cursor >= length || !token_equal(source, type_cursor, "Int")) {
-        return false;
+    if (type_cursor >= length) return false;
+    if (token_equal(source, type_cursor, "Int")) {
+        int64_t close = skip_trivia(source, token_end(source, type_cursor));
+        return close < length && token_equal(source, close, ")");
     }
-    int64_t close = skip_trivia(source, token_end(source, type_cursor));
-    return close < length && token_equal(source, close, ")");
+    char *record_type = enum_payload_field_record(source, open);
+    bool record = record_type[0] != '\0';
+    free(record_type);
+    return record;
 }
 
 static int64_t enum_constructor_count(
@@ -3456,6 +3525,42 @@ static int64_t enum_constructor_payload_arity(
         );
     }
     return -1;
+}
+
+/*
+ * #1697. The flat payload record one named constructor carries, or "" when it
+ * is payload-free, carries an `Int`, or does not belong to the enum. A payload
+ * arity of `1` is one payload operand; this says which kind it is.
+ */
+static char *enum_constructor_payload_record(
+    const char *source,
+    const char *enum_type,
+    const char *wanted
+) {
+    int64_t declaration = enum_declaration_start(source, enum_type);
+    if (declaration < 0) return owned_text("");
+    int64_t name = skip_trivia(source, token_end(source, declaration));
+    int64_t equals = skip_trivia(source, token_end(source, name));
+    int64_t pipe = skip_trivia(source, token_end(source, equals));
+    int64_t end = type_declaration_end(source, declaration);
+    while (pipe < end && token_equal(source, pipe, "|")) {
+        int64_t constructor = skip_trivia(source, token_end(source, pipe));
+        if (token_equal(source, constructor, wanted)) {
+            int64_t open = skip_trivia(
+                source,
+                token_end(source, constructor)
+            );
+            if (open >= end || !token_equal(source, open, "(")) {
+                return owned_text("");
+            }
+            return enum_payload_field_record(source, open);
+        }
+        pipe = skip_trivia(
+            source,
+            enum_constructor_token_end(source, constructor)
+        );
+    }
+    return owned_text("");
 }
 
 static int64_t enum_constructor_index(
@@ -8135,6 +8240,213 @@ static char *record_c_type_name(const char *record_type) {
     return output.data;
 }
 
+/*
+ * #1697. The members a widened `KofunEnumValue` union adds: one flat record
+ * member per record-carrying constructor, in declaration order, named after the
+ * constructor. Empty when no enum declares a record payload, which is exactly
+ * when the classic two-word enum value is emitted unchanged.
+ */
+static char *enum_record_payload_members(const char *source) {
+    int64_t length = source_length(source);
+    Buffer members;
+    buffer_init(&members);
+    int64_t cursor = after_optional_module_header(source, 0);
+    while (cursor < length) {
+        int64_t type_start = type_declaration_start(source, cursor);
+        if (type_start >= 0 && !record_declaration_at(source, type_start)) {
+            int64_t name = skip_trivia(source, token_end(source, type_start));
+            int64_t equals = skip_trivia(source, token_end(source, name));
+            int64_t pipe = skip_trivia(source, token_end(source, equals));
+            int64_t declaration_end = type_declaration_end(source, type_start);
+            while (
+                pipe < declaration_end &&
+                token_equal(source, pipe, "|")
+            ) {
+                int64_t constructor = skip_trivia(
+                    source,
+                    token_end(source, pipe)
+                );
+                int64_t open = skip_trivia(
+                    source,
+                    token_end(source, constructor)
+                );
+                if (
+                    open < declaration_end &&
+                    token_equal(source, open, "(")
+                ) {
+                    char *record_type = enum_payload_field_record(source, open);
+                    if (record_type[0] != '\0') {
+                        char *c_type = record_c_type_name(record_type);
+                        char *constructor_text = token_copy(source, constructor);
+                        char *member = c_identifier_name(constructor_text);
+                        buffer_format(
+                            &members,
+                            "        %s payload_%s;\n",
+                            c_type,
+                            member
+                        );
+                        free(member);
+                        free(constructor_text);
+                        free(c_type);
+                    }
+                    free(record_type);
+                }
+                pipe = skip_trivia(
+                    source,
+                    enum_constructor_token_end(source, constructor)
+                );
+            }
+        }
+        int64_t end = top_level_end(source, cursor);
+        if (end <= cursor) return members.data;
+        cursor = skip_trivia(source, end);
+    }
+    return members.data;
+}
+
+/*
+ * Whether the emitted `KofunEnumValue` is the widened tagged union. Every enum
+ * in the source then shares it, so one program never mixes the two spellings.
+ */
+static bool enum_value_widened(const char *source) {
+    char *members = enum_record_payload_members(source);
+    bool widened = members[0] != '\0';
+    free(members);
+    return widened;
+}
+
+/*
+ * The brace initializer for one enum value whose payload is an `Int`
+ * expression. The classic spelling is positional; the widened union names its
+ * members, because positional braces would trip `-Wmissing-braces` on the
+ * anonymous union.
+ */
+static char *enum_value_braces(
+    const char *source,
+    int64_t tag,
+    const char *payload
+) {
+    Buffer output;
+    buffer_init(&output);
+    if (enum_value_widened(source)) {
+        buffer_format(
+            &output,
+            "{.tag = INT64_C(%" PRId64 "), .payload = %s}",
+            tag,
+            payload
+        );
+    } else {
+        buffer_format(&output, "{INT64_C(%" PRId64 "), %s}", tag, payload);
+    }
+    return output.data;
+}
+
+/* The brace initializer for one enum value carrying a flat record payload. */
+static char *enum_record_value_braces(
+    const char *constructor,
+    int64_t tag,
+    const char *record_value
+) {
+    char *member = c_identifier_name(constructor);
+    Buffer output;
+    buffer_init(&output);
+    buffer_format(
+        &output,
+        "{.tag = INT64_C(%" PRId64 "), .payload_%s = %s}",
+        tag,
+        member,
+        record_value
+    );
+    free(member);
+    return output.data;
+}
+
+/*
+ * The local a match arm declares for its constructor payload, declared before
+ * the guard so the guard and the body read the same local. A flat record
+ * payload is a copy of the matched record, so it duplicates no owned value.
+ */
+static char *enum_payload_declaration(
+    const char *source,
+    const char *enum_type,
+    const char *constructor,
+    const char *payload_id
+) {
+    char *record_type = enum_constructor_payload_record(
+        source,
+        enum_type,
+        constructor
+    );
+    Buffer output;
+    buffer_init(&output);
+    if (record_type[0] != '\0') {
+        char *c_type = record_c_type_name(record_type);
+        char *member = c_identifier_name(constructor);
+        buffer_format(
+            &output,
+            "            %s k_b%s = kofun_match_value.payload_%s;\n"
+            "            (void)k_b%s;\n",
+            c_type,
+            payload_id,
+            member,
+            payload_id
+        );
+        free(member);
+        free(c_type);
+    } else {
+        buffer_format(
+            &output,
+            "            int64_t k_b%s = kofun_match_value.payload;\n"
+            "            (void)k_b%s;\n",
+            payload_id,
+            payload_id
+        );
+    }
+    free(record_type);
+    return output.data;
+}
+
+/*
+ * The widened typedef, or "" for a source with no record payload. It follows
+ * the record declarations because its members are those record types.
+ */
+static char *enum_widened_typedef(const char *source) {
+    char *members = enum_record_payload_members(source);
+    if (members[0] == '\0') return members;
+    Buffer output;
+    buffer_init(&output);
+    buffer_format(
+        &output,
+        "typedef struct {\n"
+        "    int64_t tag;\n"
+        "    union {\n"
+        "        int64_t payload;\n"
+        "%s"
+        "    };\n"
+        "} KofunEnumValue;\n"
+        "#define KOFUN_ENUM_ZERO ((KofunEnumValue){.tag = INT64_C(0), "
+        ".payload = INT64_C(0)})\n\n",
+        members
+    );
+    free(members);
+    return output.data;
+}
+
+/*
+ * The classic typedef, emitted at the head of every translation unit whose
+ * source declares no record payload.
+ */
+static char *enum_classic_typedef(const char *source) {
+    if (enum_value_widened(source)) return owned_text("");
+    return owned_text(
+        "typedef struct {\n"
+        "    int64_t tag;\n"
+        "    int64_t payload;\n"
+        "} KofunEnumValue;\n"
+        "#define KOFUN_ENUM_ZERO ((KofunEnumValue){INT64_C(0), INT64_C(0)})\n\n"
+    );
+}
+
 /* The `index`-th distinct instantiation of `wanted`, in first-use order, or
  * "". This is the monomorphization set the emitter walks. */
 static char *const_instantiation_at(
@@ -8391,11 +8703,13 @@ static char *emit_enum_value(
             if (bare_tag >= 0 && bare_arity == 0) {
                 Buffer bare;
                 buffer_init(&bare);
-                buffer_format(
-                    &bare,
-                    "((KofunEnumValue){INT64_C(%" PRId64 "), INT64_C(0)})",
-                    bare_tag
+                char *bare_braces = enum_value_braces(
+                    source,
+                    bare_tag,
+                    "INT64_C(0)"
                 );
+                buffer_format(&bare, "((KofunEnumValue)%s)", bare_braces);
+                free(bare_braces);
                 free(bare_owner);
                 free(name);
                 return bare.data;
@@ -8459,7 +8773,7 @@ static char *emit_enum_value(
             free(name);
             return lower_error(
                 "E2S32",
-                "constructor payload is outside the one-Int slice",
+                "constructor payload is outside the Int and flat-record slice",
                 cursor
             );
         }
@@ -8470,7 +8784,28 @@ static char *emit_enum_value(
         bool empty =
             payload_start < length &&
             token_equal(source, payload_start, ")");
+        char *payload_record = enum_constructor_payload_record(
+            source,
+            enum_type,
+            name
+        );
         if ((arity == 0) != empty) {
+            if (arity == 1 && payload_record[0] != '\0') {
+                Buffer message;
+                buffer_init(&message);
+                buffer_format(
+                    &message,
+                    "constructor takes one `%s` record payload",
+                    payload_record
+                );
+                char *error = lower_error("E2S32", message.data, cursor);
+                free(message.data);
+                free(payload_record);
+                free(constructor_owner);
+                free(name);
+                return error;
+            }
+            free(payload_record);
             free(constructor_owner);
             free(name);
             return lower_error(
@@ -8487,12 +8822,72 @@ static char *emit_enum_value(
             int64_t close = payload_end < 0 ?
                 -1 :
                 skip_trivia(source, payload_end);
+            if (payload_record[0] != '\0') {
+                if (
+                    payload_end < 0 ||
+                    close >= length ||
+                    !token_equal(source, close, ")")
+                ) {
+                    Buffer message;
+                    buffer_init(&message);
+                    buffer_format(
+                        &message,
+                        "concrete enum payload must be one `%s` record value",
+                        payload_record
+                    );
+                    char *error = lower_error(
+                        "E2S32",
+                        message.data,
+                        payload_start
+                    );
+                    free(message.data);
+                    free(payload);
+                    free(payload_record);
+                    free(constructor_owner);
+                    free(name);
+                    return error;
+                }
+                char *record_value = emit_record_value(
+                    source,
+                    hir,
+                    payload_start,
+                    payload_end,
+                    payload_record
+                );
+                if (strncmp(record_value, "error[", 6) == 0) {
+                    free(payload);
+                    free(payload_record);
+                    free(constructor_owner);
+                    free(name);
+                    return record_value;
+                }
+                char *record_braces = enum_record_value_braces(
+                    name,
+                    tag,
+                    record_value
+                );
+                Buffer record_output;
+                buffer_init(&record_output);
+                buffer_format(
+                    &record_output,
+                    "((KofunEnumValue)%s)",
+                    record_braces
+                );
+                free(record_braces);
+                free(record_value);
+                free(payload);
+                free(payload_record);
+                free(constructor_owner);
+                free(name);
+                return record_output.data;
+            }
             if (
                 payload_end < 0 ||
                 close >= length ||
                 !token_equal(source, close, ")")
             ) {
                 free(payload);
+                free(payload_record);
                 free(constructor_owner);
                 free(name);
                 return lower_error(
@@ -8509,15 +8904,13 @@ static char *emit_enum_value(
                 payload_end
             );
         }
+        char *braces = enum_value_braces(source, tag, payload);
         Buffer output;
         buffer_init(&output);
-        buffer_format(
-            &output,
-            "((KofunEnumValue){INT64_C(%" PRId64 "), %s})",
-            tag,
-            payload
-        );
+        buffer_format(&output, "((KofunEnumValue)%s)", braces);
+        free(braces);
         free(payload);
+        free(payload_record);
         free(constructor_owner);
         free(name);
         return output.data;
@@ -21605,6 +21998,29 @@ static char *build_scope_hir_analysis_mode(
                         binding_start = field;
                         free(pattern_binding_type);
                         pattern_binding_type = owned_text("Int");
+                        /* #1697. A constructor that carries a flat record
+                         * binds that record, not an `Int`. */
+                        char *pattern_constructor = token_copy(
+                            source,
+                            arm_cursor
+                        );
+                        char *pattern_owner = enum_constructor_owner(
+                            source,
+                            pattern_constructor
+                        );
+                        char *pattern_record = enum_constructor_payload_record(
+                            source,
+                            pattern_owner,
+                            pattern_constructor
+                        );
+                        if (pattern_record[0] != '\0') {
+                            free(pattern_binding_type);
+                            pattern_binding_type = pattern_record;
+                        } else {
+                            free(pattern_record);
+                        }
+                        free(pattern_owner);
+                        free(pattern_constructor);
                     } else if (arm.kind == PATTERN_NAME) {
                         char *pattern_name = token_copy(
                             source,
@@ -22737,7 +23153,8 @@ static char *lower_enum_match(
                 buffer_format(
                     &message,
                     "constructor `%s` of enum `%s` declares a payload outside "
-                    "this Core slice; one `Int` field is supported",
+                    "this Core slice; one `Int` field or one flat `Int`/`Bool` "
+                    "record is supported",
                     pattern,
                     enum_type
                 );
@@ -22757,14 +23174,30 @@ static char *lower_enum_match(
             if (applied != (arity == 1)) {
                 Buffer message;
                 buffer_init(&message);
-                buffer_format(
-                    &message,
-                    arity == 1 ?
-                        "constructor pattern `%s` must bind its one `Int` "
-                        "payload or use `_`" :
-                        "constructor pattern `%s` takes no payload",
+                char *payload_record = enum_constructor_payload_record(
+                    source,
+                    enum_type,
                     pattern
                 );
+                if (arity == 1 && payload_record[0] != '\0') {
+                    buffer_format(
+                        &message,
+                        "constructor pattern `%s` must bind its one `%s` "
+                        "record payload or use `_`",
+                        pattern,
+                        payload_record
+                    );
+                } else {
+                    buffer_format(
+                        &message,
+                        arity == 1 ?
+                            "constructor pattern `%s` must bind its one `Int` "
+                            "payload or use `_`" :
+                            "constructor pattern `%s` takes no payload",
+                        pattern
+                    );
+                }
+                free(payload_record);
                 free(pattern);
                 char *error = lower_enum_match_error(
                     &covered,
@@ -22938,14 +23371,14 @@ static char *lower_enum_match(
                     payload_name_start
                 );
             }
-            buffer_format(
-                &payload_declaration,
-                "            int64_t k_b%s = "
-                "kofun_match_value.payload;\n"
-                "            (void)k_b%s;\n",
-                payload_id,
+            char *declaration = enum_payload_declaration(
+                source,
+                enum_type,
+                pattern,
                 payload_id
             );
+            buffer_append(&payload_declaration, declaration);
+            free(declaration);
             free(payload_id);
         } else if (catchall_name_start >= 0) {
             char *catchall_id = hir_definition_id_at(
@@ -23378,7 +23811,8 @@ static char *parse_value_enum_match(
                 buffer_format(
                     &message,
                     "constructor `%s` of enum `%s` declares a payload outside "
-                    "this Core slice; one `Int` field is supported",
+                    "this Core slice; one `Int` field or one flat `Int`/`Bool` "
+                    "record is supported",
                     pattern,
                     enum_type
                 );
@@ -23395,14 +23829,30 @@ static char *parse_value_enum_match(
             if (applied != (arity == 1)) {
                 Buffer message;
                 buffer_init(&message);
-                buffer_format(
-                    &message,
-                    arity == 1 ?
-                        "constructor pattern `%s` must bind its one `Int` "
-                        "payload or use `_`" :
-                        "constructor pattern `%s` takes no payload",
+                char *payload_record = enum_constructor_payload_record(
+                    source,
+                    enum_type,
                     pattern
                 );
+                if (arity == 1 && payload_record[0] != '\0') {
+                    buffer_format(
+                        &message,
+                        "constructor pattern `%s` must bind its one `%s` "
+                        "record payload or use `_`",
+                        pattern,
+                        payload_record
+                    );
+                } else {
+                    buffer_format(
+                        &message,
+                        arity == 1 ?
+                            "constructor pattern `%s` must bind its one `Int` "
+                            "payload or use `_`" :
+                            "constructor pattern `%s` takes no payload",
+                        pattern
+                    );
+                }
+                free(payload_record);
                 free(pattern);
                 char *error = parse_value_enum_match_error(
                     &covered,
@@ -23695,14 +24145,16 @@ static char *emit_value_enum_match_into(
                     payload_name_start
                 );
             }
-            buffer_format(
-                &payload_declaration,
-                "            int64_t k_b%s = "
-                "kofun_match_value.payload;\n"
-                "            (void)k_b%s;\n",
-                payload_id,
+            char *constructor_text = token_copy(source, pattern_start);
+            char *declaration = enum_payload_declaration(
+                source,
+                enum_type,
+                constructor_text,
                 payload_id
             );
+            free(constructor_text);
+            buffer_append(&payload_declaration, declaration);
+            free(declaration);
             free(payload_id);
         } else if (catchall_name_start >= 0) {
             char *catchall_id = hir_definition_id_at(
@@ -25325,8 +25777,8 @@ static char *lower_body_with_workspace(
                     buffer_format(
                         &message,
                         "constructor `%s` of enum `%s` declares a payload "
-                        "outside this Core slice; one `Int` field is "
-                        "supported",
+                        "outside this Core slice; one `Int` field or one flat "
+                        "`Int`/`Bool` record is supported",
                         constructor,
                         enum_type
                     );
@@ -25343,16 +25795,31 @@ static char *lower_body_with_workspace(
                     free(message.data);
                     return error;
                 }
+                char *payload_record = enum_constructor_payload_record(
+                    source,
+                    enum_type,
+                    constructor
+                );
                 if (applied != (arity == 1)) {
                     Buffer message;
                     buffer_init(&message);
-                    buffer_format(
-                        &message,
-                        arity == 1 ?
-                            "constructor `%s` takes one `Int` payload" :
-                            "constructor `%s` takes no payload",
-                        constructor
-                    );
+                    if (arity == 1 && payload_record[0] != '\0') {
+                        buffer_format(
+                            &message,
+                            "constructor `%s` takes one `%s` record payload",
+                            constructor,
+                            payload_record
+                        );
+                    } else {
+                        buffer_format(
+                            &message,
+                            arity == 1 ?
+                                "constructor `%s` takes one `Int` payload" :
+                                "constructor `%s` takes no payload",
+                            constructor
+                        );
+                    }
+                    free(payload_record);
                     free(constructor);
                     free(enum_type);
                     free(binding_id);
@@ -25386,49 +25853,123 @@ static char *lower_body_with_workspace(
                     int64_t close = payload_end < 0 ?
                         -1 :
                         skip_trivia(source, payload_end);
-                    if (
-                        payload_end < 0 ||
-                        close >= length ||
-                        !token_equal(source, close, ")")
-                    ) {
-                        free(constructor);
-                        free(enum_type);
-                        free(binding_id);
-                        free(name);
-                        free(emitted.data);
-                        return lower_error(
-                            "E2S32",
-                            "concrete enum payload must be one Int expression",
-                            payload_start
+                    if (payload_record[0] != '\0') {
+                        if (
+                            payload_end < 0 ||
+                            close >= length ||
+                            !token_equal(source, close, ")")
+                        ) {
+                            Buffer message;
+                            buffer_init(&message);
+                            buffer_format(
+                                &message,
+                                "concrete enum payload must be one `%s` "
+                                "record value",
+                                payload_record
+                            );
+                            free(payload_record);
+                            free(constructor);
+                            free(enum_type);
+                            free(binding_id);
+                            free(name);
+                            free(emitted.data);
+                            char *error = lower_error(
+                                "E2S32",
+                                message.data,
+                                payload_start
+                            );
+                            free(message.data);
+                            return error;
+                        }
+                        char *record_value = emit_record_value(
+                            source,
+                            hir,
+                            payload_start,
+                            payload_end,
+                            payload_record
                         );
+                        if (strncmp(record_value, "error[", 6) == 0) {
+                            free(payload_record);
+                            free(constructor);
+                            free(enum_type);
+                            free(binding_id);
+                            free(name);
+                            free(emitted.data);
+                            return record_value;
+                        }
+                        char *record_braces = enum_record_value_braces(
+                            constructor,
+                            tag,
+                            record_value
+                        );
+                        buffer_format(
+                            &emitted,
+                            "    KofunEnumValue k_b%s = %s;\n"
+                            "    if (kofun_failed) return %s;\n",
+                            binding_id,
+                            record_braces,
+                            failure_result
+                        );
+                        free(record_braces);
+                        free(record_value);
+                        constructor_end = token_end(source, close);
+                    } else {
+                        if (
+                            payload_end < 0 ||
+                            close >= length ||
+                            !token_equal(source, close, ")")
+                        ) {
+                            free(payload_record);
+                            free(constructor);
+                            free(enum_type);
+                            free(binding_id);
+                            free(name);
+                            free(emitted.data);
+                            return lower_error(
+                                "E2S32",
+                                "concrete enum payload must be one Int "
+                                "expression",
+                                payload_start
+                            );
+                        }
+                        char *payload = emit_expression(
+                            source,
+                            hir,
+                            payload_start,
+                            payload_end
+                        );
+                        char *payload_braces = enum_value_braces(
+                            source,
+                            tag,
+                            payload
+                        );
+                        buffer_format(
+                            &emitted,
+                            "    KofunEnumValue k_b%s = %s;\n"
+                            "    if (kofun_failed) return %s;\n",
+                            binding_id,
+                            payload_braces,
+                            failure_result
+                        );
+                        free(payload_braces);
+                        free(payload);
+                        constructor_end = token_end(source, close);
                     }
-                    char *payload = emit_expression(
-                        source,
-                        hir,
-                        payload_start,
-                        payload_end
-                    );
-                    buffer_format(
-                        &emitted,
-                        "    KofunEnumValue k_b%s = "
-                        "{INT64_C(%" PRId64 "), %s};\n"
-                        "    if (kofun_failed) return %s;\n",
-                        binding_id,
-                        tag,
-                        payload,
-                        failure_result
-                    );
-                    free(payload);
-                    constructor_end = token_end(source, close);
                 } else {
+                    char *zero_braces = enum_value_braces(
+                        source,
+                        tag,
+                        "INT64_C(0)"
+                    );
                     buffer_format(
                         &emitted,
-                        "    KofunEnumValue k_b%s = "
-                        "{INT64_C(%" PRId64 "), INT64_C(0)};\n",
+                        "    KofunEnumValue k_b%s = %s;\n",
                         binding_id,
-                        tag
+                        zero_braces
                     );
+                    free(zero_braces);
                 }
+                free(payload_record);
                 char *discard = unused_binding_discard(hir, binding_id);
                 buffer_format(&emitted, "%s", discard);
                 free(discard);
@@ -31740,15 +32281,14 @@ static char *lower_c_body(
     if (fractional_values) {
         buffer_append(&output, "#include \"decimal_v1.c\"\n");
     }
+    buffer_append(&output, "\n");
+    /* #1697. The classic two-word enum value, unless the source declares a
+     * record payload; that source gets the widened union after its records. */
+    char *classic_enum_typedef = enum_classic_typedef(source);
+    buffer_append(&output, classic_enum_typedef);
+    free(classic_enum_typedef);
     buffer_append(
         &output,
-        "\n"
-        "typedef struct {\n"
-        "    int64_t tag;\n"
-        "    int64_t payload;\n"
-        "} KofunEnumValue;\n"
-        "#define KOFUN_ENUM_ZERO "
-        "((KofunEnumValue){INT64_C(0), INT64_C(0)})\n\n"
         "typedef const unsigned char *KofunIntList;\n"
         "typedef struct { uint64_t length; int64_t elements[64]; } KofunIntListValue;\n"
         "#define KOFUN_LIST_INT_ZERO ((KofunIntListValue){UINT64_C(0), {INT64_C(0)}})\n"
@@ -32480,6 +33020,9 @@ static char *lower_c_body(
     char *record_declarations = emit_record_c_declarations(source);
     buffer_append(&output, record_declarations);
     free(record_declarations);
+    char *widened_enum_typedef = enum_widened_typedef(source);
+    buffer_append(&output, widened_enum_typedef);
+    free(widened_enum_typedef);
     buffer_append(&output, prototypes.data);
     buffer_append(&output, "\n");
     buffer_append(&output, bodies.data);
@@ -38720,6 +39263,9 @@ static const char * capture_call(CheckedPlaceArena *a, const char * v_source, co
             if (((int64_t)strlen(v_owner)) > 0) {
                 v_returned = v_owner;
                 int64_t v_arity = enum_constructor_payload_arity(v_source, v_owner, v_name);
+                if ((v_arity == 1) && (((int64_t)strlen(cp_keep(a, enum_constructor_payload_record(v_source, v_owner, v_name)))) > 0)) {
+                    return capture_return_text(a, mark, capture_error(a, "E2S154", "enum record payload profile is unavailable", v_first));
+                }
                 if (v_arity == 1) {
                     v_parameters = "formal|0||Int|read\n";
                 } else {

@@ -1,0 +1,73 @@
+# #1697. A value-position match binds the record payload and reads a field of
+# it, with a guard over the payload and a catch-all, exactly as it does a
+# one-`Int` payload. Every kind is covered or a catch-all follows, so the
+# closed set is checked the same way.
+#
+# This is the one fixture the pair is compared on emitted C alone, by
+# value_match_pair.mjs: on origin/main the Kofun half already refuses `return
+# match` (E2S03) and records a different binding `visible_start` for a `let`
+# bound to a value match, with a one-`Int` payload and so not because of this
+# slice. The emitted C is what this gate can hold the two halves to.
+# BEGIN kofun.http-error/v1
+type ProtocolDetail = {
+    phase: Int,
+    retry_safe: Bool,
+    offset: Int,
+}
+
+type LimitDetail = {
+    phase: Int,
+    retry_safe: Bool,
+    dimension: Int,
+    limit: Int,
+    observed_at_most: Int,
+}
+
+type TruncatedDetail = {
+    phase: Int,
+    retry_safe: Bool,
+    offset: Int,
+}
+
+type TransportDetail = {
+    phase: Int,
+    retry_safe: Bool,
+    cause: Int,
+    offset: Int,
+}
+
+type HttpError =
+    | Protocol(detail: ProtocolDetail)
+    | LimitExceeded(detail: LimitDetail)
+    | BodyTruncated(detail: TruncatedDetail)
+    | Transport(detail: TransportDetail)
+# END kofun.http-error/v1
+
+fn main() -> Int {
+    let protocol: ProtocolDetail = ProtocolDetail(phase: 2, retry_safe: true, offset: 17)
+    let error: HttpError = Protocol(protocol)
+    let offset: Int = match error {
+        Protocol(detail) => { detail.offset },
+        LimitExceeded(detail) => { detail.limit },
+        BodyTruncated(detail) => { detail.offset },
+        Transport(detail) => { detail.offset },
+    }
+    print(offset)
+    let late: Int = match error {
+        Protocol(detail) if detail.phase == 2 => { 200 },
+        Protocol(_) => { 201 },
+        _ => { 202 },
+    }
+    print(late)
+    let safe: Int = match error {
+        Protocol(detail) if detail.retry_safe => { 1 },
+        _ => { 0 },
+    }
+    print(safe)
+    let other: Int = match error {
+        Transport(_) => { 1 },
+        rest => { 2 },
+    }
+    print(other)
+    return 0
+}

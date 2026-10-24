@@ -1264,6 +1264,7 @@ tasks:
     cmds:
       - task: http-client-headers
       - task: http-client-origin
+      - task: http-client-errors
 
   http-client-headers:
     desc: "Verify Header and a bounded List[Header] at 128: append, read, index, lookup, move, and the R038 refusal"
@@ -1274,6 +1275,11 @@ tasks:
     desc: "Verify HttpOrigin's checked host/target/port construction, the R039/R040/R041 refusals, and CoreLimits"
     cmds:
       - "sh tests/conformance/http-client-origin/run.sh"
+
+  http-client-errors:
+    desc: "Verify the closed four-kind HttpError ADT, its flat record payloads, and its projection of every oracle error"
+    cmds:
+      - "sh tests/conformance/http-client-errors/run.sh"
 
   bounded-bytes:
     desc: "Verify the fixture-bounded Bytes[65536] carrier, mutation, file-read, stream-read, and Text-bridge checkpoint"

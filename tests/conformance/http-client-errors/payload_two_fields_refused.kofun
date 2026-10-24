@@ -1,0 +1,16 @@
+# #1697. More than one payload field is still refused: several logical fields
+# travel as one nominal record (spec/adt-match-v2/PROFILE.md section 1), not as
+# a tuple or a field list.
+
+type Pair =
+    | Fine
+    | Broken(phase: Int, retry_safe: Bool)
+
+fn main() -> Int {
+    let value: Pair = Fine
+    match value {
+        Fine => { print(1) },
+        Broken(_) => { print(2) },
+    }
+    return 0
+}

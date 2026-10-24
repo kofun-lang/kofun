@@ -1,0 +1,18 @@
+# #1697. The carve-out is flat `Int`/`Bool` records only. A payload record with
+# a `Text` field is a record Stage 2 accepts but a payload it does not carry, and
+# is refused at the constructor's first use with the widened E2S32 sentence.
+
+type Note = {
+    phase: Int,
+    label: Text,
+}
+
+type Noted =
+    | Fine
+    | Broken(note: Note)
+
+fn main() -> Int {
+    let note: Note = Note(phase: 1, label: "x")
+    let value: Noted = Broken(note)
+    return 0
+}

@@ -20,6 +20,12 @@ nominal records already work in Stage 2, and `E2S32` already reports the
 one-`Int` limit at the constructor's own span, so the diagnostic site is
 correct today and only its answer changes.
 
+The flat, non-generic slice of that widening, a payload record of `Int` and
+`Bool` fields on C11 Stage 2, is carved out of #30 and delivered by #1697; what
+it carries and where it stops is
+[`spec/adt-record-payload-v1.md`](../adt-record-payload-v1.md). It is not the
+general lowering (#1287).
+
 ## 2. The pattern fragment
 
 Admitted: constructor patterns with zero or one payload subpattern, wildcard,

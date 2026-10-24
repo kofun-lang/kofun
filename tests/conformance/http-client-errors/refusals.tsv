@@ -1,0 +1,10 @@
+payload_wrong_record_refused	error[E2S32]: nominal record binding has the wrong type at byte 991
+payload_int_refused	error[E2S32]: nominal record value must be a binding or function call at byte 793
+payload_inline_construction_refused	error[E2S32]: bind record construction to an explicitly typed immutable record before using it at byte 903
+payload_missing_refused	error[E2S32]: constructor `Protocol` takes one `ProtocolDetail` record payload at byte 745
+pattern_arity_refused	error[E2S32]: constructor pattern `Protocol` must bind its one `ProtocolDetail` record payload or use `_` at byte 969
+non_exhaustive_refused	error[E2S25]: non-exhaustive enum `HttpError` match; missing constructors `Transport` at byte 917
+payload_text_field_refused	error[E2S32]: constructor `Broken` of enum `Noted` declares a payload outside this Core slice; one `Int` field or one flat `Int`/`Bool` record is supported at byte 430
+payload_list_field_refused	error[E2S32]: constructor `Broken` of enum `Sampled` declares a payload outside this Core slice; one `Int` field or one flat `Int`/`Bool` record is supported at byte 374
+payload_two_fields_refused	error[E2S32]: constructor `Broken` of enum `Pair` declares a payload outside this Core slice; one `Int` field or one flat `Int`/`Bool` record is supported at byte 355
+payload_enum_field_refused	error[E2S32]: record `Detail` has a field type outside the Stage 2 Int/Bool/Text/List[Int] slice at byte 264

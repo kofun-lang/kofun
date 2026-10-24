@@ -234,6 +234,29 @@ script('fail_at_body', GET,
 script('fail_at_write_post', POST, [{ op: 'fail', at: 'write' }])
 
 // ---------------------------------------------------------------------------
+// An injected deadline, at every phase the model has (#1697)
+//
+// RFC-0016's `Deadline(phase)` is a scripted event, never a clock read. Its
+// error is kind `transport` (RFC-0016/A01 projects `timeout` there), so the
+// four-kind set is unchanged and the cause is what separates a deadline from a
+// failure or a cancellation.
+// ---------------------------------------------------------------------------
+script('deadline_at_write', GET, [{ op: 'deadline', at: 'write' }])
+script('deadline_at_head', GET,
+    [{ op: 'deliver', bytes: wire('HTTP/1.1 200 OK\r\n') }, { op: 'deadline', at: 'head' }])
+script('deadline_at_body', GET,
+    [
+        { op: 'deliver', bytes: wire('HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhel') },
+        { op: 'deadline', at: 'body' },
+    ])
+script('deadline_at_drain', GET,
+    [
+        { op: 'deliver', bytes: wire('HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello') },
+        { op: 'deadline', at: 'drain' },
+    ])
+script('deadline_at_write_post', POST, [{ op: 'deadline', at: 'write' }])
+
+// ---------------------------------------------------------------------------
 
 const written = new Set()
 mkdirSync(fixtures, { recursive: true })

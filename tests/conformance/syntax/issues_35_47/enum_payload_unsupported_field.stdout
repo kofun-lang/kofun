@@ -1,1 +1,1 @@
-error[E2S32]: constructor `Ready` of enum `Reply` declares a payload outside this Core slice; one `Int` field is supported at byte 95
+error[E2S32]: constructor `Ready` of enum `Reply` declares a payload outside this Core slice; one `Int` field or one flat `Int`/`Bool` record is supported at byte 95

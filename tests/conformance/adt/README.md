@@ -28,7 +28,10 @@ Separately, the smaller concrete-enum profile in
 `enum_payload_functions.kofun` lowers the same zero/one-`Int` shape through
 Stage 2 C11, including function arguments, returns, guarded payload reads, and
 a binding catch-all that is matched again. The syntax checkpoint also runs
-this shared fixture through the public CLI. Native and Wasm lowering remain
+this shared fixture through the public CLI. Since #1697 the same concrete-enum
+profile also carries one flat `Int`/`Bool` record as a constructor's payload
+(`spec/adt-record-payload-v1.md`, gated by `task http-client-errors`); this
+standalone frontend still admits only the zero/one-`Int` shape. Native and Wasm lowering remain
 outside both checkpoints. #120 owns the shared layout authority, while
 #73/#93/#118 consume the typed constructor table for patterns, exhaustiveness,
 and wider lowering.

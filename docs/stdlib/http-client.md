@@ -118,6 +118,15 @@ responses are refused, never repaired), `Timeout`, `Cancelled`,
 `LimitExceeded`, `RedirectLimit`, `BodyTruncated`. Idempotent-request retry
 is caller policy; the client never retries automatically.
 
+The first executable `HttpError` (RFC-0016/A01, `spec/http-error-v1.md`) is the
+four kinds the scripted boundary can produce: `Protocol`, `LimitExceeded`,
+`BodyTruncated`, and `Transport`. The RFC-0016 families among the names above are
+projected onto them (`Timeout` and `Cancelled` are `Transport` with a cause,
+`Connect` is `Transport`, `Url` is `Protocol`). `Dns`, `Tls`, and `RedirectLimit`
+are not RFC-0016 families and nothing at the scripted boundary can produce them,
+so A01 does not place them; whoever adds a boundary that can produce one decides
+its kind then.
+
 ### Targets and cost
 
 - **The client exists only where a `Network` capability does.** It is specified
