@@ -18,7 +18,9 @@
 #      and nothing printed after it;
 #   5. a bound result (E2S179), a `List[Int]` target (E2S15), and an element of
 #      another record type (E2S15) are refused before any C;
-#   6. both halves of the pair agree on outcome, emitted C, and scope HIR for
+#   6. the element record is moved into the list (#1737): reading it after the
+#      append, or appending it a second time, is refused E2S123 before any C;
+#   7. both halves of the pair agree on outcome, emitted C, and scope HIR for
 #      every source above.
 #
 # The carrier measures nothing for the 65,536-byte header-block total: #1258
@@ -127,7 +129,11 @@ refuse element_refused E2S15
 grep -Fq 'cannot append Other to List[Header]' "$WORK/element_refused.out" ||
     fail "the element refusal does not name both types: $(head -n 1 "$WORK/element_refused.out")"
 
-# 6. Both halves agree.
+# 6. The appended element is moved into the list (#1737).
+refuse append_reuse_refused E2S123
+refuse append_twice_refused E2S123
+
+# 7. Both halves agree.
 node "$ROOT/tests/conformance/record-list/pair.mjs" "$COMPILER" "$WORK/pair" \
     "$CASES/append_index.kofun" \
     "$CASES/lookup.kofun" \
@@ -136,7 +142,9 @@ node "$ROOT/tests/conformance/record-list/pair.mjs" "$COMPILER" "$WORK/pair" \
     "$CASES/over_capacity.kofun" \
     "$CASES/value_refused.kofun" \
     "$CASES/int_list_refused.kofun" \
-    "$CASES/element_refused.kofun" ||
+    "$CASES/element_refused.kofun" \
+    "$CASES/append_reuse_refused.kofun" \
+    "$CASES/append_twice_refused.kofun" ||
     fail 'the two halves disagree'
 
-printf '%s\n' 'PASS: List[Header] appends to capacity 128, reads, indexes, looks up by name, moves whole, refuses the 129th with R038, and both halves agree'
+printf '%s\n' 'PASS: List[Header] appends to capacity 128, reads, indexes, looks up by name, moves whole, refuses the 129th with R038, refuses a use of an appended element, and both halves agree'

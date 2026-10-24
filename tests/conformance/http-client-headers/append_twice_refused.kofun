@@ -1,0 +1,16 @@
+# #1737. The same element appended twice is a second move of one binding, so
+# it is refused E2S123. Accepted, it would leave two list slots owning one
+# `Bytes` carrier.
+type Header = {
+    name: Bytes,
+    value: Bytes,
+}
+
+fn main() -> Int {
+    let headers: List[Header] = []
+    let first: Header = Header(name: stage2_bytes_empty(), value: stage2_bytes_empty())
+    stage2_list_append(headers, first)
+    stage2_list_append(headers, first)
+    print(len(headers))
+    return 0
+}

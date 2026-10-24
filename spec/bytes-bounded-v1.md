@@ -56,8 +56,12 @@ moved-from-bit-pattern guarantee. Compile-time use-after-move is proved only
 for the forms named by the fixture set. A bare owning Bytes argument to a
 resolved current-file positional `take` parameter is recorded in straight-line
 source order; later use and second transfer are E2S123, keyed by BindingId.
-This does not extend to temporary/compound arguments, indirect calls or a
-general CFG ownership proof (`task move-call-crossings`, #1540).
+The same holds for a nominal record with a `Bytes` field, whether passed to a
+`take` parameter or appended with `stage2_list_append`, because the record
+owns the carrier it holds (#1737). A record with only `Text` fields is not
+moved by this slice. This does not extend to temporary/compound arguments,
+indirect calls or a general CFG ownership proof (`task move-call-crossings`,
+#1540).
 
 A length of zero allocates nothing. `malloc(0)` may return a non-null pointer,
 which would make an empty value distinguishable from a one-allocation one, so

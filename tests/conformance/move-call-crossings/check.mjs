@@ -26,7 +26,7 @@ function compile(tool, file, name, expected) {
   if (expected === 1) assert.equal(existsSync(output), false, `${name}: rejected C committed`)
   return { ...result, output }
 }
-const refusals = ['bytes_edit_after', 'bytes_double', 'record_use_after', 'record_double', 'record_edit']
+const refusals = ['bytes_edit_after', 'bytes_double', 'record_use_after', 'record_double', 'record_edit', 'bytes_record_use_after', 'append_use_after']
 for (const level of [0, 2]) {
   const tool = join(work, `stage2.O${level}`)
   run(cc, [...flags, `-O${level}`, implementation, '-o', tool], `compiler O${level}`)
@@ -102,11 +102,19 @@ const mutations = [
   ['mode-check', 'if (!taken) return false;', 'if (false && !taken) return false;'],
   ['direct-resolution', 'if (!direct) { free(name); return false; }', 'if (false && !direct) { free(name); return false; }'],
   ['bare-binding', 'if (expression_end(source, cursor) != token_end(source, cursor)) return false;', 'if (false && expression_end(source, cursor) != token_end(source, cursor)) return false;'],
-  ['type-bound', 'bool admitted = strcmp(type, "Bytes") == 0 || move_nominal_type(source, type);', 'bool admitted = true || strcmp(type, "Bytes") == 0 || move_nominal_type(source, type);'],
+  ['type-bound', 'bool admitted = strcmp(type, "Bytes") == 0 || move_nominal_type(source, type) || record_has_bytes_field(source, type);', 'bool admitted = true || strcmp(type, "Bytes") == 0 || move_nominal_type(source, type) || record_has_bytes_field(source, type);'],
   ['borrowed-owner', 'if (borrowed) return false;', 'if (false && borrowed) return false;'],
   ['straight-line', 'return admitted && move_straight_line_position(source, cursor);', 'return admitted && (true || move_straight_line_position(source, cursor));'],
   ['binding-id', "bool same = left[0] != '\\0' && strcmp(left, right) == 0;", "bool same = left[0] != '\\0' && (true || strcmp(left, right) == 0);"],
-  ['structured-record-edit', 'stage2_diagnostic_set("E2S181", cursor, token_end(source, cursor), true, error.data);', '/* missing structured record-edit diagnostic */']
+  ['structured-record-edit', 'stage2_diagnostic_set("E2S181", cursor, token_end(source, cursor), true, error.data);', '/* missing structured record-edit diagnostic */'],
+  // #1737. The list append's element slot has its own six bounds, each with a
+  // boundary-driver witness of the same label.
+  ['append-element', 'if (move_append_element(source, hir, cursor)) return true;', 'if (false && move_append_element(source, hir, cursor)) return true;'],
+  ['append-callee', 'if (!direct || !token_equal(source, call, "stage2_list_append")) return false;', 'if (!direct) return false;'],
+  ['append-direct-resolution', "bool direct = lexical[0] == '\\0';", 'bool direct = true;'],
+  ['append-slot', 'if (skip_trivia(source, token_end(source, separator)) != cursor) return false;', 'if (false && skip_trivia(source, token_end(source, separator)) != cursor) return false;'],
+  ['append-bare-element', 'if (expression_end(source, cursor) != element_end) return false;', 'if (false && expression_end(source, cursor) != element_end) return false;'],
+  ['append-straight-line', 'return owner && move_straight_line_position(source, cursor);', 'return owner && (true || move_straight_line_position(source, cursor));']
 ]
 for (const [label, before, after] of mutations) {
   assert.equal(source.split(before).length, 2, `${label}: mutation anchor must occur once`)
@@ -132,6 +140,6 @@ for (const [label, before, after, fixture] of [
   const result = compile(tool, join(cases, `${fixture}.kofun`), label, 0)
   run(cc, [...flags, '-O0', result.output, '-o', join(work, `${label}.bin`)], `${label} wrongly accepted C`)
 }
-console.log('PASS: move-call-crossings exact Bytes/record diagnostics and spans, CLI no-C/no-binary refusals, accepted borrowing/shadowing, O0/O2 sanitizer execution, three existing move spellings, seven semantic-boundary mutations, a structured-diagnostic mutation and two missing-rule mutations')
+console.log('PASS: move-call-crossings exact Bytes/record diagnostics and spans, CLI no-C/no-binary refusals, accepted borrowing/shadowing, O0/O2 sanitizer execution, three existing move spellings, seven semantic-boundary mutations, six list-append element mutations, a structured-diagnostic mutation and two missing-rule mutations')
 if (process.env.KOFUN_MOVE_KEEP_WORK) console.log(`Evidence directory: ${work}`)
 else rmSync(work, { recursive: true })

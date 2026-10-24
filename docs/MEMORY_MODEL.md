@@ -140,13 +140,20 @@ The parameter-declared `take` call is the transfer; a second standalone
 annotation syntax remains a UX proposal, not a second semantic transfer.
 
 Stage 2's implemented positional slice is narrower than the authority example
-above: one bare, owning `Bytes` or Int/Bool-only nominal record binding passed
-to a resolved current-file function in straight-line source order. Its later
-use or second transfer is E2S123, keyed by BindingId, with both source spans.
-Trivial-record `read` remains by-value, while `edit` is refused as E2S181
-because the by-value ABI cannot edit the caller's record. Authorities,
-composite owning records, borrowed-to-owning escalation, indirect calls and
-general CFG/lifetime/cleanup analysis are not established by this slice.
+above: one bare, owning `Bytes`, Int/Bool-only nominal record, or nominal
+record with a `Bytes` field binding passed to a resolved current-file function
+in straight-line source order. The element argument of
+`stage2_list_append(list, element)` is the same slice: the append writes the
+record by value into the next list slot, so the element binding is moved
+exactly as a `take` argument is, while the list binding is edited in place and
+stays usable (#1737). Its later use or second transfer is E2S123, keyed by
+BindingId, with both source spans, and an append reports it with the same
+"moved by `take`" wording as a positional call, since neither site spells
+`take`. Trivial-record `read` remains by-value, while `edit` is refused as
+E2S181 because the by-value ABI cannot edit the caller's record. Authorities,
+`Text`-field and nested records, borrowed-to-owning escalation, indirect calls,
+loop or branch crossings, and general CFG/lifetime/cleanup analysis are not
+established by this slice.
 `task move-call-crossings` holds this boundary; RFC-0010 transitions use the
 call itself to consume the predecessor, without a post-call marker.
 

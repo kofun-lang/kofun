@@ -13,6 +13,11 @@
 #define POINT "type Point = { x: Int }\n"
 #define CONSUME "fn consume(take p: Point) -> Int { return p.x }\n"
 #define LOCAL "let point: Point = Point(x: 1)\n"
+/* #1737: a `Bytes`-field record appended to a bounded list. */
+#define HEADER "type Header = { name: Bytes, value: Bytes }\n"
+#define ITEMS "let items: List[Header] = []\n"
+#define ENTRY "let header: Header = Header(name: stage2_bytes_empty(), value: stage2_bytes_empty())\n"
+#define APPEND "stage2_list_append(items, "
 
 static void require_boundary(bool condition, const char *label) {
     if (!condition) {
@@ -31,6 +36,27 @@ static void check_move(const char *label, const char *source, bool expected) {
     require_boundary(call != NULL, "fixture has no call");
     int64_t argument = (int64_t)(call - source) + 8;
     bool actual = move_call_binding(source, hir, argument);
+    require_boundary(actual == expected, label);
+    free(hir);
+}
+
+/* #1737. The element slot of `stage2_list_append(items, ...)`. `needle` finds
+ * the call and `skip` steps from its start to the argument under test. */
+static void check_append(
+    const char *label,
+    const char *source,
+    const char *needle,
+    size_t skip,
+    bool expected
+) {
+    char *hir = build_scope_hir(source);
+    if (strncmp(hir, "error[", 6) == 0) {
+        fprintf(stderr, "%s: %s\n", label, hir);
+        exit(1);
+    }
+    const char *call = strstr(source, needle);
+    require_boundary(call != NULL, "fixture has no append call");
+    bool actual = move_call_binding(source, hir, (int64_t)(call - source) + (int64_t)skip);
     require_boundary(actual == expected, label);
     free(hir);
 }
@@ -71,6 +97,31 @@ int main(void) {
         "fn main() -> Int {\n" LOCAL "let fallback: Int? = null\n"
         "print(select(fallback ?? 0, consume(point)))\nreturn 0\n}\n", true);
 
+    check_append("append-element", HEADER "fn main() -> Int {\n" ITEMS ENTRY
+        APPEND "header)\nreturn 0\n}\n", APPEND, sizeof(APPEND) - 1, true);
+    check_append("append-trivial-record", "type Point = { x: Int }\n"
+        "fn main() -> Int {\nlet items: List[Point] = []\nlet point: Point = Point(x: 1)\n"
+        "stage2_list_append(items, point)\nreturn 0\n}\n",
+        APPEND, sizeof(APPEND) - 1, true);
+    check_append("append-text-record", "type Point = { x: Text }\n"
+        "fn main() -> Int {\nlet items: List[Point] = []\nlet point: Point = Point(x: \"x\")\n"
+        "stage2_list_append(items, point)\nreturn 0\n}\n",
+        APPEND, sizeof(APPEND) - 1, false);
+    check_append("append-callee", HEADER
+        "fn peek(read first: Header, read second: Header) -> Int { return 0 }\n"
+        "fn main() -> Int {\n" ENTRY "let items: Header = Header(name: stage2_bytes_empty(), value: stage2_bytes_empty())\n"
+        "return peek(items, header)\n}\n", "peek(items, ", sizeof("peek(items, ") - 1, false);
+    check_append("append-direct-resolution", HEADER "fn main() -> Int {\n" ITEMS ENTRY
+        "let stage2_list_append = (first, second) => first\n"
+        APPEND "header)\nreturn 0\n}\n", APPEND, sizeof(APPEND) - 1, false);
+    check_append("append-slot", HEADER "fn main() -> Int {\n" ENTRY
+        "let items: Header = Header(name: stage2_bytes_empty(), value: stage2_bytes_empty())\n"
+        APPEND "header)\nreturn 0\n}\n", APPEND, sizeof("stage2_list_append(") - 1, false);
+    check_append("append-bare-element", HEADER "fn main() -> Int {\n" ITEMS ENTRY
+        APPEND "header.name)\nreturn 0\n}\n", APPEND, sizeof(APPEND) - 1, false);
+    check_append("append-straight-line", HEADER "fn main() -> Int {\n" ITEMS ENTRY
+        "while true { " APPEND "header) }\nreturn 0\n}\n", APPEND, sizeof(APPEND) - 1, false);
+
     const char *shadow = POINT CONSUME "fn main() -> Int {\n" LOCAL
         "print(consume(point))\nif true {\n" LOCAL
         "print(point.x)\n}\nreturn 0\n}\n";
@@ -98,6 +149,6 @@ int main(void) {
         context.diagnostic.affected[0].kind == STAGE2_DIAGNOSTIC_AFFECTED_ERROR_SPAN &&
         strcmp(context.diagnostic.fallback, result.diagnostic) == 0, "structured-record-edit");
     stage2_authority_result_destroy(&result);
-    puts("PASS: positional mode, direct resolution, bare binding, type/owner bounds, straight-line scope, BindingId exclusions and structured record-edit diagnostic");
+    puts("PASS: positional mode, direct resolution, bare binding, type/owner bounds, straight-line scope, BindingId exclusions, structured record-edit diagnostic and list-append element slot");
     return 0;
 }

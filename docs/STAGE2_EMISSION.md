@@ -24,7 +24,8 @@ round-tripping the Kofun file does not execute its lowering logic.
 | Command operands and a standard-error line (#1666) | The three builtin tables admit `stage2_command_operand_count`, `stage2_command_operand_text`, and `stage2_command_stderr`; `emit_primary` lowers them directly; and the emitted prelude — gated on the same raw-source `stage2_command_` spelling in both halves — captures `argv` in `main` and defines the three helpers with `R034`..`R037` on the count, index, operand-length, and line-length bounds | `task command-operands` |
 | An append to a bounded record list (#1698) | The three builtin tables admit `stage2_list_append` with the `RecordList\|Record` parameter row; `emit_record_list_append` checks that both arguments are bindings and that the element is the list's row, then writes the element by value into `elements[length]` only while `length < 128`, else `R038`; an annotated `[]` lowers to the empty carrier | `task http-client-headers` |
 | A checked `HttpOrigin` construction (#1696) | The three builtin tables admit `stage2_http_origin` with the `Record` parameter row; `emit_http_origin_check` requires the record to be `host: Bytes, target: Bytes, port: Int` and emits `kofun_http_origin_check` over its fields and port; the emitted prelude — gated on the same raw-source `stage2_http_origin` spelling in both halves — refuses a host outside 1..255 visible-ASCII bytes without a comma (`R039`), a target outside an origin-form `/`-path of 1..2048 visible-ASCII bytes (`R040`), and a port outside `-1` or `0..65535` (`R041`) | `task http-client-origin` |
-| Which positional calls consume a binding | `call_argument_parameter_property` resolves the slot; `move_positional_binding` and `move_positional_owner` bound direct calls and owning types | `task move-call-crossings` |
+| Which positional calls consume a binding | `call_argument_parameter_property` resolves the slot; `move_positional_binding` and `move_positional_owner` bound direct calls and owning types, a record with a `Bytes` field among them (#1737) | `task move-call-crossings record-bytes-fields` |
+| Which list append consumes its element (#1737) | `move_append_element` recognises the second argument of a direct `stage2_list_append(list, element)` and applies the same `move_positional_owner` and `move_straight_line_position` bounds; `emit_record_list_append` still lowers the by-value write | `task move-call-crossings http-client-headers` |
 | Whether a later name is the moved value | `move_same_binding` compares HIR BindingIds for every move spelling | `task move-call-crossings records call-arguments` |
 | Trivial-record `edit` in the by-value ABI | `move_trivial_record` defines the shared type bound; `validate_move_record_modes` refuses the declaration | `task move-call-crossings` |
 | A refusal's machine-readable location | The seed's `stage2_diagnostic_set` records the same primary span for the semantic-event consumer | `task move-call-crossings stage2-events` |
@@ -44,11 +45,12 @@ that evaluation into a checked temporary; the whole-carrier invariant would
 otherwise no longer apply.
 
 The positional move helpers are not a general ownership pass. Their new slice
-is a bare owning Bytes or Int/Bool-only nominal record passed to a direct,
-resolved current-file `take` parameter in straight-line source order. They
-exclude lexical/member/indirect callees, borrowed arguments, authority and
-composite types, and conditional/loop crossings. Existing labelled and
-pipeline rules keep their earlier scope. A crossing invalidates the resolved
+is a bare owning Bytes, Int/Bool-only nominal record, or nominal record with a
+`Bytes` field passed to a direct, resolved current-file `take` parameter, or as
+the element of a direct `stage2_list_append`, in straight-line source order.
+They exclude lexical/member/indirect callees, borrowed arguments, authority,
+`Text`-field and nested composite types, and conditional/loop crossings.
+Existing labelled and pipeline rules keep their earlier scope. A crossing invalidates the resolved
 BindingId; a later shadowing declaration must not inherit the earlier move.
 `boundary_driver.c` tests those component decisions using production-built HIR;
 some excluded shapes remain outside full backend admission. Its compiler

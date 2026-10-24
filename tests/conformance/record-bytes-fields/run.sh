@@ -8,7 +8,7 @@
 # record the owner, and a second binding initialized from the record is an
 # alias of unique-owner storage, refused `E2S170`.
 #
-# Four things are proved, and each is one acceptance line:
+# Five things are proved, and each is one acceptance line:
 #
 #   1. the field declaration and construction lower, with the AggregateLayout
 #      field offsets (0, 24) and record size (48) asserted in the emitted C;
@@ -16,8 +16,10 @@
 #   3. the record moves whole through a `take` parameter and the callee reads
 #      the field it now owns;
 #   4. both the inferred and the annotated copy spellings are refused `E2S170`
-#      with no C emitted, and both halves of the pair agree on outcome, emitted
-#      C, and scope HIR.
+#      with no C emitted;
+#   5. a record read after a `take` parameter moved it is refused `E2S123`
+#      with no C emitted (#1737), and both halves of the pair agree on
+#      outcome, emitted C, and scope HIR for every source above.
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
@@ -91,11 +93,24 @@ for stem in copy_refused copy_annotated_refused; do
         fail "$stem emitted C despite the refusal"
 done
 
+# 5. A moved record cannot be read again (#1737).
+for stem in use_after_take_refused; do
+    "$COMPILER" --compile-outcome \
+        "$CASES/$stem.kofun" "$WORK/$stem.c" "$WORK/$stem.ir" "$WORK/$stem.tokens" \
+        >"$WORK/$stem.out" 2>"$WORK/$stem.err" && \
+        fail "$stem was accepted, but a record read after a take move must be refused"
+    grep -Fq 'error[E2S123]' "$WORK/$stem.out" ||
+        fail "$stem did not report E2S123: $(head -n 1 "$WORK/$stem.out")"
+    test ! -e "$WORK/$stem.c" ||
+        fail "$stem emitted C despite the refusal"
+done
+
 node "$CASES/pair.mjs" "$COMPILER" "$WORK/pair" \
     "$CASES/construct_read.kofun" \
     "$CASES/move_whole.kofun" \
     "$CASES/copy_refused.kofun" \
-    "$CASES/copy_annotated_refused.kofun" ||
+    "$CASES/copy_annotated_refused.kofun" \
+    "$CASES/use_after_take_refused.kofun" ||
     fail 'the two halves disagree'
 
-printf '%s\n' 'PASS: a Bytes record field constructs, reads as a borrowed view, moves whole, and refuses a copy; both halves agree'
+printf '%s\n' 'PASS: a Bytes record field constructs, reads as a borrowed view, moves whole, refuses a copy and a read after the move; both halves agree'

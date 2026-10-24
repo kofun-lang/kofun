@@ -30143,7 +30143,7 @@ static bool move_positional_owner(const char *source, const char *hir, const cha
     free(mode);
     if (borrowed) return false;
     char *type = hir_binding_field(hir, binding, 5);
-    bool admitted = strcmp(type, "Bytes") == 0 || move_nominal_type(source, type);
+    bool admitted = strcmp(type, "Bytes") == 0 || move_nominal_type(source, type) || record_has_bytes_field(source, type);
     free(type);
     return admitted;
 }
@@ -30204,6 +30204,41 @@ static bool move_positional_binding(const char *source, const char *hir, int64_t
     bool admitted = move_positional_owner(source, hir, binding);
     free(binding);
     return admitted && move_straight_line_position(source, cursor);
+}
+
+/* #1737. `stage2_list_append(list, element)` moves the element record into the
+ * next slot by value, so its second argument is a whole-binding move exactly
+ * like a bare binding in a `take` slot. The builtin has no declaration for the
+ * slot walk to read a mode from, so the position is recognised here, with the
+ * same argument grammar the emitter requires: a bare list binding, a comma,
+ * then a bare element binding. The type bound and the straight-line scope are
+ * the positional ones, so a loop or branch body is not inferred to move. */
+static bool move_append_element(const char *source, const char *hir, int64_t cursor) {
+    char *position = call_argument_parameter_property(source, cursor, "callee");
+    if (position[0] == '\0') { free(position); return false; }
+    int64_t call = decimal_value(position);
+    free(position);
+    char *lexical = hir_use_binding_id(hir, call);
+    bool direct = lexical[0] == '\0';
+    free(lexical);
+    if (!direct || !token_equal(source, call, "stage2_list_append")) return false;
+    int64_t open = skip_trivia(source, token_end(source, call));
+    if (!token_equal(source, open, "(")) return false;
+    int64_t list = skip_trivia(source, token_end(source, open));
+    int64_t list_end = argument_end(source, list);
+    int64_t separator = skip_trivia(source, list_end);
+    if (strcmp(token_kind(source, list), "identifier") != 0 ||
+        token_end(source, list) != list_end ||
+        !token_equal(source, separator, ",")) {
+        return false;
+    }
+    if (skip_trivia(source, token_end(source, separator)) != cursor) return false;
+    int64_t element_end = token_end(source, cursor);
+    if (expression_end(source, cursor) != element_end) return false;
+    char *binding = hir_use_binding_id(hir, cursor);
+    bool owner = move_positional_owner(source, hir, binding);
+    free(binding);
+    return owner && move_straight_line_position(source, cursor);
 }
 
 /* All move spellings invalidate one resolved BindingId, never a display name.
@@ -30326,8 +30361,10 @@ static bool move_call_binding(
     free(binding);
     if (!resolved) return false;
     /* Existing labelled and pipeline rules retain their type scope. Ordinary
-     * positional calls add only the #1540 direct, bare, owning v1 slice. */
+     * positional calls add only the #1540 direct, bare, owning v1 slice, and
+     * a list append's element is that same slice (#1737). */
     if (pipeline_subject_take(source, cursor)) return true;
+    if (move_append_element(source, hir, cursor)) return true;
     char *mode = call_argument_expected_mode(source, cursor);
     bool taken = strcmp(mode, "take") == 0;
     free(mode);

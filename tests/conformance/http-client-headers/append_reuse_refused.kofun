@@ -1,0 +1,16 @@
+# #1737. `stage2_list_append` moves the element record into the list, so the
+# element binding holds nothing afterwards: reading it again is refused E2S123.
+# Before #1737 this was accepted, and the read went through storage the list
+# slot now owns.
+type Header = {
+    name: Bytes,
+    value: Bytes,
+}
+
+fn main() -> Int {
+    let headers: List[Header] = []
+    let first: Header = Header(name: stage2_bytes_empty(), value: stage2_bytes_empty())
+    stage2_list_append(headers, first)
+    print(stage2_bytes_len(first.name))
+    return 0
+}
