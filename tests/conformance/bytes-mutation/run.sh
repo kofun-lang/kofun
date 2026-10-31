@@ -25,6 +25,15 @@ fail() {
     exit 1
 }
 
+# The typed sidecar's diagnostic detail bound, read from its header rather than
+# copied, so raising it cannot leave a gate checking the old number.
+DETAIL_BOUND=$(
+    sed -n 's/^#define KOFUN_SEMANTIC_ERROR_DETAIL_BYTES \([0-9][0-9]*\)u\{0,1\}$/\1/p' \
+        "$ROOT/bootstrap/stage2/semantic_events.h"
+)
+test -n "$DETAIL_BOUND" ||
+    fail 'the semantic error detail bound could not be read from semantic_events.h'
+
 rm -rf "$WORK"
 mkdir -p "$WORK"
 
@@ -438,7 +447,7 @@ refuses_private_generated() {
         reported=$(sed -n '1p' "$WORK/$stem.private.stderr")
     fi
     width=$(printf '%s\n' "$reported" | wc -c)
-    test "$width" -lt 160 ||
+    test "$width" -le "$DETAIL_BOUND" ||
         fail "$stem's E2S179 detail exceeds the typed-sidecar bound"
 }
 
@@ -559,14 +568,13 @@ then
     fail 'both refusal shapes report the same sentence'
 fi
 
-# Every refusal fits the typed sidecar's frozen 160-byte detail field. The
-# semantic producer copies a diagnostic into `char detail[160]` and truncates
-# silently, so a longer sentence reaches an author through the compiler and a
-# different, shorter one through every consumer of the event stream. Nothing
-# had reached the bound before: the longest Stage 2 golden was 142 bytes, and
-# the first draft of this refusal was 185. `task stage2-events` catches it,
-# but only as a `cmp` failure between the producer and the authority, so the
-# bound is stated here where the sentence is chosen.
+# Every refusal fits the typed sidecar's detail field. The semantic producer
+# copies a diagnostic into `char detail[]` sized by
+# `KOFUN_SEMANTIC_ERROR_DETAIL_BYTES` and truncates silently, so a longer
+# sentence reaches an author through the compiler and a different, shorter one
+# through every consumer of the event stream. `task stage2-events` catches the
+# same drift, but only as a `cmp` failure between the producer and the
+# authority.
 for reported in same_carrier unresolved_carrier temporary_carrier \
     parenthesized_same_carrier parenthesized_temporary \
     wrapper_conflict_edit_read wrapper_conflict_edit_edit \
@@ -574,8 +582,8 @@ for reported in same_carrier unresolved_carrier temporary_carrier \
     wrapper_conflict_arity wrapper_conflict_type
 do
     width=$(head -n 1 "$WORK/$reported.reported" | wc -c)
-    test "$width" -lt 160 ||
-        fail "the $reported refusal is $width bytes; the sidecar truncates at 160"
+    test "$width" -le "$DETAIL_BOUND" ||
+        fail "the $reported refusal is $width bytes; the sidecar truncates at $DETAIL_BOUND"
 done
 
 for stem in read_to_edit_ordinary read_to_edit_ordinary_parenthesized \
@@ -592,8 +600,8 @@ do
     cmp "$WORK/$stem.reported" "$WORK/$stem.repeat" ||
         fail "$stem reported differently on a second run"
     width=$(head -n 1 "$WORK/$stem.reported" | wc -c)
-    test "$width" -lt 160 ||
-        fail "$stem refusal is $width bytes; the sidecar truncates at 160"
+    test "$width" -le "$DETAIL_BOUND" ||
+        fail "$stem refusal is $width bytes; the sidecar truncates at $DETAIL_BOUND"
     test ! -e "$WORK/$stem.repeat.c" ||
         fail "$stem committed C on its repeat"
     test ! -e "$WORK/$stem.repeat.bin" ||
@@ -711,8 +719,8 @@ do
     cmp "$WORK/$stem.reported" "$WORK/$stem.repeat" ||
         fail "$stem reported differently on a second run"
     width=$(head -n 1 "$WORK/$stem.reported" | wc -c)
-    test "$width" -lt 160 ||
-        fail "$stem refusal is $width bytes; the sidecar truncates at 160"
+    test "$width" -le "$DETAIL_BOUND" ||
+        fail "$stem refusal is $width bytes; the sidecar truncates at $DETAIL_BOUND"
     test ! -e "$WORK/$stem.repeat.c" ||
         fail "$stem committed C on its repeat"
     test ! -e "$WORK/$stem.repeat.bin" ||

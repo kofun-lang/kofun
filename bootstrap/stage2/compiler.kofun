@@ -6348,12 +6348,13 @@ fn bytes_carrier_address(
 # The author is sent to `stage2_bytes_append_self`, which is defined for
 # overlap and uses `memmove`.
 #
-# Both sentences are kept under the typed sidecar's frozen
-# `KOFUN_SEMANTIC_ERROR_DETAIL_BYTES` of 160. The semantic producer copies a
-# diagnostic into a `char detail[160]` and truncates silently; `stage2-events`
+# Both sentences are kept under the typed sidecar's
+# `KOFUN_SEMANTIC_ERROR_DETAIL_BYTES` of 256. The semantic producer copies a
+# diagnostic into a `char detail[256]` and truncates silently; `stage2-events`
 # catches it only because it compares the producer against the compiler
 # authority. The first draft of this refusal was 185 bytes and the longest
-# existing Stage 2 golden is 142, so nothing had reached the bound before.
+# existing Stage 2 golden is 142, so nothing had reached the old 160-byte bound
+# before.
 fn bytes_unresolved_carrier_error(offset: Int) -> Text {
     return lower_error(
         "E2S177",
@@ -8121,7 +8122,7 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
             # naming a label the declaration carried.
             #
             # The sentence is kept short for the reason #1321's refusals are:
-            # the typed sidecar copies a diagnostic into a `char detail[160]`
+            # the typed sidecar copies a diagnostic into a `char detail[256]`
             # and truncates silently, and an identifier may be 63 bytes.
             let labelled_declaration = function_start_named(source, name)
             if labelled_declaration >= 0 &&
