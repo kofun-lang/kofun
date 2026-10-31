@@ -80,6 +80,14 @@
       ],
       "source": "type 固定[const 桁: Int] = { 数: Int, }\nfn 保持(値: 固定[2]) -> 固定[2] { return 値 }\nfn main() -> Int { let 値: 固定[2] = 固定[2](数: 42)\nlet 結果: 固定[2] = 保持(値)\nprint(結果.数)\nreturn 0\n}\n",
       "output": "42\n"
+    },
+    {
+      "name": "record-payload-enum",
+      "covers": [
+        "record-type"
+      ],
+      "source": "type 詳細 = { 番号: Int, 有効: Bool, }\ntype 結果 =\n    | 待機\n    | 完了(詳細: 詳細)\nfn main() -> Int {\n let 中身: 詳細 = 詳細(番号: 42, 有効: true)\n let 値: 結果 = 完了(中身)\n match 値 {\n  待機 => { print(0) },\n  完了(内側) => { print(内側.番号) },\n }\n return 0\n}\n",
+      "output": "42\n"
     }
   ]
 }
