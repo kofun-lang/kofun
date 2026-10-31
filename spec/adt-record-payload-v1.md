@@ -133,7 +133,10 @@ Both predate this slice and are measured on `origin/main@79df6079`:
 `additive`. Every tracked `.kofun` source other than the two payload-refusal
 fixtures below compiles to byte-identical C, IR, and tokens, with the same exit
 status and printed outcome, before and after (1,468 sources compared). The one
-visible delta is the `E2S32` sentence, which now says "one `Int` field or one
-flat `Int`/`Bool` record is supported"; its two pinned goldens
+visible delta is the `E2S32` sentence, which now says "one `Int` or flat
+`Int`/`Bool` record is supported"; its two pinned goldens
 (`tests/conformance/syntax/issues_35_47/enum_payload_multiple_fields.stdout` and
-`enum_payload_unsupported_field.stdout`) changed with it and still refuse.
+`enum_payload_unsupported_field.stdout`) and the three `E2S32` rows in
+`tests/conformance/http-client-errors/refusals.tsv` changed with it and still
+refuse. The sentence is kept inside the typed sidecar's frozen 160-byte detail
+field, because the semantic producer truncates a longer one silently.

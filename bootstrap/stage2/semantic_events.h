@@ -6,11 +6,7 @@
 #include <stdint.h>
 
 #define KOFUN_SEMANTIC_ID_BYTES 32u
-/* Large enough for the longest fixed refusal sentence plus a 63-byte
- * identifier. The producer copies the authority's fallback into this many
- * bytes and truncates past it, so a shorter bound silently changes the
- * message every event-stream consumer sees. */
-#define KOFUN_SEMANTIC_ERROR_DETAIL_BYTES 256u
+#define KOFUN_SEMANTIC_ERROR_DETAIL_BYTES 160u
 #define KOFUN_SEMANTIC_MAX_EVENTS 4096u
 #define KOFUN_SEMANTIC_MAX_EVENT_BYTES (4u * 1024u * 1024u)
 #define KOFUN_SEMANTIC_MAX_TEXT_BYTES 4096u

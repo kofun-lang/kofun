@@ -4403,7 +4403,7 @@ static bool producer_run(
                 owned_source, &limit_name, &limit_bound,
                 &limit_count, &limit_offset)) {
             /* Sized to the destination so the message cannot be truncated
-             * into a different claim: a detail cut at 256 bytes could end
+             * into a different claim: a detail cut at 160 bytes could end
              * mid-number and name a limit nobody has. */
             char detail[KOFUN_SEMANTIC_ERROR_DETAIL_BYTES];
             (void)snprintf(

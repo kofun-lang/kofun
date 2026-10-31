@@ -66,9 +66,7 @@ typedef struct {
     char template_id[64];
     int64_t start;
     int64_t end;
-    /* Kept in step with `KOFUN_SEMANTIC_ERROR_DETAIL_BYTES` in
-     * semantic_events.h; this seed is compiled without that header. */
-    char fallback[256];
+    char fallback[160];
     Stage2DiagnosticAffected affected[4];
     uint16_t affected_count;
     Stage2DiagnosticRelated related[4];
@@ -5203,13 +5201,12 @@ static char *parse_program(const char *source) {
                  * because #1243's causal paths are specified in those terms
                  * and will be built on whatever this emits.
                  *
-                 * Keep the message within the detail bound.
-                 * `Stage2StructuredDiagnostic.fallback` is `char fallback[256]`,
-                 * and the producer pipeline renders from that buffer while
-                 * `compile_file` returns the full string. A longer message
-                 * makes the two pipelines disagree by truncation rather than
-                 * by logic -- which is how the first version of this failed
-                 * `task stage2-events`, at the old 160-byte bound exactly.
+                 * Keep the message short. `Stage2StructuredDiagnostic.fallback`
+                 * is `char[160]`, and the producer pipeline renders from that
+                 * buffer while `compile_file` returns the full string. A longer
+                 * message makes the two pipelines disagree by truncation
+                 * rather than by logic -- which is how the first version of
+                 * this failed `task stage2-events`, at char 160 exactly.
                  */
                 if (payload_count != 0) {
                     int64_t payload_close =
@@ -11717,7 +11714,7 @@ static char *emit_primary(
              * Built before `name` is released, because the sentence names the
              * callee. It is kept short for the same reason #1321's refusals
              * are: the typed sidecar copies a diagnostic into a
-             * `char detail[256]` and truncates silently, and an identifier may
+             * `char detail[160]` and truncates silently, and an identifier may
              * be 63 bytes, so the fixed part has to leave room for one.
              */
             char *bounded = NULL;
@@ -14883,13 +14880,13 @@ static char *bytes_carrier_address(
  * The author is sent to `stage2_bytes_append_self`, which is defined for
  * overlap and uses `memmove`. NULL when the two identities are distinct.
  *
- * Both sentences are kept under the typed sidecar's
- * `KOFUN_SEMANTIC_ERROR_DETAIL_BYTES` of 256. The semantic producer copies a
- * diagnostic into a `char detail[256]` and truncates silently;
+ * Both sentences are kept under the typed sidecar's frozen
+ * `KOFUN_SEMANTIC_ERROR_DETAIL_BYTES` of 160. The semantic producer copies a
+ * diagnostic into a `char detail[160]` and truncates silently;
  * `stage2-events` catches it only because it compares the producer against
  * the compiler authority. The first draft of this refusal was 185 bytes and
- * the longest existing Stage 2 golden is 142, so nothing had reached the old
- * 160-byte bound before.
+ * the longest existing Stage 2 golden is 142, so nothing had reached the
+ * bound before.
  */
 static char *bytes_unresolved_carrier_error(int64_t offset) {
     return lower_error(
@@ -16416,7 +16413,7 @@ static char *validate_optional_uses(const char *source) {
                         !optional_int_refined(source, name, cursor)
                     ) {
                         /* One name, not three: the structured diagnostic
-                         * carries a 256-byte fallback, and a message that
+                         * carries a 160-byte fallback, and a message that
                          * grew with the binding name would be truncated
                          * there while the printed one was not. */
                         Buffer message;
@@ -23156,7 +23153,7 @@ static char *lower_enum_match(
                 buffer_format(
                     &message,
                     "constructor `%s` of enum `%s` declares a payload outside "
-                    "this Core slice; one `Int` field or one flat `Int`/`Bool` "
+                    "this Core slice; one `Int` or flat `Int`/`Bool` "
                     "record is supported",
                     pattern,
                     enum_type
@@ -23814,7 +23811,7 @@ static char *parse_value_enum_match(
                 buffer_format(
                     &message,
                     "constructor `%s` of enum `%s` declares a payload outside "
-                    "this Core slice; one `Int` field or one flat `Int`/`Bool` "
+                    "this Core slice; one `Int` or flat `Int`/`Bool` "
                     "record is supported",
                     pattern,
                     enum_type
@@ -25780,7 +25777,7 @@ static char *lower_body_with_workspace(
                     buffer_format(
                         &message,
                         "constructor `%s` of enum `%s` declares a payload "
-                        "outside this Core slice; one `Int` field or one flat "
+                        "outside this Core slice; one `Int` or flat "
                         "`Int`/`Bool` record is supported",
                         constructor,
                         enum_type
