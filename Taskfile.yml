@@ -1265,6 +1265,7 @@ tasks:
       - task: http-client-headers
       - task: http-client-origin
       - task: http-client-errors
+      - task: http-client-request
 
   http-client-headers:
     desc: "Verify Header and a bounded List[Header] at 128: append, read, index, lookup, move, and the R038 refusal"
@@ -1280,6 +1281,11 @@ tasks:
     desc: "Verify the closed four-kind HttpError ADT, its flat record payloads, and its projection of every oracle error"
     cmds:
       - "sh tests/conformance/http-client-errors/run.sh"
+
+  http-client-request:
+    desc: "Verify the deterministic HTTP/1.1 request bytes, validation refusals, and scripted write cursor against the #1257 model"
+    cmds:
+      - "sh tests/conformance/http-client-request/run.sh"
 
   bounded-bytes:
     desc: "Verify the fixture-bounded Bytes[65536] carrier, mutation, file-read, stream-read, and Text-bridge checkpoint"
