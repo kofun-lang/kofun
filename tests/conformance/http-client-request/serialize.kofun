@@ -244,9 +244,6 @@ fn serialize(
             2 + stage2_bytes_len(headers[index].value) + 2
         index = index + 1
     }
-    if header_bytes > limits.max_header_bytes {
-        return 7
-    }
     let body_len = stage2_bytes_len(body)
     if body_len > limits.max_body_bytes {
         return 8
@@ -269,6 +266,13 @@ fn serialize(
         total = total + 16 + decimal_digits(body_len) + 2 + body_len
     }
     total = total + 2
+    let mut head_total = total
+    if is_post(method) != 0 {
+        head_total = head_total - body_len
+    }
+    if head_total > limits.max_header_bytes {
+        return 7
+    }
     if total > 65536 {
         return 9
     }
