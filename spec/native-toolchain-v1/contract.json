@@ -245,6 +245,100 @@
       "headers": "bounded-List[Header]-preserve-order-and-duplicates",
       "origin": "HttpOrigin-https-flag-ascii-host-optional-port-origin-form-target",
       "errors": "closed-HttpError-ADT-with-retry-safety-fact",
+      "error": {
+        "adt": "HttpError",
+        "profile": "kofun.http-error/v1",
+        "decision": "RFC-0016/A01",
+        "kinds": [
+          {
+            "kind": "protocol",
+            "constructor": "Protocol",
+            "payload": "ProtocolDetail",
+            "fields": [
+              ["phase", "Int"],
+              ["retry_safe", "Bool"],
+              ["offset", "Int"]
+            ]
+          },
+          {
+            "kind": "limit-exceeded",
+            "constructor": "LimitExceeded",
+            "payload": "LimitDetail",
+            "fields": [
+              ["phase", "Int"],
+              ["retry_safe", "Bool"],
+              ["dimension", "Int"],
+              ["limit", "Int"],
+              ["observed_at_most", "Int"]
+            ]
+          },
+          {
+            "kind": "body-truncated",
+            "constructor": "BodyTruncated",
+            "payload": "TruncatedDetail",
+            "fields": [
+              ["phase", "Int"],
+              ["retry_safe", "Bool"],
+              ["offset", "Int"]
+            ]
+          },
+          {
+            "kind": "transport",
+            "constructor": "Transport",
+            "payload": "TransportDetail",
+            "fields": [
+              ["phase", "Int"],
+              ["retry_safe", "Bool"],
+              ["cause", "Int"],
+              ["offset", "Int"]
+            ]
+          }
+        ],
+        "code_zero": "reserved-never-a-registered-code",
+        "phase_codes": {
+          "write": 1,
+          "head": 2,
+          "body": 3,
+          "drain": 4
+        },
+        "cause_codes": {
+          "failed": 1,
+          "cancelled": 2,
+          "deadline": 3
+        },
+        "dimension_codes": {
+          "request_bytes": 1,
+          "header_count": 2,
+          "header_name_bytes": 3,
+          "header_value_bytes": 4,
+          "header_total_bytes": 5,
+          "status_line_bytes": 6,
+          "chunk_line_bytes": 7,
+          "chunk_count": 8,
+          "chunk_bytes": 9,
+          "trailer_count": 10,
+          "trailer_total_bytes": 11,
+          "buffered_body_bytes": 12,
+          "read_all_hard_bytes": 13,
+          "early_drain_bytes": 14,
+          "script_operations": 15
+        },
+        "projection": {
+          "url": [
+            { "kind": "protocol" },
+            { "kind": "transport", "cause": "failed" }
+          ],
+          "connect": [{ "kind": "transport", "cause": "failed" }],
+          "write": [{ "kind": "transport", "cause": "failed" }],
+          "read": [{ "kind": "transport", "cause": "failed" }],
+          "protocol": [{ "kind": "protocol" }],
+          "timeout": [{ "kind": "transport", "cause": "deadline" }],
+          "cancelled": [{ "kind": "transport", "cause": "cancelled" }],
+          "limit": [{ "kind": "limit-exceeded" }],
+          "truncated-body": [{ "kind": "body-truncated" }],
+          "invalid-reuse": [{ "kind": "protocol" }]
+        }
+      },
       "stream": "generic-synchronous-finite-Stream[Bytes,HttpError]",
       "script": "versioned-affine-write-read-eof-failure-cancel-operations",
       "time": "injected-events-only",

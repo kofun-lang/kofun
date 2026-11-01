@@ -5,6 +5,22 @@
 - Status: accepted
 - Decided: 2026-08-11
 
+> **Amended: `RFC-0016/A01` (2026-10-18).** The `HttpError` of v1 is the four
+> kinds the #1257 oracle can produce, in this order: `protocol`,
+> `limit-exceeded`, `body-truncated`, `transport`. Each is one constructor
+> carrying one flat record with an `Int` phase code and a `Bool` `retry_safe`
+> beside its own fields; phase, cause, and dimension are `Int` codes in a
+> registry that never assigns 0, not enums (#1258 Q1). The other families this
+> RFC names are projected, not dropped: `timeout` is `transport` with cause
+> `deadline` and its phase (the `Deadline(phase)` below), `cancelled` is
+> `transport` with cause `cancelled`, connect/write/read are `transport` with
+> cause `failed`, `invalid-reuse` and a malformed URL are `protocol`, a URL that
+> does not resolve is `transport`, `limit` is `limit-exceeded`, and `truncated
+> body` is `body-truncated`. The #1257 oracle gains a `deadline` operation.
+> The accepted text below is preserved as written; the ledger amendment,
+> `spec/http-error-v1.md`, and `spec/native-toolchain-v1/contract.json`
+> (`http_carrier.error`) are authoritative.
+
 This RFC decides [#1256](https://github.com/kofun-lang/kofun/issues/1256)
 for the accepted client contract and implementation children #1258-#1264. It
 defines a scripted C11 Stage 2 profile and claims no live network or TLS client.

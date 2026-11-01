@@ -104,6 +104,31 @@ const mutations = [
         (copy) => copy.decisions.decimal_backends.host_linker = true],
     ['undersized HTTP headers', 'http-carrier',
         (copy) => copy.decisions.http_carrier.limits.header_total_bytes = 65535],
+    /*
+     * #1697. The closed HttpError ADT. Each row removes one thing the decision
+     * made load-bearing: the four-kind set, the phase and retry-safety fact on
+     * every kind, the rule that no registry assigns 0, the tie between
+     * dimension codes and the limit rows, and the projection of the other
+     * RFC-0016 families onto those four kinds.
+     */
+    ['a fifth HttpError kind', 'http-carrier', (copy) => {
+        copy.decisions.http_carrier.error.kinds.push({
+            kind: 'timeout',
+            constructor: 'Timeout',
+            payload: 'TimeoutDetail',
+            fields: [['phase', 'Int'], ['retry_safe', 'Bool']],
+        })
+    }],
+    ['an HttpError kind without retry_safe', 'http-carrier', (copy) => {
+        copy.decisions.http_carrier.error.kinds[0].fields =
+            [['phase', 'Int'], ['offset', 'Int']]
+    }],
+    ['a registered phase code of zero', 'http-carrier',
+        (copy) => copy.decisions.http_carrier.error.phase_codes.write = 0],
+    ['a dimension that is not a limit row', 'http-carrier',
+        (copy) => copy.decisions.http_carrier.error.dimension_codes.wall_clock_seconds = 16],
+    ['timeout projected onto a fifth kind', 'http-carrier',
+        (copy) => copy.decisions.http_carrier.error.projection.timeout = [{ kind: 'timeout' }]],
     ['runtime instance search', 'generics',
         (copy) => copy.decisions.generics.runtime_instance_search = true],
     ['KIF v2 reinterpretation', 'kif-generics',

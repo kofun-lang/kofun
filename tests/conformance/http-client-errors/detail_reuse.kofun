@@ -1,0 +1,53 @@
+# #1697. A flat payload record is trivially copyable, so binding it into a
+# constructor copies it: the record stays readable afterwards, and one record
+# can seed two errors.
+# BEGIN kofun.http-error/v1
+type ProtocolDetail = {
+    phase: Int,
+    retry_safe: Bool,
+    offset: Int,
+}
+
+type LimitDetail = {
+    phase: Int,
+    retry_safe: Bool,
+    dimension: Int,
+    limit: Int,
+    observed_at_most: Int,
+}
+
+type TruncatedDetail = {
+    phase: Int,
+    retry_safe: Bool,
+    offset: Int,
+}
+
+type TransportDetail = {
+    phase: Int,
+    retry_safe: Bool,
+    cause: Int,
+    offset: Int,
+}
+
+type HttpError =
+    | Protocol(detail: ProtocolDetail)
+    | LimitExceeded(detail: LimitDetail)
+    | BodyTruncated(detail: TruncatedDetail)
+    | Transport(detail: TransportDetail)
+# END kofun.http-error/v1
+
+fn main() -> Int {
+    let protocol: ProtocolDetail = ProtocolDetail(phase: 2, retry_safe: false, offset: 17)
+    let first: HttpError = Protocol(protocol)
+    let second: HttpError = Protocol(protocol)
+    print(protocol.offset)
+    match first {
+        Protocol(detail) => { print(detail.offset) },
+        _ => { print(0) },
+    }
+    match second {
+        Protocol(detail) => { print(detail.offset + protocol.offset) },
+        _ => { print(0) },
+    }
+    return 0
+}

@@ -1,0 +1,69 @@
+# #1697. The slice is not HttpError-shaped: a record may be named by several
+# constructors, two enums in one source may each carry records, and a one-`Int`
+# constructor and a payload-free one sit beside them. Every enum shares the
+# widened value, so each constructor keeps a member of its own.
+type Detail = {
+    code: Int,
+    flag: Bool,
+}
+
+type Other = {
+    left: Int,
+    right: Int,
+}
+
+type First =
+    | Alpha(detail: Detail)
+    | Beta(detail: Detail)
+    | Gamma(other: Other)
+    | Delta(value: Int)
+    | Epsilon
+
+type Second =
+    | One(detail: Detail)
+    | Two
+
+fn pick(first: First) -> Int {
+    let mut result = 0
+    match first {
+        Alpha(d) => { result = d.code },
+        Beta(d) => { result = d.code * 10 },
+        Gamma(o) => { result = o.left + o.right },
+        Delta(v) => { result = v },
+        Epsilon => { result = -1 },
+    }
+    return result
+}
+
+fn second(value: Second) -> Int {
+    let mut result = 0
+    match value {
+        One(d) => {
+            if d.flag {
+                result = d.code
+            }
+        },
+        Two => { result = 2 },
+    }
+    return result
+}
+
+fn main() -> Int {
+    let d: Detail = Detail(code: 7, flag: true)
+    let o: Other = Other(left: 3, right: 4)
+    let a: First = Alpha(d)
+    let b: First = Beta(d)
+    let g: First = Gamma(o)
+    let l: First = Delta(9)
+    let e: First = Epsilon
+    print(pick(a))
+    print(pick(b))
+    print(pick(g))
+    print(pick(l))
+    print(pick(e))
+    let one: Second = One(d)
+    let two: Second = Two
+    print(second(one))
+    print(second(two))
+    return 0
+}

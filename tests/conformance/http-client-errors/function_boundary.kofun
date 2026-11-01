@@ -1,0 +1,108 @@
+# #1697. An `HttpError` crosses function boundaries in the three positions a
+# one-`Int` enum value already does: a constructor in return position, a value
+# passed as an argument, and a call that returns one bound by an annotated
+# `let`. The payload record is bound first, because Stage 2 admits a record only
+# as a whole binding or call.
+# BEGIN kofun.http-error/v1
+type ProtocolDetail = {
+    phase: Int,
+    retry_safe: Bool,
+    offset: Int,
+}
+
+type LimitDetail = {
+    phase: Int,
+    retry_safe: Bool,
+    dimension: Int,
+    limit: Int,
+    observed_at_most: Int,
+}
+
+type TruncatedDetail = {
+    phase: Int,
+    retry_safe: Bool,
+    offset: Int,
+}
+
+type TransportDetail = {
+    phase: Int,
+    retry_safe: Bool,
+    cause: Int,
+    offset: Int,
+}
+
+type HttpError =
+    | Protocol(detail: ProtocolDetail)
+    | LimitExceeded(detail: LimitDetail)
+    | BodyTruncated(detail: TruncatedDetail)
+    | Transport(detail: TransportDetail)
+# END kofun.http-error/v1
+
+fn limit_error(dimension: Int, limit: Int, seen: Int) -> HttpError {
+    let detail: LimitDetail = LimitDetail(
+        phase: 2,
+        retry_safe: false,
+        dimension: dimension,
+        limit: limit,
+        observed_at_most: seen,
+    )
+    return LimitExceeded(detail)
+}
+
+fn deadline_error(phase: Int) -> HttpError {
+    let detail: TransportDetail = TransportDetail(
+        phase: phase,
+        retry_safe: false,
+        cause: 3,
+        offset: 0,
+    )
+    return Transport(detail)
+}
+
+fn unsent_deadline_error() -> HttpError {
+    let detail: TransportDetail = TransportDetail(
+        phase: 1,
+        retry_safe: true,
+        cause: 3,
+        offset: 0,
+    )
+    return Transport(detail)
+}
+
+fn is_retryable(error: HttpError) -> Int {
+    let mut retry = 0
+    match error {
+        Transport(detail) => {
+            if detail.retry_safe {
+                retry = 1
+            }
+        },
+        _ => { retry = 0 },
+    }
+    return retry
+}
+
+fn phase_of(error: HttpError) -> Int {
+    let mut phase = 0
+    match error {
+        Protocol(detail) => { phase = detail.phase },
+        LimitExceeded(detail) => { phase = detail.phase },
+        BodyTruncated(detail) => { phase = detail.phase },
+        Transport(detail) => { phase = detail.phase },
+    }
+    return phase
+}
+
+fn main() -> Int {
+    let limit: HttpError = limit_error(5, 65536, 65537)
+    let write_deadline: HttpError = unsent_deadline_error()
+    let body_deadline: HttpError = deadline_error(3)
+    print(phase_of(limit))
+    print(phase_of(write_deadline))
+    print(phase_of(body_deadline))
+    print(is_retryable(write_deadline))
+    print(is_retryable(body_deadline))
+    print(is_retryable(limit))
+    print(phase_of(deadline_error(4)))
+    return 0
+}

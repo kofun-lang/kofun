@@ -1,0 +1,68 @@
+# #1697. A one-`Int` enum and an `HttpError` in one program. The widened enum
+# value is shared, so the `Int` payload constructors switch to the named
+# initializer in the same translation unit, and both still run.
+# BEGIN kofun.http-error/v1
+type ProtocolDetail = {
+    phase: Int,
+    retry_safe: Bool,
+    offset: Int,
+}
+
+type LimitDetail = {
+    phase: Int,
+    retry_safe: Bool,
+    dimension: Int,
+    limit: Int,
+    observed_at_most: Int,
+}
+
+type TruncatedDetail = {
+    phase: Int,
+    retry_safe: Bool,
+    offset: Int,
+}
+
+type TransportDetail = {
+    phase: Int,
+    retry_safe: Bool,
+    cause: Int,
+    offset: Int,
+}
+
+type HttpError =
+    | Protocol(detail: ProtocolDetail)
+    | LimitExceeded(detail: LimitDetail)
+    | BodyTruncated(detail: TruncatedDetail)
+    | Transport(detail: TransportDetail)
+# END kofun.http-error/v1
+
+type Reply =
+    | Pending
+    | Ready(value: Int)
+
+fn make_reply(value: Int) -> Reply {
+    return Ready(value + 1)
+}
+
+fn read_reply(reply: Reply) -> Int {
+    let mut result = 0
+    match reply {
+        Pending => { result = 100 },
+        Ready(value) => { result = value },
+    }
+    return result
+}
+
+fn main() -> Int {
+    let protocol: ProtocolDetail = ProtocolDetail(phase: 2, retry_safe: false, offset: 17)
+    let error: HttpError = Protocol(protocol)
+    let ready: Reply = make_reply(4)
+    let pending: Reply = Pending
+    print(read_reply(ready))
+    print(read_reply(pending))
+    match error {
+        Protocol(detail) => { print(detail.offset) },
+        _ => { print(0) },
+    }
+    return 0
+}

@@ -168,6 +168,7 @@ cc	invoke	2	required-today	required	tests/conformance/discovery/sanitizer-object
 cc	invoke	5	required-today	required	tests/conformance/effects/pure-boundary/run.sh
 cc	invoke	1	required-today	required	tests/conformance/effects/pure-io/run.sh
 cc	invoke	3	required-today	required	tests/conformance/generics/run.sh
+cc	invoke	1	required-today	required	tests/conformance/http-client-errors/run.sh
 cc	invoke	1	required-today	required	tests/conformance/http-client-headers/run.sh
 cc	invoke	1	required-today	required	tests/conformance/http-client-origin/run.sh
 cc	invoke	4	required-today	required	tests/conformance/incremental/run.sh
@@ -321,6 +322,7 @@ node	invoke	1	required-today	required	tests/conformance/concurrency/ownership/ru
 node	invoke	2	required-today	required	tests/conformance/concurrency/runtime/run.sh
 node	invoke	7	required-today	required	tests/conformance/effects/pure-boundary/run.sh
 node	invoke	5	required-today	required	tests/conformance/effects/pure-io/run.sh
+node	invoke	7	required-today	required	tests/conformance/http-client-errors/run.sh
 node	invoke	2	required-today	required	tests/conformance/http-client-headers/run.sh
 node	invoke	2	required-today	required	tests/conformance/http-client-origin/run.sh
 node	invoke	3	required-today	required	tests/conformance/int-bits/run.sh
@@ -467,6 +469,9 @@ node	source	1	required-today	required	tests/conformance/concurrency/ownership/no
 node	source	1	required-today	required	tests/conformance/concurrency/runtime/check-model.mjs
 node	source	1	required-today	required	tests/conformance/effects/pure-boundary/report.mjs
 node	source	1	required-today	required	tests/conformance/effects/pure-io/report.mjs
+node	source	1	required-today	required	tests/conformance/http-client-errors/capture.mjs
+node	source	1	required-today	required	tests/conformance/http-client-errors/check-registry.mjs
+node	source	1	required-today	required	tests/conformance/http-client-errors/value_match_pair.mjs
 node	source	1	required-today	required	tests/conformance/int-bits/check-pair.mjs
 node	source	1	required-today	required	tests/conformance/move-call-crossings/check.mjs
 node	source	1	required-today	required	tests/conformance/record-bytes-fields/pair.mjs
@@ -699,6 +704,7 @@ shell-build-driver	source	1	required-today	required	tests/conformance/discovery/
 shell-build-driver	source	1	required-today	required	tests/conformance/effects/pure-boundary/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/effects/pure-io/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/generics/run.sh
+shell-build-driver	source	1	required-today	required	tests/conformance/http-client-errors/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/http-client-headers/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/http-client-origin/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/incremental/run.sh

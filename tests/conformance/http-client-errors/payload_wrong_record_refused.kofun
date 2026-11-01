@@ -1,0 +1,48 @@
+# #1697. A constructor takes exactly the record its payload names: a
+# `LimitDetail` is not a `ProtocolDetail`, even though both are flat.
+# BEGIN kofun.http-error/v1
+type ProtocolDetail = {
+    phase: Int,
+    retry_safe: Bool,
+    offset: Int,
+}
+
+type LimitDetail = {
+    phase: Int,
+    retry_safe: Bool,
+    dimension: Int,
+    limit: Int,
+    observed_at_most: Int,
+}
+
+type TruncatedDetail = {
+    phase: Int,
+    retry_safe: Bool,
+    offset: Int,
+}
+
+type TransportDetail = {
+    phase: Int,
+    retry_safe: Bool,
+    cause: Int,
+    offset: Int,
+}
+
+type HttpError =
+    | Protocol(detail: ProtocolDetail)
+    | LimitExceeded(detail: LimitDetail)
+    | BodyTruncated(detail: TruncatedDetail)
+    | Transport(detail: TransportDetail)
+# END kofun.http-error/v1
+
+fn main() -> Int {
+    let limit: LimitDetail = LimitDetail(
+        phase: 2,
+        retry_safe: false,
+        dimension: 5,
+        limit: 65536,
+        observed_at_most: 65537,
+    )
+    let error: HttpError = Protocol(limit)
+    return 0
+}

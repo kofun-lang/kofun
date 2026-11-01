@@ -24,6 +24,113 @@ function positiveLimits(limits, field) {
     }
 }
 
+/*
+ * The closed HttpError ADT (#1697, RFC-0016/A01). v1 is the four kinds the
+ * #1257 oracle can produce; phase, cause, and dimension are Int codes inside
+ * the payload record with a registry, and no registry ever assigns 0, because
+ * a zero-initialized record would otherwise read as a real phase or dimension.
+ */
+const HTTP_ERROR_KINDS = Object.freeze(['protocol', 'limit-exceeded', 'body-truncated', 'transport'])
+const HTTP_ERROR_CONSTRUCTORS = Object.freeze(['Protocol', 'LimitExceeded', 'BodyTruncated', 'Transport'])
+const HTTP_ERROR_PHASES = Object.freeze(['write', 'head', 'body', 'drain'])
+const HTTP_ERROR_CAUSES = Object.freeze(['failed', 'cancelled', 'deadline'])
+const HTTP_ERROR_FAMILIES = Object.freeze([
+    'url', 'connect', 'write', 'read', 'protocol', 'timeout', 'cancelled', 'limit',
+    'truncated-body', 'invalid-reuse',
+])
+/* Host and target bounds refuse an origin construction (R039/R040), not a response. */
+const HTTP_ORIGIN_ONLY_LIMITS = Object.freeze(['host_bytes', 'target_bytes'])
+
+function sameKeys(actual, expected, field) {
+    if (actual === null || typeof actual !== 'object' || Array.isArray(actual)) {
+        fail(`${field}: expected an object`)
+    }
+    const keys = Object.keys(actual)
+    if (keys.join(',') !== expected.join(',')) {
+        fail(`${field}: expected keys ${expected.join(', ')} in that order, got ${keys.join(', ')}`)
+    }
+}
+
+function codeRegistry(registry, expectedKeys, field) {
+    sameKeys(registry, expectedKeys, field)
+    const seen = new Set()
+    for (const [name, code] of Object.entries(registry)) {
+        if (!Number.isSafeInteger(code) || code < 1) {
+            fail(`${field}.${name}: a registered code is a positive integer, and 0 is never registered`)
+        }
+        if (seen.has(code)) fail(`${field}.${name}: duplicate code ${code}`)
+        seen.add(code)
+    }
+    expectedKeys.forEach((name, index) => {
+        equal(registry[name], index + 1, `${field}.${name}`)
+    })
+}
+
+function validateHttpError(http) {
+    const error = http.error ?? fail('http_carrier.error: missing')
+    equal(error.adt, 'HttpError', 'http_carrier.error.adt')
+    equal(error.profile, 'kofun.http-error/v1', 'http_carrier.error.profile')
+    equal(error.decision, 'RFC-0016/A01', 'http_carrier.error.decision')
+    equal(error.code_zero, 'reserved-never-a-registered-code', 'http_carrier.error.code_zero')
+
+    const kinds = error.kinds
+    if (!Array.isArray(kinds) || kinds.length !== HTTP_ERROR_KINDS.length) {
+        fail('http_carrier.error.kinds: the closed set has exactly four kinds')
+    }
+    equal(kinds.map((entry) => entry.kind).join(','), HTTP_ERROR_KINDS.join(','), 'http_carrier.error.kinds[].kind')
+    equal(kinds.map((entry) => entry.constructor).join(','), HTTP_ERROR_CONSTRUCTORS.join(','),
+        'http_carrier.error.kinds[].constructor')
+    const payloads = new Set()
+    for (const entry of kinds) {
+        const where = `http_carrier.error.kinds.${entry.kind}`
+        if (typeof entry.payload !== 'string' || entry.payload === '' || payloads.has(entry.payload)) {
+            fail(`${where}.payload: expected a distinct record name`)
+        }
+        payloads.add(entry.payload)
+        if (!Array.isArray(entry.fields) || entry.fields.length < 2) {
+            fail(`${where}.fields: expected at least a phase and a retry_safe field`)
+        }
+        const names = new Set()
+        for (const field of entry.fields) {
+            if (!Array.isArray(field) || field.length !== 2 || !['Int', 'Bool'].includes(field[1])) {
+                fail(`${where}.fields: every field is [name, Int|Bool], the flat payload record slice`)
+            }
+            if (names.has(field[0])) fail(`${where}.fields: duplicate field ${field[0]}`)
+            names.add(field[0])
+        }
+        equal(JSON.stringify(entry.fields[0]), '["phase","Int"]', `${where}.fields[0]`)
+        equal(JSON.stringify(entry.fields[1]), '["retry_safe","Bool"]', `${where}.fields[1]`)
+    }
+    const fieldsOf = (kind) => kinds.find((entry) => entry.kind === kind).fields.map(([name]) => name)
+    hasAll(fieldsOf('limit-exceeded'), ['dimension', 'limit', 'observed_at_most'],
+        'http_carrier.error.kinds.limit-exceeded.fields')
+    hasAll(fieldsOf('transport'), ['cause'], 'http_carrier.error.kinds.transport.fields')
+
+    codeRegistry(error.phase_codes, HTTP_ERROR_PHASES, 'http_carrier.error.phase_codes')
+    codeRegistry(error.cause_codes, HTTP_ERROR_CAUSES, 'http_carrier.error.cause_codes')
+    const dimensions = Object.keys(http.limits).filter((name) => !HTTP_ORIGIN_ONLY_LIMITS.includes(name))
+    codeRegistry(error.dimension_codes, dimensions, 'http_carrier.error.dimension_codes')
+
+    sameKeys(error.projection, HTTP_ERROR_FAMILIES, 'http_carrier.error.projection')
+    for (const [family, targets] of Object.entries(error.projection)) {
+        if (!Array.isArray(targets) || targets.length === 0) {
+            fail(`http_carrier.error.projection.${family}: expected at least one target`)
+        }
+        for (const target of targets) {
+            if (!HTTP_ERROR_KINDS.includes(target.kind)) {
+                fail(`http_carrier.error.projection.${family}: ${target.kind} is not one of the four kinds`)
+            }
+            if (target.kind === 'transport') {
+                if (!HTTP_ERROR_CAUSES.includes(target.cause)) {
+                    fail(`http_carrier.error.projection.${family}: a transport target names its cause`)
+                }
+            } else if (target.cause !== undefined) {
+                fail(`http_carrier.error.projection.${family}: only a transport target has a cause`)
+            }
+        }
+    }
+}
+
 export function validateContract(contract) {
     equal(contract.schema, 'kofun.native-toolchain-decisions/v1', 'schema')
     equal(contract.profile, 'kofun-only-native/v1', 'profile')
@@ -163,6 +270,7 @@ export function validateContract(contract) {
     if (http.limits.read_all_hard_bytes < http.limits.buffered_body_bytes) {
         fail('http_carrier.limits: read_all_hard_bytes must cover buffered_body_bytes')
     }
+    validateHttpError(http)
 
     const generics = decisions.generics
     equal(generics.source, 'explicit-rank1-type-application', 'generics.source')

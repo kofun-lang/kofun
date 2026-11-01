@@ -1,0 +1,122 @@
+# #1697. The closed `HttpError`: all four kinds construct, and a match reads
+# each kind's phase and `retry_safe` back through the payload record it binds.
+# The carrier block between the markers is generated from the contract's
+# `http_carrier.error` rows by `check-registry.mjs`, which requires every
+# fixture's block to be byte-identical to it.
+# BEGIN kofun.http-error/v1
+type ProtocolDetail = {
+    phase: Int,
+    retry_safe: Bool,
+    offset: Int,
+}
+
+type LimitDetail = {
+    phase: Int,
+    retry_safe: Bool,
+    dimension: Int,
+    limit: Int,
+    observed_at_most: Int,
+}
+
+type TruncatedDetail = {
+    phase: Int,
+    retry_safe: Bool,
+    offset: Int,
+}
+
+type TransportDetail = {
+    phase: Int,
+    retry_safe: Bool,
+    cause: Int,
+    offset: Int,
+}
+
+type HttpError =
+    | Protocol(detail: ProtocolDetail)
+    | LimitExceeded(detail: LimitDetail)
+    | BodyTruncated(detail: TruncatedDetail)
+    | Transport(detail: TransportDetail)
+# END kofun.http-error/v1
+
+fn kind_of(error: HttpError) -> Int {
+    let mut kind = 0
+    match error {
+        Protocol(_) => { kind = 1 },
+        LimitExceeded(_) => { kind = 2 },
+        BodyTruncated(_) => { kind = 3 },
+        Transport(_) => { kind = 4 },
+    }
+    return kind
+}
+
+fn phase_of(error: HttpError) -> Int {
+    let mut phase = 0
+    match error {
+        Protocol(detail) => { phase = detail.phase },
+        LimitExceeded(detail) => { phase = detail.phase },
+        BodyTruncated(detail) => { phase = detail.phase },
+        Transport(detail) => { phase = detail.phase },
+    }
+    return phase
+}
+
+fn retry_safe_of(error: HttpError) -> Int {
+    let mut safe = 0
+    match error {
+        Protocol(detail) => {
+            if detail.retry_safe {
+                safe = 1
+            }
+        },
+        LimitExceeded(detail) => {
+            if detail.retry_safe {
+                safe = 1
+            }
+        },
+        BodyTruncated(detail) => {
+            if detail.retry_safe {
+                safe = 1
+            }
+        },
+        Transport(detail) => {
+            if detail.retry_safe {
+                safe = 1
+            }
+        },
+    }
+    return safe
+}
+
+fn report(error: HttpError) -> Int {
+    print(kind_of(error))
+    print(phase_of(error))
+    print(retry_safe_of(error))
+    return 0
+}
+
+fn main() -> Int {
+    let protocol: ProtocolDetail = ProtocolDetail(phase: 2, retry_safe: false, offset: 17)
+    let limit: LimitDetail = LimitDetail(
+        phase: 2,
+        retry_safe: false,
+        dimension: 5,
+        limit: 65536,
+        observed_at_most: 65537,
+    )
+    let truncated: TruncatedDetail = TruncatedDetail(phase: 3, retry_safe: false, offset: 38)
+    let transport: TransportDetail = TransportDetail(
+        phase: 1,
+        retry_safe: true,
+        cause: 3,
+        offset: 0,
+    )
+    let first: HttpError = Protocol(protocol)
+    let second: HttpError = LimitExceeded(limit)
+    let third: HttpError = BodyTruncated(truncated)
+    let fourth: HttpError = Transport(transport)
+    report(first)
+    report(second)
+    report(third)
+    report(fourth)
+    return 0
+}

@@ -1,0 +1,86 @@
+# #1697. Each kind's own payload fields read back exactly: the offset a protocol
+# or truncation error stopped at, the dimension, limit, and observed bound of a
+# limit error, and the cause a transport error carries beside its phase.
+# BEGIN kofun.http-error/v1
+type ProtocolDetail = {
+    phase: Int,
+    retry_safe: Bool,
+    offset: Int,
+}
+
+type LimitDetail = {
+    phase: Int,
+    retry_safe: Bool,
+    dimension: Int,
+    limit: Int,
+    observed_at_most: Int,
+}
+
+type TruncatedDetail = {
+    phase: Int,
+    retry_safe: Bool,
+    offset: Int,
+}
+
+type TransportDetail = {
+    phase: Int,
+    retry_safe: Bool,
+    cause: Int,
+    offset: Int,
+}
+
+type HttpError =
+    | Protocol(detail: ProtocolDetail)
+    | LimitExceeded(detail: LimitDetail)
+    | BodyTruncated(detail: TruncatedDetail)
+    | Transport(detail: TransportDetail)
+# END kofun.http-error/v1
+
+fn kind_field(error: HttpError) -> Int {
+    let mut field = 0
+    match error {
+        Protocol(detail) => { field = detail.offset },
+        LimitExceeded(detail) => { field = detail.dimension },
+        BodyTruncated(detail) => { field = detail.offset },
+        Transport(detail) => { field = detail.cause },
+    }
+    return field
+}
+
+fn limit_bounds(error: HttpError) -> Int {
+    let mut bound = 0
+    match error {
+        LimitExceeded(detail) => { bound = detail.limit * 100000 + detail.observed_at_most },
+        _ => { bound = -1 },
+    }
+    return bound
+}
+
+fn main() -> Int {
+    let protocol: ProtocolDetail = ProtocolDetail(phase: 2, retry_safe: false, offset: 17)
+    let limit: LimitDetail = LimitDetail(
+        phase: 2,
+        retry_safe: false,
+        dimension: 5,
+        limit: 65536,
+        observed_at_most: 65537,
+    )
+    let truncated: TruncatedDetail = TruncatedDetail(phase: 3, retry_safe: false, offset: 38)
+    let transport: TransportDetail = TransportDetail(
+        phase: 1,
+        retry_safe: true,
+        cause: 3,
+        offset: 0,
+    )
+    let first: HttpError = Protocol(protocol)
+    let second: HttpError = LimitExceeded(limit)
+    let third: HttpError = BodyTruncated(truncated)
+    let fourth: HttpError = Transport(transport)
+    print(kind_field(first))
+    print(kind_field(second))
+    print(kind_field(third))
+    print(kind_field(fourth))
+    print(limit_bounds(second))
+    print(limit_bounds(first))
+    return 0
+}

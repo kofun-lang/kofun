@@ -1,0 +1,20 @@
+# #1697. An enum-typed field in the payload record stays refused where the
+# record is declared: the carve-out does not widen what a record may hold, so
+# `phase` and `dimension` are `Int` codes with a registry, not enums.
+
+type Phase =
+    | Connect
+    | Write
+
+type Detail = {
+    phase: Phase,
+    retry_safe: Bool,
+}
+
+type Failure =
+    | Fine
+    | Broken(detail: Detail)
+
+fn main() -> Int {
+    return 0
+}
