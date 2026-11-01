@@ -1,0 +1,516 @@
+# #1261. The deterministic HTTP/1.1 request serializer over the landed
+# `HttpOrigin`, `Header`/`List[Header]`, and `Bytes` carriers.
+#
+# The oracle is `tests/http/client-model/model.mjs:serializeRequest`. The bytes
+# these functions emit are compared against its `request_bytes` by `run.sh`.
+# Validation happens before the first output byte, so a refused request emits
+# nothing and reports a stable status instead.
+type Header = {
+    name: Bytes,
+    value: Bytes,
+}
+
+type HttpOrigin = {
+    host: Bytes,
+    target: Bytes,
+    port: Int,
+}
+
+type CallerLimits = {
+    max_header_bytes: Int,
+    max_headers: Int,
+    max_chunk_bytes: Int,
+    max_body_bytes: Int,
+}
+
+fn append_crlf(edit out: Bytes) -> Int {
+    stage2_bytes_append(out, 13)
+    stage2_bytes_append(out, 10)
+    return 0
+}
+
+fn append_text_to(edit out: Bytes, edit scratch: Bytes, text: Text) -> Int {
+    stage2_bytes_assign_text(scratch, text)
+    let n = stage2_bytes_len(scratch)
+    stage2_bytes_append_range(out, scratch, 0, n)
+    return n
+}
+
+fn ascii_lower(b: Int) -> Int {
+    if b >= 65 {
+        if b <= 90 {
+            return b + 32
+        }
+    }
+    return b
+}
+
+fn is_alpha_num(b: Int) -> Int {
+    if b >= 48 {
+        if b <= 57 {
+            return 1
+        }
+    }
+    if b >= 65 {
+        if b <= 90 {
+            return 1
+        }
+    }
+    if b >= 97 {
+        if b <= 122 {
+            return 1
+        }
+    }
+    return 0
+}
+
+fn is_token_byte(b: Int) -> Int {
+    if is_alpha_num(b) != 0 {
+        return 1
+    }
+    if b == 33 { return 1 }
+    if b == 35 { return 1 }
+    if b == 36 { return 1 }
+    if b == 37 { return 1 }
+    if b == 38 { return 1 }
+    if b == 39 { return 1 }
+    if b == 42 { return 1 }
+    if b == 43 { return 1 }
+    if b == 45 { return 1 }
+    if b == 46 { return 1 }
+    if b == 94 { return 1 }
+    if b == 95 { return 1 }
+    if b == 96 { return 1 }
+    if b == 124 { return 1 }
+    if b == 126 { return 1 }
+    return 0
+}
+
+fn is_token_name(headers: List[Header], index: Int) -> Int {
+    let n = stage2_bytes_len(headers[index].name)
+    if n == 0 {
+        return 0
+    }
+    let mut i = 0
+    while i < n {
+        if is_token_byte(stage2_bytes_byte_at(headers[index].name, i)) == 0 {
+            return 0
+        }
+        i = i + 1
+    }
+    return 1
+}
+
+fn is_field_value(headers: List[Header], index: Int) -> Int {
+    let n = stage2_bytes_len(headers[index].value)
+    if n == 0 {
+        return 1
+    }
+    let first = stage2_bytes_byte_at(headers[index].value, 0)
+    if first == 32 {
+        return 0
+    }
+    if first == 9 {
+        return 0
+    }
+    let last = stage2_bytes_byte_at(headers[index].value, n - 1)
+    if last == 32 {
+        return 0
+    }
+    if last == 9 {
+        return 0
+    }
+    let mut i = 0
+    while i < n {
+        let b = stage2_bytes_byte_at(headers[index].value, i)
+        let mut ok = 0
+        if b == 9 {
+            ok = 1
+        }
+        if b >= 32 {
+            if b <= 126 {
+                ok = 1
+            }
+        }
+        if ok == 0 {
+            return 0
+        }
+        i = i + 1
+    }
+    return 1
+}
+
+fn header_equals(
+    headers: List[Header],
+    index: Int,
+    literal: Text,
+    edit scratch: Bytes
+) -> Int {
+    stage2_bytes_assign_text(scratch, literal)
+    let n = stage2_bytes_len(headers[index].name)
+    if n != stage2_bytes_len(scratch) {
+        return 0
+    }
+    let mut i = 0
+    while i < n {
+        if ascii_lower(stage2_bytes_byte_at(headers[index].name, i)) !=
+           stage2_bytes_byte_at(scratch, i) {
+            return 0
+        }
+        i = i + 1
+    }
+    return 1
+}
+
+fn is_reserved_header(
+    headers: List[Header],
+    index: Int,
+    edit scratch: Bytes
+) -> Int {
+    if header_equals(headers, index, "content-length", scratch) != 0 {
+        return 1
+    }
+    if header_equals(headers, index, "transfer-encoding", scratch) != 0 {
+        return 1
+    }
+    if header_equals(headers, index, "host", scratch) != 0 {
+        return 1
+    }
+    return 0
+}
+
+fn decimal_digits(value: Int) -> Int {
+    if value == 0 {
+        return 1
+    }
+    let mut n = 0
+    let mut left = value
+    while left > 0 {
+        n = n + 1
+        left = left // 10
+    }
+    return n
+}
+
+fn is_get(method: Text) -> Int {
+    if method == "GET" {
+        return 1
+    }
+    return 0
+}
+
+fn is_post(method: Text) -> Int {
+    if method == "POST" {
+        return 1
+    }
+    return 0
+}
+
+# 0 ok; 1 unsupported method; 2 header name not a token; 3 reserved header;
+# 4 invalid field value; 5 GET carries a body; 6 max_headers; 7 max_header_bytes;
+# 8 max_body_bytes; 9 the carrier cannot hold the request.
+fn serialize(
+    read origin: HttpOrigin,
+    method: Text,
+    headers: List[Header],
+    read body: Bytes,
+    limits: CallerLimits,
+    edit out: Bytes,
+    edit scratch: Bytes
+) -> Int {
+    stage2_bytes_clear(out)
+    if is_get(method) == 0 {
+        if is_post(method) == 0 {
+            return 1
+        }
+    }
+    let count = len(headers)
+    if count > limits.max_headers {
+        return 6
+    }
+    let mut header_bytes = 0
+    let mut index = 0
+    while index < count {
+        if is_token_name(headers, index) == 0 {
+            return 2
+        }
+        if is_reserved_header(headers, index, scratch) != 0 {
+            return 3
+        }
+        if is_field_value(headers, index) == 0 {
+            return 4
+        }
+        header_bytes = header_bytes + stage2_bytes_len(headers[index].name) +
+            2 + stage2_bytes_len(headers[index].value) + 2
+        index = index + 1
+    }
+    if header_bytes > limits.max_header_bytes {
+        return 7
+    }
+    let body_len = stage2_bytes_len(body)
+    if body_len > limits.max_body_bytes {
+        return 8
+    }
+    if is_get(method) != 0 {
+        if body_len != 0 {
+            return 5
+        }
+    }
+
+    let host_len = stage2_bytes_len(origin.host)
+    let target_len = stage2_bytes_len(origin.target)
+    let mut port_len = 0
+    if origin.port >= 0 {
+        port_len = 1 + decimal_digits(origin.port)
+    }
+    let mut total = len(method) + 1 + target_len + 1 + 8 + 2 +
+        6 + host_len + port_len + 2 + header_bytes
+    if is_post(method) != 0 {
+        total = total + 16 + decimal_digits(body_len) + 2 + body_len
+    }
+    total = total + 2
+    if total > 65536 {
+        return 9
+    }
+
+    stage2_bytes_reserve(out, total)
+    append_text_to(out, scratch, method)
+    stage2_bytes_append(out, 32)
+    stage2_bytes_append_range(out, origin.target, 0, target_len)
+    stage2_bytes_append(out, 32)
+    append_text_to(out, scratch, "HTTP/1.1")
+    append_crlf(out)
+    append_text_to(out, scratch, "Host: ")
+    stage2_bytes_append_range(out, origin.host, 0, host_len)
+    if origin.port >= 0 {
+        stage2_bytes_append(out, 58)
+        append_text_to(out, scratch, to_text(origin.port))
+    }
+    append_crlf(out)
+    index = 0
+    while index < count {
+        stage2_bytes_append_range(out, headers[index].name, 0,
+            stage2_bytes_len(headers[index].name))
+        stage2_bytes_append(out, 58)
+        stage2_bytes_append(out, 32)
+        stage2_bytes_append_range(out, headers[index].value, 0,
+            stage2_bytes_len(headers[index].value))
+        append_crlf(out)
+        index = index + 1
+    }
+    if is_post(method) != 0 {
+        append_text_to(out, scratch, "Content-Length: ")
+        append_text_to(out, scratch, to_text(body_len))
+        append_crlf(out)
+    }
+    append_crlf(out)
+    if is_post(method) != 0 {
+        stage2_bytes_append_range(out, body, 0, body_len)
+    }
+    return 0
+}
+
+fn dump(label: Text, status: Int, read out: Bytes) -> Int {
+    print(label)
+    print(status)
+    print(stage2_bytes_len(out))
+    let mut i = 0
+    while i < stage2_bytes_len(out) {
+        print(stage2_bytes_byte_at(out, i))
+        i = i + 1
+    }
+    return 0
+}
+
+# The scripted write cursor. The model writes the whole request as one event
+# and records `write:<total>`; this returns the same normalized outcome for
+# every short-write boundary. 0 complete, 1 cancelled, 2 deadline, 3 failure.
+fn write_outcome(
+    method: Text,
+    read out: Bytes,
+    max_per_write: Int,
+    cancel: Int,
+    deadline: Int,
+    fail: Int
+) -> Int {
+    if cancel != 0 {
+        return 1
+    }
+    if deadline != 0 {
+        return 2
+    }
+    if fail != 0 {
+        return 3
+    }
+    let total = stage2_bytes_len(out)
+    let mut written = 0
+    while written < total {
+        if max_per_write <= 0 {
+            return 3
+        }
+        let remaining = total - written
+        let mut step = max_per_write
+        if step > remaining {
+            step = remaining
+        }
+        written = written + step
+    }
+    return 0
+}
+
+fn retry_safe(method: Text) -> Int {
+    if is_get(method) != 0 {
+        return 1
+    }
+    return 0
+}
+
+fn dump_write(label: Text, outcome: Int, method: Text) -> Int {
+    print(label)
+    print(outcome)
+    if outcome == 1 {
+        print(0)
+    } else {
+        print(retry_safe(method))
+    }
+    return 0
+}
+
+fn limits() -> CallerLimits {
+    let value: CallerLimits = CallerLimits(
+        max_header_bytes: 4096,
+        max_headers: 16,
+        max_chunk_bytes: 4096,
+        max_body_bytes: 65536,
+    )
+    return value
+}
+
+fn tight_limits() -> CallerLimits {
+    let value: CallerLimits = CallerLimits(
+        max_header_bytes: 4096,
+        max_headers: 16,
+        max_chunk_bytes: 4096,
+        max_body_bytes: 2,
+    )
+    return value
+}
+
+fn main() -> Int {
+    let scratch = stage2_bytes_empty()
+    let out = stage2_bytes_empty()
+    let host = stage2_bytes_empty()
+    stage2_bytes_assign_text(host, "example.test")
+    let target = stage2_bytes_empty()
+    stage2_bytes_assign_text(target, "/index.html")
+    let origin: HttpOrigin = HttpOrigin(host: host, target: target, port: -1)
+
+    let accept_name = stage2_bytes_empty()
+    stage2_bytes_assign_text(accept_name, "Accept")
+    let accept_value = stage2_bytes_empty()
+    stage2_bytes_assign_text(accept_value, "*/*")
+    let headers: List[Header] = []
+    let accept: Header = Header(name: accept_name, value: accept_value)
+    stage2_list_append(headers, accept)
+    let no_body = stage2_bytes_empty()
+
+    let get_status = serialize(origin, "GET", headers, no_body, limits(), out, scratch)
+    dump("get", get_status, out)
+
+    let post_target = stage2_bytes_empty()
+    stage2_bytes_assign_text(post_target, "/submit")
+    let post_origin: HttpOrigin = HttpOrigin(host: host, target: post_target, port: -1)
+    let post_name = stage2_bytes_empty()
+    stage2_bytes_assign_text(post_name, "Content-Type")
+    let post_value = stage2_bytes_empty()
+    stage2_bytes_assign_text(post_value, "application/octet-stream")
+    let post_headers: List[Header] = []
+    let post_header: Header = Header(name: post_name, value: post_value)
+    stage2_list_append(post_headers, post_header)
+    let post_body = stage2_bytes_empty()
+    stage2_bytes_assign_zeroed(post_body, 6)
+    stage2_bytes_byte_set(post_body, 1, 1)
+    stage2_bytes_byte_set(post_body, 2, 2)
+    stage2_bytes_byte_set(post_body, 3, 253)
+    stage2_bytes_byte_set(post_body, 4, 254)
+    stage2_bytes_byte_set(post_body, 5, 255)
+    let post_status = serialize(post_origin, "POST", post_headers, post_body, limits(), out, scratch)
+    dump("post", post_status, out)
+
+    let empty_body = stage2_bytes_empty()
+    let empty_status = serialize(post_origin, "POST", post_headers, empty_body, limits(), out, scratch)
+    dump("post-empty", empty_status, out)
+
+    let bad_name = stage2_bytes_empty()
+    stage2_bytes_assign_text(bad_name, "Bad Name")
+    let bad_headers: List[Header] = []
+    let bad: Header = Header(name: bad_name, value: accept_value)
+    stage2_list_append(bad_headers, bad)
+    dump("bad-name",
+        serialize(origin, "GET", bad_headers, no_body, limits(), out, scratch), out)
+
+    let reserved_name = stage2_bytes_empty()
+    stage2_bytes_assign_text(reserved_name, "Content-Length")
+    let reserved_headers: List[Header] = []
+    let reserved: Header = Header(name: reserved_name, value: accept_value)
+    stage2_list_append(reserved_headers, reserved)
+    dump("reserved",
+        serialize(origin, "GET", reserved_headers, no_body, limits(), out, scratch), out)
+
+    let bad_value = stage2_bytes_empty()
+    stage2_bytes_assign_text(bad_value, "a\rb")
+    let bad_value_headers: List[Header] = []
+    let badv: Header = Header(name: accept_name, value: bad_value)
+    stage2_list_append(bad_value_headers, badv)
+    dump("bad-value",
+        serialize(origin, "GET", bad_value_headers, no_body, limits(), out, scratch), out)
+
+    dump("get-body",
+        serialize(origin, "GET", headers, post_body, limits(), out, scratch), out)
+
+    dump("unsupported-method",
+        serialize(origin, "PATCH", headers, no_body, limits(), out, scratch), out)
+
+    let many: List[Header] = []
+    let mut many_index = 0
+    while many_index < 17 {
+        let many_header: Header = Header(
+            name: stage2_bytes_empty(),
+            value: stage2_bytes_empty()
+        )
+        stage2_list_append(many, many_header)
+        many_index = many_index + 1
+    }
+    dump("too-many-headers",
+        serialize(origin, "GET", many, no_body, limits(), out, scratch), out)
+
+    let wide = stage2_bytes_empty()
+    let mut wide_index = 0
+    while wide_index < 5000 {
+        stage2_bytes_append(wide, 65)
+        wide_index = wide_index + 1
+    }
+    let wide_headers: List[Header] = []
+    let wide_header: Header = Header(name: accept_name, value: wide)
+    stage2_list_append(wide_headers, wide_header)
+    dump("header-bytes-over",
+        serialize(origin, "GET", wide_headers, no_body, limits(), out, scratch), out)
+
+    dump("body-over",
+        serialize(post_origin, "POST", post_headers, post_body, tight_limits(), out, scratch), out)
+
+    # Write phase, after the GET request is rebuilt in `out`.
+    serialize(origin, "GET", headers, no_body, limits(), out, scratch)
+    dump_write("write-one", write_outcome("GET", out, 61, 0, 0, 0), "GET")
+    dump_write("write-tiny", write_outcome("GET", out, 2, 0, 0, 0), "GET")
+    dump_write("write-mid", write_outcome("GET", out, 7, 0, 0, 0), "GET")
+    dump_write("write-short", write_outcome("GET", out, 1, 0, 0, 0), "GET")
+    dump_write("write-zero", write_outcome("GET", out, 0, 0, 0, 0), "GET")
+    dump_write("cancel-write", write_outcome("GET", out, 61, 1, 0, 0), "GET")
+    dump_write("deadline-write", write_outcome("GET", out, 61, 0, 1, 0), "GET")
+    dump_write("fail-write", write_outcome("GET", out, 61, 0, 0, 1), "GET")
+    dump_write("deadline-write-post", write_outcome("POST", out, 61, 0, 1, 0), "POST")
+    dump_write("fail-write-post", write_outcome("POST", out, 61, 0, 0, 1), "POST")
+
+    return 0
+}
