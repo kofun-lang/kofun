@@ -1,0 +1,776 @@
+# #1262. The bounded HTTP/1.1 response head and framing-plan decoder over the
+# landed `Header`/`List[Header]` and `Bytes` carriers.
+#
+# The oracle is `tests/http/client-model/model.mjs`. `run.sh` compares the
+# summary printed here with the model's own result documents. The decoder reads
+# only up to `visible`, so a caller that grows `visible` one byte at a time
+# reaches the same state as one that delivers the whole message; nothing is
+# consumed until the line or body it needs is present.
+#
+# The parsed header names and values live in two flat buffers with parallel
+# length lists rather than a `List[Header]`. A managed record returned or
+# bound inside a loop is an alias this slice refuses, and a flat buffer is also
+# the cheaper representation for the later body-stream child.
+type CallerLimits = {
+    max_header_bytes: Int,
+    max_headers: Int,
+    max_chunk_bytes: Int,
+    max_body_bytes: Int,
+}
+
+fn is_alpha_num(b: Int) -> Int {
+    if b >= 48 {
+        if b <= 57 {
+            return 1
+        }
+    }
+    if b >= 65 {
+        if b <= 90 {
+            return 1
+        }
+    }
+    if b >= 97 {
+        if b <= 122 {
+            return 1
+        }
+    }
+    return 0
+}
+
+fn is_token_byte(b: Int) -> Int {
+    if is_alpha_num(b) != 0 {
+        return 1
+    }
+    if b == 33 { return 1 }
+    if b == 35 { return 1 }
+    if b == 36 { return 1 }
+    if b == 37 { return 1 }
+    if b == 38 { return 1 }
+    if b == 39 { return 1 }
+    if b == 42 { return 1 }
+    if b == 43 { return 1 }
+    if b == 45 { return 1 }
+    if b == 46 { return 1 }
+    if b == 94 { return 1 }
+    if b == 95 { return 1 }
+    if b == 96 { return 1 }
+    if b == 124 { return 1 }
+    if b == 126 { return 1 }
+    return 0
+}
+
+fn ascii_lower(b: Int) -> Int {
+    if b >= 65 {
+        if b <= 90 {
+            return b + 32
+        }
+    }
+    return b
+}
+
+fn find_crlf(read data: Bytes, from: Int, visible: Int) -> Int {
+    let mut i = from
+    while i + 1 < visible {
+        let b = stage2_bytes_byte_at(data, i)
+        if b == 10 {
+            return 0 - (i + 2)
+        }
+        if b == 13 {
+            if stage2_bytes_byte_at(data, i + 1) == 10 {
+                return i
+            }
+            return 0 - (i + 2)
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+fn range_is_crlf(read data: Bytes, start: Int, visible: Int) -> Int {
+    if start + 1 >= visible {
+        return -1
+    }
+    if stage2_bytes_byte_at(data, start) == 13 {
+        if stage2_bytes_byte_at(data, start + 1) == 10 {
+            return 1
+        }
+    }
+    return 0
+}
+
+fn is_token_range(read data: Bytes, start: Int, end: Int) -> Int {
+    if end <= start {
+        return 0
+    }
+    let mut i = start
+    while i < end {
+        if is_token_byte(stage2_bytes_byte_at(data, i)) == 0 {
+            return 0
+        }
+        i = i + 1
+    }
+    return 1
+}
+
+fn is_field_value_range(read data: Bytes, start: Int, end: Int) -> Int {
+    if end <= start {
+        return 1
+    }
+    let mut i = start
+    while i < end {
+        let b = stage2_bytes_byte_at(data, i)
+        let mut ok = 0
+        if b == 9 {
+            ok = 1
+        }
+        if b >= 32 {
+            if b <= 126 {
+                ok = 1
+            }
+        }
+        if ok == 0 {
+            return 0
+        }
+        i = i + 1
+    }
+    return 1
+}
+
+fn trim_start(read data: Bytes, start: Int, end: Int) -> Int {
+    let mut i = start
+    while i < end {
+        let b = stage2_bytes_byte_at(data, i)
+        if b != 32 {
+            if b != 9 {
+                return i
+            }
+        }
+        i = i + 1
+    }
+    return end
+}
+
+fn trim_end(read data: Bytes, start: Int, end: Int) -> Int {
+    let mut i = end
+    while i > start {
+        let b = stage2_bytes_byte_at(data, i - 1)
+        if b != 32 {
+            if b != 9 {
+                return i
+            }
+        }
+        i = i - 1
+    }
+    return start
+}
+
+fn find_colon(read data: Bytes, start: Int, end: Int) -> Int {
+    let mut i = start
+    while i < end {
+        if stage2_bytes_byte_at(data, i) == 58 {
+            return i
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+fn find_semicolon(read data: Bytes, start: Int, end: Int) -> Int {
+    let mut i = start
+    while i < end {
+        if stage2_bytes_byte_at(data, i) == 59 {
+            return i
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+fn find_nul(read data: Bytes, from: Int) -> Int {
+    let mut i = from
+    while i < stage2_bytes_len(data) {
+        if stage2_bytes_byte_at(data, i) == 0 {
+            return i
+        }
+        i = i + 1
+    }
+    return stage2_bytes_len(data)
+}
+
+fn range_equals_ignore_case(
+    read data: Bytes,
+    start: Int,
+    end: Int,
+    literal: Text,
+    edit scratch: Bytes
+) -> Int {
+    stage2_bytes_assign_text(scratch, literal)
+    if end - start != stage2_bytes_len(scratch) {
+        return 0
+    }
+    let mut i = 0
+    while i < end - start {
+        if ascii_lower(stage2_bytes_byte_at(data, start + i)) !=
+           stage2_bytes_byte_at(scratch, i) {
+            return 0
+        }
+        i = i + 1
+    }
+    return 1
+}
+
+fn decimal_range(read data: Bytes, start: Int, end: Int) -> Int {
+    if end <= start {
+        return -1
+    }
+    let mut value = 0
+    let mut i = start
+    while i < end {
+        let b = stage2_bytes_byte_at(data, i)
+        if b < 48 {
+            return -1
+        }
+        if b > 57 {
+            return -1
+        }
+        value = value * 10 + (b - 48)
+        i = i + 1
+    }
+    return value
+}
+
+fn hex_value(b: Int) -> Int {
+    if b >= 48 {
+        if b <= 57 {
+            return b - 48
+        }
+    }
+    if b >= 65 {
+        if b <= 70 {
+            return b - 55
+        }
+    }
+    if b >= 97 {
+        if b <= 102 {
+            return b - 87
+        }
+    }
+    return -1
+}
+
+fn hex_range(read data: Bytes, start: Int, end: Int) -> Int {
+    if end <= start {
+        return -1
+    }
+    if end - start > 15 {
+        return -1
+    }
+    let mut value = 0
+    let mut i = start
+    while i < end {
+        let digit = hex_value(stage2_bytes_byte_at(data, i))
+        if digit < 0 {
+            return -1
+        }
+        value = value * 16 + digit
+        i = i + 1
+    }
+    return value
+}
+
+fn status_code(read data: Bytes, start: Int, end: Int) -> Int {
+    if end - start < 12 {
+        return -1
+    }
+    if stage2_bytes_byte_at(data, start) != 72 { return -1 }
+    if stage2_bytes_byte_at(data, start + 1) != 84 { return -1 }
+    if stage2_bytes_byte_at(data, start + 2) != 84 { return -1 }
+    if stage2_bytes_byte_at(data, start + 3) != 80 { return -1 }
+    if stage2_bytes_byte_at(data, start + 4) != 47 { return -1 }
+    if stage2_bytes_byte_at(data, start + 5) != 49 { return -1 }
+    if stage2_bytes_byte_at(data, start + 6) != 46 { return -1 }
+    if stage2_bytes_byte_at(data, start + 7) != 49 { return -1 }
+    if stage2_bytes_byte_at(data, start + 8) != 32 { return -1 }
+    let status = decimal_range(data, start + 9, start + 12)
+    if status < 100 { return -1 }
+    if status > 599 { return -1 }
+    if end - start > 12 {
+        if stage2_bytes_byte_at(data, start + 12) != 32 { return -1 }
+        if is_field_value_range(data, start + 13, end) == 0 { return -1 }
+    }
+    return status
+}
+
+fn copy_range(edit dest: Bytes, read data: Bytes, start: Int, end: Int) -> Int {
+    stage2_bytes_append_range(dest, data, start, end - start)
+    return 0
+}
+
+fn print_bytes(read value: Bytes) -> Int {
+    print(stage2_bytes_len(value))
+    let mut i = 0
+    while i < stage2_bytes_len(value) {
+        print(stage2_bytes_byte_at(value, i))
+        i = i + 1
+    }
+    return 0
+}
+
+fn print_extent(read value: Bytes, start: Int, length: Int) -> Int {
+    print(length)
+    let mut i = 0
+    while i < length {
+        print(stage2_bytes_byte_at(value, start + i))
+        i = i + 1
+    }
+    return 0
+}
+
+fn print_headers(read headers_buf: Bytes, count: Int) -> Int {
+    print(count)
+    let mut at = 0
+    let mut i = 0
+    while i < count {
+        let name_end = find_nul(headers_buf, at)
+        print_extent(headers_buf, at, name_end - at)
+        at = name_end + 1
+        let value_end = find_nul(headers_buf, at)
+        print_extent(headers_buf, at, value_end - at)
+        at = value_end + 1
+        i = i + 1
+    }
+    return 0
+}
+
+# Decode one message up to `visible` bytes. Returns 0 complete, 1 incomplete,
+# 2 protocol error, 3 limit error, 4 premature close. The summary is printed
+# only on a terminal result, so a fragmented prefix that is still incomplete
+# prints nothing.
+fn decode(
+    label: Text,
+    read data: Bytes,
+    visible: Int,
+    closed: Int,
+    limits: CallerLimits
+) -> Int {
+    let headers_buf = stage2_bytes_empty()
+    let body = stage2_bytes_empty()
+    let scratch = stage2_bytes_empty()
+    let mut header_count = 0
+    let mut cursor = 0
+    let mut status = 0
+    let mut framing = 0
+    let mut header_bytes = 0
+    let mut content_length = 0
+    let mut chunk_step = 0
+    let mut chunk_remaining = 0
+    let mut phase = 0
+    let mut result = 1
+
+    while result == 1 {
+        if phase == 0 {
+            let line = find_crlf(data, cursor, visible)
+            if line == -1 {
+                result = 5
+            } else if line < -1 {
+                cursor = 0 - line - 2
+                result = 2
+            } else if line - cursor + 2 > limits.max_header_bytes {
+                result = 3
+            } else {
+                status = status_code(data, cursor, line)
+                if status < 0 {
+                    result = 2
+                } else {
+                    header_bytes = header_bytes + (line - cursor) + 2
+                    cursor = line + 2
+                    phase = 1
+                }
+            }
+        } else if phase == 1 {
+            let line = find_crlf(data, cursor, visible)
+            if line == -1 {
+                result = 5
+            } else if line < -1 {
+                cursor = 0 - line - 2
+                result = 2
+            } else if line == cursor {
+                if header_bytes + 2 > limits.max_header_bytes {
+                    cursor = line
+                    result = 3
+                } else if header_count > limits.max_headers {
+                    result = 3
+                } else {
+                    header_bytes = header_bytes + 2
+                    cursor = line + 2
+                    phase = 2
+                }
+            } else if header_count >= limits.max_headers {
+                cursor = line + 2
+                result = 3
+            } else if header_bytes + (line - cursor) + 2 > limits.max_header_bytes {
+                result = 3
+            } else {
+                let first = stage2_bytes_byte_at(data, cursor)
+                if first == 32 {
+                    cursor = 0
+                    result = 2
+                } else if first == 9 {
+                    cursor = 0
+                    result = 2
+                } else {
+                    let colon = find_colon(data, cursor, line)
+                    if colon <= cursor {
+                        cursor = 0
+                        result = 2
+                    } else if is_token_range(data, cursor, colon) == 0 {
+                        cursor = 0
+                        result = 2
+                    } else {
+                    let value_start = trim_start(data, colon + 1, line)
+                    let value_end = trim_end(data, value_start, line)
+                    if is_field_value_range(data, value_start, value_end) == 0 {
+                        cursor = 0
+                        result = 2
+                    } else {
+                        stage2_bytes_append_range(headers_buf, data, cursor, colon - cursor)
+                        stage2_bytes_append(headers_buf, 0)
+                        stage2_bytes_append_range(headers_buf, data, value_start, value_end - value_start)
+                        stage2_bytes_append(headers_buf, 0)
+                        header_count = header_count + 1
+                        header_bytes = header_bytes + (line - cursor) + 2
+                        cursor = line + 2
+                    }
+                }
+                }
+            }
+        } else if phase == 2 {
+            let mut lengths = 0
+            let mut encodings = 0
+            let mut te_start = 0
+            let mut te_end = 0
+            let mut i = 0
+            let mut at = 0
+            while i < header_count {
+                let name_end = find_nul(headers_buf, at)
+                let value_start = name_end + 1
+                let value_end = find_nul(headers_buf, value_start)
+                if range_equals_ignore_case(headers_buf, at, name_end,
+                        "content-length", scratch) != 0 {
+                    lengths = lengths + 1
+                    content_length = decimal_range(headers_buf, value_start, value_end)
+                }
+                if range_equals_ignore_case(headers_buf, at, name_end,
+                        "transfer-encoding", scratch) != 0 {
+                    encodings = encodings + 1
+                    te_start = value_start
+                    te_end = value_end
+                }
+                at = value_end + 1
+                i = i + 1
+            }
+            if lengths > 0 {
+                if encodings > 0 {
+                    result = 2
+                }
+            }
+            if result == 1 {
+                if encodings > 1 {
+                    result = 2
+                }
+            }
+            if result == 1 {
+                if encodings == 1 {
+                    if range_equals_ignore_case(headers_buf, te_start, te_end,
+                            "chunked", scratch) == 0 {
+                        result = 2
+                    } else {
+                        framing = 3
+                        phase = 3
+                    }
+                }
+            }
+            if result == 1 {
+                if phase == 2 {
+                    if lengths > 1 {
+                        result = 2
+                    } else if lengths == 1 {
+                        if content_length < 0 {
+                            result = 2
+                        } else if content_length > limits.max_body_bytes {
+                            result = 3
+                        } else {
+                            framing = 2
+                            phase = 4
+                        }
+                    } else if status == 204 {
+                        framing = 1
+                        result = 0
+                    } else if status == 304 {
+                        framing = 1
+                        result = 0
+                    } else if status < 200 {
+                        framing = 1
+                        result = 0
+                    } else {
+                        framing = 4
+                        phase = 7
+                    }
+                }
+            }
+        } else if phase == 3 {
+            if chunk_step == 0 {
+                let line = find_crlf(data, cursor, visible)
+                if line == -1 {
+                    result = 5
+                } else if line < -1 {
+                    cursor = 0 - line - 2
+                    result = 2
+                } else {
+                    let size_start = cursor
+                    let size = hex_range(data, size_start, line)
+                    let extension = find_semicolon(data, size_start, line)
+                    cursor = line + 2
+                    if extension >= 0 {
+                        result = 2
+                    } else if size < 0 {
+                        result = 2
+                    } else if size > limits.max_chunk_bytes {
+                        result = 3
+                    } else if stage2_bytes_len(body) + size > limits.max_body_bytes {
+                        result = 3
+                    } else if size == 0 {
+                        phase = 5
+                    } else {
+                        chunk_remaining = size
+                        chunk_step = 1
+                    }
+                }
+            } else if chunk_step == 1 {
+                if visible - cursor < chunk_remaining {
+                    result = 5
+                } else {
+                    copy_range(body, data, cursor, cursor + chunk_remaining)
+                    cursor = cursor + chunk_remaining
+                    chunk_remaining = 0
+                    chunk_step = 2
+                }
+            } else if visible - cursor < 2 {
+                result = 5
+            } else if range_is_crlf(data, cursor, visible) != 1 {
+                cursor = cursor + 2
+                result = 2
+            } else {
+                cursor = cursor + 2
+                chunk_step = 0
+            }
+        } else if phase == 4 {
+            if content_length > visible - cursor {
+                if closed != 0 {
+                    result = 4
+                } else {
+                    result = 5
+                }
+            } else {
+                copy_range(body, data, cursor, cursor + content_length)
+                cursor = cursor + content_length
+                result = 0
+            }
+        } else if phase == 5 {
+            let line = find_crlf(data, cursor, visible)
+            if line == -1 {
+                result = 5
+            } else if line < -1 {
+                cursor = 0 - line - 2
+                result = 2
+            } else if line == cursor {
+                cursor = line + 2
+                result = 0
+            } else if header_count >= limits.max_headers {
+                cursor = line + 2
+                result = 3
+            } else if header_bytes + (line - cursor) + 2 > limits.max_header_bytes {
+                result = 3
+            } else {
+                let first = stage2_bytes_byte_at(data, cursor)
+                if first == 32 {
+                    cursor = 0
+                    result = 2
+                } else if first == 9 {
+                    cursor = 0
+                    result = 2
+                } else {
+                    let colon = find_colon(data, cursor, line)
+                    if colon <= cursor {
+                        cursor = 0
+                        result = 2
+                    } else if is_token_range(data, cursor, colon) == 0 {
+                        cursor = 0
+                        result = 2
+                    } else {
+                    let value_start = trim_start(data, colon + 1, line)
+                    let value_end = trim_end(data, value_start, line)
+                    if is_field_value_range(data, value_start, value_end) == 0 {
+                        cursor = 0
+                        result = 2
+                    } else {
+                        stage2_bytes_append_range(headers_buf, data, cursor, colon - cursor)
+                        stage2_bytes_append(headers_buf, 0)
+                        stage2_bytes_append_range(headers_buf, data, value_start, value_end - value_start)
+                        stage2_bytes_append(headers_buf, 0)
+                        header_count = header_count + 1
+                        cursor = line + 2
+                    }
+                }
+                }
+            }
+        } else if phase == 7 {
+            if closed == 0 {
+                result = 5
+            } else if visible - cursor > limits.max_body_bytes {
+                result = 3
+            } else {
+                copy_range(body, data, cursor, visible)
+                cursor = visible
+                result = 0
+            }
+        } else {
+            result = 2
+        }
+    }
+
+    if result == 5 {
+        return 1
+    }
+    if result == 0 {
+        print(label)
+        print(0)
+        print(status)
+        print(framing)
+        print_headers(headers_buf, header_count)
+        print_bytes(body)
+        print(header_bytes)
+        print(stage2_bytes_len(body))
+        if framing == 4 {
+            print(0)
+        } else {
+            print(1)
+        }
+        print(cursor)
+    } else if result > 1 {
+        print(label)
+        print(result)
+        print(cursor)
+        print(status)
+        print(framing)
+        print(0)
+        print(0)
+    }
+    return result
+}
+
+fn custom_limits(
+    max_header_bytes: Int,
+    max_headers: Int,
+    max_chunk_bytes: Int,
+    max_body_bytes: Int
+) -> CallerLimits {
+    let value: CallerLimits = CallerLimits(
+        max_header_bytes: max_header_bytes,
+        max_headers: max_headers,
+        max_chunk_bytes: max_chunk_bytes,
+        max_body_bytes: max_body_bytes,
+    )
+    return value
+}
+
+fn limits() -> CallerLimits {
+    let value: CallerLimits = CallerLimits(
+        max_header_bytes: 4096,
+        max_headers: 16,
+        max_chunk_bytes: 4096,
+        max_body_bytes: 65536,
+    )
+    return value
+}
+
+fn main() -> Int {
+    let data = stage2_bytes_empty()
+    stage2_bytes_assign_text(data, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nContent-Type: text/plain\r\n\r\nhello")
+    decode("content-length", data, stage2_bytes_len(data), 0, limits())
+
+    stage2_bytes_assign_text(data, "HTTP/1.1 204 No Content\r\nX-Trace: 1\r\n\r\n")
+    decode("no-body", data, stage2_bytes_len(data), 0, limits())
+
+    stage2_bytes_assign_text(data, "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n")
+    decode("chunked", data, stage2_bytes_len(data), 0, limits())
+
+    stage2_bytes_assign_text(data, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nhello")
+    decode("close-delimited", data, stage2_bytes_len(data), 1, limits())
+
+    stage2_bytes_assign_text(data, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nTransfer-Encoding: chunked\r\n\r\nhello")
+    decode("both-framings", data, stage2_bytes_len(data), 0, limits())
+
+    stage2_bytes_assign_text(data, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nContent-Length: 6\r\n\r\nhello")
+    decode("duplicate-length", data, stage2_bytes_len(data), 0, limits())
+
+    stage2_bytes_assign_text(data, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nX-Note: a\r\n  b\r\n\r\nhello")
+    decode("obs-fold", data, stage2_bytes_len(data), 0, limits())
+
+    stage2_bytes_assign_text(data, "HTTP/1.1 200 OK\nContent-Length: 5\r\n\r\nhello")
+    decode("bare-lf", data, stage2_bytes_len(data), 0, limits())
+
+    stage2_bytes_assign_text(data, "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n")
+    decode("duplicate-te", data, stage2_bytes_len(data), 0, limits())
+
+    stage2_bytes_assign_text(data, "HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip, chunked\r\n\r\n0\r\n\r\n")
+    decode("unsupported-te", data, stage2_bytes_len(data), 0, limits())
+
+    stage2_bytes_assign_text(data, "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5;a=b\r\nhello\r\n0\r\n\r\n")
+    decode("chunk-extension", data, stage2_bytes_len(data), 0, limits())
+
+    stage2_bytes_assign_text(data, "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nzz\r\nhello\r\n0\r\n\r\n")
+    decode("chunk-not-hex", data, stage2_bytes_len(data), 0, limits())
+
+    stage2_bytes_assign_text(data, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhel")
+    decode("close-inside-body", data, stage2_bytes_len(data), 1, limits())
+
+    stage2_bytes_assign_text(data, "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nX-N1: v\r\nX-N2: v\r\nX-N3: v\r\nX-N4: v\r\n\r\n")
+    decode("max-headers", data, stage2_bytes_len(data), 0,
+        custom_limits(4096, 4, 4096, 65536))
+
+    stage2_bytes_assign_text(data, "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nX-Pad: ")
+    let mut pad = 0
+    while pad < 210 {
+        stage2_bytes_append(data, 120)
+        pad = pad + 1
+    }
+    stage2_bytes_append(data, 13)
+    stage2_bytes_append(data, 10)
+    stage2_bytes_append(data, 13)
+    stage2_bytes_append(data, 10)
+    decode("max-header-bytes", data, stage2_bytes_len(data), 0,
+        custom_limits(256, 16, 4096, 65536))
+
+    stage2_bytes_assign_text(data, "HTTP/1.1 200 OK\r\nContent-Length: 9\r\n\r\nxxxxxxxxx")
+    decode("max-body-bytes", data, stage2_bytes_len(data), 0,
+        custom_limits(4096, 16, 4096, 8))
+
+    stage2_bytes_assign_text(data, "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n9\r\nxxxxxxxxx\r\n0\r\n\r\n")
+    decode("max-chunk-bytes", data, stage2_bytes_len(data), 0,
+        custom_limits(4096, 16, 8, 65536))
+
+    stage2_bytes_assign_text(data, "HTTP/1.1 20 OK\r\nContent-Length: 0\r\n\r\n")
+    decode("bad-status", data, stage2_bytes_len(data), 0, limits())
+
+    stage2_bytes_assign_text(data, "HTTP/1.1 200 OK\r\nX Note: a\r\n\r\n")
+    decode("bad-header-name", data, stage2_bytes_len(data), 0, limits())
+
+    stage2_bytes_assign_text(data, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nContent-Type: text/plain\r\n\r\nhello")
+    let mut prefix = 0
+    while prefix <= stage2_bytes_len(data) {
+        decode("fragment", data, prefix, 0, limits())
+        prefix = prefix + 1
+    }
+    return 0
+}

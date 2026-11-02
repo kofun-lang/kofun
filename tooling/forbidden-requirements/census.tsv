@@ -172,6 +172,7 @@ cc	invoke	1	required-today	required	tests/conformance/http-client-errors/run.sh
 cc	invoke	1	required-today	required	tests/conformance/http-client-headers/run.sh
 cc	invoke	1	required-today	required	tests/conformance/http-client-origin/run.sh
 cc	invoke	1	required-today	required	tests/conformance/http-client-request/run.sh
+cc	invoke	1	required-today	required	tests/conformance/http-client-response/run.sh
 cc	invoke	4	required-today	required	tests/conformance/incremental/run.sh
 cc	invoke	3	required-today	required	tests/conformance/inference/hm-levels/run.sh
 cc	invoke	2	required-today	required	tests/conformance/int-bits/run.sh
@@ -327,6 +328,7 @@ node	invoke	7	required-today	required	tests/conformance/http-client-errors/run.s
 node	invoke	2	required-today	required	tests/conformance/http-client-headers/run.sh
 node	invoke	2	required-today	required	tests/conformance/http-client-origin/run.sh
 node	invoke	3	required-today	required	tests/conformance/http-client-request/run.sh
+node	invoke	3	required-today	required	tests/conformance/http-client-response/run.sh
 node	invoke	3	required-today	required	tests/conformance/int-bits/run.sh
 node	invoke	1	required-today	required	tests/conformance/move-call-crossings/run.sh
 node	invoke	3	required-today	required	tests/conformance/optional-construction/run.sh
@@ -475,6 +477,7 @@ node	source	1	required-today	required	tests/conformance/http-client-errors/captu
 node	source	1	required-today	required	tests/conformance/http-client-errors/check-registry.mjs
 node	source	1	required-today	required	tests/conformance/http-client-errors/value_match_pair.mjs
 node	source	1	required-today	required	tests/conformance/http-client-request/check.mjs
+node	source	1	required-today	required	tests/conformance/http-client-response/check.mjs
 node	source	1	required-today	required	tests/conformance/int-bits/check-pair.mjs
 node	source	1	required-today	required	tests/conformance/move-call-crossings/check.mjs
 node	source	1	required-today	required	tests/conformance/record-bytes-fields/pair.mjs
@@ -711,6 +714,7 @@ shell-build-driver	source	1	required-today	required	tests/conformance/http-clien
 shell-build-driver	source	1	required-today	required	tests/conformance/http-client-headers/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/http-client-origin/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/http-client-request/run.sh
+shell-build-driver	source	1	required-today	required	tests/conformance/http-client-response/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/incremental/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/inference/hm-levels/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/int-bits-lowering/check.sh
