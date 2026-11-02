@@ -682,6 +682,7 @@ tests/conformance/http-client-origin/target_no_slash_refused.kofun
 tests/conformance/http-client-origin/target_over_bound.kofun
 tests/conformance/http-client-origin/wrong_shape_refused.kofun
 tests/conformance/http-client-request/serialize.kofun
+tests/conformance/http-client-response/decode.kofun
 tests/conformance/incremental/fixtures/app.kofun
 tests/conformance/incremental/fixtures/core.kofun
 tests/conformance/incremental/fixtures/edits/app_selected_import_removed.kofun

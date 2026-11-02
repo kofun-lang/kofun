@@ -1266,6 +1266,7 @@ tasks:
       - task: http-client-origin
       - task: http-client-errors
       - task: http-client-request
+      - task: http-client-response-head
 
   http-client-headers:
     desc: "Verify Header and a bounded List[Header] at 128: append, read, index, lookup, move, and the R038 refusal"
@@ -1286,6 +1287,11 @@ tasks:
     desc: "Verify the deterministic HTTP/1.1 request bytes, validation refusals, and scripted write cursor against the #1257 model"
     cmds:
       - "sh tests/conformance/http-client-request/run.sh"
+
+  http-client-response-head:
+    desc: "Verify the incremental HTTP/1.1 response head, framing plan, refusals, and fragmentation against the #1257 model"
+    cmds:
+      - "sh tests/conformance/http-client-response/run.sh"
 
   bounded-bytes:
     desc: "Verify the fixture-bounded Bytes[65536] carrier, mutation, file-read, stream-read, and Text-bridge checkpoint"
