@@ -1,1 +1,1 @@
-error[E2S148]: const parameter `scale` of `Fixed` is not a type and cannot be a field type; a const parameter is part of the type identity and is never stored as a runtime field at bytes 45..50
+error[E2S148]: const parameter `scale` of `Scaled` is not a type and cannot be a field type; a const parameter is part of the type identity and is never stored as a runtime field at bytes 46..51

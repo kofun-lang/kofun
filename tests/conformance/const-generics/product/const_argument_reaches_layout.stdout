@@ -1,1 +1,1 @@
-error[E2S148]: field `balance` of `Ledger` is a const generic instantiation; a const argument must not reach layout at byte 411
+error[E2S148]: field `balance` of `Ledger` is a const generic instantiation; a const argument must not reach layout at byte 412

@@ -1,1 +1,1 @@
-error[E2S149]: const argument to `Fixed` exceeds the const parameter budget `0`..`65535`; the value is refused rather than wrapped at bytes 78..83
+error[E2S149]: const argument to `Scaled` exceeds the const parameter budget `0`..`65535`; the value is refused rather than wrapped at bytes 80..85

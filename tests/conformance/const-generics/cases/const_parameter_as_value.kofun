@@ -1,7 +1,7 @@
-type Fixed[const scale: Int] = {
+type Scaled[const scale: Int] = {
     significand: Int,
 }
 
-fn leak(value: Fixed[2]) -> Int {
+fn leak(value: Scaled[2]) -> Int {
     return scale
 }

@@ -162,7 +162,7 @@ done
 printf '%s\n' "PASS: Decimal // and % remain undecided and unimplemented"
 
 # #916 now makes a literal const argument part of a nominal type's identity:
-# the shipped CLI refuses `Fixed[3]` where `Fixed[2]` is required. That is the
+# the shipped CLI refuses `Scaled[3]` where `Scaled[2]` is required. That is the
 # type-system foundation for #725 Part B, not a Decimal-backed `Fixed` value.
 # Native Decimal still takes destination and display scales as runtime Int
 # arguments, so #725 Part A's `runtime-scale/v1` name remains the truthful
@@ -188,16 +188,16 @@ set +e
 scale_mismatch_status=$?
 set -e
 test "$scale_mismatch_status" -eq 1 ||
-    fail "Fixed[3] to Fixed[2] mismatch exited $scale_mismatch_status instead of 1"
+    fail "Scaled[3] to Scaled[2] mismatch exited $scale_mismatch_status instead of 1"
 test ! -s "$WORK/scale-mismatch.stdout" ||
-    fail "Fixed scale mismatch wrote stdout"
+    fail "Scaled scale mismatch wrote stdout"
 cmp "$SCALE_MISMATCH.stdout" "$WORK/scale-mismatch.stderr" ||
-    fail "Fixed scale mismatch diagnostic differs from E2S151 product evidence"
+    fail "Scaled scale mismatch diagnostic differs from E2S151 product evidence"
 
 for doc in docs/DECIMAL.md stdlib/decimal/README.md; do
     grep -qF "$PROFILE" "$ROOT/$doc" ||
         fail "$doc does not name the interim scale profile $PROFILE"
-    grep -qF 'Literal integer const generics already distinguish Fixed[2] from Fixed[3]' \
+    grep -qF 'Literal integer const generics already distinguish Scaled[2] from Scaled[3]' \
         "$ROOT/$doc" ||
         fail "$doc stopped stating the shipped literal const-generic identity"
     grep -qF 'not a Decimal-backed Fixed[scale] implementation' "$ROOT/$doc" ||

@@ -1,1 +1,1 @@
-error[E2S148]: const parameter `scale` of `Fixed` cannot be used as a runtime value; it exists only in the type identity at bytes 103..108
+error[E2S148]: const parameter `scale` of `Scaled` cannot be used as a runtime value; it exists only in the type identity at bytes 105..110

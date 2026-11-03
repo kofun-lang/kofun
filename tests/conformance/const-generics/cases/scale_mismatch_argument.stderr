@@ -1,1 +1,1 @@
-error[E2S151]: argument 1 to `cents` has type `Fixed[3]`; expected `Fixed[2]`; declaration at bytes 58..116; a const argument is part of the type identity, so change the value or the declared const argument at bytes 175..180
+error[E2S151]: argument 1 to `cents` has type `Scaled[3]`; expected `Scaled[2]`; declaration at bytes 59..119; a const argument is part of the type identity, so change the value or the declared const argument at bytes 180..185

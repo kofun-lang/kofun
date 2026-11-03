@@ -1,1 +1,1 @@
-error[E2S150]: `Fixed` expects one const argument; write `Fixed[...]` at byte 74
+error[E2S150]: `Scaled` expects one const argument; write `Scaled[...]` at byte 75

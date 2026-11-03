@@ -1,23 +1,23 @@
 # Distinct types must reach distinct emitted structs.
 #
-# `Fixed[2]` specializes to the C struct `KofunRecord_Fixed__2`, and a record
-# actually named `Fixed__2` would generate the same one. Two different Kofun
+# `Scaled[2]` specializes to the C struct `KofunRecord_Scaled__2`, and a record
+# actually named `Scaled__2` would generate the same one. Two different Kofun
 # types sharing a C struct is the defect this gate exists for — it is what an
-# earlier revision did to `Fixed[2]` and `Fixed[3]` under a comment claiming it
+# earlier revision did to `Scaled[2]` and `Scaled[3]` under a comment claiming it
 # was safe.
-type Fixed[const scale: Int] = {
+type Scaled[const scale: Int] = {
     significand: Int,
 }
 
-type Fixed__2 = {
+type Scaled__2 = {
     significand: Int,
 }
 
-fn cents(value: Fixed[2]) -> Fixed[2] {
+fn cents(value: Scaled[2]) -> Scaled[2] {
     return value
 }
 
-fn other(value: Fixed__2) -> Fixed__2 {
+fn other(value: Scaled__2) -> Scaled__2 {
     return value
 }
 

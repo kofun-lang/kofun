@@ -1,39 +1,39 @@
-type Fixed[const scale: Int] = {
+type Scaled[const scale: Int] = {
     significand: Int,
 }
 
-fn s0(value: Fixed[0]) -> Int {
+fn s0(value: Scaled[0]) -> Int {
     return 0
 }
 
-fn s1(value: Fixed[1]) -> Int {
+fn s1(value: Scaled[1]) -> Int {
     return 0
 }
 
-fn s2(value: Fixed[2]) -> Int {
+fn s2(value: Scaled[2]) -> Int {
     return 0
 }
 
-fn s3(value: Fixed[3]) -> Int {
+fn s3(value: Scaled[3]) -> Int {
     return 0
 }
 
-fn s4(value: Fixed[4]) -> Int {
+fn s4(value: Scaled[4]) -> Int {
     return 0
 }
 
-fn s5(value: Fixed[5]) -> Int {
+fn s5(value: Scaled[5]) -> Int {
     return 0
 }
 
-fn s6(value: Fixed[6]) -> Int {
+fn s6(value: Scaled[6]) -> Int {
     return 0
 }
 
-fn s7(value: Fixed[7]) -> Int {
+fn s7(value: Scaled[7]) -> Int {
     return 0
 }
 
-fn s8(value: Fixed[8]) -> Int {
+fn s8(value: Scaled[8]) -> Int {
     return 0
 }

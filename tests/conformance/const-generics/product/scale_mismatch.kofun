@@ -1,17 +1,17 @@
 # The erasure sentinel.
 #
-# Under an annotation reader that returns only the head token, `Fixed[3]` and
-# `Fixed[2]` are both `Fixed`, this source compiles, and the capability is
+# Under an annotation reader that returns only the head token, `Scaled[3]` and
+# `Scaled[2]` are both `Scaled`, this source compiles, and the capability is
 # silently broken while every gate stays green. It must be refused.
-type Fixed[const scale: Int] = {
+type Scaled[const scale: Int] = {
     significand: Int,
 }
 
-fn cents(value: Fixed[2]) -> Fixed[2] {
+fn cents(value: Scaled[2]) -> Scaled[2] {
     return value
 }
 
-fn mills(value: Fixed[3]) -> Fixed[2] {
+fn mills(value: Scaled[3]) -> Scaled[2] {
     return value
 }
 

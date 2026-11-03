@@ -100,7 +100,7 @@ grep -F 'name=T|index=0|ownership-kind=substituted' \
 # normalized argument — including the `args=` component #936 assembles an
 # ImplementationId, and from it a DictionaryId, out of.
 grep -F \
-    'const-parameter-id=const-parameter:nominal:Fixed:0' \
+    'const-parameter-id=const-parameter:nominal:Scaled:0' \
     "$WORK/positive.first.ir" >/dev/null ||
     fail 'the const parameter identity is missing'
 grep -F \
@@ -108,13 +108,13 @@ grep -F \
     "$WORK/positive.first.ir" >/dev/null ||
     fail 'the const parameter did not record its Int type, range, and kind'
 grep -F \
-    'instantiation-id=nominal:Fixed/args=const:Int:2' \
+    'instantiation-id=nominal:Scaled/args=const:Int:2' \
     "$WORK/positive.first.ir" >/dev/null ||
-    fail 'Fixed[2] has no instantiation identity'
+    fail 'Scaled[2] has no instantiation identity'
 grep -F \
-    'instantiation-id=nominal:Fixed/args=const:Int:3' \
+    'instantiation-id=nominal:Scaled/args=const:Int:3' \
     "$WORK/positive.first.ir" >/dev/null ||
-    fail 'Fixed[3] has no instantiation identity'
+    fail 'Scaled[3] has no instantiation identity'
 if grep -F 'args=const:Int:02' "$WORK/positive.first.ir" >/dev/null; then
     fail 'a const argument was normalized by digits instead of by value'
 fi
@@ -122,12 +122,12 @@ distinct=$(grep -c '^instantiation|' "$WORK/positive.first.ir" || true)
 test "$distinct" -eq 2 ||
     fail "expected 2 distinct instantiations, saw $distinct"
 folded=$(sed -n \
-    's/^instantiation|instantiation-id=nominal:Fixed\/args=const:Int:2|.*|uses=\([0-9]*\)|.*/\1/p' \
+    's/^instantiation|instantiation-id=nominal:Scaled\/args=const:Int:2|.*|uses=\([0-9]*\)|.*/\1/p' \
     "$WORK/positive.first.ir")
 test -n "$folded" ||
-    fail 'the Fixed[2] instantiation row is missing its use count'
+    fail 'the Scaled[2] instantiation row is missing its use count'
 test "$folded" -eq 6 ||
-    fail "Fixed[2] and Fixed[02] did not fold into one instantiation: uses=$folded"
+    fail "Scaled[2] and Scaled[02] did not fold into one instantiation: uses=$folded"
 
 failures='
 argument_on_plain_type:E2S150
@@ -235,14 +235,14 @@ test -s "$WORK/product.c" ||
 # the C type system stop separating what the Kofun type system separated, which
 # is the defect `validate_struct_identity` refuses and the falsification below
 # demonstrates.
-grep -F '} KofunRecord_Fixed__2;' "$WORK/product.c" >/dev/null ||
-    fail 'Fixed[2] did not reach its own emitted struct'
-grep -F '} KofunRecord_Fixed__3;' "$WORK/product.c" >/dev/null ||
-    fail 'Fixed[3] did not reach its own emitted struct'
-if grep -F '} KofunRecord_Fixed;' "$WORK/product.c" >/dev/null; then
-    fail 'a shared unspecialized Fixed struct survived'
+grep -F '} KofunRecord_Scaled__2;' "$WORK/product.c" >/dev/null ||
+    fail 'Scaled[2] did not reach its own emitted struct'
+grep -F '} KofunRecord_Scaled__3;' "$WORK/product.c" >/dev/null ||
+    fail 'Scaled[3] did not reach its own emitted struct'
+if grep -F '} KofunRecord_Scaled;' "$WORK/product.c" >/dev/null; then
+    fail 'a shared unspecialized Scaled struct survived'
 fi
-if grep -F 'Fixed[' "$WORK/product.c" >/dev/null; then
+if grep -F 'Scaled[' "$WORK/product.c" >/dev/null; then
     fail 'a const argument survived into a C identifier'
 fi
 # `-Wno-unused-function` only: the fixture declares signatures its entry point
@@ -335,10 +335,10 @@ done
 IFS=$previous_ifs
 
 # The erasure sentinel. An annotation reader that returns only the head token
-# makes `Fixed[3]` and `Fixed[2]` the same type, and `scale_mismatch` compiles
+# makes `Scaled[3]` and `Scaled[2]` the same type, and `scale_mismatch` compiles
 # with every other check still green. Naming it here is what stops that
 # specific defect coming back unnoticed.
-grep -F 'Fixed[3]` is not `Fixed[2]' \
+grep -F 'Scaled[3]` is not `Scaled[2]' \
     "$PRODUCT/scale_mismatch.stdout" >/dev/null ||
     fail 'the erasure sentinel no longer names both instantiations'
 
@@ -420,7 +420,7 @@ grep -F 'PASS [c11-stage2]' "$WORK/backends.stdout" >/dev/null ||
 
 printf '%s\n' \
     'PASS: a literal Int type argument type-checks in declarations and annotations' \
-    'PASS: Fixed[2] and Fixed[3] are distinct types and Fixed[02] normalizes to Fixed[2]' \
+    'PASS: Scaled[2] and Scaled[3] are distinct types and Scaled[02] normalizes to Scaled[2]' \
     'PASS: the ordinary compile path specializes per literal and its C builds and runs' \
     'PASS: two scales are constructed, kept apart, and observed running' \
     'PASS: distinct types reach distinct structs, and collapsing them is refused' \

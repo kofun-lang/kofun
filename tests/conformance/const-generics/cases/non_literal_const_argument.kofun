@@ -1,7 +1,7 @@
-type Fixed[const scale: Int] = {
+type Scaled[const scale: Int] = {
     significand: Int,
 }
 
-fn use(value: Fixed[scale]) -> Int {
+fn use(value: Scaled[scale]) -> Int {
     return 0
 }

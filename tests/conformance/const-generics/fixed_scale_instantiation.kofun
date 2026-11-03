@@ -5,7 +5,7 @@
 # The #725 Part B handoff, executed rather than described.
 #
 # Two scales are constructed, kept apart by the type system, and observed at
-# runtime. `Fixed[2]` and `Fixed[3]` reach two distinct emitted structs — that
+# runtime. `Scaled[2]` and `Scaled[3]` reach two distinct emitted structs — that
 # is the specialization — so nothing here depends on them accidentally sharing
 # a lowering, and `validate_struct_identity` refuses the source outright if
 # they ever do.
@@ -15,23 +15,23 @@
 # argument, per-literal identity, a compile-time scale mismatch, and a value it
 # can construct and run.
 
-type Fixed[const scale: Int] = {
+type Scaled[const scale: Int] = {
     significand: Int,
 }
 
-fn keep_cents(value: Fixed[2]) -> Fixed[2] {
+fn keep_cents(value: Scaled[2]) -> Scaled[2] {
     return value
 }
 
-fn keep_mills(value: Fixed[3]) -> Fixed[3] {
+fn keep_mills(value: Scaled[3]) -> Scaled[3] {
     return value
 }
 
 fn main() {
-    let cents: Fixed[2] = Fixed[2](significand: 250)
-    let mills: Fixed[3] = Fixed[3](significand: 2500)
-    let kept_cents: Fixed[2] = keep_cents(cents)
-    let kept_mills: Fixed[3] = keep_mills(mills)
+    let cents: Scaled[2] = Scaled[2](significand: 250)
+    let mills: Scaled[3] = Scaled[3](significand: 2500)
+    let kept_cents: Scaled[2] = keep_cents(cents)
+    let kept_mills: Scaled[3] = keep_mills(mills)
     print(kept_cents.significand)
     print(kept_mills.significand)
 }

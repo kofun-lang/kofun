@@ -2,7 +2,7 @@
 # frontend *and* through the ordinary compile path the CLI takes, so the two
 # agree on what a literal `Int` type argument means rather than one of them
 # accepting a surface the other silently flattens.
-type Fixed[const scale: Int] = {
+type Scaled[const scale: Int] = {
     significand: Int,
 }
 
@@ -10,19 +10,19 @@ type Money = {
     amount: Int,
 }
 
-fn keep_cents(value: Fixed[2]) -> Fixed[2] {
-    let same: Fixed[2] = value
+fn keep_cents(value: Scaled[2]) -> Scaled[2] {
+    let same: Scaled[2] = value
     return same
 }
 
-fn keep_mills(value: Fixed[3]) -> Fixed[3] {
+fn keep_mills(value: Scaled[3]) -> Scaled[3] {
     return value
 }
 
-# `Fixed[02]` normalizes by value, not by digits, so it is the same type as
-# `Fixed[2]` and folds into the same monomorphization.
-fn round_trip(cents: Fixed[02]) -> Fixed[2] {
-    let kept: Fixed[2] = keep_cents(cents)
+# `Scaled[02]` normalizes by value, not by digits, so it is the same type as
+# `Scaled[2]` and folds into the same monomorphization.
+fn round_trip(cents: Scaled[02]) -> Scaled[2] {
+    let kept: Scaled[2] = keep_cents(cents)
     return kept
 }
 

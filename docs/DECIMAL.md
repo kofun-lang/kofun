@@ -378,7 +378,7 @@ likewise specify their result type and rounding boundary.
 Literal integer const generics are implemented for nominal record identity and
 the bounded ordinary C11 Stage 2 specialization.
 
-Literal integer const generics already distinguish Fixed[2] from Fixed[3]; that type-system checkpoint is not a Decimal-backed Fixed[scale] implementation.
+Literal integer const generics already distinguish Scaled[2] from Scaled[3]; that type-system checkpoint is not a Decimal-backed Fixed[scale] implementation.
 
 **`runtime-scale/v1` is what native Decimal operations ship.** Destination and
 display scales are ordinary runtime `Int` arguments. `stdlib/decimal` declares

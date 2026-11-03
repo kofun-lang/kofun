@@ -1,1 +1,1 @@
-error[E2S149]: const argument to `Fixed` is negative; the const parameter `scale: Int` admits `0`..`65535` only at bytes 78..80
+error[E2S149]: const argument to `Scaled` is negative; the const parameter `scale: Int` admits `0`..`65535` only at bytes 80..82
