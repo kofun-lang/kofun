@@ -3004,7 +3004,8 @@ fn reserved_type_name(name: Text) -> Bool {
     # spelling" was false, because the spelling could be taken over.
     return name == "Int" || name == "Bool" || name == "Float" ||
     name == "Unit" || name == "Text" || name == "List" ||
-    name == "Bytes" || name == "_" || authority_type_name(name)
+    name == "Bytes" || name == "Fixed" || name == "DecimalError" ||
+    name == "_" || authority_type_name(name)
 }
 
 # Ownership mode is the optional first component of a parameter head.

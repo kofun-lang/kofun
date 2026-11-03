@@ -1,0 +1,1 @@
+error[E2S31]: concrete enum cannot shadow built-in type `DecimalError` at byte 101

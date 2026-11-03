@@ -1,0 +1,1 @@
+error[E2S32]: nominal record cannot shadow built-in type `Fixed` at byte 146

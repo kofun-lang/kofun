@@ -305,6 +305,8 @@ negative_const_argument:E2S149
 non_literal_const_argument:E2S149
 scale_mismatch:E2S151
 struct_identity_collision:E2S153
+shadow_decimal_error:E2S31
+shadow_fixed:E2S32
 type_parameter_record:E2S148
 '
 
