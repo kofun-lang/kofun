@@ -1224,6 +1224,31 @@
         "result": "`0`, then `7 format = 1` and no other format value, at 7d2caf6f3fa3bf733533b08ccf20b6551c3e13f0, the audited commit. No tracked manifest exists. The seven `format = 1` spellings are the resolver's own parser and lock writer (five in `package/manager.sh`), its README example (one in `package/README.md`), and the manifest `tests/package_manager.sh` writes (one). No tracked file spells `format = 2`.",
         "evidence": "package/manager.sh"
       }
+    },
+    {
+      "id": "RFC-0020",
+      "title": "Callable purity is a one-bit requirement on callable types and trait methods",
+      "provenance": "rfc",
+      "state": "proposed",
+      "shepherd": "hjosugi",
+      "source": "rfcs/0020-callable-purity-requirements.md",
+      "document": "rfcs/0020-callable-purity-requirements.md",
+      "proposal": "https://github.com/kofun-lang/kofun/issues/1719",
+      "dates": {
+        "opened_on": "2026-11-01"
+      },
+      "normative_spec": [
+        "rfcs/0020-callable-purity-requirements.md",
+        "spec/effects/pure-io-v1.md",
+        "docs/TYPE_SYSTEM.md"
+      ],
+      "compatibility": {
+        "category": "additive",
+        "statement": "The callable `pure` requirement, the `pure` trait method, the three argument/signature refusals, the KIF v3 effect values, and typed sidecar v3 are new surface. No tracked program writes a `pure` callable type or a trait method, and no production KIF v3 or sidecar v3 artifact exists. `type pure` and a binding named `pure` keep their meaning; `pub pure fn` becomes accepted where it was E2S33, and no program depends on that refusal.",
+        "corpus_query": "git grep -nE 'pure +\\(' -- '*.kofun' | wc -l; git grep -nE 'pure fn' -- '*.kofun' | wc -l",
+        "result": "0 callable requirements and 0 trait method declarations at b8b31171. The `pure fn` matches that exist are top-level function boundaries, whose meaning this RFC does not change.",
+        "evidence": "docs/research/callable-effects.md"
+      }
     }
   ]
 }

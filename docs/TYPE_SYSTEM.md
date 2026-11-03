@@ -214,6 +214,19 @@ read File -> Metadata
 An omitted mode is value mode. Parameter names are documentation at the
 declaration and are excluded from callable type identity in v1.
 
+A callable type may also carry a one-bit `pure` requirement
+([RFC-0020](../rfcs/0020-callable-purity-requirements.md)):
+
+```kofun
+f: pure (Int) -> Int
+```
+
+The requirement is part of callable type identity beside the ownership modes,
+and exactly one subsumption rule relates the two identities: `pure (A) -> R` is
+accepted where `(A) -> R` is expected, and not the reverse. An unannotated
+callable type means *no requirement*, not `io`. `pure` is contextual in type
+position; elsewhere it remains an ordinary identifier.
+
 The historical `Fn[...]` form is removed rather than kept as an alias.
 Migration diagnostics must provide a targeted fix from `Fn[A, R]` to
 `A -> R` and from historical multi-argument forms to `(A, B, ...) -> R`.
@@ -635,7 +648,14 @@ Effect annotations do not have to be written every time in source. They can be s
 pure fn normalize(value: Float) -> Float
 ```
 
-Whether to adopt the `pure` keyword will be decided after evaluating effect inference and diagnostic UX.
+`pure fn` before a top-level function is the decided spelling of the no-effect
+boundary ([`spec/effects/pure-io-v1.md`](../spec/effects/pure-io-v1.md)). A
+callable type may carry the same one-bit requirement, and a trait method may be
+declared `pure`; RFC-0020 decides both, together with the three argument and
+signature refusals and the KIF and typed-sidecar encodings that carry the bit
+across a package boundary. The conceptual effect rows above remain target
+notation for a later vocabulary; v1 has one effect label, `io`, and one
+requirement, `pure`.
 
 ## Result and error propagation
 
