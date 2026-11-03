@@ -1,1 +1,1 @@
-error[E2S152]: distinct instantiation count exceeds 8; each distinct const argument is monomorphized separately, so reduce the number of instantiations at bytes 455..463
+error[E2S152]: distinct instantiation count exceeds 8; each distinct const argument is monomorphized separately, so reduce the number of instantiations at bytes 464..473

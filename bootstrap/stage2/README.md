@@ -245,8 +245,8 @@ sanitizer-backed gate with `task generics`.
 `bootstrap/stage2/const_generics_frontend.c` is the separate typed-only
 checkpoint for integer const generics (#916). It accepts a nominal type
 declared with one `const NAME: Int` parameter, gives every instantiation an
-identity keyed by the *value* of its literal argument — so `Fixed[2]` and
-`Fixed[3]` are different types and `Fixed[02]` is the same type as `Fixed[2]`
+identity keyed by the *value* of its literal argument — so `Scaled[2]` and
+`Scaled[3]` are different types and `Scaled[02]` is the same type as `Scaled[2]`
 — and records one monomorphization row per distinct instantiation in
 `kofun-const-generics-ir/v1`. A const argument normalizes into its own
 `const:Int:N` namespace, disjoint from the `builtin:`/`nominal:` namespaces a
@@ -259,8 +259,8 @@ functions, dictionary selection, layout, or backend emission.
 The same surface is reachable through the ordinary compile path, because a
 frontend-only fact does not complete #916. `compiler.kofun` and `compiler.c`
 accept a `[const NAME: Int]` parameter list on a nominal record, carry the
-normalized argument inside the annotation's type text so `Fixed[2]` and
-`Fixed[3]` never compare equal, and **specialize per distinct literal**: each
+normalized argument inside the annotation's type text so `Scaled[2]` and
+`Scaled[3]` never compare equal, and **specialize per distinct literal**: each
 instantiation reaches its own emitted C struct, so a const generic value can be
 constructed, passed, returned, and run. `validate_struct_identity` refuses any
 collapse of two distinct identities onto one struct with `E2S153` before any C

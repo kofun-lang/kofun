@@ -1,1 +1,1 @@
-error[E2S151]: annotated local result has type `Fixed[3]`; expected `Fixed[2]`; instantiations differing only in their const argument are different types at bytes 166..199
+error[E2S151]: annotated local result has type `Scaled[3]`; expected `Scaled[2]`; instantiations differing only in their const argument are different types at bytes 171..205

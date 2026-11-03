@@ -1,12 +1,12 @@
-type Fixed[const scale: Int] = {
+type Scaled[const scale: Int] = {
     significand: Int,
 }
 
-fn mills(value: Fixed[3]) -> Fixed[3] {
+fn mills(value: Scaled[3]) -> Scaled[3] {
     return value
 }
 
-fn cents(value: Fixed[3]) -> Fixed[2] {
-    let narrowed: Fixed[2] = mills(value)
+fn cents(value: Scaled[3]) -> Scaled[2] {
+    let narrowed: Scaled[2] = mills(value)
     return narrowed
 }

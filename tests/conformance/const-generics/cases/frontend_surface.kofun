@@ -7,7 +7,7 @@
 # by name — an ordinary type parameter needs field substitution and
 # per-instantiation layout, neither of which #916 builds — and `run.sh` pins
 # that refusal rather than assuming it.
-type Fixed[const scale: Int] = {
+type Scaled[const scale: Int] = {
     significand: Int,
 }
 
@@ -35,6 +35,6 @@ fn ledger(entry: Ledger) -> Ledger {
 }
 
 type Ledger = {
-    balance: Fixed[2],
+    balance: Scaled[2],
     label: Text,
 }

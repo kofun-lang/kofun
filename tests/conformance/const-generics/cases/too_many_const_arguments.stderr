@@ -1,1 +1,1 @@
-error[E2S150]: `Fixed` declares one parameter and accepts exactly one argument; declaration at bytes 0..56; pass exactly one at bytes 79..80
+error[E2S150]: `Scaled` declares one parameter and accepts exactly one argument; declaration at bytes 0..57; pass exactly one at bytes 81..82

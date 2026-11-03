@@ -301,16 +301,16 @@ nominal types or bounds, select trait dictionaries, monomorphize, or emit
 backend code; see `tests/conformance/generics/README.md`.
 
 Integer const generics: a nominal record may be declared
-`type Fixed[const scale: Int]` and written `Fixed[2]` in a declaration or an
+`type Scaled[const scale: Int]` and written `Scaled[2]` in a declaration or an
 annotation, on the ordinary compile path as well as in a second bounded Stage 2
 frontend. The literal is normalized by value, giving each instantiation its own
-identity: `Fixed[2]` and `Fixed[3]` are different types, `Fixed[02]` is the same
-type as `Fixed[2]`, and a mismatch is refused at compile time. A const parameter
+identity: `Scaled[2]` and `Scaled[3]` are different types, `Scaled[02]` is the same
+type as `Scaled[2]`, and a mismatch is refused at compile time. A const parameter
 is not a type and not a value: it may not be a field type or an expression, so it
 cannot be erased into a runtime field, and it propagates no ownership kind, so
 every instantiation of one declaration classifies identically while staying a
 distinct type. The ordinary compile path specializes per distinct literal:
-`Fixed[2]` and `Fixed[3]` reach different emitted structs, so a const generic
+`Scaled[2]` and `Scaled[3]` reach different emitted structs, so a const generic
 value can be constructed and run, and collapsing two identities onto one struct
 is refused with `E2S153`. A record field typed by an instantiation is
 separately refused, so a const argument never reaches layout. Const

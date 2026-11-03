@@ -1,7 +1,7 @@
 # Integer const generics: literal `Int` type arguments
 
 This focused Stage 2 checkpoint (#916) delivers the smallest integer const
-generic capability a type can be parameterized by, so `Fixed[scale]` has a
+generic capability a type can be parameterized by, so `Scaled[scale]` has a
 type-level scale for #725 Part B to build on. It does not implement `Fixed`
 decimal semantics, and it does not change what `docs/DECIMAL.md` says about
 the `runtime-scale/v1` interim profile.
@@ -12,7 +12,7 @@ an ordinary type parameter, which is what gives the kind-mismatch diagnostics
 something to be a mismatch against.
 
 ```kofun
-type Fixed[const scale: Int] = {
+type Scaled[const scale: Int] = {
     significand: Int,
 }
 
@@ -23,12 +23,12 @@ type Boxed[T] = {          # bounded frontend only; the product path refuses it
 
 ## What a literal argument means
 
-- **Identity is by value.** `Fixed[2]` and `Fixed[3]` are different types;
-  `Fixed[02]` is the same type as `Fixed[2]` and folds into the same
+- **Identity is by value.** `Scaled[2]` and `Scaled[3]` are different types;
+  `Scaled[02]` is the same type as `Scaled[2]` and folds into the same
   monomorphization. A mismatch between two instantiations is a compile-time
   error, not a coercion.
 - **A const argument normalizes into its own namespace.** The identity of an
-  instantiation is `nominal:Fixed/args=const:Int:2`, where a type argument
+  instantiation is `nominal:Scaled/args=const:Int:2`, where a type argument
   would give `args=builtin:Int` or `args=nominal:Money`. The tags are
   disjoint, so a const argument can never be mistaken for a type argument by
   anything that embeds a normalized argument — including the `args=`
@@ -53,11 +53,11 @@ frontend, and `cases/positive.kofun` is accepted by **both**.
 The ordinary compile path is `bootstrap/stage2/compiler.{kofun,c}` under
 `--compile-outcome`, which is what `kofun check` and `kofun build` invoke. It
 accepts a `[const NAME: Int]` parameter list and carries the normalized
-argument in the annotation's type text, so `Fixed[2]` and `Fixed[3]` never
+argument in the annotation's type text, so `Scaled[2]` and `Scaled[3]` never
 compare equal and a scale mismatch is refused with `E2S151`.
 
-**It specializes per distinct literal.** `Fixed[2]` and `Fixed[3]` reach two
-different emitted C structs, `KofunRecord_Fixed__2` and `KofunRecord_Fixed__3`,
+**It specializes per distinct literal.** `Scaled[2]` and `Scaled[3]` reach two
+different emitted C structs, `KofunRecord_Scaled__2` and `KofunRecord_Scaled__3`,
 so the C type system keeps apart exactly what the Kofun type system keeps
 apart. A const generic value can be constructed, passed, returned, and run.
 
@@ -88,7 +88,7 @@ propositions, and conflating them is what let the shared struct ship.
 - `cases/` is the frontend corpus. `positive.kofun` is the shared positive,
   accepted by the bounded frontend and by the product path.
   `frontend_surface.kofun` is the wider surface only the bounded frontend
-  models — an ordinary type parameter, a `Fixed[2]` field, a `Text` field —
+  models — an ordinary type parameter, a `Scaled[2]` field, a `Text` field —
   and `run.sh` pins the product path's refusal of it rather than assuming it.
   Both carry byte-exact `.ir` goldens. The negative fixtures freeze the
   const-parameter-as-field-type, const-parameter-as-value, non-`Int` const
@@ -99,8 +99,8 @@ propositions, and conflating them is what let the shared struct ship.
   tape behind.
 - `product/` holds the same refusals as the ordinary compile path sees them,
   with byte-exact goldens. `scale_mismatch.kofun` is the erasure sentinel: an
-  annotation reader that returns only the head token makes `Fixed[3]` and
-  `Fixed[2]` one type, so that source would compile and every other check
+  annotation reader that returns only the head token makes `Scaled[3]` and
+  `Scaled[2]` one type, so that source would compile and every other check
   would stay green. `const_argument_reaches_layout.kofun` falsifies the layout
   premise. `struct_identity_collision.kofun` falsifies the identity premise
   from source, by declaring a record whose own name is the C name an

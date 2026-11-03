@@ -27,7 +27,7 @@ recovers the same canonical native value, including negative values.
 The project still names the Decimal-library limitation `runtime-scale/v1`:
 destination scales in this slice are ordinary runtime `Int` arguments.
 
-Literal integer const generics already distinguish Fixed[2] from Fixed[3]; that type-system checkpoint is not a Decimal-backed Fixed[scale] implementation.
+Literal integer const generics already distinguish Scaled[2] from Scaled[3]; that type-system checkpoint is not a Decimal-backed Fixed[scale] implementation.
 
 The current library has no Decimal-backed `Fixed` value and no static scale
 safety. Slice 5 removes the old `Fixed { significand: Int, scale: Int }`

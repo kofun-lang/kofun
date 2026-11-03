@@ -1,1 +1,1 @@
-error[E2S149]: `Fixed` declares the const parameter `scale: Int`, so `Text` is a type where an integer literal is required at bytes 78..82
+error[E2S149]: `Scaled` declares the const parameter `scale: Int`, so `Text` is a type where an integer literal is required at bytes 80..84

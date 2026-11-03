@@ -1,1 +1,1 @@
-error[E2S153]: `Fixed__2` lowers to `KofunRecord_Fixed__2`, which another type already lowers to at byte 441
+error[E2S153]: `Scaled__2` lowers to `KofunRecord_Scaled__2`, which another type already lowers to at byte 447
