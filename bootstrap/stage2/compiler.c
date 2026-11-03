@@ -3957,7 +3957,8 @@ static bool reserved_type_name(const char *name) {
     return strcmp(name, "Int") == 0 || strcmp(name, "Bool") == 0 ||
            strcmp(name, "Float") == 0 || strcmp(name, "Unit") == 0 ||
            strcmp(name, "Text") == 0 || strcmp(name, "List") == 0 ||
-           strcmp(name, "Bytes") == 0 || strcmp(name, "_") == 0 ||
+           strcmp(name, "Bytes") == 0 || strcmp(name, "Fixed") == 0 ||
+           strcmp(name, "DecimalError") == 0 || strcmp(name, "_") == 0 ||
            authority_type_name(name);
 }
 

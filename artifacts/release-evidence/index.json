@@ -6,7 +6,7 @@
     "VERSION": "54926544e1077e683bf4099c47bdc6b3413caf651359cf267783eb763a1acc50",
     "release/claims.json": "579afcb7cb298f632d64bb07b6af295589fcf9c0e993ea2ea7a4abf21a5760d3",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
-    "bootstrap/manifest.json": "209f8e08e4ef3ac69a5d8cc0bc20b3e2a115b1bdb44ab6a2111cf3f58efc8966"
+    "bootstrap/manifest.json": "607b2a6238063128fc60d61b31636efaf4f16e501aca03add937f3efbaa2a412"
   },
   "states": {
     "checkpoint": 42,

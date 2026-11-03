@@ -1,0 +1,9 @@
+# #1250. `Fixed` is the compiler-known Decimal-backed carrier, so a user record
+# may not take the name. `DecimalError` is reserved the same way.
+type Fixed = {
+    significand: Int,
+}
+
+fn main() -> Int {
+    return 0
+}

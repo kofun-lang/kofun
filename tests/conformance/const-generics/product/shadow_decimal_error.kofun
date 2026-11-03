@@ -1,0 +1,8 @@
+# #1250. `DecimalError` is the compiler-known error carrier, so a user enum may
+# not take the name.
+type DecimalError =
+    | Missing
+
+fn main() -> Int {
+    return 0
+}

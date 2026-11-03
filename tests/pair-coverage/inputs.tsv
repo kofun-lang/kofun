@@ -565,6 +565,8 @@ tests/conformance/const-generics/product/missing_const_argument.kofun
 tests/conformance/const-generics/product/negative_const_argument.kofun
 tests/conformance/const-generics/product/non_literal_const_argument.kofun
 tests/conformance/const-generics/product/scale_mismatch.kofun
+tests/conformance/const-generics/product/shadow_decimal_error.kofun
+tests/conformance/const-generics/product/shadow_fixed.kofun
 tests/conformance/const-generics/product/struct_identity_collision.kofun
 tests/conformance/const-generics/product/type_parameter_record.kofun
 tests/conformance/decimal-arithmetic/checked_division.kofun
