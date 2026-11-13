@@ -1,0 +1,1 @@
+error[E2S152]: distinct Fixed scales exceed 8; each distinct scale is a separate type, so reduce the number of instantiations at byte 231

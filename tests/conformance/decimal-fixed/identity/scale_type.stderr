@@ -1,0 +1,1 @@
+error[E408]: `Fixed` scale must be an integer literal in `0`..`6144`; a type or expression is not a scale at byte 40

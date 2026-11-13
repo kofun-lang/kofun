@@ -2695,6 +2695,24 @@ static char *const_parameter_of_type(const char *source, const char *wanted) {
     return owned_text("");
 }
 
+/* A builtin type whose one argument is part of its identity exactly as a
+ * declared const parameter is. `Fixed[S]` has no declaration in source, so
+ * `const_parameter_of_type` cannot find it. Keeping the predicate separate
+ * leaves that lookup about declarations and still lets every identity consumer
+ * see the argument. */
+static bool builtin_const_parameterized_type(const char *name) {
+    return strcmp(name, "Fixed") == 0;
+}
+
+/* Whether `head[...]` carries a const argument, declared or built in. */
+static bool type_takes_const_argument(const char *source, const char *head) {
+    if (builtin_const_parameterized_type(head)) return true;
+    char *parameter = const_parameter_of_type(source, head);
+    bool declared = parameter[0] != '\0';
+    free(parameter);
+    return declared;
+}
+
 static int64_t type_declaration_end(const char *source, int64_t start) {
     int64_t length = source_length(source);
     char *name_text = type_name(source, start);
@@ -3996,6 +4014,8 @@ static int64_t lambda_scope_open(
 
 static char *validate_const_arguments(const char *source);
 static char *validate_const_erasure(const char *source);
+static char *validate_fixed_arguments(const char *source);
+static char *validate_fixed_scale_budget(const char *source);
 
 /* Ownership mode is the optional first component of a parameter head. */
 static bool ownership_mode_token(const char *source, int64_t cursor) {
@@ -4732,6 +4752,19 @@ static char *parse_program(const char *source) {
         return const_erasure_check;
     }
     free(const_erasure_check);
+    /* RFC-0015's builtin `Fixed[S]` owns its scale bound and its own
+     * instantiations; the declared const-generic rules above deliberately do
+     * not see it. */
+    char *fixed_argument_check = validate_fixed_arguments(source);
+    if (strncmp(fixed_argument_check, "error[", 6) == 0) {
+        return fixed_argument_check;
+    }
+    free(fixed_argument_check);
+    char *fixed_budget_check = validate_fixed_scale_budget(source);
+    if (strncmp(fixed_budget_check, "error[", 6) == 0) {
+        return fixed_budget_check;
+    }
+    free(fixed_budget_check);
     Buffer ir;
     Buffer declared_types;
     Buffer declared_constructors;
@@ -6553,9 +6586,7 @@ static bool const_argument_over_budget(const char *digits) {
 static char *annotation_type_text(const char *source, int64_t type_start) {
     int64_t length = source_length(source);
     char *head = token_copy(source, type_start);
-    char *parameter = const_parameter_of_type(source, head);
-    bool parameterized = parameter[0] != '\0';
-    free(parameter);
+    bool parameterized = type_takes_const_argument(source, head);
     if (!parameterized) return head;
     int64_t bracket = skip_trivia(source, token_end(source, type_start));
     if (bracket >= length || !token_equal(source, bracket, "[")) return head;
@@ -6583,9 +6614,7 @@ static char *annotation_type_text(const char *source, int64_t type_start) {
 static int64_t annotation_type_end(const char *source, int64_t type_start) {
     int64_t length = source_length(source);
     char *head = token_copy(source, type_start);
-    char *parameter = const_parameter_of_type(source, head);
-    bool parameterized = parameter[0] != '\0';
-    free(parameter);
+    bool parameterized = type_takes_const_argument(source, head);
     free(head);
     if (!parameterized) return token_end(source, type_start);
     int64_t bracket = skip_trivia(source, token_end(source, type_start));
@@ -6768,6 +6797,193 @@ static char *validate_const_arguments(const char *source) {
         }
         cursor = skip_trivia(source, token_end(source, cursor));
     }
+    return owned_text("ok");
+}
+
+/* `Fixed`'s scale bound is the fixed-decimal profile's executable domain,
+ * narrower than the generic const-parameter budget: RFC-0015 admits the literal
+ * scales `0..6144` only. E408 owns the value and the argument kind; E2S150
+ * still owns the argument list's shape. */
+static bool fixed_scale_over_profile(const char *digits) {
+    const char *limit = "6144";
+    size_t width = strlen(digits);
+    size_t limit_width = strlen(limit);
+    if (width > limit_width) return true;
+    if (width < limit_width) return false;
+    for (size_t index = 0; index < width; ++index) {
+        if (digits[index] != limit[index]) {
+            return const_digit_greater(digits[index], limit[index]);
+        }
+    }
+    return false;
+}
+
+/* RFC-0015's E408: `S` is not a literal in `0..6144`. `Fixed` is built in, so
+ * `validate_const_arguments` deliberately does not see it and its generic
+ * `0..65535` budget does not apply. Missing and surplus arguments stay with
+ * E2S150, the code that already owns a malformed const argument list. */
+static char *validate_fixed_arguments(const char *source) {
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, 0);
+    while (cursor < length) {
+        char *head = token_copy(source, cursor);
+        bool is_fixed = strcmp(token_kind(source, cursor), "identifier") == 0 &&
+                        strcmp(head, "Fixed") == 0;
+        free(head);
+        if (is_fixed) {
+            if (const_generic_declaration_head(source, cursor)) {
+                /* The declaration's own name is a binder, not an argument; the
+                 * reserved-name check owns the refusal for `type Fixed[...]`. */
+                cursor = skip_trivia(source, token_end(source, cursor));
+                continue;
+            }
+            int64_t bracket = skip_trivia(source, token_end(source, cursor));
+            if (bracket < length && token_equal(source, bracket, "[")) {
+                Buffer error;
+                buffer_init(&error);
+                int64_t close = balanced_end(source, bracket, "[", "]");
+                if (close < 0) {
+                    buffer_format(
+                        &error,
+                        "error[E2S150]: unterminated const argument list "
+                        "for `Fixed` at byte %" PRId64,
+                        bracket
+                    );
+                    return const_generic_refusal(&error);
+                }
+                int64_t argument = skip_trivia(
+                    source,
+                    token_end(source, bracket)
+                );
+                if (token_equal(source, argument, "]")) {
+                    buffer_format(
+                        &error,
+                        "error[E2S150]: `Fixed` expects one scale argument; "
+                        "write `Fixed[...]` at byte %" PRId64,
+                        argument
+                    );
+                    return const_generic_refusal(&error);
+                }
+                if (token_equal(source, argument, "-")) {
+                    buffer_format(
+                        &error,
+                        "error[E408]: `Fixed` scale must be an integer "
+                        "literal in `0`..`6144`; a negative argument is not "
+                        "a scale at byte %" PRId64,
+                        argument
+                    );
+                    return const_generic_refusal(&error);
+                }
+                if (strcmp(token_kind(source, argument), "integer") != 0) {
+                    buffer_format(
+                        &error,
+                        "error[E408]: `Fixed` scale must be an integer "
+                        "literal in `0`..`6144`; a type or expression is "
+                        "not a scale at byte %" PRId64,
+                        argument
+                    );
+                    return const_generic_refusal(&error);
+                }
+                char *literal = token_copy(source, argument);
+                char *digits = const_argument_digits(literal);
+                bool over = fixed_scale_over_profile(digits);
+                if (over) {
+                    buffer_format(
+                        &error,
+                        "error[E408]: `Fixed` scale `%s` is outside "
+                        "`0`..`6144`; it is refused, not wrapped at byte "
+                        "%" PRId64,
+                        digits,
+                        argument
+                    );
+                    free(digits);
+                    free(literal);
+                    return const_generic_refusal(&error);
+                }
+                int64_t after = skip_trivia(
+                    source,
+                    token_end(source, argument)
+                );
+                if (!token_equal(source, after, "]")) {
+                    buffer_format(
+                        &error,
+                        "error[E2S150]: `Fixed` declares one scale and "
+                        "accepts exactly one argument at byte %" PRId64,
+                        after
+                    );
+                    free(digits);
+                    free(literal);
+                    return const_generic_refusal(&error);
+                }
+                free(digits);
+                free(literal);
+                free(error.data);
+                cursor = skip_trivia(source, close);
+                continue;
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return owned_text("ok");
+}
+
+/* Eight distinct scales is the Stage 2 instantiation budget E2S152 already
+ * states; a `Fixed` unit with more has the same monomorphization cost. */
+static char *validate_fixed_scale_budget(const char *source) {
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, 0);
+    Buffer seen;
+    buffer_init(&seen);
+    buffer_append(&seen, "|");
+    int64_t count = 0;
+    while (cursor < length) {
+        char *head = token_copy(source, cursor);
+        bool is_fixed = strcmp(token_kind(source, cursor), "identifier") == 0 &&
+                        strcmp(head, "Fixed") == 0;
+        free(head);
+        if (is_fixed) {
+            int64_t bracket = skip_trivia(source, token_end(source, cursor));
+            if (bracket < length && token_equal(source, bracket, "[")) {
+                int64_t argument = skip_trivia(
+                    source,
+                    token_end(source, bracket)
+                );
+                if (strcmp(token_kind(source, argument), "integer") == 0) {
+                    char *literal = token_copy(source, argument);
+                    char *digits = const_argument_digits(literal);
+                    Buffer identity;
+                    buffer_init(&identity);
+                    buffer_format(&identity, "|Fixed[%s]|", digits);
+                    if (strstr(seen.data, identity.data) == NULL) {
+                        count += 1;
+                        if (count > 8) {
+                            Buffer error;
+                            buffer_init(&error);
+                            buffer_format(
+                                &error,
+                                "error[E2S152]: distinct Fixed scales exceed "
+                                "8; each distinct scale is a separate type, "
+                                "so reduce the number of instantiations at "
+                                "byte %" PRId64,
+                                cursor
+                            );
+                            free(identity.data);
+                            free(digits);
+                            free(literal);
+                            free(seen.data);
+                            return const_generic_refusal(&error);
+                        }
+                        buffer_append(&seen, identity.data);
+                    }
+                    free(identity.data);
+                    free(digits);
+                    free(literal);
+                }
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    free(seen.data);
     return owned_text("ok");
 }
 
@@ -25392,7 +25608,8 @@ static char *lower_body_with_workspace(
                         strcmp(declared_type, "Text") == 0 ||
                         strcmp(declared_type, "Decimal") == 0 ||
                         strcmp(declared_type, "Float") == 0 ||
-                        strcmp(declared_type, "DecimalResult") == 0
+                        strcmp(declared_type, "DecimalResult") == 0 ||
+                        strncmp(declared_type, "Fixed[", 6) == 0
                     ) {
                         free(declared_type);
                     } else if (

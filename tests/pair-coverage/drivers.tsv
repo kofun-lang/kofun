@@ -55,6 +55,7 @@ const-generics
 date-time
 decimal
 decimal-arithmetic
+decimal-fixed-identity
 decimal-fixed-runtime
 diagnostics
 digest

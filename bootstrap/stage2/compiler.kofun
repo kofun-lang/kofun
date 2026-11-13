@@ -2021,6 +2021,22 @@ fn const_parameter_of_type(source: Text, wanted: Text) -> Text {
     return ""
 }
 
+# A builtin type whose one argument is part of its identity exactly as a
+# declared const parameter is. `Fixed[S]` has no declaration in source: it is
+# compiler-known, so `const_parameter_of_type` cannot find it. Keeping the
+# predicate separate leaves that lookup about *declarations* and still lets
+# every identity consumer see the argument.
+fn builtin_const_parameterized_type(name: Text) -> Bool {
+    return name == "Fixed"
+}
+
+# Whether `head[...]` carries a const argument, whether the parameter is
+# declared in this unit or built in.
+fn type_takes_const_argument(source: Text, head: Text) -> Bool {
+    return builtin_const_parameterized_type(head) ||
+    len(const_parameter_of_type(source, head)) > 0
+}
+
 fn type_declaration_end(source: Text, start: Int) -> Int {
     if token_text(source, start) != "type" || len(type_name(source, start)) == 0 {
         return -1
@@ -3677,6 +3693,17 @@ fn parse_program(source: Text) -> Text {
     let const_erasure_check = validate_const_erasure(source)
     if starts_with(const_erasure_check, "error[") {
         return const_erasure_check
+    }
+    # RFC-0015's builtin `Fixed[S]` owns its scale bound and its own
+    # instantiations; the declared const-generic rules above deliberately do
+    # not see it.
+    let fixed_argument_check = validate_fixed_arguments(source)
+    if starts_with(fixed_argument_check, "error[") {
+        return fixed_argument_check
+    }
+    let fixed_budget_check = validate_fixed_scale_budget(source)
+    if starts_with(fixed_budget_check, "error[") {
+        return fixed_budget_check
     }
     let mut ir = "kofun-stage2-ir/v1\nsource-bytes|" +
     to_text(len(source)) + "\n"
@@ -10418,7 +10445,7 @@ fn const_argument_over_budget(digits: Text) -> Bool {
 # distinguishes the scales without knowing they exist.
 fn annotation_type_text(source: Text, type_start: Int) -> Text {
     let head = token_text(source, type_start)
-    if len(const_parameter_of_type(source, head)) == 0 {
+    if !type_takes_const_argument(source, head) {
         return head
     }
     let bracket = skip_trivia(source, token_end(source, type_start))
@@ -10439,7 +10466,7 @@ fn annotation_type_text(source: Text, type_start: Int) -> Text {
 # the next parser step to trip over.
 fn annotation_type_end(source: Text, type_start: Int) -> Int {
     let head = token_text(source, type_start)
-    if len(const_parameter_of_type(source, head)) == 0 {
+    if !type_takes_const_argument(source, head) {
         return token_end(source, type_start)
     }
     let bracket = skip_trivia(source, token_end(source, type_start))
@@ -10521,6 +10548,125 @@ fn validate_const_arguments(source: Text) -> Text {
                 return "error[E2S150]: `" + head +
                 "` expects one const argument; write `" + head +
                 "[...]` at byte " + to_text(cursor)
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return "ok"
+}
+
+# `Fixed`'s scale bound is the fixed-decimal profile's executable domain,
+# narrower than the generic const-parameter budget: RFC-0015 admits the literal
+# scales `0..6144` only. E408 owns the value and the argument kind; E2S150
+# still owns the argument list's shape.
+fn fixed_scale_over_profile(digits: Text) -> Bool {
+    let limit = "6144"
+    let width = len(digits)
+    if width > len(limit) {
+        return true
+    }
+    if width < len(limit) {
+        return false
+    }
+    let mut index = 0
+    while index < width {
+        let actual = text_slice(digits, index, index + 1)
+        let allowed = text_slice(limit, index, index + 1)
+        if actual != allowed {
+            return const_digit_greater(actual, allowed)
+        }
+        index = index + 1
+    }
+    return false
+}
+
+# RFC-0015's E408: `S` is not a literal in `0..6144`. `Fixed` is built in, so
+# `validate_const_arguments` deliberately does not see it and its generic
+# `0..65535` budget does not apply. Missing and surplus arguments stay with
+# E2S150, the code that already owns a malformed const argument list.
+fn validate_fixed_arguments(source: Text) -> Text {
+    let mut cursor = skip_trivia(source, 0)
+    while cursor < len(source) {
+        if token_kind(source, cursor) == "identifier" &&
+           token_text(source, cursor) == "Fixed" {
+            if const_generic_declaration_head(source, cursor) {
+                # The declaration's own name is a binder, not an argument; the
+                # reserved-name check owns the refusal for `type Fixed[...]`.
+                cursor = skip_trivia(source, token_end(source, cursor))
+                continue
+            }
+            let bracket = skip_trivia(source, token_end(source, cursor))
+            if bracket < len(source) && token_text(source, bracket) == "[" {
+                let close = balanced_end(source, bracket, "[", "]")
+                if close < 0 {
+                    return "error[E2S150]: unterminated const argument list for `Fixed` at byte " +
+                    to_text(bracket)
+                }
+                let argument = skip_trivia(
+                    source,
+                    token_end(source, bracket)
+                )
+                if token_text(source, argument) == "]" {
+                    return "error[E2S150]: `Fixed` expects one scale argument; write `Fixed[...]` at byte " +
+                    to_text(argument)
+                }
+                if token_text(source, argument) == "-" {
+                    return "error[E408]: `Fixed` scale must be an integer literal in `0`..`6144`; a negative argument is not a scale at byte " +
+                    to_text(argument)
+                }
+                if token_kind(source, argument) != "integer" {
+                    return "error[E408]: `Fixed` scale must be an integer literal in `0`..`6144`; a type or expression is not a scale at byte " +
+                    to_text(argument)
+                }
+                let digits = const_argument_digits(
+                    token_text(source, argument)
+                )
+                if fixed_scale_over_profile(digits) {
+                    return "error[E408]: `Fixed` scale `" + digits +
+                    "` is outside `0`..`6144`; it is refused, not wrapped at byte " +
+                    to_text(argument)
+                }
+                let after = skip_trivia(source, token_end(source, argument))
+                if token_text(source, after) != "]" {
+                    return "error[E2S150]: `Fixed` declares one scale and accepts exactly one argument at byte " +
+                    to_text(after)
+                }
+                cursor = skip_trivia(source, close)
+                continue
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return "ok"
+}
+
+# Eight distinct scales is the Stage 2 instantiation budget E2S152 already
+# states; a `Fixed` unit with more has the same monomorphization cost.
+fn validate_fixed_scale_budget(source: Text) -> Text {
+    let mut seen = "|"
+    let mut count = 0
+    let mut cursor = skip_trivia(source, 0)
+    while cursor < len(source) {
+        if token_kind(source, cursor) == "identifier" &&
+           token_text(source, cursor) == "Fixed" {
+            let bracket = skip_trivia(source, token_end(source, cursor))
+            if bracket < len(source) && token_text(source, bracket) == "[" {
+                let argument = skip_trivia(
+                    source,
+                    token_end(source, bracket)
+                )
+                if token_kind(source, argument) == "integer" {
+                    let identity = "Fixed[" +
+                    const_argument_digits(token_text(source, argument)) + "]"
+                    if !contains(seen, "|" + identity + "|") {
+                        count = count + 1
+                        if count > 8 {
+                            return "error[E2S152]: distinct Fixed scales exceed 8; each distinct scale is a separate type, so reduce the number of instantiations at byte " +
+                            to_text(cursor)
+                        }
+                        seen = seen + identity + "|"
+                    }
+                }
             }
         }
         cursor = skip_trivia(source, token_end(source, cursor))
@@ -17475,6 +17621,7 @@ fn lower_body(
                    binding_type != "Decimal" &&
                    binding_type != "Float" &&
                    binding_type != "DecimalResult" &&
+                   !starts_with(binding_type, "Fixed[") &&
                    !authority_type_name(binding_type) &&
                    enum_constructor_count(source, binding_type) < 0 &&
                    record_declaration_start(source, binding_type) < 0 {
@@ -17577,7 +17724,8 @@ fn lower_body(
                !starts_with(binding_type, "List[") &&
                binding_type != "Decimal" &&
                binding_type != "Float" &&
-               binding_type != "DecimalResult" {
+               binding_type != "DecimalResult" &&
+               !starts_with(binding_type, "Fixed[") {
                 if record_declaration_start(source, binding_type) >= 0 {
                     if mutable {
                         return "error[E2S32]: nominal record bindings are immutable in this slice at byte " +

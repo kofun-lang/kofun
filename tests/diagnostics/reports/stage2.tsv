@@ -73,3 +73,4 @@ E2S98	stage2	stdout	1	required	not-applicable	forbidden
 E352	stage2	stdout	1	required	not-applicable	forbidden
 E353	stage2	stdout	1	required	not-applicable	forbidden
 E355	stage2	stdout	1	required	not-applicable	forbidden
+E408	stage2	stdout	1	required	not-applicable	forbidden

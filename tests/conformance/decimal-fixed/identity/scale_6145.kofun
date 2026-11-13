@@ -1,0 +1,4 @@
+fn main() -> Int {
+    let price: Fixed[6145] = 1
+    return 0
+}

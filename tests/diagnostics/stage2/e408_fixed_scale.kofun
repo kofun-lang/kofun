@@ -1,0 +1,7 @@
+# diagnostic-mode: compile
+# expect-code: E408
+# expect-span: byte 111
+fn main() -> Int {
+    let price: Fixed[6145] = 1
+    return 0
+}
