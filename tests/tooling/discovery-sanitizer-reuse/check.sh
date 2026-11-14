@@ -31,6 +31,17 @@ trap cleanup 0 1 2 15
 cleanup
 mkdir -p "$WORK"
 
+# Stand-in compilers that succeed or fail and do nothing else.  They are
+# written into the work tree because a host's /bin need not hold coreutils:
+# on NixOS it holds only sh (#1750).
+stand_in_dir=$(CDPATH= cd -P -- "$WORK" && pwd)/stand-in
+stand_in_true=$stand_in_dir/true
+stand_in_false=$stand_in_dir/false
+mkdir "$stand_in_dir"
+printf '#!/bin/sh\nexit 0\n' >"$stand_in_true"
+printf '#!/bin/sh\nexit 1\n' >"$stand_in_false"
+chmod 755 "$stand_in_true" "$stand_in_false"
+
 if test -n "${KOFUN_DISCOVERY_SANITIZER_TEST_REAL_CC:-}"; then
     real_cc=$KOFUN_DISCOVERY_SANITIZER_TEST_REAL_CC
 elif test -n "${KOFUN_VERIFY_REAL_CC:-}"; then
@@ -255,7 +266,7 @@ incomplete_log=$WORK/incomplete-link.tsv
 : >"$incomplete_log"
 incomplete_status=0
 kofun_discovery_sanitizer_link \
-    "$ROOT" "$missing" "$incomplete_log" /bin/true \
+    "$ROOT" "$missing" "$incomplete_log" "$stand_in_true" \
     "$CASES/live_query_test.c" "$WORK/incomplete-false-pass" \
     >"$WORK/incomplete.stdout" 2>"$WORK/incomplete.stderr" ||
     incomplete_status=$?
@@ -270,7 +281,7 @@ failed_build=$WORK/failed-build-objects
 failed_build_log=$WORK/failed-build.tsv
 failed_build_status=0
 kofun_discovery_sanitizer_objects_build \
-    "$ROOT" "$failed_build" "$failed_build_log" /bin/false \
+    "$ROOT" "$failed_build" "$failed_build_log" "$stand_in_false" \
     >"$WORK/failed-build.stdout" 2>"$WORK/failed-build.stderr" ||
     failed_build_status=$?
 assert_num 'failed support compile refusal status' \
@@ -287,7 +298,7 @@ assert_num 'failed support compile stops at the first member' \
 
 mutation_log=$WORK/argv-mutations.tsv
 : >"$mutation_log"
-KOFUN_DISCOVERY_SANITIZER_REAL_CC=/bin/true
+KOFUN_DISCOVERY_SANITIZER_REAL_CC=$stand_in_true
 KOFUN_DISCOVERY_SANITIZER_CENSUS_LOG=$mutation_log
 KOFUN_DISCOVERY_SANITIZER_ROOT=$ROOT
 KOFUN_DISCOVERY_SANITIZER_OBJECT_DIR=$bundle

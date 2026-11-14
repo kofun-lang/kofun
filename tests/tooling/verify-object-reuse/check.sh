@@ -30,6 +30,17 @@ trap cleanup 0 1 2 15
 cleanup
 mkdir -p "$WORK"
 
+# Stand-in compilers that succeed or fail and do nothing else.  They are
+# written into the work tree because a host's /bin need not hold coreutils:
+# on NixOS it holds only sh (#1750).
+stand_in_dir=$(CDPATH= cd -P -- "$WORK" && pwd)/stand-in
+stand_in_true=$stand_in_dir/true
+stand_in_false=$stand_in_dir/false
+mkdir "$stand_in_dir"
+printf '#!/bin/sh\nexit 0\n' >"$stand_in_true"
+printf '#!/bin/sh\nexit 1\n' >"$stand_in_false"
+chmod 755 "$stand_in_true" "$stand_in_false"
+
 # The standard producer used to occur in thirteen direct gate build stanzas
 # plus the driver's main and library build stanzas.  All fifteen now use the
 # selector.  Raw source references remain only in explicitly distinct
@@ -1511,10 +1522,10 @@ printf '%s\n' second >"$link_contract/identity-input-second"
 KOFUN_VERIFY_REAL_CC=$backslash_compiler
 export KOFUN_VERIFY_REAL_CC
 kofun_stage2_semantic_executable_identity "$ROOT" events \
-    "$link_contract/identity-input-first" /bin/true /bin/true
+    "$link_contract/identity-input-first" "$stand_in_true" "$stand_in_true"
 backslash_identity_first=$KOFUN_STAGE2_SEMANTIC_EXECUTABLE_ID
 kofun_stage2_semantic_executable_identity "$ROOT" events \
-    "$link_contract/identity-input-second" /bin/true /bin/true
+    "$link_contract/identity-input-second" "$stand_in_true" "$stand_in_true"
 backslash_identity_second=$KOFUN_STAGE2_SEMANTIC_EXECUTABLE_ID
 assert_ne 'backslash compiler path cannot truncate executable inputs' \
     "$backslash_identity_first" "$backslash_identity_second"
@@ -1523,87 +1534,87 @@ export KOFUN_VERIFY_REAL_CC
 
 wrapper_shape_log=$link_contract/wrapper-shapes.log
 : >"$wrapper_shape_log"
-KOFUN_VERIFY_REAL_CC=/bin/true \
+KOFUN_VERIFY_REAL_CC=$stand_in_true \
 KOFUN_VERIFY_CC_LOG=$wrapper_shape_log \
     "$wrapper" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic \
     -I"$ROOT/bootstrap/stage2" -c \
     "$ROOT/bootstrap/stage2/semantic_producer.c" \
     -o "$link_contract/path with spaces/semantic-producer-main.o"
-KOFUN_VERIFY_REAL_CC=/bin/true \
+KOFUN_VERIFY_REAL_CC=$stand_in_true \
 KOFUN_VERIFY_CC_LOG=$wrapper_shape_log \
     "$wrapper" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic \
     -DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY \
     -I"$ROOT/bootstrap/stage2" -c \
     "$ROOT/bootstrap/stage2/semantic_producer.c" \
     "-o$link_contract/path with spaces/semantic-producer-library.o"
-KOFUN_VERIFY_REAL_CC=/bin/true \
+KOFUN_VERIFY_REAL_CC=$stand_in_true \
 KOFUN_VERIFY_CC_LOG=$wrapper_shape_log \
     "$wrapper" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic \
     -flto -I"$ROOT/bootstrap/stage2" -c \
     "$ROOT/bootstrap/stage2/semantic_producer.c" \
     -o "$link_contract/semantic-producer-main.o"
-KOFUN_VERIFY_REAL_CC=/bin/true \
+KOFUN_VERIFY_REAL_CC=$stand_in_true \
 KOFUN_VERIFY_CC_LOG=$wrapper_shape_log \
     "$wrapper" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic \
     -I"$ROOT/bootstrap/stage2" -c \
     "$ROOT/bootstrap/stage2/semantic_producer.c" \
     "$link_contract/semantic-producer-main.o" \
     -o "$link_contract/mixed-producer"
-KOFUN_VERIFY_REAL_CC=/bin/true \
+KOFUN_VERIFY_REAL_CC=$stand_in_true \
 KOFUN_VERIFY_CC_LOG=$wrapper_shape_log \
     "$wrapper" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic \
     -I"$ROOT/bootstrap/stage2" -c \
     "$ROOT/bootstrap/stage2/semantic_producer.c" \
     -o "$link_contract/semantic\c-output.o"
-KOFUN_VERIFY_REAL_CC=/bin/true \
+KOFUN_VERIFY_REAL_CC=$stand_in_true \
 KOFUN_VERIFY_CC_LOG=$wrapper_shape_log \
     "$wrapper" "$link_contract/semantic-producer-main.o" \
     "$link_contract/semantic-producer-library.o" \
     -o "$link_contract/mixed-object-output"
-KOFUN_VERIFY_REAL_CC=/bin/true \
+KOFUN_VERIFY_REAL_CC=$stand_in_true \
 KOFUN_VERIFY_CC_LOG=$wrapper_shape_log \
     "$wrapper" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic -flto \
     -I"$ROOT/bootstrap/stage2" -c \
     "$ROOT/bootstrap/stage2/semantic_events.c" \
     -o "$link_contract/semantic-events.o"
-KOFUN_VERIFY_REAL_CC=/bin/true \
+KOFUN_VERIFY_REAL_CC=$stand_in_true \
 KOFUN_VERIFY_CC_LOG=$wrapper_shape_log \
     "$wrapper" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic -flto \
     -I"$ROOT/bootstrap/stage2" -c \
     "$ROOT/bootstrap/stage2/sha256.c" \
     -o "$link_contract/sha256.o"
-KOFUN_VERIFY_REAL_CC=/bin/true \
+KOFUN_VERIFY_REAL_CC=$stand_in_true \
 KOFUN_VERIFY_CC_LOG=$wrapper_shape_log \
     "$wrapper" "$ROOT/bootstrap/stage2/semantic_events.c" \
     "$link_contract/semantic-producer-main.o" \
     -o "$link_contract/mixed-events-object-output"
-KOFUN_VERIFY_REAL_CC=/bin/true \
+KOFUN_VERIFY_REAL_CC=$stand_in_true \
 KOFUN_VERIFY_CC_LOG=$wrapper_shape_log \
     "$wrapper" "$ROOT/bootstrap/stage2/sha256.c" \
     "$link_contract/semantic-producer-main.o" \
     -o "$link_contract/mixed-sha-object-output"
-KOFUN_VERIFY_REAL_CC=/bin/true \
+KOFUN_VERIFY_REAL_CC=$stand_in_true \
 KOFUN_VERIFY_CC_LOG=$wrapper_shape_log \
     "$wrapper" "$ROOT/bootstrap/stage2/semantic_events.c" \
     "$ROOT/bootstrap/stage2/sha256.c" \
     -o "$link_contract/source-local-events-tool"
-KOFUN_VERIFY_REAL_CC=/bin/true \
+KOFUN_VERIFY_REAL_CC=$stand_in_true \
 KOFUN_VERIFY_CC_LOG=$wrapper_shape_log \
     "$wrapper" -std=c11 -fanalyzer -Wall -Wextra -Werror -pedantic \
     -I"$ROOT/bootstrap/stage2" -c \
     "$ROOT/bootstrap/stage2/semantic_events.c" \
     -o "$link_contract/semantic-events.o"
-KOFUN_VERIFY_REAL_CC=/bin/true \
+KOFUN_VERIFY_REAL_CC=$stand_in_true \
 KOFUN_VERIFY_CC_LOG=$wrapper_shape_log \
     "$wrapper" "$ROOT/bootstrap/stage2/sha256.c" \
     -o "$link_contract/source-local-sha-tool"
 set +e
-KOFUN_VERIFY_REAL_CC=/bin/false \
+KOFUN_VERIFY_REAL_CC=$stand_in_false \
 KOFUN_VERIFY_CC_LOG=$wrapper_shape_log \
     "$wrapper" -std=c11 -O2 unrelated.c \
     -o "$link_contract/unrelated-negative"
 unrelated_negative_status=$?
-KOFUN_VERIFY_REAL_CC=/bin/false \
+KOFUN_VERIFY_REAL_CC=$stand_in_false \
 KOFUN_VERIFY_CC_LOG=$wrapper_shape_log \
     "$wrapper" -std=c11 -O2 -g -Wall -Wextra -Werror -pedantic \
     -I"$ROOT/bootstrap/stage2" -c \
@@ -1662,12 +1673,12 @@ else
     saved_expected_cc_sha256=
     had_expected_cc_identity=0
 fi
-KOFUN_VERIFY_REAL_CC_PATH=$(command -v /bin/true)
+KOFUN_VERIFY_REAL_CC_PATH=$(command -v "$stand_in_true")
 true_digest_output=$("$ROOT/bin/kofun" digest "$KOFUN_VERIFY_REAL_CC_PATH")
 KOFUN_VERIFY_REAL_CC_SHA256=${true_digest_output%% *}
 export KOFUN_VERIFY_REAL_CC_PATH KOFUN_VERIFY_REAL_CC_SHA256
 KOFUN_STAGE2_COMMON_LINK_ID=incremental/graph \
-KOFUN_VERIFY_REAL_CC=/bin/true \
+KOFUN_VERIFY_REAL_CC=$stand_in_true \
 KOFUN_VERIFY_CC_LOG=$common_wrapper_log \
     "$wrapper" $common_wrapper_base_args \
     -I"$ROOT/bootstrap/stage2" \
@@ -1678,7 +1689,7 @@ KOFUN_VERIFY_CC_LOG=$common_wrapper_log \
     "$bundle/visibility-access-common-o2.o" \
     -o "$link_contract/kofun-incremental-graph"
 KOFUN_STAGE2_COMMON_LINK_ID=incremental/graph \
-KOFUN_VERIFY_REAL_CC=/bin/true \
+KOFUN_VERIFY_REAL_CC=$stand_in_true \
 KOFUN_VERIFY_CC_LOG=$common_wrapper_log \
     "$wrapper" $common_wrapper_base_args \
     -I"$ROOT/bootstrap/stage2" \
@@ -1689,7 +1700,7 @@ KOFUN_VERIFY_CC_LOG=$common_wrapper_log \
     "$ROOT/bootstrap/stage2/visibility_access.c" \
     -o "$link_contract/kofun-incremental-graph"
 KOFUN_STAGE2_COMMON_LINK_ID=incremental/graph \
-KOFUN_VERIFY_REAL_CC=/bin/true \
+KOFUN_VERIFY_REAL_CC=$stand_in_true \
 KOFUN_VERIFY_CC_LOG=$common_wrapper_log \
     "$wrapper" $common_wrapper_base_args \
     -I"$ROOT/bootstrap/stage2" \
@@ -1700,7 +1711,7 @@ KOFUN_VERIFY_CC_LOG=$common_wrapper_log \
     "$bundle/visibility-access-common-o2.o" \
     -o "$link_contract/kofun-incremental-graph"
 KOFUN_STAGE2_COMMON_LINK_ID=incremental/graph \
-KOFUN_VERIFY_REAL_CC=/bin/true \
+KOFUN_VERIFY_REAL_CC=$stand_in_true \
 KOFUN_VERIFY_CC_LOG=$common_wrapper_log \
     "$wrapper" $common_wrapper_base_args \
     -I"$ROOT/bootstrap/stage2" \
@@ -1710,7 +1721,7 @@ KOFUN_VERIFY_CC_LOG=$common_wrapper_log \
     "$bundle/sha256-common-o2.o" \
     -o "$link_contract/kofun-incremental-graph"
 KOFUN_STAGE2_COMMON_LINK_ID=unknown/site \
-KOFUN_VERIFY_REAL_CC=/bin/true \
+KOFUN_VERIFY_REAL_CC=$stand_in_true \
 KOFUN_VERIFY_CC_LOG=$common_wrapper_log \
     "$wrapper" $common_wrapper_base_args \
     -I"$ROOT/bootstrap/stage2" \
@@ -1721,7 +1732,7 @@ KOFUN_VERIFY_CC_LOG=$common_wrapper_log \
     "$bundle/visibility-access-common-o2.o" \
     -o "$link_contract/kofun-incremental-graph"
 KOFUN_STAGE2_COMMON_LINK_ID=kif-v1/tool \
-KOFUN_VERIFY_REAL_CC=/bin/true \
+KOFUN_VERIFY_REAL_CC=$stand_in_true \
 KOFUN_VERIFY_CC_LOG=$common_wrapper_log \
     "$wrapper" $common_wrapper_base_args \
     -I"$ROOT/bootstrap/stage2" \
@@ -1731,7 +1742,7 @@ KOFUN_VERIFY_CC_LOG=$common_wrapper_log \
     "$bundle/sha256-common-o2.o" \
     -o "$link_contract/kofun-kif-v1"
 KOFUN_STAGE2_COMMON_LINK_ID=incremental/graph \
-KOFUN_VERIFY_REAL_CC=/bin/true \
+KOFUN_VERIFY_REAL_CC=$stand_in_true \
 KOFUN_VERIFY_CC_LOG=$common_wrapper_log \
     "$wrapper" $common_wrapper_base_args \
     -I"$ROOT/bootstrap/stage2" \
@@ -1743,7 +1754,7 @@ KOFUN_VERIFY_CC_LOG=$common_wrapper_log \
     "$bundle/semantic-events.o" \
     -o "$link_contract/kofun-incremental-graph"
 KOFUN_STAGE2_COMMON_LINK_ID=incremental/graph \
-KOFUN_VERIFY_REAL_CC=/bin/true \
+KOFUN_VERIFY_REAL_CC=$stand_in_true \
 KOFUN_VERIFY_CC_LOG=$common_wrapper_log \
     "$wrapper" $common_wrapper_base_args \
     -I"$ROOT/bootstrap/stage2" \
@@ -1755,7 +1766,7 @@ KOFUN_VERIFY_CC_LOG=$common_wrapper_log \
     "$bundle/sha256.o" \
     -o "$link_contract/kofun-incremental-graph"
 KOFUN_STAGE2_COMMON_LINK_ID=incremental/graph \
-KOFUN_VERIFY_REAL_CC=/bin/true \
+KOFUN_VERIFY_REAL_CC=$stand_in_true \
 KOFUN_VERIFY_CC_LOG=$common_wrapper_log \
     "$wrapper" $common_wrapper_base_args \
     -I"$ROOT/bootstrap/stage2" \
@@ -1767,7 +1778,7 @@ KOFUN_VERIFY_CC_LOG=$common_wrapper_log \
     "$ROOT/bootstrap/stage2/semantic_events.c" \
     -o "$link_contract/kofun-incremental-graph"
 KOFUN_STAGE2_COMMON_LINK_ID=stage2-kif-producer/producer \
-KOFUN_VERIFY_REAL_CC=/bin/true \
+KOFUN_VERIFY_REAL_CC=$stand_in_true \
 KOFUN_VERIFY_CC_LOG=$common_wrapper_log \
     "$wrapper" $common_wrapper_base_args \
     -DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY \
@@ -1779,7 +1790,7 @@ KOFUN_VERIFY_CC_LOG=$common_wrapper_log \
     "$bundle/sha256-common-o2.o" \
     -o "$link_contract/kofun-stage2-kif"
 KOFUN_STAGE2_COMMON_LINK_ID=stage2-kif-producer/producer \
-KOFUN_VERIFY_REAL_CC=/bin/true \
+KOFUN_VERIFY_REAL_CC=$stand_in_true \
 KOFUN_VERIFY_CC_LOG=$common_wrapper_log \
     "$wrapper" $common_wrapper_base_args \
     -DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY \
@@ -1790,7 +1801,7 @@ KOFUN_VERIFY_CC_LOG=$common_wrapper_log \
     "$bundle/sha256-common-o2.o" \
     -o "$link_contract/kofun-stage2-kif"
 KOFUN_STAGE2_COMMON_LINK_ID=stage2-kif-producer/producer \
-KOFUN_VERIFY_REAL_CC=/bin/true \
+KOFUN_VERIFY_REAL_CC=$stand_in_true \
 KOFUN_VERIFY_CC_LOG=$common_wrapper_log \
     "$wrapper" $common_wrapper_base_args \
     -DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY \
@@ -1803,7 +1814,7 @@ KOFUN_VERIFY_CC_LOG=$common_wrapper_log \
     "$bundle/sha256-common-o2.o" \
     -o "$link_contract/kofun-stage2-kif"
 KOFUN_STAGE2_COMMON_LINK_ID=stage2-kif-producer/producer \
-KOFUN_VERIFY_REAL_CC=/bin/true \
+KOFUN_VERIFY_REAL_CC=$stand_in_true \
 KOFUN_VERIFY_CC_LOG=$common_wrapper_log \
     "$wrapper" $common_wrapper_base_args \
     -DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY \
@@ -1816,7 +1827,7 @@ KOFUN_VERIFY_CC_LOG=$common_wrapper_log \
     "$bundle/sha256-common-o2.o" \
     -o "$link_contract/kofun-stage2-kif"
 KOFUN_STAGE2_COMMON_LINK_ID=incremental/graph \
-KOFUN_VERIFY_REAL_CC=/bin/true \
+KOFUN_VERIFY_REAL_CC=$stand_in_true \
 KOFUN_VERIFY_REAL_CC_PATH=/wrong/compiler \
 KOFUN_VERIFY_REAL_CC_SHA256=0000000000000000000000000000000000000000000000000000000000000000 \
 KOFUN_VERIFY_CC_LOG=$common_wrapper_log \

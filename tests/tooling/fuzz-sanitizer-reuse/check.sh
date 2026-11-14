@@ -30,6 +30,17 @@ trap cleanup 0 1 2 15
 cleanup
 mkdir -p "$WORK"
 
+# Stand-in compilers that succeed or fail and do nothing else.  They are
+# written into the work tree because a host's /bin need not hold coreutils:
+# on NixOS it holds only sh (#1750).
+stand_in_dir=$(CDPATH= cd -P -- "$WORK" && pwd)/stand-in
+stand_in_true=$stand_in_dir/true
+stand_in_false=$stand_in_dir/false
+mkdir "$stand_in_dir"
+printf '#!/bin/sh\nexit 0\n' >"$stand_in_true"
+printf '#!/bin/sh\nexit 1\n' >"$stand_in_false"
+chmod 755 "$stand_in_true" "$stand_in_false"
+
 if test -n "${KOFUN_FUZZ_SANITIZER_TEST_REAL_CC:-}"; then
     real_cc=$KOFUN_FUZZ_SANITIZER_TEST_REAL_CC
 elif test -n "${KOFUN_VERIFY_REAL_CC:-}"; then
@@ -672,7 +683,7 @@ expect_invalid_bundle symlink "$symlink" \
 
 expect_invalid_bundle wrong-compiler "$bundle" \
     'bundle provenance does not match current compiler, profile, source closure, and object bytes' \
-    /bin/false
+    "$stand_in_false"
 
 root_symlink=$WORK/root-symlink
 ln -s "$bundle" "$root_symlink"
@@ -721,7 +732,7 @@ assert_grep 'equal-mtime source mutation refusal diagnostic' \
 # before that compiler is reached or a census row is appended.
 mutation_log=$WORK/argv-mutations.tsv
 : >"$mutation_log"
-KOFUN_FUZZ_SANITIZER_REAL_CC=/bin/true
+KOFUN_FUZZ_SANITIZER_REAL_CC=$stand_in_true
 KOFUN_FUZZ_SANITIZER_CENSUS_LOG=$mutation_log
 KOFUN_FUZZ_SANITIZER_ROOT=$ROOT
 KOFUN_FUZZ_SANITIZER_OBJECT_DIR=$bundle
@@ -815,7 +826,7 @@ failed_build=$WORK/failed-build-objects
 failed_build_log=$WORK/failed-build.tsv
 failed_build_status=0
 kofun_stage2_fuzz_sanitizer_objects_build \
-    "$ROOT" "$failed_build" "$failed_build_log" /bin/false \
+    "$ROOT" "$failed_build" "$failed_build_log" "$stand_in_false" \
     >"$WORK/failed-build.stdout" \
     2>"$WORK/failed-build.stderr" || failed_build_status=$?
 assert_num 'failed compile refusal status' "$failed_build_status" -ne 0
@@ -831,12 +842,13 @@ assert_num 'failed compile records one attempted compile' \
 assert_grep 'failed compile census carries non-success status' \
     -Fq 'status=1' "$failed_build_log"
 
-# A test-only manifest bound to /bin/false reaches the real link-failure path;
-# this exercises publication cleanup without adding another expensive compile.
+# A test-only manifest bound to a compiler that always fails reaches the real
+# link-failure path; this exercises publication cleanup without adding another
+# expensive compile.
 failed_link_bundle=$WORK/failed-link-bundle
 copy_mutation_bundle "$failed_link_bundle"
 kofun_stage2_fuzz_sanitizer_manifest_write \
-    "$ROOT" "$failed_link_bundle" /bin/false \
+    "$ROOT" "$failed_link_bundle" "$stand_in_false" \
     >"$failed_link_bundle/manifest-v1.tsv"
 seal_mutation_bundle "$failed_link_bundle"
 failed_link_census=$WORK/failed-link.tsv
@@ -845,7 +857,7 @@ failed_link_parent=$WORK/failed-link
 mkdir -p "$failed_link_parent"
 KOFUN_STAGE2_FUZZ_SANITIZER_OBJECT_DIR=$failed_link_bundle
 KOFUN_STAGE2_FUZZ_SANITIZER_CENSUS_LOG=$failed_link_census
-KOFUN_VERIFY_REAL_CC=/bin/false
+KOFUN_VERIFY_REAL_CC=$stand_in_false
 export KOFUN_STAGE2_FUZZ_SANITIZER_OBJECT_DIR \
     KOFUN_STAGE2_FUZZ_SANITIZER_CENSUS_LOG KOFUN_VERIFY_REAL_CC
 failed_link_status=0
