@@ -2,7 +2,8 @@
 
 - Shepherd: hjosugi
 - Opened: 2026-11-01
-- Status: proposed
+- Status: accepted
+- Decided: 2026-11-14
 
 Decision record for [#1719](https://github.com/kofun-lang/kofun/issues/1719),
 which #1713 kept as its follow-up. It states target semantics. It implements
@@ -262,15 +263,16 @@ identity, beside ownership modes.
 
 Each example is the header in
 [`docs/research/callable-effects.md` § Checked examples](../docs/research/callable-effects.md#checked-examples)
-followed by that section. The commands are `bin/kofun check FILE` on
-`origin/main@b8b31171`.
+followed by that section. The commands are `bin/kofun check FILE`. The byte
+offsets were re-measured at acceptance on `origin/main@85126c27`, and the
+research note's own runs at `63884247` give the same bytes.
 
 | Example | Source | Today | This RFC |
 |---|---|---|---|
-| x02 | `pure fn quiet` passes `noisy` to `apply` | `E2S176`: ``pure fn quiet` reaches `print` through `noisy` at byte 361`` | unchanged |
-| x13 | `f: pure (Int) -> Int` | `E2S35`: `malformed parameter head at byte 378` | accepted |
-| x18 | `trait Same[T] { pure fn same(…) -> Int }` | `E2S02`: `expected top-level fn, type, or let at byte 356` | accepted |
-| x20 | `pub pure fn quiet` | `E2S33`: `visibility modifier pub must be followed by a top-level fn or type declaration at bytes 356..359` | accepted; `pure pub fn` refused |
+| x02 | `pure fn quiet` passes `noisy` to `apply` | `E2S176`: ``pure fn quiet` reaches `print` through `noisy` at byte 362`` | unchanged |
+| x13 | `f: pure (Int) -> Int` | `E2S35`: `malformed parameter head at byte 379` | accepted |
+| x18 | `trait Same[T] { pure fn same(…) -> Int }` | `E2S02`: `expected top-level fn, type, or let at byte 357` | accepted |
+| x20 | `pub pure fn quiet` | `E2S33`: `visibility modifier pub must be followed by a top-level fn or type declaration at bytes 357..360` | accepted; `pure pub fn` refused |
 | x30 | `type pure = { a: Int, }` | `ok` | unchanged |
 
 x05, x09, x16, and x25 measure the creation-site rule this RFC builds on; they
