@@ -18036,6 +18036,28 @@ fn lower_fixed_let_statement(
         return "E@@error[E2S15]: Result[Fixed[S], DecimalError] initializer must be one call at byte " +
         to_text(value_start)
     }
+    if token_kind(source, value_start) == "identifier" {
+        let open = skip_trivia(source, token_end(source, value_start))
+        if open < len(source) && token_text(source, open) == "(" &&
+           balanced_end(source, open, "(", ")") == value_end {
+            let declared = function_return_type(
+                source,
+                token_text(source, value_start)
+            )
+            if starts_with(declared, "Result[Fixed[") {
+                let declared_scale = const_argument_of(
+                    fixed_identity_of(declared)
+                )
+                let wanted_scale = const_argument_of(
+                    fixed_identity_of(annotation)
+                )
+                if declared_scale != wanted_scale {
+                    return "E@@error[E409]: a call result of another Fixed scale is an implicit conversion; use a same-scale binding at byte " +
+                    to_text(value_start)
+                }
+            }
+        }
+    }
     let value = emit_expression(source, hir, value_start, value_end)
     if starts_with(value, "error[") {
         return "E@@" + value
