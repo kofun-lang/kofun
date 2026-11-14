@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 99,
+  "open_issues": 84,
   "issues": [
     {
       "number": 26,
@@ -481,27 +481,15 @@
       ]
     },
     {
-      "number": 1164,
-      "title": "Scoped parallelism: bounded scheduler, scope-exit drain, panic precedence, and cancellation",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "37905efa0e4fcf1b821a97e2799722a47ab942f2",
-        "638842470f622bbabb50c34a8bd9540e61dcbf33"
-      ]
-    },
-    {
       "number": 1166,
       "title": "Scoped parallelism: lower par/spawn/join in each backend",
       "state_labels": [
-        "blocked"
+        "needs-detail"
       ],
-      "state_line": "blocked",
+      "state_line": "needs-detail",
       "blocked_by": [
-        1164
+        1164,
+        1732
       ],
       "evidence_commits": [
         "37905efa0e4fcf1b821a97e2799722a47ab942f2"
@@ -744,49 +732,15 @@
       ]
     },
     {
-      "number": 1244,
-      "title": "Stage 2 affine authority state: control-flow cleanup and escape refusal",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "20cee8101c2792e0725fb6dd2211d1b0bfcec500",
-        "638842470f622bbabb50c34a8bd9540e61dcbf33"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-root-1244-readiness-refresh-20260821",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-root-1244-readiness-refresh-20260821",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-root-1244-1540-boundary-20260821",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-root-1244-1540-boundary-20260821",
-          "status": "released"
-        },
-        {
-          "agent_id": "deepseek-1244-affine-authority-20261004",
-          "status": "active"
-        }
-      ]
-    },
-    {
       "number": 1246,
       "title": "Stage 2 environment authority: root transfer, attenuation facts, and E350-E356 integration",
       "state_labels": [
-        "blocked"
+        "needs-detail"
       ],
-      "state_line": "blocked",
+      "state_line": "needs-detail",
       "blocked_by": [
-        1244
+        1244,
+        1733
       ],
       "evidence_commits": [
         "cd18b9f303553bdeef6647a08dd8055f46c4a9ed"
@@ -830,9 +784,9 @@
       "number": 1250,
       "title": "Stage 2 Decimal Fixed[S]: nominal carrier, construction, and scale identity",
       "state_labels": [
-        "ready"
+        "needs-detail"
       ],
-      "state_line": "ready",
+      "state_line": "needs-detail",
       "blocked_by": [
         1662
       ],
@@ -848,6 +802,26 @@
         },
         {
           "agent_id": "codex-issues-steady-fixed-20260923",
+          "status": "released"
+        },
+        {
+          "agent_id": "opencode-decimal-fixed-1250-20261101",
+          "status": "active"
+        },
+        {
+          "agent_id": "opencode-decimal-fixed-1250-20261101",
+          "status": "released"
+        },
+        {
+          "agent_id": "opencode-decimal-fixed-1250-20261101",
+          "status": "released"
+        },
+        {
+          "agent_id": "opencode-decimal-fixed-1250-20261101",
+          "status": "active"
+        },
+        {
+          "agent_id": "opencode-decimal-fixed-1250-20261101",
           "status": "released"
         }
       ]
@@ -907,19 +881,6 @@
       ]
     },
     {
-      "number": 1258,
-      "title": "HTTP core prerequisites: executable headers, URL input, and typed errors on C11 Stage 2",
-      "state_labels": [
-        "needs-detail"
-      ],
-      "state_line": "needs-detail",
-      "blocked_by": [],
-      "evidence_commits": [
-        "04003d9b153a09967723a0313016b7a78e55d2cd",
-        "fe1142a7039a0862ac3558729ab2477bb7a604d6"
-      ]
-    },
-    {
       "number": 1260,
       "title": "Implement synchronous finite Stream[T,E] and affine Subscription on C11 Stage 2",
       "state_labels": [
@@ -930,34 +891,6 @@
         1269,
         1270,
         1271
-      ],
-      "evidence_commits": [
-        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
-      ]
-    },
-    {
-      "number": 1261,
-      "title": "HTTP/1.1 core: deterministic request serializer and scripted write cursor",
-      "state_labels": [
-        "blocked"
-      ],
-      "state_line": "blocked",
-      "blocked_by": [
-        1258
-      ],
-      "evidence_commits": [
-        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
-      ]
-    },
-    {
-      "number": 1262,
-      "title": "HTTP/1.1 core: incremental response head and framing-plan decoder",
-      "state_labels": [
-        "blocked"
-      ],
-      "state_line": "blocked",
-      "blocked_by": [
-        1258
       ],
       "evidence_commits": [
         "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
@@ -994,73 +927,42 @@
       ]
     },
     {
-      "number": 1268,
-      "title": "Generics v1: production nominal binders, constructed TypeRefs, and typed HIR",
-      "state_labels": [
-        "blocked"
-      ],
-      "state_line": "blocked",
-      "blocked_by": [
-        1673,
-        1674,
-        1675
-      ],
-      "evidence_commits": [
-        "f80d9f0c656f2f05b2ab31f923e557893e27ad60"
-      ],
-      "claims": [
-        {
-          "agent_id": "claude-1268-generic-binders-20260815",
-          "status": "active"
-        },
-        {
-          "agent_id": "claude-1268-generic-binders-20260815",
-          "status": "released"
-        }
-      ]
-    },
-    {
       "number": 1269,
       "title": "Generics v1: specialize nominal generic records through AggregateLayout and C11",
       "state_labels": [
-        "blocked"
+        "needs-detail"
       ],
-      "state_line": "blocked",
-      "blocked_by": [
-        1268
-      ],
+      "state_line": "needs-detail",
+      "blocked_by": [],
       "evidence_commits": [
-        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+        "6dbe844899274002e36332e5ed51e0d4024ffa9c"
       ]
     },
     {
       "number": 1270,
       "title": "Generics v1: specialize generic ADTs and payloads through C11 Stage 2",
       "state_labels": [
-        "blocked"
+        "needs-detail"
       ],
-      "state_line": "blocked",
+      "state_line": "needs-detail",
       "blocked_by": [
-        1268,
         1269
       ],
       "evidence_commits": [
-        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+        "6dbe844899274002e36332e5ed51e0d4024ffa9c"
       ]
     },
     {
       "number": 1271,
       "title": "Generics v1: lower explicit generic function instantiations on C11 Stage 2",
       "state_labels": [
-        "blocked"
+        "needs-detail"
       ],
-      "state_line": "blocked",
-      "blocked_by": [
-        1268
-      ],
+      "state_line": "needs-detail",
+      "blocked_by": [],
       "evidence_commits": [
         "5c5cf42404b0dbeea36a4de0fb457c4479e8bf68",
-        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+        "6dbe844899274002e36332e5ed51e0d4024ffa9c"
       ]
     },
     {
@@ -1188,14 +1090,12 @@
       "number": 1283,
       "title": "ADT match v2: resolve nested/or patterns and binding paths into production HIR",
       "state_labels": [
-        "blocked"
+        "needs-detail"
       ],
-      "state_line": "blocked",
-      "blocked_by": [
-        1268
-      ],
+      "state_line": "needs-detail",
+      "blocked_by": [],
       "evidence_commits": [
-        "78b409c7ba69ea8fe21bdaea911197430f0e05b8"
+        "6dbe844899274002e36332e5ed51e0d4024ffa9c"
       ]
     },
     {
@@ -1561,54 +1461,6 @@
       ]
     },
     {
-      "number": 1455,
-      "title": "Replace bin/kofun-digest with a Kofun digest command",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "0d7d53039a439bbcfc38befd461ee9b29130ed29",
-        "1dfe393464249ae564514cd925e06f308555d3b5",
-        "21e89ecb8807606712c902481a6b39f82a190c79",
-        "555ab69a54342f069e51d1729e71750d5ac680fe",
-        "9e3b85328a710b3a2335e2dee8d72b3ac6fb71e1",
-        "fe1142a7039a0862ac3558729ab2477bb7a604d6",
-        "feddb49e65178d6b1916218c3c55c6e73948475f"
-      ],
-      "claims": [
-        {
-          "agent_id": "codex-issues-steady-digest-20260923",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-issues-steady-digest-20260923",
-          "status": "released"
-        },
-        {
-          "agent_id": "codex-issues-steady-digest-20260923",
-          "status": "active"
-        },
-        {
-          "agent_id": "codex-issues-steady-digest-20260923",
-          "status": "pr-open"
-        },
-        {
-          "agent_id": "codex-issues-steady-digest-20260923",
-          "status": "merged"
-        },
-        {
-          "agent_id": "opencode-digest-command-1455-20261003",
-          "status": "active"
-        },
-        {
-          "agent_id": "opencode-digest-command-1455-20261003",
-          "status": "pr-open"
-        }
-      ]
-    },
-    {
       "number": 1456,
       "title": "Move the kofun CLI driver from 1545 lines of shell into Kofun",
       "state_labels": [
@@ -1903,33 +1755,6 @@
       ]
     },
     {
-      "number": 1674,
-      "title": "Generics v1: production generic-record HIR and the shared nominal identity core",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "57600b24bf97afdb130c084c6f5a23fd9b807261",
-        "638842470f622bbabb50c34a8bd9540e61dcbf33"
-      ]
-    },
-    {
-      "number": 1675,
-      "title": "Generics v1: production generic-ADT HIR on the frozen nominal identity core",
-      "state_labels": [
-        "blocked"
-      ],
-      "state_line": "blocked",
-      "blocked_by": [
-        1674
-      ],
-      "evidence_commits": [
-        "57600b24bf97afdb130c084c6f5a23fd9b807261"
-      ]
-    },
-    {
       "number": 1679,
       "title": "Stage 2 pair divergences: Text-literal initializers and value `if`/`match` end positions",
       "state_labels": [
@@ -1978,134 +1803,6 @@
       ]
     },
     {
-      "number": 1696,
-      "title": "HTTP origin child: `HttpOrigin` and the profile limits on C11 Stage 2 (#1258)",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [
-        1694,
-        1707
-      ],
-      "evidence_commits": [
-        "638842470f622bbabb50c34a8bd9540e61dcbf33"
-      ]
-    },
-    {
-      "number": 1697,
-      "title": "HTTP errors child: the closed `HttpError` ADT on C11 Stage 2 (#1258)",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "638842470f622bbabb50c34a8bd9540e61dcbf33"
-      ]
-    },
-    {
-      "number": 1698,
-      "title": "HTTP headers child: `Header` and a bounded `List[Header]` at 128 on C11 Stage 2 (#1258)",
-      "state_labels": [
-        "needs-detail"
-      ],
-      "state_line": "needs-detail",
-      "blocked_by": [
-        1694,
-        1695
-      ],
-      "evidence_commits": []
-    },
-    {
-      "number": 1711,
-      "title": "`pure fn` accepts a function that passes an `io` function by name as a callable argument — it prints at run time",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "638842470f622bbabb50c34a8bd9540e61dcbf33"
-      ],
-      "claims": [
-        {
-          "agent_id": "deepseek-1711-pure-value-ref-20261004",
-          "status": "active"
-        },
-        {
-          "agent_id": "claude-kofun-a3-1711-20261004",
-          "status": "active"
-        },
-        {
-          "agent_id": "deepseek-1711-pure-value-ref-20261004",
-          "status": "released"
-        }
-      ]
-    },
-    {
-      "number": 1712,
-      "title": "[Decision] Who may let a dependency contain foreign code: per-dependency trust grants, propagation, and default (Flix security contexts)",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "638842470f622bbabb50c34a8bd9540e61dcbf33"
-      ],
-      "claims": [
-        {
-          "agent_id": "claude-kofun-a3-1712-20261004",
-          "status": "active"
-        },
-        {
-          "agent_id": "claude-kofun-a3-1712-20261004",
-          "status": "pr-open"
-        }
-      ]
-    },
-    {
-      "number": 1714,
-      "title": "[Decision] A statement that discards a `pure` call result: refusal, nothing, or a lint (Flix useless expressions and @MustUse)",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "638842470f622bbabb50c34a8bd9540e61dcbf33"
-      ],
-      "claims": [
-        {
-          "agent_id": "claude-kofun-a3-1714-20261004",
-          "status": "active"
-        }
-      ]
-    },
-    {
-      "number": 1715,
-      "title": "[Research] Value-level structural termination: reuse the type-level rule for ordinary functions? (Flix @Terminates)",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "638842470f622bbabb50c34a8bd9540e61dcbf33"
-      ],
-      "claims": [
-        {
-          "agent_id": "claude-kofun-a3-1715-20261004",
-          "status": "active"
-        },
-        {
-          "agent_id": "claude-kofun-a3-1715-20261004",
-          "status": "pr-open"
-        }
-      ]
-    },
-    {
       "number": 1718,
       "title": "Decide value-level structural termination: inferred fact, assertive boundary, and refusals",
       "state_labels": [
@@ -2117,42 +1814,6 @@
       ],
       "evidence_commits": [
         "638842470f622bbabb50c34a8bd9540e61dcbf33"
-      ]
-    },
-    {
-      "number": 1719,
-      "title": "Propose callable purity requirements: `pure` callable types, `pure` trait methods, argument refusals, and their KIF encoding",
-      "state_labels": [
-        "blocked"
-      ],
-      "state_line": "blocked",
-      "blocked_by": [
-        1711
-      ],
-      "evidence_commits": [
-        "638842470f622bbabb50c34a8bd9540e61dcbf33"
-      ]
-    },
-    {
-      "number": 1720,
-      "title": "Stage 2: an uncalled `let`-bound lambda passes check and fails at cc (#1358 for lifted lambdas)",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [],
-      "evidence_commits": [
-        "8a05a3ddb795bb46b7f40bed001154c8c54abb9d"
-      ],
-      "claims": [
-        {
-          "agent_id": "deepseek-http-c11-batch-20261003",
-          "status": "active"
-        },
-        {
-          "agent_id": "deepseek-http-c11-batch-20261003",
-          "status": "active"
-        }
       ]
     },
     {
@@ -2197,6 +1858,51 @@
       ],
       "evidence_commits": [
         "7d2caf6f3fa3bf733533b08ccf20b6551c3e13f0"
+      ]
+    },
+    {
+      "number": 1729,
+      "title": "[Decision] Must-use for Result and Validated: refuse a discarded result even from an io call (deferred from #1714)",
+      "state_labels": [
+        "deferred"
+      ],
+      "state_line": "deferred",
+      "blocked_by": [],
+      "evidence_commits": [
+        "7d2caf6f3fa3bf733533b08ccf20b6551c3e13f0"
+      ]
+    },
+    {
+      "number": 1730,
+      "title": "Refuse a statement that discards a pure call's non-Unit result (DD-042)",
+      "state_labels": [
+        "needs-decision"
+      ],
+      "state_line": "needs-decision",
+      "blocked_by": [
+        1711
+      ],
+      "evidence_commits": [
+        "7d2caf6f3fa3bf733533b08ccf20b6551c3e13f0"
+      ]
+    },
+    {
+      "number": 1748,
+      "title": "[Release] v0.14.0-seed: FREEZE, queue, and publication record",
+      "state_labels": [
+        "in-progress"
+      ],
+      "state_line": "in-progress",
+      "blocked_by": [],
+      "evidence_commits": [
+        "4bf55e8207c07f855f81163dadbc86b2cf6f1f58",
+        "65a7bf4964efbfb686cf1ba88331eefbac72dc71"
+      ],
+      "claims": [
+        {
+          "agent_id": "claude-release-0.14.0-20261114",
+          "status": "active"
+        }
       ]
     }
   ]
