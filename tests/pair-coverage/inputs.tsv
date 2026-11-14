@@ -583,6 +583,7 @@ tests/conformance/decimal-arithmetic/reject_round_missing_mode.kofun
 tests/conformance/decimal-arithmetic/rounded_division.kofun
 tests/conformance/decimal-fixed/carrier/alias.kofun
 tests/conformance/decimal-fixed/carrier/cross_scale.kofun
+tests/conformance/decimal-fixed/carrier/cross_scale_call.kofun
 tests/conformance/decimal-fixed/carrier/decimal_conversion.kofun
 tests/conformance/decimal-fixed/carrier/decimal_field.kofun
 tests/conformance/decimal-fixed/carrier/decimal_literal.kofun

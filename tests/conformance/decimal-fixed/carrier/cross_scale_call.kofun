@@ -1,0 +1,12 @@
+fn two() -> Result[Fixed[2], DecimalError] {
+    return Fixed.from_decimal(1.5, HalfUp)
+}
+
+fn main() -> Int {
+    let r: Result[Fixed[3], DecimalError] = two()
+    match take r {
+        Ok(amount) => { print(0) },
+        Err(error) => { print(1) },
+    }
+    return 0
+}

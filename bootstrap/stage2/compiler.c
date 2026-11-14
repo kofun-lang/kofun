@@ -26196,6 +26196,48 @@ static char *lower_fixed_let_statement(
                 value_start
             );
         }
+        if (strcmp(token_kind(source, value_start), "identifier") == 0) {
+            int64_t open = skip_trivia(
+                source,
+                token_end(source, value_start)
+            );
+            int64_t close = open < length && token_equal(source, open, "(")
+                ? balanced_end(source, open, "(", ")") : -1;
+            if (close >= 0 && close == value_end) {
+                char *callee = token_copy(source, value_start);
+                char *declared = function_return_type(source, callee);
+                free(callee);
+                if (strncmp(declared, "Result[Fixed[", 13) == 0) {
+                    char *declared_identity = fixed_identity_of(declared);
+                    char *declared_scale = const_argument_of(
+                        declared_identity
+                    );
+                    char *wanted_identity = fixed_identity_of(annotation);
+                    char *wanted_scale = const_argument_of(wanted_identity);
+                    bool cross_scale = strcmp(
+                        declared_scale,
+                        wanted_scale
+                    ) != 0;
+                    free(wanted_scale);
+                    free(wanted_identity);
+                    free(declared_scale);
+                    free(declared_identity);
+                    free(declared);
+                    if (cross_scale) {
+                        free(result_type);
+                        free(emitted.data);
+                        return lower_error(
+                            "E409",
+                            "a call result of another Fixed scale is an "
+                            "implicit conversion; use a same-scale binding",
+                            value_start
+                        );
+                    }
+                } else {
+                    free(declared);
+                }
+            }
+        }
         char *value = emit_expression(source, hir, value_start, value_end);
         if (strncmp(value, "error[", 6) == 0) {
             free(result_type);
