@@ -1,0 +1,1 @@
+error[E2S222]: a match over Result[Fixed[S], DecimalError] must be `match take`, which moves the whole payload at byte 281

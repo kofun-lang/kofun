@@ -1,0 +1,1 @@
+error[E410]: the bounded Result[Fixed[S], DecimalError] specialization cannot coexist with a user declaration named `Result` at byte 0

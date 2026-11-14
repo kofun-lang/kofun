@@ -1,1 +1,1 @@
-error[E2S32]: enum match scrutinee `outcome` must be a preceding explicitly typed enum binding at byte 219
+error[E2S222]: a match over Result[Fixed[S], DecimalError] must be `match take`, which moves the whole payload at byte 219

@@ -1,0 +1,4 @@
+fn main() -> Int {
+    let f: Fixed[2] = 1.5
+    return 0
+}

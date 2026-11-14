@@ -1,0 +1,4 @@
+fn main() -> Int {
+    let f: Fixed[2] = Fixed[2].from_decimal(1.5, HalfUp)?
+    return 0
+}

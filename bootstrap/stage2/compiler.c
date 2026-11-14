@@ -7007,6 +7007,16 @@ static char *validate_fixed_arguments(const char *source) {
                 }
                 free(digits);
                 free(literal);
+                if (token_equal(source, skip_trivia(source, close), ".")) {
+                    buffer_format(
+                        &error,
+                        "error[E407]: `Fixed[S].from_decimal` is not a v1 "
+                        "form; write `Fixed.from_decimal(value, mode)` at "
+                        "byte %" PRId64,
+                        close
+                    );
+                    return const_generic_refusal(&error);
+                }
                 free(error.data);
                 cursor = skip_trivia(source, close);
                 continue;
@@ -7075,6 +7085,55 @@ static char *validate_fixed_scale_budget(const char *source) {
     }
     free(seen.data);
     return owned_text("ok");
+}
+
+/* The bounded specialization owns the names `Result`, `Ok` and `Err` in a unit
+ * that uses it. A user declaration with one of those names is a second meaning
+ * for the same spelling, so it is refused before either can be read. */
+static char *validate_fixed_result_names(const char *source) {
+    if (strstr(source, "Result[Fixed[") == NULL) return owned_text("");
+    int64_t length = source_length(source);
+    int64_t cursor = after_optional_module_header(source, 0);
+    while (cursor < length) {
+        int64_t type_start = type_declaration_start(source, cursor);
+        if (type_start >= 0) {
+            char *name = type_name(source, type_start);
+            bool result_name = strcmp(name, "Result") == 0;
+            free(name);
+            if (result_name) {
+                return lower_error(
+                    "E410",
+                    "the bounded Result[Fixed[S], DecimalError] "
+                    "specialization cannot coexist with a user declaration "
+                    "named `Result`",
+                    type_start
+                );
+            }
+        }
+        int64_t end = top_level_end(source, cursor);
+        if (end <= cursor) break;
+        cursor = skip_trivia(source, end);
+    }
+    char *ok_owner = enum_constructor_owner(source, "Ok");
+    char *err_owner = enum_constructor_owner(source, "Err");
+    bool collision = ok_owner[0] != '\0' || err_owner[0] != '\0';
+    free(ok_owner);
+    free(err_owner);
+    if (!collision) return owned_text("");
+    cursor = skip_trivia(source, 0);
+    while (cursor < length) {
+        if (token_equal(source, cursor, "Ok") ||
+            token_equal(source, cursor, "Err")) {
+            return lower_error(
+                "E410",
+                "the bounded Result[Fixed[S], DecimalError] specialization "
+                "cannot coexist with a user constructor named `Ok` or `Err`",
+                cursor
+            );
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return owned_text("");
 }
 
 /* The executable form of the premise that lets every instantiation of one
@@ -14505,7 +14564,8 @@ static bool fixed_result_arm_pattern(const char *source, int64_t cursor) {
     int64_t close = balanced_end(source, open, "(", ")");
     if (close < 0) return false;
     int64_t arrow = skip_trivia(source, close);
-    return token_equal(source, arrow, "=>");
+    return token_equal(source, arrow, "=>") ||
+        token_equal(source, arrow, "if");
 }
 
 static char *validate_core_calls(const char *source, const char *hir) {
@@ -25909,21 +25969,11 @@ static char *lower_fixed_let_statement(
         return lower_error("E2S11", "expected `=`", equals);
     }
     int64_t value_start = skip_trivia(source, token_end(source, equals));
-    if (mutable) {
-        return lower_error(
-            "E2S144",
-            "mutable Fixed and Result bindings are outside this lowering slice",
-            value_start
-        );
-    }
     Buffer emitted;
     buffer_init(&emitted);
     bool fixed_annotation = strncmp(annotation, "Fixed[", 6) == 0;
     bool result_annotation = strncmp(annotation, "Result[Fixed[", 13) == 0;
-    if (
-        fixed_annotation &&
-        !token_equal(source, value_start, "Fixed")
-    ) {
+    if (strcmp(annotation, "Decimal") == 0) {
         if (strcmp(token_kind(source, value_start), "identifier") == 0) {
             char *binding = hir_use_binding_id(hir, value_start);
             char *type = hir_binding_field(hir, binding, 5);
@@ -25934,9 +25984,59 @@ static char *lower_fixed_let_statement(
                 free(emitted.data);
                 return lower_error(
                     "E409",
+                    "a Fixed value is not a Decimal implicitly; there is no "
+                    "v1 `Decimal.from_fixed` in this slice",
+                    value_start
+                );
+            }
+        }
+        free(emitted.data);
+        return owned_text("N");
+    }
+    if (mutable) {
+        return lower_error(
+            "E2S144",
+            "mutable Fixed and Result bindings are outside this lowering slice",
+            value_start
+        );
+    }
+    if (
+        fixed_annotation &&
+        !token_equal(source, value_start, "Fixed")
+    ) {
+        if (token_kind(source, value_start) != NULL &&
+            strcmp(token_kind(source, value_start), "decimal") == 0) {
+            free(emitted.data);
+            return lower_error(
+                "E409",
+                "a Decimal value is not a Fixed implicitly; use "
+                "`Fixed.from_decimal(value, mode)`",
+                value_start
+            );
+        }
+        if (strcmp(token_kind(source, value_start), "identifier") == 0) {
+            char *binding = hir_use_binding_id(hir, value_start);
+            char *type = hir_binding_field(hir, binding, 5);
+            bool fixed_value = strncmp(type, "Fixed[", 6) == 0;
+            bool decimal_value = strcmp(type, "Decimal") == 0;
+            free(type);
+            free(binding);
+            if (fixed_value) {
+                free(emitted.data);
+                return lower_error(
+                    "E409",
                     "an implicit Fixed conversion was requested; use "
                     "`Fixed.clone(value)` (and a same-scale destination) "
                     "instead",
+                    value_start
+                );
+            }
+            if (decimal_value) {
+                free(emitted.data);
+                return lower_error(
+                    "E409",
+                    "a Decimal local is not a Fixed implicitly; use "
+                    "`Fixed.from_decimal(value, mode)`",
                     value_start
                 );
             }
@@ -26231,6 +26331,19 @@ static char *lower_fixed_result_match(
             );
         }
         int64_t arrow = skip_trivia(source, token_end(source, close));
+        if (token_equal(source, arrow, "if")) {
+            free(ok_name);
+            free(err_name);
+            free(scale);
+            free(result_type);
+            free(binding_id);
+            return lower_error(
+                "E2S222",
+                "guarded arms over Result[Fixed[S], DecimalError] are "
+                "outside this slice; use an unguarded `match take`",
+                arrow
+            );
+        }
         if (arrow >= length || !token_equal(source, arrow, "=>")) {
             free(ok_name);
             free(err_name);
@@ -26582,6 +26695,20 @@ static char *lower_body_with_workspace(
             cursor = skip_trivia(source, token_end(source, moved));
             continue;
         }
+        if (token_equal(source, cursor, "Fixed") &&
+            fixed_conversion_head(source, cursor)) {
+            int64_t dot = skip_trivia(source, token_end(source, cursor));
+            int64_t member = skip_trivia(source, token_end(source, dot));
+            if (token_equal(source, member, "from_decimal")) {
+                free(emitted.data);
+                return lower_error(
+                    "E407",
+                    "`Fixed.from_decimal` result is discarded; bind it or "
+                    "use `?` in an expected `Fixed[S]` context",
+                    cursor
+                );
+            }
+        }
         if (token_equal(source, cursor, "let")) {
             cursor = skip_trivia(source, token_end(source, cursor));
             bool mutable = false;
@@ -26619,7 +26746,8 @@ static char *lower_body_with_workspace(
                 );
                 if (
                     strncmp(fixed_annotation, "Fixed[", 6) == 0 ||
-                    strncmp(fixed_annotation, "Result[Fixed[", 13) == 0
+                    strncmp(fixed_annotation, "Result[Fixed[", 13) == 0 ||
+                    strcmp(fixed_annotation, "Decimal") == 0
                 ) {
                     int64_t next_cursor = -1;
                     char *fixed_let = lower_fixed_let_statement(
@@ -28249,6 +28377,21 @@ static char *lower_body_with_workspace(
                 direct_end < length &&
                 token_equal(source, direct_end, "{")
             ) {
+                char *plain_binding = hir_use_binding_id(hir, value_start);
+                char *plain_type = hir_binding_field(hir, plain_binding, 5);
+                bool plain_fixed_result =
+                    strncmp(plain_type, "Result[Fixed[", 13) == 0;
+                free(plain_type);
+                free(plain_binding);
+                if (plain_fixed_result) {
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S222",
+                        "a match over Result[Fixed[S], DecimalError] must be "
+                        "`match take`, which moves the whole payload",
+                        value_start
+                    );
+                }
                 char *value_name = token_copy(source, value_start);
                 char *enum_binding = hir_use_binding_id(hir, value_start);
                 char *enum_type = hir_binding_field(
@@ -33363,6 +33506,9 @@ static char *lower_c_body(
     char *identity_check = validate_struct_identity(source);
     if (identity_check[0] != '\0') return identity_check;
     free(identity_check);
+    char *fixed_names_check = validate_fixed_result_names(source);
+    if (fixed_names_check[0] != '\0') return fixed_names_check;
+    free(fixed_names_check);
     bool fractional_values = source_uses_fractional_values(source);
     bool uses_fixed = strstr(source, "Fixed[") != NULL;
     /* #1315. The carrier, its asserts, and the reclamation helper are emitted

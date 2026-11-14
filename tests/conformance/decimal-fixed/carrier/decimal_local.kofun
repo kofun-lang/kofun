@@ -1,0 +1,5 @@
+fn main() -> Int {
+    let d: Decimal = 1.5
+    let f: Fixed[2] = d
+    return 0
+}
