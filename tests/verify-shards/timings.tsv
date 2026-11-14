@@ -44,6 +44,8 @@ const-generics	30518574833
 date-time	25239143095
 decimal	24384825879
 decimal-arithmetic	10265516891
+decimal-fixed-carrier	19705221885
+decimal-fixed-identity	15981457638
 decimal-fixed-runtime	4699743821
 diagnostics	489306718212
 digest	2164953563
