@@ -7,8 +7,6 @@
 #
 # Regenerate with:  git ls-files "*.kofun" | sort
 # Adding a fixture lowers the untaken count, which the gate reports as an
-# improvement that must be recorded rather than silently absorbed.
-#
 bootstrap/check_bootstrap.kofun
 bootstrap/fixtures/answer.kofun
 bootstrap/native/encoder.kofun
@@ -583,6 +581,14 @@ tests/conformance/decimal-arithmetic/reject_divide_missing_scale_mode.kofun
 tests/conformance/decimal-arithmetic/reject_invalid_rounding_mode.kofun
 tests/conformance/decimal-arithmetic/reject_round_missing_mode.kofun
 tests/conformance/decimal-arithmetic/rounded_division.kofun
+tests/conformance/decimal-fixed/carrier/alias.kofun
+tests/conformance/decimal-fixed/carrier/cross_scale.kofun
+tests/conformance/decimal-fixed/carrier/decimal_conversion.kofun
+tests/conformance/decimal-fixed/carrier/first_program.kofun
+tests/conformance/decimal-fixed/carrier/no_question.kofun
+tests/conformance/decimal-fixed/carrier/non_result_function.kofun
+tests/conformance/decimal-fixed/carrier/plain_match.kofun
+tests/conformance/decimal-fixed/carrier/unannotated.kofun
 tests/conformance/decimal-fixed/identity/budget.kofun
 tests/conformance/decimal-fixed/identity/normalize.kofun
 tests/conformance/decimal-fixed/identity/scale_6144.kofun
@@ -1319,6 +1325,7 @@ tests/diagnostics/stage2/e2s191_propagate_pipeline_stage.kofun
 tests/diagnostics/stage2/e2s19_missing_return.kofun
 tests/diagnostics/stage2/e2s20_ownership_shape.kofun
 tests/diagnostics/stage2/e2s21_two_borrows.kofun
+tests/diagnostics/stage2/e2s221_question_non_result.kofun
 tests/diagnostics/stage2/e2s22_immutable_assignment.kofun
 tests/diagnostics/stage2/e2s23_invalid_if_condition.kofun
 tests/diagnostics/stage2/e2s24_match_pattern.kofun
@@ -1348,7 +1355,9 @@ tests/diagnostics/stage2/e353_authority_copy.kofun
 tests/diagnostics/stage2/e353_authority_equality.kofun
 tests/diagnostics/stage2/e353_authority_field_copy.kofun
 tests/diagnostics/stage2/e355_authority_return.kofun
+tests/diagnostics/stage2/e407_fixed_no_context.kofun
 tests/diagnostics/stage2/e408_fixed_scale.kofun
+tests/diagnostics/stage2/e409_fixed_alias.kofun
 tests/enum-match-value/duplicate_arm.kofun
 tests/enum-match-value/empty_arm.kofun
 tests/enum-match-value/enum_valued_arm.kofun

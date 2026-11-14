@@ -1,0 +1,7 @@
+# diagnostic-mode: compile
+# expect-code: E2S221
+# expect-span: byte 145
+fn main() -> Int {
+    let x: Fixed[2] = Fixed.from_decimal(1.5, HalfUp)?
+    return 0
+}

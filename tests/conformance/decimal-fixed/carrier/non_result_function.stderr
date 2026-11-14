@@ -1,0 +1,1 @@
+error[E2S221]: `?` propagates `Result[Fixed[2], DecimalError]` but this function returns `Int`; use `match` at byte 72; operand at byte 41

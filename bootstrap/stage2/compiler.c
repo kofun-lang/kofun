@@ -3981,6 +3981,10 @@ static bool reserved_type_name(const char *name) {
 }
 
 static char *function_return_type(const char *source, const char *wanted);
+static char *function_return_type_containing(
+    const char *source,
+    int64_t position
+);
 static char *function_return_type_at(
     const char *source,
     int64_t function_start
@@ -6576,6 +6580,87 @@ static bool const_argument_over_budget(const char *digits) {
     return false;
 }
 
+/* The exact `Result[Fixed[S], DecimalError]` specialization (#1250), or "".
+ *
+ * The profile admits one bounded Result, not general `Result[T, E]`: the
+ * payload is the compiler-known Fixed carrier and the error is the one
+ * DecimalError surface `spec/decimal-error-v1.md` records. Anything else
+ * falls through to the ordinary annotation reader, which keeps the existing
+ * `Result` spelling exactly as it was. */
+static char *fixed_result_type_text(const char *source, int64_t type_start) {
+    int64_t length = source_length(source);
+    char *head = token_copy(source, type_start);
+    bool is_result = strcmp(head, "Result") == 0;
+    free(head);
+    if (!is_result) return owned_text("");
+    int64_t open = skip_trivia(source, token_end(source, type_start));
+    if (open >= length || !token_equal(source, open, "[")) return owned_text("");
+    int64_t fixed = skip_trivia(source, token_end(source, open));
+    char *fixed_head = token_copy(source, fixed);
+    bool is_fixed = strcmp(fixed_head, "Fixed") == 0;
+    free(fixed_head);
+    if (!is_fixed) return owned_text("");
+    int64_t bracket = skip_trivia(source, token_end(source, fixed));
+    if (bracket >= length || !token_equal(source, bracket, "[")) return owned_text("");
+    int64_t argument = skip_trivia(source, token_end(source, bracket));
+    if (strcmp(token_kind(source, argument), "integer") != 0) return owned_text("");
+    int64_t first_close = skip_trivia(source, token_end(source, argument));
+    if (first_close >= length || !token_equal(source, first_close, "]")) {
+        return owned_text("");
+    }
+    int64_t comma = skip_trivia(source, token_end(source, first_close));
+    if (comma >= length || !token_equal(source, comma, ",")) return owned_text("");
+    int64_t error_start = skip_trivia(source, token_end(source, comma));
+    char *error_head = token_copy(source, error_start);
+    bool is_error = strcmp(error_head, "DecimalError") == 0;
+    free(error_head);
+    if (!is_error) return owned_text("");
+    int64_t second_close = skip_trivia(source, token_end(source, error_start));
+    if (second_close >= length || !token_equal(source, second_close, "]")) {
+        return owned_text("");
+    }
+    char *literal = token_copy(source, argument);
+    char *digits = const_argument_digits(literal);
+    Buffer text;
+    buffer_init(&text);
+    buffer_format(&text, "Result[Fixed[%s], DecimalError]", digits);
+    free(digits);
+    free(literal);
+    return text.data;
+}
+
+/* The byte just past the specialization, or -1 when `type_start` is not one. */
+static int64_t fixed_result_type_end(const char *source, int64_t type_start) {
+    int64_t length = source_length(source);
+    char *head = token_copy(source, type_start);
+    bool is_result = strcmp(head, "Result") == 0;
+    free(head);
+    if (!is_result) return -1;
+    int64_t open = skip_trivia(source, token_end(source, type_start));
+    if (open >= length || !token_equal(source, open, "[")) return -1;
+    int64_t fixed = skip_trivia(source, token_end(source, open));
+    char *fixed_head = token_copy(source, fixed);
+    bool is_fixed = strcmp(fixed_head, "Fixed") == 0;
+    free(fixed_head);
+    if (!is_fixed) return -1;
+    int64_t bracket = skip_trivia(source, token_end(source, fixed));
+    if (bracket >= length || !token_equal(source, bracket, "[")) return -1;
+    int64_t argument = skip_trivia(source, token_end(source, bracket));
+    if (strcmp(token_kind(source, argument), "integer") != 0) return -1;
+    int64_t first_close = skip_trivia(source, token_end(source, argument));
+    if (first_close >= length || !token_equal(source, first_close, "]")) return -1;
+    int64_t comma = skip_trivia(source, token_end(source, first_close));
+    if (comma >= length || !token_equal(source, comma, ",")) return -1;
+    int64_t error_start = skip_trivia(source, token_end(source, comma));
+    char *error_head = token_copy(source, error_start);
+    bool is_error = strcmp(error_head, "DecimalError") == 0;
+    free(error_head);
+    if (!is_error) return -1;
+    int64_t second_close = skip_trivia(source, token_end(source, error_start));
+    if (second_close >= length || !token_equal(source, second_close, "]")) return -1;
+    return token_end(source, second_close);
+}
+
 /* The text of a type annotation, carrying its normalized const argument when
  * the head names a const-parameterized type.
  *
@@ -6584,6 +6669,9 @@ static bool const_argument_over_budget(const char *digits) {
  * instantiation becomes a type identity, so every comparison downstream
  * distinguishes the scales without knowing they exist. */
 static char *annotation_type_text(const char *source, int64_t type_start) {
+    char *specialization = fixed_result_type_text(source, type_start);
+    if (specialization[0] != '\0') return specialization;
+    free(specialization);
     int64_t length = source_length(source);
     char *head = token_copy(source, type_start);
     bool parameterized = type_takes_const_argument(source, head);
@@ -6612,6 +6700,8 @@ static char *annotation_type_text(const char *source, int64_t type_start) {
  * past only the head token here is what would leave `[2]` in the stream for
  * the next parser step to trip over. */
 static int64_t annotation_type_end(const char *source, int64_t type_start) {
+    int64_t specialization_end = fixed_result_type_end(source, type_start);
+    if (specialization_end >= 0) return specialization_end;
     int64_t length = source_length(source);
     char *head = token_copy(source, type_start);
     bool parameterized = type_takes_const_argument(source, head);
@@ -8455,6 +8545,184 @@ static char *record_c_type_name(const char *record_type) {
     free(argument);
     free(base);
     return output.data;
+}
+
+/* The `Fixed[S]` identity named by `Fixed[S]` or by the bounded specialization
+ * `Result[Fixed[S], DecimalError]`, or "" when neither. */
+static char *fixed_identity_of(const char *type_text) {
+    const char *start = strstr(type_text, "Fixed[");
+    const char *close;
+    size_t width;
+    char *identity;
+    if (start == NULL) return owned_text("");
+    close = strchr(start, ']');
+    if (close == NULL) return owned_text("");
+    width = (size_t)(close - start) + 1;
+    identity = allocate(width + 1);
+    memcpy(identity, start, width);
+    identity[width] = '\0';
+    return identity;
+}
+
+/* One emitted C type per distinct scale, named so a user record can never
+ * collide with it (records lower to `KofunRecord_*`). */
+static char *fixed_c_type_name(const char *type_text) {
+    char *identity = fixed_identity_of(type_text);
+    char *argument = const_argument_of(identity);
+    Buffer output;
+    buffer_init(&output);
+    buffer_format(&output, "KofunFixed__%s", argument);
+    free(argument);
+    free(identity);
+    return output.data;
+}
+
+static char *fixed_result_c_type_name(const char *type_text) {
+    char *identity = fixed_identity_of(type_text);
+    char *argument = const_argument_of(identity);
+    Buffer output;
+    buffer_init(&output);
+    buffer_format(&output, "KofunFixedResult__%s", argument);
+    free(argument);
+    free(identity);
+    return output.data;
+}
+
+/* The `index`-th distinct `Fixed[S]` scale in the unit, in first-use order. */
+static char *fixed_scale_instantiation_at(const char *source, int64_t wanted) {
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, 0);
+    Buffer seen;
+    buffer_init(&seen);
+    buffer_append(&seen, "|");
+    int64_t count = 0;
+    while (cursor < length) {
+        if (token_equal(source, cursor, "Fixed")) {
+            int64_t bracket = skip_trivia(source, token_end(source, cursor));
+            if (bracket < length && token_equal(source, bracket, "[")) {
+                int64_t argument = skip_trivia(
+                    source,
+                    token_end(source, bracket)
+                );
+                if (strcmp(token_kind(source, argument), "integer") == 0) {
+                    char *literal = token_copy(source, argument);
+                    char *digits = const_argument_digits(literal);
+                    Buffer identity;
+                    buffer_init(&identity);
+                    buffer_format(&identity, "|Fixed[%s]|", digits);
+                    if (strstr(seen.data, identity.data) == NULL) {
+                        if (count == wanted) {
+                            Buffer result;
+                            buffer_init(&result);
+                            buffer_format(&result, "Fixed[%s]", digits);
+                            free(identity.data);
+                            free(digits);
+                            free(literal);
+                            free(seen.data);
+                            return result.data;
+                        }
+                        buffer_append(&seen, identity.data);
+                        count += 1;
+                    }
+                    free(identity.data);
+                    free(digits);
+                    free(literal);
+                }
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    free(seen.data);
+    return owned_text("");
+}
+
+/* The runtime carrier for every distinct `Fixed[S]` in the unit. The payload is
+ * #1661's canonical owned `KofunDecimal`; the static scale selects validation
+ * and never becomes a second mutable field. */
+static char *fixed_carrier_prelude(const char *source) {
+    Buffer prelude;
+    buffer_init(&prelude);
+    buffer_append(
+        &prelude,
+        "typedef struct { int32_t code; } KofunDecimalError;\n"
+    );
+    int64_t index = 0;
+    for (;;) {
+        char *identity = fixed_scale_instantiation_at(source, index);
+        if (identity[0] == '\0') {
+            free(identity);
+            break;
+        }
+        char *scale = const_argument_of(identity);
+        char *fixed_type = fixed_c_type_name(identity);
+        char *result_type = fixed_result_c_type_name(identity);
+        buffer_format(
+            &prelude,
+            "typedef struct { KofunDecimal value; } %s;\n"
+            "typedef struct { bool ok; int32_t code; KofunDecimal value; } %s;\n"
+            "static inline %s kofun_fixed_ok__%s(KofunDecimal value) {\n"
+            "    %s result;\n"
+            "    result.ok = true; result.code = 0; result.value = value;\n"
+            "    return result;\n"
+            "}\n"
+            "static inline %s kofun_fixed_err__%s(int32_t code) {\n"
+            "    %s result;\n"
+            "    result.ok = false; result.code = code;\n"
+            "    kofun_decimal_init(&result.value);\n"
+            "    return result;\n"
+            "}\n"
+            "static inline KofunDecimal kofun_fixed_take__%s(%s *source) {\n"
+            "    KofunDecimal moved = source->value;\n"
+            "    kofun_decimal_init(&source->value);\n"
+            "    return moved;\n"
+            "}\n"
+            "static inline %s kofun_fixed_from_decimal__%s(const KofunDecimal *input, KofunDecimalRounding mode) {\n"
+            "    KofunDecimal rounded;\n"
+            "    KofunDecimalStatus status = kofun_fixed_from_decimal(input, (long)%s, mode, &rounded);\n"
+            "    if (status != KOFUN_DECIMAL_OK) return kofun_fixed_err__%s((int32_t)status);\n"
+            "    return kofun_fixed_ok__%s(rounded);\n"
+            "}\n"
+            "static inline %s kofun_fixed_from_literal__%s(const char *text, size_t width, KofunDecimalRounding mode) {\n"
+            "    KofunDecimal input;\n"
+            "    KofunDecimalStatus status = kofun_decimal_from_literal(text, width, &input);\n"
+            "    if (status != KOFUN_DECIMAL_OK) return kofun_fixed_err__%s((int32_t)status);\n"
+            "    %s result = kofun_fixed_from_decimal__%s(&input, mode);\n"
+            "    kofun_decimal_free(&input);\n"
+            "    return result;\n"
+            "}\n",
+            fixed_type,
+            result_type,
+            result_type, scale,
+            result_type,
+            result_type, scale,
+            result_type,
+            scale, fixed_type,
+            result_type, scale,
+            scale,
+            scale,
+            scale,
+            result_type, scale,
+            scale,
+            result_type, scale,
+            result_type, scale
+        );
+        buffer_format(
+            &prelude,
+            "static inline KofunDecimal kofun_fixed_result_take__%s(%s *source) {\n"
+            "    KofunDecimal moved = source->value;\n"
+            "    kofun_decimal_init(&source->value);\n"
+            "    return moved;\n"
+            "}\n",
+            scale,
+            result_type
+        );
+        free(result_type);
+        free(fixed_type);
+        free(scale);
+        free(identity);
+        index += 1;
+    }
+    return prelude.data;
 }
 
 /*
@@ -12792,6 +13060,8 @@ static bool value_control(const char *source, int64_t cursor);
 /* Defined beside the other numeric-type helpers; declared here because the
  * scope walk is the one caller that runs before them. */
 static bool numeric_conversion_head(const char *source, int64_t cursor);
+/* `Fixed` in `Fixed.from_decimal` heads a compiler-known type, not a value. */
+static bool fixed_conversion_head(const char *source, int64_t cursor);
 /* Defined beside the move-assertion validator; declared here because the
  * scope walk must not resolve the `compiler` head as a lexical binding. */
 static bool move_assertion_head(const char *source, int64_t cursor);
@@ -13144,7 +13414,13 @@ static char *validate_core_types(const char *source, const char *hir) {
                         strcmp(value_type, "List") == 0 ||
                         strcmp(value_type, "List[Int]") == 0 ||
                         authority_read;
-                    if (known && strcmp(value_type, declared) != 0) {
+                    bool fixed_result_value =
+                        strncmp(declared, "Result[Fixed[", 13) == 0 &&
+                        (token_equal(source, value, "Ok") ||
+                         token_equal(source, value, "Err") ||
+                         token_equal(source, value, "Fixed"));
+                    if (!fixed_result_value && known &&
+                        strcmp(value_type, declared) != 0) {
                         Buffer error;
                         buffer_init(&error);
                         buffer_format(
@@ -14215,6 +14491,23 @@ static char *validate_pipeline_calls(const char *source, const char *hir) {
     return owned_text("ok");
 }
 
+/* `Ok(x) =>` and `Err(e) =>` are the arms of a `match take` over the bounded
+ * Result, not calls. */
+static bool fixed_result_arm_pattern(const char *source, int64_t cursor) {
+    if (
+        !token_equal(source, cursor, "Ok") &&
+        !token_equal(source, cursor, "Err")
+    ) {
+        return false;
+    }
+    int64_t open = skip_trivia(source, token_end(source, cursor));
+    if (!token_equal(source, open, "(")) return false;
+    int64_t close = balanced_end(source, open, "(", ")");
+    if (close < 0) return false;
+    int64_t arrow = skip_trivia(source, close);
+    return token_equal(source, arrow, "=>");
+}
+
 static char *validate_core_calls(const char *source, const char *hir) {
     int64_t length = source_length(source);
     int64_t cursor = next_function_start(source, 0);
@@ -14238,11 +14531,25 @@ static char *validate_core_calls(const char *source, const char *hir) {
                 ) &&
                 function_arity(source, name) < 0;
             free(constructor_owner);
+            bool fixed_result_constructor =
+                (strcmp(name, "Ok") == 0 || strcmp(name, "Err") == 0);
+            if (fixed_result_constructor) {
+                char *enclosing = function_return_type_containing(
+                    source,
+                    cursor
+                );
+                bool fixed_result =
+                    strncmp(enclosing, "Result[Fixed[", 13) == 0;
+                free(enclosing);
+                fixed_result_constructor = fixed_result;
+            }
             if (
                 strcmp(previous, "fn") != 0 &&
                 strcmp(previous, ".") != 0 &&
                 strcmp(name, "print") != 0 &&
                 !constructor_application &&
+                !fixed_result_constructor &&
+                !fixed_result_arm_pattern(source, cursor) &&
                 open < length &&
                 token_equal(source, open, "(")
             ) {
@@ -17756,6 +18063,9 @@ static int64_t core_body_open(
                 : -1;
         }
         char *result_type = token_copy(source, cursor);
+        char *fixed_result = fixed_result_type_text(source, cursor);
+        bool fixed_result_supported = fixed_result[0] != '\0';
+        free(fixed_result);
         /* #1315. `Bytes` joins the admitted results because the issue's
          * profile requires a direct helper to hand its own proven-fresh
          * storage back: "a direct current-file helper may return that same
@@ -17767,6 +18077,7 @@ static int64_t core_body_open(
             strcmp(result_type, "Int") == 0 ||
             strcmp(result_type, "Text") == 0 ||
             strcmp(result_type, "Bytes") == 0 ||
+            fixed_result_supported ||
             enum_constructor_count(source, result_type) >= 0 ||
             record_declaration_start(source, result_type) >= 0;
         free(result_type);
@@ -18430,6 +18741,33 @@ static const char *scope_kind_for_open(
     if (strcmp(previous, "else") == 0) return "if-else";
     if (strcmp(previous, "=>") == 0) return "match-arm";
     return "block";
+}
+
+static bool type_annotation_token(
+    const char *source,
+    int64_t function_open,
+    int64_t target
+) {
+    int64_t cursor = skip_trivia(source, token_end(source, function_open));
+    while (cursor < target) {
+        if (token_equal(source, cursor, "let")) {
+            int64_t name = skip_trivia(source, token_end(source, cursor));
+            if (token_equal(source, name, "mut")) {
+                name = skip_trivia(source, token_end(source, name));
+            }
+            int64_t colon = skip_trivia(source, token_end(source, name));
+            if (token_equal(source, colon, ":")) {
+                int64_t type_start = skip_trivia(
+                    source,
+                    token_end(source, colon)
+                );
+                int64_t type_end = annotation_type_end(source, type_start);
+                if (target >= type_start && target < type_end) return true;
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return false;
 }
 
 static bool enum_declaration_syntax_token(
@@ -19867,6 +20205,17 @@ static bool function_result_is_record(
     return result;
 }
 
+/* The bounded `Result[Fixed[S], DecimalError]` specialization (#1250). */
+static bool function_result_is_fixed_result(
+    const char *source,
+    const char *name
+) {
+    char *type = function_return_type(source, name);
+    bool result = strncmp(type, "Result[Fixed[", 13) == 0;
+    free(type);
+    return result;
+}
+
 /* A declared `-> Text` result.  Text values are borrowed `const char *` in the
  * bounded profile, so this is what selects the C result type and the `return`
  * lowering rather than the Int path. */
@@ -20932,6 +21281,59 @@ static int64_t propagation_block_expression_end(
  * and a call to a declared `-> Int?` function is `Int?`, where the
  * declared-type reader returns only the head `Int`.
  */
+static char *fixed_expected_result_type(
+    const char *source,
+    int64_t function_open,
+    int64_t operand
+) {
+    if (!token_equal(source, operand, "Fixed")) return owned_text("");
+    int64_t dot = skip_trivia(source, token_end(source, operand));
+    if (!token_equal(source, dot, ".")) return owned_text("");
+    int64_t member = skip_trivia(source, token_end(source, dot));
+    if (!token_equal(source, member, "from_decimal")) return owned_text("");
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, token_end(source, function_open));
+    while (cursor < operand && cursor < length) {
+        if (token_equal(source, cursor, "let")) {
+            int64_t name = skip_trivia(source, token_end(source, cursor));
+            if (token_equal(source, name, "mut")) {
+                name = skip_trivia(source, token_end(source, name));
+            }
+            int64_t colon = skip_trivia(source, token_end(source, name));
+            if (token_equal(source, colon, ":")) {
+                int64_t type_start = skip_trivia(
+                    source,
+                    token_end(source, colon)
+                );
+                char *annotation = annotation_type_text(source, type_start);
+                int64_t type_end = annotation_type_end(source, type_start);
+                int64_t equals = skip_trivia(source, type_end);
+                int64_t initializer = skip_trivia(
+                    source,
+                    token_end(source, equals)
+                );
+                if (
+                    initializer == operand &&
+                    strncmp(annotation, "Fixed[", 6) == 0
+                ) {
+                    Buffer result;
+                    buffer_init(&result);
+                    buffer_format(
+                        &result,
+                        "Result[%s, DecimalError]",
+                        annotation
+                    );
+                    free(annotation);
+                    return result.data;
+                }
+                free(annotation);
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return owned_text("");
+}
+
 static char *propagation_operand_type(
     const char *source,
     const char *hir,
@@ -20939,6 +21341,16 @@ static char *propagation_operand_type(
     int64_t operand,
     int64_t operand_end
 ) {
+    char *fixed_result = fixed_expected_result_type(
+        source,
+        function_open,
+        operand
+    );
+    if (fixed_result[0] != '\0') return fixed_result;
+    free(fixed_result);
+    if (fixed_conversion_head(source, operand)) {
+        return owned_text("Fixed.unconstrained");
+    }
     int64_t after_head = token_end(source, operand);
     if (token_equal(source, operand, "null") &&
         skip_trivia(source, after_head) >= operand_end) {
@@ -21242,6 +21654,51 @@ static char *validate_result_propagation(const char *source, const char *hir) {
             token_end(source, operand)
         );
         free(callee);
+    } else if (strcmp(operand_type, "Fixed.unconstrained") == 0) {
+        buffer_format(
+            &error,
+            "error[E407]: `Fixed.from_decimal` has no expected `Fixed[S]` "
+            "result type at byte %s; operand at byte %s",
+            question_text,
+            operand_text
+        );
+        stage2_diagnostic_set(
+            "E407",
+            question,
+            token_end(source, question),
+            true,
+            error.data
+        );
+        stage2_diagnostic_related(operand, operand_end, "operand");
+    } else if (strncmp(operand_type, "Result[Fixed[", 13) == 0) {
+        char *enclosing = function_return_type_containing(source, question);
+        if (strcmp(enclosing, operand_type) == 0) {
+            free(enclosing);
+            free(question_text);
+            free(operand_text);
+            free(operand_end_text);
+            free(operand_type);
+            free(error.data);
+            return owned_text("ok");
+        }
+        buffer_format(
+            &error,
+            "error[E2S221]: `?` propagates `%s` but this function returns "
+            "`%s`; use `match` at byte %s; operand at byte %s",
+            operand_type,
+            enclosing,
+            question_text,
+            operand_text
+        );
+        stage2_diagnostic_set(
+            "E2S221",
+            question,
+            token_end(source, question),
+            true,
+            error.data
+        );
+        stage2_diagnostic_related(operand, operand_end, "operand");
+        free(enclosing);
     } else {
         bool optional = strcmp(operand_type, "null") == 0 ||
             operand_type[type_length - 1] == '?';
@@ -22529,7 +22986,9 @@ static char *build_scope_hir_analysis_mode(
                     !initializer_token &&
                     !pattern_token && !lambda_token &&
                     !list_int_local_type_token(source, cursor) &&
+                    !type_annotation_token(source, function_open, cursor) &&
                     !numeric_conversion_head(source, cursor) &&
+                    !fixed_conversion_head(source, cursor) &&
                     !move_assertion_head(source, cursor) &&
                     !move_statement_head(source, cursor) &&
                     !decimal_rounding_mode_name(name) &&
@@ -25318,6 +25777,601 @@ static char *lower_body_with_workspace(
     const char *inherited_cleanup,
     const char *inherited_comma,
     LowerBodyWorkspace *workspace
+);
+
+/* Build the C call for `Fixed.from_decimal(value, Mode)` at `call_start`,
+ * given the expected scale. Returns an `error[` text when the call is outside
+ * the admitted slice, and leaves `*call_end` on the byte just past `)`. */
+static char *fixed_from_decimal_call(
+    const char *source,
+    const char *hir,
+    int64_t call_start,
+    const char *scale,
+    int64_t *call_end
+) {
+    int64_t length = source_length(source);
+    int64_t dot = skip_trivia(source, token_end(source, call_start));
+    if (!token_equal(source, dot, ".")) {
+        return lower_error(
+            "E407",
+            "`Fixed.from_decimal` has no expected `Fixed[S]` result type",
+            call_start
+        );
+    }
+    int64_t member = skip_trivia(source, token_end(source, dot));
+    if (!token_equal(source, member, "from_decimal")) {
+        return lower_error(
+            "E407",
+            "`Fixed.from_decimal` has no expected `Fixed[S]` result type",
+            call_start
+        );
+    }
+    int64_t open = skip_trivia(source, token_end(source, member));
+    if (open >= length || !token_equal(source, open, "(")) {
+        return lower_error(
+            "E407",
+            "`Fixed.from_decimal` has no expected `Fixed[S]` result type",
+            call_start
+        );
+    }
+    int64_t argument = numeric_member_argument(source, open, 0);
+    int64_t mode = numeric_member_argument(source, open, 1);
+    if (argument < 0 || mode < 0) {
+        return lower_error(
+            "E2S15",
+            "`Fixed.from_decimal` requires one value and one rounding mode",
+            open
+        );
+    }
+    char *mode_name = token_copy(source, mode);
+    if (!decimal_rounding_mode_name(mode_name)) {
+        free(mode_name);
+        return lower_error(
+            "E2S15",
+            "`Fixed.from_decimal` rounding mode must be one of HalfUp, "
+            "HalfEven, TowardZero, Floor, or Ceiling",
+            mode
+        );
+    }
+    const char *mode_c = decimal_rounding_c_name(mode_name);
+    free(mode_name);
+    int64_t mode_end = argument_end(source, mode);
+    int64_t close = skip_trivia(source, mode_end);
+    if (close >= length || !token_equal(source, close, ")")) {
+        return lower_error(
+            "E2S15",
+            "`Fixed.from_decimal` takes exactly two positional arguments",
+            close
+        );
+    }
+    Buffer call;
+    buffer_init(&call);
+    if (strcmp(token_kind(source, argument), "decimal") == 0) {
+        char *literal = token_copy(source, argument);
+        buffer_format(
+            &call,
+            "kofun_fixed_from_literal__%s(\"%s\", %zu, %s)",
+            scale,
+            literal,
+            strlen(literal),
+            mode_c
+        );
+        free(literal);
+    } else if (strcmp(token_kind(source, argument), "identifier") == 0) {
+        char *binding_id = hir_use_binding_id(hir, argument);
+        char *binding_type = hir_binding_field(hir, binding_id, 5);
+        bool decimal = strcmp(binding_type, "Decimal") == 0;
+        free(binding_type);
+        if (!decimal) {
+            free(binding_id);
+            buffer_append(&call, "error[E407]");
+        } else {
+            buffer_format(
+                &call,
+                "kofun_fixed_from_decimal__%s(k_b%s, %s)",
+                scale,
+                binding_id,
+                mode_c
+            );
+            free(binding_id);
+        }
+    } else {
+        buffer_append(&call, "error[E407]");
+    }
+    *call_end = token_end(source, close);
+    return call.data;
+}
+
+/* The annotated `let` forms of the Fixed carrier:
+ *
+ *   let x: Fixed[S] = Fixed.from_decimal(v, M)?       (context a)
+ *   let r: Result[Fixed[S], DecimalError] = Fixed.from_decimal(v, M)  (b)
+ *   let r: Result[Fixed[S], DecimalError] = f()       (b, direct call)
+ *
+ * `annotation_start` is the type's first token; `next_cursor` receives the
+ * byte after the whole statement. */
+static char *lower_fixed_let_statement(
+    const char *source,
+    const char *hir,
+    int64_t function_open,
+    const char *binding_id,
+    int64_t annotation_start,
+    const char *annotation,
+    bool mutable,
+    const char *failure_result,
+    LowerBodyWorkspace *workspace,
+    int64_t *next_cursor
+) {
+    int64_t length = source_length(source);
+    int64_t type_end = annotation_type_end(source, annotation_start);
+    int64_t equals = skip_trivia(source, type_end);
+    if (equals >= length || !token_equal(source, equals, "=")) {
+        return lower_error("E2S11", "expected `=`", equals);
+    }
+    int64_t value_start = skip_trivia(source, token_end(source, equals));
+    if (mutable) {
+        return lower_error(
+            "E2S144",
+            "mutable Fixed and Result bindings are outside this lowering slice",
+            value_start
+        );
+    }
+    Buffer emitted;
+    buffer_init(&emitted);
+    bool fixed_annotation = strncmp(annotation, "Fixed[", 6) == 0;
+    bool result_annotation = strncmp(annotation, "Result[Fixed[", 13) == 0;
+    if (
+        fixed_annotation &&
+        !token_equal(source, value_start, "Fixed")
+    ) {
+        if (strcmp(token_kind(source, value_start), "identifier") == 0) {
+            char *binding = hir_use_binding_id(hir, value_start);
+            char *type = hir_binding_field(hir, binding, 5);
+            bool fixed_value = strncmp(type, "Fixed[", 6) == 0;
+            free(type);
+            free(binding);
+            if (fixed_value) {
+                free(emitted.data);
+                return lower_error(
+                    "E409",
+                    "an implicit Fixed conversion was requested; use "
+                    "`Fixed.clone(value)` (and a same-scale destination) "
+                    "instead",
+                    value_start
+                );
+            }
+        }
+        free(emitted.data);
+        return owned_text("N");
+    }
+    if (
+        result_annotation &&
+        !token_equal(source, value_start, "Fixed") &&
+        strcmp(token_kind(source, value_start), "identifier") != 0
+    ) {
+        free(emitted.data);
+        return owned_text("N");
+    }
+    if (strncmp(annotation, "Fixed[", 6) == 0) {
+        char *scale = const_argument_of(annotation);
+        if (
+            value_start >= length ||
+            !token_equal(source, value_start, "Fixed")
+        ) {
+            free(scale);
+            free(emitted.data);
+            return lower_error(
+                "E407",
+                "`Fixed.from_decimal` has no expected `Fixed[S]` result type",
+                value_start
+            );
+        }
+        int64_t call_end = -1;
+        char *call = fixed_from_decimal_call(
+            source,
+            hir,
+            value_start,
+            scale,
+            &call_end
+        );
+        if (strncmp(call, "error[", 6) == 0) {
+            free(scale);
+            free(emitted.data);
+            return call;
+        }
+        int64_t question = skip_trivia(source, call_end);
+        if (question >= length || !token_equal(source, question, "?")) {
+            free(call);
+            free(scale);
+            free(emitted.data);
+            return lower_error(
+                "E407",
+                "`Fixed.from_decimal` has no expected `Fixed[S]` result type; "
+                "the `?` is what supplies it in this slice",
+                value_start
+            );
+        }
+        char *enclosing = function_return_type_containing(
+            source,
+            function_open
+        );
+        Buffer expected;
+        buffer_init(&expected);
+        buffer_format(&expected, "Result[%s, DecimalError]", annotation);
+        if (strcmp(enclosing, expected.data) != 0) {
+            buffer_format(
+                &emitted,
+                "error[E2S221]: `?` propagates a `%s` but the enclosing "
+                "function returns `%s`; use `match` or change the return "
+                "type at byte %" PRId64,
+                expected.data,
+                enclosing,
+                question
+            );
+            free(expected.data);
+            free(enclosing);
+            free(call);
+            free(scale);
+            return emitted.data;
+        }
+        free(expected.data);
+        free(enclosing);
+        char *result_type = fixed_result_c_type_name(annotation);
+        char *fixed_type = fixed_c_type_name(annotation);
+        buffer_format(
+            &emitted,
+            "    %s kofun_prop_%s = %s;\n"
+            "    if (!kofun_prop_%s.ok) { %sreturn kofun_prop_%s; }\n"
+            "    %s k_b%s = { kofun_fixed_result_take__%s(&kofun_prop_%s) };\n",
+            result_type,
+            binding_id,
+            call,
+            binding_id,
+            workspace->release_cleanup.data,
+            binding_id,
+            fixed_type,
+            binding_id,
+            scale,
+            binding_id
+        );
+        buffer_format(
+            &workspace->release_cleanup,
+            "kofun_fixed_drop(&k_b%s.value); ",
+            binding_id
+        );
+        buffer_format(
+            &workspace->release_comma,
+            "kofun_fixed_drop(&k_b%s.value), ",
+            binding_id
+        );
+        free(fixed_type);
+        free(result_type);
+        free(call);
+        free(scale);
+        *next_cursor = token_end(source, question);
+        return emitted.data;
+    }
+    /* The bounded Result annotation. */
+    char *result_type = fixed_result_c_type_name(annotation);
+    if (
+        value_start < length &&
+        token_equal(source, value_start, "Fixed")
+    ) {
+        char *identity = fixed_identity_of(annotation);
+        char *scale = const_argument_of(identity);
+        int64_t call_end = -1;
+        char *call = fixed_from_decimal_call(
+            source,
+            hir,
+            value_start,
+            scale,
+            &call_end
+        );
+        free(scale);
+        free(identity);
+        if (strncmp(call, "error[", 6) == 0) {
+            free(result_type);
+            free(emitted.data);
+            return call;
+        }
+        buffer_format(
+            &emitted,
+            "    %s k_b%s = %s;\n"
+            "    if (kofun_failed) return %s;\n",
+            result_type,
+            binding_id,
+            call,
+            failure_result
+        );
+        free(call);
+        *next_cursor = call_end;
+    } else {
+        int64_t value_end = expression_end(source, value_start);
+        if (value_end < 0) {
+            free(result_type);
+            free(emitted.data);
+            return lower_error(
+                "E2S15",
+                "Result[Fixed[S], DecimalError] initializer must be one call",
+                value_start
+            );
+        }
+        char *value = emit_expression(source, hir, value_start, value_end);
+        if (strncmp(value, "error[", 6) == 0) {
+            free(result_type);
+            free(emitted.data);
+            return value;
+        }
+        buffer_format(
+            &emitted,
+            "    %s k_b%s = %s;\n"
+            "    if (kofun_failed) return %s;\n",
+            result_type,
+            binding_id,
+            value,
+            failure_result
+        );
+        free(value);
+        *next_cursor = value_end;
+    }
+    buffer_format(
+        &workspace->release_cleanup,
+        "kofun_fixed_drop(&k_b%s.value); ",
+        binding_id
+    );
+    buffer_format(
+        &workspace->release_comma,
+        "kofun_fixed_drop(&k_b%s.value), ",
+        binding_id
+    );
+    free(result_type);
+    return emitted.data;
+}
+
+/* `match take r { Ok(x) => { ... }, Err(e) => { ... } }` over the bounded
+ * specialization. The scrutinee is moved once; each arm owns its binding for
+ * the arm's extent, and the Ok payload is released at the arm's end. */
+static char *lower_fixed_result_match(
+    const char *source,
+    const char *hir,
+    int64_t function_open,
+    int64_t match_start,
+    bool is_main,
+    LowerBodyWorkspace *workspace,
+    int64_t *next_cursor
+) {
+    int64_t length = source_length(source);
+    int64_t take = skip_trivia(source, token_end(source, match_start));
+    if (take >= length || !token_equal(source, take, "take")) {
+        return lower_error(
+            "E2S15",
+            "a Fixed Result match requires `match take <binding>`",
+            take
+        );
+    }
+    int64_t scrutinee = skip_trivia(source, token_end(source, take));
+    char *binding_id = hir_use_binding_id(hir, scrutinee);
+    char *binding_type = hir_binding_field(hir, binding_id, 5);
+    if (strncmp(binding_type, "Result[Fixed[", 13) != 0) {
+        free(binding_id);
+        free(binding_type);
+        return lower_error(
+            "E2S32",
+            "`match take` scrutinee must be the bounded "
+            "Result[Fixed[S], DecimalError]",
+            scrutinee
+        );
+    }
+    char *identity = fixed_identity_of(binding_type);
+    char *scale = const_argument_of(identity);
+    free(identity);
+    char *result_type = fixed_result_c_type_name(binding_type);
+    free(binding_type);
+    int64_t arms_open = skip_trivia(source, token_end(source, scrutinee));
+    if (arms_open >= length || !token_equal(source, arms_open, "{")) {
+        free(scale);
+        free(result_type);
+        free(binding_id);
+        return lower_error("E2S24", "expected `{` after match scrutinee", arms_open);
+    }
+    int64_t match_end = balanced_end(source, arms_open, "{", "}");
+    if (match_end < 0) {
+        free(scale);
+        free(result_type);
+        free(binding_id);
+        return lower_error("E2S24", "unterminated match", arms_open);
+    }
+    /* Two arms, Ok first and Err second, each with one payload binding and an
+     * unguarded block body. */
+    int64_t arm = skip_trivia(source, token_end(source, arms_open));
+    char *ok_name = owned_text("");
+    char *err_name = owned_text("");
+    int64_t ok_open = -1;
+    int64_t err_open = -1;
+    while (arm < match_end && !token_equal(source, arm, "}")) {
+        bool is_ok = token_equal(source, arm, "Ok");
+        bool is_err = token_equal(source, arm, "Err");
+        if (!is_ok && !is_err) {
+            free(ok_name);
+            free(err_name);
+            free(scale);
+            free(result_type);
+            free(binding_id);
+            return lower_error(
+                "E2S24",
+                "Fixed Result match arms must be `Ok(...)` and `Err(...)`",
+                arm
+            );
+        }
+        int64_t open = skip_trivia(source, token_end(source, arm));
+        if (open >= length || !token_equal(source, open, "(")) {
+            free(ok_name);
+            free(err_name);
+            free(scale);
+            free(result_type);
+            free(binding_id);
+            return lower_error("E2S24", "expected `(` after arm name", open);
+        }
+        int64_t name = skip_trivia(source, token_end(source, open));
+        int64_t close = skip_trivia(source, token_end(source, name));
+        if (
+            close >= length ||
+            strcmp(token_kind(source, name), "identifier") != 0 ||
+            !token_equal(source, close, ")")
+        ) {
+            free(ok_name);
+            free(err_name);
+            free(scale);
+            free(result_type);
+            free(binding_id);
+            return lower_error(
+                "E2S24",
+                "each Fixed Result arm binds exactly one name",
+                name
+            );
+        }
+        int64_t arrow = skip_trivia(source, token_end(source, close));
+        if (arrow >= length || !token_equal(source, arrow, "=>")) {
+            free(ok_name);
+            free(err_name);
+            free(scale);
+            free(result_type);
+            free(binding_id);
+            return lower_error("E2S24", "expected `=>` after arm pattern", arrow);
+        }
+        int64_t body_open = skip_trivia(source, token_end(source, arrow));
+        if (body_open >= length || !token_equal(source, body_open, "{")) {
+            free(ok_name);
+            free(err_name);
+            free(scale);
+            free(result_type);
+            free(binding_id);
+            return lower_error("E2S24", "expected `{` after arm arrow", body_open);
+        }
+        int64_t body_close = balanced_end(source, body_open, "{", "}");
+        if (body_close < 0) {
+            free(ok_name);
+            free(err_name);
+            free(scale);
+            free(result_type);
+            free(binding_id);
+            return lower_error("E2S24", "unterminated match arm", body_open);
+        }
+        if (is_ok) {
+            free(ok_name);
+            ok_name = token_copy(source, name);
+            ok_open = body_open;
+        } else {
+            free(err_name);
+            err_name = token_copy(source, name);
+            err_open = body_open;
+        }
+        arm = skip_trivia(source, body_close);
+        if (arm < match_end && token_equal(source, arm, ",")) {
+            arm = skip_trivia(source, token_end(source, arm));
+        }
+    }
+    if (ok_open < 0 || err_open < 0) {
+        free(ok_name);
+        free(err_name);
+        free(scale);
+        free(result_type);
+        free(binding_id);
+        return lower_error(
+            "E2S24",
+            "Fixed Result match needs both an `Ok` and an `Err` arm",
+            match_start
+        );
+    }
+    char *ok_body = lower_body(
+        source,
+        hir,
+        ok_open,
+        is_main,
+        false,
+        function_open,
+        workspace->release_cleanup.data,
+        workspace->release_comma.data
+    );
+    if (strncmp(ok_body, "error[", 6) == 0) {
+        free(ok_name);
+        free(err_name);
+        free(scale);
+        free(result_type);
+        free(binding_id);
+        return ok_body;
+    }
+    char *err_body = lower_body(
+        source,
+        hir,
+        err_open,
+        is_main,
+        false,
+        function_open,
+        workspace->release_cleanup.data,
+        workspace->release_comma.data
+    );
+    if (strncmp(err_body, "error[", 6) == 0) {
+        free(ok_name);
+        free(err_name);
+        free(scale);
+        free(result_type);
+        free(binding_id);
+        free(ok_body);
+        return err_body;
+    }
+    Buffer emitted;
+    buffer_init(&emitted);
+    buffer_format(
+        &emitted,
+        "    {\n"
+        "        %s kofun_match_value = k_b%s;\n"
+        "        kofun_decimal_init(&k_b%s.value);\n"
+        "        if (kofun_match_value.ok) {\n"
+        "            KofunFixed__%s k_b%s = { kofun_fixed_result_take__%s(&kofun_match_value) };\n"
+        "%s"
+        "            kofun_fixed_drop(&k_b%s.value);\n"
+        "        } else {\n"
+        "            KofunDecimalError k_b%s;\n"
+        "            k_b%s.code = kofun_match_value.code;\n"
+        "            (void)k_b%s;\n"
+        "%s"
+        "        }\n"
+        "    }\n",
+        result_type,
+        binding_id,
+        binding_id,
+        scale,
+        ok_name,
+        scale,
+        ok_body,
+        ok_name,
+        err_name,
+        err_name,
+        err_name,
+        err_body
+    );
+    *next_cursor = match_end;
+    free(err_body);
+    free(ok_body);
+    free(err_name);
+    free(ok_name);
+    free(scale);
+    free(result_type);
+    free(binding_id);
+    return emitted.data;
+}
+
+static char *lower_body_with_workspace(
+    const char *source,
+    const char *hir,
+    int64_t open,
+    bool is_main,
+    bool append_default,
+    int64_t function_open,
+    const char *inherited_cleanup,
+    const char *inherited_comma,
+    LowerBodyWorkspace *workspace
 ) {
     int64_t length = source_length(source);
     Buffer emitted;
@@ -25357,32 +26411,43 @@ static char *lower_body_with_workspace(
     bool returns_text = strcmp(body_result_type, "Text") == 0;
     bool returns_list_int = strcmp(body_result_type, "List[Int]") == 0;
     bool returns_bytes = strcmp(body_result_type, "Bytes") == 0;
+    bool returns_fixed_result =
+        strncmp(body_result_type, "Result[Fixed[", 13) == 0;
     if (returns_record) {
         char *c_type = record_c_type_name(body_result_type);
         buffer_format(&workspace->failure_record, "((%s){0})", c_type);
         free(c_type);
     }
+    if (returns_fixed_result) {
+        char *identity = fixed_identity_of(body_result_type);
+        char *scale = const_argument_of(identity);
+        buffer_format(
+            &workspace->failure_record,
+            "kofun_fixed_err__%s((int32_t)KOFUN_DECIMAL_MEMORY)",
+            scale
+        );
+        free(scale);
+        free(identity);
+    }
     free(body_result_type);
-    const char *failure_result =
-        is_main ?
-            "1" :
-            (
-                returns_enum ?
-                    "KOFUN_ENUM_ZERO" :
-                    (returns_record ?
-                         workspace->failure_record.data :
-                         (returns_optional_int ?
-                              "KOFUN_OPTIONAL_INT_NONE" :
-                              /* A failed Text result is the empty string
-                               * rather than NULL, so every consumer in the
-                               * bounded profile still receives a readable
-                               * value. */
-                              (returns_text ? "\"\"" :
-                               (returns_list_int ?
-                                    "KOFUN_LIST_INT_ZERO" :
-                                    (returns_bytes ?
-                                         "KOFUN_BYTES_EMPTY" : "0")))))
-            );
+    const char *failure_result = "0";
+    if (is_main) {
+        failure_result = "1";
+    } else if (returns_enum) {
+        failure_result = "KOFUN_ENUM_ZERO";
+    } else if (returns_record || returns_fixed_result) {
+        failure_result = workspace->failure_record.data;
+    } else if (returns_optional_int) {
+        failure_result = "KOFUN_OPTIONAL_INT_NONE";
+    } else if (returns_text) {
+        /* A failed Text result is the empty string rather than NULL, so every
+         * consumer in the bounded profile still receives a readable value. */
+        failure_result = "\"\"";
+    } else if (returns_list_int) {
+        failure_result = "KOFUN_LIST_INT_ZERO";
+    } else if (returns_bytes) {
+        failure_result = "KOFUN_BYTES_EMPTY";
+    }
     /* #1315. Reclamation for the owned locals declared *so far*, and the
      * failure value that carries them. Both start empty and grow as each owner
      * is declared: computing them for the whole body up front emits a release
@@ -25544,6 +26609,57 @@ static char *lower_body_with_workspace(
             bool annotated = false;
             cursor = skip_trivia(source, token_end(source, cursor));
             if (cursor < length && token_equal(source, cursor, ":")) {
+                int64_t fixed_annotation_start = skip_trivia(
+                    source,
+                    token_end(source, cursor)
+                );
+                char *fixed_annotation = annotation_type_text(
+                    source,
+                    fixed_annotation_start
+                );
+                if (
+                    strncmp(fixed_annotation, "Fixed[", 6) == 0 ||
+                    strncmp(fixed_annotation, "Result[Fixed[", 13) == 0
+                ) {
+                    int64_t next_cursor = -1;
+                    char *fixed_let = lower_fixed_let_statement(
+                        source,
+                        hir,
+                        function_open,
+                        binding_id,
+                        fixed_annotation_start,
+                        fixed_annotation,
+                        mutable,
+                        failure_result,
+                        workspace,
+                        &next_cursor
+                    );
+                    free(fixed_annotation);
+                    if (strncmp(fixed_let, "error[", 6) == 0) {
+                        free(binding_id);
+                        free(name);
+                        free(emitted.data);
+                        return fixed_let;
+                    }
+                    if (fixed_let[0] == 'N' && fixed_let[1] == '\0') {
+                        /* This is not the carrier's statement; the ordinary
+                         * annotation path owns the initializer-mismatch
+                         * answer, so fall through with the cursor still at
+                         * the `:`. */
+                        free(fixed_let);
+                    } else {
+                        buffer_append(&emitted, fixed_let);
+                        free(fixed_let);
+                        free(binding_id);
+                        free(name);
+                        cursor = skip_trivia(source, next_cursor);
+                        continue;
+                    }
+                } else {
+                    free(fixed_annotation);
+                }
+            }
+            if (cursor < length && token_equal(source, cursor, ":")) {
                 annotated = true;
                 cursor = skip_trivia(source, token_end(source, cursor));
                 if (
@@ -25609,7 +26725,8 @@ static char *lower_body_with_workspace(
                         strcmp(declared_type, "Decimal") == 0 ||
                         strcmp(declared_type, "Float") == 0 ||
                         strcmp(declared_type, "DecimalResult") == 0 ||
-                        strncmp(declared_type, "Fixed[", 6) == 0
+                        strncmp(declared_type, "Fixed[", 6) == 0 ||
+                        strncmp(declared_type, "Result[Fixed[", 13) == 0
                     ) {
                         free(declared_type);
                     } else if (
@@ -27107,6 +28224,26 @@ static char *lower_body_with_workspace(
                 source,
                 token_end(source, value_start)
             );
+            if (token_equal(source, value_start, "take")) {
+                int64_t next_cursor = -1;
+                char *fixed_match = lower_fixed_result_match(
+                    source,
+                    hir,
+                    function_open,
+                    match_start,
+                    is_main,
+                    workspace,
+                    &next_cursor
+                );
+                if (strncmp(fixed_match, "error[", 6) == 0) {
+                    free(emitted.data);
+                    return fixed_match;
+                }
+                buffer_append(&emitted, fixed_match);
+                free(fixed_match);
+                cursor = skip_trivia(source, next_cursor);
+                continue;
+            }
             if (
                 strcmp(token_kind(source, value_start), "identifier") == 0 &&
                 direct_end < length &&
@@ -27568,6 +28705,187 @@ static char *lower_body_with_workspace(
                 buffer_format(&emitted, "%s", transfer);
                 free(transfer);
                 free(returned);
+                cursor = skip_trivia(source, value_end);
+            } else if (returns_fixed_result) {
+                char *return_type = function_return_type_containing(
+                    source,
+                    function_open
+                );
+                char *identity = fixed_identity_of(return_type);
+                char *scale = const_argument_of(identity);
+                char *result_c = fixed_result_c_type_name(return_type);
+                Buffer branch;
+                buffer_init(&branch);
+                int64_t value_end = -1;
+                if (token_equal(source, value_start, "Ok")) {
+                    int64_t open = skip_trivia(
+                        source,
+                        token_end(source, value_start)
+                    );
+                    int64_t payload = skip_trivia(
+                        source,
+                        token_end(source, open)
+                    );
+                    int64_t close = skip_trivia(
+                        source,
+                        token_end(source, payload)
+                    );
+                    if (
+                        !token_equal(source, open, "(") ||
+                        strcmp(token_kind(source, payload), "identifier") != 0 ||
+                        !token_equal(source, close, ")")
+                    ) {
+                        free(result_c);
+                        free(scale);
+                        free(identity);
+                        free(return_type);
+                        free(branch.data);
+                        free(emitted.data);
+                        return lower_error(
+                            "E2S15",
+                            "`Ok` in a Fixed Result return binds one owner",
+                            value_start
+                        );
+                    }
+                    char *payload_id = hir_use_binding_id(hir, payload);
+                    char *payload_type = hir_binding_field(
+                        hir,
+                        payload_id,
+                        5
+                    );
+                    char *expected_fixed = fixed_identity_of(return_type);
+                    bool same_scale =
+                        strcmp(payload_type, expected_fixed) == 0;
+                    free(expected_fixed);
+                    free(payload_type);
+                    if (!same_scale) {
+                        free(payload_id);
+                        free(result_c);
+                        free(scale);
+                        free(identity);
+                        free(return_type);
+                        free(branch.data);
+                        free(emitted.data);
+                        return lower_error(
+                            "E409",
+                            "an `Ok` payload of another Fixed scale is an "
+                            "implicit conversion; use a same-scale binding",
+                            payload
+                        );
+                    }
+                    buffer_format(
+                        &branch,
+                        "    {\n"
+                        "        %s kofun_result = "
+                        "kofun_fixed_ok__%s(kofun_fixed_take__%s(&k_b%s));\n"
+                        "        %s\n"
+                        "        return kofun_result;\n"
+                        "    }\n",
+                        result_c,
+                        scale,
+                        scale,
+                        payload_id,
+                        bytes_cleanup
+                    );
+                    free(payload_id);
+                    value_end = token_end(source, close);
+                } else if (token_equal(source, value_start, "Err")) {
+                    int64_t open = skip_trivia(
+                        source,
+                        token_end(source, value_start)
+                    );
+                    int64_t payload = skip_trivia(
+                        source,
+                        token_end(source, open)
+                    );
+                    int64_t close = skip_trivia(
+                        source,
+                        token_end(source, payload)
+                    );
+                    if (
+                        !token_equal(source, open, "(") ||
+                        strcmp(token_kind(source, payload), "identifier") != 0 ||
+                        !token_equal(source, close, ")")
+                    ) {
+                        free(result_c);
+                        free(scale);
+                        free(identity);
+                        free(return_type);
+                        free(branch.data);
+                        free(emitted.data);
+                        return lower_error(
+                            "E2S15",
+                            "`Err` in a Fixed Result return binds one error",
+                            value_start
+                        );
+                    }
+                    char *payload_id = hir_use_binding_id(hir, payload);
+                    buffer_format(
+                        &branch,
+                        "    {\n"
+                        "        %s kofun_result = "
+                        "kofun_fixed_err__%s(k_b%s.code);\n"
+                        "        %s\n"
+                        "        return kofun_result;\n"
+                        "    }\n",
+                        result_c,
+                        scale,
+                        payload_id,
+                        bytes_cleanup
+                    );
+                    free(payload_id);
+                    value_end = token_end(source, close);
+                } else if (token_equal(source, value_start, "Fixed")) {
+                    int64_t call_end = -1;
+                    char *call = fixed_from_decimal_call(
+                        source,
+                        hir,
+                        value_start,
+                        scale,
+                        &call_end
+                    );
+                    if (strncmp(call, "error[", 6) == 0) {
+                        free(result_c);
+                        free(scale);
+                        free(identity);
+                        free(return_type);
+                        free(branch.data);
+                        free(emitted.data);
+                        return call;
+                    }
+                    buffer_format(
+                        &branch,
+                        "    {\n"
+                        "        %s kofun_result = %s;\n"
+                        "        %s\n"
+                        "        return kofun_result;\n"
+                        "    }\n",
+                        result_c,
+                        call,
+                        bytes_cleanup
+                    );
+                    free(call);
+                    value_end = call_end;
+                } else {
+                    free(result_c);
+                    free(scale);
+                    free(identity);
+                    free(return_type);
+                    free(branch.data);
+                    free(emitted.data);
+                    return lower_error(
+                        "E2S15",
+                        "a Fixed Result return is `Ok(owner)`, `Err(error)`, "
+                        "or one `Fixed.from_decimal` call",
+                        value_start
+                    );
+                }
+                free(result_c);
+                free(scale);
+                free(identity);
+                free(return_type);
+                buffer_append(&emitted, branch.data);
+                free(branch.data);
                 cursor = skip_trivia(source, value_end);
             } else if (returns_list_int) {
                 int64_t value_end = expression_end(source, value_start);
@@ -28763,6 +30081,18 @@ static bool numeric_conversion_head(const char *source, int64_t cursor) {
     bool numeric = numeric_name(name)[0] != '\0';
     free(name);
     if (!numeric) return false;
+    int64_t length = source_length(source);
+    int64_t dot = skip_trivia(source, token_end(source, cursor));
+    return dot < length && token_equal(source, dot, ".");
+}
+
+/*
+ * True when `cursor` is the `Fixed` type name heading `Fixed.from_decimal`.
+ * Like `numeric_conversion_head`, the scope walk must not resolve the head as
+ * a binding: `Fixed` names the compiler-known type here, not a value.
+ */
+static bool fixed_conversion_head(const char *source, int64_t cursor) {
+    if (!token_equal(source, cursor, "Fixed")) return false;
     int64_t length = source_length(source);
     int64_t dot = skip_trivia(source, token_end(source, cursor));
     return dot < length && token_equal(source, dot, ".");
@@ -30271,7 +31601,8 @@ static bool source_uses_fractional_values(const char *source) {
         if (
             strcmp(kind, "decimal") == 0 ||
             strcmp(kind, "float") == 0 ||
-            numeric_conversion_head(source, cursor)
+            numeric_conversion_head(source, cursor) ||
+            fixed_conversion_head(source, cursor)
         ) {
             return true;
         }
@@ -32033,6 +33364,7 @@ static char *lower_c_body(
     if (identity_check[0] != '\0') return identity_check;
     free(identity_check);
     bool fractional_values = source_uses_fractional_values(source);
+    bool uses_fixed = strstr(source, "Fixed[") != NULL;
     /* #1315. The carrier, its asserts, and the reclamation helper are emitted
      * only for a source that can reach them. `calloc`/`free` in every program
      * is degradation the call-arguments gate correctly refuses. */
@@ -32278,6 +33610,14 @@ static char *lower_c_body(
             c_result = "KofunIntListValue";
         } else if (function_result_is_bytes(source, name)) {
             c_result = "KofunBytesValue";
+        } else if (function_result_is_fixed_result(source, name)) {
+            char *result_type = function_return_type(source, name);
+            c_result_record = fixed_result_c_type_name(result_type);
+            free(result_type);
+            workspace->record_result_types[
+                workspace->record_result_count++
+            ] = c_result_record;
+            c_result = c_result_record;
         } else if (function_result_is_record(source, name)) {
             char *result_type = function_return_type(source, name);
             c_result_record = record_c_type_name(result_type);
@@ -32496,7 +33836,7 @@ static char *lower_c_body(
         buffer_append(&output, "#include <stdlib.h>\n");
     }
     buffer_append(&output, "#include <string.h>\n");
-    if (fractional_values) {
+    if (fractional_values || uses_fixed) {
         buffer_append(&output, "#include \"decimal_v1.c\"\n");
     }
     buffer_append(&output, "\n");
@@ -33234,6 +34574,11 @@ static char *lower_c_body(
         char *optional_declarations = emit_optional_int_c_declarations();
         buffer_append(&output, optional_declarations);
         free(optional_declarations);
+    }
+    if (uses_fixed) {
+        char *fixed_prelude = fixed_carrier_prelude(source);
+        buffer_append(&output, fixed_prelude);
+        free(fixed_prelude);
     }
     char *record_declarations = emit_record_c_declarations(source);
     buffer_append(&output, record_declarations);

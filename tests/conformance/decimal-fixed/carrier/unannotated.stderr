@@ -1,0 +1,1 @@
+error[E407]: `Fixed.from_decimal` has no expected `Fixed[S]` result type at byte 62; operand at byte 31

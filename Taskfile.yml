@@ -567,6 +567,11 @@ tasks:
     cmds:
       - "sh tests/conformance/decimal-fixed/identity/run.sh"
 
+  decimal-fixed-carrier:
+    desc: "Verify the Fixed[S] carrier, Result boundary, positive ?, and match take"
+    cmds:
+      - "sh tests/conformance/decimal-fixed/carrier/run.sh"
+
   date-time:
     desc: "Verify bounded date/time values, failures, arithmetic, and RFC 3339"
     cmds:
@@ -1720,6 +1725,7 @@ tasks:
             incremental \
             decimal \
             decimal-arithmetic \
+            decimal-fixed-carrier \
             decimal-fixed-identity \
             decimal-fixed-runtime \
             date-time \

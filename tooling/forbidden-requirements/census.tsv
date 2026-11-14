@@ -160,6 +160,7 @@ cc	invoke	1	required-today	required	tests/conformance/command-operands/run.sh
 cc	invoke	1	required-today	required	tests/conformance/concurrency/ownership/check.mjs
 cc	invoke	1	required-today	required	tests/conformance/concurrency/runtime/run.sh
 cc	invoke	6	required-today	required	tests/conformance/const-generics/run.sh
+cc	invoke	4	required-today	required	tests/conformance/decimal-fixed/carrier/run.sh
 cc	invoke	1	required-today	required	tests/conformance/decimal-fixed/runtime/check.sh
 cc	invoke	4	required-today	required	tests/conformance/decimal/run.sh
 cc	invoke	10	required-today	required	tests/conformance/discovery/run.sh
@@ -322,6 +323,7 @@ node	invoke	1	required-today	required	tests/conformance/call-arguments/run.sh
 node	invoke	2	required-today	required	tests/conformance/command-operands/run.sh
 node	invoke	1	required-today	required	tests/conformance/concurrency/ownership/run.sh
 node	invoke	2	required-today	required	tests/conformance/concurrency/runtime/run.sh
+node	invoke	2	required-today	required	tests/conformance/decimal-fixed/carrier/run.sh
 node	invoke	2	required-today	required	tests/conformance/decimal-fixed/identity/run.sh
 node	invoke	7	required-today	required	tests/conformance/effects/pure-boundary/run.sh
 node	invoke	5	required-today	required	tests/conformance/effects/pure-io/run.sh
@@ -472,6 +474,7 @@ node	source	1	required-today	required	tests/conformance/command-operands/pair.mj
 node	source	1	required-today	required	tests/conformance/concurrency/ownership/check.mjs
 node	source	1	required-today	required	tests/conformance/concurrency/ownership/normalize.mjs
 node	source	1	required-today	required	tests/conformance/concurrency/runtime/check-model.mjs
+node	source	1	required-today	required	tests/conformance/decimal-fixed/carrier/pair.mjs
 node	source	1	required-today	required	tests/conformance/decimal-fixed/identity/pair.mjs
 node	source	1	required-today	required	tests/conformance/effects/pure-boundary/report.mjs
 node	source	1	required-today	required	tests/conformance/effects/pure-io/report.mjs
@@ -704,6 +707,7 @@ shell-build-driver	source	1	required-today	required	tests/conformance/command-op
 shell-build-driver	source	1	required-today	required	tests/conformance/concurrency/ownership/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/concurrency/runtime/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/const-generics/run.sh
+shell-build-driver	source	1	required-today	required	tests/conformance/decimal-fixed/carrier/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/decimal-fixed/identity/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/decimal-fixed/runtime/check.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/decimal/run.sh
