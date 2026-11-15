@@ -1,0 +1,13 @@
+# x13 as written: the declaration parses, but supplying an argument to its
+# `pure` parameter is refused until #1756 implements the argument rule.
+fn inc(x: Int) -> Int {
+    return x + 1
+}
+
+fn apply_pure(f: pure (Int) -> Int, x: Int) -> Int {
+    return f(x)
+}
+
+fn main() -> Int {
+    return apply_pure(inc, 41)
+}

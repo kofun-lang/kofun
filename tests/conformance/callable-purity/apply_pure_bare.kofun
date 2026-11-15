@@ -1,0 +1,9 @@
+# RFC-0020 Spelling: the bare domain form is the same one-bit requirement.
+fn apply_pure_bare(f: pure Int -> Int, x: Int) -> Int {
+    return f(x)
+}
+
+fn main() -> Int {
+    print(8)
+    return 0
+}
