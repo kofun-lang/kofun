@@ -17840,6 +17840,18 @@ fn scoped_parallel_member(source: Text, start: Int) -> Int {
     return member
 }
 
+# #1755. The one wording of E411, shared by the pre-lowering alias walk and the
+# annotated Result initializer, so the two positions cannot drift.
+fn fixed_owner_alias_error(
+    owner: Text,
+    owner_type: Text,
+    offset: Int
+) -> Text {
+    return "error[E411]: `" + owner + "` owns a `" + owner_type +
+    "`, which is not Copy; an alias initializer would give it a second owner at byte " +
+    to_text(offset)
+}
+
 # Build the C call for `Fixed.from_decimal(value, Mode)` at `call_start`,
 # given the expected scale. Returns `"E@@"` + an `error[` text, or
 # `"C@@"` + the call end + `"@@"` + the call.
@@ -18036,6 +18048,66 @@ fn lower_fixed_let_statement(
         return "E@@error[E2S15]: Result[Fixed[S], DecimalError] initializer must be one call at byte " +
         to_text(value_start)
     }
+    # The binding's own scope-HIR type, so `Fixed[02]` and `Fixed[2]` compare
+    # as the one identity they are.
+    let declared_fixed = fixed_identity_of(
+        hir_binding_field(hir, binding_id, 5)
+    )
+    # #1755. `Ok(owner)` moves a same-scale owner into the new Result, as
+    # `return Ok(owner)` does. `validate_move_uses` has already refused any
+    # later use of the owner, and the owner's own release at scope end finds
+    # the emptied carrier.
+    if token_text(source, value_start) == "Ok" {
+        let open = skip_trivia(source, token_end(source, value_start))
+        let payload = skip_trivia(source, token_end(source, open))
+        let close = skip_trivia(source, token_end(source, payload))
+        if token_text(source, open) != "(" ||
+           token_kind(source, payload) != "identifier" ||
+           token_text(source, close) != ")" ||
+           token_end(source, close) != value_end {
+            return "E@@error[E2S15]: `Ok` in a Fixed Result initializer binds one owner at byte " +
+            to_text(value_start)
+        }
+        let payload_id = hir_use_binding_id(hir, payload)
+        if hir_binding_field(hir, payload_id, 5) != declared_fixed {
+            return "E@@error[E409]: an `Ok` payload of another Fixed scale is an implicit conversion; use a same-scale binding at byte " +
+            to_text(payload)
+        }
+        let scale = const_argument_of(declared_fixed)
+        let moved = "    " + result_type + " k_b" + binding_id +
+        " = kofun_fixed_ok__" + scale + "(kofun_fixed_take__" + scale +
+        "(&k_b" + payload_id + "));\n"
+        return "L@@" + to_text(value_end) + "@@" +
+        "kofun_fixed_drop(&k_b" + binding_id + ".value); @@" +
+        "kofun_fixed_drop(&k_b" + binding_id + ".value), @@" + moved
+    }
+    # #1755. A bare binding never initializes a Result by copy. The same type
+    # is an alias, which `validate_fixed_owner_copies` has already refused and
+    # is refused here again rather than emitted as a shallow copy; another
+    # scale is a conversion (E409); anything else is the ordinary initializer
+    # mismatch.
+    if token_kind(source, value_start) == "identifier" &&
+       token_end(source, value_start) == value_end {
+        let value_type = hir_binding_field(
+            hir,
+            hir_use_binding_id(hir, value_start),
+            5
+        )
+        let result_value = starts_with(value_type, "Result[Fixed[")
+        if result_value && fixed_identity_of(value_type) == declared_fixed {
+            return "E@@" + fixed_owner_alias_error(
+                token_text(source, value_start),
+                value_type,
+                value_start
+            )
+        }
+        if result_value {
+            return "E@@error[E409]: a Result of another Fixed scale is an implicit conversion; use a same-scale binding at byte " +
+            to_text(value_start)
+        }
+        return "E@@error[E2S15]: initializer type mismatch at byte " +
+        to_text(value_start)
+    }
     if token_kind(source, value_start) == "identifier" {
         let open = skip_trivia(source, token_end(source, value_start))
         if open < len(source) && token_text(source, open) == "(" &&
@@ -18111,6 +18183,8 @@ fn lower_fixed_result_match(
     let mut err_name = ""
     let mut ok_open = -1
     let mut err_open = -1
+    let mut ok_at = -1
+    let mut err_at = -1
     while arm < match_end && token_text(source, arm) != "}" {
         let is_ok = token_text(source, arm) == "Ok"
         let is_err = token_text(source, arm) == "Err"
@@ -18153,9 +18227,11 @@ fn lower_fixed_result_match(
         if is_ok {
             ok_name = token_text(source, name)
             ok_open = body_open
+            ok_at = name
         } else {
             err_name = token_text(source, name)
             err_open = body_open
+            err_at = name
         }
         arm = skip_trivia(source, body_close)
         if arm < match_end && token_text(source, arm) == "," {
@@ -18166,6 +18242,22 @@ fn lower_fixed_result_match(
         return "E@@error[E2S24]: Fixed Result match needs both an `Ok` and an `Err` arm at byte " +
         to_text(match_start)
     }
+    # #1755. Each arm binding is spelled by its BindingId, the name every use
+    # inside the arm resolves to: `return Err(error)` lowers to
+    # `k_b<id>.code`, so a name-spelled declaration left that use undeclared.
+    # A pattern the HIR declares no binding for keeps its written name.
+    let ok_binding = hir_definition_id_at(hir, ok_at)
+    if len(ok_binding) > 0 {
+        ok_name = ok_binding
+    }
+    let err_binding = hir_definition_id_at(hir, err_at)
+    if len(err_binding) > 0 {
+        err_name = err_binding
+    }
+    # #1755. The Ok payload is live for the whole arm, so every exit from the
+    # arm body -- a `?`, a `return`, a failed statement -- releases it with the
+    # owners inherited from outside. Its release at the arm's end stays for the
+    # arm that falls through.
     let ok_body = lower_body(
         source,
         hir,
@@ -18173,8 +18265,8 @@ fn lower_fixed_result_match(
         is_main,
         false,
         function_open,
-        cleanup,
-        comma
+        cleanup + "kofun_fixed_drop(&k_b" + ok_name + ".value); ",
+        comma + "kofun_fixed_drop(&k_b" + ok_name + ".value), "
     )
     if starts_with(ok_body, "error[") {
         return "E@@" + ok_body
@@ -22526,6 +22618,68 @@ fn validate_managed_record_copies(source: Text) -> Text {
     return ""
 }
 
+# #1755. The alias refusal for one `let` token, or "" when the initializer is
+# not a bare binding of a Fixed owner. A `Fixed[S]`, and the bounded
+# `Result[Fixed[S], DecimalError]` that carries one, is Owned and not Copy
+# (RFC-0015): `let b = a` would make two owners of one `KofunDecimal`, both
+# released at scope end. Annotated or not, of either type. An annotation of
+# another type is a conversion, not an alias, and is left to
+# `lower_fixed_let_statement` (E409 for another scale, E2S15 otherwise).
+fn fixed_owner_copy_error(source: Text, hir: Text, cursor: Int) -> Text {
+    let mut name = skip_trivia(source, token_end(source, cursor))
+    if token_text(source, name) == "mut" {
+        name = skip_trivia(source, token_end(source, name))
+    }
+    let mut equals = skip_trivia(source, token_end(source, name))
+    let annotated = token_text(source, equals) == ":"
+    if annotated {
+        let type_end = annotation_type_end(
+            source,
+            skip_trivia(source, token_end(source, equals))
+        )
+        if type_end < 0 {
+            return ""
+        }
+        equals = skip_trivia(source, type_end)
+    }
+    if token_text(source, equals) != "=" {
+        return ""
+    }
+    let value = skip_trivia(source, token_end(source, equals))
+    if token_kind(source, value) != "identifier" ||
+       expression_end(source, value) != token_end(source, value) {
+        return ""
+    }
+    let value_type = hir_binding_field(hir, hir_use_binding_id(hir, value), 5)
+    let mut owner = starts_with(value_type, "Fixed[") ||
+        starts_with(value_type, "Result[Fixed[")
+    if owner && annotated {
+        owner = hir_binding_field(hir, hir_definition_id_at(hir, name), 5) ==
+            value_type
+    }
+    if !owner {
+        return ""
+    }
+    return fixed_owner_alias_error(token_text(source, value), value_type, value)
+}
+
+fn validate_fixed_owner_copies(source: Text, hir: Text) -> Text {
+    if !contains(source, "Fixed[") {
+        return ""
+    }
+    let mut cursor = 0
+    while cursor < len(source) {
+        if token_text(source, cursor) == "let" {
+            let error = fixed_owner_copy_error(source, hir, cursor)
+            if len(error) > 0 {
+                return error
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return ""
+}
+
 fn move_call_binding(
     source: Text,
     hir: Text,
@@ -22552,6 +22706,44 @@ fn move_call_binding(
     }
     return call_argument_labelled(source, cursor) == "yes" ||
         move_positional_binding(source, hir, cursor)
+}
+
+# #1755. `Ok(owner)` over the bounded specialization moves its `Fixed[S]`
+# payload, as a bare binding in a `take` slot does: both the `let` initializer
+# and the `return` lower to `kofun_fixed_take`. Returns the payload's offset
+# when `cursor` is the `Ok` of such a transfer, or -1. The straight-line bound
+# is the positional one, so a transfer inside a branch or loop body is not
+# inferred to move.
+fn move_fixed_ok_payload(source: Text, hir: Text, cursor: Int) -> Int {
+    if token_text(source, cursor) != "Ok" {
+        return -1
+    }
+    let open = skip_trivia(source, token_end(source, cursor))
+    if open >= len(source) || token_text(source, open) != "(" {
+        return -1
+    }
+    let payload = skip_trivia(source, token_end(source, open))
+    if payload >= len(source) || token_kind(source, payload) != "identifier" {
+        return -1
+    }
+    let close = skip_trivia(source, token_end(source, payload))
+    if close >= len(source) || token_text(source, close) != ")" {
+        return -1
+    }
+    let binding = hir_use_binding_id(hir, payload)
+    if len(binding) == 0 ||
+       !starts_with(hir_binding_field(hir, binding, 5), "Fixed[") {
+        return -1
+    }
+    if !move_straight_line_position(source, payload) {
+        return -1
+    }
+    return payload
+}
+
+# The byte after the `)` that closes an `Ok(owner)` transfer.
+fn move_fixed_ok_end(source: Text, payload: Int) -> Int {
+    return token_end(source, skip_trivia(source, token_end(source, payload)))
 }
 
 # Whole-binding move analysis for the compiler a user actually runs (#946).
@@ -22601,13 +22793,21 @@ fn validate_move_uses(source: Text, hir: Text) -> Text {
         while scan < function_close {
             let explicit_move = move_statement_head(source, scan)
             let call_move = move_call_binding(source, hir, scan)
-            if explicit_move || call_move {
+            # #1755. An `Ok(owner)` transfer spans `Ok(...)`, as a `take`
+            # statement spans the statement, and is named for what it is.
+            let ok_move = move_fixed_ok_payload(source, hir, scan)
+            if explicit_move || call_move || ok_move >= 0 {
                 let mut target = scan
                 let mut move_start = scan
                 let mut move_end = token_end(source, scan)
+                let mut moved_how = "by `take`"
                 if explicit_move {
                     target = skip_trivia(source, token_end(source, scan))
                     move_end = move_statement_end(source, target)
+                } else if ok_move >= 0 {
+                    target = ok_move
+                    move_end = move_fixed_ok_end(source, ok_move)
+                    moved_how = "into `Ok`"
                 }
                 if explicit_move && move_statement_partial(source, target) {
                     let dot = skip_trivia(source, token_end(source, target))
@@ -22637,9 +22837,15 @@ fn validate_move_uses(source: Text, hir: Text) -> Text {
                             hir,
                             use_at
                         )
-                        if explicit_second || call_second {
+                        let ok_second = move_fixed_ok_payload(
+                            source,
+                            hir,
+                            use_at
+                        )
+                        if explicit_second || call_second || ok_second >= 0 {
                             let mut again = use_at
                             let mut again_end = token_end(source, use_at)
+                            let mut again_how = "by `take`"
                             if explicit_second {
                                 again = skip_trivia(
                                     source,
@@ -22649,6 +22855,13 @@ fn validate_move_uses(source: Text, hir: Text) -> Text {
                                     source,
                                     again
                                 )
+                            } else if ok_second >= 0 {
+                                again = ok_second
+                                again_end = move_fixed_ok_end(
+                                    source,
+                                    ok_second
+                                )
+                                again_how = "into `Ok`"
                             }
                             # A partial move is refused for being partial
                             # before anything asks whether its record still
@@ -22661,9 +22874,10 @@ fn validate_move_uses(source: Text, hir: Text) -> Text {
                             }
                             if move_same_binding(hir, target, again) {
                                 let second = "error[E2S123]: `" + moved +
-                                "` was already moved by `take` at bytes " +
+                                "` was already moved " + again_how +
+                                " at bytes " +
                                 to_text(use_at) + ".." + to_text(again_end) +
-                                "; first moved by `take` at bytes " +
+                                "; first moved " + moved_how + " at bytes " +
                                 to_text(move_start) + ".." + to_text(move_end)
                                 if len(best_message) == 0 ||
                                    use_at < best_start {
@@ -22681,9 +22895,11 @@ fn validate_move_uses(source: Text, hir: Text) -> Text {
                                   move_same_binding(hir, target, use_at) {
                             let use_end = token_end(source, use_at)
                             let after_move = "error[E2S123]: `" + moved +
-                            "` was moved by `take` and cannot be used again " +
+                            "` was moved " + moved_how +
+                            " and cannot be used again " +
                             "at bytes " + to_text(use_at) + ".." +
-                            to_text(use_end) + "; moved by `take` at bytes " +
+                            to_text(use_end) + "; moved " + moved_how +
+                            " at bytes " +
                             to_text(move_start) + ".." + to_text(move_end)
                             if len(best_message) == 0 || use_at < best_start {
                                 best_message = after_move
@@ -22810,6 +23026,12 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     let move_use_check = validate_move_uses(source, hir)
     if starts_with(move_use_check, "error[") {
         return move_use_check
+    }
+    # #1755. After the move rules, so an alias of an owner that was already
+    # moved is reported as the use after the move it is.
+    let fixed_copy_check = validate_fixed_owner_copies(source, hir)
+    if len(fixed_copy_check) > 0 {
+        return fixed_copy_check
     }
     let bytes_private_check = validate_bytes_private_results(source, hir)
     if starts_with(bytes_private_check, "error[") {

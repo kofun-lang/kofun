@@ -79,3 +79,4 @@ E407	stage2	stdout	1	required	required	forbidden
 E408	stage2	stdout	1	required	not-applicable	forbidden
 E409	stage2	stdout	1	required	not-applicable	forbidden
 E410	stage2	stdout	1	required	not-applicable	forbidden
+E411	stage2	stdout	1	required	not-applicable	forbidden
