@@ -27099,6 +27099,21 @@ static char *lower_body_with_workspace(
                         );
                         free(workspace->fixed_release.data);
                         workspace->fixed_release = next_release;
+                        /* #1766. The `let` has just added its release to
+                         * `release_comma`, so every later statement that
+                         * fails through `kofun_failed` must carry it. The
+                         * `?` and `return` exits read the list itself; this
+                         * exit reads `failure_result`, which a Bytes `let`
+                         * rebuilds and a Fixed one did not. */
+                        workspace->failure_with_release_text.length = 0;
+                        workspace->failure_with_release_text.data[0] = '\0';
+                        buffer_format(
+                            &workspace->failure_with_release_text,
+                            "(%s%s)",
+                            bytes_comma,
+                            failure_base
+                        );
+                        failure_result = failure_with_release;
                         free(binding_id);
                         free(name);
                         cursor = skip_trivia(source, next_cursor);

@@ -18608,6 +18608,14 @@ fn lower_body(
                         # so a fall-through releases newest first.
                         fixed_release = "    kofun_fixed_drop(&k_b" +
                         binding_id + ".value);\n" + fixed_release
+                        # #1766. The `let` has just added its release to
+                        # `bytes_comma`, so every later statement that fails
+                        # through `kofun_failed` must carry it. The `?` and
+                        # `return` exits read the list itself; this exit
+                        # reads `failure_result`, which a Bytes `let`
+                        # rebuilds and a Fixed one did not.
+                        failure_result = "(" + bytes_comma + failure_base +
+                        ")"
                         cursor = skip_trivia(source, next_cursor)
                         continue
                     }

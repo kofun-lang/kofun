@@ -595,6 +595,10 @@ tests/conformance/decimal-fixed/carrier/decimal_local.kofun
 tests/conformance/decimal-fixed/carrier/discarded.kofun
 tests/conformance/decimal-fixed/carrier/err_payload_type.kofun
 tests/conformance/decimal-fixed/carrier/err_rewrap.kofun
+tests/conformance/decimal-fixed/carrier/failed_function_body.kofun
+tests/conformance/decimal-fixed/carrier/failed_if_branch.kofun
+tests/conformance/decimal-fixed/carrier/failed_ok_arm.kofun
+tests/conformance/decimal-fixed/carrier/failed_while_body.kofun
 tests/conformance/decimal-fixed/carrier/first_program.kofun
 tests/conformance/decimal-fixed/carrier/fixed_into_result.kofun
 tests/conformance/decimal-fixed/carrier/fixed_qualified.kofun
