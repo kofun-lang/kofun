@@ -1,0 +1,1 @@
+error[E2S123]: `amount` was already moved into `Ok` at bytes 350..360; first moved into `Ok` at bytes 320..330

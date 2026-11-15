@@ -22753,6 +22753,81 @@ static char *build_scope_hir_analysis_mode(
                         } else {
                             free(pattern_record);
                         }
+                        /* #1761. Over the bounded
+                         * Result[Fixed[S], DecimalError], `Ok(name)` binds
+                         * the Fixed[S] owner and `Err(name)` binds the
+                         * DecimalError. The Ok-return scale check, the move
+                         * rules and the alias refusal then see the payload's
+                         * real type instead of an `Int`. */
+                        if (
+                            pattern_owner[0] == '\0' &&
+                            (strcmp(pattern_constructor, "Ok") == 0 ||
+                             strcmp(pattern_constructor, "Err") == 0)
+                        ) {
+                            int64_t scrutinee = skip_trivia(
+                                source,
+                                token_end(source, cursor)
+                            );
+                            if (
+                                scrutinee < function_close &&
+                                token_equal(source, scrutinee, "take")
+                            ) {
+                                scrutinee = skip_trivia(
+                                    source,
+                                    token_end(source, scrutinee)
+                                );
+                            }
+                            if (
+                                scrutinee < function_close &&
+                                strcmp(
+                                    token_kind(source, scrutinee),
+                                    "identifier"
+                                ) == 0
+                            ) {
+                                char *scrutinee_name = token_copy(
+                                    source,
+                                    scrutinee
+                                );
+                                int64_t scrutinee_scope_open =
+                                    parent_block_open(
+                                        source,
+                                        function_open,
+                                        scrutinee
+                                    );
+                                char *scrutinee_scope = hir_scope_id_for_open(
+                                    hir.data,
+                                    scrutinee_scope_open
+                                );
+                                char *scrutinee_binding = hir_resolve_binding(
+                                    hir.data,
+                                    scrutinee_scope,
+                                    scrutinee,
+                                    scrutinee_name
+                                );
+                                char *scrutinee_type = hir_binding_field(
+                                    hir.data,
+                                    scrutinee_binding,
+                                    5
+                                );
+                                if (
+                                    strncmp(
+                                        scrutinee_type,
+                                        "Result[Fixed[",
+                                        13
+                                    ) == 0
+                                ) {
+                                    free(pattern_binding_type);
+                                    pattern_binding_type =
+                                        strcmp(pattern_constructor, "Ok") == 0 ?
+                                        fixed_identity_of(scrutinee_type) :
+                                        owned_text("DecimalError");
+                                }
+                                free(scrutinee_type);
+                                free(scrutinee_binding);
+                                free(scrutinee_scope);
+                                free(scrutinee_name);
+                            }
+                        }
                         free(pattern_owner);
                         free(pattern_constructor);
                     } else if (arm.kind == PATTERN_NAME) {
@@ -29189,6 +29264,31 @@ static char *lower_body_with_workspace(
                         );
                     }
                     char *payload_id = hir_use_binding_id(hir, payload);
+                    /* #1761. Only a matched `Err` binding is a DecimalError;
+                     * any other payload has no `.code` to re-wrap. */
+                    char *payload_type = hir_binding_field(
+                        hir,
+                        payload_id,
+                        5
+                    );
+                    bool decimal_error =
+                        strcmp(payload_type, "DecimalError") == 0;
+                    free(payload_type);
+                    if (!decimal_error) {
+                        free(payload_id);
+                        free(result_c);
+                        free(scale);
+                        free(identity);
+                        free(return_type);
+                        free(branch.data);
+                        free(emitted.data);
+                        return lower_error(
+                            "E2S15",
+                            "`Err` in a Fixed Result return takes a matched "
+                            "`DecimalError`",
+                            payload
+                        );
+                    }
                     buffer_format(
                         &branch,
                         "    {\n"
@@ -32609,9 +32709,25 @@ static bool move_positional_owner(const char *source, const char *hir, const cha
 
 /* Exclude conditional/loop bodies and conditional expression operands. This
  * does not construct a CFG or infer a move on a path-dependent crossing. */
+static bool move_straight_line_from(
+    const char *source,
+    int64_t body,
+    int64_t target
+);
+
 static bool move_straight_line_position(const char *source, int64_t target) {
     int64_t body = enclosing_function_open(source, target);
     if (body < 0) return false;
+    return move_straight_line_from(source, body, target);
+}
+
+/* Whether `target` is reached on every path from the `{` at `body` without a
+ * branch, loop, or short-circuit operand between them. */
+static bool move_straight_line_from(
+    const char *source,
+    int64_t body,
+    int64_t target
+) {
     int64_t cursor = skip_trivia(source, token_end(source, body));
     bool conditional = false;
     while (cursor < target) {
@@ -32937,14 +33053,32 @@ static int64_t move_fixed_ok_payload(
     if (close >= length || !token_equal(source, close, ")")) return -1;
     char *binding = hir_use_binding_id(hir, payload);
     bool owner = false;
+    int64_t arm_open = -1;
     if (binding[0] != '\0') {
         char *type = hir_binding_field(hir, binding, 5);
         owner = strncmp(type, "Fixed[", 6) == 0;
         free(type);
+        /* #1761. An owner declared in a match arm -- the arm's `Ok` payload
+         * or a `let` in its body -- is visible only in that arm, so every
+         * later mention follows a transfer that is straight-line from the
+         * arm's `{`. */
+        char *scope = hir_binding_field(hir, binding, 2);
+        char *kind = hir_scope_field(hir, scope, 3);
+        if (strcmp(kind, "match-arm") == 0) {
+            char *open_text = hir_scope_field(hir, scope, 4);
+            arm_open = decimal_value(open_text);
+            free(open_text);
+        }
+        free(kind);
+        free(scope);
     }
     free(binding);
-    if (!owner || !move_straight_line_position(source, payload)) return -1;
-    return payload;
+    if (!owner) return -1;
+    if (move_straight_line_position(source, payload)) return payload;
+    if (arm_open >= 0 && move_straight_line_from(source, arm_open, payload)) {
+        return payload;
+    }
+    return -1;
 }
 
 /* The byte after the `)` that closes an `Ok(owner)` transfer. */

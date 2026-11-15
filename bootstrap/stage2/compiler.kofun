@@ -16653,6 +16653,75 @@ fn build_scope_hir_analysis_mode(
                                 if len(pattern_record) > 0 {
                                     pattern_binding_type = pattern_record
                                 }
+                                # #1761. Over the bounded
+                                # Result[Fixed[S], DecimalError], `Ok(name)`
+                                # binds the Fixed[S] owner and `Err(name)`
+                                # binds the DecimalError. The Ok-return scale
+                                # check, the move rules and the alias refusal
+                                # then see the payload's real type instead of
+                                # an `Int`.
+                                let pattern_constructor = token_text(
+                                    source,
+                                    arm_cursor
+                                )
+                                if len(pattern_owner) == 0 &&
+                                   (pattern_constructor == "Ok" ||
+                                    pattern_constructor == "Err") {
+                                    let mut scrutinee = skip_trivia(
+                                        source,
+                                        token_end(source, cursor)
+                                    )
+                                    if scrutinee < function_close &&
+                                       token_text(source, scrutinee) ==
+                                       "take" {
+                                        scrutinee = skip_trivia(
+                                            source,
+                                            token_end(source, scrutinee)
+                                        )
+                                    }
+                                    if scrutinee < function_close &&
+                                       token_kind(source, scrutinee) ==
+                                       "identifier" {
+                                        let scrutinee_scope_open =
+                                        parent_block_open(
+                                            source,
+                                            function_open,
+                                            scrutinee
+                                        )
+                                        let scrutinee_scope =
+                                        hir_scope_id_for_open(
+                                            hir,
+                                            scrutinee_scope_open
+                                        )
+                                        let scrutinee_binding =
+                                        hir_resolve_binding(
+                                            hir,
+                                            scrutinee_scope,
+                                            scrutinee,
+                                            token_text(source, scrutinee)
+                                        )
+                                        let scrutinee_type =
+                                        hir_binding_field(
+                                            hir,
+                                            scrutinee_binding,
+                                            5
+                                        )
+                                        if starts_with(
+                                            scrutinee_type,
+                                            "Result[Fixed["
+                                        ) {
+                                            if pattern_constructor == "Ok" {
+                                                pattern_binding_type =
+                                                fixed_identity_of(
+                                                    scrutinee_type
+                                                )
+                                            } else {
+                                                pattern_binding_type =
+                                                "DecimalError"
+                                            }
+                                        }
+                                    }
+                                }
                             } else if pattern_summary_kind(summary) ==
                                       "NamePattern" {
                                 let pattern_name = token_text(
@@ -19819,6 +19888,12 @@ fn lower_body(
                         to_text(value_start)
                     }
                     let payload_id = hir_use_binding_id(hir, payload)
+                    # #1761. Only a matched `Err` binding is a DecimalError;
+                    # any other payload has no `.code` to re-wrap.
+                    if hir_binding_field(hir, payload_id, 5) != "DecimalError" {
+                        return "error[E2S15]: `Err` in a Fixed Result return takes a matched `DecimalError` at byte " +
+                        to_text(payload)
+                    }
                     emitted = emitted + "    {\n" +
                     "        " + result_c + " kofun_result = kofun_fixed_err__" +
                     scale + "(k_b" + payload_id + ".code);\n" +
@@ -22425,6 +22500,12 @@ fn move_straight_line_position(source: Text, target: Int) -> Bool {
     if body < 0 {
         return false
     }
+    return move_straight_line_from(source, body, target)
+}
+
+# Whether `target` is reached on every path from the `{` at `body` without a
+# branch, loop, or short-circuit operand between them.
+fn move_straight_line_from(source: Text, body: Int, target: Int) -> Bool {
     let mut cursor = skip_trivia(source, token_end(source, body))
     let mut conditional = false
     while cursor < target {
@@ -22735,10 +22816,20 @@ fn move_fixed_ok_payload(source: Text, hir: Text, cursor: Int) -> Int {
        !starts_with(hir_binding_field(hir, binding, 5), "Fixed[") {
         return -1
     }
-    if !move_straight_line_position(source, payload) {
-        return -1
+    if move_straight_line_position(source, payload) {
+        return payload
     }
-    return payload
+    # #1761. An owner declared in a match arm -- the arm's `Ok` payload or a
+    # `let` in its body -- is visible only in that arm, so every later mention
+    # follows a transfer that is straight-line from the arm's `{`.
+    let scope = hir_binding_field(hir, binding, 2)
+    if hir_scope_field(hir, scope, 3) == "match-arm" {
+        let arm_open = decimal_value(hir_scope_field(hir, scope, 4))
+        if move_straight_line_from(source, arm_open, payload) {
+            return payload
+        }
+    }
+    return -1
 }
 
 # The byte after the `)` that closes an `Ok(owner)` transfer.

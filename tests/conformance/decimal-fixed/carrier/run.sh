@@ -56,10 +56,11 @@ done
 # One positive per ownership transfer: `?` and `return Ok(owner)`
 # (first_program), `Ok(owner)` into a local released at scope end
 # (ok_transfer), a matched `Err(error)` re-wrapped (err_rewrap), a `?` early
-# return with another owner live (two_owners), and an exit from an `Ok` arm
-# with its payload live (ok_arm_return). Every `.stdout` golden is a positive
-# and must be listed, so none can skip the seam.
-POSITIVES='first_program:cents ok_transfer:cents err_rewrap:again two_owners:cents ok_arm_return:again'
+# return with another owner live (two_owners), an exit from an `Ok` arm
+# with its payload live (ok_arm_return), and the matched `Ok` payload itself
+# returned as `Ok(amount)` (ok_arm_payload, #1761). Every `.stdout` golden is a
+# positive and must be listed, so none can skip the seam.
+POSITIVES='first_program:cents ok_transfer:cents err_rewrap:again two_owners:cents ok_arm_return:again ok_arm_payload:again'
 for golden in "$CASES"/*.stdout; do
     stem=$(basename "${golden%.stdout}")
     case " $POSITIVES " in
