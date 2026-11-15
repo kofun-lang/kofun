@@ -23766,6 +23766,11 @@ typedef struct {
     Buffer release_comma;
     Buffer inherited_failure_text;
     Buffer failure_with_release_text;
+    /* #1763. The release of each Fixed owner this body declares itself,
+     * newest first. `release_cleanup` also holds the inherited owners, which
+     * belong to an enclosing body, so a nested body that falls through its
+     * `}` emits this list rather than that one. */
+    Buffer fixed_release;
 } LowerBodyWorkspace;
 
 static char *lower_body_with_workspace(
@@ -25883,6 +25888,7 @@ static char *lower_body(
     buffer_init(&workspace.release_comma);
     buffer_init(&workspace.inherited_failure_text);
     buffer_init(&workspace.failure_with_release_text);
+    buffer_init(&workspace.fixed_release);
     char *result = lower_body_with_workspace(
         source,
         hir,
@@ -25899,6 +25905,7 @@ static char *lower_body(
     free(workspace.release_comma.data);
     free(workspace.inherited_failure_text.data);
     free(workspace.failure_with_release_text.data);
+    free(workspace.fixed_release.data);
     return result;
 }
 
@@ -27079,6 +27086,19 @@ static char *lower_body_with_workspace(
                     } else {
                         buffer_append(&emitted, fixed_let);
                         free(fixed_let);
+                        /* #1763. Every accepted carrier `let` declares one
+                         * owner; its release goes ahead of the earlier ones,
+                         * so a fall-through releases newest first. */
+                        Buffer next_release;
+                        buffer_init(&next_release);
+                        buffer_format(
+                            &next_release,
+                            "    kofun_fixed_drop(&k_b%s.value);\n%s",
+                            binding_id,
+                            workspace->fixed_release.data
+                        );
+                        free(workspace->fixed_release.data);
+                        workspace->fixed_release = next_release;
                         free(binding_id);
                         free(name);
                         cursor = skip_trivia(source, next_cursor);
@@ -30145,6 +30165,15 @@ static char *lower_body_with_workspace(
     }
     if (!returned && append_default) {
         buffer_format(&emitted, "%s    return 0;\n", bytes_cleanup);
+    }
+    /* #1763. A nested body -- an `if` or `else` branch, a `while` body, a
+     * match arm -- that reaches its `}` releases the owners it declared. Its
+     * `return` and `?` exits already carry them in `release_cleanup`; this
+     * path did not, so each of them leaked when the body ran to its end. The
+     * enclosing body's owners stay with it, and a match arm's payload is
+     * released by the match after this. */
+    if (!returned && !append_default) {
+        buffer_append(&emitted, workspace->fixed_release.data);
     }
 #undef failure_with_release
 #undef bytes_comma
