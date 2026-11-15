@@ -58,9 +58,13 @@ done
 # (ok_transfer), a matched `Err(error)` re-wrapped (err_rewrap), a `?` early
 # return with another owner live (two_owners), an exit from an `Ok` arm
 # with its payload live (ok_arm_return), and the matched `Ok` payload itself
-# returned as `Ok(amount)` (ok_arm_payload, #1761). Every `.stdout` golden is a
-# positive and must be listed, so none can skip the seam.
-POSITIVES='first_program:cents ok_transfer:cents err_rewrap:again two_owners:cents ok_arm_return:again ok_arm_payload:again'
+# returned as `Ok(amount)` (ok_arm_payload, #1761). Three more declare owners
+# in an `if`/`else` branch, a `while` body and an `Ok` arm, and run off the
+# body's `}` with them live, one moved into a local and one not
+# (if_owner_fallthrough, while_owner_fallthrough, arm_owner_fallthrough,
+# #1763). Every `.stdout` golden is a positive and must be listed, so none can
+# skip the seam.
+POSITIVES='first_program:cents ok_transfer:cents err_rewrap:again two_owners:cents ok_arm_return:again ok_arm_payload:again if_owner_fallthrough:cents while_owner_fallthrough:cents arm_owner_fallthrough:again'
 for golden in "$CASES"/*.stdout; do
     stem=$(basename "${golden%.stdout}")
     case " $POSITIVES " in

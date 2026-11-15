@@ -18459,6 +18459,11 @@ fn lower_body(
     # correct, and the data could not distinguish.
     let mut bytes_cleanup = inherited_cleanup
     let mut bytes_comma = inherited_comma
+    # #1763. The release of each Fixed owner this body declares itself,
+    # newest first. `bytes_cleanup` also holds the inherited owners, which
+    # belong to an enclosing body, so a nested body that falls through its
+    # `}` emits this list rather than that one.
+    let mut fixed_release = ""
     if bytes_comma != "" {
         failure_result = "(" + bytes_comma + failure_base + ")"
     }
@@ -18598,6 +18603,11 @@ fn lower_body(
                             comma_split + 2,
                             len(fixed_pack)
                         )
+                        # #1763. Every accepted carrier `let` declares one
+                        # owner; its release goes ahead of the earlier ones,
+                        # so a fall-through releases newest first.
+                        fixed_release = "    kofun_fixed_drop(&k_b" +
+                        binding_id + ".value);\n" + fixed_release
                         cursor = skip_trivia(source, next_cursor)
                         continue
                     }
@@ -20372,6 +20382,15 @@ fn lower_body(
             return "error[E2S19]: Core function may complete without returning Int at byte " + to_text(open)
         }
         emitted = emitted + bytes_cleanup + "    return 0;\n"
+    }
+    # #1763. A nested body -- an `if` or `else` branch, a `while` body, a
+    # match arm -- that reaches its `}` releases the owners it declared. Its
+    # `return` and `?` exits already carry them in `bytes_cleanup`; this path
+    # did not, so each of them leaked when the body ran to its end. The enclosing
+    # body's owners stay with it, and a match arm's payload is released by the
+    # match after this.
+    if !returned && !append_default {
+        emitted = emitted + fixed_release
     }
     return emitted
 }
