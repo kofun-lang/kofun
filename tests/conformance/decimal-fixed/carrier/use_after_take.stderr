@@ -1,0 +1,1 @@
+error[E2S123]: `outcome` was already moved by `take` at bytes 312..324; first moved by `take` at bytes 209..221

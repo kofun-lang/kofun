@@ -25839,6 +25839,27 @@ static char *lower_body_with_workspace(
     LowerBodyWorkspace *workspace
 );
 
+/* #1755. The one wording of E411, shared by the pre-lowering alias walk and
+ * the annotated Result initializer, so the two positions cannot drift. */
+static char *fixed_owner_alias_error(
+    const char *owner,
+    const char *owner_type,
+    int64_t offset
+) {
+    Buffer message;
+    buffer_init(&message);
+    buffer_format(
+        &message,
+        "`%s` owns a `%s`, which is not Copy; an alias initializer would "
+        "give it a second owner",
+        owner,
+        owner_type
+    );
+    char *error = lower_error("E411", message.data, offset);
+    free(message.data);
+    return error;
+}
+
 /* Build the C call for `Fixed.from_decimal(value, Mode)` at `call_start`,
  * given the expected scale. Returns an `error[` text when the call is outside
  * the admitted slice, and leaves `*call_end` on the byte just past `)`. */
@@ -26196,6 +26217,125 @@ static char *lower_fixed_let_statement(
                 value_start
             );
         }
+        /* The binding's own scope-HIR type, so `Fixed[02]` and `Fixed[2]`
+         * compare as the one identity they are. */
+        char *declared_type = hir_binding_field(hir, binding_id, 5);
+        char *declared_fixed = fixed_identity_of(declared_type);
+        free(declared_type);
+        /* #1755. `Ok(owner)` moves a same-scale owner into the new Result,
+         * as `return Ok(owner)` does. `validate_move_uses` has already refused
+         * any later use of the owner, and the owner's own release at scope end
+         * finds the emptied carrier. */
+        if (token_equal(source, value_start, "Ok")) {
+            int64_t open = skip_trivia(source, token_end(source, value_start));
+            int64_t payload = skip_trivia(source, token_end(source, open));
+            int64_t close = skip_trivia(source, token_end(source, payload));
+            if (
+                !token_equal(source, open, "(") ||
+                strcmp(token_kind(source, payload), "identifier") != 0 ||
+                !token_equal(source, close, ")") ||
+                token_end(source, close) != value_end
+            ) {
+                free(declared_fixed);
+                free(result_type);
+                free(emitted.data);
+                return lower_error(
+                    "E2S15",
+                    "`Ok` in a Fixed Result initializer binds one owner",
+                    value_start
+                );
+            }
+            char *payload_id = hir_use_binding_id(hir, payload);
+            char *payload_type = hir_binding_field(hir, payload_id, 5);
+            bool same_scale = strcmp(payload_type, declared_fixed) == 0;
+            free(payload_type);
+            if (!same_scale) {
+                free(payload_id);
+                free(declared_fixed);
+                free(result_type);
+                free(emitted.data);
+                return lower_error(
+                    "E409",
+                    "an `Ok` payload of another Fixed scale is an "
+                    "implicit conversion; use a same-scale binding",
+                    payload
+                );
+            }
+            char *scale = const_argument_of(declared_fixed);
+            buffer_format(
+                &emitted,
+                "    %s k_b%s = kofun_fixed_ok__%s("
+                "kofun_fixed_take__%s(&k_b%s));\n",
+                result_type,
+                binding_id,
+                scale,
+                scale,
+                payload_id
+            );
+            free(scale);
+            free(payload_id);
+            free(declared_fixed);
+            *next_cursor = value_end;
+            buffer_format(
+                &workspace->release_cleanup,
+                "kofun_fixed_drop(&k_b%s.value); ",
+                binding_id
+            );
+            buffer_format(
+                &workspace->release_comma,
+                "kofun_fixed_drop(&k_b%s.value), ",
+                binding_id
+            );
+            free(result_type);
+            return emitted.data;
+        }
+        /* #1755. A bare binding never initializes a Result by copy. The same
+         * type is an alias, which `validate_fixed_owner_copies` has already
+         * refused and is refused here again rather than emitted as a shallow
+         * copy; another scale is a conversion (E409); anything else is the
+         * ordinary initializer mismatch. */
+        if (
+            strcmp(token_kind(source, value_start), "identifier") == 0 &&
+            token_end(source, value_start) == value_end
+        ) {
+            char *value_id = hir_use_binding_id(hir, value_start);
+            char *value_type = hir_binding_field(hir, value_id, 5);
+            free(value_id);
+            char *value_fixed = fixed_identity_of(value_type);
+            bool result_value = strncmp(value_type, "Result[Fixed[", 13) == 0;
+            bool same_type = result_value &&
+                strcmp(value_fixed, declared_fixed) == 0;
+            free(value_fixed);
+            free(declared_fixed);
+            free(result_type);
+            free(emitted.data);
+            char *refusal;
+            if (same_type) {
+                char *owner = token_copy(source, value_start);
+                refusal = fixed_owner_alias_error(
+                    owner,
+                    value_type,
+                    value_start
+                );
+                free(owner);
+            } else if (result_value) {
+                refusal = lower_error(
+                    "E409",
+                    "a Result of another Fixed scale is an implicit "
+                    "conversion; use a same-scale binding",
+                    value_start
+                );
+            } else {
+                refusal = lower_error(
+                    "E2S15",
+                    "initializer type mismatch",
+                    value_start
+                );
+            }
+            free(value_type);
+            return refusal;
+        }
+        free(declared_fixed);
         if (strcmp(token_kind(source, value_start), "identifier") == 0) {
             int64_t open = skip_trivia(
                 source,
@@ -26330,6 +26470,8 @@ static char *lower_fixed_result_match(
     char *err_name = owned_text("");
     int64_t ok_open = -1;
     int64_t err_open = -1;
+    int64_t ok_at = -1;
+    int64_t err_at = -1;
     while (arm < match_end && !token_equal(source, arm, "}")) {
         bool is_ok = token_equal(source, arm, "Ok");
         bool is_err = token_equal(source, arm, "Err");
@@ -26416,10 +26558,12 @@ static char *lower_fixed_result_match(
             free(ok_name);
             ok_name = token_copy(source, name);
             ok_open = body_open;
+            ok_at = name;
         } else {
             free(err_name);
             err_name = token_copy(source, name);
             err_open = body_open;
+            err_at = name;
         }
         arm = skip_trivia(source, body_close);
         if (arm < match_end && token_equal(source, arm, ",")) {
@@ -26438,6 +26582,44 @@ static char *lower_fixed_result_match(
             match_start
         );
     }
+    /* #1755. Each arm binding is spelled by its BindingId, the name every use
+     * inside the arm resolves to: `return Err(error)` lowers to
+     * `k_b<id>.code`, so a name-spelled declaration left that use undeclared.
+     * A pattern the HIR declares no binding for keeps its written name. */
+    char *ok_binding = hir_definition_id_at(hir, ok_at);
+    if (ok_binding[0] != '\0') {
+        free(ok_name);
+        ok_name = ok_binding;
+    } else {
+        free(ok_binding);
+    }
+    char *err_binding = hir_definition_id_at(hir, err_at);
+    if (err_binding[0] != '\0') {
+        free(err_name);
+        err_name = err_binding;
+    } else {
+        free(err_binding);
+    }
+    /* #1755. The Ok payload is live for the whole arm, so every exit from the
+     * arm body -- a `?`, a `return`, a failed statement -- releases it with
+     * the owners inherited from outside. Its release at the arm's end stays
+     * for the arm that falls through. */
+    Buffer ok_cleanup;
+    Buffer ok_comma;
+    buffer_init(&ok_cleanup);
+    buffer_init(&ok_comma);
+    buffer_format(
+        &ok_cleanup,
+        "%skofun_fixed_drop(&k_b%s.value); ",
+        workspace->release_cleanup.data,
+        ok_name
+    );
+    buffer_format(
+        &ok_comma,
+        "%skofun_fixed_drop(&k_b%s.value), ",
+        workspace->release_comma.data,
+        ok_name
+    );
     char *ok_body = lower_body(
         source,
         hir,
@@ -26445,9 +26627,11 @@ static char *lower_fixed_result_match(
         is_main,
         false,
         function_open,
-        workspace->release_cleanup.data,
-        workspace->release_comma.data
+        ok_cleanup.data,
+        ok_comma.data
     );
+    free(ok_comma.data);
+    free(ok_cleanup.data);
     if (strncmp(ok_body, "error[", 6) == 0) {
         free(ok_name);
         free(err_name);
@@ -32625,6 +32809,80 @@ static char *validate_managed_record_copies(const char *source) {
     return owned_text("");
 }
 
+/*
+ * #1755. The alias refusal for one `let` token, or "" when the initializer is
+ * not a bare binding of a Fixed owner. A `Fixed[S]`, and the bounded
+ * `Result[Fixed[S], DecimalError]` that carries one, is Owned and not Copy
+ * (RFC-0015): `let b = a` would make two owners of one `KofunDecimal`, both
+ * released at scope end. Annotated or not, of either type. An annotation of
+ * another type is a conversion, not an alias, and is left to
+ * `lower_fixed_let_statement` (E409 for another scale, E2S15 otherwise).
+ */
+static char *fixed_owner_copy_error(
+    const char *source,
+    const char *hir,
+    int64_t cursor
+) {
+    int64_t name = skip_trivia(source, token_end(source, cursor));
+    if (token_equal(source, name, "mut")) {
+        name = skip_trivia(source, token_end(source, name));
+    }
+    int64_t equals = skip_trivia(source, token_end(source, name));
+    bool annotated = token_equal(source, equals, ":");
+    if (annotated) {
+        int64_t type_end = annotation_type_end(
+            source,
+            skip_trivia(source, token_end(source, equals))
+        );
+        if (type_end < 0) return owned_text("");
+        equals = skip_trivia(source, type_end);
+    }
+    if (!token_equal(source, equals, "=")) return owned_text("");
+    int64_t value = skip_trivia(source, token_end(source, equals));
+    if (
+        strcmp(token_kind(source, value), "identifier") != 0 ||
+        expression_end(source, value) != token_end(source, value)
+    ) {
+        return owned_text("");
+    }
+    char *value_id = hir_use_binding_id(hir, value);
+    char *value_type = hir_binding_field(hir, value_id, 5);
+    free(value_id);
+    bool owner = strncmp(value_type, "Fixed[", 6) == 0 ||
+        strncmp(value_type, "Result[Fixed[", 13) == 0;
+    if (owner && annotated) {
+        char *name_id = hir_definition_id_at(hir, name);
+        char *name_type = hir_binding_field(hir, name_id, 5);
+        owner = strcmp(name_type, value_type) == 0;
+        free(name_type);
+        free(name_id);
+    }
+    if (!owner) {
+        free(value_type);
+        return owned_text("");
+    }
+    char *owner_name = token_copy(source, value);
+    char *error = fixed_owner_alias_error(owner_name, value_type, value);
+    free(owner_name);
+    free(value_type);
+    return error;
+}
+
+static char *validate_fixed_owner_copies(const char *source, const char *hir) {
+    if (strstr(source, "Fixed[") == NULL) return owned_text("");
+    int64_t length = source_length(source);
+    int64_t cursor = 0;
+    while (cursor < length) {
+        if (token_equal(source, cursor, "let")) {
+            char *error = fixed_owner_copy_error(source, hir, cursor);
+            if (error[0] != '\0') return error;
+            free(error);
+        }
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return owned_text("");
+}
+
 static bool move_call_binding(
     const char *source,
     const char *hir,
@@ -32649,6 +32907,52 @@ static bool move_call_binding(
     free(labelled);
     if (expression_end(source, cursor) != token_end(source, cursor)) return false;
     return written_with_label || move_positional_binding(source, hir, cursor);
+}
+
+/*
+ * #1755. `Ok(owner)` over the bounded specialization moves its `Fixed[S]`
+ * payload, as a bare binding in a `take` slot does: both the `let`
+ * initializer and the `return` lower to `kofun_fixed_take`. Returns the
+ * payload's offset when `cursor` is the `Ok` of such a transfer, or -1. The
+ * straight-line bound is the positional one, so a transfer inside a branch or
+ * loop body is not inferred to move.
+ */
+static int64_t move_fixed_ok_payload(
+    const char *source,
+    const char *hir,
+    int64_t cursor
+) {
+    if (!token_equal(source, cursor, "Ok")) return -1;
+    int64_t length = source_length(source);
+    int64_t open = skip_trivia(source, token_end(source, cursor));
+    if (open >= length || !token_equal(source, open, "(")) return -1;
+    int64_t payload = skip_trivia(source, token_end(source, open));
+    if (
+        payload >= length ||
+        strcmp(token_kind(source, payload), "identifier") != 0
+    ) {
+        return -1;
+    }
+    int64_t close = skip_trivia(source, token_end(source, payload));
+    if (close >= length || !token_equal(source, close, ")")) return -1;
+    char *binding = hir_use_binding_id(hir, payload);
+    bool owner = false;
+    if (binding[0] != '\0') {
+        char *type = hir_binding_field(hir, binding, 5);
+        owner = strncmp(type, "Fixed[", 6) == 0;
+        free(type);
+    }
+    free(binding);
+    if (!owner || !move_straight_line_position(source, payload)) return -1;
+    return payload;
+}
+
+/* The byte after the `)` that closes an `Ok(owner)` transfer. */
+static int64_t move_fixed_ok_end(const char *source, int64_t payload) {
+    return token_end(
+        source,
+        skip_trivia(source, token_end(source, payload))
+    );
 }
 
 /*
@@ -32720,14 +33024,20 @@ static char *validate_move_uses(const char *source, const char *hir) {
         while (scan < function_close) {
             bool explicit_move = move_statement_head(source, scan);
             bool call_move = move_call_binding(source, hir, scan);
-            if (explicit_move || call_move) {
+            /* #1755. An `Ok(owner)` transfer spans `Ok(...)`, as a `take`
+             * statement spans the statement, and is named for what it is. */
+            int64_t ok_move = move_fixed_ok_payload(source, hir, scan);
+            if (explicit_move || call_move || ok_move >= 0) {
                 int64_t target = explicit_move
                     ? skip_trivia(source, token_end(source, scan))
-                    : scan;
+                    : ok_move >= 0 ? ok_move : scan;
                 int64_t move_start = scan;
                 int64_t move_end = explicit_move
                     ? move_statement_end(source, target)
+                    : ok_move >= 0 ? move_fixed_ok_end(source, ok_move)
                     : token_end(source, scan);
+                const char *moved_how = ok_move >= 0 ?
+                    "into `Ok`" : "by `take`";
                 char *moved;
                 if (explicit_move && move_statement_partial(source, target)) {
                     int64_t dot = skip_trivia(source, token_end(source, target));
@@ -32761,13 +33071,17 @@ static char *validate_move_uses(const char *source, const char *hir) {
                 while (use < function_close) {
                     bool explicit_second = move_statement_head(source, use);
                     bool call_second = move_call_binding(source, hir, use);
-                    if (explicit_second || call_second) {
+                    int64_t ok_second = move_fixed_ok_payload(source, hir, use);
+                    if (explicit_second || call_second || ok_second >= 0) {
                         int64_t again = explicit_second
                             ? skip_trivia(source, token_end(source, use))
-                            : use;
+                            : ok_second >= 0 ? ok_second : use;
                         int64_t again_end = explicit_second
                             ? move_statement_end(source, again)
+                            : ok_second >= 0 ? move_fixed_ok_end(source, ok_second)
                             : token_end(source, use);
+                        const char *again_how = ok_second >= 0 ?
+                            "into `Ok`" : "by `take`";
                         /* A partial move is refused for being partial before
                          * anything asks whether its record still holds a
                          * value, so this scan leaves that statement to the
@@ -32785,11 +33099,12 @@ static char *validate_move_uses(const char *source, const char *hir) {
                             buffer_init(&error);
                             buffer_format(
                                 &error,
-                                "error[E2S123]: `%s` was already moved by "
-                                "`take` at bytes %" PRId64 "..%" PRId64
-                                "; first moved by `take` at bytes %" PRId64
+                                "error[E2S123]: `%s` was already moved %s "
+                                "at bytes %" PRId64 "..%" PRId64
+                                "; first moved %s at bytes %" PRId64
                                 "..%" PRId64,
-                                moved, use, again_end, move_start, move_end
+                                moved, again_how, use, again_end,
+                                moved_how, move_start, move_end
                             );
                             candidate.present = true;
                             candidate.code = "E2S123";
@@ -32797,7 +33112,9 @@ static char *validate_move_uses(const char *source, const char *hir) {
                             candidate.primary_end = again_end;
                             candidate.related_start = move_start;
                             candidate.related_end = move_end;
-                            candidate.related_label = "first moved by `take`";
+                            candidate.related_label = ok_move >= 0 ?
+                                "first moved into `Ok`" :
+                                "first moved by `take`";
                             candidate.message = error.data;
                             move_finding_keep(&best, candidate);
                             break;
@@ -32814,12 +33131,12 @@ static char *validate_move_uses(const char *source, const char *hir) {
                         buffer_init(&error);
                         buffer_format(
                             &error,
-                            "error[E2S123]: `%s` was moved by `take` and "
+                            "error[E2S123]: `%s` was moved %s and "
                             "cannot be used again at bytes %" PRId64
-                            "..%" PRId64 "; moved by `take` at bytes %"
+                            "..%" PRId64 "; moved %s at bytes %"
                             PRId64 "..%" PRId64,
-                            moved, use, token_end(source, use),
-                            move_start, move_end
+                            moved, moved_how, use, token_end(source, use),
+                            moved_how, move_start, move_end
                         );
                         candidate.present = true;
                         candidate.code = "E2S123";
@@ -32827,7 +33144,8 @@ static char *validate_move_uses(const char *source, const char *hir) {
                         candidate.primary_end = token_end(source, use);
                         candidate.related_start = move_start;
                         candidate.related_end = move_end;
-                        candidate.related_label = "moved by `take`";
+                        candidate.related_label = ok_move >= 0 ?
+                            "moved into `Ok`" : "moved by `take`";
                         candidate.message = error.data;
                         move_finding_keep(&best, candidate);
                         break;
@@ -33590,6 +33908,11 @@ static char *lower_c_body(
     char *move_check = validate_move_assertions(source, hir);
     if (strncmp(move_check, "error[", 6) == 0) return move_check;
     free(move_check);
+    /* #1755. After the move rules, so an alias of an owner that was already
+     * moved is reported as the use after the move it is. */
+    char *fixed_copy_check = validate_fixed_owner_copies(source, hir);
+    if (fixed_copy_check[0] != '\0') return fixed_copy_check;
+    free(fixed_copy_check);
     char *bytes_private_check = validate_bytes_private_results(source, hir);
     if (strncmp(bytes_private_check, "error[", 6) == 0) {
         return bytes_private_check;

@@ -1,0 +1,1 @@
+error[E411]: `a` owns a `Fixed[2]`, which is not Copy; an alias initializer would give it a second owner at byte 114

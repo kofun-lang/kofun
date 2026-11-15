@@ -1,1 +1,1 @@
-error[E409]: an implicit Fixed conversion was requested; use `Fixed.clone(value)` (and a same-scale destination) instead at byte 124
+error[E411]: `a` owns a `Fixed[2]`, which is not Copy; an alias initializer would give it a second owner at byte 124

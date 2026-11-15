@@ -1,0 +1,12 @@
+# diagnostic-mode: compile
+# expect-code: E411
+# expect-span: byte 195
+fn cents() -> Result[Fixed[2], DecimalError] {
+    let a: Fixed[2] = Fixed.from_decimal(1.5, HalfUp)?
+    let b: Fixed[2] = a
+    return Ok(a)
+}
+
+fn main() -> Int {
+    return 0
+}

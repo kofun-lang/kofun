@@ -1,0 +1,1 @@
+error[E411]: `outcome` owns a `Result[Fixed[2], DecimalError]`, which is not Copy; an alias initializer would give it a second owner at byte 215
