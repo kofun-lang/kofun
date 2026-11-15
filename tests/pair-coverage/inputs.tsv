@@ -592,6 +592,7 @@ tests/conformance/decimal-fixed/carrier/decimal_field.kofun
 tests/conformance/decimal-fixed/carrier/decimal_literal.kofun
 tests/conformance/decimal-fixed/carrier/decimal_local.kofun
 tests/conformance/decimal-fixed/carrier/discarded.kofun
+tests/conformance/decimal-fixed/carrier/err_payload_type.kofun
 tests/conformance/decimal-fixed/carrier/err_rewrap.kofun
 tests/conformance/decimal-fixed/carrier/first_program.kofun
 tests/conformance/decimal-fixed/carrier/fixed_into_result.kofun
@@ -599,7 +600,11 @@ tests/conformance/decimal-fixed/carrier/fixed_qualified.kofun
 tests/conformance/decimal-fixed/carrier/guarded_match.kofun
 tests/conformance/decimal-fixed/carrier/no_question.kofun
 tests/conformance/decimal-fixed/carrier/non_result_function.kofun
+tests/conformance/decimal-fixed/carrier/ok_arm_alias.kofun
+tests/conformance/decimal-fixed/carrier/ok_arm_cross_scale.kofun
+tests/conformance/decimal-fixed/carrier/ok_arm_payload.kofun
 tests/conformance/decimal-fixed/carrier/ok_arm_return.kofun
+tests/conformance/decimal-fixed/carrier/ok_arm_use_after.kofun
 tests/conformance/decimal-fixed/carrier/ok_collision.kofun
 tests/conformance/decimal-fixed/carrier/ok_transfer.kofun
 tests/conformance/decimal-fixed/carrier/plain_match.kofun

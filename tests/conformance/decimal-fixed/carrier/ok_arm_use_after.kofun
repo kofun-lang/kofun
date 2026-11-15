@@ -1,0 +1,31 @@
+fn cents() -> Result[Fixed[2], DecimalError] {
+    let a: Fixed[2] = Fixed.from_decimal(1.5, HalfUp)?
+    return Ok(a)
+}
+
+fn again() -> Result[Fixed[2], DecimalError] {
+    let r: Result[Fixed[2], DecimalError] = cents()
+    match take r {
+        Ok(amount) => {
+            let moved: Result[Fixed[2], DecimalError] = Ok(amount)
+            return Ok(amount)
+        },
+        Err(error) => {
+            return Err(error)
+        },
+    }
+    return Fixed.from_decimal(2.5, HalfUp)
+}
+
+fn main() -> Int {
+    let outcome: Result[Fixed[2], DecimalError] = again()
+    match take outcome {
+        Ok(amount) => {
+            print(0)
+        },
+        Err(error) => {
+            print(1)
+        },
+    }
+    return 0
+}
