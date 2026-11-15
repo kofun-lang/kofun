@@ -1,0 +1,13 @@
+# x14: the effect-row suffix is not accepted by RFC-0020; this stays a
+# malformed parameter head, whatever the callable requirement.
+fn inc(x: Int) -> Int {
+    return x + 1
+}
+
+fn apply_io(f: (Int) -> Int ! io, x: Int) -> Int {
+    return f(x)
+}
+
+fn main() -> Int {
+    return apply_io(inc, 41)
+}

@@ -38,6 +38,7 @@ c-abi
 call-arguments
 call-arguments-spec
 call-arguments-surface
+callable-purity
 capabilities
 check
 cli-framework

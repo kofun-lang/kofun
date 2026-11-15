@@ -155,6 +155,7 @@ cc	invoke	2	required-today	required	tests/conformance/bytes-read-file/run.sh
 cc	invoke	1	required-today	required	tests/conformance/bytes-read-stream/run.sh
 cc	invoke	5	required-today	required	tests/conformance/bytes-text/run.sh
 cc	invoke	2	required-today	required	tests/conformance/call-arguments/run.sh
+cc	invoke	2	required-today	required	tests/conformance/callable-purity/run.sh
 cc	invoke	5	required-today	required	tests/conformance/codegen/dense-enum-dispatch/run.sh
 cc	invoke	1	required-today	required	tests/conformance/command-operands/run.sh
 cc	invoke	1	required-today	required	tests/conformance/concurrency/ownership/check.mjs
@@ -320,6 +321,7 @@ node	invoke	1	required-today	required	tests/conformance/authority-carrier/run.sh
 node	invoke	1	required-today	unknown	tests/conformance/backends/wasm32-node.sh
 node	invoke	2	required-today	required	tests/conformance/bytes-read-stream/run.sh
 node	invoke	1	required-today	required	tests/conformance/call-arguments/run.sh
+node	invoke	2	required-today	required	tests/conformance/callable-purity/run.sh
 node	invoke	2	required-today	required	tests/conformance/command-operands/run.sh
 node	invoke	1	required-today	required	tests/conformance/concurrency/ownership/run.sh
 node	invoke	2	required-today	required	tests/conformance/concurrency/runtime/run.sh
@@ -470,6 +472,7 @@ node	source	1	required-today	required	tests/conformance/aggregate-bridge/check-l
 node	source	1	required-today	required	tests/conformance/aggregate-bridge/check-production-field-access.mjs
 node	source	1	required-today	required	tests/conformance/aggregate-bridge/check-sidecar.mjs
 node	source	1	required-today	required	tests/conformance/bytes-read-stream/pair.mjs
+node	source	1	required-today	required	tests/conformance/callable-purity/pair.mjs
 node	source	1	required-today	required	tests/conformance/command-operands/pair.mjs
 node	source	1	required-today	required	tests/conformance/concurrency/ownership/check.mjs
 node	source	1	required-today	required	tests/conformance/concurrency/ownership/normalize.mjs
@@ -700,6 +703,7 @@ shell-build-driver	source	1	required-today	required	tests/conformance/bytes-read
 shell-build-driver	source	1	required-today	required	tests/conformance/bytes-read-stream/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/bytes-text/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/call-arguments/run.sh
+shell-build-driver	source	1	required-today	required	tests/conformance/callable-purity/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/capabilities_test.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/check-capabilities.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/codegen/dense-enum-dispatch/run.sh

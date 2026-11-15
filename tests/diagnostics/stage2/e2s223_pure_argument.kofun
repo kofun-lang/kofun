@@ -1,0 +1,14 @@
+# diagnostic-mode: compile
+# expect-code: E2S223
+# expect-span: byte 230
+fn inc(x: Int) -> Int {
+    return x + 1
+}
+
+fn apply_pure(f: pure (Int) -> Int, x: Int) -> Int {
+    return f(x)
+}
+
+fn main() -> Int {
+    return apply_pure(inc, 41)
+}

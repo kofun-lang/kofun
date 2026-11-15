@@ -572,6 +572,11 @@ tasks:
     cmds:
       - "sh tests/conformance/decimal-fixed/carrier/run.sh"
 
+  callable-purity:
+    desc: "Verify pure callable type parsing, identity, subsumption, and the not-yet argument refusal"
+    cmds:
+      - "sh tests/conformance/callable-purity/run.sh"
+
   date-time:
     desc: "Verify bounded date/time values, failures, arithmetic, and RFC 3339"
     cmds:
@@ -1726,6 +1731,7 @@ tasks:
             decimal \
             decimal-arithmetic \
             decimal-fixed-carrier \
+            callable-purity \
             decimal-fixed-identity \
             decimal-fixed-runtime \
             date-time \

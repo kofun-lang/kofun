@@ -1,0 +1,12 @@
+# x31: a callable over the nominal type named `pure` is not reinterpreted.
+type pure = {
+    a: Int,
+}
+
+fn take(f: pure -> Int) -> Int {
+    return 0
+}
+
+fn main() -> Int {
+    return 0
+}

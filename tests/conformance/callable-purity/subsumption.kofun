@@ -1,0 +1,19 @@
+# The one subsumption rule, accepting direction: a `pure` callable parameter is
+# accepted where an unannotated callable is expected. Nothing calls `forward`,
+# because a call supplying a `pure` argument is #1756's rule.
+fn inc(x: Int) -> Int {
+    return x + 1
+}
+
+fn apply(f: (Int) -> Int, x: Int) -> Int {
+    return f(x)
+}
+
+fn forward(f: pure (Int) -> Int, x: Int) -> Int {
+    return apply(f, x)
+}
+
+fn main() -> Int {
+    print(9)
+    return 0
+}

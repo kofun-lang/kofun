@@ -6353,6 +6353,14 @@ static int64_t callable_type_end(const char *source, int64_t start) {
     int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, start);
     if (cursor >= length) return -1;
+    /* #1754. `pure` immediately before a callable type is the requirement,
+     * not an ordinary identifier. Contextual: the domain still has to parse,
+     * so `pure -> Int` over a type named `pure` stays the ordinary type and
+     * is refused by the parameter reader. */
+    if (token_equal(source, cursor, "pure")) {
+        cursor = skip_trivia(source, token_end(source, cursor));
+        if (cursor >= length) return -1;
+    }
     int64_t after_domain = -1;
     if (token_equal(source, cursor, "(")) {
         int64_t close = balanced_end(source, cursor, "(", ")");
@@ -6381,6 +6389,39 @@ static int64_t callable_type_end(const char *source, int64_t start) {
 }
 
 /*
+ * #1754. Whether the callable type at `start` carries the one-bit `pure`
+ * requirement. The caller has already established that a callable type is
+ * there, so a leading `pure` word is the requirement and not a type name.
+ */
+static bool callable_pure_word(const char *source, int64_t start) {
+    return token_equal(source, skip_trivia(source, start), "pure");
+}
+
+/*
+ * #1754. The two scope-HIR spellings of a callable value. `Fn[pure]` carries
+ * the requirement and `Fn` is the unannotated identity, beside the ownership
+ * modes. The bracket spelling is internal to the IR; #552 removed `Fn[...]`
+ * from the language, so no source form can be confused with it.
+ */
+static bool callable_type_text(const char *type) {
+    return strcmp(type, "Fn") == 0 || strcmp(type, "Fn[pure]") == 0;
+}
+
+static bool callable_type_text_pure(const char *type) {
+    return strcmp(type, "Fn[pure]") == 0;
+}
+
+/*
+ * #1754. `pure` immediately before a callable type is a requirement, not a
+ * callee. The call scan must not read the type's parenthesised domain as an
+ * argument list, and `pure` stays an ordinary identifier everywhere else.
+ */
+static bool pure_callable_requirement_at(const char *source, int64_t at) {
+    return token_equal(source, at, "pure") &&
+        callable_type_end(source, at) >= 0;
+}
+
+/*
  * The argument count of the callable type at `start`, or -1 when there is not
  * one there. The bare domain `A -> R` is one argument by construction; a
  * parenthesised domain counts its elements, so `() -> R` is zero.
@@ -6388,6 +6429,9 @@ static int64_t callable_type_end(const char *source, int64_t start) {
 static int64_t callable_type_arity(const char *source, int64_t start) {
     if (callable_type_end(source, start) < 0) return -1;
     int64_t cursor = skip_trivia(source, start);
+    if (token_equal(source, cursor, "pure")) {
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
     if (!token_equal(source, cursor, "(")) return 1;
     int64_t close = balanced_end(source, cursor, "(", ")");
     if (close < 0) return -1;
@@ -7345,6 +7389,151 @@ static int64_t argument_end(const char *source, int64_t start) {
         }
     }
     return expression_end(source, start);
+}
+
+/*
+ * #1754. The slot of the first `pure` callable parameter declared by the
+ * top-level function `name`, or -1 when the function is not one or declares
+ * none. The declaration is the only source of a requirement, so a call site
+ * asks by name rather than carrying a second copy of the signature.
+ */
+static int64_t pure_callable_parameter_slot(
+    const char *source,
+    const char *name
+) {
+    int64_t length = source_length(source);
+    int64_t function_start = next_function_start(source, 0);
+    while (function_start < length) {
+        int64_t function_close = function_end(source, function_start);
+        if (function_close < 0) return -1;
+        char *function = function_name(source, function_start);
+        bool matches = strcmp(function, name) == 0;
+        free(function);
+        if (matches) {
+            int64_t open = parameter_open(source, function_start);
+            if (open < 0) return -1;
+            int64_t close = balanced_end(source, open, "(", ")");
+            int64_t parameter = skip_trivia(
+                source,
+                token_end(source, open)
+            );
+            int64_t slot = 0;
+            while (
+                close >= 0 && parameter < close &&
+                !token_equal(source, parameter, ")")
+            ) {
+                int64_t type = parameter_type_start(source, parameter, close);
+                if (type < 0) return -1;
+                if (
+                    callable_pure_word(source, type) &&
+                    callable_type_end(source, type) >= 0
+                ) {
+                    return slot;
+                }
+                int64_t type_end = callable_type_end(source, type);
+                if (type_end < 0) type_end = annotation_type_end(source, type);
+                parameter = skip_trivia(source, type_end);
+                if (
+                    parameter < close && token_equal(source, parameter, ",")
+                ) {
+                    parameter = skip_trivia(
+                        source,
+                        token_end(source, parameter)
+                    );
+                }
+                ++slot;
+            }
+            return -1;
+        }
+        function_start = next_function_start(source, function_close);
+    }
+    return -1;
+}
+
+/*
+ * #1754. RFC-0020 child 1 parses and records a `pure` callable requirement but
+ * does not implement its argument rule; that is #1756. Until it lands, a call
+ * that supplies an argument to a `pure` parameter is refused with one
+ * registered "specified but not implemented" code, so no impure callable can
+ * reach a `pure` parameter unchecked. The declaration itself still compiles,
+ * and forwarding a `pure` parameter to an unannotated one still compiles.
+ */
+static char *validate_pure_callable_arguments(const char *source) {
+    if (strstr(source, "pure") == NULL) return owned_text("");
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, 0);
+    int64_t previous = -1;
+    while (cursor < length) {
+        if (
+            previous >= 0 &&
+            !token_equal(source, previous, "fn") &&
+            strcmp(token_kind(source, cursor), "identifier") == 0
+        ) {
+            int64_t after = skip_trivia(source, token_end(source, cursor));
+            if (
+                after < length && token_equal(source, after, "(")
+            ) {
+                char *callee = token_copy(source, cursor);
+                int64_t pure_slot = pure_callable_parameter_slot(
+                    source,
+                    callee
+                );
+                if (pure_slot >= 0) {
+                    int64_t call_close = balanced_end(
+                        source,
+                        after,
+                        "(",
+                        ")"
+                    );
+                    int64_t argument = skip_trivia(
+                        source,
+                        token_end(source, after)
+                    );
+                    int64_t slot = 0;
+                    while (
+                        call_close >= 0 && argument < call_close &&
+                        !token_equal(source, argument, ")")
+                    ) {
+                        if (slot == pure_slot) {
+                            Buffer message;
+                            buffer_init(&message);
+                            buffer_format(
+                                &message,
+                                "call to `%s` supplies an argument to a "
+                                "`pure` parameter; RFC-0020's argument rule "
+                                "is not implemented yet",
+                                callee
+                            );
+                            char *error = lower_error(
+                                "E2S223",
+                                message.data,
+                                argument
+                            );
+                            free(message.data);
+                            free(callee);
+                            return error;
+                        }
+                        int64_t stop = argument_end(source, argument);
+                        if (stop < 0 || stop > call_close) break;
+                        argument = skip_trivia(source, stop);
+                        if (token_equal(source, argument, ",")) {
+                            argument = skip_trivia(
+                                source,
+                                token_end(source, argument)
+                            );
+                        } else if (argument < call_close) {
+                            break;
+                        }
+                        ++slot;
+                    }
+                }
+                free(callee);
+            }
+        }
+        previous = cursor;
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    return owned_text("");
 }
 
 /* Label binding is complete in checked HIR, but ABI-temporary lowering is the
@@ -14607,6 +14796,7 @@ static char *validate_core_calls(const char *source, const char *hir) {
                 strcmp(previous, "fn") != 0 &&
                 strcmp(previous, ".") != 0 &&
                 strcmp(name, "print") != 0 &&
+                !pure_callable_requirement_at(source, cursor) &&
                 !constructor_application &&
                 !fixed_result_constructor &&
                 !fixed_result_arm_pattern(source, cursor) &&
@@ -21811,6 +22001,14 @@ static char *build_scope_hir_analysis_mode(
     char *notation_check = validate_removed_callable_notation(source);
     if (strncmp(notation_check, "error[", 6) == 0) return notation_check;
     free(notation_check);
+    /* #1754. Before any binding is collected, so a `pure` argument refusal
+     * writes no C and is not pre-empted by a lowering diagnostic about the
+     * same call. */
+    char *pure_argument_check = validate_pure_callable_arguments(source);
+    if (strncmp(pure_argument_check, "error[", 6) == 0) {
+        return pure_argument_check;
+    }
+    free(pure_argument_check);
     Buffer hir;
     buffer_init(&hir);
     buffer_append(&hir, "kofun-scope-hir/v1\n");
@@ -22139,7 +22337,9 @@ static char *build_scope_hir_analysis_mode(
                                 ? list_shape_end
                                 : annotation_type_end(source, type_cursor))));
             char *type_text = callable_end >= 0
-                ? owned_text("Fn")
+                ? (callable_pure_word(source, type_cursor)
+                    ? owned_text("Fn[pure]")
+                    : owned_text("Fn"))
                 : (optional_end >= 0
                        ? owned_text("Int?")
                        : (list_end >= 0
@@ -40927,7 +41127,7 @@ static char *cp_walk(CheckedPlaceArena *a, const char *source, const char *hir, 
             : cp_binding_type(a, source, hir, catalog, binding, recursion + 1);
         if (cp_error_p(type)) return type;
         if (!*type) return cp_error(a, "binding initializer is not well typed", start);
-        if (!cp_type_known(catalog, type) && strcmp(type, "Float") != 0 && strcmp(type, "Decimal") != 0 && strcmp(type, "Fn") != 0 && strcmp(type, "Bytes") != 0 && !authority_type_name(type)) return cp_error(a, "binding type is unavailable", start);
+        if (!cp_type_known(catalog, type) && strcmp(type, "Float") != 0 && strcmp(type, "Decimal") != 0 && !callable_type_text(type) && strcmp(type, "Bytes") != 0 && !authority_type_name(type)) return cp_error(a, "binding type is unavailable", start);
     }
     while (cursor < end) {
         if (count >= 64) return cp_error(a, "candidate projection limit is 64", cursor);
@@ -41133,7 +41333,7 @@ static bool capture_compatible(CheckedPlaceArena *a, const char * v_actual, cons
     CheckedPlaceText *mark = a->texts;
     (void)v_actual;
     (void)v_expected;
-    return capture_return_integer(a, mark, ((strcmp(v_actual, v_expected) == 0) || ((strcmp(v_actual, "List[?]") == 0) && ((strcmp(v_expected, "List[Int]") == 0) || (strcmp(v_expected, "List") == 0)))));
+    return capture_return_integer(a, mark, ((strcmp(v_actual, v_expected) == 0) || ((callable_type_text_pure(v_actual)) && (strcmp(v_expected, "Fn") == 0)) || ((strcmp(v_actual, "List[?]") == 0) && ((strcmp(v_expected, "List[Int]") == 0) || (strcmp(v_expected, "List") == 0)))));
 }
 
 static const char * capture_type_at(CheckedPlaceArena *a, const char * v_source, int64_t v_at) {
@@ -41141,7 +41341,7 @@ static const char * capture_type_at(CheckedPlaceArena *a, const char * v_source,
     (void)v_source;
     (void)v_at;
     if (callable_type_end(v_source, v_at) >= 0) {
-        return capture_return_text(a, mark, "Fn");
+        return capture_return_text(a, mark, callable_pure_word(v_source, v_at) ? "Fn[pure]" : "Fn");
     }
     if (strcmp(cp_keep(a, token_copy(v_source, v_at)), "List") == 0) {
         return capture_return_text(a, mark, cp_normalize_type((char *)cp_keep(a, parameter_list_type_text(v_source, v_at, ((int64_t)strlen(v_source))))));
@@ -41208,14 +41408,14 @@ static const char * capture_binding_type(CheckedPlaceArena *a, const char * v_so
     }
     if (strcmp(cp_keep(a, token_copy(v_source, v_at)), "=") != 0) {
         const char * v_type = cp_normalize_type((char *)cp_keep(a, hir_binding_field(v_hir, v_binding, 5)));
-        if (cp_type_known(v_catalog, v_type) || (strcmp(v_type, "Fn") == 0)) {
+        if (cp_type_known(v_catalog, v_type) || callable_type_text(v_type)) {
             return capture_return_text(a, mark, v_type);
         }
         return capture_return_text(a, mark, capture_error(a, "E2S154", "binding has no checked source type", v_declaration));
     }
     int64_t v_start = skip_trivia(v_source, token_end(v_source, v_at));
     if (lambda_initializer_open_mode(v_source, v_start, true) >= 0) {
-        if ((((int64_t)strlen(v_annotation)) > 0) && (strcmp(v_annotation, "Fn") != 0)) {
+        if ((((int64_t)strlen(v_annotation)) > 0) && (!callable_type_text(v_annotation))) {
             return capture_return_text(a, mark, capture_error(a, "E2S12", "initializer type mismatch", v_start));
         }
         return capture_return_text(a, mark, "Fn");
@@ -41337,7 +41537,7 @@ static const char * capture_parameters(CheckedPlaceArena *a, const char * v_sour
         if (!capture_declared_type(a, v_source, v_type)) {
             return capture_return_text(a, mark, capture_error(a, "E2S15", "parameter type is outside the checked profile", v_typed));
         }
-        if ((strcmp(v_type, "Fn") == 0) && (strcmp(v_mode, "read") != 0)) {
+        if (callable_type_text(v_type) && (strcmp(v_mode, "read") != 0)) {
             return capture_return_text(a, mark, capture_error(a, "E2S154", "callable parameters require an immutable read signature", v_at));
         }
         if ((strcmp(v_mode, "edit") == 0) && (record_declaration_start(v_source, v_type) >= 0)) {
@@ -41347,7 +41547,7 @@ static const char * capture_parameters(CheckedPlaceArena *a, const char * v_sour
             return capture_return_text(a, mark, capture_error(a, "E2S122", "take requires a checked owning record carrier", v_at));
         }
         int64_t v_arity = (-1);
-        if (strcmp(v_type, "Fn") == 0) {
+        if (callable_type_text(v_type)) {
             v_arity = callable_type_arity(v_source, v_typed);
         }
         v_rows = capture_append(a, &builder_rows, v_rows, cp_format(a, "%s%s%s%s%s%s%s%s%s%s%s", "formal|", cp_format(a, "%" PRId64, v_ordinal), "|", v_label, "|", v_type, "|", v_mode, "|", cp_format(a, "%" PRId64, v_arity), "\n"));
@@ -41478,7 +41678,7 @@ static const char * capture_call(CheckedPlaceArena *a, const char * v_source, co
         if (strncmp(v_place, "error[", strlen("error[")) == 0) {
             return capture_return_text(a, mark, v_place);
         }
-        if (strcmp(cp_field(a, v_place, 0, 2), "Fn") != 0) {
+        if (!callable_type_text(cp_field(a, v_place, 0, 2))) {
             return capture_return_text(a, mark, capture_error(a, "E2S154", "callee is not callable", v_first));
         }
         v_facts = capture_access(a, v_place, "read", v_first, token_end(v_source, v_first));
@@ -41607,7 +41807,7 @@ static const char * capture_call(CheckedPlaceArena *a, const char * v_source, co
                 return capture_return_text(a, mark, capture_error(a, "E2S12", "argument type mismatch", v_value));
             }
         }
-        if ((strcmp(v_expected, "Fn") == 0) && (!capture_fn_compatible(a, v_source, v_hir, v_catalog, v_value, v_stop, decimal_value(cp_field(a, v_parameters, v_row, 5)), (v_depth + 1)))) {
+        if (callable_type_text(v_expected) && (!capture_fn_compatible(a, v_source, v_hir, v_catalog, v_value, v_stop, decimal_value(cp_field(a, v_parameters, v_row, 5)), (v_depth + 1)))) {
             return capture_return_text(a, mark, capture_error(a, "E2S12", "callable argument signature mismatch", v_value));
         }
         v_facts = capture_append(a, &builder_facts, v_facts, capture_tail(a, v_checked));
@@ -42278,7 +42478,7 @@ static const char * capture_block(CheckedPlaceArena *a, const char * v_source, c
                 if (record_declaration_start(v_source, v_type) >= 0) {
                     return capture_return_text(a, mark, capture_error(a, "E2S32", "nominal-record bindings are immutable", v_declaration));
                 }
-                if (strcmp(v_type, "Fn") == 0) {
+                if (callable_type_text(v_type)) {
                     return capture_return_text(a, mark, capture_error(a, "E2S154", "callable bindings require an immutable signature", v_declaration));
                 }
             }
@@ -42561,7 +42761,7 @@ static bool capture_declared_type(CheckedPlaceArena *a, const char * v_source, c
     CheckedPlaceText *mark = a->texts;
     (void)v_source;
     (void)v_type;
-    return capture_return_integer(a, mark, ((((((((strcmp(v_type, "Int") == 0) || (strcmp(v_type, "Bool") == 0)) || (strcmp(v_type, "Text") == 0)) || (strcmp(v_type, "List[Int]") == 0)) || (strcmp(v_type, "List") == 0)) || (strcmp(v_type, "Fn") == 0)) || (record_declaration_start(v_source, v_type) >= 0)) || (enum_constructor_count(v_source, v_type) > 0)));
+    return capture_return_integer(a, mark, ((((((((strcmp(v_type, "Int") == 0) || (strcmp(v_type, "Bool") == 0)) || (strcmp(v_type, "Text") == 0)) || (strcmp(v_type, "List[Int]") == 0)) || (strcmp(v_type, "List") == 0)) || callable_type_text(v_type)) || (record_declaration_start(v_source, v_type) >= 0)) || (enum_constructor_count(v_source, v_type) > 0)));
 }
 
 static bool capture_fn_compatible(CheckedPlaceArena *a, const char * v_source, const char * v_hir, const char * v_catalog, int64_t v_start, int64_t v_end, int64_t v_arity, int64_t v_depth) {
@@ -43433,7 +43633,7 @@ static const char * ownership_scope(CheckedPlaceArena *a, const char * v_source,
                 v_after = capture_append(a, &builder_after, v_after, cp_format(a, "%s%s%s%s%s%s%s%s", "ev|", cp_keep(a, scoped_hir_hex(v_start, 8)), "1|act|", cp_field(a, v_accesses, v_row, 2), "|", v_key, "|", cp_format(a, "%" PRId64 "\n", v_start)));
             }
         }
-        if ((strcmp(cp_field(a, v_accesses, v_row, 4), "Fn") == 0) && (!ownership_pure_callable(a, v_source, v_hir, v_accesses, cp_field(a, v_accesses, v_row, 3)))) {
+        if ((callable_type_text(cp_field(a, v_accesses, v_row, 4))) && (!ownership_pure_callable(a, v_source, v_hir, v_accesses, cp_field(a, v_accesses, v_row, 3)))) {
             const char * v_call = ownership_call_key(a, v_file, v_start, v_stop);
             if (((v_start > v_block) && (v_stop < v_close)) && (!ownership_in_lambda(a, v_facts, v_par_index, v_start))) {
                 v_actions = (v_actions + 1);

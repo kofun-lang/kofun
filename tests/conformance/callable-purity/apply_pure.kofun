@@ -1,0 +1,11 @@
+# RFC-0020 child 1 (#1754): the parenthesised `pure` callable requirement is
+# parsed, carried in the scope HIR, and callable through its parameter. Nothing
+# calls `apply_pure` yet; that argument rule is #1756's.
+fn apply_pure(f: pure (Int) -> Int, x: Int) -> Int {
+    return f(x)
+}
+
+fn main() -> Int {
+    print(7)
+    return 0
+}

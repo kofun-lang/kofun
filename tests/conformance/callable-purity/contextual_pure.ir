@@ -1,0 +1,16 @@
+kofun-stage2-ir/v1
+source-bytes|208
+record|pure|1|112|139|private|implicit|-1|-1
+record-field|pure|a|Int|0
+function|main|0|141|207|private|implicit|-1|-1|141|207|file:0|symbol:0
+function-count|1
+constant-count|0
+kofun-pattern-tree/v1
+limits|depth|32|nodes-per-compilation|256
+match-count|0
+kofun-scope-hir/v1
+hir-function|141|0|1
+scope|0|-1|parameters|148|150|0
+scope|1|0|function-body|158|207|1
+binding|0|1|pure|immutable|Int|copy|initialized|168|172|176
+use|187|191|1|0|read

@@ -1,0 +1,12 @@
+# x15: `pure` before a parameter name is an external label, not a type word.
+fn inc(x: Int) -> Int {
+    return x + 1
+}
+
+fn apply_labelled(x: Int, pure f: (Int) -> Int) -> Int {
+    return f(x)
+}
+
+fn main() -> Int {
+    return apply_labelled(41, inc)
+}

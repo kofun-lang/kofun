@@ -10041,6 +10041,7 @@ fn validate_core_calls(source: Text, hir: Text) -> Text {
                 )
             }
             if previous != "fn" && previous != "." && name != "print" &&
+               !pure_callable_requirement_at(source, cursor) &&
                !constructor_application &&
                !fixed_result_constructor &&
                !fixed_result_arm_pattern(source, cursor) &&
@@ -10405,9 +10406,19 @@ fn callable_call_arity(source: Text, hir: Text, use_start: Int) -> Int {
 # type is not a callable type here, so the caller reports it as an ordinary
 # unsupported parameter type rather than as a malformed callable.
 fn callable_type_end(source: Text, start: Int) -> Int {
-    let cursor = skip_trivia(source, start)
+    let mut cursor = skip_trivia(source, start)
     if cursor >= len(source) {
         return -1
+    }
+    # #1754. `pure` immediately before a callable type is the requirement, not
+    # an ordinary identifier. Contextual: the domain still has to parse, so
+    # `pure -> Int` over a type named `pure` stays the ordinary type and is
+    # refused by the parameter reader.
+    if token_text(source, cursor) == "pure" {
+        cursor = skip_trivia(source, token_end(source, cursor))
+        if cursor >= len(source) {
+            return -1
+        }
     }
     let mut after_domain = -1
     if token_text(source, cursor) == "(" {
@@ -10444,6 +10455,32 @@ fn callable_type_end(source: Text, start: Int) -> Int {
     return token_end(source, result)
 }
 
+# #1754. Whether the callable type at `start` carries the one-bit `pure`
+# requirement. The caller has already established that a callable type is
+# there, so a leading `pure` word is the requirement and not a type name.
+fn callable_pure_word(source: Text, start: Int) -> Bool {
+    return token_text(source, skip_trivia(source, start)) == "pure"
+}
+
+# #1754. The two scope-HIR spellings of a callable value. `Fn[pure]` carries
+# the requirement and `Fn` is the unannotated identity, beside the ownership
+# modes. The bracket spelling is internal to the IR; #552 removed `Fn[...]`
+# from the language, so no source form can be confused with it.
+fn callable_type_text(type_spelling: Text) -> Bool {
+    return type_spelling == "Fn" || type_spelling == "Fn[pure]"
+}
+
+fn callable_type_text_pure(type_spelling: Text) -> Bool {
+    return type_spelling == "Fn[pure]"
+}
+
+# #1754. `pure` immediately before a callable type is a requirement, not a
+# callee. The call scan must not read the type's parenthesised domain as an
+# argument list, and `pure` stays an ordinary identifier everywhere else.
+fn pure_callable_requirement_at(source: Text, at: Int) -> Bool {
+    return token_text(source, at) == "pure" && callable_type_end(source, at) >= 0
+}
+
 # The argument count of the callable type at `start`, or -1 when there is not
 # one there. The bare domain `A -> R` is one argument by construction; a
 # parenthesised domain counts its elements, so `() -> R` is zero.
@@ -10451,7 +10488,10 @@ fn callable_type_arity(source: Text, start: Int) -> Int {
     if callable_type_end(source, start) < 0 {
         return -1
     }
-    let cursor = skip_trivia(source, start)
+    let mut cursor = skip_trivia(source, start)
+    if token_text(source, cursor) == "pure" {
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
     if token_text(source, cursor) != "(" {
         return 1
     }
@@ -11152,6 +11192,107 @@ fn argument_end(source: Text, start: Int) -> Int {
         }
     }
     return expression_end(source, start)
+}
+
+# #1754. The slot of the first `pure` callable parameter declared by the
+# top-level function `name`, or -1 when the function is not one or declares
+# none. The declaration is the only source of a requirement, so a call site
+# asks by name rather than carrying a second copy of the signature.
+fn pure_callable_parameter_slot(source: Text, name: Text) -> Int {
+    let mut function_start = next_function_start(source, 0)
+    while function_start < len(source) {
+        let function_close = function_end(source, function_start)
+        if function_close < 0 {
+            return -1
+        }
+        if function_name(source, function_start) == name {
+            let open = parameter_open(source, function_start)
+            if open < 0 {
+                return -1
+            }
+            let close = balanced_end(source, open, "(", ")")
+            let mut parameter = skip_trivia(source, token_end(source, open))
+            let mut slot = 0
+            while close >= 0 && parameter < close && token_text(source, parameter) != ")" {
+                let type_at = parameter_type_start(source, parameter, close)
+                if type_at < 0 {
+                    return -1
+                }
+                if callable_pure_word(source, type_at) &&
+                   callable_type_end(source, type_at) >= 0 {
+                    return slot
+                }
+                let mut type_end = callable_type_end(source, type_at)
+                if type_end < 0 {
+                    type_end = annotation_type_end(source, type_at)
+                }
+                parameter = skip_trivia(source, type_end)
+                if parameter < close && token_text(source, parameter) == "," {
+                    parameter = skip_trivia(source, token_end(source, parameter))
+                }
+                slot = slot + 1
+            }
+            return -1
+        }
+        function_start = next_function_start(source, function_close)
+    }
+    return -1
+}
+
+# #1754. RFC-0020 child 1 parses and records a `pure` callable requirement but
+# does not implement its argument rule; that is #1756. Until it lands, a call
+# that supplies an argument to a `pure` parameter is refused with one
+# registered "specified but not implemented" code, so no impure callable can
+# reach a `pure` parameter unchecked. The declaration itself still compiles,
+# and forwarding a `pure` parameter to an unannotated one still compiles.
+fn validate_pure_callable_arguments(source: Text) -> Text {
+    if !contains(source, "pure") {
+        return ""
+    }
+    let mut cursor = skip_trivia(source, 0)
+    let mut previous = -1
+    while cursor < len(source) {
+        let mut candidate = false
+        if previous >= 0 && token_text(source, previous) != "fn" &&
+           token_kind(source, cursor) == "identifier" {
+            candidate = true
+        }
+        if candidate {
+            let after = skip_trivia(source, token_end(source, cursor))
+            if after < len(source) && token_text(source, after) == "(" {
+                let callee = token_text(source, cursor)
+                let pure_slot = pure_callable_parameter_slot(source, callee)
+                if pure_slot >= 0 {
+                    let call_close = balanced_end(source, after, "(", ")")
+                    let mut argument = skip_trivia(source, token_end(source, after))
+                    let mut slot = 0
+                    while call_close >= 0 && argument < call_close &&
+                          token_text(source, argument) != ")" {
+                        if slot == pure_slot {
+                            return "error[E2S223]: call to `" + callee +
+                                "` supplies an argument to a `pure` parameter; " +
+                                "RFC-0020's argument rule is not implemented yet " +
+                                "at byte " + to_text(argument)
+                        }
+                        let stop = argument_end(source, argument)
+                        if stop < 0 || stop > call_close {
+                            break
+                        }
+                        argument = skip_trivia(source, stop)
+                        if token_text(source, argument) == "," {
+                            argument = skip_trivia(source, token_end(source, argument))
+                        } else if argument < call_close {
+                            break
+                        }
+                        slot = slot + 1
+                    }
+                }
+            }
+        }
+        previous = cursor
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return ""
 }
 
 # Expected type or ownership mode of the call argument beginning exactly at
@@ -16052,6 +16193,13 @@ fn build_scope_hir_analysis_mode(
     if starts_with(notation_check, "error[") {
         return notation_check
     }
+    # #1754. Before any binding is collected, so a `pure` argument refusal
+    # writes no C and is not pre-empted by a lowering diagnostic about the
+    # same call.
+    let pure_argument_check = validate_pure_callable_arguments(source)
+    if starts_with(pure_argument_check, "error[") {
+        return pure_argument_check
+    }
     let mut hir = "kofun-scope-hir/v1\n"
     let mut next_scope_id = 0
     if scoped_analysis {
@@ -16224,7 +16372,11 @@ fn build_scope_hir_analysis_mode(
             let mut binding_type = annotation_type_text(source, type_cursor)
             if callable_end >= 0 {
                 type_end = callable_end
-                binding_type = "Fn"
+                if callable_pure_word(source, type_cursor) {
+                    binding_type = "Fn[pure]"
+                } else {
+                    binding_type = "Fn"
+                }
             } else if optional_int_type_end(source, type_cursor) >= 0 {
                 type_end = optional_int_type_end(source, type_cursor)
                 binding_type = "Int?"
@@ -29467,7 +29619,7 @@ fn checked_place_walk(source: Text, hir: Text, catalog: Text, start: Int,
         if starts_with(type_spelling, "error[") { return type_spelling }
         if len(type_spelling) == 0 { return checked_place_error("binding initializer is not well typed", start) }
         if !checked_place_type_known(catalog, type_spelling) && type_spelling != "Float" && type_spelling != "Decimal" &&
-            type_spelling != "Fn" && type_spelling != "Bytes" && !authority_type_name(type_spelling) {
+            !callable_type_text(type_spelling) && type_spelling != "Bytes" && !authority_type_name(type_spelling) {
             return checked_place_error("binding type is unavailable", start)
         }
     }
@@ -29667,11 +29819,15 @@ fn capture_value(type_spelling: Text, facts: Text) -> Text {
 }
 
 fn capture_compatible(actual: Text, expected: Text) -> Bool {
-    return actual == expected || (actual == "List[?]" && (expected == "List[Int]" || expected == "List"))
+    return actual == expected || (callable_type_text_pure(actual) && expected == "Fn") ||
+        (actual == "List[?]" && (expected == "List[Int]" || expected == "List"))
 }
 
 fn capture_type_at(source: Text, at: Int) -> Text {
-    if callable_type_end(source, at) >= 0 { return "Fn" }
+    if callable_type_end(source, at) >= 0 {
+        if callable_pure_word(source, at) { return "Fn[pure]" }
+        return "Fn"
+    }
     if token_text(source, at) == "List" {
         return checked_place_normalize_type(parameter_list_type_text(source, at, len(source)))
     }
@@ -29721,12 +29877,12 @@ fn capture_binding_type(source: Text, hir: Text, catalog: Text, binding: Text, d
     }
     if token_text(source, at) != "=" {
         let type_spelling = checked_place_normalize_type(hir_binding_field(hir, binding, 5))
-        if checked_place_type_known(catalog, type_spelling) || type_spelling == "Fn" { return type_spelling }
+        if checked_place_type_known(catalog, type_spelling) || callable_type_text(type_spelling) { return type_spelling }
         return capture_error("E2S154", "binding has no checked source type", declaration)
     }
     let start = skip_trivia(source, token_end(source, at))
     if lambda_initializer_open_mode(source, start, true) >= 0 {
-        if len(annotation) > 0 && annotation != "Fn" { return capture_error("E2S12", "initializer type mismatch", start) }
+        if len(annotation) > 0 && !callable_type_text(annotation) { return capture_error("E2S12", "initializer type mismatch", start) }
         return "Fn"
     }
     let end = capture_end(source, start, len(source))
@@ -29795,7 +29951,7 @@ fn capture_parameters(source: Text, open: Int) -> Text {
         let type_spelling = capture_type_at(source, typed)
         if capture_type_end(source, typed) != checked_place_trim_end(source, at, stop) { return capture_error("E2S154", "malformed parameter type", typed) }
         if !capture_declared_type(source, type_spelling) { return capture_error("E2S15", "parameter type is outside the checked profile", typed) }
-        if type_spelling == "Fn" && mode != "read" { return capture_error("E2S154", "callable parameters require an immutable read signature", at) }
+        if callable_type_text(type_spelling) && mode != "read" { return capture_error("E2S154", "callable parameters require an immutable read signature", at) }
         if mode == "edit" && record_declaration_start(source, type_spelling) >= 0 {
             return capture_error("E2S181", "nominal-record parameters cannot use edit", at)
         }
@@ -29803,7 +29959,7 @@ fn capture_parameters(source: Text, open: Int) -> Text {
             return capture_error("E2S122", "take requires a checked owning record carrier", at)
         }
         let mut arity = -1
-        if type_spelling == "Fn" { arity = callable_type_arity(source, typed) }
+        if callable_type_text(type_spelling) { arity = callable_type_arity(source, typed) }
         rows = rows + "formal|" + to_text(ordinal) + "|" + label + "|" + type_spelling + "|" + mode + "|" + to_text(arity) + "\n"
         ordinal = ordinal + 1
         at = stop
@@ -29890,7 +30046,7 @@ fn capture_call(source: Text, hir: Text, catalog: Text, first: Int, open: Int, e
     if len(binding) > 0 {
         let place = checked_place_walk(source, hir, catalog, first, token_end(source, first), path, depth + 1)
         if starts_with(place, "error[") { return place }
-        if hir_field(place, 0, 2) != "Fn" { return capture_error("E2S154", "callee is not callable", first) }
+        if !callable_type_text(hir_field(place, 0, 2)) { return capture_error("E2S154", "callee is not callable", first) }
         facts = capture_access(place, "read", first, token_end(source, first))
         let lambda = lambda_binding_open_mode(source, hir, binding, true)
         callee = lambda
@@ -29980,7 +30136,7 @@ fn capture_call(source: Text, hir: Text, catalog: Text, first: Int, open: Int, e
                 return capture_error("E2S12", "print requires a scalar", value)
             }
         } else if !capture_compatible(actual, expected) { return capture_error("E2S12", "argument type mismatch", value) }
-        if expected == "Fn" && !capture_fn_compatible(source, hir, catalog, value, stop,
+        if callable_type_text(expected) && !capture_fn_compatible(source, hir, catalog, value, stop,
             decimal_value(hir_field(parameters, row, 5)), depth + 1) {
             return capture_error("E2S12", "callable argument signature mismatch", value)
         }
@@ -30430,7 +30586,7 @@ fn capture_block(source: Text, hir: Text, catalog: Text, start: Int, end: Int, p
             let binding = hir_definition_id_at(hir, declaration)
             if hir_binding_field(hir, binding, 4) == "mutable" {
                 if record_declaration_start(source, type_spelling) >= 0 { return capture_error("E2S32", "nominal-record bindings are immutable", declaration) }
-                if type_spelling == "Fn" { return capture_error("E2S154", "callable bindings require an immutable signature", declaration) }
+                if callable_type_text(type_spelling) { return capture_error("E2S154", "callable bindings require an immutable signature", declaration) }
             }
         }
         if returning {
@@ -31411,7 +31567,7 @@ fn emit_complete_capture_hir_v2_file(input: Text, output: Text, logical_path: Te
 }
 
 fn capture_declared_type(source: Text, type_spelling: Text) -> Bool {
-    return type_spelling == "Int" || type_spelling == "Bool" || type_spelling == "Text" || type_spelling == "List[Int]" || type_spelling == "List" || type_spelling == "Fn" ||
+    return type_spelling == "Int" || type_spelling == "Bool" || type_spelling == "Text" || type_spelling == "List[Int]" || type_spelling == "List" || callable_type_text(type_spelling) ||
         record_declaration_start(source, type_spelling) >= 0 || enum_constructor_count(source, type_spelling) > 0
 }
 
@@ -32172,7 +32328,7 @@ fn ownership_scope(source: Text, hir: Text, facts: Text, accesses: Text, path: T
                 after = after + "ev|" + scoped_hir_hex(start, 8) + "1|act|" + hir_field(accesses, row, 2) + "|" + key + "|" + to_text(start) + "\n"
             }
         }
-        if hir_field(accesses, row, 4) == "Fn" && !ownership_pure_callable(source, hir, accesses, hir_field(accesses, row, 3)) {
+        if callable_type_text(hir_field(accesses, row, 4)) && !ownership_pure_callable(source, hir, accesses, hir_field(accesses, row, 3)) {
             # A parent use of an impure callable (a parameter, a capturing
             # closure, a returned lambda) may run any effect there, including
             # after scope exit, so it takes an explicit unknown place.

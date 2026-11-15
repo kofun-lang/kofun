@@ -1,0 +1,11 @@
+# `pure` stays an ordinary identifier outside a callable type (x30), and a
+# binding named `pure` is unchanged.
+type pure = {
+    a: Int,
+}
+
+fn main() -> Int {
+    let pure = 3
+    print(pure)
+    return 0
+}
