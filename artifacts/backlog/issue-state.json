@@ -1,6 +1,6 @@
 {
   "schema": "kofun.backlog-issue-state/v1",
-  "repository": "hjosugi/kofun",
+  "repository": "kofun-lang/kofun",
   "state_labels": [
     "ready",
     "blocked",
@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 84,
+  "open_issues": 88,
   "issues": [
     {
       "number": 26,
@@ -1758,9 +1758,9 @@
       "number": 1679,
       "title": "Stage 2 pair divergences: Text-literal initializers and value `if`/`match` end positions",
       "state_labels": [
-        "in-progress"
+        "needs-detail"
       ],
-      "state_line": "in-progress",
+      "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [],
       "claims": [
@@ -1775,6 +1775,10 @@
         {
           "agent_id": "grok-opencode-pair-divergence-1679-20260926",
           "status": "active"
+        },
+        {
+          "agent_id": "grok-opencode-pair-divergence-1679-20260926",
+          "status": "released"
         }
       ]
     },
@@ -1887,20 +1891,100 @@
       ]
     },
     {
-      "number": 1748,
-      "title": "[Release] v0.14.0-seed: FREEZE, queue, and publication record",
+      "number": 1756,
+      "title": "RFC-0020: check arguments to pure parameters (E2S218, E2S219)",
+      "state_labels": [
+        "in-progress"
+      ],
+      "state_line": "in-progress",
+      "blocked_by": [
+        1754,
+        1768
+      ],
+      "evidence_commits": [
+        "85126c27abf910100b37851ff18afd7310614557"
+      ],
+      "claims": [
+        {
+          "agent_id": "agent-pure-argument-rule-1756-20261115",
+          "status": "active"
+        },
+        {
+          "agent_id": "agent-pure-argument-rule-1756-20261115",
+          "status": "released"
+        },
+        {
+          "agent_id": "release-stage2-1756-20261121",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "number": 1757,
+      "title": "RFC-0020: pure fn trait methods and the implementation check (E2S220)",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1272
+      ],
+      "evidence_commits": [
+        "85126c27abf910100b37851ff18afd7310614557"
+      ]
+    },
+    {
+      "number": 1758,
+      "title": "RFC-0020: KIF v3 effect values, declared purity across packages, and pub pure fn",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1275,
+        1754,
+        1757
+      ],
+      "evidence_commits": [
+        "85126c27abf910100b37851ff18afd7310614557"
+      ]
+    },
+    {
+      "number": 1759,
+      "title": "RFC-0020: typed sidecar v3 shows callable shapes and their pure requirement",
+      "state_labels": [
+        "blocked"
+      ],
+      "state_line": "blocked",
+      "blocked_by": [
+        1754
+      ],
+      "evidence_commits": [
+        "85126c27abf910100b37851ff18afd7310614557"
+      ]
+    },
+    {
+      "number": 1765,
+      "title": "Fixed[S]: an `Ok(owner)` transfer inside an `if` or `while` body is never recorded, so a second use takes an empty owner",
       "state_labels": [
         "in-progress"
       ],
       "state_line": "in-progress",
       "blocked_by": [],
       "evidence_commits": [
-        "4bf55e8207c07f855f81163dadbc86b2cf6f1f58",
-        "65a7bf4964efbfb686cf1ba88331eefbac72dc71"
+        "bcc1196d50a82c0070b628d41807cec3911ef62e"
       ],
       "claims": [
         {
-          "agent_id": "claude-release-0.14.0-20261114",
+          "agent_id": "agent-nested-ok-move-1765-20261116",
+          "status": "active"
+        },
+        {
+          "agent_id": "agent-nested-ok-move-1765-20261116",
+          "status": "released"
+        },
+        {
+          "agent_id": "release-stage2-1765-20261121",
           "status": "active"
         }
       ]
