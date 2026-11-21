@@ -24159,9 +24159,10 @@ fn pure_argument_error(
     let slot = " to `pure` parameter `" + token_text(source, name_at) +
         "` of `" + callee + "`"
     let location = " at byte " + to_text(argument)
-    if start >= 0 && stop > start {
+    let root = bare && len(binding) == 0 && name == "print"
+    if root || (start >= 0 && stop > start) {
         let mut via = ""
-        if function_calls_name(source, start, stop, "print") {
+        if root || function_calls_name(source, start, stop, "print") {
             via = " directly"
         } else {
             let hop = first_io_callee(source, start, stop, io_set)

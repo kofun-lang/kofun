@@ -1,0 +1,1 @@
+error[E2S218]: argument `print` to `pure` parameter `f` of `apply_pure` reaches `print` directly at byte 125

@@ -35805,8 +35805,9 @@ static void check_pure_argument(
         char *target = token_copy(source, name_at);
         Buffer message;
         buffer_init(&message);
-        if (start >= 0 && stop > start) {
-            bool direct = function_calls_name(source, start, stop, "print");
+        bool root = bare && binding[0] == '\0' && strcmp(name, "print") == 0;
+        if (root || (start >= 0 && stop > start)) {
+            bool direct = root || function_calls_name(source, start, stop, "print");
             char *hop = direct ? owned_text("")
                 : first_io_callee(source, start, stop, io_set);
             if (direct || hop[0] != '\0') {

@@ -539,6 +539,7 @@ tests/conformance/callable-purity/forward_pure.kofun
 tests/conformance/callable-purity/forward_unproven.kofun
 tests/conformance/callable-purity/impure_argument.kofun
 tests/conformance/callable-purity/impure_lambda.kofun
+tests/conformance/callable-purity/impure_root_argument.kofun
 tests/conformance/callable-purity/labelled_parameter.kofun
 tests/conformance/callable-purity/lambda_argument.kofun
 tests/conformance/callable-purity/named_argument.kofun
