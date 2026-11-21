@@ -356,7 +356,7 @@ mutant_agrees() {
 # started as -- an annotation that parses and is never checked -- and every
 # refusal below it disappears.
 mutate no-enforcement \
-    's/^    return pure_boundary_violation(source, "print", "E2S176");$/    (void)source; return owned_text("ok");/'
+    's/^    char \*boundary = pure_boundary_violation(source, "print", "E2S176");$/    char *boundary = owned_text("ok");/'
 mutant_disagrees no-enforcement direct
 mutant_disagrees no-enforcement one_hop
 
@@ -378,7 +378,7 @@ mutant_disagrees no-root direct
 # declared before their callers; `back_edge` declares them after, so a single
 # round leaves the annotated function looking pure.
 mutate single-round \
-    's/^    for (rounds = 0; rounds <= bound \&\& !settled; ++rounds) {$/    for (rounds = 0; rounds < 1 \&\& !settled; ++rounds) {/'
+    's/^    for (int64_t round = 0; round <= bound; ++round) {$/    for (int64_t round = 0; round < 1; ++round) {/'
 mutant_disagrees single-round back_edge
 mutant_agrees single-round one_hop
 
