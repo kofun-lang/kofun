@@ -18294,6 +18294,13 @@ fn lower_fixed_let_statement(
             return "E@@error[E409]: an `Ok` payload of another Fixed scale is an implicit conversion; use a same-scale binding at byte " +
             to_text(payload)
         }
+        if !fixed_ok_move_position(source, hir, payload_id, payload) {
+            return "E@@error[E2S123]: cannot move enclosing binding `" +
+            token_text(source, payload) + "` into `Ok` at bytes " +
+            to_text(value_start) + ".." + to_text(value_end) +
+            "; declared at bytes " + hir_binding_field(hir, payload_id, 8) +
+            ".." + hir_binding_field(hir, payload_id, 9)
+        }
         let scale = const_argument_of(declared_fixed)
         let moved = "    " + result_type + " k_b" + binding_id +
         " = kofun_fixed_ok__" + scale + "(kofun_fixed_take__" + scale +
@@ -22968,12 +22975,21 @@ fn move_call_binding(
         move_positional_binding(source, hir, cursor)
 }
 
-# #1755. `Ok(owner)` over the bounded specialization moves its `Fixed[S]`
-# payload, as a bare binding in a `take` slot does: both the `let` initializer
-# and the `return` lower to `kofun_fixed_take`. Returns the payload's offset
-# when `cursor` is the `Ok` of such a transfer, or -1. The straight-line bound
-# is the positional one, so a transfer inside a branch or loop body is not
-# inferred to move.
+# A local can move on the straight-line path through its own body. A
+# transfer in a deeper body could be conditional or repeat on a back edge.
+fn fixed_ok_move_position(
+    source: Text, hir: Text, binding: Text, payload: Int
+) -> Bool {
+    if move_straight_line_position(source, payload) {
+        return true
+    }
+    let scope = hir_binding_field(hir, binding, 2)
+    let open = decimal_value(hir_scope_field(hir, scope, 4))
+    return open < payload && token_text(source, open) == "{" &&
+        move_straight_line_from(source, open, payload)
+}
+
+# An `Ok(owner)` on the straight-line path moves its Fixed payload.
 fn move_fixed_ok_payload(source: Text, hir: Text, cursor: Int) -> Int {
     if token_text(source, cursor) != "Ok" {
         return -1
@@ -22995,18 +23011,8 @@ fn move_fixed_ok_payload(source: Text, hir: Text, cursor: Int) -> Int {
        !starts_with(hir_binding_field(hir, binding, 5), "Fixed[") {
         return -1
     }
-    if move_straight_line_position(source, payload) {
+    if fixed_ok_move_position(source, hir, binding, payload) {
         return payload
-    }
-    # #1761. An owner declared in a match arm -- the arm's `Ok` payload or a
-    # `let` in its body -- is visible only in that arm, so every later mention
-    # follows a transfer that is straight-line from the arm's `{`.
-    let scope = hir_binding_field(hir, binding, 2)
-    if hir_scope_field(hir, scope, 3) == "match-arm" {
-        let arm_open = decimal_value(hir_scope_field(hir, scope, 4))
-        if move_straight_line_from(source, arm_open, payload) {
-            return payload
-        }
     }
     return -1
 }

@@ -620,7 +620,10 @@ tests/conformance/decimal-fixed/carrier/ok_arm_payload.kofun
 tests/conformance/decimal-fixed/carrier/ok_arm_return.kofun
 tests/conformance/decimal-fixed/carrier/ok_arm_use_after.kofun
 tests/conformance/decimal-fixed/carrier/ok_collision.kofun
+tests/conformance/decimal-fixed/carrier/ok_if_enclosing_move.kofun
+tests/conformance/decimal-fixed/carrier/ok_if_local_use_after.kofun
 tests/conformance/decimal-fixed/carrier/ok_transfer.kofun
+tests/conformance/decimal-fixed/carrier/ok_while_enclosing_move.kofun
 tests/conformance/decimal-fixed/carrier/plain_match.kofun
 tests/conformance/decimal-fixed/carrier/result_collision.kofun
 tests/conformance/decimal-fixed/carrier/result_cross_scale.kofun

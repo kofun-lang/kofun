@@ -1,0 +1,1 @@
+error[E2S123]: cannot move enclosing binding `a` into `Ok` at bytes 189..194; declared at bytes 55..56

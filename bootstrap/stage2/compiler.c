@@ -26253,6 +26253,10 @@ static char *fixed_from_decimal_call(
  *
  * `annotation_start` is the type's first token; `next_cursor` receives the
  * byte after the whole statement. */
+static bool fixed_ok_move_position(
+    const char *source, const char *hir, const char *binding, int64_t payload
+);
+
 static char *lower_fixed_let_statement(
     const char *source,
     const char *hir,
@@ -26542,6 +26546,34 @@ static char *lower_fixed_let_statement(
                     "implicit conversion; use a same-scale binding",
                     payload
                 );
+            }
+            if (!fixed_ok_move_position(source, hir, payload_id, payload)) {
+                char *name = token_copy(source, payload);
+                char *decl_start_text = hir_binding_field(hir, payload_id, 8);
+                char *decl_end_text = hir_binding_field(hir, payload_id, 9);
+                int64_t decl_start = decimal_value(decl_start_text);
+                int64_t decl_end = decimal_value(decl_end_text);
+                Buffer error;
+                buffer_init(&error);
+                buffer_format(
+                    &error,
+                    "error[E2S123]: cannot move enclosing binding `%s` into `Ok` "
+                    "at bytes %" PRId64 "..%" PRId64
+                    "; declared at bytes %" PRId64 "..%" PRId64,
+                    name, value_start, value_end, decl_start, decl_end
+                );
+                stage2_diagnostic_set(
+                    "E2S123", value_start, value_end, true, error.data
+                );
+                stage2_diagnostic_related(decl_start, decl_end, "binding declared here");
+                free(name);
+                free(decl_start_text);
+                free(decl_end_text);
+                free(payload_id);
+                free(declared_fixed);
+                free(result_type);
+                free(emitted.data);
+                return error.data;
             }
             char *scale = const_argument_of(declared_fixed);
             buffer_format(
@@ -33269,14 +33301,23 @@ static bool move_call_binding(
     return written_with_label || move_positional_binding(source, hir, cursor);
 }
 
-/*
- * #1755. `Ok(owner)` over the bounded specialization moves its `Fixed[S]`
- * payload, as a bare binding in a `take` slot does: both the `let`
- * initializer and the `return` lower to `kofun_fixed_take`. Returns the
- * payload's offset when `cursor` is the `Ok` of such a transfer, or -1. The
- * straight-line bound is the positional one, so a transfer inside a branch or
- * loop body is not inferred to move.
- */
+/* A local can move on the straight-line path through its own body. A
+ * transfer in a deeper body could be conditional or repeat on a back edge. */
+static bool fixed_ok_move_position(
+    const char *source, const char *hir, const char *binding, int64_t payload
+) {
+    if (move_straight_line_position(source, payload)) return true;
+    char *scope = hir_binding_field(hir, binding, 2);
+    char *open_text = hir_scope_field(hir, scope, 4);
+    int64_t open = decimal_value(open_text);
+    bool direct = open < payload && token_equal(source, open, "{") &&
+        move_straight_line_from(source, open, payload);
+    free(open_text);
+    free(scope);
+    return direct;
+}
+
+/* An `Ok(owner)` on the straight-line path moves its Fixed payload. */
 static int64_t move_fixed_ok_payload(
     const char *source,
     const char *hir,
@@ -33296,33 +33337,15 @@ static int64_t move_fixed_ok_payload(
     int64_t close = skip_trivia(source, token_end(source, payload));
     if (close >= length || !token_equal(source, close, ")")) return -1;
     char *binding = hir_use_binding_id(hir, payload);
-    bool owner = false;
-    int64_t arm_open = -1;
+    bool moved = false;
     if (binding[0] != '\0') {
         char *type = hir_binding_field(hir, binding, 5);
-        owner = strncmp(type, "Fixed[", 6) == 0;
+        moved = strncmp(type, "Fixed[", 6) == 0 &&
+            fixed_ok_move_position(source, hir, binding, payload);
         free(type);
-        /* #1761. An owner declared in a match arm -- the arm's `Ok` payload
-         * or a `let` in its body -- is visible only in that arm, so every
-         * later mention follows a transfer that is straight-line from the
-         * arm's `{`. */
-        char *scope = hir_binding_field(hir, binding, 2);
-        char *kind = hir_scope_field(hir, scope, 3);
-        if (strcmp(kind, "match-arm") == 0) {
-            char *open_text = hir_scope_field(hir, scope, 4);
-            arm_open = decimal_value(open_text);
-            free(open_text);
-        }
-        free(kind);
-        free(scope);
     }
     free(binding);
-    if (!owner) return -1;
-    if (move_straight_line_position(source, payload)) return payload;
-    if (arm_open >= 0 && move_straight_line_from(source, arm_open, payload)) {
-        return payload;
-    }
-    return -1;
+    return moved ? payload : -1;
 }
 
 /* The byte after the `)` that closes an `Ok(owner)` transfer. */
