@@ -1,0 +1,1 @@
+error[E2S219]: argument `g` to `pure` parameter `f` of `apply_pure` is parameter `g` of `outer`, which has no `pure` requirement at byte 137

@@ -1,0 +1,16 @@
+fn inc(x: Int) -> Int {
+    return x + 1
+}
+
+fn noisy(x: Int) -> Int {
+    print(x)
+    return x
+}
+
+fn run_both(f: pure (Int) -> Int, g: pure (Int) -> Int, x: Int) -> Int {
+    return f(g(x))
+}
+
+fn main() -> Int {
+    return run_both(inc, noisy, 41)
+}

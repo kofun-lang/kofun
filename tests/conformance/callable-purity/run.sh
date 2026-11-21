@@ -7,10 +7,9 @@ set -eu
 # pair, the one-bit requirement reaches the scope HIR as `Fn[pure]` beside the
 # unannotated `Fn`, the one subsumption rule (`pure (A) -> R` where `(A) -> R`
 # is expected) accepts, and `pure` stays an ordinary identifier everywhere else
-# (x30, x14, x15, x31). A call that supplies an argument to a `pure` parameter
-# refuses with the one registered "specified but not implemented" code until
-# #1756 supplies the argument rule, so an impure callable cannot pass
-# unchecked in between.
+# (x30, x14, x15, x31). The argument rule (#1756) admits named functions with
+# a pure summary, pure lambdas and forwarding of a pure parameter. Impure and
+# unproven arguments have distinct refusals.
 #
 # Positives build under strict C11 and ASan/UBSan, and both halves must agree
 # on outcome, emitted C, tokens, and scope HIR. Refusals exit 1, write no C,
@@ -86,4 +85,4 @@ done
 
 node "$CASES/pair.mjs" "$COMPILER" "$WORK/pair" "$CASES"/*.kofun
 
-printf '%s\n' 'PASS: pure callable type parsing, identity, subsumption, and the not-yet refusal'
+printf '%s\n' 'PASS: pure callable type parsing, identity, subsumption, and pure-argument checking'

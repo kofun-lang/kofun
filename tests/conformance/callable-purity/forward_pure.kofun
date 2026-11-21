@@ -1,0 +1,16 @@
+fn inc(x: Int) -> Int {
+    return x + 1
+}
+
+fn apply_pure(f: pure (Int) -> Int, x: Int) -> Int {
+    return f(x)
+}
+
+fn forward(g: pure (Int) -> Int, x: Int) -> Int {
+    return apply_pure(g, x)
+}
+
+fn main() -> Int {
+    print(forward(inc, 41))
+    return 0
+}

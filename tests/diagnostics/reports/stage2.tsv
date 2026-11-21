@@ -50,10 +50,11 @@ E2S190	stage2	stdout	1	required	required	forbidden
 E2S191	stage2	stdout	1	required	required	forbidden
 E2S20	stage2	stdout	1	debt(stage2-no-source-position)	not-applicable	forbidden
 E2S21	stage2	stdout	1	debt(stage2-no-source-position)	not-applicable	forbidden
+E2S218	stage2	stdout	1	required	required	forbidden
+E2S219	stage2	stdout	1	required	required	forbidden
 E2S22	stage2	stdout	1	required	not-applicable	forbidden
 E2S221	stage2	stdout	1	required	required	forbidden
 E2S222	stage2	stdout	1	required	not-applicable	forbidden
-E2S223	stage2	stdout	1	required	not-applicable	forbidden
 E2S23	stage2	stdout	1	required	not-applicable	forbidden
 E2S24	stage2	stdout	1	required	not-applicable	forbidden
 E2S25	stage2	stdout	1	required	not-applicable	forbidden

@@ -1,0 +1,1 @@
+error[E2S218]: argument `noisy` to `pure` parameter `g` of `run_both` reaches `print` directly at byte 238

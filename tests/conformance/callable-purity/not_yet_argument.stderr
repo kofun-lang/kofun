@@ -1,1 +1,0 @@
-error[E2S223]: call to `apply_pure` supplies an argument to a `pure` parameter; RFC-0020's argument rule is not implemented yet at byte 304

@@ -1,0 +1,13 @@
+fn noisy(x: Int) -> Int {
+    print(x)
+    return x
+}
+
+fn apply_pure(f: pure (Int) -> Int, x: Int) -> Int {
+    return f(x)
+}
+
+fn main() -> Int {
+    let step = (x: Int) => noisy(x)
+    return apply_pure(step, 41)
+}

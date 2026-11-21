@@ -1,0 +1,1 @@
+error[E2S218]: lambda argument to `pure` parameter `f` of `apply_pure` reaches `print` through `noisy` at byte 204

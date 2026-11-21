@@ -7391,151 +7391,6 @@ static int64_t argument_end(const char *source, int64_t start) {
     return expression_end(source, start);
 }
 
-/*
- * #1754. The slot of the first `pure` callable parameter declared by the
- * top-level function `name`, or -1 when the function is not one or declares
- * none. The declaration is the only source of a requirement, so a call site
- * asks by name rather than carrying a second copy of the signature.
- */
-static int64_t pure_callable_parameter_slot(
-    const char *source,
-    const char *name
-) {
-    int64_t length = source_length(source);
-    int64_t function_start = next_function_start(source, 0);
-    while (function_start < length) {
-        int64_t function_close = function_end(source, function_start);
-        if (function_close < 0) return -1;
-        char *function = function_name(source, function_start);
-        bool matches = strcmp(function, name) == 0;
-        free(function);
-        if (matches) {
-            int64_t open = parameter_open(source, function_start);
-            if (open < 0) return -1;
-            int64_t close = balanced_end(source, open, "(", ")");
-            int64_t parameter = skip_trivia(
-                source,
-                token_end(source, open)
-            );
-            int64_t slot = 0;
-            while (
-                close >= 0 && parameter < close &&
-                !token_equal(source, parameter, ")")
-            ) {
-                int64_t type = parameter_type_start(source, parameter, close);
-                if (type < 0) return -1;
-                if (
-                    callable_pure_word(source, type) &&
-                    callable_type_end(source, type) >= 0
-                ) {
-                    return slot;
-                }
-                int64_t type_end = callable_type_end(source, type);
-                if (type_end < 0) type_end = annotation_type_end(source, type);
-                parameter = skip_trivia(source, type_end);
-                if (
-                    parameter < close && token_equal(source, parameter, ",")
-                ) {
-                    parameter = skip_trivia(
-                        source,
-                        token_end(source, parameter)
-                    );
-                }
-                ++slot;
-            }
-            return -1;
-        }
-        function_start = next_function_start(source, function_close);
-    }
-    return -1;
-}
-
-/*
- * #1754. RFC-0020 child 1 parses and records a `pure` callable requirement but
- * does not implement its argument rule; that is #1756. Until it lands, a call
- * that supplies an argument to a `pure` parameter is refused with one
- * registered "specified but not implemented" code, so no impure callable can
- * reach a `pure` parameter unchecked. The declaration itself still compiles,
- * and forwarding a `pure` parameter to an unannotated one still compiles.
- */
-static char *validate_pure_callable_arguments(const char *source) {
-    if (strstr(source, "pure") == NULL) return owned_text("");
-    int64_t length = source_length(source);
-    int64_t cursor = skip_trivia(source, 0);
-    int64_t previous = -1;
-    while (cursor < length) {
-        if (
-            previous >= 0 &&
-            !token_equal(source, previous, "fn") &&
-            strcmp(token_kind(source, cursor), "identifier") == 0
-        ) {
-            int64_t after = skip_trivia(source, token_end(source, cursor));
-            if (
-                after < length && token_equal(source, after, "(")
-            ) {
-                char *callee = token_copy(source, cursor);
-                int64_t pure_slot = pure_callable_parameter_slot(
-                    source,
-                    callee
-                );
-                if (pure_slot >= 0) {
-                    int64_t call_close = balanced_end(
-                        source,
-                        after,
-                        "(",
-                        ")"
-                    );
-                    int64_t argument = skip_trivia(
-                        source,
-                        token_end(source, after)
-                    );
-                    int64_t slot = 0;
-                    while (
-                        call_close >= 0 && argument < call_close &&
-                        !token_equal(source, argument, ")")
-                    ) {
-                        if (slot == pure_slot) {
-                            Buffer message;
-                            buffer_init(&message);
-                            buffer_format(
-                                &message,
-                                "call to `%s` supplies an argument to a "
-                                "`pure` parameter; RFC-0020's argument rule "
-                                "is not implemented yet",
-                                callee
-                            );
-                            char *error = lower_error(
-                                "E2S223",
-                                message.data,
-                                argument
-                            );
-                            free(message.data);
-                            free(callee);
-                            return error;
-                        }
-                        int64_t stop = argument_end(source, argument);
-                        if (stop < 0 || stop > call_close) break;
-                        argument = skip_trivia(source, stop);
-                        if (token_equal(source, argument, ",")) {
-                            argument = skip_trivia(
-                                source,
-                                token_end(source, argument)
-                            );
-                        } else if (argument < call_close) {
-                            break;
-                        }
-                        ++slot;
-                    }
-                }
-                free(callee);
-            }
-        }
-        previous = cursor;
-        cursor = skip_trivia(source, token_end(source, cursor));
-    }
-    return owned_text("");
-}
-
 /* Label binding is complete in checked HIR, but ABI-temporary lowering is the
  * downstream #882 slice. Keep that backend boundary explicit. */
 static bool call_has_labelled_argument(const char *source, int64_t open) {
@@ -21988,6 +21843,10 @@ static char *validate_result_propagation(const char *source, const char *hir) {
     return error.data;
 }
 
+static char *validate_pure_callable_arguments(
+    const char *source, const char *hir
+);
+
 static char *build_scope_hir_analysis_mode(
     const char *source,
     bool preserve_pattern_candidates,
@@ -22001,14 +21860,6 @@ static char *build_scope_hir_analysis_mode(
     char *notation_check = validate_removed_callable_notation(source);
     if (strncmp(notation_check, "error[", 6) == 0) return notation_check;
     free(notation_check);
-    /* #1754. Before any binding is collected, so a `pure` argument refusal
-     * writes no C and is not pre-empted by a lowering diagnostic about the
-     * same call. */
-    char *pure_argument_check = validate_pure_callable_arguments(source);
-    if (strncmp(pure_argument_check, "error[", 6) == 0) {
-        return pure_argument_check;
-    }
-    free(pure_argument_check);
     Buffer hir;
     buffer_init(&hir);
     buffer_append(&hir, "kofun-scope-hir/v1\n");
@@ -23642,6 +23493,12 @@ static char *build_scope_hir_analysis_mode(
         }
         function_start = next_function_start(source, function_close);
     }
+    char *argument_check = validate_pure_callable_arguments(source, hir.data);
+    if (argument_check[0] != '\0') {
+        free(hir.data);
+        return argument_check;
+    }
+    free(argument_check);
     return hir.data;
 }
 
@@ -35866,6 +35723,223 @@ static char *io_functions_round(
     return found.data;
 }
 
+/* Keep argument refusals and the declaration boundary on the same summary. */
+static char *inferred_io_functions(const char *source, const char *root) {
+    int64_t bound = source_function_count(source);
+    char *known = owned_text("|");
+    for (int64_t round = 0; round <= bound; ++round) {
+        char *next = io_functions_round(source, known, root);
+        bool settled = strcmp(known, next) == 0;
+        free(known);
+        known = next;
+        if (settled) break;
+    }
+    return known;
+}
+
+static int64_t pure_argument_parameter(
+    const char *source, int64_t parameters, int64_t close, int64_t slot
+) {
+    int64_t parameter = skip_trivia(source, token_end(source, parameters));
+    for (int64_t index = 0; parameter < close; ++index) {
+        if (token_equal(source, parameter, ")")) break;
+        int64_t type = parameter_type_start(source, parameter, close);
+        if (type < 0) break;
+        if (index == slot) {
+            return pure_callable_requirement_at(source, type) ? parameter : -1;
+        }
+        int64_t end = callable_type_end(source, type);
+        if (end < 0) end = optional_int_type_end(source, type);
+        if (end < 0) end = parameter_list_type_end(source, type, close);
+        if (end < 0) end = annotation_type_end(source, type);
+        if (end <= parameter) break;
+        parameter = skip_trivia(source, end);
+        if (token_equal(source, parameter, ",")) {
+            parameter = skip_trivia(source, token_end(source, parameter));
+        }
+    }
+    return -1;
+}
+
+static void check_pure_argument(
+    const char *source, const char *hir, const char *io_set,
+    const char *callee, int64_t parameter, int64_t parameters_end,
+    int64_t argument, int64_t end, MoveFinding *best
+) {
+    if (parameter < 0 || (best->present && argument >= best->primary_start)) {
+        return;
+    }
+    int64_t pure_at = parameter_type_start(source, parameter, parameters_end);
+    int64_t name_at = parameter_internal_start(source, parameter, parameters_end);
+    if (name_at < 0 || end <= argument) return;
+    bool bare = strcmp(token_kind(source, argument), "identifier") == 0 &&
+        token_end(source, argument) == end;
+    char *name = bare ? token_copy(source, argument) : owned_text("");
+    char *binding = bare ? hir_use_binding_id(hir, argument) : owned_text("");
+    char *type = hir_binding_field(hir, binding, 5);
+    if (strcmp(type, "Fn[pure]") != 0) {
+        int64_t lambda = binding[0] != '\0'
+            ? lambda_binding_open(source, hir, binding)
+            : (bare ? -1 : lambda_initializer_open(source, argument));
+        int64_t function = bare && binding[0] == '\0'
+            ? function_start_named(source, name) : -1;
+        int64_t start = -1;
+        int64_t stop = -1;
+        if (lambda >= 0) {
+            start = token_equal(source, lambda, "(")
+                ? balanced_end(source, lambda, "(", ")")
+                : token_end(source, lambda);
+            stop = lambda_parameters_end(source, -1, lambda);
+        } else if (function >= 0) {
+            start = balanced_end(source, parameter_open(source, function), "(", ")");
+            stop = function_end(source, function);
+        }
+        MoveFinding candidate = {
+            .present = true,
+            .primary_start = argument,
+            .primary_end = end,
+            .related_start = pure_at,
+            .related_end = token_end(source, pure_at),
+            .related_label = "pure requirement declared here"
+        };
+        char *target = token_copy(source, name_at);
+        Buffer message;
+        buffer_init(&message);
+        if (start >= 0 && stop > start) {
+            bool direct = function_calls_name(source, start, stop, "print");
+            char *hop = direct ? owned_text("")
+                : first_io_callee(source, start, stop, io_set);
+            if (direct || hop[0] != '\0') {
+                candidate.code = "E2S218";
+                if (lambda >= 0) {
+                    buffer_append(&message, "lambda argument");
+                } else {
+                    buffer_format(&message, "argument `%s`", name);
+                }
+                buffer_format(&message,
+                    " to `pure` parameter `%s` of `%s` reaches `print`",
+                    target, callee);
+                if (direct) buffer_append(&message, " directly");
+                else buffer_format(&message, " through `%s`", hop);
+            }
+            free(hop);
+        } else if (binding[0] != '\0' &&
+                   callable_parameter_type_start(source, hir, binding) >= 0) {
+            int64_t declaration = hir_binding_declaration_start(hir, binding);
+            int64_t owner = optional_int_function_start(source, declaration);
+            char *outer = function_name(source, owner);
+            candidate.code = "E2S219";
+            candidate.related_start = declaration;
+            candidate.related_end = token_end(source, declaration);
+            candidate.related_label = "parameter declared here";
+            buffer_format(&message,
+                "argument `%s` to `pure` parameter `%s` of `%s` is "
+                "parameter `%s` of `%s`, which has no `pure` requirement",
+                name, target, callee, name, outer);
+            free(outer);
+        } else {
+            candidate.code = "E2S219";
+            buffer_format(&message,
+                "argument to `pure` parameter `%s` of `%s` has no proven purity",
+                target, callee);
+        }
+        if (candidate.code != NULL) {
+            Buffer error;
+            buffer_init(&error);
+            buffer_format(&error, "error[%s]: %s at byte %" PRId64,
+                candidate.code, message.data, argument);
+            candidate.message = error.data;
+            move_finding_keep(best, candidate);
+        }
+        free(message.data);
+        free(target);
+    }
+    free(type);
+    free(binding);
+    free(name);
+}
+
+static char *validate_pure_callable_arguments(const char *source, const char *hir) {
+    if (strstr(hir, "|Fn[pure]|") == NULL) return owned_text("");
+    char *io_set = inferred_io_functions(source, "print");
+    MoveFinding best = {0};
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, 0);
+    int64_t previous = -1;
+    while (cursor < length) {
+        int64_t next = skip_trivia(source, token_end(source, cursor));
+        if (previous >= 0 && !token_equal(source, previous, "fn") &&
+            !token_equal(source, previous, ".") &&
+            strcmp(token_kind(source, cursor), "identifier") == 0 &&
+            token_equal(source, next, "(") &&
+            !pure_callable_requirement_at(source, cursor)) {
+            char *callee = token_copy(source, cursor);
+            int64_t declaration = function_start_named(source, callee);
+            char *binding = hir_use_binding_id(hir, cursor);
+            if (declaration >= 0 && binding[0] == '\0') {
+                int64_t parameters = parameter_open(source, declaration);
+                int64_t parameters_end = balanced_end(source, parameters, "(", ")");
+                int64_t close = balanced_end(source, next, "(", ")");
+                int64_t subject = pipeline_subject_for_call(source, cursor);
+                int64_t index = subject >= 0 ? 1 : 0;
+                if (subject >= 0) {
+                    int64_t parameter = pure_argument_parameter(
+                        source, parameters, parameters_end, 0);
+                    check_pure_argument(source, hir, io_set, callee, parameter,
+                        parameters_end, subject, coalescing_expression_end(source, subject),
+                        &best);
+                }
+                int64_t argument = skip_trivia(source, token_end(source, next));
+                while (argument < close && !token_equal(source, argument, ")")) {
+                    int64_t end = argument_end(source, argument);
+                    if (end <= argument || end > close) break;
+                    int64_t slot = labelled_argument_slot(source, callee, argument, index);
+                    int64_t parameter = pure_argument_parameter(
+                        source, parameters, parameters_end, slot);
+                    check_pure_argument(source, hir, io_set, callee, parameter,
+                        parameters_end, labelled_argument_value(source, argument), end,
+                        &best);
+                    int64_t separator = skip_trivia(source, end);
+                    if (!token_equal(source, separator, ",")) break;
+                    argument = skip_trivia(source, token_end(source, separator));
+                    ++index;
+                }
+                int64_t trailing = call_trailing_lambda_open(source, next);
+                if (trailing >= 0) {
+                    int64_t slot = parameter_count(source, declaration) - 1;
+                    int64_t parameter = pure_argument_parameter(
+                        source, parameters, parameters_end, slot);
+                    check_pure_argument(source, hir, io_set, callee, parameter,
+                        parameters_end, skip_trivia(source, close),
+                        lambda_parameters_end(source, -1, trailing), &best);
+                }
+            }
+            free(binding);
+            free(callee);
+        }
+        if (next <= cursor) break;
+        previous = cursor;
+        cursor = next;
+    }
+    free(io_set);
+    if (!best.present) return owned_text("");
+    stage2_diagnostic_set(best.code, best.primary_start, best.primary_end, true, best.message);
+    stage2_diagnostic_related(best.related_start, best.related_end, best.related_label);
+    return best.message;
+}
+
+/* Most programs that trip E2S176 have no callable requirement. */
+static bool has_pure_callable_requirement(const char *source) {
+    int64_t cursor = skip_trivia(source, 0);
+    while (cursor < source_length(source)) {
+        if (pure_callable_requirement_at(source, cursor)) return true;
+        int64_t next = skip_trivia(source, token_end(source, cursor));
+        if (next <= cursor) break;
+        cursor = next;
+    }
+    return false;
+}
+
 /*
  * #1245 criterion 8. The one checked function-boundary query. The io root and
  * the diagnostic code are parameters because the environment integration child
@@ -35880,10 +35954,6 @@ static char *pure_boundary_violation(
 ) {
     char *annotated = annotated_pure_declarations(source);
     int64_t length;
-    int64_t bound;
-    int64_t rounds;
-    bool settled = false;
-    char *io_set;
     int64_t function_start;
     /* Cheap exit: no annotation, no work. */
     if (strcmp(annotated, "|") == 0) {
@@ -35891,20 +35961,7 @@ static char *pure_boundary_violation(
         return owned_text("ok");
     }
     length = source_length(source);
-    /*
-     * At most one round per function. A round that changes anything adds at
-     * least one name and there are only that many names to add, so this bound
-     * is a proof that the loop settles rather than a cap that can stop it
-     * early and call an unproven program pure.
-     */
-    bound = source_function_count(source);
-    io_set = owned_text("|");
-    for (rounds = 0; rounds <= bound && !settled; ++rounds) {
-        char *next_set = io_functions_round(source, io_set, root);
-        settled = strcmp(next_set, io_set) == 0;
-        free(io_set);
-        io_set = next_set;
-    }
+    char *io_set = inferred_io_functions(source, root);
     function_start = next_function_start(source, 0);
     while (function_start < length) {
         int64_t function_close = function_end(source, function_start);
@@ -35989,7 +36046,27 @@ static char *pure_boundary_violation(
  * them.
  */
 static char *validate_pure_annotations(const char *source) {
-    return pure_boundary_violation(source, "print", "E2S176");
+    char *boundary = pure_boundary_violation(source, "print", "E2S176");
+    if (strncmp(boundary, "error[", 6) != 0 ||
+        !has_pure_callable_requirement(source)) {
+        return boundary;
+    }
+    /* If the argument already explains the effect, publish that one fault. */
+    Stage2StructuredDiagnostic saved;
+    if (stage2_active_authority_context != NULL) {
+        saved = stage2_active_authority_context->diagnostic;
+    }
+    char *hir = build_scope_hir(source);
+    if (strncmp(hir, "error[E2S218]", 13) == 0 ||
+        strncmp(hir, "error[E2S219]", 13) == 0) {
+        free(boundary);
+        return hir;
+    }
+    free(hir);
+    if (stage2_active_authority_context != NULL) {
+        stage2_active_authority_context->diagnostic = saved;
+    }
+    return boundary;
 }
 
 static char *validate_authority_uses(const char *source) {

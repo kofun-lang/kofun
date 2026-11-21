@@ -11194,107 +11194,6 @@ fn argument_end(source: Text, start: Int) -> Int {
     return expression_end(source, start)
 }
 
-# #1754. The slot of the first `pure` callable parameter declared by the
-# top-level function `name`, or -1 when the function is not one or declares
-# none. The declaration is the only source of a requirement, so a call site
-# asks by name rather than carrying a second copy of the signature.
-fn pure_callable_parameter_slot(source: Text, name: Text) -> Int {
-    let mut function_start = next_function_start(source, 0)
-    while function_start < len(source) {
-        let function_close = function_end(source, function_start)
-        if function_close < 0 {
-            return -1
-        }
-        if function_name(source, function_start) == name {
-            let open = parameter_open(source, function_start)
-            if open < 0 {
-                return -1
-            }
-            let close = balanced_end(source, open, "(", ")")
-            let mut parameter = skip_trivia(source, token_end(source, open))
-            let mut slot = 0
-            while close >= 0 && parameter < close && token_text(source, parameter) != ")" {
-                let type_at = parameter_type_start(source, parameter, close)
-                if type_at < 0 {
-                    return -1
-                }
-                if callable_pure_word(source, type_at) &&
-                   callable_type_end(source, type_at) >= 0 {
-                    return slot
-                }
-                let mut type_end = callable_type_end(source, type_at)
-                if type_end < 0 {
-                    type_end = annotation_type_end(source, type_at)
-                }
-                parameter = skip_trivia(source, type_end)
-                if parameter < close && token_text(source, parameter) == "," {
-                    parameter = skip_trivia(source, token_end(source, parameter))
-                }
-                slot = slot + 1
-            }
-            return -1
-        }
-        function_start = next_function_start(source, function_close)
-    }
-    return -1
-}
-
-# #1754. RFC-0020 child 1 parses and records a `pure` callable requirement but
-# does not implement its argument rule; that is #1756. Until it lands, a call
-# that supplies an argument to a `pure` parameter is refused with one
-# registered "specified but not implemented" code, so no impure callable can
-# reach a `pure` parameter unchecked. The declaration itself still compiles,
-# and forwarding a `pure` parameter to an unannotated one still compiles.
-fn validate_pure_callable_arguments(source: Text) -> Text {
-    if !contains(source, "pure") {
-        return ""
-    }
-    let mut cursor = skip_trivia(source, 0)
-    let mut previous = -1
-    while cursor < len(source) {
-        let mut candidate = false
-        if previous >= 0 && token_text(source, previous) != "fn" &&
-           token_kind(source, cursor) == "identifier" {
-            candidate = true
-        }
-        if candidate {
-            let after = skip_trivia(source, token_end(source, cursor))
-            if after < len(source) && token_text(source, after) == "(" {
-                let callee = token_text(source, cursor)
-                let pure_slot = pure_callable_parameter_slot(source, callee)
-                if pure_slot >= 0 {
-                    let call_close = balanced_end(source, after, "(", ")")
-                    let mut argument = skip_trivia(source, token_end(source, after))
-                    let mut slot = 0
-                    while call_close >= 0 && argument < call_close &&
-                          token_text(source, argument) != ")" {
-                        if slot == pure_slot {
-                            return "error[E2S223]: call to `" + callee +
-                                "` supplies an argument to a `pure` parameter; " +
-                                "RFC-0020's argument rule is not implemented yet " +
-                                "at byte " + to_text(argument)
-                        }
-                        let stop = argument_end(source, argument)
-                        if stop < 0 || stop > call_close {
-                            break
-                        }
-                        argument = skip_trivia(source, stop)
-                        if token_text(source, argument) == "," {
-                            argument = skip_trivia(source, token_end(source, argument))
-                        } else if argument < call_close {
-                            break
-                        }
-                        slot = slot + 1
-                    }
-                }
-            }
-        }
-        previous = cursor
-        cursor = skip_trivia(source, token_end(source, cursor))
-    }
-    return ""
-}
-
 # Expected type or ownership mode of the call argument beginning exactly at
 # `target`. Enum constructors are calls themselves, so this walks the enclosing
 # named call instead of relying on the single-token function-value predicate
@@ -15112,22 +15011,30 @@ fn function_parameter_name(
     return token_text(source, internal)
 }
 
+fn enclosing_function_start(source: Text, position: Int) -> Int {
+    let mut start = next_function_start(source, 0)
+    while start < len(source) {
+        let end = function_end(source, start)
+        if position >= start && position < end {
+            return start
+        }
+        if end <= start {
+            break
+        }
+        start = next_function_start(source, end)
+    }
+    return -1
+}
+
 fn function_return_type_containing(
     source: Text,
     position: Int
 ) -> Text {
-    let mut function_start = next_function_start(source, 0)
-    while function_start < len(source) {
-        let function_close = function_end(source, function_start)
-        if position >= function_start && position < function_close {
-            return function_return_type(
-                source,
-                function_name(source, function_start)
-            )
-        }
-        function_start = next_function_start(source, function_close)
+    let start = enclosing_function_start(source, position)
+    if start < 0 {
+        return ""
     }
-    return ""
+    return function_return_type(source, function_name(source, start))
 }
 
 fn function_result_is_enum(source: Text, name: Text) -> Bool {
@@ -16193,13 +16100,6 @@ fn build_scope_hir_analysis_mode(
     if starts_with(notation_check, "error[") {
         return notation_check
     }
-    # #1754. Before any binding is collected, so a `pure` argument refusal
-    # writes no C and is not pre-empted by a lowering diagnostic about the
-    # same call.
-    let pure_argument_check = validate_pure_callable_arguments(source)
-    if starts_with(pure_argument_check, "error[") {
-        return pure_argument_check
-    }
     let mut hir = "kofun-scope-hir/v1\n"
     let mut next_scope_id = 0
     if scoped_analysis {
@@ -17248,6 +17148,10 @@ fn build_scope_hir_analysis_mode(
             )
         }
         function_start = next_function_start(source, function_close)
+    }
+    let argument_check = validate_pure_callable_arguments(source, hir)
+    if len(argument_check) > 0 {
+        return argument_check
     }
     return hir
 }
@@ -24184,6 +24088,215 @@ fn io_functions_round(source: Text, known: Text, root: Text) -> Text {
     return found
 }
 
+# Keep argument refusals and the declaration boundary on the same summary.
+fn inferred_io_functions(source: Text, root: Text) -> Text {
+    let bound = source_function_count(source)
+    let mut known = "|"
+    let mut round = 0
+    while round <= bound {
+        let next = io_functions_round(source, known, root)
+        if next == known {
+            return known
+        }
+        known = next
+        round = round + 1
+    }
+    return known
+}
+
+fn pure_argument_parameter(
+    source: Text, declaration: Int, close: Int, slot: Int
+) -> Int {
+    let parameter = function_parameter_start_at(source, declaration, slot)
+    if parameter >= 0 && parameter < close {
+        let type_start = parameter_type_start(source, parameter, close)
+        if type_start >= 0 && pure_callable_requirement_at(source, type_start) {
+            return parameter
+        }
+    }
+    return -1
+}
+
+fn pure_argument_error(
+    source: Text, hir: Text, io_set: Text, callee: Text, name_at: Int,
+    argument: Int, end: Int
+) -> Text {
+    if name_at < 0 || end <= argument {
+        return ""
+    }
+    let bare = token_kind(source, argument) == "identifier" &&
+        token_end(source, argument) == end
+    let mut name = ""
+    let mut binding = ""
+    if bare {
+        name = token_text(source, argument)
+        binding = hir_use_binding_id(hir, argument)
+    }
+    if hir_binding_field(hir, binding, 5) == "Fn[pure]" {
+        return ""
+    }
+    let mut lambda = -1
+    let mut function = -1
+    if len(binding) > 0 {
+        lambda = lambda_binding_open(source, hir, binding)
+    } else if bare {
+        function = function_start_named(source, name)
+    } else {
+        lambda = lambda_initializer_open(source, argument)
+    }
+    let mut start = -1
+    let mut stop = -1
+    if lambda >= 0 {
+        start = token_end(source, lambda)
+        if token_text(source, lambda) == "(" {
+            start = balanced_end(source, lambda, "(", ")")
+        }
+        stop = lambda_parameters_end(source, -1, lambda)
+    } else if function >= 0 {
+        start = balanced_end(source, parameter_open(source, function), "(", ")")
+        stop = function_end(source, function)
+    }
+    let slot = " to `pure` parameter `" + token_text(source, name_at) +
+        "` of `" + callee + "`"
+    let location = " at byte " + to_text(argument)
+    if start >= 0 && stop > start {
+        let mut via = ""
+        if function_calls_name(source, start, stop, "print") {
+            via = " directly"
+        } else {
+            let hop = first_io_callee(source, start, stop, io_set)
+            if len(hop) > 0 {
+                via = " through `" + hop + "`"
+            }
+        }
+        if len(via) == 0 {
+            return ""
+        }
+        let mut argument_name = "argument `" + name + "`"
+        if lambda >= 0 {
+            argument_name = "lambda argument"
+        }
+        return "error[E2S218]: " + argument_name + slot +
+            " reaches `print`" + via + location
+    }
+    if len(binding) > 0 && callable_parameter_type_start(source, hir, binding) >= 0 {
+        let declaration = hir_binding_declaration_start(hir, binding)
+        let owner = enclosing_function_start(source, declaration)
+        return "error[E2S219]: argument `" + name + "`" + slot +
+            " is parameter `" + name + "` of `" + function_name(source, owner) +
+            "`, which has no `pure` requirement" + location
+    }
+    return "error[E2S219]: argument" + slot + " has no proven purity" + location
+}
+
+fn validate_pure_callable_arguments(source: Text, hir: Text) -> Text {
+    if !contains(hir, "|Fn[pure]|") {
+        return ""
+    }
+    let io_set = inferred_io_functions(source, "print")
+    let mut best = ""
+    let mut best_at = len(source)
+    let mut cursor = skip_trivia(source, 0)
+    let mut previous = -1
+    while cursor < len(source) {
+        let next = skip_trivia(source, token_end(source, cursor))
+        if previous >= 0 && token_text(source, previous) != "fn" &&
+           token_text(source, previous) != "." &&
+           token_kind(source, cursor) == "identifier" &&
+           token_text(source, next) == "(" &&
+           !pure_callable_requirement_at(source, cursor) {
+            let callee = token_text(source, cursor)
+            let declaration = function_start_named(source, callee)
+            if declaration >= 0 && len(hir_use_binding_id(hir, cursor)) == 0 {
+                let parameters = parameter_open(source, declaration)
+                let parameters_end = balanced_end(source, parameters, "(", ")")
+                let close = balanced_end(source, next, "(", ")")
+                let subject = pipeline_subject_for_call(source, cursor)
+                let mut index = 0
+                if subject >= 0 {
+                    index = 1
+                    let parameter = pure_argument_parameter(
+                        source, declaration, parameters_end, 0)
+                    if parameter >= 0 && subject < best_at {
+                        let name_at = parameter_internal_start(source, parameter, parameters_end)
+                        let end = coalescing_expression_end(source, subject)
+                        let error = pure_argument_error(
+                            source, hir, io_set, callee, name_at, subject, end)
+                        if len(error) > 0 {
+                            best = error
+                            best_at = subject
+                        }
+                    }
+                }
+                let mut argument = skip_trivia(source, token_end(source, next))
+                while argument < close && token_text(source, argument) != ")" {
+                    let end = argument_end(source, argument)
+                    if end <= argument || end > close {
+                        break
+                    }
+                    let slot = labelled_argument_slot(source, callee, argument, index)
+                    let parameter = pure_argument_parameter(
+                        source, declaration, parameters_end, slot)
+                    let value = labelled_argument_value(source, argument)
+                    if parameter >= 0 && value < best_at {
+                        let name_at = parameter_internal_start(source, parameter, parameters_end)
+                        let error = pure_argument_error(
+                            source, hir, io_set, callee, name_at, value, end)
+                        if len(error) > 0 {
+                            best = error
+                            best_at = value
+                        }
+                    }
+                    let separator = skip_trivia(source, end)
+                    if token_text(source, separator) != "," {
+                        break
+                    }
+                    argument = skip_trivia(source, token_end(source, separator))
+                    index = index + 1
+                }
+                let trailing = call_trailing_lambda_open(source, next)
+                if trailing >= 0 && trailing < best_at {
+                    let slot = parameter_count(source, declaration) - 1
+                    let parameter = pure_argument_parameter(
+                        source, declaration, parameters_end, slot)
+                    if parameter >= 0 {
+                        let name_at = parameter_internal_start(source, parameter, parameters_end)
+                        let error = pure_argument_error(source, hir, io_set, callee,
+                            name_at, skip_trivia(source, close),
+                            lambda_parameters_end(source, -1, trailing))
+                        if len(error) > 0 {
+                            best = error
+                            best_at = skip_trivia(source, close)
+                        }
+                    }
+                }
+            }
+        }
+        if next <= cursor {
+            break
+        }
+        previous = cursor
+        cursor = next
+    }
+    return best
+}
+
+# Most programs that trip E2S176 have no callable requirement.
+fn has_pure_callable_requirement(source: Text) -> Bool {
+    let mut cursor = skip_trivia(source, 0)
+    while cursor < len(source) {
+        if pure_callable_requirement_at(source, cursor) {
+            return true
+        }
+        let next = skip_trivia(source, token_end(source, cursor))
+        if next <= cursor {
+            break
+        }
+        cursor = next
+    }
+    return false
+}
+
 # #1245 criterion 8. The one checked function-boundary query. The io root and
 # the diagnostic code are parameters because the environment integration child
 # asks this same question about its own root when it emits E356; a second copy
@@ -24196,23 +24309,7 @@ fn pure_boundary_violation(source: Text, root: Text, code: Text) -> Text {
     if annotated == "|" {
         return "ok"
     }
-    # At most one round per function. A round that changes anything adds at
-    # least one name and there are only that many names to add, so this bound
-    # is a proof that the loop settles rather than a cap that can stop it early
-    # and call an unproven program pure.
-    let bound = source_function_count(source)
-    let mut io_set = "|"
-    let mut rounds = 0
-    let mut settled = false
-    while rounds <= bound && !settled {
-        let next_set = io_functions_round(source, io_set, root)
-        if next_set == io_set {
-            settled = true
-        } else {
-            io_set = next_set
-        }
-        rounds = rounds + 1
-    }
+    let io_set = inferred_io_functions(source, root)
     let mut function_start = next_function_start(source, 0)
     while function_start < len(source) {
         let function_close = function_end(source, function_start)
@@ -24268,7 +24365,16 @@ fn pure_boundary_violation(source: Text, root: Text, code: Text) -> Text {
 # Stage 2 frontend refusal with an emitter today, so it takes an ordinary
 # Stage 2 code and leaves those bands to the proposals that named them.
 fn validate_pure_annotations(source: Text) -> Text {
-    return pure_boundary_violation(source, "print", "E2S176")
+    let boundary = pure_boundary_violation(source, "print", "E2S176")
+    if !starts_with(boundary, "error[") || !has_pure_callable_requirement(source) {
+        return boundary
+    }
+    # If the argument already explains the effect, publish that one fault.
+    let hir = build_scope_hir(source)
+    if starts_with(hir, "error[E2S218]") || starts_with(hir, "error[E2S219]") {
+        return hir
+    }
+    return boundary
 }
 
 fn validate_authority_uses(source: Text) -> Text {

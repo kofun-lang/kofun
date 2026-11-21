@@ -1,0 +1,9 @@
+fn apply_pure(f: pure (Int) -> Int, x: Int) -> Int {
+    return f(x)
+}
+
+fn main() -> Int {
+    let step = (x: Int) => x + 1
+    print(apply_pure(step, 41))
+    return 0
+}

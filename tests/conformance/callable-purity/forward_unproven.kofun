@@ -1,0 +1,11 @@
+fn apply_pure(f: pure (Int) -> Int, x: Int) -> Int {
+    return f(x)
+}
+
+fn outer(g: (Int) -> Int, x: Int) -> Int {
+    return apply_pure(g, x)
+}
+
+fn main() -> Int {
+    return 0
+}
