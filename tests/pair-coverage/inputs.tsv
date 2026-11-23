@@ -295,6 +295,11 @@ spec/generic-record-hir-v1/fixtures/unbound_parameter.kofun
 spec/generic-record-hir-v1/fixtures/unknown_nominal.kofun
 spec/generic-record-hir-v1/fixtures/unsupported_binder.kofun
 spec/generic-record-hir-v1/fixtures/unsupported_field.kofun
+spec/law-declaration-hir-v1/fixtures/contextual.kofun
+spec/law-declaration-hir-v1/fixtures/signature.kofun
+spec/law-declaration-hir-v1/fixtures/substitution.kofun
+spec/law-declaration-hir-v1/fixtures/syntax.kofun
+spec/law-declaration-hir-v1/fixtures/unknown-binding.kofun
 spec/roadmap-31-34/current-core-probe.kofun
 stdlib/alloc/alloc.kofun
 stdlib/array/array.kofun

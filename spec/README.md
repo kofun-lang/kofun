@@ -114,6 +114,10 @@ executable bootstrap implementation.
   links, phase/order, bounds, privacy, typed-sidecar v2 `captures[]`, and the
   exact v1 contract bytes. It does not change the 46-row selfhost profile,
   accept `par`, or claim compiler, codec, runtime, or backend implementation.
+- [Concrete law declaration HIR v1](law-declaration-hir-v1/README.md) describes
+  the Boolean/Optional analysis entry, ground substitutions, equation trees
+  and source-byte targets proposed in #1772. The fixtures record the expected
+  HIR and the four refusal classes for compiler integration.
 - `generic-record-hir-v1.md`, its closed JSON schema
   `kofun.generic-record-hir.v1.schema.json`, independent `model.mjs` oracle, and
   canonical positive golden freeze the generic-record analysis document for

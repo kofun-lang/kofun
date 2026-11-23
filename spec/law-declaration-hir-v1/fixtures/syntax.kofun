@@ -1,0 +1,13 @@
+law Identity[T] {
+    operation identity(x: T) -> T
+    equation unit(x: T in values) = identity(x) == x
+}
+fn operation(x: Bool) -> Bool { return x }
+impl Concrete: Identity[Bool] { identity = operation }
+check laws Checked {
+    instance = Concrete
+    domain values: Bool = all
+    equality Bool = structural
+    require assurance = proven_finite
+    budget = infinite
+}
