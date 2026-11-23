@@ -698,6 +698,12 @@ tests/conformance/functions/tail_position_accumulators.kofun
 tests/conformance/functions/tail_position_boundary.kofun
 tests/conformance/functions/tail_position_guards.kofun
 tests/conformance/functions/values_across_calls.kofun
+tests/conformance/generic-records-stage2/distinct.kofun
+tests/conformance/generic-records-stage2/execute.kofun
+tests/conformance/generic-records-stage2/mixed.kofun
+tests/conformance/generic-records-stage2/transfer.kofun
+tests/conformance/generic-records-stage2/transitive.kofun
+tests/conformance/generic-records-stage2/use_after_move.kofun
 tests/conformance/generics/annotated_result_mismatch.kofun
 tests/conformance/generics/bounds_unsupported.kofun
 tests/conformance/generics/duplicate_type_parameter.kofun
