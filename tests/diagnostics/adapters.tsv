@@ -16,6 +16,7 @@ http-client-headers	tests/conformance/http-client-headers/run.sh	verify	tests/di
 http-client-origin	tests/conformance/http-client-origin/run.sh	verify	tests/diagnostics/reports/http-client-origin.tsv
 imports	tests/conformance/modules/imports-selective/run.sh	verify	tests/diagnostics/reports/imports.tsv
 int-bits	tests/conformance/int-bits/run.sh	verify	tests/diagnostics/reports/int-bits.tsv
+law-declaration-hir	spec/law-declaration-hir-v1/check.sh	verify	tests/diagnostics/reports/law-declaration-hir.tsv
 list-int-values	tests/stage2/list-int-values/run.sh	verify	tests/diagnostics/reports/list-int-values.tsv
 module-constants	tests/module-constants/check.sh	verify	tests/diagnostics/reports/module-constants.tsv
 module-symbols	tests/conformance/modules/top-level-declarations/run.sh	verify	tests/diagnostics/reports/module-symbols.tsv

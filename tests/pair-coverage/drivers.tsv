@@ -90,6 +90,7 @@ kif-generics-codec
 kif-v1
 kofun-digest-model
 kotest
+law-declaration-hir
 list-int-signatures
 list-int-values
 live-https-get-adapter-decision

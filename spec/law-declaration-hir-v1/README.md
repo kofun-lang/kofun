@@ -1,8 +1,8 @@
 # Concrete law declaration HIR v1
 
-This draft specifies the Stage 2 analysis entry for
+Stage 2 provides the concrete law analysis entry for
 [#1772](https://github.com/kofun-lang/kofun/issues/1772). The command
-`kofun-stage2 --emit-law-hir INPUT.kofun OUTPUT.json LOGICAL-PATH` must resolve one
+`kofun-stage2 --emit-law-hir INPUT.kofun OUTPUT.json LOGICAL-PATH` resolves one
 ground law family, one named implementation, and one check in an anonymous
 source file. Both Stage 2 halves emit the same UTF-8 JSON document terminated
 by LF. The logical path follows scope-HIR v2 and determines the existing
@@ -60,9 +60,9 @@ or equation. All spans are half-open UTF-8 byte offsets in the same file.
 | E2S230 | Operation signature, call arguments, equality operands, or domain type mismatch |
 | E2S231 | Unsupported ground type, substitution, or carrier for equality or enumeration |
 
-Ordinary `--compile-outcome` must preserve its existing refusal for a file
-requiring law evaluation. The planned `task law-declaration-hir` gate must
-run both compiler dispatchers and verify the source spans, targets, expression types and
+Ordinary `--compile-outcome` refuses a file requiring law evaluation.
+`task law-declaration-hir` runs both compiler dispatchers and verifies the
+source spans, targets, expression types and
 tree shape of the [canonical Boolean/Optional example](../../tests/usability/06_monad_laws.kofun).
-It must also exercise a second family, forward resolution, contextual identifiers,
+It also exercises a second family, forward resolution, contextual identifiers,
 refusal bytes, output preservation and ordinary non-law compilation.

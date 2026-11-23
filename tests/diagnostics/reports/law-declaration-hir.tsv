@@ -1,0 +1,5 @@
+# code	adapter	channel	exit	primary-span	secondary-span	artifact
+E2S228	law-declaration-hir	stdout	1	required	not-applicable	forbidden
+E2S229	law-declaration-hir	stdout	1	required	not-applicable	forbidden
+E2S230	law-declaration-hir	stdout	1	required	not-applicable	forbidden
+E2S231	law-declaration-hir	stdout	1	required	not-applicable	forbidden

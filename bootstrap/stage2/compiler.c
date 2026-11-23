@@ -47327,6 +47327,575 @@ static int sha256_selftest(void) {
     return 0;
 }
 
+/* Concrete law declaration HIR (#1772). The token tape uses canonical
+ * Stage 2 lexical boundaries. Its EOF sentinel also carries the final source
+ * byte so missing-token diagnostics remain located. No operation is executed. */
+#include <setjmp.h>
+
+typedef struct LawAllocation {
+    struct LawAllocation *next;
+    void *value;
+} LawAllocation;
+
+typedef struct {
+    const char *word;
+    int start, end;
+    bool identifier;
+} LawToken;
+
+typedef struct LawSymbol {
+    const char *name, *type;
+    int definition;
+    struct LawSymbol *next;
+} LawSymbol;
+
+typedef struct LawScope {
+    LawSymbol *first, *last;
+    const struct LawScope *outer;
+} LawScope;
+
+typedef struct {
+    const char *source;
+    LawToken tokens[1025];
+    int count, at;
+    LawAllocation *allocations;
+    jmp_buf refusal;
+    const char *error;
+} LawReader;
+
+typedef struct {
+    const char *types, *json;
+    LawScope symbols;
+} LawParameters;
+
+typedef struct {
+    const char *type, *json;
+} LawTyped;
+
+static void *law_keep(LawReader *r, void *value) {
+    LawAllocation *entry = allocate(sizeof(*entry));
+    entry->next = r->allocations;
+    entry->value = value;
+    r->allocations = entry;
+    return value;
+}
+
+static char *law_format(LawReader *r, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    va_list copy;
+    va_copy(copy, args);
+    int size = vsnprintf(NULL, 0, format, copy);
+    va_end(copy);
+    if (size < 0) fail("stage2 law HIR: formatting failed");
+    char *result = law_keep(r, allocate((size_t)size + 1));
+    (void)vsnprintf(result, (size_t)size + 1, format, args);
+    va_end(args);
+    return result;
+}
+
+static const char *law_join(LawReader *r, const char *list, const char *item) {
+    return *list ? law_format(r, "%s,%s", list, item) : item;
+}
+
+static void law_error(LawReader *r, const char *code, const char *message, int byte) {
+    r->error = law_format(r, "error[%s]: %s at byte %d", code, message, byte);
+    longjmp(r->refusal, 1);
+}
+
+static void law_expected(LawReader *r, const char *wanted) {
+    law_error(r, "E2S228", law_format(r, "expected %s in law declarations", wanted),
+              r->tokens[r->at].start);
+}
+
+static bool law_is(const LawReader *r, const char *word) {
+    return strcmp(r->tokens[r->at].word, word) == 0;
+}
+
+static void law_take(LawReader *r, const char *word) {
+    if (!law_is(r, word)) law_expected(r, law_format(r, "`%s`", word));
+    ++r->at;
+}
+
+static int law_name_token(LawReader *r, const char *context) {
+    if (!r->tokens[r->at].identifier) law_expected(r, context);
+    return r->at++;
+}
+
+static const char *law_decl_span(LawReader *r, const char *object, int first, int last) {
+    return law_format(r, "%.*s,\"declaration_span\":[%d,%d]}", (int)strlen(object)-1, object,
+                      r->tokens[first].start, r->tokens[last].end);
+}
+
+static const char *law_named(LawReader *r, int index) {
+    LawToken t = r->tokens[index];
+    return law_format(r, "\"name\":\"%s\",\"span\":[%d,%d]", t.word, t.start, t.end);
+}
+
+static const LawSymbol *law_lookup(const LawScope *scope, const char *name) {
+    for (; scope != NULL; scope = scope->outer) {
+        for (LawSymbol *symbol = scope->first; symbol; symbol = symbol->next) {
+            if (strcmp(symbol->name, name) == 0) return symbol;
+        }
+    }
+    return NULL;
+}
+
+static void law_duplicate(LawReader *r, int index) {
+    law_error(r, "E2S229", law_format(r, "duplicate law name `%s`", r->tokens[index].word),
+              r->tokens[index].start);
+}
+
+static void law_unknown(LawReader *r, int index) {
+    law_error(r, "E2S229", law_format(r, "unresolved law name `%s`", r->tokens[index].word),
+              r->tokens[index].start);
+}
+
+static const LawSymbol *law_resolve(LawReader *r, const LawScope *scope, int index) {
+    const LawSymbol *binding = law_lookup(scope, r->tokens[index].word);
+    if (!binding) law_unknown(r, index);
+    return binding;
+}
+
+static void law_define(LawReader *r, LawScope *scope, int index, const char *type) {
+    const char *name = r->tokens[index].word;
+    for (LawSymbol *old = scope->first; old; old = old->next) {
+        if (strcmp(old->name, name) == 0) law_duplicate(r, index);
+    }
+    LawSymbol *entry = law_keep(r, allocate(sizeof(*entry)));
+    *entry = (LawSymbol){name, type, index, NULL};
+    if (scope->last) scope->last->next = entry; else scope->first = entry;
+    scope->last = entry;
+}
+
+static void law_lex(LawReader *r) {
+    const char *source = r->source;
+    int length = (int)strlen(source), cursor = (int)skip_lexical_trivia(source, 0);
+    while (cursor < length) {
+        if (r->count == 1024) law_error(r, "E2S228", "law declaration source exceeds 1024 tokens", cursor);
+        int end = (int)token_end(source, cursor);
+        if (end <= cursor) {
+            law_error(r, "E2S228", "expected a complete source token in law declarations", cursor);
+        }
+        r->tokens[r->count++] = (LawToken){law_keep(r, token_copy(source, cursor)), cursor, end,
+            strcmp(token_kind(source, cursor), "identifier") == 0};
+        cursor = (int)skip_lexical_trivia(source, end);
+    }
+    r->tokens[r->count] = (LawToken){"", length, length, false};
+}
+
+static const char *law_type(LawReader *r, const LawScope *slots, int depth) {
+    if (depth > 16) law_error(r, "E2S228", "law type nesting exceeds 16", r->tokens[r->at].start);
+    const char *type = "";
+    bool grouped = law_is(r, "(");
+    if (grouped) {
+        ++r->at;
+        while (!law_is(r, ")")) {
+            type = law_join(r, type, law_type(r, slots, depth + 1));
+            if (!law_is(r, ")")) law_take(r, ",");
+        }
+        ++r->at;
+    } else {
+        int i = law_name_token(r, "a concrete type");
+        const char *name = r->tokens[i].word;
+        const LawSymbol *bound = law_lookup(slots, name);
+        if (bound) type = bound->type;
+        else if (strcmp(name, "Bool") == 0) type = "Bool";
+        else law_error(r, "E2S231", law_format(r, "unsupported ground law type `%s`", name), r->tokens[i].start);
+        if (law_is(r, "?")) {
+            if (strcmp(type, "Bool") != 0) law_error(r, "E2S231", "unsupported nested optional law type", r->tokens[r->at].start);
+            ++r->at;
+            type = "Bool?";
+        }
+    }
+    if (law_is(r, "->")) {
+        ++r->at;
+        const char *result = law_type(r, slots, depth + 1);
+        return law_format(r, "(%s)->%s", type, result);
+    }
+    if (grouped) law_expected(r, "`->`");
+    return type;
+}
+
+static LawParameters law_params(LawReader *r, const LawScope *slots, const LawScope *domains) {
+    LawParameters result = {"", "", {0}};
+    law_take(r, "(");
+    while (!law_is(r, ")")) {
+        int name = law_name_token(r, "a parameter name");
+        if (law_lookup(&result.symbols, r->tokens[name].word)) law_duplicate(r, name);
+        law_take(r, ":");
+        const char *type = law_type(r, slots, 0);
+        law_define(r, &result.symbols, name, type);
+        result.types = law_join(r, result.types, type);
+        const char *domain = "";
+        if (domains) {
+            law_take(r, "in");
+            int index = law_name_token(r, "a domain name");
+            const LawSymbol *bound = law_resolve(r, domains, index);
+            if (strcmp(type, bound->type) != 0) {
+                law_error(r, "E2S230", "quantifier and domain types differ", r->tokens[index].start);
+            }
+            domain = law_format(r, ",\"domain\":%d", r->tokens[bound->definition].start);
+        }
+        result.json = law_join(r, result.json, law_format(r, "{%s,\"type\":\"%s\"%s}", law_named(r, name), type, domain));
+        if (!law_is(r, ")")) law_take(r, ",");
+    }
+    ++r->at;
+    return result;
+}
+
+static LawTyped law_signature(LawReader *r, int name, const LawScope *slots) {
+    LawParameters p = law_params(r, slots, NULL);
+    law_take(r, "->");
+    const char *result = law_type(r, slots, 0);
+    const char *type = law_format(r, "(%s)->%s", p.types, result);
+    return (LawTyped){type,law_format(r,"{%s,\"type\":\"%s\",\"parameters\":[%s]}",law_named(r,name),type,p.json)};
+}
+
+static LawTyped law_expr(LawReader *r, const LawScope *slots, const LawScope *env, int depth) {
+    int start = r->tokens[r->at].start;
+    if (depth > 32) law_error(r, "E2S228", "law equation nesting exceeds 32", start);
+    const char *type, *node;
+    if (law_is(r, "fn")) {
+        ++r->at;
+        LawParameters p = law_params(r, slots, NULL);
+        law_take(r, "=>");
+        p.symbols.outer = env;
+        LawTyped body = law_expr(r, slots, &p.symbols, depth + 1);
+        type = law_format(r, "(%s)->%s", p.types, body.type);
+        node = law_format(r, "{\"kind\":\"lambda\",\"parameters\":[%s],\"body\":%s", p.json, body.json);
+    } else {
+        int name = law_name_token(r, "an equation operand");
+        const LawSymbol *bound = law_resolve(r, env, name);
+        type = bound->type;
+        node = law_format(r, "{\"kind\":\"ref\",\"target\":%d", r->tokens[bound->definition].start);
+    }
+    node = law_format(r, "%s,\"span\":[%d,%d],\"type\":\"%s\"}", node, start, r->tokens[r->at-1].end, type);
+    while (law_is(r, "(")) {
+        int open = r->at++;
+        const char *args = "", *children = "";
+        while (!law_is(r, ")")) {
+            LawTyped arg = law_expr(r, slots, env, depth + 1);
+            args = law_join(r, args, arg.type);
+            children = law_join(r, children, arg.json);
+            if (!law_is(r, ")")) law_take(r, ",");
+        }
+        ++r->at;
+        const char *prefix = law_format(r, "(%s)->", args);
+        if (strncmp(type, prefix, strlen(prefix)) != 0) {
+            law_error(r, "E2S230", "law call arguments do not match callable type", r->tokens[open].start);
+        }
+        type += strlen(prefix);
+        node = law_format(r, "{\"kind\":\"call\",\"callee\":%s,\"arguments\":[%s],\"span\":[%d,%d],\"type\":\"%s\"}",
+                          node, children, start, r->tokens[r->at-1].end, type);
+    }
+    return (LawTyped){type,node};
+}
+
+typedef struct {
+    int family, instance, check, family_open, instance_open;
+    int family_end, instance_end, check_end;
+    LawScope functions, slots, operations, domains;
+    const char *function_json, *slot_json, *operation_json, *equality;
+} LawDeclarations;
+
+static void law_index(LawReader *r, LawDeclarations *decl) {
+    LawScope names = {0};
+    while (r->at < r->count) {
+        int kind = r->at++;
+        const char *word = r->tokens[kind].word;
+        int *unique = NULL;
+        const char *function_json = "";
+        if (strcmp(word, "law") == 0) unique = &decl->family;
+        else if (strcmp(word, "impl") == 0) unique = &decl->instance;
+        else if (strcmp(word, "check") == 0) { law_take(r, "laws"); unique = &decl->check; }
+        else if (strcmp(word, "fn") != 0) {
+            --r->at;
+            law_expected(r, "a law, implementation, function, or check");
+        }
+        int name = law_name_token(r, "a declaration name");
+        law_define(r, &names, name, "");
+        if (unique) {
+            if (*unique >= 0) law_error(r, "E2S228", "concrete law HIR supports one family, implementation, and check", r->tokens[kind].start);
+            *unique = name;
+            while (r->at < r->count && !law_is(r, "{")) ++r->at;
+        } else {
+            LawTyped function = law_signature(r, name, NULL);
+            law_define(r, &decl->functions, name, function.type);
+            function_json = function.json;
+        }
+        int open = r->at;
+        law_take(r, "{");
+        int depth = 1;
+        while (r->at < r->count && depth) {
+            if (law_is(r, "{")) ++depth;
+            else if (law_is(r, "}")) --depth;
+            ++r->at;
+        }
+        if (depth) {
+            r->at = open;
+            law_expected(r, "a closed declaration body");
+        }
+        if (unique == &decl->family) decl->family_end = r->at-1;
+        else if (unique == &decl->instance) decl->instance_end = r->at-1;
+        else if (unique == &decl->check) decl->check_end = r->at-1;
+        else decl->function_json = law_join(r,decl->function_json,law_decl_span(r,function_json,kind,r->at-1));
+    }
+    if (decl->family < 0 || decl->instance < 0 || decl->check < 0) {
+        law_error(r, "E2S228", "expected one family, implementation, and check", r->tokens[r->at].start);
+    }
+}
+
+static void law_substitutions(LawReader *r, LawDeclarations *d) {
+    r->at = d->family + 1;
+    law_take(r, "[");
+    int slot = r->at;
+    r->at = d->instance + 1;
+    law_take(r, ":");
+    if (!law_is(r, r->tokens[d->family].word)) law_unknown(r, r->at);
+    ++r->at;
+    law_take(r, "[");
+    int arg = r->at;
+    while (strcmp(r->tokens[slot].word, "]") != 0 && strcmp(r->tokens[arg].word, "]") != 0) {
+        r->at = slot;
+        (void)law_name_token(r, "a schema slot");
+        if (strcmp(r->tokens[slot].word, "Bool") == 0 || law_lookup(&d->slots, r->tokens[slot].word)) law_duplicate(r, slot);
+        r->at = arg;
+        const char *type = law_type(r, NULL, 0);
+        if (strcmp(type,"Bool") && strcmp(type,"Bool?")) {
+            law_error(r, "E2S231", "unsupported concrete law substitution", r->tokens[arg].start);
+        }
+        law_define(r, &d->slots, slot, type);
+        d->slot_json = law_join(r, d->slot_json, law_format(r, "{%s,\"type\":\"%s\",\"argument_span\":[%d,%d]}",
+            law_named(r,slot), type, r->tokens[arg].start, r->tokens[r->at-1].end));
+        ++slot;
+        arg = r->at;
+        if (strcmp(r->tokens[slot].word, "]") == 0 || law_is(r, "]")) break;
+        r->at = slot;
+        law_take(r, ",");
+        slot = r->at;
+        r->at = arg;
+        law_take(r, ",");
+        arg = r->at;
+    }
+    if (!d->slots.first || strcmp(r->tokens[slot].word, "]") || strcmp(r->tokens[arg].word, "]")) {
+        law_error(r, "E2S231", "law substitution arity does not match family", r->tokens[arg].start);
+    }
+    d->family_open = slot + 1;
+    d->instance_open = arg + 1;
+    r->at = d->family_open; law_take(r, "{");
+    r->at = d->instance_open; law_take(r, "{");
+}
+
+static const char *law_check(LawReader *r, LawDeclarations *d) {
+    LawScope seen = {0};
+    const char *json = "", *assurance = "";
+    r->at = d->check + 1;
+    law_take(r, "{");
+    while (!law_is(r, "}")) {
+        int clause = r->at;
+        if (!law_is(r,"domain")) law_define(r,&seen,clause,"");
+        if (law_is(r,"instance")) {
+            ++r->at;
+            law_take(r, "=");
+            if (!law_is(r, r->tokens[d->instance].word)) law_unknown(r,r->at);
+            ++r->at;
+        } else if (law_is(r,"equality")) {
+            ++r->at;
+            int name = r->at;
+            d->equality = law_type(r, NULL, 0);
+            if (strcmp(d->equality,"Bool") && strcmp(d->equality,"Bool?")) {
+                law_error(r, "E2S231", "structural law equality requires Bool or Bool?", r->tokens[name].start);
+            }
+            law_take(r, "=");
+            if (!law_is(r,"structural")) law_expected(r,"structural");
+            ++r->at;
+        } else if (law_is(r,"require")) {
+            ++r->at;
+            law_take(r, "assurance"); law_take(r, "=");
+            if (!law_is(r,"proven_finite") && !law_is(r,"bounded_exhaustive")) law_expected(r,"a finite assurance requirement");
+            assurance = r->tokens[r->at++].word;
+        } else if (law_is(r,"budget")) {
+            ++r->at;
+            law_take(r, "=");
+            if (!law_is(r,"standard")) law_expected(r,"standard");
+            ++r->at;
+        } else if (law_is(r,"domain")) {
+            ++r->at;
+            int name = law_name_token(r,"a domain name");
+            if (law_lookup(&d->domains,r->tokens[name].word)) law_duplicate(r,name);
+            law_take(r, ":");
+            const char *type = law_type(r, NULL, 0);
+            law_take(r, "=");
+            int origin = r->at;
+            const char *fields;
+            if (law_is(r,"all")) {
+                ++r->at;
+                if (strcmp(type,"Bool") && strcmp(type,"Bool?")) law_error(r,"E2S231","`all` requires Bool or Bool?",r->tokens[origin].start);
+                fields = "\"origin\":\"all\"";
+            } else if (law_is(r,"all_functions")) {
+                ++r->at;
+                law_take(r,"(");
+                int first = r->at;
+                if (r->at < r->count) ++r->at;
+                law_take(r,",");
+                int second = r->at;
+                if (r->at < r->count) ++r->at;
+                law_take(r,")");
+                const LawSymbol *input = law_resolve(r,&d->domains,first);
+                const LawSymbol *output = law_resolve(r,&d->domains,second);
+                if (strcmp(type,law_format(r,"(%s)->%s",input->type,output->type))) {
+                    law_error(r,"E2S230","function domain type does not match component domains",r->tokens[origin].start);
+                }
+                fields = law_format(r,"\"origin\":\"all_functions\",\"input\":%d,\"output\":%d",
+                    r->tokens[input->definition].start,r->tokens[output->definition].start);
+            } else {
+                law_expected(r,"`all` or `all_functions`");
+                return NULL;
+            }
+            law_define(r,&d->domains,name,type);
+            json = law_join(r,json,law_format(r,"{%s,\"type\":\"%s\",%s}",law_named(r,name),type,fields));
+        } else law_expected(r,"a check clause");
+    }
+    if (!law_lookup(&seen,"instance") || !*d->equality || !*assurance || !law_lookup(&seen,"budget") || !d->domains.first) {
+        law_error(r,"E2S228","check lacks instance, domains, equality, assurance or budget",r->tokens[r->at].start);
+    }
+    return law_format(r,"{%s,\"instance\":%d,\"domains\":[%s],\"equality\":{\"type\":\"%s\",\"kind\":\"structural\"},"
+        "\"requested_assurance\":\"%s\",\"budget\":\"standard\"}",law_named(r,d->check),r->tokens[d->instance].start,json,d->equality,assurance);
+}
+
+static void law_operations(LawReader *r, LawDeclarations *d) {
+    r->at = d->family_open + 1;
+    while (!law_is(r, "}")) {
+        /* The right operand of an equation may itself be named operation. */
+        if (law_is(r, "operation") && r->at + 2 < r->count &&
+            r->tokens[r->at + 1].identifier && strcmp(r->tokens[r->at + 2].word, "(") == 0) {
+            ++r->at;
+            int name = r->at++;
+            if (law_lookup(&d->operations,r->tokens[name].word)) law_duplicate(r,name);
+            LawTyped sig = law_signature(r,name,&d->slots);
+            law_define(r,&d->operations,name,sig.type);
+            d->operation_json = law_join(r,d->operation_json,law_decl_span(r,sig.json,name-1,r->at-1));
+        } else {
+            if (r->at == r->count) law_expected(r,"`}`");
+            ++r->at;
+        }
+    }
+    if (!d->operations.first) law_expected(r,"an operation member");
+}
+
+static const char *law_equations(LawReader *r, LawDeclarations *d) {
+    LawScope members = {0};
+    const char *json = "";
+    r->at = d->family_open + 1;
+    while (!law_is(r,"}")) {
+        int kind = r->at;
+        if (r->at < r->count) ++r->at;
+        int name = law_name_token(r,"a law member name");
+        law_define(r,&members,name,"");
+        if (strcmp(r->tokens[kind].word,"operation") == 0) {
+            (void)law_signature(r,name,&d->slots);
+        } else if (strcmp(r->tokens[kind].word,"equation") == 0) {
+            LawParameters p = law_params(r,&d->slots,&d->domains);
+            p.symbols.outer = &d->operations;
+            law_take(r,"=");
+            LawTyped left = law_expr(r,&d->slots,&p.symbols,0);
+            int eq = r->at;
+            law_take(r,"==");
+            LawTyped right = law_expr(r,&d->slots,&p.symbols,0);
+            if (strcmp(left.type,d->equality) || strcmp(right.type,d->equality)) {
+                law_error(r,"E2S230","law operands do not match the selected equality type",r->tokens[eq].start);
+            }
+            json = law_join(r,json,law_format(r,"{%s,\"declaration_span\":[%d,%d],\"parameters\":[%s],\"kind\":\"equal\",\"type\":\"Bool\",\"left\":%s,\"right\":%s}",
+                law_named(r,name),r->tokens[kind].start,r->tokens[r->at-1].end,p.json,left.json,right.json));
+        } else {
+            r->at = kind;
+            law_expected(r,"an operation or equation");
+        }
+    }
+    if (!*json) law_expected(r,"an equation member");
+    return json;
+}
+
+static const char *law_bindings(LawReader *r, LawDeclarations *d) {
+    LawScope seen = {0};
+    const char *json = "";
+    r->at = d->instance_open + 1;
+    while (!law_is(r,"}")) {
+        int name = law_name_token(r,"an operation binding");
+        const LawSymbol *operation = law_resolve(r,&d->operations,name);
+        law_define(r,&seen,name,"");
+        law_take(r,"=");
+        int target = r->at;
+        const LawSymbol *function = law_resolve(r,&d->functions,target);
+        ++r->at;
+        if (strcmp(operation->type,function->type) != 0) {
+            law_error(r,"E2S230","law operation binding has incompatible function signature",r->tokens[target].start);
+        }
+        json = law_join(r,json,law_format(r,"{%s,\"operation\":%d,\"function\":%d,\"target_span\":[%d,%d]}",
+            law_named(r,name),r->tokens[operation->definition].start,r->tokens[function->definition].start,
+            r->tokens[target].start,r->tokens[target].end));
+    }
+    for (LawSymbol *needed=d->operations.first; needed; needed=needed->next) {
+        if (!law_lookup(&seen,needed->name)) {
+            law_error(r,"E2S229",law_format(r,"unbound required law operation `%s`",needed->name),r->tokens[r->at].start);
+        }
+    }
+    return json;
+}
+
+static const char *law_document(LawReader *r, const char *path) {
+    if (setjmp(r->refusal)) return r->error;
+    if (strlen(r->source) > 16384) law_error(r,"E2S228","law declaration source exceeds 16384 bytes",0);
+    law_lex(r);
+    LawDeclarations d = {.family=-1, .instance=-1, .check=-1, .function_json="",
+                         .slot_json="", .operation_json="", .equality=""};
+    law_index(r,&d);
+    law_substitutions(r,&d);
+    const char *policy = law_check(r,&d);
+    law_operations(r,&d);
+    const char *bindings = law_bindings(r,&d);
+    const char *equations = law_equations(r,&d);
+    char *id = law_keep(r,scoped_hir_file_id(path));
+    policy = law_decl_span(r,policy,d.check-2,d.check_end);
+    return law_format(r,"{\"schema\":\"kofun.law-declaration-hir/v1\",\"file_id\":\"%s\",\"functions\":[%s],"
+        "\"family\":{%s,\"declaration_span\":[%d,%d],\"slots\":[%s],\"operations\":[%s],\"equations\":[%s]},"
+        "\"implementation\":{%s,\"declaration_span\":[%d,%d],\"family\":%d,\"bindings\":[%s]},\"check\":%s}\n",
+        id,d.function_json,law_named(r,d.family),r->tokens[d.family-1].start,r->tokens[d.family_end].end,d.slot_json,d.operation_json,equations,
+        law_named(r,d.instance),r->tokens[d.instance-1].start,r->tokens[d.instance_end].end,r->tokens[d.family].start,bindings,policy);
+}
+
+static int emit_law_hir_file(const char *input, const char *output, const char *path) {
+    Stage2FileIdentity identity = stage2_same_file(input,output);
+    if (identity == STAGE2_FILE_LOOKUP_ERROR) { stage2_host_lookup_error(); return 2; }
+    if (identity == STAGE2_FILE_SAME) {
+        puts("error[E2S228]: law HIR input and output must be distinct at byte 0"); return 1;
+    }
+    if (!scoped_hir_logical_path(path)) {
+        puts("error[E2S228]: law HIR logical path must be canonical relative UTF-8 at byte 0"); return 1;
+    }
+    size_t length;
+    char *source = read_file_with_length(input,&length);
+    KofunUnicodeError unicode;
+    if (!kofun_unicode_validate_source((const uint8_t *)source,length,&unicode)) {
+        char message[1024];
+        kofun_unicode_format_error(&unicode,getenv("KOFUN_DIAGNOSTIC_LOCALE"),message,sizeof(message));
+        puts(message); free(source); return 1;
+    }
+    LawReader reader = {.source=source};
+    const char *artifact = law_document(&reader,path);
+    int status = 0;
+    if (reader.error) { puts(reader.error); status = 1; }
+    else if (!write_file_transactional(output,artifact)) { puts("error[E2S228]: cannot publish law declaration HIR at byte 0"); status = 1; }
+    while (reader.allocations) {
+        LawAllocation *entry = reader.allocations;
+        reader.allocations = entry->next;
+        free(entry->value); free(entry);
+    }
+    free(source);
+    return status;
+}
+
 int main(int argc, char **argv) {
     if (argc == 6 && strcmp(argv[1], "--compile-outcome") == 0) {
         return compile_file(argv[2], argv[3], argv[4], argv[5]);
@@ -47351,6 +47920,9 @@ int main(int argc, char **argv) {
     }
     if (argc == 5 && strcmp(argv[1], "--emit-scope-hir-v2") == 0) {
         return emit_scope_hir_v2_file(argv[2], argv[3], argv[4]);
+    }
+    if (argc == 5 && strcmp(argv[1], "--emit-law-hir") == 0) {
+        return emit_law_hir_file(argv[2], argv[3], argv[4]);
     }
     if (argc == 5 && strcmp(argv[1], "--emit-generic-record-hir") == 0) {
         return emit_generic_record_hir_file(argv[2], argv[3], argv[4]);
@@ -47381,6 +47953,7 @@ int main(int argc, char **argv) {
             "       kofun-stage2 --parse-patterns INPUT.kofun OUTPUT.patterns\n"
             "       kofun-stage2 --emit-scope-hir INPUT.kofun OUTPUT.scope-hir\n"
             "       kofun-stage2 --emit-scope-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n"
+            "       kofun-stage2 --emit-law-hir INPUT.kofun OUTPUT.json LOGICAL-PATH\n"
             "       kofun-stage2 --emit-generic-record-hir INPUT.kofun OUTPUT.json LOGICAL-PATH\n"
             "       kofun-stage2 --emit-generic-adt-hir INPUT.kofun OUTPUT.json LOGICAL-PATH\n"
             "       kofun-stage2 --emit-capture-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n"
