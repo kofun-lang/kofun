@@ -748,6 +748,7 @@ module_package_root() {
     mpr_module=$2
     mpr_expected=$(printf '%s' "$mpr_module" | tr '.' '/').kofun
     case $mpr_file in
+        "$mpr_expected") printf '%s' . ;;
         */"$mpr_expected") printf '%s' "${mpr_file%/"$mpr_expected"}" ;;
         *) return 0 ;;
     esac
@@ -847,9 +848,22 @@ emit_c_modules() (
 emit_c() (
     require_source "$1"
     module_path=$(module_header_path "$1")
-    if test -n "$module_path"; then
+    include_source=false
+    # The cheap byte search avoids starting a compiler on ordinary module
+    # builds. Its token-based probe is authoritative for comments and strings.
+    if LC_ALL=C grep -q include "$1"; then
+        ensure_stage2_compiler
+        if "$STAGE2_COMPILER" --uses-include "$1" >/dev/null; then
+            include_source=true
+        fi
+    fi
+    if test -n "$module_path" && ! "$include_source"; then
         emit_c_modules "$1" "$2" "$module_path"
         exit $?
+    fi
+    if test -n "$module_path" && test -z "$(module_package_root "$1" "$module_path")"; then
+        printf '%s\n' "error[EDRV002]: \`$1\` declares module \`$module_path\`, which does not match its path" >&2
+        exit 2
     fi
     temporary="$2.tmp.$$.c"
     stage1_stdout="$2.stage1.stdout.$$"
@@ -860,16 +874,26 @@ emit_c() (
     stage2_tokens="$2.stage2.tokens.$$"
     trap 'rm -f "$temporary" "$stage1_stdout" "$stage1_stderr" "$stage2_stdout" "$stage2_stderr" "$stage2_ir" "$stage2_tokens"' 0 1 2 15
     ensure_stage2_compiler
+    if "$include_source"; then
+        include_work=$(mktemp -d "${TMPDIR:-/tmp}/kofun-includes.XXXXXX")
+        trap 'rm -rf "$include_work"; rm -f "$temporary" "$stage1_stdout" "$stage1_stderr" "$stage2_stdout" "$stage2_stderr" "$stage2_ir" "$stage2_tokens"' 0 1 2 15
+        . "$ROOT/bootstrap/stage2/build.sh"
+        kofun_stage2_include_bundle "$ROOT" "$include_work" >&2 || exit 1
+        set -- "$1" "$2" --include-bundle "$include_work/includes-v1.bundle"
+    fi
+    input=$1
+    output=$2
+    shift 2
     set +e
-    "$STAGE2_COMPILER" \
-        --compile-outcome \
-        "$1" "$temporary" "$stage2_ir" "$stage2_tokens" \
+    "$STAGE2_COMPILER" "$@" --compile-outcome \
+        "$input" "$temporary" "$stage2_ir" "$stage2_tokens" \
         >"$stage2_stdout" 2>"$stage2_stderr"
     stage2_status=$?
     set -e
+    set -- "$input" "$output"
     if test "$stage2_status" -ne 0; then
         rm -f "$temporary"
-        if test "$stage2_status" -eq 3; then
+        if test "$stage2_status" -eq 3 && ! "$include_source"; then
             ensure_compiler
             set +e
             "$COMPILER" "$1" "$temporary" \
@@ -1173,7 +1197,7 @@ case ${1-} in
         then
             exec "$KOFUN_DIGEST_TOOL" "$@"
         fi
-        . "$ROOT/bootstrap/digest/build.sh"
+        . "$ROOT/bootstrap/stage2/build.sh"
         DIGEST_BUILD_DIR=${KOFUN_DIGEST_BUILD_DIR:-"$ROOT/build/digest"}
         DIGEST_TOOL="$DIGEST_BUILD_DIR/kofun-digest"
         digest_stale=false
@@ -1181,10 +1205,12 @@ case ${1-} in
             digest_stale=true
         fi
         for digest_source in \
-            "$ROOT/bootstrap/stage2/compiler.kofun" \
             "$ROOT/bootstrap/stage2/compiler.c" \
-            "$ROOT/bootstrap/digest/command.kofun.in" \
-            "$ROOT/bootstrap/digest/build.sh"
+            "$ROOT/bootstrap/stage2/sha256.c" "$ROOT/bootstrap/stage2/sha256.h" \
+            "$ROOT/bootstrap/stage2/include_bundle.c" \
+            "$ROOT/bootstrap/stage2/includes-v1.tsv" "$ROOT/bootstrap/stage2/includes-v1.files" \
+            "$ROOT/bootstrap/stage2/includes/sha256.kofun" \
+            "$ROOT/bootstrap/digest/command.kofun.in" "$ROOT/bootstrap/stage2/build.sh"
         do
             if test "$digest_source" -nt "$DIGEST_TOOL"; then
                 digest_stale=true

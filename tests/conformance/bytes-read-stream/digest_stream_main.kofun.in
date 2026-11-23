@@ -5,6 +5,8 @@
 # block is absorbed with the pair's own `sha256_absorb`. The one line that
 # differs between the file and the standard-input programs is @@OPEN@@.
 
+include "sha256"
+
 fn stream_block_from_carrier(read message: Bytes, base: Int) -> List[Int] {
     let mut bytes: List[Int] = [
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,

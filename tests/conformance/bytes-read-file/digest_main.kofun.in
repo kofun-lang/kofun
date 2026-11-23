@@ -1,11 +1,9 @@
 
 # ------------------------------------------------------------------ the main
 #
-# #1499. Appended by tests/conformance/bytes-read-file/run.sh to the SHA-256
-# block it extracts from bootstrap/stage2/compiler.kofun. The message is a
-# carrier rather than two lists, so the one thing written here is FIPS 180-4
-# section 5.1.1's padded byte at an absolute position, against `byte_at`;
-# the block, the schedule, the compression, and the hex are the pair's.
+# Read the message from a bounded Bytes carrier. The manifest-pinned SHA
+# functions provide the schedule, compression and hex output.
+include "sha256"
 
 fn carrier_padded_byte(read message: Bytes, length: Int, index: Int) -> Int {
     if index < length {

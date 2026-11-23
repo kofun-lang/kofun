@@ -70,9 +70,8 @@ executable bootstrap implementation.
 - `stage2-include-v1.md` defines the bounded top-level `include "NAME"` form by
   which a Stage 2 unit reuses a declared, digested block instead of a build-time
   extraction, the committed manifest that names and pins each target by SHA-256,
-  and the refusals that keep the read non-ambient. It is the replacement #1668
-  question 1 asked for; it is design-only and `E2S02` still refuses it until the
-  implementation lands.
+  and the four refusal codes. The `include-form` gate compares both compilers
+  against the C seed on four independent NIST test vectors.
 - `decimal-error-v1.md` records the source-level answers RFC-0015 names but does
   not define for `kofun.fixed-decimal/v1`: `DecimalError` is an opaque nominal
   value with a `D00x` code accessor reserved for `Fixed` in v1, the clone form
