@@ -1,0 +1,31 @@
+type Fixed__2 = {
+    value: Int,
+}
+
+fn milli() -> Result[Fixed[3], DecimalError] {
+    return Fixed.from_decimal(1.05, HalfEven)
+}
+
+fn cents() -> Result[Fixed[02], DecimalError] {
+    let m: Result[Fixed[3], DecimalError] = milli()
+    match take m {
+        Ok(value) => { print(3) },
+        Err(error) => { return Err(error) },
+    }
+    let r: Result[Fixed[2], DecimalError] = Fixed.from_decimal(2.125, Floor)
+    match take r {
+        Ok(value) => { return Ok(value) },
+        Err(error) => { return Err(error) },
+    }
+    return Fixed.from_decimal(2.5, HalfUp)
+}
+
+fn main() -> Int {
+    let user: Fixed__2 = Fixed__2(value: 7)
+    let outcome: Result[Fixed[2], DecimalError] = cents()
+    match take outcome {
+        Ok(amount) => { print(user.value) },
+        Err(error) => { print(1) },
+    }
+    return 0
+}

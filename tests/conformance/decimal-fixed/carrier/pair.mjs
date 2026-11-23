@@ -17,6 +17,8 @@ import {loadCompiler, bytes, text} from '../../../../bootstrap/stage2/host-drive
 
 const [binary, work, ...sources] = process.argv.slice(2);
 assert(binary && work && sources.length > 0, 'usage: node pair.mjs STAGE2-BINARY WORK SOURCE.kofun...');
+const relocated = path.join(work, 'relocated');
+fs.mkdirSync(relocated, {recursive: true});
 const root = fileURLToPath(new URL('../../../../', import.meta.url));
 fs.mkdirSync(work, {recursive: true});
 
@@ -50,6 +52,17 @@ for (const source of sources) {
   assert.equal(c.error, undefined, `${stem}: the C half did not run`);
   assert.equal(c.stderr, '', `${stem}: the C half wrote internal stderr`);
 
+  // Rebuild identical source bytes under a different input and output path.
+  const relocatedSource = path.join(relocated, path.basename(source));
+  fs.copyFileSync(source, relocatedSource);
+  const repeated = artifacts(relocated, stem);
+  const rerun = spawnSync(binary, ['--compile-outcome', relocatedSource, repeated.c, repeated.ir, repeated.tokens], {encoding: 'latin1'});
+  assert.equal(rerun.error, undefined, `${stem}: relocated C compiler did not run`);
+  assert.equal(rerun.stderr, '', `${stem}: relocated build wrote internal stderr`);
+  assert.equal(rerun.status, c.status, `${stem}: relocated build changed exit status`);
+  assert.equal(rerun.stdout.split(repeated.c).join('OUTPUT.c'), c.stdout.split(cOut.c).join('OUTPUT.c'),
+    `${stem}: relocated build changed the diagnostic`);
+
   const kOut = artifacts(kDirectory, stem);
   printed = '';
   const kStatus = Number(kofun.compile_file(bytes(source), bytes(kOut.c), bytes(kOut.ir), bytes(kOut.tokens)));
@@ -58,6 +71,7 @@ for (const source of sources) {
   assert.equal(printed.split(kOut.c).join('OUTPUT.c'), text(c.stdout).split(cOut.c).join('OUTPUT.c'),
     `${stem}: printed outcome differs between the halves`);
   for (const key of ['c', 'ir', 'tokens']) {
+    assert.equal(read(repeated[key]), read(cOut[key]), `${stem}: relocated build changed ${key}`);
     assert.equal(read(kOut[key]), read(cOut[key]), `${stem}: ${key} differs between the halves`);
   }
 
@@ -74,4 +88,4 @@ for (const source of sources) {
   assert.equal(read(kHir), read(cHir), `${stem}: scope HIR differs between the halves`);
   compared += 1;
 }
-console.log(`PASS: ${compared} decimal-fixed carrier sources agree in both halves of the pair on outcome, emitted C, and scope HIR`);
+console.log(`PASS: ${compared} Fixed sources agree on outcome, C, checkpoints and scope HIR across the pair, and rebuild identically under a new path`);

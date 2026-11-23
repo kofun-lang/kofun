@@ -4,9 +4,9 @@ set -eu
 # The compiler-known `Fixed[S]` identity (#1250, RFC-0015). `S` is a literal
 # scale in `0..6144`, normalizes by value (`Fixed[02]` is `Fixed[2]`), and two
 # distinct scales are two distinct type identities. This is the first slice of
-# the carrier: no value of the type exists yet, so every admission here still
-# refuses at the initializer with the ordinary E2S15 mismatch, and the identity
-# itself is observed in the scope HIR.
+# the carrier. These fixtures deliberately initialize the type with an Int to
+# observe the ordinary E2S15 mismatch after a valid scale, and use scope HIR
+# to observe distinct identities.
 #
 # E408 owns a scale outside the profile or an argument that is not an integer
 # literal. E2S150 keeps the argument-list shape (missing, surplus,
@@ -55,6 +55,10 @@ for source in "$CASES"/*.kofun; do
     test "$status" -eq 1 || fail "$stem exited $status instead of 1"
     test ! -s "$WORK/$stem.internal" || fail "$stem wrote internal stderr"
     test ! -e "$output" || fail "$stem emitted C"
+    case $stem in
+        normalize|scale_6144) test -s "$ir" && test -s "$tokens" ;;
+        *) test ! -e "$ir" && test ! -e "$tokens" ;;
+    esac || fail "$stem changed which checkpoints survive refusal"
     cmp "$golden" "$actual" || fail "$stem diagnostic differs from its golden"
     printf '%s\n' "PASS: $stem"
 done
@@ -63,7 +67,6 @@ done
 # the scope HIR in pair.mjs below; these assertions make the normalization and
 # the distinctness readable where a failure lands.
 "$COMPILER" --emit-scope-hir "$CASES/normalize.kofun" "$WORK/normalize.hir"
-test ! -s "$WORK/normalize.internal" 2>/dev/null || true
 grep -F '|pad|immutable|Fixed[2]|' "$WORK/normalize.hir" >/dev/null ||
     fail 'Fixed[02] did not normalize to Fixed[2]'
 grep -F '|two|immutable|Fixed[2]|' "$WORK/normalize.hir" >/dev/null ||
