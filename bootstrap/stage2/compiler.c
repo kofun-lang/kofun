@@ -47381,6 +47381,7 @@ static void *law_keep(LawReader *r, void *value) {
 }
 
 static char *law_format(LawReader *r, const char *format, ...) {
+    if (format == NULL) fail("stage2 law HIR: missing format string");
     va_list args;
     va_start(args, format);
     va_list copy;
