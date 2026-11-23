@@ -29,6 +29,10 @@ ASSERT_CONTEXT='stage2 else-if chains'
 . "$root/tests/assertions/assert.sh"
 
 KOFUN="$root/bin/kofun"
+CC=${CC:-cc}
+. "$root/bootstrap/stage2/build.sh"
+COMPILER="$work/kofun-stage2"
+kofun_stage2_build "$root" "$COMPILER"
 
 run_case() {
     stem=$1
@@ -73,6 +77,42 @@ run_case short_circuit_reached
 assert_num "short-circuit reached exit status" "$status" -eq 1
 assert_file_empty "short-circuit reached stdout" "$work/short_circuit_reached.stdout"
 cmp "$fixtures/short_circuit_reached.stderr" "$work/short_circuit_reached.stderr"
+
+# ------------------------------------------------------- value position (#1679)
+# A `let` initialiser and a `return` value carry the same chain, and the whole
+# construct is the initialiser rather than a run of statements.
+run_case value_chain
+assert_num "value chain exit status" "$status" -eq 0
+assert_file_empty "value chain stderr" "$work/value_chain.stderr"
+cmp "$fixtures/value_chain.stdout" "$work/value_chain.stdout"
+
+# The value-position twin of the short-circuit pair above.
+run_case value_chain_taken
+assert_num "value chain taken exit status" "$status" -eq 0
+assert_file_empty "value chain taken stderr" "$work/value_chain_taken.stderr"
+cmp "$fixtures/value_chain_taken.stdout" "$work/value_chain_taken.stdout"
+
+run_case value_chain_reached
+assert_num "value chain reached exit status" "$status" -eq 1
+assert_file_empty "value chain reached stdout" "$work/value_chain_reached.stdout"
+cmp "$fixtures/value_chain_reached.stderr" "$work/value_chain_reached.stderr"
+
+# Both halves of the pair must agree on the chain's extent, not only on the
+# program's output. The binding golden pins the measured end of `band` at the
+# chain's closing brace, which the old token-end fallback read as the `if`.
+node "$root/tests/conformance/result-propagation/pair.mjs" \
+    "$COMPILER" "$work/pair" \
+    "$fixtures/value_chain.kofun" \
+    "$fixtures/value_chain_taken.kofun" \
+    "$fixtures/value_chain_reached.kofun"
+"$COMPILER" --emit-scope-hir "$fixtures/value_chain.kofun" \
+    "$work/value_chain.scope-hir" >"$work/value_chain.scope-stdout"
+test ! -s "$work/value_chain.scope-stdout" ||
+    fail 'value chain scope HIR was refused'
+grep '^binding|' "$work/value_chain.scope-hir" \
+    >"$work/value_chain.bindings"
+cmp "$fixtures/value_chain.bindings" "$work/value_chain.bindings" ||
+    fail 'value chain binding extents differ from their golden'
 
 # `else` with no `if` and no block stays a refusal; the chain admitted one
 # specific token after `else`, not anything.

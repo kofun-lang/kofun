@@ -1,0 +1,20 @@
+# The value-position half of the lazy-chain claim. The later condition traps
+# when it is evaluated - an index far outside a 3-element list - and the first
+# link is taken here, so the program must print 100 and exit 0. A lowering
+# that hoisted the chain's conditions would trap instead.
+
+fn pick(values: List[Int], n: Int) -> Int {
+    let r: Int = if n == 1 {
+        100
+    } else if values[99] == 5 {
+        200
+    } else {
+        300
+    }
+    return r
+}
+
+fn main() {
+    let data = [1, 2, 3]
+    print(pick(data, 1))
+}
