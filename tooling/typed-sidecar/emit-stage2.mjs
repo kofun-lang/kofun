@@ -5,6 +5,7 @@ import fs from "node:fs";
 import {
   STAGE2_SEMANTIC_EVENT_LIMITS,
   emitStage2TypedSidecar,
+  emitStage2TypedSidecarV3,
 } from "./from-stage2.mjs";
 
 function stop(message) {
@@ -12,7 +13,8 @@ function stop(message) {
   process.exit(3);
 }
 
-if (process.argv.length !== 5) {
+const version3 = process.argv[5] === "3";
+if (process.argv.length !== 5 && !(process.argv.length === 6 && version3)) {
   stop("internal Stage 2 sidecar emitter usage error");
 }
 
@@ -34,7 +36,8 @@ try {
 } catch {
   stop("semantic event stream cannot be read");
 }
-const result = await emitStage2TypedSidecar(
+const emit = version3 ? emitStage2TypedSidecarV3 : emitStage2TypedSidecar;
+const result = await emit(
   eventBytes,
   destination,
   { sourcePath },

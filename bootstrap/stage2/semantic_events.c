@@ -1,6 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 
-#include "semantic_events.h"
+#include "semantic_events_v3.h"
 #include "sha256.h"
 #include "../../vendor/utf8proc/utf8proc.h"
 
@@ -67,6 +67,7 @@ struct KofunSemanticStream {
     uint8_t compiler_exit_class;
     uint8_t phase;
     uint8_t last_fact_kind;
+    bool sidecar_v3;
     bool began;
     bool ended;
     bool ready;
@@ -956,6 +957,7 @@ static bool stream_node_callback(
     }
     memset(&record, 0, sizeof(record));
     record.kind = KSE_EVENT_NODE;
+    record.subtype = (uint8_t)node->kind;
     record.status = node->status;
     record.id = node->node_id;
     record.relation_offset = (uint32_t)stream->relation_count;
@@ -1275,8 +1277,18 @@ static bool stream_fact_callback(
             "fact reason is not a public discriminator"
         );
     }
+    if (stream->sidecar_v3 && fact->kind == KOFUN_SEMANTIC_FACT_DECLARED_PURE) {
+        const RecordMeta *owner = find_record(stream, KSE_EVENT_NODE, &fact->owner_node_id);
+        if (owner == NULL || owner->subtype != KOFUN_SEMANTIC_NODE_FUNCTION ||
+            owner->status != KOFUN_SEMANTIC_VALIDATED ||
+            fact->status != KOFUN_SEMANTIC_VALIDATED ||
+            !semantic_bytes_equal_cstr(fact->display, "pure") ||
+            fact->reason.length != 0u || fact->diagnostic_count || fact->dependency_count) {
+            return set_error(stream, "ETS03", KSE_EVENT_FACT, "invalid declared purity fact");
+        }
+    }
     if (fact->kind < KOFUN_SEMANTIC_FACT_TYPE ||
-        fact->kind > KOFUN_SEMANTIC_FACT_ORIGIN ||
+        fact->kind > (stream->sidecar_v3 ? KOFUN_SEMANTIC_FACT_DECLARED_PURE : KOFUN_SEMANTIC_FACT_ORIGIN) ||
         fact->kind < stream->last_fact_kind ||
         id_is_zero(&fact->owner_node_id) ||
         find_record(
@@ -1763,6 +1775,7 @@ static bool build_final_stream(KofunSemanticStream *stream) {
         );
     }
     event_count = (uint32_t)stream->record_count + 2u;
+    if (stream->sidecar_v3) store_u16be(header + 4u, 3u);
     store_u32be(header + 8u, event_count);
     store_u32be(header + 12u, (uint32_t)stream->events.length);
     kofun_sha256_init(&sha);
@@ -1952,6 +1965,12 @@ KofunSemanticStream *kofun_semantic_stream_create(void) {
     return (KofunSemanticStream *)calloc(1u, sizeof(KofunSemanticStream));
 }
 
+KofunSemanticStream *kofun_semantic_stream_create_v3(void) {
+    KofunSemanticStream *stream = kofun_semantic_stream_create();
+    if (stream != NULL) stream->sidecar_v3 = true;
+    return stream;
+}
+
 void kofun_semantic_stream_destroy(KofunSemanticStream *stream) {
     if (stream == NULL) return;
     free(stream->events.bytes);
@@ -2076,6 +2095,9 @@ static void output_error(
     (void)snprintf(error->detail, sizeof(error->detail), "%s", detail);
 }
 
+static bool validate_profile(const uint8_t *bytes, size_t length,
+                             KofunSemanticError *error, bool sidecar_v3);
+
 bool kofun_semantic_stream_commit(
     KofunSemanticStream *stream,
     const char *destination
@@ -2090,10 +2112,8 @@ bool kofun_semantic_stream_commit(
         !stream->ready || stream->failed) {
         return false;
     }
-    if (!kofun_semantic_validate_stream(
-            stream->final.bytes,
-            stream->final.length,
-            &stream->error)) {
+    if (!validate_profile(stream->final.bytes, stream->final.length,
+                          &stream->error, stream->sidecar_v3)) {
         stream->failed = true;
         stream->ready = false;
         return false;
@@ -2596,10 +2616,8 @@ static bool emit_parsed_event(
     return false;
 }
 
-bool kofun_semantic_validate_stream(
-    const uint8_t *bytes,
-    size_t length,
-    KofunSemanticError *error
+static bool validate_profile(
+    const uint8_t *bytes, size_t length, KofunSemanticError *error, bool sidecar_v3
 ) {
     uint32_t event_count;
     uint32_t payload_bytes;
@@ -2619,7 +2637,7 @@ bool kofun_semantic_validate_stream(
         return false;
     }
     if (memcmp(bytes, "KSE\0", 4u) != 0 ||
-        load_u16be(bytes + 4u) != 1u ||
+        load_u16be(bytes + 4u) != (sidecar_v3 ? 3u : 1u) ||
         load_u16be(bytes + 6u) != 0u) {
         output_error(error, "ETS03", 0u, 0u, "unknown KSE magic or version");
         return false;
@@ -2642,7 +2660,7 @@ bool kofun_semantic_validate_stream(
         output_error(error, "ETS03", 0u, 0u, "stream digest mismatch");
         return false;
     }
-    decoded = kofun_semantic_stream_create();
+    decoded = sidecar_v3 ? kofun_semantic_stream_create_v3() : kofun_semantic_stream_create();
     if (decoded == NULL) {
         output_error(error, "ETS04", 0u, 0u, "validator allocation failed");
         return false;
@@ -2885,4 +2903,10 @@ bool kofun_semantic_replay_stream(
         return false;
     }
     return true;
+}
+
+bool kofun_semantic_validate_stream(
+    const uint8_t *bytes, size_t length, KofunSemanticError *error
+) {
+    return validate_profile(bytes, length, error, false);
 }

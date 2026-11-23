@@ -118,6 +118,30 @@ const wrongSchema = structuredClone(complete);
 wrongSchema.schema = "kofun.typed-sidecar/v2";
 assert.equal(encodeTypedSidecar(wrongSchema).ok, false);
 
+const v3 = structuredClone(complete);
+v3.schema = "kofun.typed-sidecar/v3";
+v3.limits.profile = "default-v3";
+const fn = v3.nodes.find(node => node.kind === "function.declaration");
+fn.effect = { display: "pure", status: "validated" };
+v3.declared_pure_functions = [fn.id];
+const v3Bytes = encodeTypedSidecar(v3);
+assert.equal(v3Bytes.ok, true, v3Bytes.error?.message);
+assert.deepEqual(structuredClone(readTypedSidecar(v3Bytes.bytes).document), v3);
+for (const ids of [
+  ["invalid-id"], ["0".repeat(64)], [fn.id, fn.id],
+  [v3.nodes.find(node => node.kind === "parameter.binding").id],
+]) {
+  assert.equal(encodeTypedSidecar({ ...v3, declared_pure_functions: ids }).ok, false);
+}
+const tooManyDeclarations = encodeTypedSidecar({
+  ...v3, declared_pure_functions: Array(4097).fill(fn.id),
+});
+assert.equal(tooManyDeclarations.error.code, "TS004");
+assert.equal(encodeTypedSidecar({ ...v3, schema: "kofun.typed-sidecar/v4" }).ok, false);
+assert.equal(encodeTypedSidecar({ ...v3, captures: [] }).ok, false);
+fn.effect.display = "io";
+assert.equal(encodeTypedSidecar(v3).ok, false, "an IO function cannot attest declared purity");
+
 const invalidId = structuredClone(complete);
 invalidId.file.file_id = "NOT-A-LOWERCASE-HEX-ID";
 assert.equal(encodeTypedSidecar(invalidId).ok, false);
