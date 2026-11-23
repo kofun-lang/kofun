@@ -65,6 +65,7 @@ fuzz	112308475892
 gate-reachability	264284279
 generic-adt-hir	23900000000
 generic-record-hir	103059844
+generic-records-stage2	3654150109
 generics	4498414757
 hm-levels	6275418914
 http	2220581373
@@ -110,12 +111,12 @@ process-capture-carrier-decision	150381042
 pure-boundary	22165805987
 raw-imports	4955628861
 raw-re-exports	3053677959
-record-bytes-fields	1070567146
-record-list	1500000000
-records	19551619227
-record-values	257981338
 re-exports	133243064363
 re-exports-spec	326774223
+record-bytes-fields	1070567146
+record-list	1500000000
+record-values	257981338
+records	19551619227
 release-claims	9111882795
 release-procedure	1328049290
 repository-check	201470353
@@ -163,11 +164,11 @@ tour	572528327
 trait-dictionary-c11	3579650893
 traits	8100365888
 tui-framework	3540231478
+type-reduction-trace	270806062
 typed-sidecar-captures	13006344606
 typed-sidecar-codec	3734951600
 typed-sidecar-projector	48343580035
 typed-sidecar-spec	4194545923
-type-reduction-trace	270806062
 tzdb	53823799495
 unicode	18424431805
 unused-function	1085496955
