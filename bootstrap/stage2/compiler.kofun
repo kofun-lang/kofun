@@ -7826,6 +7826,10 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
                     source, hir, scale, argument_end(source, scale)) + ", " +
                 decimal_rounding_c_name(token_text(source, mode)) + ")"
             }
+            if numeric_member == "DecimalError.code" {
+                return "kofun_decimal_status_code((KofunDecimalStatus)(" +
+                emit_expression(source, hir, first, first_end) + ").code)"
+            }
             if numeric_member == "Decimal.format" {
                 let scale = numeric_member_argument(source, open, 1)
                 return "kofun_decimal_value_format(" + emit_expression(
@@ -10909,7 +10913,9 @@ fn validate_fixed_arguments(source: Text) -> Text {
                     return "error[E408]: `Fixed` scale must be an integer literal in `0`..`6144`; a negative argument is not a scale at byte " +
                     to_text(argument)
                 }
-                if token_kind(source, argument) != "integer" {
+                let after = skip_trivia(source, token_end(source, argument))
+                if token_kind(source, argument) != "integer" ||
+                   (token_text(source, after) != "]" && token_text(source, after) != ",") {
                     return "error[E408]: `Fixed` scale must be an integer literal in `0`..`6144`; a type or expression is not a scale at byte " +
                     to_text(argument)
                 }
@@ -10921,7 +10927,6 @@ fn validate_fixed_arguments(source: Text) -> Text {
                     "` is outside `0`..`6144`; it is refused, not wrapped at byte " +
                     to_text(argument)
                 }
-                let after = skip_trivia(source, token_end(source, argument))
                 if token_text(source, after) != "]" {
                     return "error[E2S150]: `Fixed` declares one scale and accepts exactly one argument at byte " +
                     to_text(after)
@@ -10977,7 +10982,14 @@ fn validate_fixed_scale_budget(source: Text) -> Text {
 # that uses it. A user declaration with one of those names is a second meaning
 # for the same spelling, so it is refused before either can be read.
 fn validate_fixed_result_names(source: Text) -> Text {
-    if !contains(source, "Result[Fixed[") {
+    if !contains(source, "Fixed") {
+        return ""
+    }
+    let mut use = skip_trivia(source, 0)
+    while use < len(source) && fixed_result_type_end(source, use) < 0 {
+        use = skip_trivia(source, token_end(source, use))
+    }
+    if use >= len(source) {
         return ""
     }
     let mut cursor = after_optional_module_header(source, 0)
@@ -15749,21 +15761,85 @@ fn propagation_block_expression_end(source: Text, start: Int, limit: Int) -> Int
 # classification's historical `Int` default; `print` yields nothing, `Void`;
 # and a call to a declared `-> Int?` function is `Int?`, where the
 # declared-type reader returns only the head `Int`.
+fn fixed_match_next(source: Text, at: Int) -> Int {
+    return skip_trivia(source, token_end(source, at))
+}
+
+# Strip grouping only around a single Result local or direct call.
+fn fixed_grouped_operand(source: Text, start: Int) -> Int {
+    let mut value = start
+    let mut depth = 0
+    while token_text(source, value) == "(" {
+        value = fixed_match_next(source, value)
+        depth = depth + 1
+    }
+    if depth == 0 || token_kind(source, value) != "identifier" { return start }
+    let mut next = fixed_match_next(source, value)
+    if token_text(source, next) == "(" {
+        let call_end = balanced_end(source, next, "(", ")")
+        if call_end < 0 { return start }
+        next = skip_trivia(source, call_end)
+    }
+    while depth > 0 && token_text(source, next) == ")" {
+        next = fixed_match_next(source, next)
+        depth = depth - 1
+    }
+    if depth == 0 { return value }
+    return start
+}
+
+fn fixed_propagation_arm_end(source: Text, at: Int, kind: Text) -> Int {
+    if token_text(source, at) != kind { return -1 }
+    let open = fixed_match_next(source, at)
+    let name = fixed_match_next(source, open)
+    let close = fixed_match_next(source, name)
+    let arrow = fixed_match_next(source, close)
+    if token_text(source, open) != "(" || token_kind(source, name) != "identifier" ||
+       token_text(source, close) != ")" || token_text(source, arrow) != "=>" { return -1 }
+    let mut value = fixed_match_next(source, arrow)
+    if kind == "Err" {
+        if token_text(source, value) != "return" { return -1 }
+        let ctor = fixed_match_next(source, value)
+        let args = fixed_match_next(source, ctor)
+        if token_text(source, ctor) != "Err" || token_text(source, args) != "(" { return -1 }
+        value = fixed_match_next(source, args)
+    }
+    if token_text(source, value) != token_text(source, name) { return -1 }
+    let mut next = fixed_match_next(source, value)
+    if kind == "Err" {
+        if token_text(source, next) != ")" { return -1 }
+        next = fixed_match_next(source, next)
+    }
+    return next
+}
+
+fn fixed_propagation_match_end(source: Text, at: Int) -> Int {
+    if token_text(source, at) != "match" || token_text(source, fixed_match_next(source, at)) != "take" { return -1 }
+    let arms = pattern_match_open(source, at)
+    if arms < 0 { return -1 }
+    let first = fixed_match_next(source, arms)
+    let first_kind = token_text(source, first)
+    if first_kind != "Ok" && first_kind != "Err" { return -1 }
+    let comma = fixed_propagation_arm_end(source, first, first_kind)
+    if comma < 0 || token_text(source, comma) != "," { return -1 }
+    let mut second_kind = "Ok"
+    if first_kind == "Ok" { second_kind = "Err" }
+    let mut close = fixed_propagation_arm_end(source, fixed_match_next(source, comma), second_kind)
+    if close < 0 { return -1 }
+    if token_text(source, close) == "," { close = fixed_match_next(source, close) }
+    if token_text(source, close) != "}" { return -1 }
+    return token_end(source, close)
+}
+
 fn fixed_expected_result_type(
     source: Text,
     function_open: Int,
     operand: Int
 ) -> Text {
-    if token_text(source, operand) != "Fixed" {
-        return ""
-    }
-    let dot = skip_trivia(source, token_end(source, operand))
-    if token_text(source, dot) != "." {
-        return ""
-    }
-    let member = skip_trivia(source, token_end(source, dot))
-    if token_text(source, member) != "from_decimal" {
-        return ""
+    if token_text(source, operand) != "match" {
+        if !fixed_conversion_head(source, operand) { return "" }
+        let member = fixed_match_next(source, fixed_match_next(source, operand))
+        if token_text(source, member) != "from_decimal" { return "" }
     }
     let mut cursor = skip_trivia(source, token_end(source, function_open))
     while cursor < operand {
@@ -15791,6 +15867,12 @@ fn fixed_expected_result_type(
         cursor = skip_trivia(source, token_end(source, cursor))
     }
     return ""
+}
+
+fn fixed_let_match_end(source: Text, function_open: Int, at: Int) -> Int {
+    let end = fixed_propagation_match_end(source, at)
+    if end >= 0 && len(fixed_expected_result_type(source, function_open, at)) > 0 { return end }
+    return -1
 }
 
 fn propagation_operand_type(
@@ -16050,10 +16132,18 @@ fn result_propagation_nodes(
 # that later validator, because a `?` this refusal does not stop is lowered
 # with the `?` dropped.
 fn validate_result_propagation(source: Text, hir: Text) -> Text {
-    let line = hir_record_start(hir, "propagate", 0)
-    if line < 0 {
-        return "ok"
+    let mut line = hir_record_start(hir, "propagate", 0)
+    while line >= 0 {
+        let outcome = validate_one_propagation(source, hir, line)
+        if outcome != "ok" {
+            return outcome
+        }
+        line = hir_record_start(hir, "propagate", line + 1)
     }
+    return "ok"
+}
+
+fn validate_one_propagation(source: Text, hir: Text, line: Int) -> Text {
     let question = hir_field(hir, line, 1)
     let operand = hir_field(hir, line, 2)
     let operand_type = hir_field(hir, line, 5)
@@ -16067,15 +16157,14 @@ fn validate_result_propagation(source: Text, hir: Text) -> Text {
         "`ok_or(error)?` at byte " + question + "; operand at byte " + operand
     }
     if operand_type == "Fixed.unconstrained" {
-        return "error[E407]: `Fixed.from_decimal` has no expected `Fixed[S]` result type at byte " +
-        question + "; operand at byte " + operand
+        return "error[E407]: `Fixed.from_decimal` has no expected `Fixed[S]` result type at byte " + operand
     }
     if starts_with(operand_type, "Result[Fixed[") {
         let enclosing = function_return_type_containing(
             source,
             decimal_value(question)
         )
-        if enclosing == operand_type {
+        if starts_with(enclosing, "Result[Fixed[") {
             return "ok"
         }
         return "error[E2S221]: `?` propagates `" + operand_type +
@@ -16638,7 +16727,7 @@ fn build_scope_hir_analysis_mode(
             # unresolved as a `candidate-use`.  Declaring it here would resolve
             # the name first and take that input away from it.
             if !preserve_pattern_candidates &&
-               token_text(source, cursor) == "match" {
+               token_text(source, cursor) == "match" && fixed_let_match_end(source, function_open, cursor) < 0 {
                 let arms_open = pattern_match_open(source, cursor)
                 let mut arms_end = -1
                 if arms_open >= 0 {
@@ -16936,9 +17025,27 @@ fn build_scope_hir_analysis_mode(
         # be an arbitrary cut; 4096 is three times that peak and the
         # `USE_LIMIT` hm_levels_frontend.c chose for the same count.
         let mut use_count = 0
+        let mut fixed_arms = -1
+        let mut fixed_arms_end = -1
         let mut unresolved_assignment = false
         cursor = skip_trivia(source, token_end(source, function_open))
         while cursor < function_close {
+            # The explicit propagation match has exactly two arm-local binders.
+            # Its arm reader resolves their single uses; the operand still goes
+            # through ordinary lexical resolution and type checking.
+            if cursor == fixed_arms {
+                cursor = skip_trivia(source, fixed_arms_end)
+                continue
+            }
+            if token_text(source, cursor) == "match" {
+                let end = fixed_let_match_end(source, function_open, cursor)
+                if end >= 0 {
+                    fixed_arms = pattern_match_open(source, cursor)
+                    fixed_arms_end = end
+                    cursor = fixed_match_next(source, fixed_match_next(source, cursor))
+                    continue
+                }
+            }
             # See selfhost_parse_primary: stop at `par` so the walk never
             # reaches the scope token between the bars and blames it as an
             # unknown binding. The construct is refused, so its token is never
@@ -18004,8 +18111,8 @@ fn fixed_from_decimal_call(
     let argument = numeric_member_argument(source, open, 0)
     let mode = numeric_member_argument(source, open, 1)
     if argument < 0 || mode < 0 {
-        return "E@@error[E2S15]: `Fixed.from_decimal` requires one value and one rounding mode at byte " +
-        to_text(open)
+        return "E@@error[E2S17]: Core function `Fixed.from_decimal` expects 2 arguments, got " +
+        to_text(call_arity(source, open)) + " at byte " + to_text(call_start)
     }
     let mode_name = token_text(source, mode)
     if !decimal_rounding_mode_name(mode_name) {
@@ -18060,7 +18167,17 @@ fn lower_fixed_let_statement(
     if equals >= len(source) || token_text(source, equals) != "=" {
         return "E@@error[E2S11]: expected `=` at byte " + to_text(equals)
     }
-    let value_start = skip_trivia(source, token_end(source, equals))
+    let initializer = skip_trivia(source, token_end(source, equals))
+    let mut value_start = initializer
+    let mut match_end = -1
+    let mut match_open = -1
+    if starts_with(annotation, "Fixed[") && token_text(source, value_start) == "match" {
+        match_end = fixed_propagation_match_end(source, value_start)
+        if match_end >= 0 {
+            match_open = pattern_match_open(source, value_start)
+            value_start = fixed_match_next(source, fixed_match_next(source, value_start))
+        }
+    }
     if annotation == "Decimal" {
         if token_kind(source, value_start) == "identifier" {
             let binding_id = hir_use_binding_id(hir, value_start)
@@ -18076,8 +18193,26 @@ fn lower_fixed_let_statement(
         return "E@@error[E2S144]: mutable Fixed and Result bindings are outside this lowering slice at byte " +
         to_text(value_start)
     }
+    let mut group_end = -1
+    if starts_with(annotation, "Fixed[") && token_text(source, value_start) == "(" {
+        let end = balanced_end(source, value_start, "(", ")")
+        if end >= 0 && (match_end >= 0 || token_text(source, skip_trivia(source, end)) == "?") {
+            let inner = fixed_grouped_operand(source, value_start)
+            if inner != value_start {
+                value_start = inner
+                group_end = end
+            }
+        }
+    }
+    let mut operand_end = token_end(source, value_start)
+    let operand_open = skip_trivia(source, operand_end)
+    if token_text(source, operand_open) == "(" {
+        operand_end = balanced_end(source, operand_open, "(", ")")
+    }
+    let has_question = group_end >= 0 || match_end >= 0 || (operand_end > value_start &&
+        token_text(source, skip_trivia(source, operand_end)) == "?")
     if starts_with(annotation, "Fixed[") &&
-       token_text(source, value_start) != "Fixed" {
+       token_text(source, value_start) != "Fixed" && !has_question {
         if token_kind(source, value_start) == "decimal" {
             return "E@@error[E409]: a Decimal value is not a Fixed implicitly; use `Fixed.from_decimal(value, mode)` at byte " +
             to_text(value_start)
@@ -18103,27 +18238,46 @@ fn lower_fixed_let_statement(
     }
     if starts_with(annotation, "Fixed[") {
         let scale = const_argument_of(annotation)
-        let call_pack = fixed_from_decimal_call(
-            source,
-            hir,
-            value_start,
-            scale
-        )
-        if starts_with(call_pack, "E@@") {
-            return call_pack
+        let mut call_end = operand_end
+        let mut call = ""
+        let mut transfer = ""
+        if token_text(source, value_start) == "Fixed" {
+            let call_pack = fixed_from_decimal_call(source, hir, value_start, scale)
+            if starts_with(call_pack, "E@@") {
+                return call_pack
+            }
+            let split = text_find_from(call_pack, "@@", 3)
+            call_end = decimal_value(text_slice(call_pack, 3, split))
+            call = text_slice(call_pack, split + 2, len(call_pack))
+        } else {
+            let operand_type = propagation_operand_type(source, hir, function_open, value_start, operand_end)
+            if fixed_identity_of(operand_type) != annotation {
+                return "E@@error[E409]: propagated payload does not have the destination Fixed scale at byte " + to_text(value_start)
+            }
+            call = emit_expression(source, hir, value_start, operand_end)
+            if starts_with(call, "error[") {
+                return "E@@" + call
+            }
+            let owner = hir_use_binding_id(hir, value_start)
+            if len(owner) > 0 && token_end(source, value_start) == operand_end {
+                if !fixed_ok_move_position(source, hir, owner, initializer) {
+                    return "E@@error[E2S123]: cannot propagate an enclosing Result binding from a conditional or repeated scope at byte " + to_text(value_start)
+                }
+                transfer = "    kofun_decimal_init(&k_b" + owner + ".value);\n"
+            }
         }
-        let call_split = text_find_from(call_pack, "@@", 3)
-        let call_end = decimal_value(
-            text_slice(call_pack, 3, call_split)
-        )
-        let call = text_slice(call_pack, call_split + 2, len(call_pack))
+        if group_end >= 0 { call_end = group_end }
         let question = skip_trivia(source, call_end)
-        if question >= len(source) || token_text(source, question) != "?" {
+        if match_end >= 0 && question != match_open {
+            return "E@@error[E2S15]: propagation match requires one Result operand at byte " + to_text(value_start)
+        }
+        if match_end < 0 && (question >= len(source) || token_text(source, question) != "?") {
             return "E@@error[E407]: `Fixed.from_decimal` has no expected `Fixed[S]` result type; the `?` is what supplies it in this slice at byte " +
             to_text(value_start)
         }
         let task = "Result[" + annotation + ", DecimalError]"
-        if function_return_type_containing(source, function_open) != task {
+        let enclosing = function_return_type_containing(source, function_open)
+        if !starts_with(enclosing, "Result[Fixed[") {
             return "E@@error[E2S221]: `?` propagates a `" + task +
             "` but the enclosing function returns `" +
             function_return_type_containing(source, function_open) +
@@ -18132,14 +18286,17 @@ fn lower_fixed_let_statement(
         }
         let result_type = fixed_result_c_type_name(annotation)
         let fixed_type = fixed_c_type_name(annotation)
+        let error_scale = const_argument_of(fixed_identity_of(enclosing))
         let emitted = "    " + result_type + " kofun_prop_" + binding_id +
-        " = " + call + ";\n" +
+        " = " + call + ";\n" + transfer +
         "    if (!kofun_prop_" + binding_id + ".ok) { " + cleanup +
-        "return kofun_prop_" + binding_id + "; }\n" +
+        "return kofun_fixed_err__" + error_scale + "(kofun_prop_" + binding_id + ".code); }\n" +
         "    " + fixed_type + " k_b" + binding_id +
         " = { kofun_fixed_result_take__" + scale + "(&kofun_prop_" +
         binding_id + ") };\n"
-        return "L@@" + to_text(token_end(source, question)) + "@@" +
+        let mut next = match_end
+        if next < 0 { next = token_end(source, question) }
+        return "L@@" + to_text(next) + "@@" +
         "kofun_fixed_drop(&k_b" + binding_id + ".value); @@" +
         "kofun_fixed_drop(&k_b" + binding_id + ".value), @@" + emitted
     }
@@ -18603,6 +18760,19 @@ fn lower_body(
             let binding_id = hir_definition_id_at(hir, cursor)
             let storage = "k_b" + binding_id
             cursor = skip_trivia(source, token_end(source, cursor))
+            if hir_binding_field(hir, binding_id, 5) == "DecimalError" {
+                let mut equals = cursor
+                if token_text(source, cursor) == ":" { equals = fixed_match_next(source, fixed_match_next(source, cursor)) }
+                let value = fixed_match_next(source, equals)
+                let owner = hir_use_binding_id(hir, value)
+                if mutable || token_text(source, equals) != "=" || hir_binding_field(hir, owner, 5) != "DecimalError" ||
+                   expression_end(source, value) != token_end(source, value) {
+                    return lower_error("E2S15", "DecimalError binds an immutable copy of a matched error", value)
+                }
+                emitted = emitted + "    KofunDecimalError " + storage + " = k_b" + owner + ";\n    (void)" + storage + ";\n"
+                cursor = fixed_match_next(source, value)
+                continue
+            }
             if cursor < len(source) && token_text(source, cursor) == ":" {
                 let fixed_annotation_start = skip_trivia(
                     source,
@@ -20008,6 +20178,10 @@ fn lower_body(
                     "    }\n"
                     value_end = call_end
                 } else {
+                    let returned = hir_binding_field(hir, hir_use_binding_id(hir, value_start), 5)
+                    if starts_with(returned, "Fixed[") && returned != fixed_identity_of(result_identity) {
+                        return lower_error("E409", "a Fixed return of another scale is an implicit conversion", value_start)
+                    }
                     return "error[E2S15]: a Fixed Result return is `Ok(owner)`, `Err(error)`, or one `Fixed.from_decimal` call at byte " +
                     to_text(value_start)
                 }
@@ -20817,7 +20991,7 @@ fn text_operand(
     if token_kind(source, cursor) != "identifier" {
         return false
     }
-    if numeric_conversion_at(source, cursor) == "Decimal.format" {
+    if numeric_conversion_result(numeric_conversion_at(source, cursor)) == "Text" {
         return true
     }
     let name = token_text(source, cursor)
@@ -20865,7 +21039,8 @@ fn numeric_name(name: Text) -> Text {
 # resolving it would report `E2S35: unknown lexical binding` — which is what it
 # did before the conversions existed.
 fn numeric_conversion_head(source: Text, cursor: Int) -> Bool {
-    if len(numeric_name(token_text(source, cursor))) == 0 {
+    let name = token_text(source, cursor)
+    if name != "DecimalError" && len(numeric_name(name)) == 0 {
         return false
     }
     let dot = skip_trivia(source, token_end(source, cursor))
@@ -20960,7 +21135,7 @@ fn numeric_conversion_result(conversion: Text) -> Text {
        conversion == "Decimal.parse" {
         return "Decimal"
     }
-    if conversion == "Decimal.format" {
+    if conversion == "Decimal.format" || conversion == "DecimalError.code" {
         return "Text"
     }
     if conversion == "Float.from_decimal" {
@@ -21474,7 +21649,7 @@ fn validate_numeric_annotations(source: Text, hir: Text) -> Text {
 # Arity and ordinary argument types for the bounded numeric member surface.
 # A blank expected type marks the rounding-mode slot, validated by name below.
 fn numeric_member_expected_arity(member: Text) -> Int {
-    if member == "Decimal.from_int" || member == "Decimal.from_float" {
+    if member == "DecimalError.code" || member == "Decimal.from_int" || member == "Decimal.from_float" {
         return 1
     }
     if member == "Float.from_decimal" || member == "Decimal.format" {
@@ -21493,6 +21668,9 @@ fn numeric_member_expected_arity(member: Text) -> Int {
 }
 
 fn numeric_member_expected_type(member: Text, index: Int) -> Text {
+    if member == "DecimalError.code" {
+        return "DecimalError"
+    }
     if member == "Decimal.from_int" {
         return "Int"
     }
@@ -22458,7 +22636,7 @@ fn move_statement_head(source: Text, cursor: Int) -> Bool {
         return false
     }
     let target = skip_trivia(source, token_end(source, cursor))
-    if target >= len(source) {
+    if target >= len(source) || fixed_conversion_head(source, target) {
         return false
     }
     if token_kind(source, target) != "identifier" {
@@ -22834,8 +23012,80 @@ fn fixed_owner_copy_error(source: Text, hir: Text, cursor: Int) -> Text {
     return fixed_owner_alias_error(token_text(source, value), value_type, value)
 }
 
+fn validate_fixed_value_positions(source: Text, hir: Text) -> Text {
+    if !contains(source, "Fixed") {
+        return ""
+    }
+    let mut previous_at = 0
+    let mut previous = ""
+    let mut before = ""
+    let mut cursor = skip_trivia(source, 0)
+    while cursor < len(source) {
+        let current = token_text(source, cursor)
+        let next = skip_trivia(source, token_end(source, cursor))
+        if fixed_conversion_head(source, cursor) {
+            let member = skip_trivia(source, token_end(source, next))
+            if token_text(source, member) != "from_decimal" {
+                return lower_error("E2S15", "unsupported Fixed member in the Stage 2 carrier profile", member)
+            }
+            if previous == "(" || previous == "," || previous == ":" {
+                return lower_error("E2S15", "a Fixed constructor needs a typed Fixed binding or Result return in this position", cursor)
+            }
+        }
+        # Parentheses preserve the type of a bare binding. Inspect the
+        # containing operator or call at the outside of the group.
+        let mut value = cursor
+        let mut value_end = next
+        let mut depth = 0
+        while token_text(source, value) == "(" {
+            value = fixed_match_next(source, value)
+            depth = depth + 1
+        }
+        if depth > 0 {
+            value_end = fixed_match_next(source, value)
+            while depth > 0 && token_text(source, value_end) == ")" {
+                value_end = fixed_match_next(source, value_end)
+                depth = depth - 1
+            }
+        }
+        let mut binding = ""
+        if depth == 0 { binding = hir_use_binding_id(hir, value) }
+        if len(binding) > 0 {
+            let ty = hir_binding_field(hir, binding, 5)
+            let fixed = starts_with(ty, "Fixed[") || starts_with(ty, "Result[Fixed[")
+            if fixed || ty == "DecimalError" {
+                let following = token_text(source, value_end)
+                if checked_place_shape_operator(following) || checked_place_shape_operator(previous) ||
+                   previous == "!" {
+                    let mut at = value_end
+                    if !checked_place_shape_operator(following) {
+                        at = previous_at
+                    }
+                    return lower_error("E2S144", "this operator is outside the Stage 2 Fixed carrier profile", at)
+                }
+                if previous == "(" && before == "print" {
+                    return lower_error("E2S15", "this value has no direct print form in the Stage 2 Fixed carrier profile", value)
+                }
+                if value != cursor && previous == "=" && following != "?" {
+                    return lower_error("E2S15", "a parenthesized Fixed carrier cannot initialize a scalar binding", value)
+                }
+                if previous == "(" || previous == "," || previous == ":" {
+                    if len(call_argument_expected_type(source, cursor)) > 0 {
+                        return lower_error("E2S15", "a Fixed carrier cannot cross an ordinary call parameter", value)
+                    }
+                }
+            }
+        }
+        before = previous
+        previous_at = cursor
+        previous = current
+        cursor = next
+    }
+    return ""
+}
+
 fn validate_fixed_owner_copies(source: Text, hir: Text) -> Text {
-    if !contains(source, "Fixed[") {
+    if !contains(source, "Fixed") {
         return ""
     }
     let mut cursor = 0
@@ -22863,6 +23113,22 @@ fn move_call_binding(
     # Existing labelled and pipeline rules retain their type scope. Ordinary
     # positional calls add only the #1540 direct, bare, owning v1 slice, and
     # a list append's element is that same slice (#1737).
+    let mut after = fixed_match_next(source, cursor)
+    let mut propagates = token_text(source, after) == "?"
+    if token_text(source, after) == ")" {
+        while token_text(source, after) == ")" { after = fixed_match_next(source, after) }
+        if token_text(source, after) == "?" {
+            let line = hir_record_start(hir, "propagate|" + to_text(after), 0)
+            if line >= 0 {
+                let start = decimal_value(hir_field(hir, line, 2))
+                propagates = fixed_grouped_operand(source, start) == cursor
+            }
+        }
+    }
+    if propagates &&
+       starts_with(hir_binding_field(hir, hir_use_binding_id(hir, cursor), 5), "Result[Fixed[") {
+        return true
+    }
     if pipeline_subject_take(source, cursor) {
         return true
     }
@@ -23213,12 +23479,17 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     if len(fixed_copy_check) > 0 {
         return fixed_copy_check
     }
+    let fixed_position_check = validate_fixed_value_positions(source, hir)
+    if len(fixed_position_check) > 0 {
+        return fixed_position_check
+    }
     let bytes_private_check = validate_bytes_private_results(source, hir)
     if starts_with(bytes_private_check, "error[") {
         return bytes_private_check
     }
     let fractional_values = source_uses_fractional_values(source)
-    let uses_fixed = contains(source, "Fixed[")
+    let uses_fixed = contains(source, "Fixed") &&
+        len(fixed_scale_instantiation_at(source, 0)) > 0
     # #1315. The carrier, its asserts, and the reclamation helper are emitted
     # only for a source that can reach them. `calloc`/`free` in every program
     # is degradation the call-arguments gate correctly refuses.

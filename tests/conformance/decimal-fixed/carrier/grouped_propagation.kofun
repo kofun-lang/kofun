@@ -1,0 +1,19 @@
+fn source() -> Result[Fixed[2], DecimalError] {
+    return Fixed.from_decimal(1.25, Floor)
+}
+
+fn cents() -> Result[Fixed[2], DecimalError] {
+    let first: Fixed[2] = ((source()))?
+    let outcome: Result[Fixed[2], DecimalError] = Ok(first)
+    let last: Fixed[2] = (outcome)?
+    return Ok(last)
+}
+
+fn main() -> Int {
+    let outcome: Result[Fixed[2], DecimalError] = cents()
+    match take outcome {
+        Ok(amount) => { print(0) },
+        Err(error) => { print(DecimalError.code(error)) },
+    }
+    return 0
+}

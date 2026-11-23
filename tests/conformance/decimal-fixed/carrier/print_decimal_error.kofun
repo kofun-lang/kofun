@@ -1,0 +1,17 @@
+fn cents() -> Result[Fixed[2], DecimalError] {
+    let amount: Fixed[2] = Fixed.from_decimal(1.999, HalfUp)?
+    return Ok(amount)
+}
+
+fn main() -> Int {
+    let outcome: Result[Fixed[2], DecimalError] = cents()
+    match take outcome {
+        Ok(amount) => {
+            print(0)
+        },
+        Err(error) => {
+            print(error)
+        },
+    }
+    return 0
+}

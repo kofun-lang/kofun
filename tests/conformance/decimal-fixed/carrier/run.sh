@@ -50,7 +50,7 @@ for source in "$CASES"/*.kofun; do
     test ! -s "$WORK/$stem.internal" || fail "$stem wrote internal stderr"
     test ! -e "$output" || fail "$stem emitted C"
     case $stem in
-        fixed_qualified) test ! -e "$WORK/$stem.ir" && test ! -e "$WORK/$stem.tokens" ;;
+        enum_fixed|fixed_qualified) test ! -e "$WORK/$stem.ir" && test ! -e "$WORK/$stem.tokens" ;;
         *) test -s "$WORK/$stem.ir" && test -s "$WORK/$stem.tokens" ;;
     esac || fail "$stem changed which checkpoints survive refusal"
     cmp "$golden" "$WORK/$stem.actual" || fail "$stem diagnostic differs from its golden"
@@ -69,7 +69,7 @@ done
 # (if_owner_fallthrough, while_owner_fallthrough, arm_owner_fallthrough,
 # #1763). Every `.stdout` golden is a positive and must be listed, so none can
 # skip the seam.
-POSITIVES='construction_contexts:cents first_program:cents ok_transfer:cents err_rewrap:again two_owners:cents ok_arm_return:again ok_arm_payload:again if_owner_fallthrough:cents while_owner_fallthrough:cents arm_owner_fallthrough:again'
+POSITIVES='grouped_propagation:cents propagate_call_and_local:cents construction_contexts:cents first_program:cents ok_transfer:cents err_rewrap:again two_owners:cents ok_arm_return:again ok_arm_payload:again if_owner_fallthrough:cents while_owner_fallthrough:cents arm_owner_fallthrough:again'
 # #1766. Programs whose entry fails a statement through `kofun_failed`, an R010
 # overflow, with Fixed owners live: after a `let` in the function body, in an
 # `if` branch, on a `while` body's second pass and in an `Ok` arm with its

@@ -1,0 +1,1 @@
+error[E2S157]: Stage 2 local lists require List[Int] or a bounded record list at byte 36

@@ -1,0 +1,1 @@
+error[E410]: the bounded Result[Fixed[S], DecimalError] specialization cannot coexist with a user constructor named `Ok` or `Err` at byte 15
