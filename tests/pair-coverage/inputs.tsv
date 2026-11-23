@@ -185,6 +185,7 @@ bootstrap/stage2/fixtures/range_exception.kofun
 bootstrap/stage2/function_arity_error.kofun
 bootstrap/stage2/function_unknown_error.kofun
 bootstrap/stage2/functions_fixture.kofun
+bootstrap/stage2/includes/sha256.kofun
 bootstrap/stage2/malformed.kofun
 bootstrap/stage2/unsupported_core.kofun
 bootstrap/wasm/fixtures/argument_order.kofun
