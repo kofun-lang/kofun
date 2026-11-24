@@ -35285,6 +35285,7 @@ fn executable_record_symbol(identity: Text, path: Text) -> Text {
         scoped_hir_text_hex("x86_64-linux") + "00", id,
         "00" + scoped_hir_text_hex("record-c11/v1") + "00", scoped_hir_text_hex("aggregate-layout-v1"))
     let alphabet = "abcdefghijklmnopqrstuvwxyz234567"
+    let one = 1
     let mut out = "KofunGR_"
     let mut bits = 0
     let mut value = 0
@@ -35294,7 +35295,7 @@ fn executable_record_symbol(identity: Text, path: Text) -> Text {
         bits = bits + 4
         if bits >= 5 {
             bits = bits - 5
-            let divisor = 1.shl(bits)
+            let divisor = one.shl(bits)
             let digit = value // divisor
             out = out + text_slice(alphabet, digit, digit + 1)
             value = value % divisor
