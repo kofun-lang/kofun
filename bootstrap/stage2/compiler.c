@@ -44124,6 +44124,7 @@ static char *gr_refusal(const char *code, const char *message, int64_t at) {
     Buffer error;
     buffer_init(&error);
     buffer_format(&error, "error[%s]: %s at byte %" PRId64, code, message, at);
+    stage2_diagnostic_set(code, at, at, at >= 0, error.data);
     return error.data;
 }
 
