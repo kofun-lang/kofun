@@ -165,17 +165,15 @@ ensure_wasm_compiler() {
     fi
 }
 
-publish_stage2_compiler() (
+prepare_stage2_compiler_output() {
     work=$(mktemp -d "$STAGE2_BUILD_DIR/.compiler.XXXXXX") || exit 1
     trap 'rm -rf "$work"' 0
     trap 'exit 129' 1
     trap 'exit 130' 2
     trap 'exit 143' 15
-    "$@" "$work/kofun-stage2" || exit 1
-    mv -f "$work/kofun-stage2" "$STAGE2_COMPILER"
-)
+}
 
-ensure_stage2_compiler() {
+ensure_stage2_compiler() (
     mkdir -p "$STAGE2_BUILD_DIR"
     # #1202 taught the gate scripts and the conformance adapter to reuse the
     # compiler `task verify` already built and exported as
@@ -195,11 +193,12 @@ ensure_stage2_compiler() {
         then
             # An include probe or another gate may be executing the cached
             # file. Publish a complete copy without opening it for writing.
-            publish_stage2_compiler cp "$KOFUN_STAGE2_COMPILER" || return 1
+            prepare_stage2_compiler_output
+            cp "$KOFUN_STAGE2_COMPILER" "$work/kofun-stage2" || exit 1
+        else
+            return 0
         fi
-        return 0
-    fi
-    if [ ! -x "$STAGE2_COMPILER" ] ||
+    elif [ ! -x "$STAGE2_COMPILER" ] ||
        [ "$STAGE2_SEED_C" -nt "$STAGE2_COMPILER" ] ||
        [ "$STAGE2_DECIMAL_C" -nt "$STAGE2_COMPILER" ] ||
        [ "$STAGE2_DECIMAL_H" -nt "$STAGE2_COMPILER" ] ||
@@ -210,10 +209,14 @@ ensure_stage2_compiler() {
        [ "$UTF8PROC_H" -nt "$STAGE2_COMPILER" ] ||
        [ "$UTF8PROC_DATA" -nt "$STAGE2_COMPILER" ]
     then
-        publish_stage2_compiler "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
-            "$STAGE2_SEED_C" -o
+        prepare_stage2_compiler_output
+        "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+            "$STAGE2_SEED_C" -o "$work/kofun-stage2" || exit 1
+    else
+        return 0
     fi
-}
+    mv -f "$work/kofun-stage2" "$STAGE2_COMPILER"
+)
 
 ensure_stage2_events_compiler() {
     # Validate a supplied bundle on every call, including the path that can
