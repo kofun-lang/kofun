@@ -147,3 +147,21 @@ the frozen capture oracle, complete/failed/cancelled snapshots, upstream
 identity and span mutations, successor bounds, and atomic replacement. These
 synthetic successes do not claim compiler capture derivation or change the
 ordinary compiler's E2S154 refusal.
+
+## Callable signatures in v3
+
+Pass `--typed-sidecar-version 3` to single-file `kofun check` with the usual
+output and generation arguments. The generation sequence orders replacements
+independently of the schema. Omitting the option or passing `1` selects v1.
+The v2 capture projector retains its existing entry point.
+
+The compiler publishes resolved parameter shapes through the version 3
+single-file event stream. Its header carries major 3 and its common record
+framing and limits follow KSE1. After the existing fact kinds, kind 5 marks a
+checked, explicitly pure function. Its owner is a validated function node,
+its status is validated, its display is `pure`, and its reason and relation
+lists are empty. Projection retains the inferred effect and puts the owner's
+node ID into the sorted `declared_pure_functions` array. On failed checks
+declarations have no validated purity assertion. V3 readers accepting a
+capture section validate both `capture_profile` and `captures` against v2.
+The single-file compiler emits callable and effect facts in its own profile.

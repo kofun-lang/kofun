@@ -245,6 +245,7 @@ kofun_stage2_semantic_role_input_paths() {
                 bootstrap/stage2/decimal_v1.h \
                 bootstrap/stage2/effect_inference.h \
                 bootstrap/stage2/semantic_events.h \
+                bootstrap/stage2/semantic_events_v3.h \
                 bootstrap/stage2/semantic_producer.c \
                 bootstrap/stage2/semantic_producer.h \
                 bootstrap/stage2/sha256.h \
@@ -259,6 +260,7 @@ kofun_stage2_semantic_role_input_paths() {
             printf '%s\n' \
                 bootstrap/stage2/semantic_events.c \
                 bootstrap/stage2/semantic_events.h \
+                bootstrap/stage2/semantic_events_v3.h \
                 bootstrap/stage2/sha256.h \
                 vendor/utf8proc/utf8proc.h
             ;;

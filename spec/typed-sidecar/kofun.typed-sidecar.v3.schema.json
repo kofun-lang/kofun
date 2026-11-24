@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kofun.dev/schema/kofun.typed-sidecar.v3.schema.json",
+  "title": "Kofun typed semantic sidecar v3",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "authoritative": {
+      "$ref": "kofun.typed-sidecar.v2.schema.json#/properties/authoritative"
+    },
+    "capture_profile": {
+      "$ref": "kofun.typed-sidecar.v2.schema.json#/properties/capture_profile"
+    },
+    "captures": {
+      "$ref": "kofun.typed-sidecar.v2.schema.json#/properties/captures"
+    },
+    "compiler": {
+      "$ref": "kofun.typed-sidecar.v2.schema.json#/properties/compiler"
+    },
+    "completeness": {
+      "$ref": "kofun.typed-sidecar.v2.schema.json#/properties/completeness"
+    },
+    "diagnostics": {
+      "$ref": "kofun.typed-sidecar.v2.schema.json#/properties/diagnostics"
+    },
+    "file": {
+      "$ref": "kofun.typed-sidecar.v2.schema.json#/properties/file"
+    },
+    "generation": {
+      "$ref": "kofun.typed-sidecar.v2.schema.json#/properties/generation"
+    },
+    "limits": {
+      "additionalProperties": false,
+      "properties": {
+        "document_bytes": {
+          "const": 16777216
+        },
+        "max_depth": {
+          "const": 128
+        },
+        "profile": {
+          "const": "default-v3"
+        }
+      },
+      "required": [
+        "document_bytes",
+        "max_depth",
+        "profile"
+      ],
+      "type": "object"
+    },
+    "nodes": {
+      "$ref": "kofun.typed-sidecar.v2.schema.json#/properties/nodes"
+    },
+    "references": {
+      "$ref": "kofun.typed-sidecar.v2.schema.json#/properties/references"
+    },
+    "schema": {
+      "const": "kofun.typed-sidecar/v3"
+    },
+    "source_status": {
+      "$ref": "kofun.typed-sidecar.v2.schema.json#/properties/source_status"
+    },
+    "declared_pure_functions": {
+      "type": "array",
+      "maxItems": 4096,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "kofun.typed-sidecar.v2.schema.json#/$defs/id"
+      }
+    }
+  },
+  "required": [
+    "authoritative",
+    "compiler",
+    "completeness",
+    "declared_pure_functions",
+    "diagnostics",
+    "file",
+    "generation",
+    "limits",
+    "nodes",
+    "references",
+    "schema",
+    "source_status"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "captures"
+        ]
+      },
+      "then": {
+        "required": [
+          "capture_profile"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "capture_profile"
+        ]
+      },
+      "then": {
+        "required": [
+          "captures"
+        ]
+      }
+    }
+  ]
+}

@@ -367,7 +367,7 @@ node	invoke	3	required-today	required	tests/tooling/task-help/check.sh
 node	invoke	2	required-today	required	tests/typed-sidecar/atomic-write.sh
 node	invoke	2	required-today	required	tests/typed-sidecar/authority-boundary.sh
 node	invoke	3	required-today	required	tests/typed-sidecar/captures.sh
-node	invoke	2	required-today	required	tests/typed-sidecar/cli.sh
+node	invoke	5	required-today	required	tests/typed-sidecar/cli.sh
 node	invoke	3	required-today	required	tests/typed-sidecar/codec.sh
 node	invoke	4	required-today	required	tests/typed-sidecar/producer-races.sh
 node	invoke	4	required-today	required	tests/typed-sidecar/stage2-projector.sh
