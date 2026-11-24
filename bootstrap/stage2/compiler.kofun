@@ -35281,9 +35281,12 @@ fn executable_record_argument_hexes(identity: Text, path: Text) -> Text {
 fn executable_record_symbol(identity: Text, path: Text) -> Text {
     let id = generic_record_constructed_id(generic_record_type_id(path, const_type_base(identity)),
         executable_record_argument_hexes(identity, path))
+    let target = "x86_64-linux"
+    let backend = "record-c11/v1"
+    let layout = "aggregate-layout-v1"
     let hash = scoped_hir_hash_frame("kofun.id.backend-symbol/v1",
-        scoped_hir_text_hex("x86_64-linux") + "00", id,
-        "00" + scoped_hir_text_hex("record-c11/v1") + "00", scoped_hir_text_hex("aggregate-layout-v1"))
+        scoped_hir_text_hex(target) + "00", id,
+        "00" + scoped_hir_text_hex(backend) + "00", scoped_hir_text_hex(layout))
     let alphabet = "abcdefghijklmnopqrstuvwxyz234567"
     let one = 1
     let mut out = "KofunGR_"
