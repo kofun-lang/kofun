@@ -5,11 +5,7 @@ set -eu
 # wrapper, and it verifies every tracked checksum manifest.
 # #1455.
 #
-# The command's SHA-256 comes from the block `bootstrap/stage2/compiler.kofun`
-# carries between its `# ---- SHA-256` marker and `fn main`, extracted at build
-# time by `bootstrap/digest/build.sh` (the #1668 decision, option a). The build
-# is Stage 2 to C plus one `cc` link, so nothing here reaches for the tool it
-# replaces.
+# The command includes the bounded SHA-256 block and is linked from emitted C.
 #
 # Two properties are proved, and the acceptance criteria name both:
 #
@@ -42,7 +38,6 @@ esac
 rm -rf "$WORK"
 mkdir -p "$WORK"
 
-. "$ROOT/bootstrap/digest/build.sh"
 . "$ROOT/bootstrap/stage2/build.sh"
 
 # The retired wrapper must be gone, and the builder must not name it. A line
@@ -72,7 +67,7 @@ SPY
 chmod +x "$spy/kofun-digest"
 
 env -u KOFUN_DIGEST_TOOL PATH="$spy:$PATH" \
-    sh -c '. "$1/bootstrap/digest/build.sh"; kofun_digest_build "$1" "$2"' \
+    sh -c '. "$1/bootstrap/stage2/build.sh"; kofun_digest_build "$1" "$2"' \
     sh "$ROOT" "$WORK/kofun-digest" ||
     fail 'the command did not build'
 test ! -s "$spy_log" ||
@@ -82,10 +77,10 @@ test -x "$WORK/kofun-digest" ||
 
 # The build recipe is Kofun, not C: the builder drives Stage 2 to C. This is
 # the property the spy alone cannot see.
-grep -q -- '--compile-outcome' "$ROOT/bootstrap/digest/build.sh" ||
+grep -q -- '--compile-outcome' "$ROOT/bootstrap/stage2/build.sh" ||
     fail 'the digest builder no longer compiles Kofun through Stage 2'
 grep -q 'bootstrap/digest/command.kofun.in' \
-    "$ROOT/bootstrap/digest/build.sh" ||
+    "$ROOT/bootstrap/stage2/build.sh" ||
     fail 'the digest builder no longer reads the Kofun command source'
 
 # 2. Every tracked manifest verifies. Each is run from the directory its owning

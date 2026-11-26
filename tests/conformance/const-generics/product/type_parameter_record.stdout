@@ -1,1 +1,1 @@
-error[E2S148]: type parameters on a nominal type are unsupported; `Boxed` may declare `[const NAME: Int]` only at byte 355
+0

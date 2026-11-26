@@ -1,0 +1,26 @@
+type Wrapper[T] = {
+    inner: Box[T],
+}
+type Box[T] = {
+    content: T,
+}
+type Phantom[T] = {
+    count: Int,
+}
+type A = {
+    slot: Phantom[A],
+}
+fn outer(read item: Wrapper[Int]) -> Int {
+    let inner: Box[Int] = item.inner
+    return inner.content
+}
+fn main() -> Int {
+    let phantom: Phantom[A] = Phantom[A](count: 7)
+    let a: A = A(slot: phantom)
+    let copy: Phantom[A] = a.slot
+    print(copy.count)
+    let item: Box[Int] = Box[Int](content: 11)
+    let wrapped: Wrapper[Int] = Wrapper[Int](inner: item)
+    print(outer(wrapped))
+    return 0
+}

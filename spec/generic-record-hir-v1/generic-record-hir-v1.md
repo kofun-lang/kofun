@@ -46,11 +46,11 @@ kofun-stage2 --emit-generic-record-hir INPUT.kofun OUTPUT.json LOGICAL-PATH
 - The document is canonical JSON on one line terminated by `\n`, with object
   keys in lexicographic order.
 
-Ordinary compilation and `--compile-outcome` keep refusing every generic record
-exactly as they do today (`E2S148` on a type parameter, exit 1, no C and no
-artifact). #1673 decision 3(a): only this analysis entry accepts, so the two
-public modes cannot disagree and the Stage 1 compatibility path is never
-entered.
+Ordinary C11 Stage 2 compilation and `--compile-outcome` support bounded
+concrete generic records. The backend uses each `ConstructedTypeId` to
+distinguish concrete C types, including nested applications. A record-only
+HIR fixture can describe declarations without a `main` function. Executing
+those declarations requires a program entry point.
 
 ## Identity framing
 
@@ -202,5 +202,6 @@ It then drives both halves of the entry — the canonical Kofun half through the
 bounded host driver and the maintained C half as the built binary — requires
 each to reproduce the positive golden byte for byte and to refuse each negative
 fixture with its registered code and no artifact, and requires the two halves to
-agree on the diagnostic text. Ordinary compilation keeps refusing every generic
-record with `E2S148`, and no C, KIF, or capability is claimed here.
+agree on the diagnostic text. The
+[`generic-records-stage2` gate](../../tests/conformance/generic-records-stage2/check.sh)
+checks emitted C types, concrete layouts and program output for executable records.

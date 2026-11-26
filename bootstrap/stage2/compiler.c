@@ -2973,11 +2973,21 @@ static char *parameter_list_type_text(
  * shape: two parsers for one syntax is how the two ends of a field list start
  * disagreeing.
  */
+static bool gr_executable_decl(const char *, int64_t);
+static int64_t gr_application_end(const char *, int64_t);
+static char *gr_substitute_tokens(const char *, int64_t, int64_t, const char *, const char *);
+static char *gr_field_substitution(const char *, int64_t, int64_t, int64_t, const char *);
+static char *gr_binder_names(const char *, int64_t);
+static char *gr_record_symbol(const char *, const char *);
+static bool gr_executable_enabled(const char *);
+static char *gr_executable_layouts(const char *);
 static int64_t record_field_type_end(
     const char *source,
     int64_t field_type,
     int64_t limit
 ) {
+    int64_t generic_end = gr_application_end(source, field_type);
+    if (generic_end >= 0) return generic_end;
     int64_t list_end = parameter_list_type_end(source, field_type, limit);
     return list_end >= 0 ? list_end : token_end(source, field_type);
 }
@@ -3147,7 +3157,8 @@ static int64_t record_field_count(
                 free(covered.data);
                 return -2;
             }
-        } else if (!admissible_record_field_token(source, field_type)) {
+        } else if (!admissible_record_field_token(source, field_type) &&
+                   !gr_executable_decl(source, declaration) && gr_application_end(source, field_type) < 0) {
             free(covered.data);
             return -2;
         }
@@ -3191,6 +3202,9 @@ static char *record_field_text(
         int64_t colon = skip_trivia(source, token_end(source, cursor));
         int64_t field_type = skip_trivia(source, token_end(source, colon));
         if (index == wanted_index) {
+            if (want_type && (gr_executable_decl(source, declaration) ||
+                              gr_application_end(source, field_type) >= 0))
+                return gr_field_substitution(source, declaration, field_type, close, record_type);
             /*
              * #1183: a `List[Int]` field's type is its canonical name, not its
              * first token.  Callers compare this against carrier names like
@@ -3688,6 +3702,16 @@ static char *type_parameter_list_error(const char *source, int64_t start) {
         return const_generic_refusal(&error);
     }
     int64_t keyword = skip_trivia(source, token_end(source, bracket));
+    if (gr_executable_decl(source, start)) {
+        char *names = gr_binder_names(source,start);
+        if (strncmp(names,"error[",6) == 0 || *names != 0) {
+            free(name); free(error.data);
+            if (strncmp(names,"error[",6) == 0) return names;
+            free(names);
+            return owned_text("");
+        }
+        free(names);
+    }
     if (!token_equal(source, keyword, "const")) {
         buffer_format(
             &error,
@@ -4746,6 +4770,11 @@ static char *parse_program(const char *source) {
     /* Const generic surface (#916). Both checks run before any declaration is
      * recorded, so a refused source never reaches layout, IR, or an
      * artifact. */
+    if (gr_executable_enabled(source)) {
+        char *checked = gr_executable_layouts(source);
+        if (strncmp(checked,"error[",6) == 0) return checked;
+        free(checked);
+    }
     char *const_argument_check = validate_const_arguments(source);
     if (strncmp(const_argument_check, "error[", 6) == 0) {
         return const_argument_check;
@@ -6713,6 +6742,8 @@ static int64_t fixed_result_type_end(const char *source, int64_t type_start) {
  * instantiation becomes a type identity, so every comparison downstream
  * distinguishes the scales without knowing they exist. */
 static char *annotation_type_text(const char *source, int64_t type_start) {
+    int64_t generic_end = gr_application_end(source, type_start);
+    if (generic_end >= 0) return gr_substitute_tokens(source,type_start,generic_end,"","");
     char *specialization = fixed_result_type_text(source, type_start);
     if (specialization[0] != '\0') return specialization;
     free(specialization);
@@ -6744,6 +6775,8 @@ static char *annotation_type_text(const char *source, int64_t type_start) {
  * past only the head token here is what would leave `[2]` in the stream for
  * the next parser step to trip over. */
 static int64_t annotation_type_end(const char *source, int64_t type_start) {
+    int64_t generic_end = gr_application_end(source, type_start);
+    if (generic_end >= 0) return generic_end;
     int64_t specialization_end = fixed_result_type_end(source, type_start);
     if (specialization_end >= 0) return specialization_end;
     int64_t length = source_length(source);
@@ -8254,6 +8287,14 @@ static int64_t primary_end(const char *source, int64_t start) {
         return -1;
     }
     if (strcmp(kind, "identifier") == 0) {
+        int64_t type_end = gr_application_end(source,cursor);
+        if (type_end >= 0) {
+            int64_t args = skip_trivia(source,type_end);
+            if (token_equal(source,args,"(")) {
+                int64_t finish = balanced_end(source,args,"(",")");
+                if (finish >= 0) return field_postfix_end(source,finish);
+            }
+        }
         char *conversion = numeric_conversion_at(source, cursor);
         if (conversion[0] != '\0') {
             int64_t dot = skip_trivia(source, token_end(source, cursor));
@@ -8636,6 +8677,9 @@ static char *const_argument_of(const char *identity) {
  * construct at all. `validate_struct_identity` now refuses that collapse
  * instead of a comment asserting it is fine. */
 static char *record_c_type_name(const char *record_type) {
+    const char *open = strchr(record_type,'[');
+    if (open && open[1] && !(open[1] >= '0' && open[1] <= '9'))
+        return gr_record_symbol(record_type,"main.kofun");
     char *base = const_type_base(record_type);
     char *argument = const_argument_of(record_type);
     char *name = c_identifier_name(base);
@@ -9139,6 +9183,27 @@ static char *emit_record_value(
      * `Int` field read compiled and ran as the record it was read from, with
      * no diagnostic anywhere. Anything left unconsumed that is not a call is
      * not a record value in this slice. */
+    if (open < end && token_equal(source, open, ".")) {
+        int64_t at = skip_trivia(source, token_end(source, open));
+        char *id = hir_use_binding_id(hir,cursor);
+        char *owner = hir_binding_field(hir,id,5);
+        char *field = token_copy(source,at);
+        char *type = record_field_type_named(source,owner,field);
+        bool match = skip_trivia(source,token_end(source,at)) >= end &&
+            (gr_executable_decl(source,record_declaration_start(source,owner)) ||
+             gr_executable_decl(source,record_declaration_start(source,record_type))) &&
+            strcmp(type,record_type) == 0;
+        free(type); free(owner);
+        if (match) {
+            char *member = record_c_field_name(field);
+            Buffer output;
+            buffer_init(&output);
+            buffer_format(&output,"k_b%s.%s",id,member);
+            free(member); free(field); free(id); free(name);
+            return output.data;
+        }
+        free(field); free(id);
+    }
     if (open < end && !token_equal(source, open, "(")) {
         free(name);
         return lower_error(
@@ -9164,6 +9229,14 @@ static char *emit_record_value(
                     strcmp(actual_base, wanted_base) == 0;
                 free(wanted_base);
                 free(actual_base);
+                if (same_declaration && gr_executable_decl(source,record_declaration_start(source,binding_type))) {
+                    Buffer detail;
+                    buffer_init(&detail);
+                    buffer_format(&detail,"nominal record binding `%s` does not match `%s`",binding_type,record_type);
+                    char *error = lower_error("E2S32",detail.data,cursor);
+                    free(detail.data); free(binding_type); free(binding_id); free(name);
+                    return error;
+                }
                 if (same_declaration) {
                     Buffer detail;
                     buffer_init(&detail);
@@ -18871,6 +18944,12 @@ static bool type_annotation_token(
                     token_end(source, colon)
                 );
                 int64_t type_end = annotation_type_end(source, type_start);
+                int64_t equal = skip_trivia(source,type_end);
+                if (token_equal(source,equal,"=")) {
+                    int64_t value = skip_trivia(source,token_end(source,equal));
+                    int64_t params = gr_application_end(source,value);
+                    if (params >= 0 && target >= value && target < params) return true;
+                }
                 if (target >= type_start && target < type_end) return true;
             }
         }
@@ -18977,7 +19056,7 @@ static bool record_initializer_constructor_token(
                 );
                 int64_t equals = skip_trivia(
                     source,
-                    token_end(source, type_cursor)
+                    annotation_type_end(source, type_cursor)
                 );
                 int64_t initializer = skip_trivia(
                     source,
@@ -20546,6 +20625,9 @@ static char *initializer_type_bounded(
         return owned_text("Bool");
     }
     if (strcmp(kind, "identifier") == 0) {
+        int64_t type_end = gr_application_end(source,cursor);
+        if (type_end >= 0 && token_equal(source,skip_trivia(source,type_end),"("))
+            return annotation_type_text(source,cursor);
         char *name = token_copy(source, cursor);
         /* Call and index detection must not stop at the bounded
          * expression end: profile initializers may continue across
@@ -32578,10 +32660,16 @@ static bool record_used_as_list_element(
 }
 
 static char *emit_record_c_declarations(const char *source) {
+    bool generic = gr_executable_enabled(source);
     int64_t length = (int64_t)strlen(source);
     int64_t cursor = after_optional_module_header(source, 0);
     Buffer declarations;
     buffer_init(&declarations);
+    if (generic) {
+        char *concrete = gr_executable_layouts(source);
+        buffer_append(&declarations,concrete);
+        free(concrete);
+    }
     while (cursor < length) {
         int64_t type_start = type_declaration_start(source, cursor);
         if (
@@ -32611,13 +32699,11 @@ static char *emit_record_c_declarations(const char *source) {
                 }
             } else {
                 char *c_type = record_c_type_name(record_type);
-                char *emitted = emit_record_c_declaration(
-                    source,
-                    record_type,
-                    c_type
-                );
-                buffer_append(&declarations, emitted);
-                free(emitted);
+                if (!generic) {
+                    char *emitted = emit_record_c_declaration(source,record_type,c_type);
+                    buffer_append(&declarations,emitted);
+                    free(emitted);
+                }
                 if (record_used_as_list_element(source, record_type)) {
                     char *list_c_type = record_list_c_type(record_type);
                     buffer_format(
@@ -36804,7 +36890,129 @@ static void stage2_authority_result_destroy(Stage2AuthorityResult *result) {
 }
 #endif
 
-static int compile_file(
+/* Names are resolved only in the explicit catalog. No filesystem operation
+ * accepts a path from the source or a catalog entry. */
+static bool include_name_valid(const char *name) {
+    size_t length = strlen(name);
+    if (length == 0 || length > 64) return false;
+    for (size_t i = 0; i < length; i++) {
+        char c = name[i];
+        if (!(c >= 'a' && c <= 'z') &&
+            (i == 0 || (c != '_' && !(c >= '0' && c <= '9')))) return false;
+    }
+    return true;
+}
+
+static char *include_payload(const char *bundle, const char *name) {
+    const char *header = "KOFUN-INCLUDES-1\n";
+    size_t length = strlen(bundle), at = strlen(header);
+    char names[64][65];
+    size_t count = 0, found_at = 0, found_size = 0;
+    bool found = false;
+    KofunUnicodeError unicode_error;
+    if (length > 4199000 || strncmp(bundle, header, at) != 0 ||
+        !kofun_unicode_validate_source((const uint8_t *)bundle, length, &unicode_error))
+        goto invalid;
+    while (at < length) {
+        size_t start = at, size = 0;
+        while (at < length && at - start <= 64 && bundle[at] != '\t') at++;
+        if (at >= length || at - start > 64 || count == 64) goto invalid;
+        memcpy(names[count], bundle + start, at - start);
+        names[count][at - start] = '\0';
+        if (!include_name_valid(names[count])) goto invalid;
+        for (size_t i = 0; i < count; i++) {
+            if (strcmp(names[i], names[count]) == 0) goto invalid;
+        }
+        size_t digits = ++at;
+        while (at < length && bundle[at] != '\n') {
+            if (bundle[at] < '0' || bundle[at] > '9' || at - digits >= 5) goto invalid;
+            size = size * 10 + (size_t)(bundle[at++] - '0');
+        }
+        if (at == digits || size > 65536 ||
+            (at - digits > 1 && bundle[digits] == '0')) goto invalid;
+        at++;
+        if (at + size >= length || bundle[at + size] != '\n') goto invalid;
+        if (strcmp(names[count], name) == 0) {
+            found_at = at;
+            found_size = size;
+            found = true;
+        }
+        at += size + 1;
+        count++;
+    }
+    if (!found) return owned_text("error[E2S224]: undeclared or invalid include name");
+    return source_slice(bundle, (int64_t)found_at, (int64_t)(found_at + found_size));
+invalid:
+    return owned_text("error[E2S226]: invalid bounded include catalog");
+}
+
+static const char *include_target_error(const char *target) {
+    KofunUnicodeError unicode_error;
+    if (!kofun_unicode_validate_source((const uint8_t *)target, strlen(target), &unicode_error))
+        return "error[E2S226]: invalid include source";
+    int64_t length = (int64_t)strlen(target), at = skip_trivia(target, 0);
+    while (at < length) {
+        if (token_equal(target, at, "include"))
+            return "error[E2S227]: an include target cannot include another block";
+        int64_t end = top_level_end(target, at);
+        if (end <= at) return "error[E2S02]: expected a top-level declaration in include target";
+        at = skip_trivia(target, end);
+    }
+    return NULL;
+}
+
+static bool uses_bounded_include(const char *source) {
+    KofunUnicodeError unicode_error;
+    return strstr(source, "include") != NULL &&
+        kofun_unicode_validate_source((const uint8_t *)source, strlen(source), &unicode_error) &&
+        token_equal(source, after_optional_module_header(source, 0), "include");
+}
+
+static char *expand_bounded_includes(const char *source, const char *bundle) {
+    int64_t at = after_optional_module_header(source, 0);
+    Buffer expanded;
+    char names[64][65];
+    size_t count = 0;
+    buffer_init(&expanded);
+    if (!token_equal(source, skip_trivia(source, 0), "module"))
+        buffer_format(&expanded, "%.*s", (int)at, source);
+    while (token_equal(source, at, "include")) {
+        int64_t quote = skip_trivia(source, token_end(source, at));
+        if (source[quote] != '"') goto invalid;
+        int64_t end = string_end(source, quote);
+        if (end <= quote + 1 || end - quote - 2 > 64 || count >= 64) goto invalid;
+        memcpy(names[count], source + quote + 1, (size_t)(end - quote - 2));
+        names[count][end - quote - 2] = '\0';
+        if (!include_name_valid(names[count])) goto invalid;
+        for (size_t i = 0; i < count; i++) {
+            if (strcmp(names[i], names[count]) == 0) goto invalid;
+        }
+        char *target = include_payload(bundle, names[count++]);
+        if (strncmp(target, "error[", 6) == 0) {
+            free(expanded.data);
+            return target;
+        }
+        const char *error = include_target_error(target);
+        /* The token memo is keyed by immutable source identity. Switch back
+         * before this temporary target's allocation is released. */
+        at = skip_trivia(source, end);
+        if (error != NULL) {
+            free(target);
+            free(expanded.data);
+            return owned_text(error);
+        }
+        buffer_format(&expanded, "\n%s\n%.*s", target, (int)(at - end), source + end);
+        free(target);
+    }
+    buffer_append(&expanded, source + at);
+    return expanded.data;
+invalid:
+    free(expanded.data);
+    return owned_text("error[E2S224]: undeclared or invalid include name");
+}
+
+static int compile_file_with_bundle(
+    const char *bundle_path,
     const char *input,
     const char *output,
     const char *ir_output,
@@ -36815,6 +37023,8 @@ static int compile_file(
     const char *outputs[] = {output, ir_output, tokens_output};
     for (size_t index = 0; index < sizeof(outputs) / sizeof(outputs[0]); ++index) {
         Stage2FileIdentity identity = stage2_same_file(input, outputs[index]);
+        if (identity == STAGE2_FILE_DIFFERENT && bundle_path != NULL)
+            identity = stage2_same_file(bundle_path, outputs[index]);
         if (identity == STAGE2_FILE_LOOKUP_ERROR) {
             stage2_host_lookup_error();
             return 2;
@@ -36825,6 +37035,28 @@ static int compile_file(
         }
     }
     char *source = read_file(input);
+    if (uses_bounded_include(source)) {
+        const char *empty = "KOFUN-INCLUDES-1\n";
+        size_t size = 0;
+        char *bundle = bundle_path == NULL ? NULL : read_file_with_length(bundle_path, &size);
+        if (bundle != NULL && memchr(bundle, 0, size) != NULL) {
+            free(bundle);
+            free(source);
+            puts("error[E2S226]: invalid bounded include catalog");
+            return 1;
+        }
+        char *expanded = expand_bounded_includes(source, bundle == NULL ? empty : bundle);
+        free(bundle);
+        free(source);
+        source_length_text = NULL;
+        token_end_memo_source = NULL;
+        source = expanded;
+        if (strncmp(source, "error[", 6) == 0) {
+            puts(source);
+            free(source);
+            return 1;
+        }
+    }
     char *tokens = lex_source(source);
     if (strncmp(tokens, "error[", 6) == 0) {
         puts(tokens);
@@ -36942,6 +37174,10 @@ static int compile_file(
     free(tokens);
     free(source);
     return 0;
+}
+
+static int compile_file(const char *input, const char *output, const char *ir, const char *tokens) {
+    return compile_file_with_bundle(NULL, input, output, ir, tokens);
 }
 
 static int check_ownership_file(const char *path) {
@@ -44336,6 +44572,7 @@ static char *gr_refusal(const char *code, const char *message, int64_t at) {
     Buffer error;
     buffer_init(&error);
     buffer_format(&error, "error[%s]: %s at byte %" PRId64, code, message, at);
+    stage2_diagnostic_set(code, at, at, at >= 0, error.data);
     return error.data;
 }
 
@@ -47625,7 +47862,587 @@ static int sha256_selftest(void) {
     return 0;
 }
 
+/* Concrete law declaration HIR (#1772). The token tape uses canonical
+ * Stage 2 lexical boundaries. Its EOF sentinel also carries the final source
+ * byte so missing-token diagnostics remain located. No operation is executed. */
+#include <setjmp.h>
+
+typedef struct LawAllocation {
+    struct LawAllocation *next;
+    void *value;
+} LawAllocation;
+
+typedef struct {
+    const char *word;
+    int start, end;
+    bool identifier;
+} LawToken;
+
+typedef struct LawSymbol {
+    const char *name, *type;
+    int definition;
+    struct LawSymbol *next;
+} LawSymbol;
+
+typedef struct LawScope {
+    LawSymbol *first, *last;
+    const struct LawScope *outer;
+} LawScope;
+
+typedef struct {
+    const char *source;
+    LawToken tokens[1025];
+    int count, at;
+    LawAllocation *allocations;
+    jmp_buf refusal;
+    const char *error;
+} LawReader;
+
+typedef struct {
+    const char *types, *json;
+    LawScope symbols;
+} LawParameters;
+
+typedef struct {
+    const char *type, *json;
+} LawTyped;
+
+static void *law_keep(LawReader *r, void *value) {
+    LawAllocation *entry = allocate(sizeof(*entry));
+    entry->next = r->allocations;
+    entry->value = value;
+    r->allocations = entry;
+    return value;
+}
+
+static char *law_format(LawReader *r, const char *format, ...) {
+    if (format == NULL) fail("stage2 law HIR: missing format string");
+    va_list args;
+    va_start(args, format);
+    va_list copy;
+    va_copy(copy, args);
+    int size = vsnprintf(NULL, 0, format, copy);
+    va_end(copy);
+    if (size < 0) fail("stage2 law HIR: formatting failed");
+    char *result = law_keep(r, allocate((size_t)size + 1));
+    (void)vsnprintf(result, (size_t)size + 1, format, args);
+    va_end(args);
+    return result;
+}
+
+static const char *law_join(LawReader *r, const char *list, const char *item) {
+    return *list ? law_format(r, "%s,%s", list, item) : item;
+}
+
+static void law_error(LawReader *r, const char *code, const char *message, int byte) {
+    r->error = law_format(r, "error[%s]: %s at byte %d", code, message, byte);
+    longjmp(r->refusal, 1);
+}
+
+static void law_expected(LawReader *r, const char *wanted) {
+    law_error(r, "E2S228", law_format(r, "expected %s in law declarations", wanted),
+              r->tokens[r->at].start);
+}
+
+static bool law_is(const LawReader *r, const char *word) {
+    return strcmp(r->tokens[r->at].word, word) == 0;
+}
+
+static void law_take(LawReader *r, const char *word) {
+    if (!law_is(r, word)) law_expected(r, law_format(r, "`%s`", word));
+    ++r->at;
+}
+
+static int law_name_token(LawReader *r, const char *context) {
+    if (!r->tokens[r->at].identifier) law_expected(r, context);
+    return r->at++;
+}
+
+static const char *law_decl_span(LawReader *r, const char *object, int first, int last) {
+    return law_format(r, "%.*s,\"declaration_span\":[%d,%d]}", (int)strlen(object)-1, object,
+                      r->tokens[first].start, r->tokens[last].end);
+}
+
+static const char *law_named(LawReader *r, int index) {
+    LawToken t = r->tokens[index];
+    return law_format(r, "\"name\":\"%s\",\"span\":[%d,%d]", t.word, t.start, t.end);
+}
+
+static const LawSymbol *law_lookup(const LawScope *scope, const char *name) {
+    for (; scope != NULL; scope = scope->outer) {
+        for (LawSymbol *symbol = scope->first; symbol; symbol = symbol->next) {
+            if (strcmp(symbol->name, name) == 0) return symbol;
+        }
+    }
+    return NULL;
+}
+
+static void law_duplicate(LawReader *r, int index) {
+    law_error(r, "E2S229", law_format(r, "duplicate law name `%s`", r->tokens[index].word),
+              r->tokens[index].start);
+}
+
+static void law_unknown(LawReader *r, int index) {
+    law_error(r, "E2S229", law_format(r, "unresolved law name `%s`", r->tokens[index].word),
+              r->tokens[index].start);
+}
+
+static const LawSymbol *law_resolve(LawReader *r, const LawScope *scope, int index) {
+    const LawSymbol *binding = law_lookup(scope, r->tokens[index].word);
+    if (!binding) law_unknown(r, index);
+    return binding;
+}
+
+static void law_define(LawReader *r, LawScope *scope, int index, const char *type) {
+    const char *name = r->tokens[index].word;
+    for (LawSymbol *old = scope->first; old; old = old->next) {
+        if (strcmp(old->name, name) == 0) law_duplicate(r, index);
+    }
+    LawSymbol *entry = law_keep(r, allocate(sizeof(*entry)));
+    *entry = (LawSymbol){name, type, index, NULL};
+    if (scope->last) scope->last->next = entry; else scope->first = entry;
+    scope->last = entry;
+}
+
+static void law_lex(LawReader *r) {
+    const char *source = r->source;
+    int length = (int)strlen(source), cursor = (int)skip_lexical_trivia(source, 0);
+    while (cursor < length) {
+        if (r->count == 1024) law_error(r, "E2S228", "law declaration source exceeds 1024 tokens", cursor);
+        int end = (int)token_end(source, cursor);
+        if (end <= cursor) {
+            law_error(r, "E2S228", "expected a complete source token in law declarations", cursor);
+        }
+        r->tokens[r->count++] = (LawToken){law_keep(r, token_copy(source, cursor)), cursor, end,
+            strcmp(token_kind(source, cursor), "identifier") == 0};
+        cursor = (int)skip_lexical_trivia(source, end);
+    }
+    r->tokens[r->count] = (LawToken){"", length, length, false};
+}
+
+static const char *law_type(LawReader *r, const LawScope *slots, int depth) {
+    if (depth > 16) law_error(r, "E2S228", "law type nesting exceeds 16", r->tokens[r->at].start);
+    const char *type = "";
+    bool grouped = law_is(r, "(");
+    if (grouped) {
+        ++r->at;
+        while (!law_is(r, ")")) {
+            type = law_join(r, type, law_type(r, slots, depth + 1));
+            if (!law_is(r, ")")) law_take(r, ",");
+        }
+        ++r->at;
+    } else {
+        int i = law_name_token(r, "a concrete type");
+        const char *name = r->tokens[i].word;
+        const LawSymbol *bound = law_lookup(slots, name);
+        if (bound) type = bound->type;
+        else if (strcmp(name, "Bool") == 0) type = "Bool";
+        else law_error(r, "E2S231", law_format(r, "unsupported ground law type `%s`", name), r->tokens[i].start);
+        if (law_is(r, "?")) {
+            if (strcmp(type, "Bool") != 0) law_error(r, "E2S231", "unsupported nested optional law type", r->tokens[r->at].start);
+            ++r->at;
+            type = "Bool?";
+        }
+    }
+    if (law_is(r, "->")) {
+        ++r->at;
+        const char *result = law_type(r, slots, depth + 1);
+        return law_format(r, "(%s)->%s", type, result);
+    }
+    if (grouped) law_expected(r, "`->`");
+    return type;
+}
+
+static LawParameters law_params(LawReader *r, const LawScope *slots, const LawScope *domains) {
+    LawParameters result = {"", "", {0}};
+    law_take(r, "(");
+    while (!law_is(r, ")")) {
+        int name = law_name_token(r, "a parameter name");
+        if (law_lookup(&result.symbols, r->tokens[name].word)) law_duplicate(r, name);
+        law_take(r, ":");
+        const char *type = law_type(r, slots, 0);
+        law_define(r, &result.symbols, name, type);
+        result.types = law_join(r, result.types, type);
+        const char *domain = "";
+        if (domains) {
+            law_take(r, "in");
+            int index = law_name_token(r, "a domain name");
+            const LawSymbol *bound = law_resolve(r, domains, index);
+            if (strcmp(type, bound->type) != 0) {
+                law_error(r, "E2S230", "quantifier and domain types differ", r->tokens[index].start);
+            }
+            domain = law_format(r, ",\"domain\":%d", r->tokens[bound->definition].start);
+        }
+        result.json = law_join(r, result.json, law_format(r, "{%s,\"type\":\"%s\"%s}", law_named(r, name), type, domain));
+        if (!law_is(r, ")")) law_take(r, ",");
+    }
+    ++r->at;
+    return result;
+}
+
+static LawTyped law_signature(LawReader *r, int name, const LawScope *slots) {
+    LawParameters p = law_params(r, slots, NULL);
+    law_take(r, "->");
+    const char *result = law_type(r, slots, 0);
+    const char *type = law_format(r, "(%s)->%s", p.types, result);
+    return (LawTyped){type,law_format(r,"{%s,\"type\":\"%s\",\"parameters\":[%s]}",law_named(r,name),type,p.json)};
+}
+
+static LawTyped law_expr(LawReader *r, const LawScope *slots, const LawScope *env, int depth) {
+    int start = r->tokens[r->at].start;
+    if (depth > 32) law_error(r, "E2S228", "law equation nesting exceeds 32", start);
+    const char *type, *node;
+    if (law_is(r, "fn")) {
+        ++r->at;
+        LawParameters p = law_params(r, slots, NULL);
+        law_take(r, "=>");
+        p.symbols.outer = env;
+        LawTyped body = law_expr(r, slots, &p.symbols, depth + 1);
+        type = law_format(r, "(%s)->%s", p.types, body.type);
+        node = law_format(r, "{\"kind\":\"lambda\",\"parameters\":[%s],\"body\":%s", p.json, body.json);
+    } else {
+        int name = law_name_token(r, "an equation operand");
+        const LawSymbol *bound = law_resolve(r, env, name);
+        type = bound->type;
+        node = law_format(r, "{\"kind\":\"ref\",\"target\":%d", r->tokens[bound->definition].start);
+    }
+    node = law_format(r, "%s,\"span\":[%d,%d],\"type\":\"%s\"}", node, start, r->tokens[r->at-1].end, type);
+    while (law_is(r, "(")) {
+        int open = r->at++;
+        const char *args = "", *children = "";
+        while (!law_is(r, ")")) {
+            LawTyped arg = law_expr(r, slots, env, depth + 1);
+            args = law_join(r, args, arg.type);
+            children = law_join(r, children, arg.json);
+            if (!law_is(r, ")")) law_take(r, ",");
+        }
+        ++r->at;
+        const char *prefix = law_format(r, "(%s)->", args);
+        if (strncmp(type, prefix, strlen(prefix)) != 0) {
+            law_error(r, "E2S230", "law call arguments do not match callable type", r->tokens[open].start);
+        }
+        type += strlen(prefix);
+        node = law_format(r, "{\"kind\":\"call\",\"callee\":%s,\"arguments\":[%s],\"span\":[%d,%d],\"type\":\"%s\"}",
+                          node, children, start, r->tokens[r->at-1].end, type);
+    }
+    return (LawTyped){type,node};
+}
+
+typedef struct {
+    int family, instance, check, family_open, instance_open;
+    int family_end, instance_end, check_end;
+    LawScope functions, slots, operations, domains;
+    const char *function_json, *slot_json, *operation_json, *equality;
+} LawDeclarations;
+
+static void law_index(LawReader *r, LawDeclarations *decl) {
+    LawScope names = {0};
+    while (r->at < r->count) {
+        int kind = r->at++;
+        const char *word = r->tokens[kind].word;
+        int *unique = NULL;
+        const char *function_json = "";
+        if (strcmp(word, "law") == 0) unique = &decl->family;
+        else if (strcmp(word, "impl") == 0) unique = &decl->instance;
+        else if (strcmp(word, "check") == 0) { law_take(r, "laws"); unique = &decl->check; }
+        else if (strcmp(word, "fn") != 0) {
+            --r->at;
+            law_expected(r, "a law, implementation, function, or check");
+        }
+        int name = law_name_token(r, "a declaration name");
+        law_define(r, &names, name, "");
+        if (unique) {
+            if (*unique >= 0) law_error(r, "E2S228", "concrete law HIR supports one family, implementation, and check", r->tokens[kind].start);
+            *unique = name;
+            while (r->at < r->count && !law_is(r, "{")) ++r->at;
+        } else {
+            LawTyped function = law_signature(r, name, NULL);
+            law_define(r, &decl->functions, name, function.type);
+            function_json = function.json;
+        }
+        int open = r->at;
+        law_take(r, "{");
+        int depth = 1;
+        while (r->at < r->count && depth) {
+            if (law_is(r, "{")) ++depth;
+            else if (law_is(r, "}")) --depth;
+            ++r->at;
+        }
+        if (depth) {
+            r->at = open;
+            law_expected(r, "a closed declaration body");
+        }
+        if (unique == &decl->family) decl->family_end = r->at-1;
+        else if (unique == &decl->instance) decl->instance_end = r->at-1;
+        else if (unique == &decl->check) decl->check_end = r->at-1;
+        else decl->function_json = law_join(r,decl->function_json,law_decl_span(r,function_json,kind,r->at-1));
+    }
+    if (decl->family < 0 || decl->instance < 0 || decl->check < 0) {
+        law_error(r, "E2S228", "expected one family, implementation, and check", r->tokens[r->at].start);
+    }
+}
+
+static void law_substitutions(LawReader *r, LawDeclarations *d) {
+    r->at = d->family + 1;
+    law_take(r, "[");
+    int slot = r->at;
+    r->at = d->instance + 1;
+    law_take(r, ":");
+    if (!law_is(r, r->tokens[d->family].word)) law_unknown(r, r->at);
+    ++r->at;
+    law_take(r, "[");
+    int arg = r->at;
+    while (strcmp(r->tokens[slot].word, "]") != 0 && strcmp(r->tokens[arg].word, "]") != 0) {
+        r->at = slot;
+        (void)law_name_token(r, "a schema slot");
+        if (strcmp(r->tokens[slot].word, "Bool") == 0 || law_lookup(&d->slots, r->tokens[slot].word)) law_duplicate(r, slot);
+        r->at = arg;
+        const char *type = law_type(r, NULL, 0);
+        if (strcmp(type,"Bool") && strcmp(type,"Bool?")) {
+            law_error(r, "E2S231", "unsupported concrete law substitution", r->tokens[arg].start);
+        }
+        law_define(r, &d->slots, slot, type);
+        d->slot_json = law_join(r, d->slot_json, law_format(r, "{%s,\"type\":\"%s\",\"argument_span\":[%d,%d]}",
+            law_named(r,slot), type, r->tokens[arg].start, r->tokens[r->at-1].end));
+        ++slot;
+        arg = r->at;
+        if (strcmp(r->tokens[slot].word, "]") == 0 || law_is(r, "]")) break;
+        r->at = slot;
+        law_take(r, ",");
+        slot = r->at;
+        r->at = arg;
+        law_take(r, ",");
+        arg = r->at;
+    }
+    if (!d->slots.first || strcmp(r->tokens[slot].word, "]") || strcmp(r->tokens[arg].word, "]")) {
+        law_error(r, "E2S231", "law substitution arity does not match family", r->tokens[arg].start);
+    }
+    d->family_open = slot + 1;
+    d->instance_open = arg + 1;
+    r->at = d->family_open; law_take(r, "{");
+    r->at = d->instance_open; law_take(r, "{");
+}
+
+static const char *law_check(LawReader *r, LawDeclarations *d) {
+    LawScope seen = {0};
+    const char *json = "", *assurance = "";
+    r->at = d->check + 1;
+    law_take(r, "{");
+    while (!law_is(r, "}")) {
+        int clause = r->at;
+        if (!law_is(r,"domain")) law_define(r,&seen,clause,"");
+        if (law_is(r,"instance")) {
+            ++r->at;
+            law_take(r, "=");
+            if (!law_is(r, r->tokens[d->instance].word)) law_unknown(r,r->at);
+            ++r->at;
+        } else if (law_is(r,"equality")) {
+            ++r->at;
+            int name = r->at;
+            d->equality = law_type(r, NULL, 0);
+            if (strcmp(d->equality,"Bool") && strcmp(d->equality,"Bool?")) {
+                law_error(r, "E2S231", "structural law equality requires Bool or Bool?", r->tokens[name].start);
+            }
+            law_take(r, "=");
+            if (!law_is(r,"structural")) law_expected(r,"structural");
+            ++r->at;
+        } else if (law_is(r,"require")) {
+            ++r->at;
+            law_take(r, "assurance"); law_take(r, "=");
+            if (!law_is(r,"proven_finite") && !law_is(r,"bounded_exhaustive")) law_expected(r,"a finite assurance requirement");
+            assurance = r->tokens[r->at++].word;
+        } else if (law_is(r,"budget")) {
+            ++r->at;
+            law_take(r, "=");
+            if (!law_is(r,"standard")) law_expected(r,"standard");
+            ++r->at;
+        } else if (law_is(r,"domain")) {
+            ++r->at;
+            int name = law_name_token(r,"a domain name");
+            if (law_lookup(&d->domains,r->tokens[name].word)) law_duplicate(r,name);
+            law_take(r, ":");
+            const char *type = law_type(r, NULL, 0);
+            law_take(r, "=");
+            int origin = r->at;
+            const char *fields;
+            if (law_is(r,"all")) {
+                ++r->at;
+                if (strcmp(type,"Bool") && strcmp(type,"Bool?")) law_error(r,"E2S231","`all` requires Bool or Bool?",r->tokens[origin].start);
+                fields = "\"origin\":\"all\"";
+            } else if (law_is(r,"all_functions")) {
+                ++r->at;
+                law_take(r,"(");
+                int first = r->at;
+                if (r->at < r->count) ++r->at;
+                law_take(r,",");
+                int second = r->at;
+                if (r->at < r->count) ++r->at;
+                law_take(r,")");
+                const LawSymbol *input = law_resolve(r,&d->domains,first);
+                const LawSymbol *output = law_resolve(r,&d->domains,second);
+                if (strcmp(type,law_format(r,"(%s)->%s",input->type,output->type))) {
+                    law_error(r,"E2S230","function domain type does not match component domains",r->tokens[origin].start);
+                }
+                fields = law_format(r,"\"origin\":\"all_functions\",\"input\":%d,\"output\":%d",
+                    r->tokens[input->definition].start,r->tokens[output->definition].start);
+            } else {
+                law_expected(r,"`all` or `all_functions`");
+                return NULL;
+            }
+            law_define(r,&d->domains,name,type);
+            json = law_join(r,json,law_format(r,"{%s,\"type\":\"%s\",%s}",law_named(r,name),type,fields));
+        } else law_expected(r,"a check clause");
+    }
+    if (!law_lookup(&seen,"instance") || !*d->equality || !*assurance || !law_lookup(&seen,"budget") || !d->domains.first) {
+        law_error(r,"E2S228","check lacks instance, domains, equality, assurance or budget",r->tokens[r->at].start);
+    }
+    return law_format(r,"{%s,\"instance\":%d,\"domains\":[%s],\"equality\":{\"type\":\"%s\",\"kind\":\"structural\"},"
+        "\"requested_assurance\":\"%s\",\"budget\":\"standard\"}",law_named(r,d->check),r->tokens[d->instance].start,json,d->equality,assurance);
+}
+
+static void law_operations(LawReader *r, LawDeclarations *d) {
+    r->at = d->family_open + 1;
+    while (!law_is(r, "}")) {
+        /* The right operand of an equation may itself be named operation. */
+        if (law_is(r, "operation") && r->at + 2 < r->count &&
+            r->tokens[r->at + 1].identifier && strcmp(r->tokens[r->at + 2].word, "(") == 0) {
+            ++r->at;
+            int name = r->at++;
+            if (law_lookup(&d->operations,r->tokens[name].word)) law_duplicate(r,name);
+            LawTyped sig = law_signature(r,name,&d->slots);
+            law_define(r,&d->operations,name,sig.type);
+            d->operation_json = law_join(r,d->operation_json,law_decl_span(r,sig.json,name-1,r->at-1));
+        } else {
+            if (r->at == r->count) law_expected(r,"`}`");
+            ++r->at;
+        }
+    }
+    if (!d->operations.first) law_expected(r,"an operation member");
+}
+
+static const char *law_equations(LawReader *r, LawDeclarations *d) {
+    LawScope members = {0};
+    const char *json = "";
+    r->at = d->family_open + 1;
+    while (!law_is(r,"}")) {
+        int kind = r->at;
+        if (r->at < r->count) ++r->at;
+        int name = law_name_token(r,"a law member name");
+        law_define(r,&members,name,"");
+        if (strcmp(r->tokens[kind].word,"operation") == 0) {
+            (void)law_signature(r,name,&d->slots);
+        } else if (strcmp(r->tokens[kind].word,"equation") == 0) {
+            LawParameters p = law_params(r,&d->slots,&d->domains);
+            p.symbols.outer = &d->operations;
+            law_take(r,"=");
+            LawTyped left = law_expr(r,&d->slots,&p.symbols,0);
+            int eq = r->at;
+            law_take(r,"==");
+            LawTyped right = law_expr(r,&d->slots,&p.symbols,0);
+            if (strcmp(left.type,d->equality) || strcmp(right.type,d->equality)) {
+                law_error(r,"E2S230","law operands do not match the selected equality type",r->tokens[eq].start);
+            }
+            json = law_join(r,json,law_format(r,"{%s,\"declaration_span\":[%d,%d],\"parameters\":[%s],\"kind\":\"equal\",\"type\":\"Bool\",\"left\":%s,\"right\":%s}",
+                law_named(r,name),r->tokens[kind].start,r->tokens[r->at-1].end,p.json,left.json,right.json));
+        } else {
+            r->at = kind;
+            law_expected(r,"an operation or equation");
+        }
+    }
+    if (!*json) law_expected(r,"an equation member");
+    return json;
+}
+
+static const char *law_bindings(LawReader *r, LawDeclarations *d) {
+    LawScope seen = {0};
+    const char *json = "";
+    r->at = d->instance_open + 1;
+    while (!law_is(r,"}")) {
+        int name = law_name_token(r,"an operation binding");
+        const LawSymbol *operation = law_resolve(r,&d->operations,name);
+        law_define(r,&seen,name,"");
+        law_take(r,"=");
+        int target = r->at;
+        const LawSymbol *function = law_resolve(r,&d->functions,target);
+        ++r->at;
+        if (strcmp(operation->type,function->type) != 0) {
+            law_error(r,"E2S230","law operation binding has incompatible function signature",r->tokens[target].start);
+        }
+        json = law_join(r,json,law_format(r,"{%s,\"operation\":%d,\"function\":%d,\"target_span\":[%d,%d]}",
+            law_named(r,name),r->tokens[operation->definition].start,r->tokens[function->definition].start,
+            r->tokens[target].start,r->tokens[target].end));
+    }
+    for (LawSymbol *needed=d->operations.first; needed; needed=needed->next) {
+        if (!law_lookup(&seen,needed->name)) {
+            law_error(r,"E2S229",law_format(r,"unbound required law operation `%s`",needed->name),r->tokens[r->at].start);
+        }
+    }
+    return json;
+}
+
+static const char *law_document(LawReader *r, const char *path) {
+    if (setjmp(r->refusal)) return r->error;
+    if (strlen(r->source) > 16384) law_error(r,"E2S228","law declaration source exceeds 16384 bytes",0);
+    law_lex(r);
+    LawDeclarations d = {.family=-1, .instance=-1, .check=-1, .function_json="",
+                         .slot_json="", .operation_json="", .equality=""};
+    law_index(r,&d);
+    law_substitutions(r,&d);
+    const char *policy = law_check(r,&d);
+    law_operations(r,&d);
+    const char *bindings = law_bindings(r,&d);
+    const char *equations = law_equations(r,&d);
+    char *id = law_keep(r,scoped_hir_file_id(path));
+    policy = law_decl_span(r,policy,d.check-2,d.check_end);
+    return law_format(r,"{\"schema\":\"kofun.law-declaration-hir/v1\",\"file_id\":\"%s\",\"functions\":[%s],"
+        "\"family\":{%s,\"declaration_span\":[%d,%d],\"slots\":[%s],\"operations\":[%s],\"equations\":[%s]},"
+        "\"implementation\":{%s,\"declaration_span\":[%d,%d],\"family\":%d,\"bindings\":[%s]},\"check\":%s}\n",
+        id,d.function_json,law_named(r,d.family),r->tokens[d.family-1].start,r->tokens[d.family_end].end,d.slot_json,d.operation_json,equations,
+        law_named(r,d.instance),r->tokens[d.instance-1].start,r->tokens[d.instance_end].end,r->tokens[d.family].start,bindings,policy);
+}
+
+static int emit_law_hir_file(const char *input, const char *output, const char *path) {
+    Stage2FileIdentity identity = stage2_same_file(input,output);
+    if (identity == STAGE2_FILE_LOOKUP_ERROR) { stage2_host_lookup_error(); return 2; }
+    if (identity == STAGE2_FILE_SAME) {
+        puts("error[E2S228]: law HIR input and output must be distinct at byte 0"); return 1;
+    }
+    if (!scoped_hir_logical_path(path)) {
+        puts("error[E2S228]: law HIR logical path must be canonical relative UTF-8 at byte 0"); return 1;
+    }
+    size_t length;
+    char *source = read_file_with_length(input,&length);
+    KofunUnicodeError unicode;
+    if (!kofun_unicode_validate_source((const uint8_t *)source,length,&unicode)) {
+        char message[1024];
+        kofun_unicode_format_error(&unicode,getenv("KOFUN_DIAGNOSTIC_LOCALE"),message,sizeof(message));
+        puts(message); free(source); return 1;
+    }
+    LawReader reader = {.source=source};
+    const char *artifact = law_document(&reader,path);
+    int status = 0;
+    if (reader.error) { puts(reader.error); status = 1; }
+    else if (!write_file_transactional(output,artifact)) { puts("error[E2S228]: cannot publish law declaration HIR at byte 0"); status = 1; }
+    while (reader.allocations) {
+        LawAllocation *entry = reader.allocations;
+        reader.allocations = entry->next;
+        free(entry->value); free(entry);
+    }
+    free(source);
+    return status;
+}
+
 int main(int argc, char **argv) {
+    if (argc == 3 && strcmp(argv[1], "--uses-include") == 0) {
+        char *source = read_file(argv[2]);
+        bool included = uses_bounded_include(source);
+        free(source);
+        return included ? 0 : 1;
+    }
+    if (argc == 8 && strcmp(argv[1], "--include-bundle") == 0 &&
+        strcmp(argv[3], "--compile-outcome") == 0) {
+        return compile_file_with_bundle(argv[2], argv[4], argv[5], argv[6], argv[7]);
+    }
     if (argc == 6 && strcmp(argv[1], "--compile-outcome") == 0) {
         return compile_file(argv[2], argv[3], argv[4], argv[5]);
     }
@@ -47649,6 +48466,9 @@ int main(int argc, char **argv) {
     }
     if (argc == 5 && strcmp(argv[1], "--emit-scope-hir-v2") == 0) {
         return emit_scope_hir_v2_file(argv[2], argv[3], argv[4]);
+    }
+    if (argc == 5 && strcmp(argv[1], "--emit-law-hir") == 0) {
+        return emit_law_hir_file(argv[2], argv[3], argv[4]);
     }
     if (argc == 5 && strcmp(argv[1], "--emit-generic-record-hir") == 0) {
         return emit_generic_record_hir_file(argv[2], argv[3], argv[4]);
@@ -47674,11 +48494,12 @@ int main(int argc, char **argv) {
     if (argc != 5) {
         fputs(
             "usage: kofun-stage2 INPUT.kofun OUTPUT.kofun OUTPUT.ir OUTPUT.tokens\n"
-            "       kofun-stage2 --compile-outcome INPUT.kofun OUTPUT.c OUTPUT.ir OUTPUT.tokens\n"
+            "       kofun-stage2 [--include-bundle BUNDLE] --compile-outcome INPUT.kofun OUTPUT.c OUTPUT.ir OUTPUT.tokens\n"
             "       kofun-stage2 --check-ownership INPUT.kofun\n"
             "       kofun-stage2 --parse-patterns INPUT.kofun OUTPUT.patterns\n"
             "       kofun-stage2 --emit-scope-hir INPUT.kofun OUTPUT.scope-hir\n"
             "       kofun-stage2 --emit-scope-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n"
+            "       kofun-stage2 --emit-law-hir INPUT.kofun OUTPUT.json LOGICAL-PATH\n"
             "       kofun-stage2 --emit-generic-record-hir INPUT.kofun OUTPUT.json LOGICAL-PATH\n"
             "       kofun-stage2 --emit-generic-adt-hir INPUT.kofun OUTPUT.json LOGICAL-PATH\n"
             "       kofun-stage2 --emit-capture-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n"
@@ -47694,4 +48515,324 @@ int main(int argc, char **argv) {
         return 2;
     }
     return compile_file(argv[1], argv[2], argv[3], argv[4]) == 0 ? 0 : 1;
+}
+
+/* Executable nominal applications keep their authored tokens in the scope HIR.
+ * Map them to the identity framing used by the generic-record HIR at emission. */
+static bool gr_executable_decl(const char *source, int64_t decl) {
+    if (decl < 0) return false;
+    int64_t open = type_parameter_open(source, decl);
+    if (open < 0) return false;
+    int64_t first = skip_trivia(source, token_end(source, open));
+    return !token_equal(source, first, "const") && record_declaration_at(source, decl);
+}
+
+static int64_t gr_application_end(const char *source, int64_t at) {
+    int64_t open = skip_trivia(source, token_end(source, at));
+    if (!token_equal(source, open, "[")) return -1;
+    char *name = token_copy(source, at);
+    int64_t decl = record_declaration_start(source, name);
+    free(name);
+    return gr_executable_decl(source, decl) ? balanced_end(source, open, "[", "]") : -1;
+}
+
+/* Normalized identities contain no trivia. Only depth-zero commas separate
+ * arguments; nested applications remain one row. */
+static char *gr_executable_args(const char *identity) {
+    const char *open = strchr(identity, '[');
+    if (open == NULL) return owned_text("");
+    Buffer args;
+    buffer_init(&args);
+    const char *start = open + 1;
+    int depth = 0;
+    for (const char *c = start; *c != '\0'; ++c) {
+        if ((*c == ',' || *c == ']') && depth == 0) {
+            if (args.length != 0) buffer_append(&args, "\n");
+            buffer_format(&args, "%.*s", (int)(c - start), start);
+            if (*c == ']') break;
+            start = c + 1;
+        } else if (*c == '[') ++depth;
+        else if (*c == ']') --depth;
+    }
+    return args.data;
+}
+
+static char *gr_substitute_tokens(const char *source, int64_t at, int64_t end,
+                                  const char *binders, const char *args) {
+    Buffer out;
+    buffer_init(&out);
+    while (at < end) {
+        char *token = token_copy(source, at);
+        int64_t ordinal = gr_binder_ordinal(binders, token);
+        if (ordinal >= 0 && *args != '\0') {
+            char *arg = gr_line(args, ordinal);
+            buffer_append(&out, arg);
+            free(arg);
+        } else buffer_append(&out, token);
+        free(token);
+        at = skip_trivia(source, token_end(source, at));
+    }
+    return out.data;
+}
+
+static char *gr_field_substitution(const char *source, int64_t decl, int64_t at,
+                                    int64_t end, const char *identity) {
+    char *names = gr_binder_names(source, decl);
+    char *args = gr_executable_args(identity);
+    char *field = gr_substitute_tokens(source, at, gr_type_end(source, at, end), names, args);
+    free(names);
+    free(args);
+    return field;
+}
+
+static char *gr_argument_hexes(const char *identity, const char *path) {
+    char *args = gr_executable_args(identity);
+    Buffer hexes;
+    buffer_init(&hexes);
+    int64_t count = gr_lines(args);
+    for (int64_t i = 0; i < count; ++i) {
+        char *arg = gr_line(args, i);
+        if (i != 0) buffer_append(&hexes, "\n");
+        if (gr_primitive(arg)) {
+            char *id = gr_primitive_id(arg);
+            buffer_format(&hexes, "01%s", id);
+            free(id);
+        } else {
+            char *base = const_type_base(arg);
+            char *id = gr_type_id(path, base);
+            char *children = gr_argument_hexes(arg, path);
+            char *count_hex = scoped_hir_hex(gr_lines(children), 4);
+            char *flat = gr_flatten(children);
+            buffer_format(&hexes, "03%s%s%s", id, count_hex, flat);
+            free(flat); free(count_hex); free(children); free(id); free(base);
+        }
+        free(arg);
+    }
+    free(args);
+    return hexes.data;
+}
+
+static char *gr_record_symbol(const char *identity, const char *path) {
+    char *base = const_type_base(identity);
+    char *owner = gr_type_id(path, base);
+    char *arguments = gr_argument_hexes(identity, path);
+    char *id = gr_constructed_id(owner, arguments);
+    char *hash = scoped_hir_hash_frame("kofun.id.backend-symbol/v1",
+        "7838365f36342d6c696e757800", id, "007265636f72642d6331312f763100",
+        "6167677265676174652d6c61796f75742d7631");
+    static const char alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
+    char symbol[64] = "KofunGR_";
+    size_t used = strlen(symbol);
+    unsigned value = 0, bits = 0;
+    for (const char *p = hash; *p; ++p) {
+        unsigned digit = (unsigned)(*p <= '9' ? *p - '0' : *p - 'a' + 10);
+        value = (value << 4) | digit;
+        bits += 4;
+        if (bits >= 5) {
+            bits -= 5;
+            symbol[used++] = alphabet[value >> bits];
+            value &= (1u << bits) - 1;
+        }
+    }
+    if (bits) symbol[used++] = alphabet[value << (5 - bits)];
+    symbol[used] = '\0';
+    free(hash); free(id); free(arguments); free(owner); free(base);
+    return owned_text(symbol);
+}
+
+typedef struct {
+    char *identity;
+    int64_t size;
+    int64_t align;
+} GrConcreteLayout;
+
+typedef struct {
+    GrConcreteLayout *rows;
+    size_t count;
+    size_t capacity;
+    Buffer definitions;
+} GrConcreteLayouts;
+
+typedef struct GrActiveLayout {
+    const char *identity;
+    const struct GrActiveLayout *parent;
+} GrActiveLayout;
+
+static GrConcreteLayout *gr_find_layout(GrConcreteLayouts *layouts, const char *identity) {
+    for (size_t i = 0; i < layouts->count; ++i)
+        if (strcmp(layouts->rows[i].identity, identity) == 0) return &layouts->rows[i];
+    return NULL;
+}
+
+static char *gr_build_layout(const char *source, const char *identity, int64_t at,
+                            const GrActiveLayout *parent, GrConcreteLayouts *layouts) {
+    if (gr_find_layout(layouts, identity) != NULL) return NULL;
+    for (const GrActiveLayout *p = parent; p; p = p->parent) {
+        if (strcmp(p->identity, identity) != 0) continue;
+        return p == parent
+            ? gr_refusal("E2S199", "recursive by-value record layout", at)
+            : gr_refusal("E2S200", "mutually recursive by-value record layout", at);
+    }
+    GrActiveLayout active = {identity, parent};
+    char *base = const_type_base(identity);
+    int64_t decl = record_declaration_start(source, base);
+    char *names = gr_binder_names(source, decl);
+    char *args = gr_executable_args(identity);
+    int64_t expected = gr_comma_count(names), got = gr_lines(args);
+    free(names);
+    free(args);
+    if (got != expected) {
+        Buffer detail;
+        buffer_init(&detail);
+        buffer_format(&detail, "`%s` expects %" PRId64 " arguments, got %" PRId64, base, expected, got);
+        char *error = gr_refusal("E2S195", detail.data, at);
+        free(detail.data); free(base);
+        return error;
+    }
+    int64_t fields = record_field_count(source, identity);
+    Buffer definition, assertions;
+    buffer_init(&definition); buffer_init(&assertions);
+    buffer_append(&definition, "typedef struct {\n");
+    char *symbol = record_c_type_name(identity);
+    int64_t size = 0, align = 1;
+    char *error = NULL;
+    for (int64_t i = 0; i < fields && error == NULL; ++i) {
+        char *field = record_field_text(source, identity, i, false);
+        char *member = record_c_field_name(field);
+        char *stored = record_field_text(source, identity, i, true);
+        int64_t width = 8, boundary = 8;
+        const char *c = NULL;
+        char *nested = NULL;
+        if (strcmp(stored, "Int") == 0) c = "int64_t";
+        else if (strcmp(stored, "Text") == 0) c = "const char *";
+        else if (strcmp(stored, "Bool") == 0) { c = "bool"; width = 1; boundary = 1; }
+        else if (strcmp(stored, "List[Int]") == 0) { c = "KofunIntListValue"; width = 520; }
+        else if (strcmp(stored, "Bytes") == 0) { c = "KofunBytesValue"; width = 24; }
+        else if (record_declaration_start(source, stored) >= 0) {
+            if (strlen(stored) > 128) error = gr_refusal("E2S198","constructed TypeRef exceeds its display bound",at);
+            else error = gr_build_layout(source, stored, at, &active, layouts);
+            if (!error) {
+                GrConcreteLayout *layout = gr_find_layout(layouts, stored);
+                width = layout->size; boundary = layout->align;
+                c = nested = record_c_type_name(stored);
+            }
+        } else {
+            Buffer detail;
+            buffer_init(&detail);
+            buffer_format(&detail, "unsupported stored field type `%s`", stored);
+            error = gr_refusal("E2S201", detail.data, at);
+            free(detail.data);
+        }
+        if (!error) {
+            size = record_align_up(size, boundary);
+            buffer_format(&definition, "    %s %s;\n", c, member);
+            buffer_format(&assertions, "_Static_assert(offsetof(%s, %s) == %" PRId64 ", \"AggregateLayout field offset\");\n", symbol, member, size);
+            size += width;
+            if (size > INT64_C(140737488355328)) error = gr_refusal("E2S201","record exceeds target object bound",0);
+            if (boundary > align) align = boundary;
+        }
+        free(nested); free(stored); free(member); free(field);
+    }
+    if (!error) {
+        size_t instances = 0;
+        size_t base_len = strlen(base);
+        for (size_t i = 0; i < layouts->count; ++i) {
+            const char *prior = layouts->rows[i].identity;
+            if (strncmp(prior,base,base_len) == 0 && (prior[base_len] == '[' || prior[base_len] == '\0')) ++instances;
+        }
+        if (instances >= 8) {
+            Buffer detail;
+            buffer_init(&detail);
+            buffer_format(&detail, "`%s` has more than 8 instantiations", base);
+            error = gr_refusal("E2S197", detail.data, decl);
+            free(detail.data);
+        }
+    }
+    if (!error) {
+        size = record_align_up(size, align);
+        if (layouts->count == layouts->capacity) {
+            size_t capacity = layouts->capacity ? layouts->capacity * 2 : 8;
+            GrConcreteLayout *rows = allocate(capacity * sizeof(*rows));
+            if (layouts->count) memcpy(rows, layouts->rows, layouts->count * sizeof(*rows));
+            free(layouts->rows);
+            layouts->capacity = capacity;
+            layouts->rows = rows;
+        }
+        layouts->rows[layouts->count++] = (GrConcreteLayout){owned_text(identity),size,align};
+        buffer_format(&layouts->definitions, "%s} %s;\n%s", definition.data, symbol, assertions.data);
+        buffer_format(&layouts->definitions, "_Static_assert(sizeof(%s) == %" PRId64 ", \"AggregateLayout record size\");\n", symbol,size);
+        buffer_format(&layouts->definitions, "_Static_assert(_Alignof(%s) == %" PRId64 ", \"AggregateLayout record alignment\");\n\n",symbol,align);
+    }
+    free(base); free(definition.data); free(assertions.data); free(symbol);
+    return error;
+}
+
+static bool gr_executable_enabled(const char *source) {
+    if (!strchr(source,'[') || !strstr(source,"type")) return false;
+    int64_t length = source_length(source);
+    for (int64_t at = after_optional_module_header(source,0); at < length;) {
+        if (gr_executable_decl(source, type_declaration_start(source,at))) return true;
+        int64_t end = top_level_end(source,at);
+        if (end <= at) break;
+        at = skip_trivia(source,end);
+    }
+    return false;
+}
+
+static char *gr_executable_layouts(const char *source) {
+    /* Reject an unsupported generic ADT before the record-only layout pass
+     * resolves a field that uses it, including a forward reference. */
+    int64_t length = source_length(source);
+    int64_t first = after_optional_module_header(source, 0);
+    for (int64_t at = first; at < length;) {
+        int64_t decl = type_declaration_start(source, at);
+        if (decl >= 0 && type_parameter_open(source, decl) >= 0 &&
+            !record_declaration_at(source, decl)) {
+            return type_parameter_list_error(source, decl);
+        }
+        int64_t end = top_level_end(source, at);
+        if (end <= at) break;
+        at = skip_trivia(source, end);
+    }
+    GrConcreteLayouts layouts = {0};
+    buffer_init(&layouts.definitions);
+    char *error = NULL;
+    for (int64_t at = first; at < length && !error;) {
+        int64_t decl = type_declaration_start(source,at);
+        if (decl >= 0) {
+            int64_t end = type_declaration_end(source,decl);
+            if (end <= at) { error = gr_refusal("E2S201","malformed record declaration",decl); break; }
+            if (gr_executable_decl(source,decl)) {
+                char *fields = gr_fields_json(source,decl,"main.kofun","","");
+                if (strncmp(fields,"error[",6) == 0) error = fields;
+                else free(fields);
+            }
+            if (!error && record_declaration_at(source,decl) && type_parameter_open(source,decl) < 0) {
+                char *name = type_name(source,decl);
+                error = gr_build_layout(source,name,at,NULL,&layouts);
+                free(name);
+            }
+            at = skip_trivia(source,end);
+        } else {
+            if (strcmp(token_kind(source,at),"identifier") == 0) {
+                int64_t end = gr_application_end(source,at);
+                if (end >= 0) {
+                    char *checked = gr_type(source,at,end,"","","main.kofun","","",0);
+                    if (strncmp(checked,"error[",6) == 0) error = checked;
+                    else {
+                        free(checked);
+                        char *identity = gr_substitute_tokens(source,at,end,"","");
+                        error = gr_build_layout(source,identity,at,NULL,&layouts);
+                        free(identity);
+                    }
+                }
+            }
+            at = skip_trivia(source,token_end(source,at));
+        }
+    }
+    for (size_t i = 0; i < layouts.count; ++i) free(layouts.rows[i].identity);
+    free(layouts.rows);
+    if (!error) return layouts.definitions.data;
+    free(layouts.definitions.data);
+    return error;
 }

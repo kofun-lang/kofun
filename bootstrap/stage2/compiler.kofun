@@ -2142,6 +2142,8 @@ fn record_declaration_start(source: Text, identity: Text) -> Int {
 # `parameter_list_type_end` instead of restating the `List [ X ]` shape: two
 # parsers for one syntax is how the two ends of a field list start disagreeing.
 fn record_field_type_end(source: Text, field_type: Int, limit: Int) -> Int {
+    let generic_end = executable_record_application_end(source, field_type)
+    if generic_end >= 0 { return generic_end }
     let list_end = parameter_list_type_end(source, field_type, limit)
     if list_end >= 0 {
         return list_end
@@ -2269,8 +2271,9 @@ fn record_field_count(source: Text, record_type: Text) -> Int {
                "List[Int]" {
                 return -2
             }
-        } else if admissible_record_field_token(source, field_type) ==
-                  false {
+        } else if !admissible_record_field_token(source, field_type) &&
+                  !executable_record_generic(source, declaration) &&
+                  executable_record_application_end(source, field_type) < 0 {
             return -2
         }
         count = count + 1
@@ -2319,6 +2322,12 @@ fn record_field_text(
         let field_type = skip_trivia(source, token_end(source, colon))
         if index == wanted_index {
             if want_type {
+                if executable_record_generic(source, declaration) ||
+                   executable_record_application_end(source, field_type) >= 0 {
+                    let end = generic_record_type_end(source, field_type, close)
+                    return executable_record_substitute(source, field_type, end, generic_record_binder_names(source, declaration),
+                        executable_record_arguments(record_type))
+                }
                 # #1183: a `List[Int]` field's type is its canonical name, not
                 # its first token. Callers compare this against carrier names
                 # like `List[Int]`, so returning `List` would make a bounded
@@ -2968,6 +2977,11 @@ fn type_parameter_list_error(source: Text, start: Int) -> Text {
         "` has an unterminated parameter list at byte " + to_text(bracket)
     }
     let keyword = skip_trivia(source, token_end(source, bracket))
+    if executable_record_generic(source, start) {
+        let names = generic_record_binder_names(source, start)
+        if starts_with(names, "error[") { return names }
+        if len(names) > 0 { return "" }
+    }
     if token_text(source, keyword) != "const" {
         return "error[E2S148]: type parameters on a nominal type are unsupported; `" +
         name +
@@ -3683,6 +3697,10 @@ fn parse_program(source: Text) -> Text {
     let pipeline_shape_check = validate_pipeline_shapes(source)
     if starts_with(pipeline_shape_check, "error[") {
         return pipeline_shape_check
+    }
+    if executable_record_enabled(source) {
+        let checked = executable_record_instances(source)
+        if starts_with(checked, "error[") { return checked }
     }
     # Const generic surface (#916). Both checks run before any declaration is
     # recorded, so a refused source never reaches layout, IR, or an artifact.
@@ -4765,6 +4783,14 @@ fn primary_end(source: Text, start: Int) -> Int {
         return -1
     }
     if kind == "identifier" {
+        let type_end = executable_record_application_end(source, cursor)
+        if type_end >= 0 {
+            let arguments = skip_trivia(source, type_end)
+            if token_text(source, arguments) == "(" {
+                let finish = balanced_end(source, arguments, "(", ")")
+                if finish >= 0 { return field_postfix_end(source, finish) }
+            }
+        }
         if len(numeric_conversion_at(source, cursor)) > 0 {
             let dot = skip_trivia(source, token_end(source, cursor))
             let member = skip_trivia(source, token_end(source, dot))
@@ -5284,6 +5310,10 @@ fn const_argument_of(identity: Text) -> Text {
 # construct at all. `validate_struct_identity` now refuses that collapse
 # instead of a comment asserting it is fine.
 fn record_c_type_name(record_type: Text) -> Text {
+    let args = const_argument_of(record_type)
+    if len(args) > 0 && !is_digit(text_slice(args, 0, 1)) {
+        return executable_record_symbol(record_type, "main.kofun")
+    }
     let argument = const_argument_of(record_type)
     if len(argument) == 0 {
         return "KofunRecord_" + c_identifier_name(record_type)
@@ -5486,6 +5516,17 @@ fn emit_record_value(
     # `Int` field read compiled and ran as the record it was read from, with
     # no diagnostic anywhere. Anything left unconsumed that is not a call is
     # not a record value in this slice.
+    if open < end && token_text(source, open) == "." {
+        let field = skip_trivia(source, token_end(source, open))
+        let id = hir_use_binding_id(hir, cursor)
+        let owner = hir_binding_field(hir, id, 5)
+        if skip_trivia(source, token_end(source, field)) >= end &&
+           (executable_record_generic(source, record_declaration_start(source, owner)) ||
+            executable_record_generic(source, record_declaration_start(source, record_type))) &&
+           record_field_type_named(source, owner, token_text(source, field)) == record_type {
+            return "k_b" + id + "." + record_c_field_name(token_text(source, field))
+        }
+    }
     if open < end && token_text(source, open) != "(" {
         return "error[E2S32]: nominal record value must be a whole binding or function call at byte " +
         to_text(cursor)
@@ -5500,6 +5541,9 @@ fn emit_record_value(
             let actual = hir_binding_field(hir, binding_id, 5)
             if len(binding_id) > 0 &&
                const_type_base(actual) == const_type_base(record_type) {
+                if executable_record_generic(source, record_declaration_start(source, actual)) {
+                    return lower_error("E2S32", "nominal record binding `" + actual + "` does not match `" + record_type + "`", cursor)
+                }
                 return "error[E2S151]: `" + actual + "` is not `" +
                 record_type +
                 "`; instantiations differing only in their const argument are different types at byte " +
@@ -10735,6 +10779,8 @@ fn fixed_result_type_end(source: Text, type_start: Int) -> Int {
 # instantiation becomes a type identity, so every comparison downstream
 # distinguishes the scales without knowing they exist.
 fn annotation_type_text(source: Text, type_start: Int) -> Text {
+    let generic_end = executable_record_application_end(source, type_start)
+    if generic_end >= 0 { return executable_record_substitute(source, type_start, generic_end, "", "") }
     let specialization = fixed_result_type_text(source, type_start)
     if len(specialization) > 0 {
         return specialization
@@ -10760,6 +10806,8 @@ fn annotation_type_text(source: Text, type_start: Int) -> Text {
 # past only the head token here is what would leave `[2]` in the stream for
 # the next parser step to trip over.
 fn annotation_type_end(source: Text, type_start: Int) -> Int {
+    let generic_end = executable_record_application_end(source, type_start)
+    if generic_end >= 0 { return generic_end }
     let specialization_end = fixed_result_type_end(source, type_start)
     if specialization_end >= 0 {
         return specialization_end
@@ -14075,6 +14123,14 @@ fn type_annotation_token(
                     token_end(source, colon)
                 )
                 let type_end = annotation_type_end(source, type_start)
+                let equal = skip_trivia(source, type_end)
+                if token_text(source, equal) == "=" {
+                    let value = skip_trivia(source, token_end(source, equal))
+                    let parameters_end = executable_record_application_end(source, value)
+                    if parameters_end >= 0 && target >= value && target < parameters_end {
+                        return true
+                    }
+                }
                 if target >= type_start && target < type_end {
                     return true
                 }
@@ -14188,7 +14244,7 @@ fn record_initializer_constructor_token(
                 )
                 let equals = skip_trivia(
                     source,
-                    token_end(source, type_cursor)
+                    annotation_type_end(source, type_cursor)
                 )
                 let initializer = skip_trivia(
                     source,
@@ -15266,6 +15322,10 @@ fn initializer_type_bounded(
         return "Bool"
     }
     if kind == "identifier" {
+        let type_end = executable_record_application_end(source, cursor)
+        if type_end >= 0 && token_text(source, skip_trivia(source, type_end)) == "(" {
+            return annotation_type_text(source, cursor)
+        }
         # Call and index detection must not stop at the bounded expression
         # end: profile initializers may continue across lines, and `[`
         # follows the resolved primary directly.
@@ -22340,7 +22400,11 @@ fn record_used_as_list_element(source: Text, record_type: Text) -> Bool {
 }
 
 fn emit_record_c_declarations(source: Text) -> Text {
+    let generic = executable_record_enabled(source)
     let mut declarations = ""
+    if generic {
+        declarations = executable_record_layouts(source, executable_record_instances(source))
+    }
     let mut cursor = after_optional_module_header(source, 0)
     while cursor < len(source) {
         let type_start = type_declaration_start(source, cursor)
@@ -22365,11 +22429,9 @@ fn emit_record_c_declarations(source: Text) -> Text {
                 }
             } else {
                 let c_type = record_c_type_name(record_type)
-                declarations = declarations + emit_record_c_declaration(
-                    source,
-                    record_type,
-                    c_type
-                )
+                if !generic {
+                    declarations = declarations + emit_record_c_declaration(source, record_type, c_type)
+                }
                 if record_used_as_list_element(source, record_type) {
                     let list_c_type = record_list_c_type(record_type)
                     declarations = declarations +
@@ -24776,7 +24838,126 @@ fn ends_with(value: Text, suffix: Text) -> Bool {
     text_slice(value, value_length - suffix_length, value_length) == suffix
 }
 
-fn compile_file(
+# Decode only the caller's bounded, prevalidated catalog. No source text or
+# include name is ever passed to a filesystem operation.
+fn include_name_valid(name: Text) -> Bool {
+    if len(name) == 0 || len(name) > 64 { return false }
+    let mut at = 0
+    while at < len(name) {
+        let ch = text_slice(name, at, at + 1)
+        if find("abcdefghijklmnopqrstuvwxyz", ch) < 0 &&
+           (at == 0 || find("_0123456789", ch) < 0) { return false }
+        at = at + 1
+    }
+    return true
+}
+
+fn include_payload(bundle: Text, name: Text) -> Text {
+    let format_error = "error[E2S226]: invalid bounded include catalog"
+    let header = "KOFUN-INCLUDES-1\n"
+    if !starts_with(bundle, header) || len(bundle) > 4199000 ||
+       len(validate_unicode_source(bundle)) > 0 { return format_error }
+    let mut scalar_at = 0
+    while scalar_at < len(bundle) {
+        let scalar = stage2_unicode_scalar_at(bundle, scalar_at)
+        if scalar == 0 { return format_error }
+        scalar_at = scalar_at + unicode_scalar_width(scalar)
+    }
+    let mut at = len(header)
+    let mut names = "\n"
+    let mut count = 0
+    let mut found = false
+    let mut result = ""
+    while at < len(bundle) {
+        let start = at
+        while at < len(bundle) && at - start <= 64 &&
+            text_slice(bundle, at, at + 1) != "\t" { at = at + 1 }
+        if at >= len(bundle) || at - start > 64 { return format_error }
+        let entry = text_slice(bundle, start, at)
+        if !include_name_valid(entry) || count >= 64 ||
+            find(names, "\n" + entry + "\n") >= 0 { return format_error }
+        names = names + entry + "\n"
+        count = count + 1
+        at = at + 1
+        let digits = at
+        let mut size = 0
+        while at < len(bundle) && text_slice(bundle, at, at + 1) != "\n" {
+            let digit = find("0123456789", text_slice(bundle, at, at + 1))
+            if digit < 0 || at - digits >= 5 { return format_error }
+            size = size * 10 + digit
+            at = at + 1
+        }
+        if digits == at || size > 65536 ||
+           (at - digits > 1 && text_slice(bundle, digits, digits + 1) == "0") {
+            return format_error
+        }
+        at = at + 1
+        if at + size >= len(bundle) || text_slice(bundle, at + size, at + size + 1) != "\n" {
+            return format_error
+        }
+        if entry == name {
+            result = text_slice(bundle, at, at + size)
+            found = true
+        }
+        at = at + size + 1
+    }
+    if !found { return "error[E2S224]: undeclared or invalid include name" }
+    return result
+}
+
+fn include_target_error(target: Text) -> Text {
+    if len(validate_unicode_source(target)) > 0 { return "error[E2S226]: invalid include source" }
+    let mut at = skip_trivia(target, 0)
+    while at < len(target) {
+        if token_text(target, at) == "include" {
+            return "error[E2S227]: an include target cannot include another block"
+        }
+        let end = top_level_end(target, at)
+        if end <= at { return "error[E2S02]: expected a top-level declaration in include target" }
+        at = skip_trivia(target, end)
+    }
+    return ""
+}
+
+fn uses_bounded_include(source: Text) -> Bool {
+    return contains(source, "include") && len(validate_unicode_source(source)) == 0 &&
+        token_text(source, after_optional_module_header(source, 0)) == "include"
+}
+
+fn expand_bounded_includes(source: Text, bundle: Text) -> Text {
+    let mut at = after_optional_module_header(source, 0)
+    if token_text(source, at) != "include" { return source }
+    let mut expanded = text_slice(source, 0, at)
+    if token_text(source, skip_trivia(source, 0)) == "module" { expanded = "" }
+    let mut names = "\n"
+    while token_text(source, at) == "include" {
+        let quote = skip_trivia(source, token_end(source, at))
+        if quote >= len(source) || text_slice(source, quote, quote + 1) != "\"" {
+            return "error[E2S224]: undeclared or invalid include name"
+        }
+        let end = string_end(source, quote)
+        if end <= quote + 1 { return "error[E2S224]: undeclared or invalid include name" }
+        let name = text_slice(source, quote + 1, end - 1)
+        if !include_name_valid(name) || find(names, "\n" + name + "\n") >= 0 {
+            return "error[E2S224]: undeclared or invalid include name"
+        }
+        names = names + name + "\n"
+        let target = include_payload(bundle, name)
+        if starts_with(target, "error[") { return target }
+        let target_error = include_target_error(target)
+        if len(target_error) > 0 { return target_error }
+        at = skip_trivia(source, end)
+        expanded = expanded + "\n" + target + "\n" + text_slice(source, end, at)
+    }
+    return expanded + text_slice(source, at, len(source))
+}
+
+fn compile_file(input_path: Text, output_path: Text, ir_path: Text, tokens_path: Text) -> Int {
+    return compile_file_with_bundle("", input_path, output_path, ir_path, tokens_path)
+}
+
+fn compile_file_with_bundle(
+    bundle_path: Text,
     input_path: Text,
     output_path: Text,
     ir_path: Text,
@@ -24785,11 +24966,22 @@ fn compile_file(
     # All destinations are checked before the first artifact is written.
     if stage2_same_file(input_path, output_path) == 1 ||
        stage2_same_file(input_path, ir_path) == 1 ||
-       stage2_same_file(input_path, tokens_path) == 1 {
+       stage2_same_file(input_path, tokens_path) == 1 ||
+       (len(bundle_path) > 0 && (stage2_same_file(bundle_path, output_path) == 1 ||
+        stage2_same_file(bundle_path, ir_path) == 1 || stage2_same_file(bundle_path, tokens_path) == 1)) {
         print("error[E2S35]: compiler input and output must be distinct")
         return 2
     }
-    let source = read_text(input_path)
+    let mut source = read_text(input_path)
+    if uses_bounded_include(source) {
+        let mut bundle = "KOFUN-INCLUDES-1\n"
+        if len(bundle_path) > 0 { bundle = read_text(bundle_path) }
+        source = expand_bounded_includes(source, bundle)
+        if starts_with(source, "error[") {
+            print(source)
+            return 1
+        }
+    }
     let tokens = lex(source)
     if starts_with(tokens, "error[") {
         print(tokens)
@@ -34944,6 +35136,591 @@ fn emit_generic_adt_hir_file(input: Text, output: Text, logical_path: Text) -> B
     return true
 }
 
+# Concrete law declaration analysis (#1772). Parser results are bounded HIR
+# fields (end byte | type | JSON | local symbols); diagnostics pass through.
+# Tables use identifier keys, canonical type spellings and source-byte offsets.
+fn law_field(row: Text, index: Int) -> Text {
+    return hir_field(row, 0, index)
+}
+
+fn law_end(row: Text) -> Int {
+    return decimal_value(law_field(row, 0))
+}
+
+fn law_error(code: Text, message: Text, at: Int) -> Text {
+    return generic_record_refusal(code, message, at)
+}
+
+fn law_bad(text: Text) -> Bool {
+    return starts_with(text, "error[")
+}
+
+fn law_next(source: Text, at: Int) -> Int {
+    let end = token_end(source, at)
+    if end <= at { return at }
+    return skip_lexical_trivia(source, end)
+}
+
+fn law_id(source: Text, at: Int) -> Bool {
+    return token_kind(source, at) == "identifier"
+}
+
+fn law_expected(at: Int, wanted: Text) -> Text {
+    return law_error("E2S228", "expected " + wanted + " in law declarations", at)
+}
+
+fn law_row(name: Text, value: Text) -> Text {
+    return ";" + name + ":" + value
+}
+
+fn law_get(table: Text, name: Text) -> Text {
+    let key = ";" + name + ":"
+    let at = find(table, key)
+    if at < 0 { return "" }
+    let start = at + len(key)
+    let finish = text_find_from(table, ";", start)
+    if finish < 0 { return text_slice(table, start, len(table)) }
+    return text_slice(table, start, finish)
+}
+
+fn law_type_of(binding: Text) -> Text {
+    let at = find(binding, "@")
+    if at < 0 { return "" }
+    return text_slice(binding, 0, at)
+}
+
+fn law_target(binding: Text) -> Text {
+    return text_slice(binding, find(binding, "@") + 1, len(binding))
+}
+
+fn law_join(list: Text, item: Text) -> Text {
+    if len(list) == 0 { return item }
+    return list + "," + item
+}
+
+fn law_span(start: Int, end: Int) -> Text {
+    return "[" + to_text(start) + "," + to_text(end) + "]"
+}
+
+fn law_decl_span(object: Text, start: Int, end: Int) -> Text {
+    return text_slice(object, 0, len(object) - 1) + ",\"declaration_span\":" + law_span(start, end) + "}"
+}
+
+fn law_name(source: Text, at: Int) -> Text {
+    return "\"name\":\"" + token_text(source, at) + "\",\"span\":" +
+        law_span(at, token_end(source, at))
+}
+
+fn law_unknown(name: Text, at: Int) -> Text {
+    return law_error("E2S229", "unresolved law name `" + name + "`", at)
+}
+
+fn law_duplicate(name: Text, at: Int) -> Text {
+    return law_error("E2S229", "duplicate law name `" + name + "`", at)
+}
+
+# Return the first-order ground type, or substitute a bound schema slot. The
+# external arrow spelling is fixed arity; the normalized signature explicitly
+# delimits its argument vector, including the unary and nullary cases.
+fn law_type(source: Text, at: Int, slots: Text, depth: Int) -> Text {
+    if depth > 16 { return law_error("E2S228", "law type nesting exceeds 16", at) }
+    let name = token_text(source, at)
+    let mut end = token_end(source, at)
+    let mut value = ""
+    let mut grouped = false
+    if name == "(" {
+        grouped = true
+        let mut item = law_next(source, at)
+        while token_text(source, item) != ")" {
+            let field = law_type(source, item, slots, depth + 1)
+            if law_bad(field) { return field }
+            value = law_join(value, law_field(field, 1))
+            item = skip_lexical_trivia(source, law_end(field))
+            if token_text(source, item) == ")" { break }
+            if token_text(source, item) != "," { return law_expected(item, "`,`") }
+            item = law_next(source, item)
+        }
+        end = token_end(source, item)
+    } else {
+        if !law_id(source, at) { return law_expected(at, "a concrete type") }
+        value = law_get(slots, name)
+        if len(value) == 0 {
+            if name != "Bool" { return law_error("E2S231", "unsupported ground law type `" + name + "`", at) }
+            value = "Bool"
+        }
+        let suffix = skip_lexical_trivia(source, end)
+        if token_text(source, suffix) == "?" {
+            if value != "Bool" { return law_error("E2S231", "unsupported nested optional law type", suffix) }
+            value = "Bool?"
+            end = token_end(source, suffix)
+        }
+    }
+    let arrow = skip_lexical_trivia(source, end)
+    if token_text(source, arrow) == "->" {
+        let result = law_type(source, law_next(source, arrow), slots, depth + 1)
+        if law_bad(result) { return result }
+        return law_field(result, 0) + "|(" + value + ")->" + law_field(result, 1)
+    }
+    if grouped { return law_expected(arrow, "`->`") }
+    return to_text(end) + "|" + value
+}
+
+fn law_parameters(source: Text, open: Int, slots: Text, domains: Text, quantified: Bool) -> Text {
+    if token_text(source, open) != "(" { return law_expected(open, "`(`") }
+    let mut at = law_next(source, open)
+    let mut args = ""
+    let mut json = ""
+    let mut locals = ""
+    while token_text(source, at) != ")" {
+        if !law_id(source, at) { return law_expected(at, "a parameter name") }
+        let name = token_text(source, at)
+        if len(law_get(locals, name)) > 0 { return law_duplicate(name, at) }
+        let colon = law_next(source, at)
+        if token_text(source, colon) != ":" { return law_expected(colon, "`:`") }
+        let param = law_type(source, law_next(source, colon), slots, 0)
+        if law_bad(param) { return param }
+        let ty = law_field(param, 1)
+        args = law_join(args, ty)
+        locals = locals + law_row(name, ty + "@" + to_text(at))
+        let mut row = "{" + law_name(source, at) + ",\"type\":\"" + ty + "\""
+        let mut next = skip_lexical_trivia(source, law_end(param))
+        if quantified {
+            if token_text(source, next) != "in" { return law_expected(next, "`in`") }
+            let domain = law_next(source, next)
+            if !law_id(source, domain) { return law_expected(domain, "a domain name") }
+            let bound = law_get(domains, token_text(source, domain))
+            if len(bound) == 0 { return law_unknown(token_text(source, domain), domain) }
+            if law_type_of(bound) != ty { return law_error("E2S230", "quantifier and domain types differ", domain) }
+            row = row + ",\"domain\":" + law_target(bound)
+            next = law_next(source, domain)
+        }
+        json = law_join(json, row + "}")
+        if token_text(source, next) == ")" { at = next break }
+        if token_text(source, next) != "," { return law_expected(next, "`,`") }
+        at = law_next(source, next)
+    }
+    return to_text(token_end(source, at)) + "|" + args + "|" + json + "|" + locals
+}
+
+fn law_signature(source: Text, name: Int, slots: Text) -> Text {
+    let params = law_parameters(source, law_next(source, name), slots, "", false)
+    if law_bad(params) { return params }
+    let arrow = skip_lexical_trivia(source, law_end(params))
+    if token_text(source, arrow) != "->" { return law_expected(arrow, "`->`") }
+    let result = law_type(source, law_next(source, arrow), slots, 0)
+    if law_bad(result) { return result }
+    let signature = "(" + law_field(params, 1) + ")->" + law_field(result, 1)
+    return law_field(result, 0) + "|" + signature + "|{" + law_name(source, name) +
+        ",\"type\":\"" + signature + "\",\"parameters\":[" + law_field(params, 2) + "]}"
+}
+
+# Equation bodies are typed trees. A reference binds to a declaration's name
+# byte, so renaming and shadowing cannot change a target silently. Lambdas
+# add their own lexical bindings and do not escape into following arguments.
+fn law_expr(source: Text, at: Int, slots: Text, env: Text, depth: Int) -> Text {
+    if depth > 32 { return law_error("E2S228", "law equation nesting exceeds 32", at) }
+    let mut end = token_end(source, at)
+    let mut ty = ""
+    let mut node = ""
+    if token_text(source, at) == "fn" {
+        let params = law_parameters(source, law_next(source, at), slots, "", false)
+        if law_bad(params) { return params }
+        let arrow = skip_lexical_trivia(source, law_end(params))
+        if token_text(source, arrow) != "=>" { return law_expected(arrow, "`=>`") }
+        let body = law_expr(source, law_next(source, arrow), slots, law_field(params, 3) + env, depth + 1)
+        if law_bad(body) { return body }
+        end = law_end(body)
+        ty = "(" + law_field(params, 1) + ")->" + law_field(body, 1)
+        node = "{\"kind\":\"lambda\",\"parameters\":[" + law_field(params, 2) +
+            "],\"body\":" + law_field(body, 2)
+    } else {
+        if !law_id(source, at) { return law_expected(at, "an equation operand") }
+        let name = token_text(source, at)
+        let binding = law_get(env, name)
+        if len(binding) == 0 { return law_unknown(name, at) }
+        ty = law_type_of(binding)
+        node = "{\"kind\":\"ref\",\"target\":" + law_target(binding)
+    }
+    node = node + ",\"span\":" + law_span(at, end) + ",\"type\":\"" + ty + "\"}"
+    let mut open = skip_lexical_trivia(source, end)
+    while token_text(source, open) == "(" {
+        let mut cursor = law_next(source, open)
+        let mut args = ""
+        let mut children = ""
+        while token_text(source, cursor) != ")" {
+            let arg = law_expr(source, cursor, slots, env, depth + 1)
+            if law_bad(arg) { return arg }
+            args = law_join(args, law_field(arg, 1))
+            children = law_join(children, law_field(arg, 2))
+            cursor = skip_lexical_trivia(source, law_end(arg))
+            if token_text(source, cursor) == ")" { break }
+            if token_text(source, cursor) != "," { return law_expected(cursor, "`,`") }
+            cursor = law_next(source, cursor)
+        }
+        let head = "(" + args + ")->"
+        if !starts_with(ty, head) { return law_error("E2S230", "law call arguments do not match callable type", open) }
+        ty = text_slice(ty, len(head), len(ty))
+        end = token_end(source, cursor)
+        node = "{\"kind\":\"call\",\"callee\":" + node + ",\"arguments\":[" + children +
+            "],\"span\":" + law_span(at, end) + ",\"type\":\"" + ty + "\"}"
+        open = skip_lexical_trivia(source, end)
+    }
+    return to_text(end) + "|" + ty + "|" + node
+}
+
+# Index top-level names before resolving any declarations. Function bodies
+# remain opaque in this artifact. Only their declared signatures are consumed.
+fn law_index(source: Text) -> Text {
+    let mut at = skip_lexical_trivia(source, 0)
+    let mut index = ""
+    let mut names = ""
+    let mut functions = ""
+    let mut declarations = ""
+    while at < len(source) {
+        let kind = token_text(source, at)
+        let mut name_at = law_next(source, at)
+        if kind == "check" {
+            if token_text(source, name_at) != "laws" { return law_expected(name_at, "`laws`") }
+            name_at = law_next(source, name_at)
+        } else if kind != "law" && kind != "impl" && kind != "fn" {
+            return law_expected(at, "a law, implementation, function, or check")
+        }
+        if !law_id(source, name_at) { return law_expected(name_at, "a declaration name") }
+        let name = token_text(source, name_at)
+        if len(law_get(names, name)) > 0 { return law_duplicate(name, name_at) }
+        names = names + law_row(name, "1")
+        let mut open = law_next(source, name_at)
+        let mut declared = ""
+        if kind == "fn" {
+            let signature = law_signature(source, name_at, "")
+            if law_bad(signature) { return signature }
+            functions = functions + law_row(name, law_field(signature, 1) + "@" + to_text(name_at))
+            declared = law_field(signature, 2)
+            open = skip_lexical_trivia(source, law_end(signature))
+        } else {
+            if len(law_get(index, kind)) > 0 {
+                return law_error("E2S228", "concrete law HIR supports one family, implementation, and check", at)
+            }
+            index = index + law_row(kind, to_text(name_at))
+            while open < len(source) && token_text(source, open) != "{" {
+                let next = law_next(source, open)
+                if next <= open { return law_expected(open, "a declaration body") }
+                open = next
+            }
+        }
+        if token_text(source, open) != "{" { return law_expected(open, "`{`") }
+        let end = balanced_end(source, open, "{", "}")
+        if end < 0 { return law_expected(open, "a closed declaration body") }
+        if kind == "fn" {
+            declarations = law_join(declarations, law_decl_span(declared, at, end))
+        } else {
+            index = index + law_row("start." + kind, to_text(at)) + law_row("end." + kind, to_text(end))
+        }
+        at = skip_lexical_trivia(source, end)
+    }
+    if len(law_get(index, "law")) == 0 || len(law_get(index, "impl")) == 0 || len(law_get(index, "check")) == 0 {
+        return law_error("E2S228", "expected one family, implementation, and check", at)
+    }
+    return index + "|" + functions + "|" + declarations
+}
+
+fn law_substitutions(source: Text, family: Int, instance: Int) -> Text {
+    let bracket = law_next(source, family)
+    if token_text(source, bracket) != "[" { return law_expected(bracket, "`[`") }
+    let colon = law_next(source, instance)
+    if token_text(source, colon) != ":" { return law_expected(colon, "`:`") }
+    let target = law_next(source, colon)
+    if token_text(source, family) != token_text(source, target) { return law_unknown(token_text(source, target), target) }
+    let arguments = law_next(source, target)
+    if token_text(source, arguments) != "[" { return law_expected(arguments, "`[`") }
+    let mut slot = law_next(source, bracket)
+    let mut argument = law_next(source, arguments)
+    let mut slots = ""
+    let mut json = ""
+    while token_text(source, slot) != "]" && token_text(source, argument) != "]" {
+        if !law_id(source, slot) { return law_expected(slot, "a schema slot") }
+        let name = token_text(source, slot)
+        if name == "Bool" || len(law_get(slots, name)) > 0 { return law_duplicate(name, slot) }
+        let ground = law_type(source, argument, "", 0)
+        if law_bad(ground) { return ground }
+        let ty = law_field(ground, 1)
+        if ty != "Bool" && ty != "Bool?" { return law_error("E2S231", "unsupported concrete law substitution", argument) }
+        slots = slots + law_row(name, ty)
+        json = law_join(json, "{" + law_name(source, slot) + ",\"type\":\"" + ty +
+            "\",\"argument_span\":" + law_span(argument, law_end(ground)) + "}")
+        slot = law_next(source, slot)
+        argument = skip_lexical_trivia(source, law_end(ground))
+        if token_text(source, slot) == "]" || token_text(source, argument) == "]" { break }
+        if token_text(source, slot) != "," { return law_expected(slot, "`,`") }
+        if token_text(source, argument) != "," { return law_expected(argument, "`,`") }
+        slot = law_next(source, slot)
+        argument = law_next(source, argument)
+    }
+    if len(slots) == 0 || token_text(source, slot) != "]" || token_text(source, argument) != "]" {
+        return law_error("E2S231", "law substitution arity does not match family", argument)
+    }
+    let family_open = law_next(source, slot)
+    let instance_open = law_next(source, argument)
+    if token_text(source, family_open) != "{" { return law_expected(family_open, "`{`") }
+    if token_text(source, instance_open) != "{" { return law_expected(instance_open, "`{`") }
+    return to_text(family_open) + "|" + to_text(instance_open) + "|" + slots + "|" + json
+}
+
+fn law_setting(source: Text, at: Int, expected: Text) -> Text {
+    if token_text(source, at) != "=" { return law_expected(at, "`=`") }
+    let value = law_next(source, at)
+    if token_text(source, value) != expected { return law_expected(value, expected) }
+    return to_text(token_end(source, value))
+}
+
+fn law_check(source: Text, check: Int, instance: Int) -> Text {
+    let open = law_next(source, check)
+    if token_text(source, open) != "{" { return law_expected(open, "`{`") }
+    let mut at = law_next(source, open)
+    let mut seen = ""
+    let mut domains = ""
+    let mut json = ""
+    let mut equality = ""
+    let mut assurance = ""
+    while token_text(source, at) != "}" {
+        let kind = token_text(source, at)
+        let name_at = law_next(source, at)
+        if kind != "domain" {
+            if len(law_get(seen, kind)) > 0 { return law_duplicate(kind, at) }
+            seen = seen + law_row(kind, "1")
+        }
+        if kind == "instance" {
+            if token_text(source, name_at) != "=" { return law_expected(name_at, "`=`") }
+            let name = law_next(source, name_at)
+            if token_text(source, name) != token_text(source, instance) { return law_unknown(token_text(source, name), name) }
+            at = law_next(source, name)
+        } else if kind == "equality" {
+            let ground = law_type(source, name_at, "", 0)
+            if law_bad(ground) { return ground }
+            equality = law_field(ground, 1)
+            if equality != "Bool" && equality != "Bool?" { return law_error("E2S231", "structural law equality requires Bool or Bool?", name_at) }
+            let result = law_setting(source, skip_lexical_trivia(source, law_end(ground)), "structural")
+            if law_bad(result) { return result }
+            at = skip_lexical_trivia(source, law_end(result))
+        } else if kind == "require" {
+            if token_text(source, name_at) != "assurance" { return law_expected(name_at, "`assurance`") }
+            let equals = law_next(source, name_at)
+            if token_text(source, equals) != "=" { return law_expected(equals, "`=`") }
+            let value = law_next(source, equals)
+            assurance = token_text(source, value)
+            if assurance != "proven_finite" && assurance != "bounded_exhaustive" { return law_expected(value, "a finite assurance requirement") }
+            at = law_next(source, value)
+        } else if kind == "budget" {
+            let result = law_setting(source, name_at, "standard")
+            if law_bad(result) { return result }
+            at = skip_lexical_trivia(source, law_end(result))
+        } else if kind == "domain" {
+            if !law_id(source, name_at) { return law_expected(name_at, "a domain name") }
+            let name = token_text(source, name_at)
+            if len(law_get(domains, name)) > 0 { return law_duplicate(name, name_at) }
+            let colon = law_next(source, name_at)
+            if token_text(source, colon) != ":" { return law_expected(colon, "`:`") }
+            let ground = law_type(source, law_next(source, colon), "", 0)
+            if law_bad(ground) { return ground }
+            let ty = law_field(ground, 1)
+            let equals = skip_lexical_trivia(source, law_end(ground))
+            if token_text(source, equals) != "=" { return law_expected(equals, "`=`") }
+            let origin = law_next(source, equals)
+            let mut data = ""
+            if token_text(source, origin) == "all" {
+                if ty != "Bool" && ty != "Bool?" { return law_error("E2S231", "`all` requires Bool or Bool?", origin) }
+                data = "\"origin\":\"all\""
+                at = law_next(source, origin)
+            } else if token_text(source, origin) == "all_functions" {
+                let paren = law_next(source, origin)
+                if token_text(source, paren) != "(" { return law_expected(paren, "`(`") }
+                let first = law_next(source, paren)
+                let comma = law_next(source, first)
+                if token_text(source, comma) != "," { return law_expected(comma, "`,`") }
+                let second = law_next(source, comma)
+                let close = law_next(source, second)
+                if token_text(source, close) != ")" { return law_expected(close, "`)`") }
+                let input = law_get(domains, token_text(source, first))
+                let output = law_get(domains, token_text(source, second))
+                if len(input) == 0 { return law_unknown(token_text(source, first), first) }
+                if len(output) == 0 { return law_unknown(token_text(source, second), second) }
+                if ty != "(" + law_type_of(input) + ")->" + law_type_of(output) { return law_error("E2S230", "function domain type does not match component domains", origin) }
+                data = "\"origin\":\"all_functions\",\"input\":" + law_target(input) + ",\"output\":" + law_target(output)
+                at = law_next(source, close)
+            } else { return law_expected(origin, "`all` or `all_functions`") }
+            domains = domains + law_row(name, ty + "@" + to_text(name_at))
+            json = law_join(json, "{" + law_name(source, name_at) + ",\"type\":\"" + ty + "\"," + data + "}")
+        } else { return law_expected(at, "a check clause") }
+    }
+    if len(law_get(seen, "instance")) == 0 || len(equality) == 0 || len(assurance) == 0 || len(law_get(seen, "budget")) == 0 || len(domains) == 0 {
+        return law_error("E2S228", "check lacks instance, domains, equality, assurance or budget", at)
+    }
+    return domains + "|" + equality + "|{" + law_name(source, check) + ",\"instance\":" + to_text(instance) +
+        ",\"domains\":[" + json + "],\"equality\":{\"type\":\"" + equality + "\",\"kind\":\"structural\"}," +
+        "\"requested_assurance\":\"" + assurance + "\",\"budget\":\"standard\"}"
+}
+
+# Collect operation signatures before checking equation references. A member
+# header has a contextual introducing word followed by a name and '('. Calls
+# to members named "equation" or "operation" have '(' immediately afterwards.
+fn law_operations(source: Text, open: Int, slots: Text) -> Text {
+    let mut at = law_next(source, open)
+    let mut operations = ""
+    let mut json = ""
+    while token_text(source, at) != "}" {
+        let member = token_text(source, at)
+        let next = law_next(source, at)
+        if member == "operation" && law_id(source, next) &&
+           token_text(source, law_next(source, next)) == "(" {
+            let name = token_text(source, next)
+            if len(law_get(operations, name)) > 0 { return law_duplicate(name, next) }
+            let signature = law_signature(source, next, slots)
+            if law_bad(signature) { return signature }
+            operations = operations + law_row(name, law_field(signature, 1) + "@" + to_text(next))
+            json = law_join(json, law_decl_span(law_field(signature, 2), at, law_end(signature)))
+            at = skip_lexical_trivia(source, law_end(signature))
+        } else {
+            if next <= at { return law_expected(at, "`}`") }
+            at = next
+        }
+    }
+    if len(operations) == 0 { return law_expected(at, "an operation member") }
+    return operations + "|" + json
+}
+
+fn law_equations(source: Text, open: Int, slots: Text, ops: Text, domains: Text, equality: Text) -> Text {
+    let mut at = law_next(source, open)
+    let mut names = ""
+    let mut json = ""
+    while token_text(source, at) != "}" {
+        let member = token_text(source, at)
+        let name_at = law_next(source, at)
+        if !law_id(source, name_at) { return law_expected(name_at, "a law member name") }
+        let name = token_text(source, name_at)
+        if len(law_get(names, name)) > 0 { return law_duplicate(name, name_at) }
+        names = names + law_row(name, "1")
+        if member == "operation" {
+            let signature = law_signature(source, name_at, slots)
+            if law_bad(signature) { return signature }
+            at = skip_lexical_trivia(source, law_end(signature))
+        } else if member == "equation" {
+            let params = law_parameters(source, law_next(source, name_at), slots, domains, true)
+            if law_bad(params) { return params }
+            let equals = skip_lexical_trivia(source, law_end(params))
+            if token_text(source, equals) != "=" { return law_expected(equals, "`=`") }
+            let env = law_field(params, 3) + ops
+            let left = law_expr(source, law_next(source, equals), slots, env, 0)
+            if law_bad(left) { return left }
+            let op = skip_lexical_trivia(source, law_end(left))
+            if token_text(source, op) != "==" { return law_expected(op, "`==`") }
+            let right = law_expr(source, law_next(source, op), slots, env, 0)
+            if law_bad(right) { return right }
+            if law_field(left, 1) != equality || law_field(right, 1) != equality {
+                return law_error("E2S230", "law operands do not match the selected equality type", op)
+            }
+            json = law_join(json, "{" + law_name(source, name_at) + ",\"declaration_span\":" + law_span(at, law_end(right)) + ",\"parameters\":[" + law_field(params, 2) +
+                "],\"kind\":\"equal\",\"type\":\"Bool\",\"left\":" + law_field(left, 2) + ",\"right\":" + law_field(right, 2) + "}")
+            at = skip_lexical_trivia(source, law_end(right))
+        } else { return law_expected(at, "an operation or equation") }
+    }
+    if len(json) == 0 { return law_expected(at, "an equation member") }
+    return json
+}
+
+fn law_bindings(source: Text, open: Int, ops: Text, functions: Text) -> Text {
+    let mut at = law_next(source, open)
+    let mut seen = ""
+    let mut json = ""
+    while token_text(source, at) != "}" {
+        if !law_id(source, at) { return law_expected(at, "an operation binding") }
+        let name = token_text(source, at)
+        let operation = law_get(ops, name)
+        if len(operation) == 0 { return law_unknown(name, at) }
+        if len(law_get(seen, name)) > 0 { return law_duplicate(name, at) }
+        seen = seen + law_row(name, "1")
+        let equals = law_next(source, at)
+        if token_text(source, equals) != "=" { return law_expected(equals, "`=`") }
+        let target = law_next(source, equals)
+        let bound = law_get(functions, token_text(source, target))
+        if len(bound) == 0 { return law_unknown(token_text(source, target), target) }
+        if law_type_of(operation) != law_type_of(bound) {
+            return law_error("E2S230", "law operation binding has incompatible function signature", target)
+        }
+        json = law_join(json, "{" + law_name(source, at) + ",\"operation\":" + law_target(operation) +
+            ",\"function\":" + law_target(bound) + ",\"target_span\":" + law_span(target, token_end(source, target)) + "}")
+        at = law_next(source, target)
+    }
+    let mut cursor = 0
+    while cursor < len(ops) {
+        let colon = text_find_from(ops, ":", cursor + 1)
+        let required = text_slice(ops, cursor + 1, colon)
+        if len(law_get(seen, required)) == 0 {
+            return law_error("E2S229", "unbound required law operation `" + required + "`", at)
+        }
+        cursor = text_find_from(ops, ";", colon)
+        if cursor < 0 { break }
+    }
+    return json
+}
+
+fn law_document(source: Text, path: Text) -> Text {
+    if len(source) > 16384 { return law_error("E2S228", "law declaration source exceeds 16384 bytes", 0) }
+    let mut at = skip_lexical_trivia(source, 0)
+    let mut count = 0
+    while at < len(source) {
+        if count >= 1024 { return law_error("E2S228", "law declaration source exceeds 1024 tokens", at) }
+        let next = law_next(source, at)
+        if next <= at { return law_expected(at, "a complete source token") }
+        at = next
+        count = count + 1
+    }
+    let index = law_index(source)
+    if law_bad(index) { return index }
+    let names = law_field(index, 0)
+    let family = decimal_value(law_get(names, "law"))
+    let instance = decimal_value(law_get(names, "impl"))
+    let check = decimal_value(law_get(names, "check"))
+    let substitution = law_substitutions(source, family, instance)
+    if law_bad(substitution) { return substitution }
+    let body = law_end(substitution)
+    let slots = law_field(substitution, 2)
+    let policy = law_check(source, check, instance)
+    if law_bad(policy) { return policy }
+    let operations = law_operations(source, body, slots)
+    if law_bad(operations) { return operations }
+    let ops = law_field(operations, 0)
+    let bindings = law_bindings(source, decimal_value(law_field(substitution, 1)), ops, law_field(index, 1))
+    if law_bad(bindings) { return bindings }
+    let equations = law_equations(source, body, slots, ops, law_field(policy, 0), law_field(policy, 1))
+    if law_bad(equations) { return equations }
+    let family_span = law_span(decimal_value(law_get(names, "start.law")), decimal_value(law_get(names, "end.law")))
+    let instance_span = law_span(decimal_value(law_get(names, "start.impl")), decimal_value(law_get(names, "end.impl")))
+    let checked = law_decl_span(law_field(policy, 2), decimal_value(law_get(names, "start.check")), decimal_value(law_get(names, "end.check")))
+    return "{\"schema\":\"kofun.law-declaration-hir/v1\",\"file_id\":\"" + scoped_hir_file_id(path) +
+        "\",\"functions\":[" + law_field(index, 2) + "],\"family\":{" + law_name(source, family) +
+        ",\"declaration_span\":" + family_span + ",\"slots\":[" + law_field(substitution, 3) + "],\"operations\":[" + law_field(operations, 1) +
+        "],\"equations\":[" + equations + "]},\"implementation\":{" + law_name(source, instance) +
+        ",\"declaration_span\":" + instance_span + ",\"family\":" + to_text(family) + ",\"bindings\":[" + bindings + "]},\"check\":" + checked + "}\n"
+}
+
+fn emit_law_hir_file(input: Text, output: Text, logical_path: Text) -> Bool {
+    if stage2_same_file(input, output) == 1 {
+        print(law_error("E2S228", "law HIR input and output must be distinct", 0))
+        return false
+    }
+    if !scoped_hir_logical_path(logical_path) {
+        print(law_error("E2S228", "law HIR logical path must be canonical relative UTF-8", 0))
+        return false
+    }
+    let source = read_text(input)
+    let invalid = validate_unicode_source(source)
+    if len(invalid) > 0 { print(invalid) return false }
+    let document = law_document(source, logical_path)
+    if law_bad(document) { print(document) return false }
+    write_text(output, document)
+    return true
+}
+
 # ---------------------------------------------------------------- SHA-256
 #
 # RFC-0013 step 4 prerequisite (#1382). Every identity this compiler assigns —
@@ -34952,14 +35729,10 @@ fn emit_generic_adt_hir_file(input: Text, output: Text, logical_path: Text) -> B
 # specified to assign its own identities could not reach the operation that
 # defines them.
 #
-# These nineteen functions are the bodies of
-# `tests/stdlib/kofun-digest-model/sha256.kofun`, which is gated on every verify
-# against the NIST vectors and against `bootstrap/stage2/sha256.c`. They are
-# inlined rather than imported because Stage 2 has no import: `E2S02` refuses
-# any top-level form but `fn`, `type`, and `let`, so a bounded include form is a
-# language surface change and a decision issue of its own. The cost of that
-# choice is that the digest now exists in three places, and
-# `tests/stage2/sha256-pair/check.sh` is what keeps the three from drifting.
+# The standalone compiler carries its SHA-256 functions inline. Core programs
+# can use the same bytes through the manifest-pinned `include "sha256"`.
+# The include-form gate checks this block against that source and verifies the
+# output against the independent implementation in `bootstrap/stage2/sha256.c`.
 #
 # Every word stays a non-negative value below 2**32, which is what makes `shr`
 # — arithmetic in RFC-0013 — agree with the logical shift the specification
@@ -35303,6 +36076,13 @@ fn sha256_selftest() -> Int {
 
 fn main() -> Int {
     let arguments = args()
+    if len(arguments) == 2 && arguments[0] == "--uses-include" {
+        if uses_bounded_include(read_text(arguments[1])) { return 0 }
+        return 1
+    }
+    if len(arguments) == 7 && arguments[0] == "--include-bundle" && arguments[2] == "--compile-outcome" {
+        return compile_file_with_bundle(arguments[1], arguments[3], arguments[4], arguments[5], arguments[6])
+    }
     if len(arguments) == 5 && arguments[0] == "--compile-outcome" {
         return compile_file(
             arguments[1],
@@ -35348,6 +36128,10 @@ fn main() -> Int {
         }
         return 0
     }
+    if len(arguments) == 4 && arguments[0] == "--emit-law-hir" {
+        if !emit_law_hir_file(arguments[1], arguments[2], arguments[3]) { return 1 }
+        return 0
+    }
     if len(arguments) == 4 && arguments[0] == "--emit-generic-record-hir" {
         if !emit_generic_record_hir_file(arguments[1], arguments[2], arguments[3]) {
             return 1
@@ -35386,11 +36170,12 @@ fn main() -> Int {
     if len(arguments) != 4 {
         print(
             "usage: kofun-stage2 INPUT.kofun OUTPUT.kofun OUTPUT.ir OUTPUT.tokens\n" +
-            "       kofun-stage2 --compile-outcome INPUT.kofun OUTPUT.c OUTPUT.ir OUTPUT.tokens\n" +
+            "       kofun-stage2 [--include-bundle BUNDLE] --compile-outcome INPUT.kofun OUTPUT.c OUTPUT.ir OUTPUT.tokens\n" +
             "       kofun-stage2 --check-ownership INPUT.kofun\n" +
             "       kofun-stage2 --parse-patterns INPUT.kofun OUTPUT.patterns\n" +
             "       kofun-stage2 --emit-scope-hir INPUT.kofun OUTPUT.scope-hir\n" +
             "       kofun-stage2 --emit-scope-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n" +
+            "       kofun-stage2 --emit-law-hir INPUT.kofun OUTPUT.json LOGICAL-PATH\n" +
             "       kofun-stage2 --emit-generic-record-hir INPUT.kofun OUTPUT.json LOGICAL-PATH\n" +
             "       kofun-stage2 --emit-generic-adt-hir INPUT.kofun OUTPUT.json LOGICAL-PATH\n" +
             "       kofun-stage2 --emit-capture-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n" +
@@ -35412,4 +36197,272 @@ fn main() -> Int {
         return 1
     }
     return 0
+}
+
+# Concrete applications are kept as normalized token spellings in scope HIR.
+# Source spans still refer to authored tokens. Only the backend maps the
+# structural identity to a C identifier.
+fn executable_record_generic(source: Text, declaration: Int) -> Bool {
+    if declaration < 0 { return false }
+    let bracket = type_parameter_open(source, declaration)
+    if bracket < 0 { return false }
+    let first = skip_trivia(source, token_end(source, bracket))
+    return token_text(source, first) != "const" && record_declaration_at(source, declaration)
+}
+
+fn executable_record_application_end(source: Text, at: Int) -> Int {
+    let bracket = skip_trivia(source, token_end(source, at))
+    if bracket >= len(source) || token_text(source, bracket) != "[" { return -1 }
+    let decl = record_declaration_start(source, token_text(source, at))
+    if !executable_record_generic(source, decl) { return -1 }
+    return balanced_end(source, bracket, "[", "]")
+}
+
+fn executable_record_substitute(source: Text, at: Int, end: Int, names: Text, arguments: Text) -> Text {
+    let mut cursor = at
+    let mut out = ""
+    while cursor < end {
+        let token = token_text(source, cursor)
+        let ordinal = generic_record_binder_ordinal(names, token)
+        if ordinal >= 0 && len(arguments) > 0 {
+            out = out + generic_record_line(arguments, ordinal)
+        } else {
+            out = out + token
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return out
+}
+
+fn executable_record_arguments(identity: Text) -> Text {
+    let open = find(identity, "[")
+    if open < 0 { return "" }
+    let mut rows = ""
+    let mut cursor = open + 1
+    while cursor < len(identity) - 1 {
+        let end = generic_record_type_end(identity, cursor, len(identity) - 1)
+        if end <= cursor { return "" }
+        if len(rows) > 0 { rows = rows + "\n" }
+        rows = rows + text_slice(identity, cursor, end)
+        cursor = end
+        if token_text(identity, cursor) == "," { cursor = cursor + 1 }
+    }
+    return rows
+}
+
+fn executable_record_argument_hexes(identity: Text, path: Text) -> Text {
+    let arguments = executable_record_arguments(identity)
+    let total = generic_record_lines(arguments)
+    let mut rows = ""
+    let mut index = 0
+    while index < total {
+        let item = generic_record_line(arguments, index)
+        let mut hex = ""
+        if generic_record_primitive(item) {
+            hex = "01" + generic_record_primitive_id(item)
+        } else {
+            let children = executable_record_argument_hexes(item, path)
+            hex = "03" + generic_record_type_id(path, const_type_base(item)) +
+                scoped_hir_hex(generic_record_lines(children), 4) + generic_record_flatten(children)
+        }
+        if index > 0 { rows = rows + "\n" }
+        rows = rows + hex
+        index = index + 1
+    }
+    return rows
+}
+
+fn executable_record_symbol(identity: Text, path: Text) -> Text {
+    let id = generic_record_constructed_id(generic_record_type_id(path, const_type_base(identity)),
+        executable_record_argument_hexes(identity, path))
+    let target = "x86_64-linux"
+    let backend = "record-c11/v1"
+    let layout = "aggregate-layout-v1"
+    let hash = scoped_hir_hash_frame("kofun.id.backend-symbol/v1",
+        scoped_hir_text_hex(target) + "00", id,
+        "00" + scoped_hir_text_hex(backend) + "00", scoped_hir_text_hex(layout))
+    let alphabet = "abcdefghijklmnopqrstuvwxyz234567"
+    let one = 1
+    let mut out = "KofunGR_"
+    let mut bits = 0
+    let mut value = 0
+    let mut index = 0
+    while index < len(hash) {
+        value = value * 16 + scoped_hir_hex_digit(text_slice(hash, index, index + 1))
+        bits = bits + 4
+        if bits >= 5 {
+            bits = bits - 5
+            let divisor = one.shl(bits)
+            let digit = value // divisor
+            out = out + text_slice(alphabet, digit, digit + 1)
+            value = value % divisor
+        }
+        index = index + 1
+    }
+    if bits > 0 {
+        let digit = value.shl(5 - bits)
+        out = out + text_slice(alphabet, digit, digit + 1)
+    }
+    return out
+}
+
+# Order dependencies by substituted stored fields. An argument ignored by
+# its declaration does not introduce a by-value cycle.
+fn executable_record_visit(source: Text, identity: Text, rows: Text, stack: Text, at: Int) -> Text {
+    if contains("\n" + rows + "\n", "\n" + identity + "\n") { return rows }
+    let base = const_type_base(identity)
+    let decl = record_declaration_start(source, base)
+    if decl < 0 { return generic_record_refusal("E2S196", "unknown nominal type `" + base + "`", at) }
+    if contains(stack, "|" + identity + "|") {
+        let code = "E2S200"
+        if ends_with(stack, "|" + identity + "|") {
+            return generic_record_refusal("E2S199", "recursive by-value record layout", at)
+        }
+        return generic_record_refusal(code, "mutually recursive by-value record layout", at)
+    }
+    let names = generic_record_binder_names(source, decl)
+    let args = executable_record_arguments(identity)
+    let count = generic_record_lines(args)
+    if starts_with(names, "error[") { return names }
+    if count != generic_record_comma_count(names) {
+        return generic_record_refusal("E2S195", "`" + base + "` expects " +
+            to_text(generic_record_comma_count(names)) + " arguments, got " + to_text(count), at)
+    }
+    let mut result = rows
+    let fields = record_field_count(source, identity)
+    let mut index = 0
+    while index < fields {
+        let field = record_field_text(source, identity, index, true)
+        if record_declaration_start(source, const_type_base(field)) >= 0 {
+            if len(field) > 128 { return generic_record_refusal("E2S198", "constructed TypeRef exceeds its display bound", at) }
+            result = executable_record_visit(source, field, result, stack + identity + "|", at)
+            if starts_with(result, "error[") { return result }
+        } else if field != "Int" && field != "Text" && field != "Bool" && field != "Bytes" && field != "List[Int]" {
+            return generic_record_refusal("E2S201", "unsupported stored field type `" + field + "`", at)
+        }
+        index = index + 1
+    }
+    let mut found = 0
+    index = 0
+    while index < generic_record_lines(result) {
+        if const_type_base(generic_record_line(result, index)) == base { found = found + 1 }
+        index = index + 1
+    }
+    if found >= 8 { return generic_record_refusal("E2S197", "`" + base + "` has more than 8 instantiations", decl) }
+    if len(result) > 0 { result = result + "\n" }
+    return result + identity
+}
+
+fn executable_record_instances(source: Text) -> Text {
+    # Diagnose an unsupported generic ADT before the record-only layout pass
+    # resolves a field that uses it, including a forward reference.
+    let first = after_optional_module_header(source, 0)
+    let mut declaration = first
+    while declaration < len(source) {
+        let start = type_declaration_start(source, declaration)
+        if start >= 0 && type_parameter_open(source, start) >= 0 && !record_declaration_at(source, start) {
+            return type_parameter_list_error(source, start)
+        }
+        let end = top_level_end(source, declaration)
+        if end <= declaration { break }
+        declaration = skip_trivia(source, end)
+    }
+    let mut rows = ""
+    let mut cursor = first
+    while cursor < len(source) {
+        let start = type_declaration_start(source, cursor)
+        if start >= 0 {
+            let end = type_declaration_end(source, start)
+            if end < 0 { return generic_record_refusal("E2S201", "malformed record declaration", start) }
+            if executable_record_generic(source, start) {
+                let fields = generic_record_fields_json(source, start, "main.kofun", "", "")
+                if starts_with(fields, "error[") { return fields }
+            }
+            if record_declaration_at(source, start) && type_parameter_open(source, start) < 0 {
+                rows = executable_record_visit(source, type_name(source, start), rows, "|", start)
+                if starts_with(rows, "error[") { return rows }
+            }
+            cursor = skip_trivia(source, end)
+        } else {
+            if token_kind(source, cursor) == "identifier" {
+                let end = executable_record_application_end(source, cursor)
+                if end >= 0 {
+                    let checked = generic_record_type(source, cursor, end, "", "", "main.kofun", "", "", 0)
+                    if starts_with(checked, "error[") { return checked }
+                    let identity = executable_record_substitute(source, cursor, end, "", "")
+                    rows = executable_record_visit(source, identity, rows, "|", cursor)
+                    if starts_with(rows, "error[") { return rows }
+                }
+            }
+            cursor = skip_trivia(source, token_end(source, cursor))
+        }
+    }
+    return rows
+}
+
+fn executable_record_enabled(source: Text) -> Bool {
+    if !contains(source, "[") || !contains(source, "type") { return false }
+    let mut cursor = after_optional_module_header(source, 0)
+    while cursor < len(source) {
+        let start = type_declaration_start(source, cursor)
+        if executable_record_generic(source, start) { return true }
+        let end = top_level_end(source, cursor)
+        if end <= cursor { return false }
+        cursor = skip_trivia(source, end)
+    }
+    return false
+}
+
+# Each row records an already classified complete C type. Nested record size
+# and alignment are read from the completed row, never guessed from a name.
+fn executable_record_layouts(source: Text, rows: Text) -> Text {
+    let mut output = ""
+    let mut facts = ""
+    let mut index = 0
+    while index < generic_record_lines(rows) {
+        let identity = generic_record_line(rows, index)
+        let type = record_c_type_name(identity)
+        let fields = record_field_count(source, identity)
+        let mut declarations = "typedef struct {\n"
+        let mut assertions = ""
+        let mut size = 0
+        let mut align = 1
+        let mut field = 0
+        while field < fields {
+            let name = record_c_field_name(record_field_text(source, identity, field, false))
+            let stored = record_field_text(source, identity, field, true)
+            let mut c = ""
+            let mut width = 8
+            let mut boundary = 8
+            if stored == "Int" { c = "int64_t" }
+            else if stored == "Bool" { c = "bool" width = 1 boundary = 1 }
+            else if stored == "Text" { c = "const char *" }
+            else if stored == "List[Int]" { c = "KofunIntListValue" width = 520 }
+            else if stored == "Bytes" { c = "KofunBytesValue" width = 24 }
+            else {
+                let found = find(facts, "|" + stored + "|")
+                if found < 0 { return generic_record_refusal("E2S201", "missing field layout", 0) }
+                let tail = text_slice(facts, found + len(stored) + 2, len(facts))
+                let split = find(tail, "|")
+                width = decimal_value(text_slice(tail, 0, split))
+                boundary = decimal_value(text_slice(tail, split + 1, find(tail, "\n")))
+                c = record_c_type_name(stored)
+            }
+            size = record_align_up(size, boundary)
+            declarations = declarations + "    " + c + " " + name + ";\n"
+            assertions = assertions + "_Static_assert(offsetof(" + type + ", " + name + ") == " + to_text(size) +
+                ", \"AggregateLayout field offset\");\n"
+            size = size + width
+            if boundary > align { align = boundary }
+            field = field + 1
+        }
+        size = record_align_up(size, align)
+        if size > 140737488355328 { return generic_record_refusal("E2S201", "record exceeds target object bound", 0) }
+        facts = facts + "|" + identity + "|" + to_text(size) + "|" + to_text(align) + "\n"
+        output = output + declarations + "} " + type + ";\n" + assertions +
+            "_Static_assert(sizeof(" + type + ") == " + to_text(size) + ", \"AggregateLayout record size\");\n" +
+            "_Static_assert(_Alignof(" + type + ") == " + to_text(align) + ", \"AggregateLayout record alignment\");\n\n"
+        index = index + 1
+    }
+    return output
 }

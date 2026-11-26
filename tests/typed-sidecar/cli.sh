@@ -83,6 +83,116 @@ for (const [index, filename] of process.argv.slice(2).entries()) {
 }
 NODE
 
+# The callable effects research note's x16 dispatch, with each admitted
+# callable arity and an inferred pure function beside the explicit declaration.
+cat >"$WORK/callables.kofun" <<'KOFUN'
+fn noisy(x: Int) -> Int {
+    print(x)
+    return x
+}
+pure fn forward(f: (Int) -> Int, x: Int) -> Int {
+    return f(x)
+}
+fn unary(f: Int -> Int) -> Int {
+    return f(1)
+}
+fn shapes(zero: () -> Int, one: pure Int -> Int, two: (Int, Int) -> Int) -> Int {
+    return 7
+}
+fn main() -> Int {
+    return forward(noisy, 7)
+}
+KOFUN
+expect_status 0 implicit-v1 check "$WORK/callables.kofun" --generation 9 \
+    --emit-typed-sidecar "$WORK/output/implicit.json"
+for version in 1 3; do
+    expect_status 0 "version-$version" check "$WORK/callables.kofun" \
+        --typed-sidecar-version "$version" --generation 9 \
+        --emit-typed-sidecar "$WORK/output/v$version.json"
+done
+cmp "$WORK/output/implicit.json" "$WORK/output/v1.json"
+cmp "$WORK/version-1.stdout" "$WORK/version-3.stdout"
+cmp "$WORK/version-1.stderr" "$WORK/version-3.stderr"
+
+node --input-type=module - "$WORK/output" <<'NODE'
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import { readTypedSidecar } from "./tooling/typed-sidecar/codec.mjs";
+import { validateAgainstSchema } from "./tests/lib/json-schema.mjs";
+
+const [v1, v3] = [1, 3].map(version => {
+  const result = readTypedSidecar(fs.readFileSync(`${process.argv[2]}/v${version}.json`));
+  assert.equal(result.ok, true, result.error?.message);
+  assert.equal(result.document.schema, `kofun.typed-sidecar/v${version}`);
+  assert.equal(result.document.generation.sequence, 9);
+  return result.document;
+});
+const functions = doc => doc.nodes.filter(node => node.kind === "function.declaration");
+const signatures = doc => functions(doc).map(node => node.type.display);
+assert.deepEqual(signatures(v1), [
+  "Int -> Int", "(Fn, Int) -> Int", "Fn -> Int", "(Fn, Fn[pure], Fn) -> Int", "() -> Int",
+]);
+assert.deepEqual(signatures(v3), [
+  "Int -> Int", "((Int) -> Int, Int) -> Int", "((Int) -> Int) -> Int",
+  "(() -> Int, pure (Int) -> Int, (Int, Int) -> Int) -> Int", "() -> Int",
+]);
+assert.deepEqual(v3.nodes.filter(node => node.kind === "parameter.binding").map(node => node.type.display),
+  ["Int", "(Int) -> Int", "Int", "(Int) -> Int", "() -> Int", "pure (Int) -> Int", "(Int, Int) -> Int"]);
+for (const doc of [v1, v3]) {
+  assert.deepEqual(functions(doc).map(node => node.effect.display), ["io", "pure", "pure", "pure", "io"]);
+}
+assert.deepEqual(v3.declared_pure_functions, [functions(v3)[1].id]);
+assert.deepEqual(v3.nodes.map(node => node.id), v1.nodes.map(node => node.id));
+
+// Resolve the repository's relative schema references into local JSON pointers
+// so the shared schema interpreter validates the CLI's actual output offline.
+const schemaFiles = {};
+for (const version of [1, 2, 3]) {
+  const file = `kofun.typed-sidecar.v${version}.schema.json`;
+  schemaFiles[file] = JSON.parse(fs.readFileSync(`spec/typed-sidecar/${file}`, "utf8"), (key, value) => {
+    if (key !== "$ref") return value;
+    const [owner, pointer] = value.split("#");
+    return `#/$defs/${owner || file}${pointer}`;
+  });
+}
+const schema = schemaFiles["kofun.typed-sidecar.v3.schema.json"];
+function schemaErrors(doc) {
+  const errors = [];
+  validateAgainstSchema({ $defs: schemaFiles }, schema, doc, "$", errors);
+  return errors;
+}
+assert.deepEqual(schemaErrors(v3), []);
+assert.notEqual(schemaErrors({ ...v3, declared_pure_functions: ["not-an-id"] }).length, 0);
+assert.notEqual(schemaErrors({ ...v3, captures: [] }).length, 0);
+NODE
+
+# A callable can be small in v1 ("Fn") and longer than 159 bytes when expanded.
+node --input-type=module - "$WORK/wide.kofun" <<'NODE'
+import fs from "node:fs";
+const params = Array.from({ length: 6 }, (_, i) => `f${i}: (Int, Int, Int, Int, Int) -> Int`);
+fs.writeFileSync(process.argv[2], `fn wide(${params.join(", ")}, x: Int) -> Int { return x }
+fn main() -> Int { return 0 }
+`);
+NODE
+expect_status 0 wide-signature check "$WORK/wide.kofun" \
+    --typed-sidecar-version 3 --emit-typed-sidecar "$WORK/output/wide.json" --generation 1
+node --input-type=module - "$WORK/output/wide.json" <<'NODE'
+import assert from "node:assert/strict";
+import fs from "node:fs";
+const {nodes} = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+const slots = Array(6).fill("(Int, Int, Int, Int, Int) -> Int");
+assert.equal(nodes.find(n => n.kind === "function.declaration").type.display,
+  `(${slots.join(", ")}, Int) -> Int`);
+NODE
+
+# A stale write may request a different schema. It must preserve the stored
+# bytes and fail through the same atomic replacement path.
+cp "$WORK/output/v3.json" "$WORK/version.before"
+expect_status 3 stale-version check "$WORK/callables.kofun" \
+    --typed-sidecar-version 1 --emit-typed-sidecar "$WORK/output/v3.json" --generation 8
+assert_grep "stale-version.stderr" -q '^ETS05: ' "$WORK/stale-version.stderr"
+cmp "$WORK/output/v3.json" "$WORK/version.before"
+
 for value in '' 00 01 +1 -1 1e3 1_000 9007199254740992
 do
     label=$(printf '%s' "${value:-empty}" | tr '+_-' 'pmm')
@@ -103,8 +213,15 @@ expect_status 2 duplicate-generation check "$COMPLETE" \
     --generation 1 --generation 2
 expect_status 2 unknown-option check "$COMPLETE" \
     --emit-typed-sidecar "$WORK/output/unknown.json" --unknown 1
+expect_status 2 unknown-version check "$COMPLETE" --generation 1 \
+    --emit-typed-sidecar "$WORK/output/unknown-version.json" --typed-sidecar-version 4
+expect_status 2 missing-version check "$COMPLETE" --generation 1 \
+    --emit-typed-sidecar "$WORK/output/unknown-version.json" --typed-sidecar-version
+expect_status 2 repeated-version check "$COMPLETE" --generation 1 \
+    --emit-typed-sidecar "$WORK/output/unknown-version.json" --typed-sidecar-version 1 --typed-sidecar-version 3
+assert_absent "unknown-version artifact" "$WORK/output/unknown-version.json"
 for label in missing-generation missing-output duplicate-output \
-    duplicate-generation unknown-option
+    duplicate-generation unknown-option unknown-version missing-version repeated-version
 do
     assert_grep "$label.stderr" -q '^ETS01: ' "$WORK/$label.stderr"
 done
@@ -141,7 +258,11 @@ cmp "$WORK/failed-plain.stderr" "$WORK/failed.stderr"
 assert_file_empty "failed.stdout" "$WORK/failed.stdout"
 assert_grep "failed.stderr" -Fq 'error[' "$WORK/failed.stderr"
 assert_file_nonempty "output/failed.json" "$WORK/output/failed.json"
-node --input-type=module - "$WORK/output/failed.json" <<'NODE'
+expect_status 1 failed-v3 check "$FAILED" --typed-sidecar-version 3 \
+    --emit-typed-sidecar "$WORK/output/failed-v3.json" --generation 20
+cmp "$WORK/failed.stdout" "$WORK/failed-v3.stdout"
+cmp "$WORK/failed.stderr" "$WORK/failed-v3.stderr"
+node --input-type=module - "$WORK/output/failed.json" "$WORK/output/failed-v3.json" <<'NODE'
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { readTypedSidecar } from "./tooling/typed-sidecar/codec.mjs";
@@ -150,6 +271,13 @@ assert.equal(result.ok, true, result.error?.message);
 assert.equal(result.document.completeness, "partial");
 assert.equal(result.document.source_status, "failed");
 assert.ok(result.document.diagnostics.some((item) => item.severity === "error"));
+const v3 = readTypedSidecar(fs.readFileSync(process.argv[3]));
+assert.equal(v3.ok, true, v3.error?.message);
+assert.equal(v3.document.schema, "kofun.typed-sidecar/v3");
+assert.equal(v3.document.completeness, "partial");
+assert.equal(v3.document.source_status, "failed");
+assert.deepEqual(v3.document.diagnostics, result.document.diagnostics);
+assert.deepEqual(v3.document.declared_pure_functions, []);
 NODE
 
 cp "$WORK/output/complete.kofun-semantic.json" "$WORK/equal.before"

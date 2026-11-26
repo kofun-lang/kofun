@@ -362,9 +362,14 @@ const UNKNOWN_REASONS = Object.freeze([
 function validateDocument(doc) {
   const isV2 = doc !== null && typeof doc === "object" &&
     doc.schema === "kofun.typed-sidecar/v2";
-  object(doc, "$", isV2 ? V2_ROOT_FIELDS : V1_ROOT_FIELDS);
+  const isV3 = doc?.schema === "kofun.typed-sidecar/v3";
+  if (isV3) {
+    object(doc, "$", [...V1_ROOT_FIELDS, "declared_pure_functions"], ["capture_profile", "captures"]);
+  } else {
+    object(doc, "$", isV2 ? V2_ROOT_FIELDS : V1_ROOT_FIELDS);
+  }
   if (doc.authoritative !== false) fail("$.authoritative: must be false");
-  if (!isV2 && doc.schema !== "kofun.typed-sidecar/v1") fail("$.schema: unsupported schema");
+  if (!isV3 && !isV2 && doc.schema !== "kofun.typed-sidecar/v1") fail("$.schema: unsupported schema");
   if (structuralDepth(doc) > LIMITS.maxDepth) fail("document exceeds default-v1 structural depth", "TS004");
 
   object(doc.compiler, "$.compiler", ["edition", "semantic_compatibility"]);
@@ -387,10 +392,10 @@ function validateDocument(doc) {
   object(doc.limits, "$.limits", ["document_bytes", "max_depth", "profile"]);
   if (doc.limits.document_bytes !== LIMITS.documentBytes ||
       doc.limits.max_depth !== LIMITS.maxDepth ||
-      doc.limits.profile !== (isV2 ? "default-v2" : "default-v1")) {
+      doc.limits.profile !== (isV3 ? "default-v3" : isV2 ? "default-v2" : "default-v1")) {
     fail("$.limits: unknown or incorrect bounded profile");
   }
-  if (isV2) validateCaptures(doc);
+  if (isV2 || (isV3 && ("captures" in doc || "capture_profile" in doc))) validateCaptures(doc);
 
   const validPair = (doc.completeness === "complete" && doc.source_status === "checked") ||
     (doc.completeness === "partial" && ["failed", "cancelled"].includes(doc.source_status));
@@ -433,6 +438,18 @@ function validateDocument(doc) {
     if (node.status === "unavailable") {
       for (const field of ["effect", "origin", "ownership", "type"]) {
         if (field in node && node[field].status !== "unavailable") fail(`${where}: unavailable node cannot carry ${field} data`);
+      }
+    }
+  }
+  if (isV3) {
+    const declarations = array(doc.declared_pure_functions, "$.declared_pure_functions", 4096);
+    sortedUniqueStrings(declarations, "$.declared_pure_functions");
+    for (const id of declarations) {
+      if (id === "0".repeat(64)) fail("$.declared_pure_functions: zero identity");
+      const owner = nodeIds.get(id);
+      if (owner?.kind !== "function.declaration" || owner.status !== "validated" ||
+          owner.effect?.status !== "validated" || owner.effect.display !== "pure") {
+        fail("$.declared_pure_functions: expected a checked pure function declaration");
       }
     }
   }

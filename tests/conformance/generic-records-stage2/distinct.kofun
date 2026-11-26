@@ -1,0 +1,12 @@
+type Box[T] = {
+    value: T,
+}
+
+fn read_int(box: Box[Int]) -> Int {
+    return box.value
+}
+
+fn main() -> Int {
+    let box: Box[Text] = Box[Text](value: "text")
+    return read_int(box)
+}

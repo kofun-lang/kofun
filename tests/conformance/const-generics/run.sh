@@ -307,7 +307,6 @@ scale_mismatch:E2S151
 struct_identity_collision:E2S153
 shadow_decimal_error:E2S31
 shadow_fixed:E2S32
-type_parameter_record:E2S148
 '
 
 IFS='
@@ -344,8 +343,8 @@ grep -F 'Scaled[3]` is not `Scaled[2]' \
     "$PRODUCT/scale_mismatch.stdout" >/dev/null ||
     fail 'the erasure sentinel no longer names both instantiations'
 
-# The bounded frontend accepts an ordinary type parameter; the product path
-# refuses it by name. Neither is allowed to drift into the other silently.
+# Concrete record type arguments and const arguments have separate layout
+# rules. This mixed fixture still exceeds the product const layout boundary.
 set +e
 "$WORK/kofun-stage2" --compile-outcome "$CASES/frontend_surface.kofun" \
     "$WORK/frontend_surface.product.c" "$WORK/frontend_surface.product.ir" \
@@ -359,11 +358,13 @@ grep -F 'error[E2S148]:' "$WORK/frontend_surface.product.actual" >/dev/null ||
     fail 'the product path must refuse the wider surface by name'
 test ! -e "$WORK/frontend_surface.product.c" ||
     fail 'the product path emitted C for a surface it refuses'
-# The ordinary type parameter itself is pinned on its own fixture above, so
-# whichever refusal this wider source reaches first, that one stays measured.
-grep -F 'error[E2S148]: type parameters on a nominal type are unsupported' \
-    "$PRODUCT/type_parameter_record.stdout" >/dev/null ||
-    fail 'the product path must refuse an ordinary type parameter by name'
+# The product path now admits this ordinary type-parameterized record (#1269).
+"$WORK/kofun-stage2" --compile-outcome "$PRODUCT/type_parameter_record.kofun" \
+    "$WORK/typed-record.c" "$WORK/typed-record.ir" "$WORK/typed-record.tokens" >/dev/null
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic "$WORK/typed-record.c" -o "$WORK/typed-record"
+"$WORK/typed-record" >"$WORK/typed-record.stdout"
+cmp "$PRODUCT/type_parameter_record.stdout" "$WORK/typed-record.stdout" ||
+    fail 'a concrete record type parameter produced the wrong runtime output'
 
 # Backend honesty. Monomorphizing per distinct literal is the other admissible
 # answer; until a backend does it, each one must say so where the manifest

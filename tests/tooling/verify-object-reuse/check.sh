@@ -1950,16 +1950,16 @@ assert_num 'semantic v2 manifest schema row count' \
 assert_num 'semantic v2 manifest trust row count' \
     "$(awk -F '\t' '$1 == "trust" { n++ } END { print n + 0 }' \
         "$bundle/manifest-v2.tsv")" -eq 1
-# 8 -> 12 profiles, 48 -> 62 inputs, 8 -> 12 members: #1449's four
-# `-O0 -fanalyzer` roles. Each carries its own normalized argv, its own source
-# and header closure, and its own member digest, so the family is provenanced
-# exactly like the `-O2` one rather than riding on it.
+# The v3 event header contributes one input each to the main producer,
+# library producer and events roles. The four analyzer roles keep their
+# existing input closures.
+expected_manifest_inputs=65
 assert_num 'semantic v2 manifest profile row count' \
     "$(awk -F '\t' '$1 == "profile" { n++ } END { print n + 0 }' \
         "$bundle/manifest-v2.tsv")" -eq 12
 assert_num 'semantic v2 manifest input row count' \
     "$(awk -F '\t' '$1 == "input" { n++ } END { print n + 0 }' \
-        "$bundle/manifest-v2.tsv")" -eq 62
+        "$bundle/manifest-v2.tsv")" -eq "$expected_manifest_inputs"
 assert_num 'semantic v2 manifest member row count' \
     "$(awk -F '\t' '$1 == "member" { n++ } END { print n + 0 }' \
         "$bundle/manifest-v2.tsv")" -eq 12
@@ -1967,14 +1967,14 @@ assert_num 'semantic v2 manifest marker row count' \
     "$(awk -F '\t' '$1 == "marker" { n++ } END { print n + 0 }' \
         "$bundle/manifest-v2.tsv")" -eq 1
 assert_num 'semantic v2 canonical manifest row count' \
-    "$(wc -l <"$bundle/manifest-v2.tsv" | tr -d ' ')" -eq 91
-awk 'BEGIN {
+    "$(wc -l <"$bundle/manifest-v2.tsv" | tr -d ' ')" -eq 94
+awk -v inputs="$expected_manifest_inputs" 'BEGIN {
     print "schema"
     print "trust"
     print "compiler-path"
     print "compiler-sha256"
     for (i = 0; i < 12; i++) print "profile"
-    for (i = 0; i < 62; i++) print "input"
+    for (i = 0; i < inputs; i++) print "input"
     for (i = 0; i < 12; i++) print "member"
     print "marker"
 }' >"$WORK/manifest-keys.expected"

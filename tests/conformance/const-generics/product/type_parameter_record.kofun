@@ -1,8 +1,4 @@
-# An ordinary type parameter on a nominal type needs field substitution and
-# per-instantiation layout. #916 builds neither, so the product path refuses
-# this by name instead of accepting a surface it cannot lower. The bounded
-# frontend still models it, which is what gives the kind-mismatch diagnostics
-# something to be a mismatch against.
+# A concrete type argument supplies the field type and C11 layout.
 type Boxed[T] = {
     value: T,
 }

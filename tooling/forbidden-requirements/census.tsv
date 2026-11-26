@@ -100,7 +100,6 @@
 # requirement	kind	count	class	need	path
 cc	invoke	11	required-today	required	bin/kofun
 cc	invoke	3	required-today	required	bootstrap/c_abi/check.sh
-cc	invoke	1	required-today	required	bootstrap/digest/build.sh
 cc	invoke	4	required-today	required	bootstrap/native/check.sh
 cc	invoke	1	required-today	required	bootstrap/selfhost/build-a1-a2.sh
 cc	invoke	5	required-today	required	bootstrap/selfhost/c11/check-c11.sh
@@ -113,7 +112,7 @@ cc	invoke	5	required-today	required	bootstrap/selfhost/generations-lib.sh
 cc	invoke	2	required-today	required	bootstrap/selfhost/native/check-native-corpus.sh
 cc	invoke	1	required-today	required	bootstrap/stage1/build.sh
 cc	invoke	11	required-today	required	bootstrap/stage1/check.sh
-cc	invoke	2	required-today	required	bootstrap/stage2/build.sh
+cc	invoke	4	required-today	required	bootstrap/stage2/build.sh
 cc	invoke	14	required-today	required	bootstrap/stage2/check.sh
 cc	invoke	1	required-today	required	bootstrap/stage2/fuzz-sanitizer-cc-wrapper.sh
 cc	invoke	2	required-today	required	bootstrap/stage2/fuzz-sanitizer-object.sh
@@ -128,9 +127,11 @@ cc	invoke	7	required-today	required	framework/cli/check.sh
 cc	invoke	1	required-today	required	framework/http/build.sh
 cc	invoke	1	required-today	required	framework/tui/build.sh
 cc	invoke	2	required-today	required	framework/tui/check.sh
+cc	invoke	1	required-today	required	spec/generic-adt-hir-v1/check.mjs
 cc	invoke	1	required-today	required	spec/generic-adt-hir-v1/check.sh
 cc	invoke	1	required-today	required	spec/generic-record-hir-v1/check.sh
 cc	invoke	1	required-today	required	spec/kif-generics-v1/check.mjs
+cc	invoke	1	required-today	required	spec/law-declaration-hir-v1/check.sh
 cc	invoke	1	required-today	required	spec/roadmap-31-34/verify-current-gates.sh
 cc	invoke	1	required-today	required	stdlib/buffered_io/tests/verify.sh
 cc	invoke	1	required-today	required	stdlib/date_time/tests/verify.sh
@@ -160,7 +161,7 @@ cc	invoke	5	required-today	required	tests/conformance/codegen/dense-enum-dispatc
 cc	invoke	1	required-today	required	tests/conformance/command-operands/run.sh
 cc	invoke	1	required-today	required	tests/conformance/concurrency/ownership/check.mjs
 cc	invoke	1	required-today	required	tests/conformance/concurrency/runtime/run.sh
-cc	invoke	6	required-today	required	tests/conformance/const-generics/run.sh
+cc	invoke	7	required-today	required	tests/conformance/const-generics/run.sh
 cc	invoke	4	required-today	required	tests/conformance/decimal-fixed/carrier/run.sh
 cc	invoke	1	required-today	required	tests/conformance/decimal-fixed/runtime/check.sh
 cc	invoke	4	required-today	required	tests/conformance/decimal/run.sh
@@ -169,6 +170,7 @@ cc	invoke	1	required-today	required	tests/conformance/discovery/sanitizer-cc-wra
 cc	invoke	2	required-today	required	tests/conformance/discovery/sanitizer-objects.sh
 cc	invoke	5	required-today	required	tests/conformance/effects/pure-boundary/run.sh
 cc	invoke	1	required-today	required	tests/conformance/effects/pure-io/run.sh
+cc	invoke	1	required-today	required	tests/conformance/generic-records-stage2/check.mjs
 cc	invoke	3	required-today	required	tests/conformance/generics/run.sh
 cc	invoke	1	required-today	required	tests/conformance/http-client-errors/run.sh
 cc	invoke	1	required-today	required	tests/conformance/http-client-headers/run.sh
@@ -298,6 +300,7 @@ node	invoke	4	required-today	required	spec/effects/affine-resumption/check.sh
 node	invoke	3	required-today	required	spec/generic-adt-hir-v1/check.sh
 node	invoke	3	required-today	required	spec/generic-record-hir-v1/check.sh
 node	invoke	1	required-today	required	spec/kif-generics-v1/check.sh
+node	invoke	1	required-today	required	spec/law-declaration-hir-v1/check.sh
 node	invoke	1	required-today	required	spec/native-toolchain-v1/check.sh
 node	invoke	9	required-today	required	spec/reuse-candidate-v1/check.sh
 node	invoke	4	required-today	required	spec/semantic-identity/check.sh
@@ -330,6 +333,7 @@ node	invoke	2	required-today	required	tests/conformance/decimal-fixed/carrier/ru
 node	invoke	2	required-today	required	tests/conformance/decimal-fixed/identity/run.sh
 node	invoke	7	required-today	required	tests/conformance/effects/pure-boundary/run.sh
 node	invoke	5	required-today	required	tests/conformance/effects/pure-io/run.sh
+node	invoke	1	required-today	required	tests/conformance/generic-records-stage2/check.sh
 node	invoke	7	required-today	required	tests/conformance/http-client-errors/run.sh
 node	invoke	2	required-today	required	tests/conformance/http-client-headers/run.sh
 node	invoke	2	required-today	required	tests/conformance/http-client-origin/run.sh
@@ -358,6 +362,7 @@ node	invoke	11	required-today	required	tests/rfc/check-registry.sh
 node	invoke	2	required-today	required	tests/stage2/list-int-signatures/run.sh
 node	invoke	4	required-today	required	tests/stage2/list-int-values/run.sh
 node	invoke	2	required-today	required	tests/stage2/optional-pair/run.sh
+node	invoke	1	required-today	required	tests/stage2/sha256-pair/check.sh
 node	invoke	4	required-today	required	tests/stdlib/benchmark-report-codec/check.sh
 node	invoke	8	required-today	required	tests/stdlib/benchmark-report-model/check.sh
 node	invoke	6	required-today	required	tests/stdlib/benchmark-report-model/compare.sh
@@ -368,7 +373,7 @@ node	invoke	3	required-today	required	tests/tooling/task-help/check.sh
 node	invoke	2	required-today	required	tests/typed-sidecar/atomic-write.sh
 node	invoke	2	required-today	required	tests/typed-sidecar/authority-boundary.sh
 node	invoke	3	required-today	required	tests/typed-sidecar/captures.sh
-node	invoke	2	required-today	required	tests/typed-sidecar/cli.sh
+node	invoke	5	required-today	required	tests/typed-sidecar/cli.sh
 node	invoke	3	required-today	required	tests/typed-sidecar/codec.sh
 node	invoke	4	required-today	required	tests/typed-sidecar/producer-races.sh
 node	invoke	4	required-today	required	tests/typed-sidecar/stage2-projector.sh
@@ -420,6 +425,7 @@ node	source	1	required-today	required	spec/generic-record-hir-v1/model.mjs
 node	source	1	required-today	required	spec/kif-generics-v1/check.mjs
 node	source	1	required-today	required	spec/kif-generics-v1/fixture.mjs
 node	source	1	required-today	required	spec/kif-generics-v1/model.mjs
+node	source	1	required-today	required	spec/law-declaration-hir-v1/check.mjs
 node	source	1	required-today	required	spec/native-toolchain-v1/check.mjs
 node	source	1	required-today	required	spec/native-toolchain-v1/model.mjs
 node	source	1	required-today	required	spec/reuse-candidate-v1/check.mjs
@@ -482,6 +488,8 @@ node	source	1	required-today	required	tests/conformance/decimal-fixed/carrier/pa
 node	source	1	required-today	required	tests/conformance/decimal-fixed/identity/pair.mjs
 node	source	1	required-today	required	tests/conformance/effects/pure-boundary/report.mjs
 node	source	1	required-today	required	tests/conformance/effects/pure-io/report.mjs
+node	source	1	required-today	required	tests/conformance/generic-records-stage2/check-layout.mjs
+node	source	1	required-today	required	tests/conformance/generic-records-stage2/check.mjs
 node	source	1	required-today	required	tests/conformance/http-client-errors/capture.mjs
 node	source	1	required-today	required	tests/conformance/http-client-errors/check-registry.mjs
 node	source	1	required-today	required	tests/conformance/http-client-errors/value_match_pair.mjs
@@ -522,6 +530,7 @@ node	source	1	required-today	required	tests/stage2/host-primitives/check.mjs
 node	source	1	required-today	required	tests/stage2/list-int-signatures/check-pair.mjs
 node	source	1	required-today	required	tests/stage2/list-int-values/layout-check.mjs
 node	source	1	required-today	required	tests/stage2/optional-pair/check.mjs
+node	source	1	required-today	required	tests/stage2/sha256-pair/include.mjs
 node	source	1	required-today	required	tests/stdlib/benchmark-report-codec/fixtures.mjs
 node	source	1	required-today	required	tests/stdlib/benchmark-report-model/oracle.mjs
 node	source	1	required-today	required	tests/stdlib/benchmark-report/oracle.mjs
@@ -573,7 +582,6 @@ python	invoke	6	required-today	off-path	scripts/graphify.sh
 python	invoke	1	required-today	required	tests/conformance/int-bits-lowering/check.sh
 shell-build-driver	source	1	required-today	required	bin/kofun
 shell-build-driver	source	1	required-today	required	bootstrap/c_abi/check.sh
-shell-build-driver	source	1	required-today	required	bootstrap/digest/build.sh
 shell-build-driver	source	1	required-today	required	bootstrap/native/check-macho64-signed.sh
 shell-build-driver	source	1	required-today	required	bootstrap/native/check-macho64.sh
 shell-build-driver	source	1	required-today	required	bootstrap/native/check-pe32plus.sh
@@ -636,6 +644,7 @@ shell-build-driver	source	1	required-today	required	spec/effects/affine-resumpti
 shell-build-driver	source	1	required-today	required	spec/generic-adt-hir-v1/check.sh
 shell-build-driver	source	1	required-today	required	spec/generic-record-hir-v1/check.sh
 shell-build-driver	source	1	required-today	required	spec/kif-generics-v1/check.sh
+shell-build-driver	source	1	required-today	required	spec/law-declaration-hir-v1/check.sh
 shell-build-driver	source	1	required-today	required	spec/module-identity/check.sh
 shell-build-driver	source	1	required-today	required	spec/namespaces/check.sh
 shell-build-driver	source	1	required-today	required	spec/native-toolchain-v1/check.sh
@@ -721,6 +730,7 @@ shell-build-driver	source	1	required-today	required	tests/conformance/discovery/
 shell-build-driver	source	1	required-today	required	tests/conformance/discovery/sanitizer-objects.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/effects/pure-boundary/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/effects/pure-io/run.sh
+shell-build-driver	source	1	required-today	required	tests/conformance/generic-records-stage2/check.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/generics/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/http-client-errors/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/http-client-headers/run.sh
