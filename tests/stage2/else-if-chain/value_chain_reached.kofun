@@ -1,0 +1,20 @@
+# The other half of the value-position lazy-chain claim. Identical to
+# `value_chain_taken.kofun` except that the first link is not taken, so the
+# trapping condition is reached and must trap. Without it, a lowering that
+# skipped every later condition unconditionally would pass the first fixture.
+
+fn pick(values: List[Int], n: Int) -> Int {
+    let r: Int = if n == 1 {
+        100
+    } else if values[99] == 5 {
+        200
+    } else {
+        300
+    }
+    return r
+}
+
+fn main() {
+    let data = [1, 2, 3]
+    print(pick(data, 2))
+}

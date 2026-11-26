@@ -17502,34 +17502,56 @@ static char *parse_value_if(
         source,
         token_end(source, else_keyword)
     );
-    if (else_open >= length || !token_equal(source, else_open, "{")) {
-        return lower_error(
-            "E2S18",
-            "expected `{` after `else`",
-            else_open
+    /* `else if` is two keywords and a value-position chain, exactly as
+     * statement position reads it (#1174, #1679). The nested `if` is the
+     * whole else branch, and the chain ends where that nested construct
+     * ends; the nested parse emits its own link's control event. */
+    if (else_open < length && token_equal(source, else_open, "if")) {
+        ValueIfParts nested;
+        char *nested_result = parse_value_if(
+            source,
+            hir,
+            else_open,
+            &nested
         );
-    }
-    parts->else_start = skip_trivia(
-        source,
-        token_end(source, else_open)
-    );
-    char *else_result = value_if_branch_end(
-        source,
-        hir,
-        parts->else_start,
-        &parts->else_end
-    );
-    if (strncmp(else_result, "error[", 6) == 0) return else_result;
-    free(else_result);
-    int64_t else_close = skip_trivia(source, parts->else_end);
-    if (else_close >= length || !token_equal(source, else_close, "}")) {
-        return lower_error(
-            "E2S28",
-            "value-position if branch must contain one final Int expression",
-            else_close
+        if (strncmp(nested_result, "error[", 6) == 0) {
+            return nested_result;
+        }
+        free(nested_result);
+        parts->else_start = else_open;
+        parts->else_end = nested.end;
+        parts->end = nested.end;
+    } else {
+        if (else_open >= length || !token_equal(source, else_open, "{")) {
+            return lower_error(
+                "E2S18",
+                "expected `{` after `else`",
+                else_open
+            );
+        }
+        parts->else_start = skip_trivia(
+            source,
+            token_end(source, else_open)
         );
+        char *else_result = value_if_branch_end(
+            source,
+            hir,
+            parts->else_start,
+            &parts->else_end
+        );
+        if (strncmp(else_result, "error[", 6) == 0) return else_result;
+        free(else_result);
+        int64_t else_close = skip_trivia(source, parts->else_end);
+        if (else_close >= length || !token_equal(source, else_close, "}")) {
+            return lower_error(
+                "E2S28",
+                "value-position if branch must contain one final Int "
+                "expression",
+                else_close
+            );
+        }
+        parts->end = token_end(source, else_close);
     }
-    parts->end = token_end(source, else_close);
     stage2_semantic_observe(
         "control|if|%" PRId64 "|%" PRId64 "|Int|%" PRId64
         "|%" PRId64 "\n",

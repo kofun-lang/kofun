@@ -355,6 +355,7 @@ node	invoke	16	required-today	required	tests/lsp/check.sh
 node	invoke	5	required-today	required	tests/lsp/visibility.sh
 node	invoke	11	required-today	required	tests/release/check-claims.sh
 node	invoke	11	required-today	required	tests/rfc/check-registry.sh
+node	invoke	1	required-today	required	tests/stage2/else-if-chain/run.sh
 node	invoke	2	required-today	required	tests/stage2/list-int-signatures/run.sh
 node	invoke	4	required-today	required	tests/stage2/list-int-values/run.sh
 node	invoke	2	required-today	required	tests/stage2/optional-pair/run.sh
