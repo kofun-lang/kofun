@@ -12541,6 +12541,9 @@ fn value_if_branch_end(source: Text, start: Int) -> Int {
 }
 
 fn value_if_end(source: Text, start: Int) -> Int {
+    if start < 0 || start >= len(source) || token_text(source, start) != "if" {
+        return -1
+    }
     let condition_start = skip_trivia(source, token_end(source, start))
     let condition_close = condition_end(source, condition_start)
     # `condition_end` answers -1 for a condition it does not recognise, and the
@@ -12552,14 +12555,42 @@ fn value_if_end(source: Text, start: Int) -> Int {
         return -1
     }
     let then_open = skip_trivia(source, condition_close)
+    if then_open >= len(source) || token_text(source, then_open) != "{" {
+        return -1
+    }
     let then_start = skip_trivia(source, token_end(source, then_open))
     let then_end = value_if_branch_end(source, then_start)
+    if then_end < 0 {
+        return -1
+    }
     let then_close = skip_trivia(source, then_end)
+    if then_close >= len(source) || token_text(source, then_close) != "}" {
+        return -1
+    }
     let else_keyword = skip_trivia(source, token_end(source, then_close))
+    if else_keyword >= len(source) ||
+       token_text(source, else_keyword) != "else" {
+        return -1
+    }
     let else_open = skip_trivia(source, token_end(source, else_keyword))
+    # An `else if` link ends where the nested value `if` ends; reading the
+    # token after `else` as the opening brace measured the condition instead
+    # (#1679).
+    if else_open < len(source) && token_text(source, else_open) == "if" {
+        return value_if_end(source, else_open)
+    }
+    if else_open >= len(source) || token_text(source, else_open) != "{" {
+        return -1
+    }
     let else_start = skip_trivia(source, token_end(source, else_open))
     let else_end = value_if_branch_end(source, else_start)
+    if else_end < 0 {
+        return -1
+    }
     let else_close = skip_trivia(source, else_end)
+    if else_close >= len(source) || token_text(source, else_close) != "}" {
+        return -1
+    }
     return token_end(source, else_close)
 }
 
@@ -12722,6 +12753,12 @@ fn validate_value_if(source: Text, hir: Text, start: Int) -> Text {
         to_text(else_keyword)
     }
     let else_open = skip_trivia(source, token_end(source, else_keyword))
+    # `else if` is two keywords and a value-position chain, exactly as
+    # statement position reads it (#1174, #1679). The nested `if` is the whole
+    # else branch, so there is no `{` to require here.
+    if else_open < len(source) && token_text(source, else_open) == "if" {
+        return validate_value_if(source, hir, else_open)
+    }
     if else_open >= len(source) || token_text(source, else_open) != "{" {
         return "error[E2S18]: expected `{` after `else` at byte " +
         to_text(else_open)
@@ -13169,8 +13206,15 @@ fn emit_value_into(
     let then_close = skip_trivia(source, then_end)
     let else_keyword = skip_trivia(source, token_end(source, then_close))
     let else_open = skip_trivia(source, token_end(source, else_keyword))
-    let else_start = skip_trivia(source, token_end(source, else_open))
-    let else_end = value_if_branch_end(source, else_start)
+    let mut else_start = -1
+    let mut else_end = -1
+    if else_open < len(source) && token_text(source, else_open) == "if" {
+        else_start = else_open
+        else_end = value_if_end(source, else_open)
+    } else {
+        else_start = skip_trivia(source, token_end(source, else_open))
+        else_end = value_if_branch_end(source, else_start)
+    }
     let condition = emit_condition_into(
         source,
         hir,
@@ -20234,7 +20278,7 @@ fn lower_body(
                     "        return kofun_result;\n"
                 }
                 emitted = emitted + "    }\n"
-                cursor = skip_trivia(source, value_end)
+                cursor = skip_trivia(source, value_scope_end)
             } else {
                 let value_end = expression_end(source, value_start)
                 if value_end < 0 {

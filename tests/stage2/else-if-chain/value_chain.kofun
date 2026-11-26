@@ -1,0 +1,38 @@
+# A value-position `else if` chain (#1679). The chain is one initialiser, not
+# a sequence of statements: every link belongs to the value and each condition
+# is tested only when every earlier one was false. The return-position chain
+# below walks the same `parse_value_if` path from a different entry point.
+
+fn grade(score: Int) -> Int {
+    let band: Int = if score >= 90 {
+        4
+    } else if score >= 80 {
+        3
+    } else if score >= 70 {
+        2
+    } else {
+        0
+    }
+    return band
+}
+
+fn label(n: Int) -> Int {
+    return if n == 1 {
+        10
+    } else if n == 2 {
+        20
+    } else {
+        30
+    }
+}
+
+fn main() -> Int {
+    print(grade(95))
+    print(grade(85))
+    print(grade(75))
+    print(grade(65))
+    print(label(1))
+    print(label(2))
+    print(label(3))
+    return 0
+}
