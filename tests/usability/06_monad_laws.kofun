@@ -9,15 +9,10 @@
 # members, `impl Name: Family[...]` supplying the operations, and a named
 # `check laws` block fixing finite domains, equality, assurance, and budget.
 #
-# #31 ("Generics and traits") owns what is missing. Its scope names trait
-# declarations, implementations, bounds, and "generic law proposition IR and
-# evidence requirements"; its cross-child contract requires one trait, one
-# implementation, and one bounded call. Until that lands, `law` is not a
-# parsed top-level form: docs/LAW_SYSTEM.md states plainly that the active
-# compiler "does not parse, type-check, evaluate, or emit evidence for this
-# design", and the refusal recorded by tests/usability/check.sh is the
-# generic "expected top-level `fn`, `type`, or `let`" — the reader is not told that
-# laws are a known future form.
+# The expected declaration HIR in spec/law-declaration-hir-v1 records
+# the ground signatures and equation trees for this source. Ordinary
+# check/build still needs the evaluator and assurance gates in #1119.
+# tests/usability/check.sh exercises the current E2S02 refusal.
 #
 # Note the deliberate absence of higher-kinded types. `A` and `MA` are
 # first-order law-schema slots and this instance grounds them at `Bool` and

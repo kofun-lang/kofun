@@ -15,9 +15,7 @@
 #
 #   1. a compiled program reads a named file in chunks, absorbs every block
 #      with the pair's own `sha256_absorb`, and prints the same digest as
-#      `bin/kofun`. The SHA-256 block is extracted from
-#      `compiler.kofun` exactly as `tests/stage2/sha256-pair/check.sh` extracts
-#      it, so this digests with the shipped functions, not a copy of them;
+#      `bin/kofun`. Each digest uses the public bounded SHA-256 include;
 #   2. the same program reading standard input -- piped, not `/dev/stdin` by
 #      path -- matches at the same sizes;
 #   3. no read places more than 65,536 bytes in the carrier, asserted on the
@@ -52,6 +50,7 @@ mkdir -p "$WORK/inputs"
 
 COMPILER="$WORK/kofun-stage2"
 kofun_stage2_build "$ROOT" "$COMPILER"
+kofun_stage2_include_bundle "$ROOT" "$WORK"
 
 # Compile one source to C with the C half, then link it. `--compile-outcome`
 # writes the C only on success, so a positive program that refused fails here
@@ -59,7 +58,7 @@ kofun_stage2_build "$ROOT" "$COMPILER"
 emit_c() {
     program=$1
     source=$2
-    "$COMPILER" --compile-outcome \
+    "$COMPILER" --include-bundle "$WORK/includes-v1.bundle" --compile-outcome \
         "$source" "$program.c" "$program.ir" "$program.tokens" \
         >"$program.build.stdout" 2>"$program.build.stderr" ||
         fail "$(basename "$source") did not compile: $(head -n 1 "$program.build.stdout")"
@@ -108,31 +107,13 @@ done
 
 # ------------------------------------------------------- the SHA-256 block
 #
-# The block, extracted from `compiler.kofun` between its marker and `fn main`
-# as `tests/stage2/sha256-pair/check.sh` extracts it. The template's only
-# private knowledge is the padded byte, the partial block, and the open
-# preamble; the block, the schedule, the compression, and the hex are the
-# pair's.
-start=$(grep -n '^# ---* SHA-256$' "$PAIR_KOFUN" | cut -d: -f1)
-test -n "$start" || fail 'compiler.kofun no longer carries the SHA-256 marker'
-end=$(grep -n '^fn main() -> Int {' "$PAIR_KOFUN" | cut -d: -f1)
-test -n "$end" || fail 'compiler.kofun no longer carries a main'
-awk -v a="$start" -v b="$((end - 1))" 'NR>=a && NR<=b' "$PAIR_KOFUN" \
-    >"$WORK/sha256-block.kofun"
-test "$(grep -c '^fn sha256' "$WORK/sha256-block.kofun")" -eq 21 ||
-    fail 'the extracted block does not carry every sha256 function'
-
-# Materialize a digest program: the block, then the template with `@@OPEN@@`
-# replaced by the caller's open preamble, which may span several lines.
+# Substitute the chosen stream-opening expression into a regular include unit.
 materialize() {
     open_block=$1
     out=$2
-    {
-        cat "$WORK/sha256-block.kofun"
-        awk -v open="$open_block" \
-            '{ if ($0 == "@@OPEN@@") print open; else print }' \
-            "$CASES/digest_stream_main.kofun.in"
-    } >"$out"
+    awk -v open="$open_block" \
+        '{ if ($0 == "@@OPEN@@") print open; else print }' \
+        "$CASES/digest_stream_main.kofun.in" >"$out"
 }
 
 # ------------------------------------------------------------- file digests
@@ -345,7 +326,7 @@ cmp "$WORK/cli/probe.expected" "$WORK/cli/probe.out" >/dev/null ||
 
 # ----------------------------------------------------------------- the pair
 # Every ASCII fixture, through both halves, on outcome, emitted C, and scope
-# HIR. The extracted SHA-256 block is not passed: it carries three non-ASCII
+# HIR. The included SHA-256 block has its own pair gate and carries non-ASCII
 # comment bytes, and the host interpreter's Unicode validator hook is answered
 # by the ASCII assumption this corpus is built on.
 node "$CASES/pair.mjs" "$COMPILER" "$WORK/pair" "$CASES"/*.kofun

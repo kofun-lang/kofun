@@ -657,6 +657,13 @@ across a package boundary. The conceptual effect rows above remain target
 notation for a later vocabulary; v1 has one effect label, `io`, and one
 requirement, `pure`.
 
+Use `kofun check INPUT --emit-typed-sidecar OUTPUT --generation N --typed-sidecar-version 3`
+to inspect callable signatures. For example, a parameter declared
+`f: pure (Int) -> Int` has the display `pure (Int) -> Int`.
+The sidecar's `declared_pure_functions` array lists the node IDs of functions
+whose explicit `pure fn` declarations passed checking. Each function's
+`effect.display` records its inferred summary. The default CLI output uses v1.
+
 ## Result and error propagation
 
 ```kofun
