@@ -36506,7 +36506,129 @@ static void stage2_authority_result_destroy(Stage2AuthorityResult *result) {
 }
 #endif
 
-static int compile_file(
+/* Names are resolved only in the explicit catalog. No filesystem operation
+ * accepts a path from the source or a catalog entry. */
+static bool include_name_valid(const char *name) {
+    size_t length = strlen(name);
+    if (length == 0 || length > 64) return false;
+    for (size_t i = 0; i < length; i++) {
+        char c = name[i];
+        if (!(c >= 'a' && c <= 'z') &&
+            (i == 0 || (c != '_' && !(c >= '0' && c <= '9')))) return false;
+    }
+    return true;
+}
+
+static char *include_payload(const char *bundle, const char *name) {
+    const char *header = "KOFUN-INCLUDES-1\n";
+    size_t length = strlen(bundle), at = strlen(header);
+    char names[64][65];
+    size_t count = 0, found_at = 0, found_size = 0;
+    bool found = false;
+    KofunUnicodeError unicode_error;
+    if (length > 4199000 || strncmp(bundle, header, at) != 0 ||
+        !kofun_unicode_validate_source((const uint8_t *)bundle, length, &unicode_error))
+        goto invalid;
+    while (at < length) {
+        size_t start = at, size = 0;
+        while (at < length && at - start <= 64 && bundle[at] != '\t') at++;
+        if (at >= length || at - start > 64 || count == 64) goto invalid;
+        memcpy(names[count], bundle + start, at - start);
+        names[count][at - start] = '\0';
+        if (!include_name_valid(names[count])) goto invalid;
+        for (size_t i = 0; i < count; i++) {
+            if (strcmp(names[i], names[count]) == 0) goto invalid;
+        }
+        size_t digits = ++at;
+        while (at < length && bundle[at] != '\n') {
+            if (bundle[at] < '0' || bundle[at] > '9' || at - digits >= 5) goto invalid;
+            size = size * 10 + (size_t)(bundle[at++] - '0');
+        }
+        if (at == digits || size > 65536 ||
+            (at - digits > 1 && bundle[digits] == '0')) goto invalid;
+        at++;
+        if (at + size >= length || bundle[at + size] != '\n') goto invalid;
+        if (strcmp(names[count], name) == 0) {
+            found_at = at;
+            found_size = size;
+            found = true;
+        }
+        at += size + 1;
+        count++;
+    }
+    if (!found) return owned_text("error[E2S224]: undeclared or invalid include name");
+    return source_slice(bundle, (int64_t)found_at, (int64_t)(found_at + found_size));
+invalid:
+    return owned_text("error[E2S226]: invalid bounded include catalog");
+}
+
+static const char *include_target_error(const char *target) {
+    KofunUnicodeError unicode_error;
+    if (!kofun_unicode_validate_source((const uint8_t *)target, strlen(target), &unicode_error))
+        return "error[E2S226]: invalid include source";
+    int64_t length = (int64_t)strlen(target), at = skip_trivia(target, 0);
+    while (at < length) {
+        if (token_equal(target, at, "include"))
+            return "error[E2S227]: an include target cannot include another block";
+        int64_t end = top_level_end(target, at);
+        if (end <= at) return "error[E2S02]: expected a top-level declaration in include target";
+        at = skip_trivia(target, end);
+    }
+    return NULL;
+}
+
+static bool uses_bounded_include(const char *source) {
+    KofunUnicodeError unicode_error;
+    return strstr(source, "include") != NULL &&
+        kofun_unicode_validate_source((const uint8_t *)source, strlen(source), &unicode_error) &&
+        token_equal(source, after_optional_module_header(source, 0), "include");
+}
+
+static char *expand_bounded_includes(const char *source, const char *bundle) {
+    int64_t at = after_optional_module_header(source, 0);
+    Buffer expanded;
+    char names[64][65];
+    size_t count = 0;
+    buffer_init(&expanded);
+    if (!token_equal(source, skip_trivia(source, 0), "module"))
+        buffer_format(&expanded, "%.*s", (int)at, source);
+    while (token_equal(source, at, "include")) {
+        int64_t quote = skip_trivia(source, token_end(source, at));
+        if (source[quote] != '"') goto invalid;
+        int64_t end = string_end(source, quote);
+        if (end <= quote + 1 || end - quote - 2 > 64 || count >= 64) goto invalid;
+        memcpy(names[count], source + quote + 1, (size_t)(end - quote - 2));
+        names[count][end - quote - 2] = '\0';
+        if (!include_name_valid(names[count])) goto invalid;
+        for (size_t i = 0; i < count; i++) {
+            if (strcmp(names[i], names[count]) == 0) goto invalid;
+        }
+        char *target = include_payload(bundle, names[count++]);
+        if (strncmp(target, "error[", 6) == 0) {
+            free(expanded.data);
+            return target;
+        }
+        const char *error = include_target_error(target);
+        /* The token memo is keyed by immutable source identity. Switch back
+         * before this temporary target's allocation is released. */
+        at = skip_trivia(source, end);
+        if (error != NULL) {
+            free(target);
+            free(expanded.data);
+            return owned_text(error);
+        }
+        buffer_format(&expanded, "\n%s\n%.*s", target, (int)(at - end), source + end);
+        free(target);
+    }
+    buffer_append(&expanded, source + at);
+    return expanded.data;
+invalid:
+    free(expanded.data);
+    return owned_text("error[E2S224]: undeclared or invalid include name");
+}
+
+static int compile_file_with_bundle(
+    const char *bundle_path,
     const char *input,
     const char *output,
     const char *ir_output,
@@ -36517,6 +36639,8 @@ static int compile_file(
     const char *outputs[] = {output, ir_output, tokens_output};
     for (size_t index = 0; index < sizeof(outputs) / sizeof(outputs[0]); ++index) {
         Stage2FileIdentity identity = stage2_same_file(input, outputs[index]);
+        if (identity == STAGE2_FILE_DIFFERENT && bundle_path != NULL)
+            identity = stage2_same_file(bundle_path, outputs[index]);
         if (identity == STAGE2_FILE_LOOKUP_ERROR) {
             stage2_host_lookup_error();
             return 2;
@@ -36527,6 +36651,28 @@ static int compile_file(
         }
     }
     char *source = read_file(input);
+    if (uses_bounded_include(source)) {
+        const char *empty = "KOFUN-INCLUDES-1\n";
+        size_t size = 0;
+        char *bundle = bundle_path == NULL ? NULL : read_file_with_length(bundle_path, &size);
+        if (bundle != NULL && memchr(bundle, 0, size) != NULL) {
+            free(bundle);
+            free(source);
+            puts("error[E2S226]: invalid bounded include catalog");
+            return 1;
+        }
+        char *expanded = expand_bounded_includes(source, bundle == NULL ? empty : bundle);
+        free(bundle);
+        free(source);
+        source_length_text = NULL;
+        token_end_memo_source = NULL;
+        source = expanded;
+        if (strncmp(source, "error[", 6) == 0) {
+            puts(source);
+            free(source);
+            return 1;
+        }
+    }
     char *tokens = lex_source(source);
     if (strncmp(tokens, "error[", 6) == 0) {
         puts(tokens);
@@ -36644,6 +36790,10 @@ static int compile_file(
     free(tokens);
     free(source);
     return 0;
+}
+
+static int compile_file(const char *input, const char *output, const char *ir, const char *tokens) {
+    return compile_file_with_bundle(NULL, input, output, ir, tokens);
 }
 
 static int check_ownership_file(const char *path) {
@@ -47898,6 +48048,16 @@ static int emit_law_hir_file(const char *input, const char *output, const char *
 }
 
 int main(int argc, char **argv) {
+    if (argc == 3 && strcmp(argv[1], "--uses-include") == 0) {
+        char *source = read_file(argv[2]);
+        bool included = uses_bounded_include(source);
+        free(source);
+        return included ? 0 : 1;
+    }
+    if (argc == 8 && strcmp(argv[1], "--include-bundle") == 0 &&
+        strcmp(argv[3], "--compile-outcome") == 0) {
+        return compile_file_with_bundle(argv[2], argv[4], argv[5], argv[6], argv[7]);
+    }
     if (argc == 6 && strcmp(argv[1], "--compile-outcome") == 0) {
         return compile_file(argv[2], argv[3], argv[4], argv[5]);
     }
@@ -47949,7 +48109,7 @@ int main(int argc, char **argv) {
     if (argc != 5) {
         fputs(
             "usage: kofun-stage2 INPUT.kofun OUTPUT.kofun OUTPUT.ir OUTPUT.tokens\n"
-            "       kofun-stage2 --compile-outcome INPUT.kofun OUTPUT.c OUTPUT.ir OUTPUT.tokens\n"
+            "       kofun-stage2 [--include-bundle BUNDLE] --compile-outcome INPUT.kofun OUTPUT.c OUTPUT.ir OUTPUT.tokens\n"
             "       kofun-stage2 --check-ownership INPUT.kofun\n"
             "       kofun-stage2 --parse-patterns INPUT.kofun OUTPUT.patterns\n"
             "       kofun-stage2 --emit-scope-hir INPUT.kofun OUTPUT.scope-hir\n"

@@ -6,7 +6,7 @@
     "VERSION": "52805dd2a8754a2d0acfe93aedfbbb70a8d360223d80a9c8d7c8876d5b3502d6",
     "release/claims.json": "579afcb7cb298f632d64bb07b6af295589fcf9c0e993ea2ea7a4abf21a5760d3",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
-    "bootstrap/manifest.json": "ded3286196c68a92d00e36f1490ae377d2bb7ef8d6222c902864b959c38cef73"
+    "bootstrap/manifest.json": "aa2e97d2d7a1e82896b8ef7dbec6bab47006e192f198b02c46c727badd7abdd1"
   },
   "states": {
     "checkpoint": 42,
@@ -818,7 +818,7 @@
   ],
   "evidence_digests": {
     ".github/workflows/native-hosts.yml": "76d3edbe30c1a65f7c9525d78464c14859f094ecc04aec9638ea586284fad9cb",
-    "Taskfile.yml": "5c37a86dbcfc3dbb2ce3c8865df69fa58ea6fd7893037d3b559a3565aab6e50c",
+    "Taskfile.yml": "0b15832b3ad3964f85d98bf8937476df0877467431d1c10b31084bbde34b7d7c",
     "bootstrap/native/README.md": "6c470b203c3dbc327c6b601ab958c754e6f82be78c255d442307ad0c7691bc21",
     "bootstrap/native/check-macho64-signed.sh": "6fc51ddfec599ea85b8b06a5c16d68b6fdc994621cdb8ca4267e20be38141393",
     "bootstrap/native/check-macho64.sh": "d6bd52e3f6756aa607a2dc44a0117defeaaa55e64fa3f4221986da6406251e15",
@@ -851,7 +851,7 @@
     "docs/SELF_HOSTING.md": "46195e8254f2ad63c478bd64d3e0095c7485d94ee9968178006d5cb5f56d083d",
     "docs/SEMANTICS.md": "f178ed622ba40cbba7cfaf31effb25bb07027502e260101a6461499cc6aaf20a",
     "docs/STAGE2_EMISSION.md": "97344a2e653aca73410fb9c41f5c58a0ef1e89e44a64a4842d098e919983e9d1",
-    "docs/TYPE_SYSTEM.md": "0bff6396b3cf515ea555fe01a6e06c691e9b8dbef67b77741675bf240f590ddf",
+    "docs/TYPE_SYSTEM.md": "bd8ef9e999c5366dd8b3c202a93aef60ba7c601e8dd850e24cf521767f9d0dc0",
     "examples/rust-shim/check.sh": "487dfa45e0a090f56550678fc6224c84780fbb750563b8fafcd3dd2fc34b4c01",
     "examples/wasm_arithmetic.kofun": "ea73b3ee6b5172a4c8080ed5b4540fb23288d31000dd6ccd59a473e97836c246",
     "rfcs/0010-affine-resource-handle-v1.md": "0deef14c3d575a97acbd92907757707fd49680c1f18c4171e1d2bf6a54d2656e",
@@ -883,7 +883,7 @@
     "tests/conformance/records/stage2_unsupported_field.kofun": "3a2a267549694c0ccf71e682b37992d94ff5b0a59b1b6438726b5384d3c46e82",
     "tests/conformance/syntax/issues_35_47/enum_payload_unsupported_field.kofun": "e1b4ce6cda998dac0a955ed016c8eb2f81a9effaed91b823011572cf68f6c59e",
     "tests/diagnostics/README.md": "0c915028a977e49a363c31304fec0e0e4635f0c814cb0cce5cfd4cabca6ff70e",
-    "tests/diagnostics/registry.tsv": "f89edbe9a463a8fc44e8501bdd7b85dabac9a80f42e397c054480ba3b87b3d94",
+    "tests/diagnostics/registry.tsv": "b174e7616198a2dd009691efd5686a70a6efcafc12b301abb3e8ab8c6709f174",
     "tests/diagnostics/stage2/e2s10_unsupported_statement.kofun": "664c4d3b0d4bcd9265fee34b3ae60d8bf0eb58c9ce5c2b504579c1249aa16f2d",
     "tests/diagnostics/visibility-api-leaks.sh": "5c65b941bec961bc7b814e3979170af630df34fa8812d0fa650639e159ea755a",
     "tests/docs/documentation_index_test.mjs": "1195ff0fb6486bd046e1b70a8d364838a51ae06b47749206f851de54ac8d4c44",

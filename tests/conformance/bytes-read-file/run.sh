@@ -12,9 +12,7 @@
 #
 #   1. a compiled program reads a file and digests it with the pair's own
 #      `sha256_*` functions, matching `bin/kofun` on the same file.
-#      The SHA-256 block is extracted from `compiler.kofun` exactly as
-#      `tests/stage2/sha256-pair/check.sh` extracts it, so this digests with
-#      the shipped functions, not a copy of them;
+#      Each digest program uses the production bounded SHA-256 include;
 #   2. a file over the 65,536-byte bound fails with a named diagnostic rather
 #      than truncating, proved by supplying one;
 #   3. the four runtime refusals (R025..R028) are each exact stderr, exit 1,
@@ -119,27 +117,11 @@ test "$(cat "$WORK/read_can_allocate.stdout")" = 43 ||
 
 # ------------------------------------------------------------ the digest
 #
-# The SHA-256 block, extracted from `compiler.kofun` between its marker and
-# `fn main` as `tests/stage2/sha256-pair/check.sh` extracts it, with a main
-# appended from the template beside this script. The template's only private
-# knowledge is the padded byte, written against `byte_at`; the block, the
-# schedule, the compression, and the hex are the pair's.
-start=$(grep -n '^# ---* SHA-256$' "$PAIR_KOFUN" | cut -d: -f1)
-test -n "$start" || fail 'compiler.kofun no longer carries the SHA-256 marker'
-end=$(grep -n '^fn main() -> Int {' "$PAIR_KOFUN" | cut -d: -f1)
-test -n "$end" || fail 'compiler.kofun no longer carries a main'
-awk -v a="$start" -v b="$((end - 1))" 'NR>=a && NR<=b' "$PAIR_KOFUN" \
-    >"$WORK/sha256-block.kofun"
-test "$(grep -c '^fn sha256' "$WORK/sha256-block.kofun")" -eq 21 ||
-    fail 'the extracted block does not carry every sha256 function'
-
+# Each test compiles a bounded include and reads its own input file.
 digests() {
     input=$1
     stem="digest-$input"
-    {
-        cat "$WORK/sha256-block.kofun"
-        sed "s|@@PATH@@|$input|" "$CASES/digest_main.kofun.in"
-    } >"$WORK/$stem.kofun"
+    sed "s|@@PATH@@|$input|" "$CASES/digest_main.kofun.in" >"$WORK/$stem.kofun"
     "$KOFUN" build "$WORK/$stem.kofun" -o "$WORK/$stem.bin" \
         --emit-c "$WORK/$stem.c" >"$WORK/$stem.build.stdout" \
         2>"$WORK/$stem.build.stderr" ||

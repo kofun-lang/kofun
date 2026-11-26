@@ -27,7 +27,7 @@ export const GROUPS = Object.freeze([
             'selfhost-fixed-point', 'selfhost-diverse-double-compilation',
             'selfhost-declared-inputs', 'selfhost-b6-report',
             'selfhost-b6-policy', 'selfhost-b6-acquisition-identity',
-            'selfhost-native', 'stage1-adapter', 'stage2', 'stage2-events', 'sha256-pair',
+            'selfhost-native', 'stage1-adapter', 'stage2', 'stage2-events', 'sha256-pair', 'include-form',
             'stage2-pair-coverage', 'stage2-pair-calls', 'stage2-pair-bindings',
             'stage2-pair-mirror', 'stage2-pair-decisions', 'emission-compiles',
             'stage2-pair-host-primitives-decision', 'stage2-pair-host-primitives',

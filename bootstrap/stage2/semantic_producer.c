@@ -5,6 +5,7 @@
  * it does not scrape command output or expose compiler-private records.
  */
 #include "semantic_producer.h"
+#include "semantic_events_v3.h"
 #include "sha256.h"
 #include "effect_inference.h"
 
@@ -62,7 +63,8 @@ typedef struct {
 
 typedef struct {
     KofunSemanticFact value;
-    char display[160];
+    char short_display[160];
+    const char *display;
     char reason[160];
     KofunSemanticId dependencies[KOFUN_SEMANTIC_MAX_RELATIONS];
     KofunSemanticId diagnostic;
@@ -127,10 +129,18 @@ typedef struct {
     KofunSemanticId node;
     KofunSemanticId binding;
     KofunSemanticId type_identity;
+    const char *display_type;
     int64_t function_start;
     int64_t declaration_start;
     bool has_type_identity;
 } ProducerBinding;
+
+/* Expanded v3 type displays live until the complete transaction is replayed.
+ * Allocate only displays that exceed the small legacy buffers. */
+typedef struct {
+    char *texts[PRODUCER_MAX_BINDINGS + PRODUCER_MAX_FACTS];
+    size_t count;
+} ProducerV3;
 
 typedef struct {
     const KofunStage2SemanticInput *input;
@@ -159,6 +169,7 @@ typedef struct {
     size_t constructor_count;
     ProducerBinding bindings[PRODUCER_MAX_BINDINGS];
     size_t binding_count;
+    ProducerV3 *sidecar_v3;
     bool language_failed;
     bool resource_failed;
     uint8_t compiler_exit_class;
@@ -651,6 +662,17 @@ static bool producer_add_identity(
     return producer_add_stable_identity(producer, owner, kind, &value);
 }
 
+static const char *producer_save_v3_text(ProducerV3 *storage, const char *text) {
+    size_t length = strlen(text);
+    if (length > KOFUN_SEMANTIC_MAX_TEXT_BYTES ||
+        storage->count >= sizeof(storage->texts) / sizeof(storage->texts[0])) return NULL;
+    char *copy = malloc(length + 1u);
+    if (copy == NULL) return NULL;
+    memcpy(copy, text, length + 1u);
+    storage->texts[storage->count++] = copy;
+    return copy;
+}
+
 static ProducerFact *producer_add_fact(
     Producer *producer,
     KofunSemanticId owner,
@@ -669,7 +691,13 @@ static ProducerFact *producer_add_fact(
     fact->value.owner_node_id = owner;
     fact->value.kind = kind;
     fact->value.status = status;
-    (void)snprintf(fact->display, sizeof(fact->display), "%s", display);
+    if (producer->sidecar_v3 != NULL && strlen(display) >= sizeof(fact->short_display)) {
+        fact->display = producer_save_v3_text(producer->sidecar_v3, display);
+        if (fact->display == NULL) return NULL;
+    } else {
+        (void)snprintf(fact->short_display, sizeof(fact->short_display), "%s", display);
+        fact->display = fact->short_display;
+    }
     (void)snprintf(fact->reason, sizeof(fact->reason), "%s", reason);
     fact->value.display = producer_text(fact->display);
     fact->value.reason = producer_text(fact->reason);
@@ -897,6 +925,30 @@ static ProducerBinding *producer_find_binding_by_hir_id(
     return NULL;
 }
 
+/* The Core checker currently accepts Int in every callable slot. Recover arity
+ * from the resolved binding with its own parser, including bare unary types. */
+static bool producer_callable_display(const Producer *producer, const char *hir_id,
+                                      const char *type, char *out, size_t capacity) {
+    int64_t start = callable_parameter_type_start(producer->source, producer->scope_hir, hir_id);
+    if (start < 0) return false;
+    int64_t arity = callable_type_arity(producer->source, start);
+    if (arity < 0) return false;
+    const char *prefix = callable_type_text_pure(type) ? "pure (" : "(";
+    size_t used = strlen(prefix);
+    if (used >= capacity) return false;
+    memcpy(out, prefix, used);
+    for (int64_t index = 0; index < arity; ++index) {
+        const char *slot = index == 0 ? "Int" : ", Int";
+        size_t size = strlen(slot);
+        if (size >= capacity - used) return false;
+        memcpy(out + used, slot, size);
+        used += size;
+    }
+    if (sizeof(") -> Int") > capacity - used) return false;
+    memcpy(out + used, ") -> Int", sizeof(") -> Int"));
+    return true;
+}
+
 static ProducerBinding *producer_add_hir_binding(
     Producer *producer,
     ProducerFunction *function,
@@ -934,6 +986,14 @@ static ProducerBinding *producer_add_hir_binding(
     );
     (void)snprintf(binding->name, sizeof(binding->name), "%s", name);
     (void)snprintf(binding->type, sizeof(binding->type), "%s", type_name);
+    binding->display_type = binding->type;
+    if (producer->sidecar_v3 != NULL && node_kind == KOFUN_SEMANTIC_NODE_PARAMETER &&
+        callable_type_text(type_name)) {
+        char display[KOFUN_SEMANTIC_MAX_TEXT_BYTES + 1u];
+        if (!producer_callable_display(producer, hir_id, type_name, display, sizeof(display))) return NULL;
+        binding->display_type = producer_save_v3_text(producer->sidecar_v3, display);
+        if (binding->display_type == NULL) return NULL;
+    }
     (void)snprintf(
         binding->ownership,
         sizeof(binding->ownership),
@@ -965,7 +1025,7 @@ static ProducerBinding *producer_add_hir_binding(
             strcmp(type_name, "unavailable") == 0 ?
                 KOFUN_SEMANTIC_UNAVAILABLE :
                 KOFUN_SEMANTIC_VALIDATED,
-            strcmp(type_name, "unavailable") == 0 ? "" : type_name,
+            strcmp(type_name, "unavailable") == 0 ? "" : binding->display_type,
             strcmp(type_name, "unavailable") == 0 ?
                 "type-not-available-in-current-subset" : "") == NULL ||
         producer_add_fact(
@@ -1802,6 +1862,23 @@ static void producer_add_value_reference_edges(
     }
 }
 
+static bool producer_declared_purity(Producer *producer) {
+    char *annotated = annotated_pure_declarations(producer->source);
+    bool ok = true;
+    for (size_t index = 0; index < producer->function_count && ok; ++index) {
+        const ProducerFunction *function = &producer->functions[index];
+        char key[32];
+        (void)snprintf(key, sizeof(key), "|%" PRId64 "|", function->start);
+        if (strstr(annotated, key) != NULL) {
+            ok = producer_add_fact(producer, function->node,
+                KOFUN_SEMANTIC_FACT_DECLARED_PURE, KOFUN_SEMANTIC_VALIDATED,
+                "pure", "") != NULL;
+        }
+    }
+    free(annotated);
+    return ok;
+}
+
 static bool producer_add_effect_facts(Producer *producer) {
     KofunEffectGraph graph;
     KofunEffectResult result;
@@ -1875,7 +1952,7 @@ static bool producer_add_effect_facts(Producer *producer) {
             }
         }
     }
-    return true;
+    return !producer->sidecar_v3 || producer_declared_purity(producer);
 }
 
 static bool producer_collect_scopes_and_bindings(Producer *producer) {
@@ -2063,7 +2140,8 @@ static bool producer_finalize_function_types(Producer *producer) {
         const ProducerBinding *parameters[PRODUCER_MAX_BINDINGS];
         size_t parameter_count = 0u;
         size_t binding_index;
-        char signature[160];
+        char signature[KOFUN_SEMANTIC_MAX_TEXT_BYTES + 1u];
+        size_t capacity = producer->sidecar_v3 != NULL ? sizeof(signature) : sizeof(producer->facts[0].short_display);
         size_t used = 0u;
         ProducerFact *fact;
         for (binding_index = 0u;
@@ -2084,22 +2162,23 @@ static bool producer_finalize_function_types(Producer *producer) {
         if (parameter_count == 0u) {
             int written = snprintf(
                 signature,
-                sizeof(signature),
+                capacity,
                 "() -> %s",
                 function->return_type
             );
-            if (written < 0 || (size_t)written >= sizeof(signature)) {
+            if (written < 0 || (size_t)written >= capacity) {
                 return false;
             }
-        } else if (parameter_count == 1u) {
+        } else if (parameter_count == 1u &&
+                   !(producer->sidecar_v3 && strstr(parameters[0]->display_type, " -> ") != NULL)) {
             int written = snprintf(
                 signature,
-                sizeof(signature),
+                capacity,
                 "%s -> %s",
-                parameters[0]->type,
+                parameters[0]->display_type,
                 function->return_type
             );
-            if (written < 0 || (size_t)written >= sizeof(signature)) {
+            if (written < 0 || (size_t)written >= capacity) {
                 return false;
             }
         } else {
@@ -2110,13 +2189,13 @@ static bool producer_finalize_function_types(Producer *producer) {
                  binding_index += 1u) {
                 int written = snprintf(
                     signature + used,
-                    sizeof(signature) - used,
+                    capacity - used,
                     "%s%s",
                     binding_index == 0u ? "" : ", ",
-                    parameters[binding_index]->type
+                    parameters[binding_index]->display_type
                 );
                 if (written < 0 ||
-                    (size_t)written >= sizeof(signature) - used) {
+                    (size_t)written >= capacity - used) {
                     return false;
                 }
                 used += (size_t)written;
@@ -2124,12 +2203,12 @@ static bool producer_finalize_function_types(Producer *producer) {
             {
                 int written = snprintf(
                     signature + used,
-                    sizeof(signature) - used,
+                    capacity - used,
                     ") -> %s",
                     function->return_type
                 );
                 if (written < 0 ||
-                    (size_t)written >= sizeof(signature) - used) {
+                    (size_t)written >= capacity - used) {
                     return false;
                 }
             }
@@ -2282,7 +2361,7 @@ static bool producer_collect_references(Producer *producer) {
             use->value.node_id,
             KOFUN_SEMANTIC_FACT_TYPE,
             KOFUN_SEMANTIC_VALIDATED,
-            binding->type,
+            binding->display_type,
             ""
         );
         if (type_fact == NULL) {
@@ -3348,7 +3427,7 @@ static bool producer_emit(
         record_index += 1u;
     }
     for (fact_kind = KOFUN_SEMANTIC_FACT_TYPE;
-         fact_kind <= KOFUN_SEMANTIC_FACT_ORIGIN;
+         fact_kind <= (unsigned)(producer->sidecar_v3 ? KOFUN_SEMANTIC_FACT_DECLARED_PURE : KOFUN_SEMANTIC_FACT_ORIGIN);
          fact_kind += 1u) {
         size_t kind_count = 0u;
         for (index = 0u; index < producer->fact_count; index += 1u) {
@@ -4344,6 +4423,7 @@ static bool producer_run(
     KofunSemanticBytes edition,
     KofunStage2InterfaceSnapshot *snapshot,
     KofunStage2DiscoverySnapshot *discovery_snapshot,
+    ProducerV3 *sidecar_v3,
     KofunStage2SemanticResult *result
 ) {
     Producer producer;
@@ -4460,6 +4540,7 @@ static bool producer_run(
     }
 
     memset(&producer, 0, sizeof(producer));
+    producer.sidecar_v3 = sidecar_v3;
     producer.input = input;
     producer.source = owned_source;
     producer.scope_hir = authority.scope_hir;
@@ -4621,7 +4702,7 @@ bool kofun_stage2_produce_semantic_events(
     KofunSemanticBytes no_edition = {NULL, 0u};
     return producer_run(
         input, sink, cancellation_observed_after_commit,
-        no_edition, NULL, NULL, result
+        no_edition, NULL, NULL, NULL, result
     );
 }
 
@@ -4636,7 +4717,7 @@ bool kofun_stage2_compile_interface(
     memset(snapshot, 0, sizeof(*snapshot));
     return producer_run(
         input, NULL, cancellation_observed_after_commit,
-        edition, snapshot, NULL, result
+        edition, snapshot, NULL, NULL, result
     );
 }
 
@@ -4650,7 +4731,7 @@ bool kofun_stage2_analyze_discovery(
     if (snapshot == NULL) return false;
     memset(snapshot, 0, sizeof(*snapshot));
     succeeded = producer_run(
-        input, NULL, false, no_edition, NULL, snapshot, result
+        input, NULL, false, no_edition, NULL, snapshot, NULL, result
     );
     if (succeeded) {
         result->source_status = snapshot->source_status;
@@ -4694,6 +4775,8 @@ static uint8_t *producer_read_file(const char *path, size_t *length) {
 }
 
 int main(int argc, char **argv) {
+    bool sidecar_v3 = argc > 1 && strcmp(argv[1], "--sidecar-v3") == 0;
+    if (sidecar_v3) { ++argv; --argc; }
     bool cancel = false;
     bool ownership_only = false;
     int offset = 1;
@@ -4742,17 +4825,18 @@ int main(int argc, char **argv) {
     input.authority = ownership_only ?
         KOFUN_STAGE2_SEMANTIC_OWNERSHIP :
         KOFUN_STAGE2_SEMANTIC_COMPILE;
-    stream = kofun_semantic_stream_create();
+    stream = sidecar_v3 ? kofun_semantic_stream_create_v3() : kofun_semantic_stream_create();
     if (stream == NULL) {
         free(source);
         return 3;
     }
     sink = kofun_semantic_stream_sink(stream);
-    if (!kofun_stage2_produce_semantic_events(
-            &input,
-            &sink,
-            cancel,
-            &result)) {
+    KofunSemanticBytes no_edition = {NULL, 0u};
+    ProducerV3 storage = {0};
+    bool produced = producer_run(&input, &sink, cancel, no_edition, NULL, NULL,
+                                 sidecar_v3 ? &storage : NULL, &result);
+    for (size_t index = 0; index < storage.count; ++index) free(storage.texts[index]);
+    if (!produced) {
         const KofunSemanticError *stream_error =
             kofun_semantic_stream_error(stream);
         if (result.has_source_diagnostic) {

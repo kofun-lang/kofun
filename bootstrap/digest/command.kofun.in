@@ -1,7 +1,6 @@
 # `kofun digest` (#1455).
 #
-# This file is appended, at build time, after the SHA-256 block extracted from
-# `bootstrap/stage2/compiler.kofun`, and the result is compiled by the C11
+# The command includes the manifest-pinned SHA-256 block and uses the C11
 # Stage 2 backend. The command it produces is byte-compatible with the C tool
 # `bootstrap/stage2/sha256_tool.c` on the contract `tests/digest/check.sh`
 # pins, which is what lets every call site of the retired wrapper move at once.
@@ -17,6 +16,8 @@
 # writes. Working on the byte rather than a one-character `Text` avoids the
 # 31-byte slice bound and the temporary-slot budget for the 64 digits of every
 # manifest line.
+include "sha256"
+
 fn digest_hex_byte(b: Int) -> Int {
     if b == 48 { return 0 }
     if b == 49 { return 1 }

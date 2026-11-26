@@ -103,17 +103,22 @@ mkdir -p "$work"
         bootstrap/selfhost/check-fixed-point.sh \
         bootstrap/stage2/build.sh \
         bootstrap/stage2/semantic-objects.sh \
-        bootstrap/digest/build.sh \
         bootstrap/digest/command.kofun.in \
         bin/kofun; do
         declare_file command "$script"
     done
     # `bin/kofun digest` computes every digest the chain compares (#1455), so a
     # reproducer needs the sources it builds itself from: the dispatcher, the
-    # command template, and the builder that extracts the SHA-256 block. The C
+    # command source and the entire declared, digest-pinned include catalog. The C
     # seed verifier below stays because the pre-build checks still build it
     # (#1668); declaring the command without these reproduces nothing, because
     # the B6 gate copies exactly the declared set into a clean tree.
+    declare_file seed-unit bootstrap/stage2/include_bundle.c
+    declare_file command bootstrap/stage2/includes-v1.tsv
+    declare_file command bootstrap/stage2/includes-v1.files
+    while IFS= read -r include_file; do
+        declare_file command "$include_file"
+    done <bootstrap/stage2/includes-v1.files
     declare_file seed-unit bootstrap/stage2/sha256_tool.c
     declare_file seed-unit bootstrap/stage2/sha256.c
     declare_file seed-unit bootstrap/stage2/sha256.h
