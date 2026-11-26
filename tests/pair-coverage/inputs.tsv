@@ -1493,6 +1493,9 @@ tests/packages/consumer.kofun
 tests/stage2/else-if-chain/chain.kofun
 tests/stage2/else-if-chain/short_circuit_reached.kofun
 tests/stage2/else-if-chain/short_circuit_taken.kofun
+tests/stage2/else-if-chain/value_chain.kofun
+tests/stage2/else-if-chain/value_chain_reached.kofun
+tests/stage2/else-if-chain/value_chain_taken.kofun
 tests/stage2/list-int-signatures/capacity.kofun
 tests/stage2/list-int-signatures/direct_argument.kofun
 tests/stage2/list-int-signatures/direct_bool_result.kofun
