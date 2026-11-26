@@ -36353,6 +36353,9 @@ fn executable_record_symbol(identity: Text, path: Text) -> Text {
 # Order dependencies by substituted stored fields. An argument ignored by
 # its declaration does not introduce a by-value cycle.
 fn executable_record_visit(source: Text, identity: Text, rows: Text, stack: Text, at: Int) -> Text {
+    if len(identity) > 128 && (stack != "|" || contains(identity, "[")) {
+        return generic_record_refusal("E2S198", "constructed TypeRef exceeds its display bound", at)
+    }
     if contains("\n" + rows + "\n", "\n" + identity + "\n") { return rows }
     let base = const_type_base(identity)
     let decl = record_declaration_start(source, base)
@@ -36378,7 +36381,6 @@ fn executable_record_visit(source: Text, identity: Text, rows: Text, stack: Text
     while index < fields {
         let field = record_field_text(source, identity, index, true)
         if record_declaration_start(source, const_type_base(field)) >= 0 {
-            if len(field) > 128 { return generic_record_refusal("E2S198", "constructed TypeRef exceeds its display bound", at) }
             result = executable_record_visit(source, field, result, stack + identity + "|", at)
             if starts_with(result, "error[") { return result }
         } else if field != "Int" && field != "Text" && field != "Bool" && field != "Bytes" && field != "List[Int]" {

@@ -52,6 +52,10 @@ distinguish concrete C types, including nested applications. A record-only
 HIR fixture can describe declarations without a `main` function. Executing
 those declarations requires a program entry point.
 
+The normalized spelling of a constructed record type may occupy at most 128
+bytes in an executable layout. Both direct uses and stored fields that exceed
+this limit refuse with `E2S198` before emitting C.
+
 ## Identity framing
 
 Both identities use the #303 frame from

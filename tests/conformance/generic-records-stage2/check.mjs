@@ -118,4 +118,15 @@ const tuples = ["Int", "Bool", "Text", "Box[Int]", "Box[Bool]", "Box[Text]", "Bo
 const parameters = tuples.map((arg, i) => `p${i}: Box[${arg}]`).join(", ");
 boundary("instance-limit", `type Box[T] = { value: T }\nfn consume(${parameters}) -> Int { return 0 }\nfn main() -> Int { return 0 }\n`,
     "error[E2S197]: `Box` has more than 8 instantiations at byte 0");
+
+for (const length of [128, 129]) {
+    const name = "R".repeat(length - "[Int]".length);
+    const type = name + "[Int]";
+    const prefix = `type ${name}[T] = { value: T }\nfn main() -> Int {\n    let x: `;
+    const direct = `${prefix}${type} = ${type}(value: 42)\n    return x.value\n}\n`;
+    const nested = `type Wrapper = { slot: ${type} }\n` + direct;
+    const error = "error[E2S198]: constructed TypeRef exceeds its display bound at byte ";
+    boundary("direct-display-" + length, direct, length > 128 ? error + prefix.length : undefined);
+    boundary("nested-display-" + length, nested, length > 128 ? error + "0" : undefined);
+}
 console.log("PASS: both Stage 2 compilers agree on concrete generic record C, type identities, layouts, runtime output, and refusal boundaries");
