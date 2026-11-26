@@ -9,10 +9,10 @@
 # members, `impl Name: Family[...]` supplying the operations, and a named
 # `check laws` block fixing finite domains, equality, assurance, and budget.
 #
-# The expected declaration HIR in spec/law-declaration-hir-v1 records
-# the ground signatures and equation trees for this source. Ordinary
-# check/build still needs the evaluator and assurance gates in #1119.
-# tests/usability/check.sh exercises the current E2S02 refusal.
+# Stage 2's --emit-law-hir resolves these declarations and reports their
+# instantiated signatures and equation trees. The ordinary check/build
+# path still needs the evaluator and assurance gates tracked by #1119.
+# tests/usability/check.sh exercises the current E2S02 refusal there.
 #
 # Note the deliberate absence of higher-kinded types. `A` and `MA` are
 # first-order law-schema slots and this instance grounds them at `Bool` and
