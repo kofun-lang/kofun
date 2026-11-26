@@ -48390,6 +48390,8 @@ static GrConcreteLayout *gr_find_layout(GrConcreteLayouts *layouts, const char *
 
 static char *gr_build_layout(const char *source, const char *identity, int64_t at,
                             const GrActiveLayout *parent, GrConcreteLayouts *layouts) {
+    if (strlen(identity) > 128 && (parent != NULL || strchr(identity, '[') != NULL))
+        return gr_refusal("E2S198", "constructed TypeRef exceeds its display bound", at);
     if (gr_find_layout(layouts, identity) != NULL) return NULL;
     for (const GrActiveLayout *p = parent; p; p = p->parent) {
         if (strcmp(p->identity, identity) != 0) continue;
@@ -48433,8 +48435,7 @@ static char *gr_build_layout(const char *source, const char *identity, int64_t a
         else if (strcmp(stored, "List[Int]") == 0) { c = "KofunIntListValue"; width = 520; }
         else if (strcmp(stored, "Bytes") == 0) { c = "KofunBytesValue"; width = 24; }
         else if (record_declaration_start(source, stored) >= 0) {
-            if (strlen(stored) > 128) error = gr_refusal("E2S198","constructed TypeRef exceeds its display bound",at);
-            else error = gr_build_layout(source, stored, at, &active, layouts);
+            error = gr_build_layout(source, stored, at, &active, layouts);
             if (!error) {
                 GrConcreteLayout *layout = gr_find_layout(layouts, stored);
                 width = layout->size; boundary = layout->align;
