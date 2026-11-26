@@ -24230,6 +24230,11 @@ fn authority_binding_misuse(
     while cursor < body_end {
         let text = token_text(source, cursor)
         if text == binding && token_kind(source, cursor) == "identifier" {
+            let after = skip_trivia(source, token_end(source, cursor))
+            let mut following = ""
+            if after < body_end {
+                following = token_text(source, after)
+            }
             # #1244. A `read`/`edit` authority parameter is a frame-bounded
             # borrow; returning it would escape the frame as an owned value.
             # This is the one E355 shape reachable before carrier lowering.
@@ -24238,11 +24243,6 @@ fn authority_binding_misuse(
                 return "error[E355]: `" + binding + "` is a " + mode +
                 " authority borrow and cannot be returned as an owned value at byte " +
                 to_text(cursor)
-            }
-            let after = skip_trivia(source, token_end(source, cursor))
-            let mut following = ""
-            if after < body_end {
-                following = token_text(source, after)
             }
             # `==` and `!=` are one token, so this cannot collide with `=`.
             # Ordered ahead of #1658's general record-operand refusal.
