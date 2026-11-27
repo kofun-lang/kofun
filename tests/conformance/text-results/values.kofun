@@ -25,6 +25,8 @@ fn main() -> Int {
     print(text_slice(render(1234), 1, 3))
     print(find("kofun", "fun"))
     print(find("kofun", "nope"))
+    print(stage2_unicode_scalar_at("A", 0))
+    print(stage2_unicode_scalar_at("Z", 0))
     print("kofun_to_text(kofun_text_concat(kofun_text_slice(")
     let first = render(81)
     let second = render(92)

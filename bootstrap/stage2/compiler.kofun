@@ -8096,7 +8096,8 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
         # `find(Text, Text)` is the byte-offset search the compiler's own
         # source uses; the Core prelude's helper answers the first index or -1.
         if open < end && token_text(source, open) == "(" &&
-           name == "find" {
+           name == "find" &&
+           call_resolves_to_builtin(source, hir, cursor, name) {
             let value = skip_trivia(source, token_end(source, open))
             let value_end = argument_end(source, value)
             let separator = skip_trivia(source, value_end)
@@ -8111,6 +8112,27 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
                 return needle_value
             }
             return "kofun_find(" + subject + ", " + needle_value + ")"
+        }
+        # #1782/#1784. The driver's bounded UTF-8 scalar decode, admitted to
+        # the Core path for self-compilation with read-only authority.
+        if open < end && token_text(source, open) == "(" &&
+           name == "stage2_unicode_scalar_at" &&
+           call_resolves_to_builtin(source, hir, cursor, name) {
+            let value = skip_trivia(source, token_end(source, open))
+            let value_end = argument_end(source, value)
+            let separator = skip_trivia(source, value_end)
+            let offset = skip_trivia(source, token_end(source, separator))
+            let subject = emit_expression(source, hir, value, value_end)
+            if starts_with(subject, "error[") {
+                return subject
+            }
+            let offset_value = emit_expression(
+                source, hir, offset, argument_end(source, offset))
+            if starts_with(offset_value, "error[") {
+                return offset_value
+            }
+            return "kofun_unicode_scalar_at(" + subject + ", " +
+            offset_value + ")"
         }
         if open >= end || token_text(source, open) != "(" {
             let binding_id = hir_use_binding_id(hir, cursor)
@@ -8953,6 +8975,11 @@ fn builtin_arity(name: Text) -> Int {
     if name == "stage2_list_append" {
         return 2
     }
+    # #1782/#1784. The driver's Unicode scalar decode, admitted to the Core
+    # path for self-compilation with bounded read-only authority.
+    if name == "stage2_unicode_scalar_at" {
+        return 2
+    }
     # #1696. The checked origin construction takes the record it validates.
     if name == "stage2_http_origin" {
         return 1
@@ -9038,6 +9065,9 @@ fn builtin_parameter_types(name: Text) -> Text {
     # `HttpOrigin` field shape is checked where the call lowers.
     if name == "stage2_http_origin" {
         return "Record"
+    }
+    if name == "stage2_unicode_scalar_at" {
+        return "Text|Int"
     }
     # #1667. Selecting standard input takes no argument; opening a path takes a
     # `Text`; the chunk read takes the `Bytes` carrier it fills.
@@ -10172,6 +10202,7 @@ fn validate_core_calls(source: Text, hir: Text) -> Text {
                         return argument_error
                     }
                     if name == "find" || name == "len" ||
+                       name == "stage2_unicode_scalar_at" ||
                        name == "text_slice" || name == "to_text" ||
                        name == "stage2_bytes_empty" ||
                        name == "stage2_bytes_assign_zeroed" ||
@@ -14888,7 +14919,8 @@ fn builtin_return_type(name: Text) -> Text {
        name == "is_xid_continue" || name == "starts_with" {
         return "Bool"
     }
-    if name == "find" || name == "len" {
+    if name == "find" || name == "len" ||
+       name == "stage2_unicode_scalar_at" {
         return "Int"
     }
     if name == "read_text" || name == "replace" || name == "text_slice" ||
@@ -24057,6 +24089,51 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     "        kofun_error(\"error[R022]: bounded Text temporary limit is 4096\"); return NULL;\n" +
     "    }\n" +
     "    return kofun_text_slots[kofun_text_next_slot++];\n" +
+    "}\n" +
+    "static inline int64_t kofun_unicode_scalar_at(const char *text, int64_t offset) {\n" +
+    "    size_t length = strlen(text);\n" +
+    "    if (offset < 0 || (uint64_t)offset > length) {\n" +
+    "        kofun_error(\"error[E2S35]: stage2_unicode_scalar_at: index\"); return 0;\n" +
+    "    }\n" +
+    "    if ((uint64_t)offset == length) {\n" +
+    "        kofun_error(\"error[E2S35]: stage2_unicode_scalar_at: end\"); return 0;\n" +
+    "    }\n" +
+    "    const unsigned char *bytes = (const unsigned char *)text + offset;\n" +
+    "    unsigned char first = bytes[0];\n" +
+    "    if (first < 0x80) return (int64_t)first;\n" +
+    "    if (first < 0xc0) {\n" +
+    "        kofun_error(\"error[E2S35]: stage2_unicode_scalar_at: continuation\"); return 0;\n" +
+    "    }\n" +
+    "    if (first < 0xc2) {\n" +
+    "        kofun_error(\"error[E2S35]: stage2_unicode_scalar_at: overlong\"); return 0;\n" +
+    "    }\n" +
+    "    if (first >= 0xf5 && first <= 0xf7) {\n" +
+    "        kofun_error(\"error[E2S35]: stage2_unicode_scalar_at: range\"); return 0;\n" +
+    "    }\n" +
+    "    if (first > 0xf7) {\n" +
+    "        kofun_error(\"error[E2S35]: stage2_unicode_scalar_at: malformed\"); return 0;\n" +
+    "    }\n" +
+    "    size_t width = first < 0xe0 ? 2 : first < 0xf0 ? 3 : 4;\n" +
+    "    if (length - (size_t)offset < width) {\n" +
+    "        kofun_error(\"error[E2S35]: stage2_unicode_scalar_at: malformed\"); return 0;\n" +
+    "    }\n" +
+    "    uint32_t scalar = first & (width == 2 ? 0x1f : width == 3 ? 0x0f : 0x07);\n" +
+    "    for (size_t index = 1; index < width; ++index) {\n" +
+    "        if ((bytes[index] & 0xc0) != 0x80) {\n" +
+    "            kofun_error(\"error[E2S35]: stage2_unicode_scalar_at: malformed\"); return 0;\n" +
+    "        }\n" +
+    "        scalar = (scalar << 6) | (bytes[index] & 0x3f);\n" +
+    "    }\n" +
+    "    if (scalar < (width == 2 ? 0x80u : width == 3 ? 0x800u : 0x10000u)) {\n" +
+    "        kofun_error(\"error[E2S35]: stage2_unicode_scalar_at: overlong\"); return 0;\n" +
+    "    }\n" +
+    "    if (scalar >= 0xd800 && scalar <= 0xdfff) {\n" +
+    "        kofun_error(\"error[E2S35]: stage2_unicode_scalar_at: surrogate\"); return 0;\n" +
+    "    }\n" +
+    "    if (scalar > 0x10ffff) {\n" +
+    "        kofun_error(\"error[E2S35]: stage2_unicode_scalar_at: range\"); return 0;\n" +
+    "    }\n" +
+    "    return (int64_t)scalar;\n" +
     "}\n" +
     "static inline int64_t kofun_find(const char *value, const char *needle) {\n" +
     "    const char *found = strstr(value, needle);\n" +
