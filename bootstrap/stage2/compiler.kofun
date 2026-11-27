@@ -8045,6 +8045,25 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
             return "kofun_text_slice(" + subject + ", " + from + ", " + to +
             ")"
         }
+        # `find(Text, Text)` is the byte-offset search the compiler's own
+        # source uses; the Core prelude's helper answers the first index or -1.
+        if open < end && token_text(source, open) == "(" &&
+           name == "find" {
+            let value = skip_trivia(source, token_end(source, open))
+            let value_end = argument_end(source, value)
+            let separator = skip_trivia(source, value_end)
+            let needle = skip_trivia(source, token_end(source, separator))
+            let subject = emit_expression(source, hir, value, value_end)
+            if starts_with(subject, "error[") {
+                return subject
+            }
+            let needle_value = emit_expression(
+                source, hir, needle, argument_end(source, needle))
+            if starts_with(needle_value, "error[") {
+                return needle_value
+            }
+            return "kofun_find(" + subject + ", " + needle_value + ")"
+        }
         if open >= end || token_text(source, open) != "(" {
             let binding_id = hir_use_binding_id(hir, cursor)
             let subscript_type = hir_binding_field(hir, binding_id, 5)
@@ -10104,8 +10123,8 @@ fn validate_core_calls(source: Text, hir: Text) -> Text {
                     if len(argument_error) > 0 {
                         return argument_error
                     }
-                    if name == "len" || name == "text_slice" ||
-                       name == "to_text" ||
+                    if name == "find" || name == "len" ||
+                       name == "text_slice" || name == "to_text" ||
                        name == "stage2_bytes_empty" ||
                        name == "stage2_bytes_assign_zeroed" ||
                        name == "stage2_command_operand_count" ||
@@ -23705,6 +23724,10 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     "        kofun_error(\"error[R022]: bounded Text temporary limit is 4096\"); return NULL;\n" +
     "    }\n" +
     "    return kofun_text_slots[kofun_text_next_slot++];\n" +
+    "}\n" +
+    "static inline int64_t kofun_find(const char *value, const char *needle) {\n" +
+    "    const char *found = strstr(value, needle);\n" +
+    "    return found == NULL ? INT64_C(-1) : (int64_t)(found - value);\n" +
     "}\n" +
     "static inline const char *kofun_text_slice(const char *text, int64_t start, int64_t end) {\n" +
     "    size_t length = strlen(text);\n" +
