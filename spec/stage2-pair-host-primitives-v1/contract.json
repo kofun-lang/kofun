@@ -2,7 +2,7 @@
   "schema": "kofun.stage2-pair-host-primitives-v1/v1",
   "issue": 1513,
   "selected_option": "A-compiler-private-host-primitives",
-  "visibility": "compiler-private-not-user-callable",
+  "visibility": "core-self-compilation-callable-bounded-authority",
   "unicode": {
     "operation": "stage2_unicode_scalar_at",
     "input": "validated-utf8-Text-and-byte-offset",
@@ -19,8 +19,8 @@
     "normalization_substitute": false
   },
   "authority": {
-    "source": "compiler-driver-host-boundary",
-    "ordinary_program_access": false
+    "source": "compiler-driver-and-core-self-compilation",
+    "ordinary_program_access": true
   },
   "pair": {
     "gate": "stage2-pair-host-primitives",
@@ -28,5 +28,11 @@
     "unicode_fixture": "non-ASCII-declaration-and-call-spelling-byte-identical",
     "file_fixture": "alias-output-refused-before-source-replacement"
   },
-  "claims_advance": false
+  "claims_advance": false,
+  "amendment": {
+    "issue": 1782,
+    "selected": "option-1-bind-in-core-path",
+    "scope": "bounded-read-only-scalar-decode-and-file-identity",
+    "date": "2026-11-27"
+  }
 }
