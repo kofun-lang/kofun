@@ -11989,6 +11989,43 @@ static char *emit_primary(
             free(name);
             return slice.data;
         }
+        if (
+            open < end && token_equal(source, open, "(") &&
+            strcmp(name, "find") == 0
+        ) {
+            int64_t value = skip_trivia(source, token_end(source, open));
+            int64_t value_end = argument_end(source, value);
+            int64_t separator = skip_trivia(source, value_end);
+            int64_t needle = skip_trivia(source, token_end(source, separator));
+            char *value_text = emit_expression(source, hir, value, value_end);
+            if (strncmp(value_text, "error[", 6) == 0) {
+                free(name);
+                return value_text;
+            }
+            char *needle_text = emit_expression(
+                source,
+                hir,
+                needle,
+                argument_end(source, needle)
+            );
+            if (strncmp(needle_text, "error[", 6) == 0) {
+                free(value_text);
+                free(name);
+                return needle_text;
+            }
+            Buffer found;
+            buffer_init(&found);
+            buffer_format(
+                &found,
+                "kofun_find(%s, %s)",
+                value_text,
+                needle_text
+            );
+            free(needle_text);
+            free(value_text);
+            free(name);
+            return found.data;
+        }
         Buffer output;
         buffer_init(&output);
         if (open >= end || !token_equal(source, open, "(")) {
@@ -14862,6 +14899,7 @@ static char *validate_core_calls(const char *source, const char *hir) {
                     }
                     free(argument_error);
                     if (
+                        strcmp(name, "find") == 0 ||
                         strcmp(name, "len") == 0 ||
                         strcmp(name, "text_slice") == 0 ||
                         strcmp(name, "to_text") == 0 ||
@@ -35437,6 +35475,10 @@ static char *lower_c_body(
         "        kofun_error(\"error[R022]: bounded Text temporary limit is 4096\"); return NULL;\n"
         "    }\n"
         "    return kofun_text_slots[kofun_text_next_slot++];\n"
+        "}\n"
+        "static inline int64_t kofun_find(const char *value, const char *needle) {\n"
+        "    const char *found = strstr(value, needle);\n"
+        "    return found == NULL ? INT64_C(-1) : (int64_t)(found - value);\n"
         "}\n"
         "static inline const char *kofun_text_slice(const char *text, int64_t start, int64_t end) {\n"
         "    size_t length = strlen(text);\n"
