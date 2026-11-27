@@ -1,9 +1,10 @@
 # Stage 2 pair host-primitives profile v1
 
 Normative schema: `kofun.stage2-pair-host-primitives-v1/v1`.
-Decision owner: Issue #1513. Selected: **Option A**, two compiler-private host
-primitives. This profile changes no canonical Stage 2 pair byte and advances no
-compiler capability or release claim.
+Decision owner: Issue #1513, amended by #1782. Selected: **Option A**, two
+bounded host primitives, now admitted to the Core self-compilation path. This
+profile changes no canonical Stage 2 pair byte and advances no compiler
+capability or release claim.
 
 ## Decision
 
@@ -17,9 +18,29 @@ Instead, the bounded interpreter/driver surface gains exactly:
 - `stage2_same_file(left, right)`, which establishes output/input identity
   before any destructive output open.
 
-They are compiler-private operations. Ordinary Kofun source cannot resolve,
-import, shadow into, serialize, or lower them. User declarations with the same
-spelling remain ordinary declarations. The driver is their only authority.
+They were compiler-private operations. Ordinary Kofun source could not resolve,
+import, shadow into, serialize, or lower them; user declarations with the same
+spelling remained ordinary declarations, and the driver was their only
+authority.
+
+## Amendment (#1782, 2026-11-27)
+
+The decision owner resolved #1483's self-compilation boundary by **option 1**:
+both operations are admitted to the Core lowering so the canonical compiler's
+own source can lower its calls. The authority this grants is bounded and
+read-only:
+
+- `stage2_unicode_scalar_at` decodes one UTF-8 scalar; it grants no byte array,
+  no `chars()` change, and no arbitrary memory access;
+- `stage2_same_file` performs the existing text-equality/`stat` identity check
+  and refuses an indeterminate lookup before any output is opened.
+
+User declarations with the same spelling still shadow the names, and neither
+operation is serialized, imported, or reachable through KIF. `contract.json`
+records the amendment as `authority.ordinary_program_access: true`, the
+`core-self-compilation-callable-bounded-authority` visibility, and an
+`amendment` object naming #1782. The implementation lands in #1784
+(`stage2_unicode_scalar_at`) and #1785 (`stage2_same_file`).
 
 ## Unicode scalar operation
 
