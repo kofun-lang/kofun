@@ -12,6 +12,8 @@ abc
 23
 2
 -1
+65
+90
 kofun_to_text(kofun_text_concat(kofun_text_slice(
 81
 92
