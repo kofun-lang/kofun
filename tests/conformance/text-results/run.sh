@@ -58,12 +58,19 @@ for artifact in output.c output.ir output.tokens compiler.stdout compiler.stderr
 done
 
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+    -I "$ROOT/unicode" \
     "$WORK/values.first/output.c" -o "$WORK/values" ||
     fail 'positive emitted C is not strict ISO C11'
 "$WORK/values" >"$WORK/values.stdout" 2>"$WORK/values.stderr" ||
     fail 'positive executable exited non-zero'
 compare 'positive stdout' "$CASES/values.stdout" "$WORK/values.stdout"
 assert_file_empty 'positive runtime stderr' "$WORK/values.stderr"
+
+KOFUN_STAGE2_COMPILER="$WORK/kofun-stage2" "$ROOT/bin/kofun" run \
+    "$CASES/values.kofun" >"$WORK/cli.stdout" 2>"$WORK/cli.stderr" ||
+    fail 'the public run command could not build and run the Text predicates'
+compare 'public run stdout' "$CASES/values.stdout" "$WORK/cli.stdout"
+assert_file_empty 'public run stderr' "$WORK/cli.stderr"
 
 "$WORK/values" >"$WORK/values.second.stdout" \
     2>"$WORK/values.second.stderr" ||
@@ -75,6 +82,7 @@ compare 'repeated runtime stderr' \
 
 # Sanitizers are acceptance evidence, not an optional best-effort branch.
 "$CC" -std=c11 -O1 -g -Wall -Wextra -Werror -pedantic \
+    -I "$ROOT/unicode" \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     "$WORK/values.first/output.c" -o "$WORK/values.sanitize" ||
     fail 'the C compiler cannot build the sanitizer-backed positive'
@@ -141,6 +149,7 @@ run_runtime_refusal() {
     code=$2
     compile_positive "$stem.compile" "$CASES/$stem.kofun"
     "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+    -I "$ROOT/unicode" \
         "$WORK/$stem.compile/output.c" -o "$WORK/$stem" ||
         fail "$stem emitted invalid C"
     set +e
@@ -182,6 +191,7 @@ assert_file_empty 'temporary exhaustion has no partial stdout' \
 # loops, none of them live past its iteration, and must reach the end.
 compile_positive loop_reclamation.compile "$CASES/loop_reclamation.kofun"
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+    -I "$ROOT/unicode" \
     "$WORK/loop_reclamation.compile/output.c" -o "$WORK/loop_reclamation" ||
     fail 'loop reclamation emitted C is not strict ISO C11'
 "$WORK/loop_reclamation" >"$WORK/loop_reclamation.stdout" \
@@ -221,6 +231,7 @@ assert_num 'one release per loop' "$releases" -eq 2
 # have reused the arena above it. If a release ever reclaimed below its mark,
 # that line changes and this comparison fails.
 "$CC" -std=c11 -O1 -g -Wall -Wextra -Werror -pedantic \
+    -I "$ROOT/unicode" \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     "$WORK/loop_reclamation.compile/output.c" -o "$WORK/loop_reclamation.sanitize" ||
     fail 'the C compiler cannot build the sanitizer-backed loop reclamation'

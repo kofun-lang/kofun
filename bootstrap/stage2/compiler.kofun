@@ -8135,6 +8135,41 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
             if name == "stage2_same_file" { helper = "kofun_same_file" }
             return helper + "(" + left_text + ", " + right_text + ")"
         }
+        # #1780. The one-argument Text predicates the compiler's own source
+        # uses. `is_xid_continue` pulls the pinned Unicode tables only when
+        # the source spells it; the other two are ASCII tests.
+        if open < end && token_text(source, open) == "(" &&
+           (name == "is_digit" || name == "is_space" ||
+            name == "is_xid_continue") &&
+           call_resolves_to_builtin(source, hir, cursor, name) {
+            let value = skip_trivia(source, token_end(source, open))
+            let rendered = emit_expression(
+                source, hir, value, argument_end(source, value))
+            if starts_with(rendered, "error[") {
+                return rendered
+            }
+            return "kofun_" + name + "(" + rendered + ")"
+        }
+        # #1780. The two-argument Text predicates, same shape as `find`.
+        if open < end && token_text(source, open) == "(" &&
+           (name == "contains" || name == "starts_with") &&
+           call_resolves_to_builtin(source, hir, cursor, name) {
+            let value = skip_trivia(source, token_end(source, open))
+            let value_end = argument_end(source, value)
+            let separator = skip_trivia(source, value_end)
+            let needle = skip_trivia(source, token_end(source, separator))
+            let subject = emit_expression(source, hir, value, value_end)
+            if starts_with(subject, "error[") {
+                return subject
+            }
+            let needle_value = emit_expression(
+                source, hir, needle, argument_end(source, needle))
+            if starts_with(needle_value, "error[") {
+                return needle_value
+            }
+            return "kofun_" + name + "(" + subject + ", " +
+            needle_value + ")"
+        }
         if open >= end || token_text(source, open) != "(" {
             let binding_id = hir_use_binding_id(hir, cursor)
             let subscript_type = hir_binding_field(hir, binding_id, 5)
@@ -10201,7 +10236,10 @@ fn validate_core_calls(source: Text, hir: Text) -> Text {
                     if len(argument_error) > 0 {
                         return argument_error
                     }
-                    if name == "find" || name == "len" ||
+                    if name == "contains" || name == "find" ||
+                       name == "is_digit" || name == "is_space" ||
+                       name == "is_xid_continue" || name == "len" ||
+                       name == "starts_with" ||
                        name == "stage2_unicode_scalar_at" ||
                        name == "stage2_same_file" ||
                        name == "text_slice" || name == "to_text" ||
@@ -24036,6 +24074,22 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     if fractional_values || uses_fixed {
         decimal_include = "#include \"decimal_v1.c\"\n"
     }
+    # #1780. `is_xid_continue` needs the pinned Unicode tables; emit the same
+    # include the self-host path uses, and only for a source that spells it.
+    let mut unicode_include = ""
+    let mut xid_prelude = ""
+    if contains(source, "is_xid_continue") {
+        unicode_include = "#include \"kofun_unicode.c\"\n"
+        xid_prelude = "static inline bool kofun_is_xid_continue(const char *value) {\n" +
+        "    uint32_t codepoint = 0;\n" +
+        "    size_t width = 0;\n" +
+        "    if (!kofun_unicode_decode((const uint8_t *)value, strlen(value),\n" +
+        "            0, &codepoint, &width)) {\n" +
+        "        return false;\n" +
+        "    }\n" +
+        "    return kofun_unicode_is_xid_continue(codepoint);\n" +
+        "}\n"
+    }
     let mut optional_declarations = ""
     if source_uses_optional_int(source) {
         optional_declarations = emit_optional_int_c_declarations()
@@ -24050,7 +24104,8 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     "#include <stddef.h>\n" +
     "#include <stdint.h>\n" +
     "#include <stdio.h>\n" +
-    stdlib_include + "#include <string.h>\n" + identity_includes + decimal_include + "\n" +
+    stdlib_include + "#include <string.h>\n" + identity_includes + decimal_include +
+    unicode_include + "\n" +
     enum_classic_typedef(source) +
     "typedef const unsigned char *KofunIntList;\n" +
     "typedef struct { uint64_t length; int64_t elements[64]; } KofunIntListValue;\n" +
@@ -24123,6 +24178,22 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     "    }\n" +
     "    return kofun_text_slots[kofun_text_next_slot++];\n" +
     "}\n" +
+    "static inline bool kofun_is_digit(const char *value) {\n" +
+    "    return value[0] >= '0' && value[0] <= '9' && value[1] == '\\0';\n" +
+    "}\n" +
+    "static inline bool kofun_is_space(const char *value) {\n" +
+    "    return value[0] != '\\0' && value[1] == '\\0' &&\n" +
+    "        (value[0] == ' ' || value[0] == '\\t' || value[0] == '\\n' ||\n" +
+    "         value[0] == '\\v' || value[0] == '\\f' || value[0] == '\\r');\n" +
+    "}\n" +
+    "static inline bool kofun_contains(const char *value, const char *needle) {\n" +
+    "    return strstr(value, needle) != NULL;\n" +
+    "}\n" +
+    "static inline bool kofun_starts_with(const char *value, const char *prefix) {\n" +
+    "    size_t width = strlen(prefix);\n" +
+    "    return strncmp(value, prefix, width) == 0;\n" +
+    "}\n" +
+    xid_prelude +
     "static inline int64_t kofun_unicode_scalar_at(const char *text, int64_t offset) {\n" +
     "    size_t length = strlen(text);\n" +
     "    if (offset < 0 || (uint64_t)offset > length) {\n" +

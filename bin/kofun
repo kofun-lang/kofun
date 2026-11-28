@@ -978,11 +978,11 @@ build_file() (
         emitted=$3
         shift 3
         "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
-            -I"$ROOT/bootstrap/stage2" "$emitted" "$@" -o "$output"
+            -I"$ROOT/bootstrap/stage2" -I"$ROOT/unicode" "$emitted" "$@" -o "$output"
         return
     fi
     "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
-        -I"$ROOT/bootstrap/stage2" "$3" -o "$2"
+        -I"$ROOT/bootstrap/stage2" -I"$ROOT/unicode" "$3" -o "$2"
 )
 
 canonical_link_library() (
@@ -1623,7 +1623,7 @@ $2"
                 continue
             fi
             if ! "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
-                -I"$ROOT/bootstrap/stage2" "$c_file" -o "$binary"; then
+                -I"$ROOT/bootstrap/stage2" -I"$ROOT/unicode" "$c_file" -o "$binary"; then
                 printf '%s\n' "FAIL $source"
                 failed=$((failed + 1))
                 continue

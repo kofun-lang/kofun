@@ -12062,6 +12062,75 @@ static char *emit_primary(
             free(name);
             return call.data;
         }
+        /* #1780. The one-argument Text predicates the compiler's own source
+         * uses. `is_xid_continue` pulls the pinned Unicode tables only when
+         * the source spells it; the other two are ASCII tests. */
+        if (
+            open < end && token_equal(source, open, "(") &&
+            (strcmp(name, "is_digit") == 0 ||
+             strcmp(name, "is_space") == 0 ||
+             strcmp(name, "is_xid_continue") == 0) &&
+            call_resolves_to_builtin(source, hir, cursor, name)
+        ) {
+            int64_t value = skip_trivia(source, token_end(source, open));
+            char *rendered = emit_expression(
+                source,
+                hir,
+                value,
+                argument_end(source, value)
+            );
+            if (strncmp(rendered, "error[", 6) == 0) {
+                free(name);
+                return rendered;
+            }
+            Buffer predicate;
+            buffer_init(&predicate);
+            buffer_format(&predicate, "kofun_%s(%s)", name, rendered);
+            free(rendered);
+            free(name);
+            return predicate.data;
+        }
+        /* #1780. The two-argument Text predicates, same shape as `find`. */
+        if (
+            open < end && token_equal(source, open, "(") &&
+            (strcmp(name, "contains") == 0 ||
+             strcmp(name, "starts_with") == 0) &&
+            call_resolves_to_builtin(source, hir, cursor, name)
+        ) {
+            int64_t value = skip_trivia(source, token_end(source, open));
+            int64_t value_end = argument_end(source, value);
+            int64_t separator = skip_trivia(source, value_end);
+            int64_t needle = skip_trivia(source, token_end(source, separator));
+            char *value_text = emit_expression(source, hir, value, value_end);
+            if (strncmp(value_text, "error[", 6) == 0) {
+                free(name);
+                return value_text;
+            }
+            char *needle_text = emit_expression(
+                source,
+                hir,
+                needle,
+                argument_end(source, needle)
+            );
+            if (strncmp(needle_text, "error[", 6) == 0) {
+                free(value_text);
+                free(name);
+                return needle_text;
+            }
+            Buffer predicate;
+            buffer_init(&predicate);
+            buffer_format(
+                &predicate,
+                "kofun_%s(%s, %s)",
+                name,
+                value_text,
+                needle_text
+            );
+            free(needle_text);
+            free(value_text);
+            free(name);
+            return predicate.data;
+        }
         Buffer output;
         buffer_init(&output);
         if (open >= end || !token_equal(source, open, "(")) {
@@ -14941,7 +15010,12 @@ static char *validate_core_calls(const char *source, const char *hir) {
                     }
                     free(argument_error);
                     if (
+                        strcmp(name, "contains") == 0 ||
                         strcmp(name, "find") == 0 ||
+                        strcmp(name, "is_digit") == 0 ||
+                        strcmp(name, "is_space") == 0 ||
+                        strcmp(name, "is_xid_continue") == 0 ||
+                        strcmp(name, "starts_with") == 0 ||
                         strcmp(name, "stage2_unicode_scalar_at") == 0 ||
                         strcmp(name, "stage2_same_file") == 0 ||
                         strcmp(name, "len") == 0 ||
@@ -34649,6 +34723,9 @@ static char *lower_c_body(
     /* #1696. The checked origin construction is emitted only for a source that
      * can reach it, by the same raw-source substring test as the Kofun half. */
     bool uses_http_origin = strstr(source, "stage2_http_origin") != NULL;
+    /* #1780. `is_xid_continue` needs the pinned Unicode tables; emit the same
+     * include the self-host path uses, and only for a source that spells it. */
+    bool uses_xid_continue = strstr(source, "is_xid_continue") != NULL;
     /* #946: the move rule runs before the assertion, so a use-after-move is
      * reported as itself rather than as whatever the erased statement leaves
      * behind. */
@@ -35114,6 +35191,9 @@ static char *lower_c_body(
     if (fractional_values || uses_fixed) {
         buffer_append(&output, "#include \"decimal_v1.c\"\n");
     }
+    if (uses_xid_continue) {
+        buffer_append(&output, "#include \"kofun_unicode.c\"\n");
+    }
     buffer_append(&output, "\n");
     /* #1697. The classic two-word enum value, unless the source declares a
      * record payload; that source gets the widened union after its records. */
@@ -35538,6 +35618,41 @@ static char *lower_c_body(
         "    }\n"
         "    return kofun_text_slots[kofun_text_next_slot++];\n"
         "}\n"
+    );
+    buffer_append(
+        &output,
+        "static inline bool kofun_is_digit(const char *value) {\n"
+        "    return value[0] >= '0' && value[0] <= '9' && value[1] == '\\0';\n"
+        "}\n"
+        "static inline bool kofun_is_space(const char *value) {\n"
+        "    return value[0] != '\\0' && value[1] == '\\0' &&\n"
+        "        (value[0] == ' ' || value[0] == '\\t' || value[0] == '\\n' ||\n"
+        "         value[0] == '\\v' || value[0] == '\\f' || value[0] == '\\r');\n"
+        "}\n"
+        "static inline bool kofun_contains(const char *value, const char *needle) {\n"
+        "    return strstr(value, needle) != NULL;\n"
+        "}\n"
+        "static inline bool kofun_starts_with(const char *value, const char *prefix) {\n"
+        "    size_t width = strlen(prefix);\n"
+        "    return strncmp(value, prefix, width) == 0;\n"
+        "}\n"
+    );
+    if (uses_xid_continue) {
+        buffer_append(
+            &output,
+            "static inline bool kofun_is_xid_continue(const char *value) {\n"
+            "    uint32_t codepoint = 0;\n"
+            "    size_t width = 0;\n"
+            "    if (!kofun_unicode_decode((const uint8_t *)value, strlen(value),\n"
+            "            0, &codepoint, &width)) {\n"
+            "        return false;\n"
+            "    }\n"
+            "    return kofun_unicode_is_xid_continue(codepoint);\n"
+            "}\n"
+        );
+    }
+    buffer_append(
+        &output,
         "static inline int64_t kofun_unicode_scalar_at(const char *text, int64_t offset) {\n"
         "    size_t length = strlen(text);\n"
         "    if (offset < 0 || (uint64_t)offset > length) {\n"
