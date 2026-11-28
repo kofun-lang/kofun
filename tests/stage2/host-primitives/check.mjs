@@ -38,6 +38,10 @@ const native = buildNative('native');
 // the isolated fixture and must never require a production fault switch.
 const production = process.env.KOFUN_STAGE2_COMPILER || native;
 const compiler = loadCompiler();
+const textFixture = loadCompiler({source:
+  'fn substitute(value: Text, old: Text, replacement: Text) -> Text { return replace(value, old, replacement) }'});
+assert.equal(textFixture.substitute('a_a', '', 'x'), 'a_a');
+assert.equal(textFixture.substitute('aa', 'a', '$&'), '$&$&');
 // The driver must preserve the compiler's Int/list semantics too. Exercise
 // the canonical SHA-256 functions against the maintained C vectors.
 let shaOutput='';

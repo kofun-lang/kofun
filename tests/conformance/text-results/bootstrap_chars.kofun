@@ -1,0 +1,20 @@
+fn source_text() -> Text {
+    print("source")
+    return "abc"
+}
+
+fn item_index() -> Int {
+    print("index")
+    return 1
+}
+
+fn main() -> Int {
+    let letters = chars("k字n")
+    let copy = letters
+    print(len(copy))
+    print(copy[4])
+    print((copy)[0])
+    print(len(chars("")))
+    print((chars(source_text()))[item_index()])
+    return 0
+}

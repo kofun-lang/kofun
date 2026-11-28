@@ -1,0 +1,4 @@
+fn main() -> Int {
+    print(replace("a", "a", 7))
+    return 0
+}

@@ -345,6 +345,7 @@ node	invoke	3	required-today	required	tests/conformance/optional-construction/ru
 node	invoke	2	required-today	required	tests/conformance/record-bytes-fields/run.sh
 node	invoke	2	required-today	required	tests/conformance/record-list/run.sh
 node	invoke	2	required-today	required	tests/conformance/result-propagation/run.sh
+node	invoke	1	required-today	required	tests/conformance/text-results/run.sh
 node	invoke	7	required-today	optional	tests/digest/check.sh
 node	invoke	5	required-today	required	tests/docs/documentation-index.sh
 node	invoke	2	required-today	unknown	tests/fuzz/adapters/arithmetic-wasm32-node.sh

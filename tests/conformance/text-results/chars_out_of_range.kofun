@@ -1,0 +1,5 @@
+fn main() -> Int {
+    let letters = chars("a")
+    print(letters[1])
+    return 0
+}
