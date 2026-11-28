@@ -1,0 +1,34 @@
+fn noisy(x: Int) -> Int {
+    print(x)
+    return x
+}
+
+fn twice(x: Int) -> Int {
+    return x + x
+}
+
+fn f(x: Int) -> Int {
+    return x + 1
+}
+
+fn forward(f: (Int) -> Int, x: Int) -> Int {
+    f(x)
+    twice(f(x))
+    return x
+}
+
+fn put(edit buffer: Bytes, at: Int, value: Int) -> Int {
+    stage2_bytes_byte_set(buffer, at, value)
+    return 0
+}
+
+fn main() -> Int {
+    let _ = twice(21)
+    forward(noisy, 7)
+    twice(noisy(3))
+    let buffer = stage2_bytes_empty()
+    stage2_bytes_assign_zeroed(buffer, 2)
+    put(buffer, 1, 42)
+    print(stage2_bytes_byte_at(buffer, 1))
+    return 0
+}

@@ -675,8 +675,11 @@ Measurement found two premises that do not hold as stated. A `pure` callee can
 still write through an `edit` parameter, so the refusal as accepted would
 reject a statement whose deletion changes what the program prints. And `_` in
 `let _` is an ordinary binding, so the sanctioned discard can be written once
-per scope. The specification records both as open for the decision owner and
-resolves neither.
+per scope. The decision owner resolved both on 2026-11-23: a callee with an
+`edit` parameter is exempt, and `_` stays an ordinary binding. The
+specification records the answers under *Resolved conflicts*.
 
 [`spec/effects/pure-io-v1.md`](../spec/effects/pure-io-v1.md) § Discarded pure
-results is normative. No compiler implements it; #1730 is the implementation.
+results is normative. #1730 implements it as `E2S223` in both halves of the
+Stage 2 pair; this row stays `accepted` until `release/claims.json` evidences
+the implementation.

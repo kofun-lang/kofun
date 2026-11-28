@@ -935,7 +935,7 @@ assert_num "selfhost frontier status" "$selfhost_frontier_status" -eq 3
 assert_not_grep "selfhost-S.stdout" 'E2S35' "$temporary/selfhost-S.stdout"
 assert_not_grep "selfhost-S.stdout" 'E2S16' "$temporary/selfhost-S.stdout"
 assert_grep "selfhost-S.stdout" \
-    'error\[E2S10\]: unsupported Core builtin call `chars`' \
+    'error\[E2S10\]: unsupported Core builtin call `trim` at byte 7701$' \
     "$temporary/selfhost-S.stdout"
 assert_absent "$temporary/selfhost-S.c" "$temporary/selfhost-S.c"
 

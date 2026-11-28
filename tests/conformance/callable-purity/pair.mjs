@@ -1,4 +1,4 @@
-// Both halves of the Stage 2 pair on the callable-purity corpus (#1754).
+// Compare valid-UTF-8 fixtures across both halves of the Stage 2 pair.
 //
 // usage: node pair.mjs STAGE2-BINARY WORK SOURCE.kofun...
 //
@@ -74,4 +74,4 @@ for (const source of sources) {
   assert.equal(read(kHir), read(cHir), `${stem}: scope HIR differs between the halves`);
   compared += 1;
 }
-console.log(`PASS: ${compared} callable-purity sources agree in both halves of the pair on outcome, emitted C, tokens, and scope HIR`);
+console.log(`PASS: ${compared} sources agree in both halves of the pair on outcome, emitted C, tokens, and scope HIR`);

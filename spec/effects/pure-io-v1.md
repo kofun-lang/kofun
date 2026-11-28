@@ -121,15 +121,16 @@ rather than inherit it by omission.
 
 ## Discarded pure results
 
-**Accepted target semantics. No compiler implements this section yet.** It
+**Accepted semantics, implemented by both halves of the Stage 2 pair.** It
 records the decision on
 [#1714](https://github.com/kofun-lang/kofun/issues/1714), which the decision
 owner accepted on 2026-10-04 as amended by the argument-effect rule. The ledger
-indexes it as `DD-042`. Until the refusal is implemented, every program this
-section refuses still compiles, as measured below. The implementation is
-#1730, which is ordered after #1711.
+indexes it as `DD-042`. #1730 implemented the refusal as `E2S223`; the
+`Behavior before the refusal` table records the measurement that motivated it.
+The decision owner resolved the two open conflicts on
+2026-11-23; *Resolved conflicts* records the answers in place of the questions.
 
-### Current behavior
+### Behavior before the refusal
 
 Measured on `origin/main@7d2caf6f3fa3bf733533b08ccf20b6551c3e13f0`,
 2026-10-04, where `twice` is `fn twice(x: Int) -> Int { return x + x }` and
@@ -143,18 +144,18 @@ Measured on `origin/main@7d2caf6f3fa3bf733533b08ccf20b6551c3e13f0`,
 | `forward(noisy, 7)` | `bin/kofun check` / `bin/kofun run` | `ok`, exit 0 / prints `7`, exit 0. The sidecar publishes `forward` and `main` as `pure`, `noisy` as `io` |
 | `twice(noisy(3))` | `bin/kofun run` | prints `3`, exit 0 |
 
-A call is therefore the only expression a statement can discard today, and
-nothing refuses the discard.
+On that revision, a statement could discard a call's result without a diagnostic.
 
 ### The rule
 
 A statement that is a call and nothing else discards the call's result. Such a
-statement is refused when all three conditions hold:
+statement is refused when all four conditions hold:
 
 1. the call's result type is not `Unit`;
 2. the callee is a top-level function whose `effect` fact is `pure` with status
-   `validated`; and
-3. every argument's own summary is `pure`.
+   `validated`;
+3. every argument's own summary is `pure`; and
+4. the callee declares no `edit` parameter.
 
 An argument's summary is what evaluating that argument contributes under the
 observations the first section defines. It is `io` when the argument calls a
@@ -202,7 +203,8 @@ for the same reason: `twice` is `pure`, but its argument calls `noisy`.
 
 A call through a callable parameter or local, such as `f(x)` inside `forward`,
 names no top-level function. It has no `effect` fact, so condition 2 never
-holds and the statement is never refused.
+holds and the statement is never refused. Condition 4 exempts a callee that
+declares an `edit` parameter; *Resolved conflicts* records why.
 
 A lambda written directly as a call argument is outside the current slice:
 `forward(fn(y: Int) => noisy(y), 7)` as a statement is
@@ -229,12 +231,13 @@ statements that have none.
 **`let _ = e` is the sanctioned explicit discard.** No new form is added. Flix
 spells the explicit discard `discard e`, and Kofun does not adopt that. The
 form already checks `ok`, as the table above shows. Measured on the same
-commit, though, `_` in that position is an ordinary binding name, not a
-wildcard. A second `let _ =` in one scope is
+commit, `_` in that position is an ordinary binding name, not a wildcard. A
+second `let _ =` in one scope is
 ``error[E2S47]: duplicate binding `_` in lexical scope at byte 95; first declaration at byte 73``,
-exit 1, and `return _` after `let _ = twice(21)` checks `ok`. This section does
-not decide whether `let _` becomes a non-binding discard so that it can repeat.
-The question is recorded for the decision owner under *Open conflicts* below.
+exit 1, and `return _` after `let _ = twice(21)` checks `ok`. The decision
+owner resolved on 2026-11-23 that this stays as it is: `_` keeps binding, so
+the sanctioned discard works once per scope and a second discard needs a
+distinct binding name. Making `_` a non-binding wildcard is separate work.
 
 ### Only a validated answer refuses
 
@@ -248,9 +251,21 @@ or cancelled semantic-event stream. It also never fires on a `provisional`,
 lattice). A refusal resting on a fact the compiler could not validate would
 reject a program on a guess.
 
-The refusal cannot read a sidecar file, because its own failure prevents that
-file from being written. The typed-sidecar producer's projection budget
-therefore does not enter into it. On the commit above, the concatenated program
+The Stage 2 implementation asks the same lexical query the `pure fn` boundary
+uses, `inferred_io_functions`, rather than reading a sidecar. That fixed point
+answers `pure` or `io` for every declaration of a parsed program and has no
+provisional state. The check runs inside lowering, after `parse_program` and
+after every earlier refusal, and `discarded_pure_call_error` asks the query only
+for a statement that is one call. So there is no partial, failed or unvalidated
+answer for it to act on. A program whose call cannot be resolved is refused
+earlier by `E2S16`, an authority misuse by `E353`, a `pure` promise by
+`E2S176`, and a `Unit` result by `E2S15`; the discard refusal never replaces
+those answers.
+
+The compiler decides the refusal before sidecar projection. With
+`--emit-typed-sidecar`, a refused call produces a partial, non-authoritative
+document carrying `E2S223` and no validated effect fact. The projection budget
+therefore does not enter into the decision. On the commit above, the concatenated program
 that `tests/stdlib/benchmark-report-codec/check.sh` builds checks `ok`. With
 `--emit-typed-sidecar` it fails with `ETS04`, because it declares 103 top-level
 functions and the producer projects at most 64. The refusal applies to that
@@ -258,12 +273,13 @@ program as to any other that compiles.
 
 ### Ordering after #1711
 
-The refusal is implemented only after #1711 merges. Until then, a function that
-passes an `io` function by name is published `pure`. On the commit above,
-`main` in the program above is published `pure` and prints `7`. A discarded
-call to such a function, such as `quiet(7)` in #1711's own reproducer, would
-be refused although it prints. #1711 also makes "names a top-level function" in
-condition 3 the same edge that the published fact charges.
+#1711 merged on 2026-10-04 (`953284e9`), so the refusal lands after the fix it
+was ordered behind. Before it, a function that passes an `io` function by name
+was published `pure`: on the commit above, `main` in the program above was
+published `pure` and printed `7`, and a discarded call to such a function, such
+as `quiet(7)` in #1711's own reproducer, would have been refused although it
+prints. #1711 also makes "names a top-level function" in condition 3 the same
+edge that the published fact charges.
 
 ### Must-use is deferred
 
@@ -278,16 +294,15 @@ is the primary consumer.
 condition of its own first implementation. This section does not amend that
 text. The overlap is recorded on #1729.
 
-### Open conflicts
+### Resolved conflicts
 
-These are recorded here, not resolved. Each needs the decision owner's answer
-before the refusal is enabled, and #1730 carries both.
+The decision owner resolved both on 2026-11-23; #1730 implements the answers.
 
-**Mutation through a borrow.** The decision rests on a discarded `pure` call
-being deletable without changing what the program does. In this profile `pure`
-means only that a function cannot reach `print`. It says nothing about a write
-through an `edit` parameter, which DD-006 and `spec/bytes-bounded-v1.md` § 3
-admit. Measured on the commit above:
+**Mutation through a borrow: exempt the callee.** The decision rests on a
+discarded `pure` call being deletable without changing what the program does.
+In this profile `pure` means only that a function cannot reach `print`. It says
+nothing about a write through an `edit` parameter, which DD-006 and
+`spec/bytes-bounded-v1.md` § 3 admit. Measured on the commit above:
 
 ```kofun
 fn put(edit buffer: Bytes, at: Int, value: Int) -> Int {
@@ -305,16 +320,19 @@ fn main() -> Int {
 ```
 
 The sidecar publishes `put` as `pure`, status `validated`. Its result is `Int`,
-and its arguments are a local and two literals. All three conditions hold, so
-the rule as accepted refuses `put(buffer, 1, 42)`. Yet `bin/kofun run` prints
-`42`, and deleting the statement would leave the byte at `0`. Tracked sources
-have the same shape: `codec_put16(ends, at * 2, end)` in
-`tests/stdlib/benchmark-report-codec/codec.kofun`, and `edit_relay(spare)` in
-`tests/conformance/bytes-mutation/borrowed_carrier.kofun`.
+and its arguments are a local and two literals. The first three conditions hold,
+so a rule without condition 4 would refuse `put(buffer, 1, 42)`. Yet
+`bin/kofun run` prints `42`, and deleting the statement would leave the byte at
+`0`. Condition 4 therefore exempts any callee with an `edit` parameter, and the
+tracked shapes — `codec_put16(ends, at * 2, end)` in
+`tests/stdlib/benchmark-report-codec/codec.kofun` and `edit_relay(spare)` in
+`tests/conformance/bytes-mutation/borrowed_carrier.kofun` — stay accepted.
+Changing `pure` itself to exclude writes is left as separate work.
 
-**A discard that can be written only once per scope.** As measured above,
-`let _ = e` binds the name `_`. A scope can therefore use the sanctioned
+**A discard that can be written only once per scope: keep it.** As measured
+above, `let _ = e` binds the name `_`, so a scope can use the sanctioned
 spelling once. A second discarded result in the same scope needs a distinct
 name: `let _second = twice(4)` after `let _ = twice(21)` checks `ok` on the
 commit above. Making `_` non-binding in `let` would change what `return _`
-means today, and the decision does not address that.
+means today, so the answer keeps `_` an ordinary binding and records the
+limitation rather than changing the language here.
