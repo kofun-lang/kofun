@@ -49,6 +49,12 @@ Each record contains the include name, TAB, the decimal payload length and
 LF, exactly that many bytes of source, and a final LF. Paths remain private
 to acquisition. A denied catalog leaves any prior destination intact.
 
+Both compiler entry points check the C, IR, and token destinations in that
+order before publishing any artifact. For each destination they check the
+source first, then the explicitly supplied catalog. The first alias or
+indeterminate lookup raises `E2S35`. Supplying an empty catalog pathname
+still requests a lookup and can therefore fail at that step.
+
 ## Refusals
 
 The `include-form` diagnostic adapter exercises these refusals:
