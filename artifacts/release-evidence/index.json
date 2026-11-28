@@ -6,7 +6,7 @@
     "VERSION": "52805dd2a8754a2d0acfe93aedfbbb70a8d360223d80a9c8d7c8876d5b3502d6",
     "release/claims.json": "579afcb7cb298f632d64bb07b6af295589fcf9c0e993ea2ea7a4abf21a5760d3",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
-    "bootstrap/manifest.json": "252d3616ef216378366cc4c7a738a7bf2227b84f6d589f9ceed7d9806cc3dd96"
+    "bootstrap/manifest.json": "99907e2fcdb56eb2f250d3fbc9b87ffb16f16922c62e9781897c2eadf1f963e0"
   },
   "states": {
     "checkpoint": 42,
@@ -818,7 +818,7 @@
   ],
   "evidence_digests": {
     ".github/workflows/native-hosts.yml": "76d3edbe30c1a65f7c9525d78464c14859f094ecc04aec9638ea586284fad9cb",
-    "Taskfile.yml": "f526c00f5e027afec551f182cc5e18d9045478e8cad740a4f3b13bd17f1735ec",
+    "Taskfile.yml": "0b15832b3ad3964f85d98bf8937476df0877467431d1c10b31084bbde34b7d7c",
     "bootstrap/native/README.md": "6c470b203c3dbc327c6b601ab958c754e6f82be78c255d442307ad0c7691bc21",
     "bootstrap/native/check-macho64-signed.sh": "6fc51ddfec599ea85b8b06a5c16d68b6fdc994621cdb8ca4267e20be38141393",
     "bootstrap/native/check-macho64.sh": "d6bd52e3f6756aa607a2dc44a0117defeaaa55e64fa3f4221986da6406251e15",
@@ -840,7 +840,7 @@
     "docs/DECIMAL.md": "565e03b16a48a951cf8143d6d58da1497dfac87c81e7dc1a8179ad17bb6c2aa6",
     "docs/DOCUMENTATION_INDEX.md": "f0e22ded32b0dfebd4e628e0c57036574c197b12889d07771539f6e29640b4d9",
     "docs/GETTING_STARTED.md": "cbbe5d0df1a008c9ca2194792e5619527d8701bedf7fd6b6b777e27169008f0c",
-    "docs/LAW_SYSTEM.md": "b974f0ad762bec778ee76afa5d0a2176423ac96a3a583739eee55dcb8dca5043",
+    "docs/LAW_SYSTEM.md": "e592bb4cd498c8972a7aecd795d1a0cf2069ab94b2938468552a1de01c4f8051",
     "docs/LINGUIST_RECOGNITION.md": "279f9afa7157c90e41d656974c2f5020f8b6d25acbbd389ee760efbb2d6d6166",
     "docs/MEMORY_MODEL.md": "ddc67d55f669f0ff689f2a2b8daacd2213032bececbe2b8f84b1b3531d4d1b0f",
     "docs/MVP_IMPLEMENTED.md": "8e0787ac120d7f6b2ad28cc1e1cf8b998d81a8c9e2db2ea28490d65e529c526d",
@@ -883,7 +883,7 @@
     "tests/conformance/records/stage2_unsupported_field.kofun": "3a2a267549694c0ccf71e682b37992d94ff5b0a59b1b6438726b5384d3c46e82",
     "tests/conformance/syntax/issues_35_47/enum_payload_unsupported_field.kofun": "e1b4ce6cda998dac0a955ed016c8eb2f81a9effaed91b823011572cf68f6c59e",
     "tests/diagnostics/README.md": "0c915028a977e49a363c31304fec0e0e4635f0c814cb0cce5cfd4cabca6ff70e",
-    "tests/diagnostics/registry.tsv": "0d7180507f4ed619f79bacb2af4d23bf5166991c99d990f6a260660dc5c61e6d",
+    "tests/diagnostics/registry.tsv": "b174e7616198a2dd009691efd5686a70a6efcafc12b301abb3e8ab8c6709f174",
     "tests/diagnostics/stage2/e2s10_unsupported_statement.kofun": "664c4d3b0d4bcd9265fee34b3ae60d8bf0eb58c9ce5c2b504579c1249aa16f2d",
     "tests/diagnostics/visibility-api-leaks.sh": "5c65b941bec961bc7b814e3979170af630df34fa8812d0fa650639e159ea755a",
     "tests/docs/documentation_index_test.mjs": "1195ff0fb6486bd046e1b70a8d364838a51ae06b47749206f851de54ac8d4c44",

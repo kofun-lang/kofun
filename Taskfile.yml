@@ -299,6 +299,11 @@ tasks:
     cmds:
       - "sh spec/generic-adt-hir-v1/check.sh"
 
+  law-declaration-hir:
+    desc: "Verify concrete law declarations and typed equation HIR on the Stage 2 pair"
+    cmds:
+      - "sh spec/law-declaration-hir-v1/check.sh"
+
   hm-levels:
     desc: "Verify bounded Algorithm J inference for local lambdas"
     cmds:
@@ -1687,6 +1692,7 @@ tasks:
             const-generics \
             generic-record-hir \
             generic-adt-hir \
+            law-declaration-hir \
             hm-levels \
             effect-inference \
             pure-boundary \

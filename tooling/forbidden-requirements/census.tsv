@@ -130,6 +130,7 @@ cc	invoke	2	required-today	required	framework/tui/check.sh
 cc	invoke	1	required-today	required	spec/generic-adt-hir-v1/check.sh
 cc	invoke	1	required-today	required	spec/generic-record-hir-v1/check.sh
 cc	invoke	1	required-today	required	spec/kif-generics-v1/check.mjs
+cc	invoke	1	required-today	required	spec/law-declaration-hir-v1/check.sh
 cc	invoke	1	required-today	required	spec/roadmap-31-34/verify-current-gates.sh
 cc	invoke	1	required-today	required	stdlib/buffered_io/tests/verify.sh
 cc	invoke	1	required-today	required	stdlib/date_time/tests/verify.sh
@@ -296,6 +297,7 @@ node	invoke	4	required-today	required	spec/effects/affine-resumption/check.sh
 node	invoke	3	required-today	required	spec/generic-adt-hir-v1/check.sh
 node	invoke	3	required-today	required	spec/generic-record-hir-v1/check.sh
 node	invoke	1	required-today	required	spec/kif-generics-v1/check.sh
+node	invoke	1	required-today	required	spec/law-declaration-hir-v1/check.sh
 node	invoke	1	required-today	required	spec/native-toolchain-v1/check.sh
 node	invoke	9	required-today	required	spec/reuse-candidate-v1/check.sh
 node	invoke	4	required-today	required	spec/semantic-identity/check.sh
@@ -420,6 +422,7 @@ node	source	1	required-today	required	spec/generic-record-hir-v1/model.mjs
 node	source	1	required-today	required	spec/kif-generics-v1/check.mjs
 node	source	1	required-today	required	spec/kif-generics-v1/fixture.mjs
 node	source	1	required-today	required	spec/kif-generics-v1/model.mjs
+node	source	1	required-today	required	spec/law-declaration-hir-v1/check.mjs
 node	source	1	required-today	required	spec/native-toolchain-v1/check.mjs
 node	source	1	required-today	required	spec/native-toolchain-v1/model.mjs
 node	source	1	required-today	required	spec/reuse-candidate-v1/check.mjs
@@ -636,6 +639,7 @@ shell-build-driver	source	1	required-today	required	spec/effects/affine-resumpti
 shell-build-driver	source	1	required-today	required	spec/generic-adt-hir-v1/check.sh
 shell-build-driver	source	1	required-today	required	spec/generic-record-hir-v1/check.sh
 shell-build-driver	source	1	required-today	required	spec/kif-generics-v1/check.sh
+shell-build-driver	source	1	required-today	required	spec/law-declaration-hir-v1/check.sh
 shell-build-driver	source	1	required-today	required	spec/module-identity/check.sh
 shell-build-driver	source	1	required-today	required	spec/namespaces/check.sh
 shell-build-driver	source	1	required-today	required	spec/native-toolchain-v1/check.sh

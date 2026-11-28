@@ -34966,6 +34966,591 @@ fn emit_generic_adt_hir_file(input: Text, output: Text, logical_path: Text) -> B
     return true
 }
 
+# Concrete law declaration analysis (#1772). Parser results are bounded HIR
+# fields (end byte | type | JSON | local symbols); diagnostics pass through.
+# Tables use identifier keys, canonical type spellings and source-byte offsets.
+fn law_field(row: Text, index: Int) -> Text {
+    return hir_field(row, 0, index)
+}
+
+fn law_end(row: Text) -> Int {
+    return decimal_value(law_field(row, 0))
+}
+
+fn law_error(code: Text, message: Text, at: Int) -> Text {
+    return generic_record_refusal(code, message, at)
+}
+
+fn law_bad(text: Text) -> Bool {
+    return starts_with(text, "error[")
+}
+
+fn law_next(source: Text, at: Int) -> Int {
+    let end = token_end(source, at)
+    if end <= at { return at }
+    return skip_lexical_trivia(source, end)
+}
+
+fn law_id(source: Text, at: Int) -> Bool {
+    return token_kind(source, at) == "identifier"
+}
+
+fn law_expected(at: Int, wanted: Text) -> Text {
+    return law_error("E2S228", "expected " + wanted + " in law declarations", at)
+}
+
+fn law_row(name: Text, value: Text) -> Text {
+    return ";" + name + ":" + value
+}
+
+fn law_get(table: Text, name: Text) -> Text {
+    let key = ";" + name + ":"
+    let at = find(table, key)
+    if at < 0 { return "" }
+    let start = at + len(key)
+    let finish = text_find_from(table, ";", start)
+    if finish < 0 { return text_slice(table, start, len(table)) }
+    return text_slice(table, start, finish)
+}
+
+fn law_type_of(binding: Text) -> Text {
+    let at = find(binding, "@")
+    if at < 0 { return "" }
+    return text_slice(binding, 0, at)
+}
+
+fn law_target(binding: Text) -> Text {
+    return text_slice(binding, find(binding, "@") + 1, len(binding))
+}
+
+fn law_join(list: Text, item: Text) -> Text {
+    if len(list) == 0 { return item }
+    return list + "," + item
+}
+
+fn law_span(start: Int, end: Int) -> Text {
+    return "[" + to_text(start) + "," + to_text(end) + "]"
+}
+
+fn law_decl_span(object: Text, start: Int, end: Int) -> Text {
+    return text_slice(object, 0, len(object) - 1) + ",\"declaration_span\":" + law_span(start, end) + "}"
+}
+
+fn law_name(source: Text, at: Int) -> Text {
+    return "\"name\":\"" + token_text(source, at) + "\",\"span\":" +
+        law_span(at, token_end(source, at))
+}
+
+fn law_unknown(name: Text, at: Int) -> Text {
+    return law_error("E2S229", "unresolved law name `" + name + "`", at)
+}
+
+fn law_duplicate(name: Text, at: Int) -> Text {
+    return law_error("E2S229", "duplicate law name `" + name + "`", at)
+}
+
+# Return the first-order ground type, or substitute a bound schema slot. The
+# external arrow spelling is fixed arity; the normalized signature explicitly
+# delimits its argument vector, including the unary and nullary cases.
+fn law_type(source: Text, at: Int, slots: Text, depth: Int) -> Text {
+    if depth > 16 { return law_error("E2S228", "law type nesting exceeds 16", at) }
+    let name = token_text(source, at)
+    let mut end = token_end(source, at)
+    let mut value = ""
+    let mut grouped = false
+    if name == "(" {
+        grouped = true
+        let mut item = law_next(source, at)
+        while token_text(source, item) != ")" {
+            let field = law_type(source, item, slots, depth + 1)
+            if law_bad(field) { return field }
+            value = law_join(value, law_field(field, 1))
+            item = skip_lexical_trivia(source, law_end(field))
+            if token_text(source, item) == ")" { break }
+            if token_text(source, item) != "," { return law_expected(item, "`,`") }
+            item = law_next(source, item)
+        }
+        end = token_end(source, item)
+    } else {
+        if !law_id(source, at) { return law_expected(at, "a concrete type") }
+        value = law_get(slots, name)
+        if len(value) == 0 {
+            if name != "Bool" { return law_error("E2S231", "unsupported ground law type `" + name + "`", at) }
+            value = "Bool"
+        }
+        let suffix = skip_lexical_trivia(source, end)
+        if token_text(source, suffix) == "?" {
+            if value != "Bool" { return law_error("E2S231", "unsupported nested optional law type", suffix) }
+            value = "Bool?"
+            end = token_end(source, suffix)
+        }
+    }
+    let arrow = skip_lexical_trivia(source, end)
+    if token_text(source, arrow) == "->" {
+        let result = law_type(source, law_next(source, arrow), slots, depth + 1)
+        if law_bad(result) { return result }
+        return law_field(result, 0) + "|(" + value + ")->" + law_field(result, 1)
+    }
+    if grouped { return law_expected(arrow, "`->`") }
+    return to_text(end) + "|" + value
+}
+
+fn law_parameters(source: Text, open: Int, slots: Text, domains: Text, quantified: Bool) -> Text {
+    if token_text(source, open) != "(" { return law_expected(open, "`(`") }
+    let mut at = law_next(source, open)
+    let mut args = ""
+    let mut json = ""
+    let mut locals = ""
+    while token_text(source, at) != ")" {
+        if !law_id(source, at) { return law_expected(at, "a parameter name") }
+        let name = token_text(source, at)
+        if len(law_get(locals, name)) > 0 { return law_duplicate(name, at) }
+        let colon = law_next(source, at)
+        if token_text(source, colon) != ":" { return law_expected(colon, "`:`") }
+        let param = law_type(source, law_next(source, colon), slots, 0)
+        if law_bad(param) { return param }
+        let ty = law_field(param, 1)
+        args = law_join(args, ty)
+        locals = locals + law_row(name, ty + "@" + to_text(at))
+        let mut row = "{" + law_name(source, at) + ",\"type\":\"" + ty + "\""
+        let mut next = skip_lexical_trivia(source, law_end(param))
+        if quantified {
+            if token_text(source, next) != "in" { return law_expected(next, "`in`") }
+            let domain = law_next(source, next)
+            if !law_id(source, domain) { return law_expected(domain, "a domain name") }
+            let bound = law_get(domains, token_text(source, domain))
+            if len(bound) == 0 { return law_unknown(token_text(source, domain), domain) }
+            if law_type_of(bound) != ty { return law_error("E2S230", "quantifier and domain types differ", domain) }
+            row = row + ",\"domain\":" + law_target(bound)
+            next = law_next(source, domain)
+        }
+        json = law_join(json, row + "}")
+        if token_text(source, next) == ")" { at = next break }
+        if token_text(source, next) != "," { return law_expected(next, "`,`") }
+        at = law_next(source, next)
+    }
+    return to_text(token_end(source, at)) + "|" + args + "|" + json + "|" + locals
+}
+
+fn law_signature(source: Text, name: Int, slots: Text) -> Text {
+    let params = law_parameters(source, law_next(source, name), slots, "", false)
+    if law_bad(params) { return params }
+    let arrow = skip_lexical_trivia(source, law_end(params))
+    if token_text(source, arrow) != "->" { return law_expected(arrow, "`->`") }
+    let result = law_type(source, law_next(source, arrow), slots, 0)
+    if law_bad(result) { return result }
+    let signature = "(" + law_field(params, 1) + ")->" + law_field(result, 1)
+    return law_field(result, 0) + "|" + signature + "|{" + law_name(source, name) +
+        ",\"type\":\"" + signature + "\",\"parameters\":[" + law_field(params, 2) + "]}"
+}
+
+# Equation bodies are typed trees. A reference binds to a declaration's name
+# byte, so renaming and shadowing cannot change a target silently. Lambdas
+# add their own lexical bindings and do not escape into following arguments.
+fn law_expr(source: Text, at: Int, slots: Text, env: Text, depth: Int) -> Text {
+    if depth > 32 { return law_error("E2S228", "law equation nesting exceeds 32", at) }
+    let mut end = token_end(source, at)
+    let mut ty = ""
+    let mut node = ""
+    if token_text(source, at) == "fn" {
+        let params = law_parameters(source, law_next(source, at), slots, "", false)
+        if law_bad(params) { return params }
+        let arrow = skip_lexical_trivia(source, law_end(params))
+        if token_text(source, arrow) != "=>" { return law_expected(arrow, "`=>`") }
+        let body = law_expr(source, law_next(source, arrow), slots, law_field(params, 3) + env, depth + 1)
+        if law_bad(body) { return body }
+        end = law_end(body)
+        ty = "(" + law_field(params, 1) + ")->" + law_field(body, 1)
+        node = "{\"kind\":\"lambda\",\"parameters\":[" + law_field(params, 2) +
+            "],\"body\":" + law_field(body, 2)
+    } else {
+        if !law_id(source, at) { return law_expected(at, "an equation operand") }
+        let name = token_text(source, at)
+        let binding = law_get(env, name)
+        if len(binding) == 0 { return law_unknown(name, at) }
+        ty = law_type_of(binding)
+        node = "{\"kind\":\"ref\",\"target\":" + law_target(binding)
+    }
+    node = node + ",\"span\":" + law_span(at, end) + ",\"type\":\"" + ty + "\"}"
+    let mut open = skip_lexical_trivia(source, end)
+    while token_text(source, open) == "(" {
+        let mut cursor = law_next(source, open)
+        let mut args = ""
+        let mut children = ""
+        while token_text(source, cursor) != ")" {
+            let arg = law_expr(source, cursor, slots, env, depth + 1)
+            if law_bad(arg) { return arg }
+            args = law_join(args, law_field(arg, 1))
+            children = law_join(children, law_field(arg, 2))
+            cursor = skip_lexical_trivia(source, law_end(arg))
+            if token_text(source, cursor) == ")" { break }
+            if token_text(source, cursor) != "," { return law_expected(cursor, "`,`") }
+            cursor = law_next(source, cursor)
+        }
+        let head = "(" + args + ")->"
+        if !starts_with(ty, head) { return law_error("E2S230", "law call arguments do not match callable type", open) }
+        ty = text_slice(ty, len(head), len(ty))
+        end = token_end(source, cursor)
+        node = "{\"kind\":\"call\",\"callee\":" + node + ",\"arguments\":[" + children +
+            "],\"span\":" + law_span(at, end) + ",\"type\":\"" + ty + "\"}"
+        open = skip_lexical_trivia(source, end)
+    }
+    return to_text(end) + "|" + ty + "|" + node
+}
+
+# Index top-level names before resolving any declarations. Function bodies
+# remain opaque in this artifact. Only their declared signatures are consumed.
+fn law_index(source: Text) -> Text {
+    let mut at = skip_lexical_trivia(source, 0)
+    let mut index = ""
+    let mut names = ""
+    let mut functions = ""
+    let mut declarations = ""
+    while at < len(source) {
+        let kind = token_text(source, at)
+        let mut name_at = law_next(source, at)
+        if kind == "check" {
+            if token_text(source, name_at) != "laws" { return law_expected(name_at, "`laws`") }
+            name_at = law_next(source, name_at)
+        } else if kind != "law" && kind != "impl" && kind != "fn" {
+            return law_expected(at, "a law, implementation, function, or check")
+        }
+        if !law_id(source, name_at) { return law_expected(name_at, "a declaration name") }
+        let name = token_text(source, name_at)
+        if len(law_get(names, name)) > 0 { return law_duplicate(name, name_at) }
+        names = names + law_row(name, "1")
+        let mut open = law_next(source, name_at)
+        let mut declared = ""
+        if kind == "fn" {
+            let signature = law_signature(source, name_at, "")
+            if law_bad(signature) { return signature }
+            functions = functions + law_row(name, law_field(signature, 1) + "@" + to_text(name_at))
+            declared = law_field(signature, 2)
+            open = skip_lexical_trivia(source, law_end(signature))
+        } else {
+            if len(law_get(index, kind)) > 0 {
+                return law_error("E2S228", "concrete law HIR supports one family, implementation, and check", at)
+            }
+            index = index + law_row(kind, to_text(name_at))
+            while open < len(source) && token_text(source, open) != "{" {
+                let next = law_next(source, open)
+                if next <= open { return law_expected(open, "a declaration body") }
+                open = next
+            }
+        }
+        if token_text(source, open) != "{" { return law_expected(open, "`{`") }
+        let end = balanced_end(source, open, "{", "}")
+        if end < 0 { return law_expected(open, "a closed declaration body") }
+        if kind == "fn" {
+            declarations = law_join(declarations, law_decl_span(declared, at, end))
+        } else {
+            index = index + law_row("start." + kind, to_text(at)) + law_row("end." + kind, to_text(end))
+        }
+        at = skip_lexical_trivia(source, end)
+    }
+    if len(law_get(index, "law")) == 0 || len(law_get(index, "impl")) == 0 || len(law_get(index, "check")) == 0 {
+        return law_error("E2S228", "expected one family, implementation, and check", at)
+    }
+    return index + "|" + functions + "|" + declarations
+}
+
+fn law_substitutions(source: Text, family: Int, instance: Int) -> Text {
+    let bracket = law_next(source, family)
+    if token_text(source, bracket) != "[" { return law_expected(bracket, "`[`") }
+    let colon = law_next(source, instance)
+    if token_text(source, colon) != ":" { return law_expected(colon, "`:`") }
+    let target = law_next(source, colon)
+    if token_text(source, family) != token_text(source, target) { return law_unknown(token_text(source, target), target) }
+    let arguments = law_next(source, target)
+    if token_text(source, arguments) != "[" { return law_expected(arguments, "`[`") }
+    let mut slot = law_next(source, bracket)
+    let mut argument = law_next(source, arguments)
+    let mut slots = ""
+    let mut json = ""
+    while token_text(source, slot) != "]" && token_text(source, argument) != "]" {
+        if !law_id(source, slot) { return law_expected(slot, "a schema slot") }
+        let name = token_text(source, slot)
+        if name == "Bool" || len(law_get(slots, name)) > 0 { return law_duplicate(name, slot) }
+        let ground = law_type(source, argument, "", 0)
+        if law_bad(ground) { return ground }
+        let ty = law_field(ground, 1)
+        if ty != "Bool" && ty != "Bool?" { return law_error("E2S231", "unsupported concrete law substitution", argument) }
+        slots = slots + law_row(name, ty)
+        json = law_join(json, "{" + law_name(source, slot) + ",\"type\":\"" + ty +
+            "\",\"argument_span\":" + law_span(argument, law_end(ground)) + "}")
+        slot = law_next(source, slot)
+        argument = skip_lexical_trivia(source, law_end(ground))
+        if token_text(source, slot) == "]" || token_text(source, argument) == "]" { break }
+        if token_text(source, slot) != "," { return law_expected(slot, "`,`") }
+        if token_text(source, argument) != "," { return law_expected(argument, "`,`") }
+        slot = law_next(source, slot)
+        argument = law_next(source, argument)
+    }
+    if len(slots) == 0 || token_text(source, slot) != "]" || token_text(source, argument) != "]" {
+        return law_error("E2S231", "law substitution arity does not match family", argument)
+    }
+    let family_open = law_next(source, slot)
+    let instance_open = law_next(source, argument)
+    if token_text(source, family_open) != "{" { return law_expected(family_open, "`{`") }
+    if token_text(source, instance_open) != "{" { return law_expected(instance_open, "`{`") }
+    return to_text(family_open) + "|" + to_text(instance_open) + "|" + slots + "|" + json
+}
+
+fn law_setting(source: Text, at: Int, expected: Text) -> Text {
+    if token_text(source, at) != "=" { return law_expected(at, "`=`") }
+    let value = law_next(source, at)
+    if token_text(source, value) != expected { return law_expected(value, expected) }
+    return to_text(token_end(source, value))
+}
+
+fn law_check(source: Text, check: Int, instance: Int) -> Text {
+    let open = law_next(source, check)
+    if token_text(source, open) != "{" { return law_expected(open, "`{`") }
+    let mut at = law_next(source, open)
+    let mut seen = ""
+    let mut domains = ""
+    let mut json = ""
+    let mut equality = ""
+    let mut assurance = ""
+    while token_text(source, at) != "}" {
+        let kind = token_text(source, at)
+        let name_at = law_next(source, at)
+        if kind != "domain" {
+            if len(law_get(seen, kind)) > 0 { return law_duplicate(kind, at) }
+            seen = seen + law_row(kind, "1")
+        }
+        if kind == "instance" {
+            if token_text(source, name_at) != "=" { return law_expected(name_at, "`=`") }
+            let name = law_next(source, name_at)
+            if token_text(source, name) != token_text(source, instance) { return law_unknown(token_text(source, name), name) }
+            at = law_next(source, name)
+        } else if kind == "equality" {
+            let ground = law_type(source, name_at, "", 0)
+            if law_bad(ground) { return ground }
+            equality = law_field(ground, 1)
+            if equality != "Bool" && equality != "Bool?" { return law_error("E2S231", "structural law equality requires Bool or Bool?", name_at) }
+            let result = law_setting(source, skip_lexical_trivia(source, law_end(ground)), "structural")
+            if law_bad(result) { return result }
+            at = skip_lexical_trivia(source, law_end(result))
+        } else if kind == "require" {
+            if token_text(source, name_at) != "assurance" { return law_expected(name_at, "`assurance`") }
+            let equals = law_next(source, name_at)
+            if token_text(source, equals) != "=" { return law_expected(equals, "`=`") }
+            let value = law_next(source, equals)
+            assurance = token_text(source, value)
+            if assurance != "proven_finite" && assurance != "bounded_exhaustive" { return law_expected(value, "a finite assurance requirement") }
+            at = law_next(source, value)
+        } else if kind == "budget" {
+            let result = law_setting(source, name_at, "standard")
+            if law_bad(result) { return result }
+            at = skip_lexical_trivia(source, law_end(result))
+        } else if kind == "domain" {
+            if !law_id(source, name_at) { return law_expected(name_at, "a domain name") }
+            let name = token_text(source, name_at)
+            if len(law_get(domains, name)) > 0 { return law_duplicate(name, name_at) }
+            let colon = law_next(source, name_at)
+            if token_text(source, colon) != ":" { return law_expected(colon, "`:`") }
+            let ground = law_type(source, law_next(source, colon), "", 0)
+            if law_bad(ground) { return ground }
+            let ty = law_field(ground, 1)
+            let equals = skip_lexical_trivia(source, law_end(ground))
+            if token_text(source, equals) != "=" { return law_expected(equals, "`=`") }
+            let origin = law_next(source, equals)
+            let mut data = ""
+            if token_text(source, origin) == "all" {
+                if ty != "Bool" && ty != "Bool?" { return law_error("E2S231", "`all` requires Bool or Bool?", origin) }
+                data = "\"origin\":\"all\""
+                at = law_next(source, origin)
+            } else if token_text(source, origin) == "all_functions" {
+                let paren = law_next(source, origin)
+                if token_text(source, paren) != "(" { return law_expected(paren, "`(`") }
+                let first = law_next(source, paren)
+                let comma = law_next(source, first)
+                if token_text(source, comma) != "," { return law_expected(comma, "`,`") }
+                let second = law_next(source, comma)
+                let close = law_next(source, second)
+                if token_text(source, close) != ")" { return law_expected(close, "`)`") }
+                let input = law_get(domains, token_text(source, first))
+                let output = law_get(domains, token_text(source, second))
+                if len(input) == 0 { return law_unknown(token_text(source, first), first) }
+                if len(output) == 0 { return law_unknown(token_text(source, second), second) }
+                if ty != "(" + law_type_of(input) + ")->" + law_type_of(output) { return law_error("E2S230", "function domain type does not match component domains", origin) }
+                data = "\"origin\":\"all_functions\",\"input\":" + law_target(input) + ",\"output\":" + law_target(output)
+                at = law_next(source, close)
+            } else { return law_expected(origin, "`all` or `all_functions`") }
+            domains = domains + law_row(name, ty + "@" + to_text(name_at))
+            json = law_join(json, "{" + law_name(source, name_at) + ",\"type\":\"" + ty + "\"," + data + "}")
+        } else { return law_expected(at, "a check clause") }
+    }
+    if len(law_get(seen, "instance")) == 0 || len(equality) == 0 || len(assurance) == 0 || len(law_get(seen, "budget")) == 0 || len(domains) == 0 {
+        return law_error("E2S228", "check lacks instance, domains, equality, assurance or budget", at)
+    }
+    return domains + "|" + equality + "|{" + law_name(source, check) + ",\"instance\":" + to_text(instance) +
+        ",\"domains\":[" + json + "],\"equality\":{\"type\":\"" + equality + "\",\"kind\":\"structural\"}," +
+        "\"requested_assurance\":\"" + assurance + "\",\"budget\":\"standard\"}"
+}
+
+# Collect operation signatures before checking equation references. A member
+# header has a contextual introducing word followed by a name and '('. Calls
+# to members named "equation" or "operation" have '(' immediately afterwards.
+fn law_operations(source: Text, open: Int, slots: Text) -> Text {
+    let mut at = law_next(source, open)
+    let mut operations = ""
+    let mut json = ""
+    while token_text(source, at) != "}" {
+        let member = token_text(source, at)
+        let next = law_next(source, at)
+        if member == "operation" && law_id(source, next) &&
+           token_text(source, law_next(source, next)) == "(" {
+            let name = token_text(source, next)
+            if len(law_get(operations, name)) > 0 { return law_duplicate(name, next) }
+            let signature = law_signature(source, next, slots)
+            if law_bad(signature) { return signature }
+            operations = operations + law_row(name, law_field(signature, 1) + "@" + to_text(next))
+            json = law_join(json, law_decl_span(law_field(signature, 2), at, law_end(signature)))
+            at = skip_lexical_trivia(source, law_end(signature))
+        } else {
+            if next <= at { return law_expected(at, "`}`") }
+            at = next
+        }
+    }
+    if len(operations) == 0 { return law_expected(at, "an operation member") }
+    return operations + "|" + json
+}
+
+fn law_equations(source: Text, open: Int, slots: Text, ops: Text, domains: Text, equality: Text) -> Text {
+    let mut at = law_next(source, open)
+    let mut names = ""
+    let mut json = ""
+    while token_text(source, at) != "}" {
+        let member = token_text(source, at)
+        let name_at = law_next(source, at)
+        if !law_id(source, name_at) { return law_expected(name_at, "a law member name") }
+        let name = token_text(source, name_at)
+        if len(law_get(names, name)) > 0 { return law_duplicate(name, name_at) }
+        names = names + law_row(name, "1")
+        if member == "operation" {
+            let signature = law_signature(source, name_at, slots)
+            if law_bad(signature) { return signature }
+            at = skip_lexical_trivia(source, law_end(signature))
+        } else if member == "equation" {
+            let params = law_parameters(source, law_next(source, name_at), slots, domains, true)
+            if law_bad(params) { return params }
+            let equals = skip_lexical_trivia(source, law_end(params))
+            if token_text(source, equals) != "=" { return law_expected(equals, "`=`") }
+            let env = law_field(params, 3) + ops
+            let left = law_expr(source, law_next(source, equals), slots, env, 0)
+            if law_bad(left) { return left }
+            let op = skip_lexical_trivia(source, law_end(left))
+            if token_text(source, op) != "==" { return law_expected(op, "`==`") }
+            let right = law_expr(source, law_next(source, op), slots, env, 0)
+            if law_bad(right) { return right }
+            if law_field(left, 1) != equality || law_field(right, 1) != equality {
+                return law_error("E2S230", "law operands do not match the selected equality type", op)
+            }
+            json = law_join(json, "{" + law_name(source, name_at) + ",\"declaration_span\":" + law_span(at, law_end(right)) + ",\"parameters\":[" + law_field(params, 2) +
+                "],\"kind\":\"equal\",\"type\":\"Bool\",\"left\":" + law_field(left, 2) + ",\"right\":" + law_field(right, 2) + "}")
+            at = skip_lexical_trivia(source, law_end(right))
+        } else { return law_expected(at, "an operation or equation") }
+    }
+    if len(json) == 0 { return law_expected(at, "an equation member") }
+    return json
+}
+
+fn law_bindings(source: Text, open: Int, ops: Text, functions: Text) -> Text {
+    let mut at = law_next(source, open)
+    let mut seen = ""
+    let mut json = ""
+    while token_text(source, at) != "}" {
+        if !law_id(source, at) { return law_expected(at, "an operation binding") }
+        let name = token_text(source, at)
+        let operation = law_get(ops, name)
+        if len(operation) == 0 { return law_unknown(name, at) }
+        if len(law_get(seen, name)) > 0 { return law_duplicate(name, at) }
+        seen = seen + law_row(name, "1")
+        let equals = law_next(source, at)
+        if token_text(source, equals) != "=" { return law_expected(equals, "`=`") }
+        let target = law_next(source, equals)
+        let bound = law_get(functions, token_text(source, target))
+        if len(bound) == 0 { return law_unknown(token_text(source, target), target) }
+        if law_type_of(operation) != law_type_of(bound) {
+            return law_error("E2S230", "law operation binding has incompatible function signature", target)
+        }
+        json = law_join(json, "{" + law_name(source, at) + ",\"operation\":" + law_target(operation) +
+            ",\"function\":" + law_target(bound) + ",\"target_span\":" + law_span(target, token_end(source, target)) + "}")
+        at = law_next(source, target)
+    }
+    let mut cursor = 0
+    while cursor < len(ops) {
+        let colon = text_find_from(ops, ":", cursor + 1)
+        let required = text_slice(ops, cursor + 1, colon)
+        if len(law_get(seen, required)) == 0 {
+            return law_error("E2S229", "unbound required law operation `" + required + "`", at)
+        }
+        cursor = text_find_from(ops, ";", colon)
+        if cursor < 0 { break }
+    }
+    return json
+}
+
+fn law_document(source: Text, path: Text) -> Text {
+    if len(source) > 16384 { return law_error("E2S228", "law declaration source exceeds 16384 bytes", 0) }
+    let mut at = skip_lexical_trivia(source, 0)
+    let mut count = 0
+    while at < len(source) {
+        if count >= 1024 { return law_error("E2S228", "law declaration source exceeds 1024 tokens", at) }
+        let next = law_next(source, at)
+        if next <= at { return law_expected(at, "a complete source token") }
+        at = next
+        count = count + 1
+    }
+    let index = law_index(source)
+    if law_bad(index) { return index }
+    let names = law_field(index, 0)
+    let family = decimal_value(law_get(names, "law"))
+    let instance = decimal_value(law_get(names, "impl"))
+    let check = decimal_value(law_get(names, "check"))
+    let substitution = law_substitutions(source, family, instance)
+    if law_bad(substitution) { return substitution }
+    let body = law_end(substitution)
+    let slots = law_field(substitution, 2)
+    let policy = law_check(source, check, instance)
+    if law_bad(policy) { return policy }
+    let operations = law_operations(source, body, slots)
+    if law_bad(operations) { return operations }
+    let ops = law_field(operations, 0)
+    let bindings = law_bindings(source, decimal_value(law_field(substitution, 1)), ops, law_field(index, 1))
+    if law_bad(bindings) { return bindings }
+    let equations = law_equations(source, body, slots, ops, law_field(policy, 0), law_field(policy, 1))
+    if law_bad(equations) { return equations }
+    let family_span = law_span(decimal_value(law_get(names, "start.law")), decimal_value(law_get(names, "end.law")))
+    let instance_span = law_span(decimal_value(law_get(names, "start.impl")), decimal_value(law_get(names, "end.impl")))
+    let checked = law_decl_span(law_field(policy, 2), decimal_value(law_get(names, "start.check")), decimal_value(law_get(names, "end.check")))
+    return "{\"schema\":\"kofun.law-declaration-hir/v1\",\"file_id\":\"" + scoped_hir_file_id(path) +
+        "\",\"functions\":[" + law_field(index, 2) + "],\"family\":{" + law_name(source, family) +
+        ",\"declaration_span\":" + family_span + ",\"slots\":[" + law_field(substitution, 3) + "],\"operations\":[" + law_field(operations, 1) +
+        "],\"equations\":[" + equations + "]},\"implementation\":{" + law_name(source, instance) +
+        ",\"declaration_span\":" + instance_span + ",\"family\":" + to_text(family) + ",\"bindings\":[" + bindings + "]},\"check\":" + checked + "}\n"
+}
+
+fn emit_law_hir_file(input: Text, output: Text, logical_path: Text) -> Bool {
+    if stage2_same_file(input, output) == 1 {
+        print(law_error("E2S228", "law HIR input and output must be distinct", 0))
+        return false
+    }
+    if !scoped_hir_logical_path(logical_path) {
+        print(law_error("E2S228", "law HIR logical path must be canonical relative UTF-8", 0))
+        return false
+    }
+    let source = read_text(input)
+    let invalid = validate_unicode_source(source)
+    if len(invalid) > 0 { print(invalid) return false }
+    let document = law_document(source, logical_path)
+    if law_bad(document) { print(document) return false }
+    write_text(output, document)
+    return true
+}
+
 # ---------------------------------------------------------------- SHA-256
 #
 # RFC-0013 step 4 prerequisite (#1382). Every identity this compiler assigns —
@@ -35373,6 +35958,10 @@ fn main() -> Int {
         }
         return 0
     }
+    if len(arguments) == 4 && arguments[0] == "--emit-law-hir" {
+        if !emit_law_hir_file(arguments[1], arguments[2], arguments[3]) { return 1 }
+        return 0
+    }
     if len(arguments) == 4 && arguments[0] == "--emit-generic-record-hir" {
         if !emit_generic_record_hir_file(arguments[1], arguments[2], arguments[3]) {
             return 1
@@ -35416,6 +36005,7 @@ fn main() -> Int {
             "       kofun-stage2 --parse-patterns INPUT.kofun OUTPUT.patterns\n" +
             "       kofun-stage2 --emit-scope-hir INPUT.kofun OUTPUT.scope-hir\n" +
             "       kofun-stage2 --emit-scope-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n" +
+            "       kofun-stage2 --emit-law-hir INPUT.kofun OUTPUT.json LOGICAL-PATH\n" +
             "       kofun-stage2 --emit-generic-record-hir INPUT.kofun OUTPUT.json LOGICAL-PATH\n" +
             "       kofun-stage2 --emit-generic-adt-hir INPUT.kofun OUTPUT.json LOGICAL-PATH\n" +
             "       kofun-stage2 --emit-capture-hir-v2 INPUT.kofun OUTPUT.json LOGICAL-PATH\n" +
