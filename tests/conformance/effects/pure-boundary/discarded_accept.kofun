@@ -7,8 +7,13 @@ fn twice(x: Int) -> Int {
     return x + x
 }
 
+fn f(x: Int) -> Int {
+    return x + 1
+}
+
 fn forward(f: (Int) -> Int, x: Int) -> Int {
     f(x)
+    twice(f(x))
     return x
 }
 

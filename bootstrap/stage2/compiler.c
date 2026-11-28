@@ -4046,6 +4046,7 @@ static char *validate_fixed_arguments(const char *source);
 static char *validate_fixed_scale_budget(const char *source);
 static char *discarded_pure_call_error(
     const char *source,
+    const char *hir,
     int64_t cursor,
     int64_t value_end
 );
@@ -30698,7 +30699,7 @@ static char *lower_body_with_workspace(
                      * argument keeps its own diagnostic.
                      */
                     char *discarded = discarded_pure_call_error(
-                        source, cursor, value_end);
+                        source, hir, cursor, value_end);
                     if (strncmp(discarded, "error[", 6) == 0) {
                         free(value);
                         free(emitted.data);
@@ -36756,44 +36757,35 @@ static char *validate_pure_annotations(const char *source) {
  * the same one the `pure fn` boundary asks, so silence and the published fact
  * agree.
  */
-static bool discarded_pure_argument(
+static bool discarded_arguments_are_pure(
     const char *source,
+    const char *hir,
     int64_t start,
     int64_t end,
     const char *io_set
 ) {
     char *callee;
-    bool pure;
     if (function_calls_name(source, start, end, "print")) return false;
     callee = first_io_callee(source, start, end, io_set);
-    pure = callee[0] == '\0';
+    bool has_io = callee[0] != '\0';
     free(callee);
-    return pure;
-}
-
-static bool discarded_pure_arguments(
-    const char *source,
-    int64_t open,
-    const char *io_set
-) {
-    int64_t close = balanced_end(source, open, "(", ")");
-    int64_t argument;
-    if (close < 0) return true;
-    argument = skip_trivia(source, token_end(source, open));
-    while (argument < close && !token_equal(source, argument, ")")) {
-        int64_t end = argument_end(source, argument);
-        int64_t separator;
-        if (end <= argument || end > close) return true;
-        if (!discarded_pure_argument(source, argument, end, io_set)) return false;
-        separator = skip_trivia(source, end);
-        if (separator >= close || !token_equal(source, separator, ",")) return true;
-        argument = skip_trivia(source, token_end(source, separator));
+    if (has_io) return false;
+    for (int64_t cursor = skip_trivia(source, start); cursor < end;
+         cursor = skip_trivia(source, token_end(source, cursor))) {
+        if (strcmp(token_kind(source, cursor), "identifier") != 0) continue;
+        char *binding = hir_use_binding_id(hir, cursor);
+        bool indirect = binding[0] != '\0' &&
+            (callable_parameter_type_start(source, hir, binding) >= 0 ||
+             lambda_binding_open(source, hir, binding) >= 0);
+        free(binding);
+        if (indirect) return false;
     }
     return true;
 }
 
 static char *discarded_pure_call_error(
     const char *source,
+    const char *hir,
     int64_t cursor,
     int64_t value_end
 ) {
@@ -36814,6 +36806,10 @@ static char *discarded_pure_call_error(
     if (balanced_end(source, open, "(", ")") != value_end) {
         return owned_text("");
     }
+    char *binding = hir_use_binding_id(hir, cursor);
+    bool lexical_callee = binding[0] != '\0';
+    free(binding);
+    if (lexical_callee) return owned_text("");
     name = token_copy(source, cursor);
     declaration = function_start_named(source, name);
     if (declaration < 0) {
@@ -36847,7 +36843,7 @@ static char *discarded_pure_call_error(
         free(key.data);
     }
     if (refused) {
-        refused = discarded_pure_arguments(source, open, io_set);
+        refused = discarded_arguments_are_pure(source, hir, token_end(source, open), value_end, io_set);
     }
     free(io_set);
     if (!refused) {

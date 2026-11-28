@@ -96,6 +96,7 @@ assert_eq 'a pure function passed by name still computes' \
 discarded_output=$("$WORK/discarded_accept")
 assert_eq 'accepted discards keep their effects' \
     "$discarded_output" '7
+7
 3
 42'
 
@@ -431,7 +432,7 @@ mutant_disagrees boundary-first authority_precedence
 # refuses a program that writes through a borrow; ignoring argument summaries
 # refuses two programs whose arguments print.
 mutate no-discard-enforcement \
-    's/^    if (strcmp(token_kind(source, cursor), "identifier") != 0) {$/    if (true) {/'
+    's/^    if (lexical_callee) return owned_text("");$/    return owned_text("");/'
 mutant_disagrees no-discard-enforcement discarded_pure
 
 mutate discard-ignores-edit \
@@ -439,7 +440,7 @@ mutate discard-ignores-edit \
 mutant_disagrees discard-ignores-edit discarded_accept
 
 mutate discard-ignores-arguments \
-    's/^    pure = callee\[0\] == .\\0.;$/    pure = true;/'
+    's/^        refused = discarded_arguments_are_pure(.*);$/        refused = true;/'
 mutant_disagrees discard-ignores-arguments discarded_accept
 
 printf '%s\n' \
