@@ -7990,6 +7990,13 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
         }
         let name = token_text(source, cursor)
         let open = skip_trivia(source, token_end(source, cursor))
+        if open < end && token_text(source, open) == "(" && name == "validate_unicode_source" &&
+           call_resolves_to_builtin(source, hir, cursor, name) {
+            let argument = skip_trivia(source, token_end(source, open))
+            let value = emit_expression(source, hir, argument, argument_end(source, argument))
+            if starts_with(value, "error[") { return value }
+            return "kofun_validate_source_text(" + value + ")"
+        }
         if open < end && token_text(source, open) == "(" && name == "replace" &&
            call_resolves_to_builtin(source, hir, cursor, name) {
             return emit_text_replace(source, hir, cursor, open)
@@ -10350,7 +10357,7 @@ fn validate_core_calls(source: Text, hir: Text) -> Text {
                     if len(argument_error) > 0 {
                         return argument_error
                     }
-                    if name == "chars" || name == "replace" ||
+                    if name == "chars" || name == "replace" || name == "validate_unicode_source" ||
                        name == "contains" || name == "find" ||
                        name == "is_digit" || name == "is_space" ||
                        name == "is_xid_continue" || name == "len" ||
@@ -22947,6 +22954,10 @@ fn count_text_sites(bodies: Text) -> Int {
         } else if symbol == "\"" {
             quoted = true
             cursor = cursor + 1
+        } else if cursor + 27 <= len(bodies) &&
+                  text_slice(bodies, cursor, cursor + 27) == "kofun_validate_source_text(" {
+            count = count + 1
+            cursor = cursor + 27
         } else if cursor + 19 <= len(bodies) &&
                   text_slice(bodies, cursor, cursor + 19) == "kofun_text_replace(" {
             count = count + 1
@@ -24237,10 +24248,13 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     }
     # #1780. `is_xid_continue` needs the pinned Unicode tables; emit the same
     # include the self-host path uses, and only for a source that spells it.
+    let validates_source = source_calls_builtin(source, hir, "validate_unicode_source")
     let mut unicode_include = ""
     let mut xid_prelude = ""
-    if contains(source, "is_xid_continue") {
+    if validates_source || contains(source, "is_xid_continue") {
         unicode_include = "#include \"kofun_unicode.c\"\n"
+    }
+    if contains(source, "is_xid_continue") {
         xid_prelude = "static inline bool kofun_is_xid_continue(const char *value) {\n" +
         "    uint32_t codepoint = 0;\n" +
         "    size_t width = 0;\n" +
@@ -24249,6 +24263,27 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
         "        return false;\n" +
         "    }\n" +
         "    return kofun_unicode_is_xid_continue(codepoint);\n" +
+        "}\n"
+    }
+    let mut validation_prelude = ""
+    if validates_source {
+        validation_prelude =
+        "static inline const char *kofun_validate_source_text(const char *source) {\n" +
+        "    KofunUnicodeError error;\n" +
+        "    if (kofun_unicode_validate_source((const uint8_t *)source, strlen(source), &error)) {\n" +
+        "        return \"\";\n" +
+        "    }\n" +
+        "    char message[1024];\n" +
+        "    kofun_unicode_format_error(&error, getenv(\"KOFUN_DIAGNOSTIC_LOCALE\"), message, sizeof(message));\n" +
+        "    size_t width = strlen(message);\n" +
+        "    if (width > 255) {\n" +
+        "        kofun_error(\"error[R021]: Unicode diagnostic exceeds the 255-byte Text limit\");\n" +
+        "        return \"\";\n" +
+        "    }\n" +
+        "    char *slot = kofun_text_temporary();\n" +
+        "    if (slot == NULL) return \"\";\n" +
+        "    memcpy(slot, message, width + 1);\n" +
+        "    return slot;\n" +
         "}\n"
     }
     let mut replace_prelude = ""
@@ -24480,7 +24515,7 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     "    memcpy(slot, left, left_width); memcpy(slot + left_width, right, right_width);\n" +
     "    slot[left_width + right_width] = '\\0'; return slot;\n" +
     "}\n" +
-    replace_prelude + chars_prelude +
+    validation_prelude + replace_prelude + chars_prelude +
     identity_prelude +
     command_prelude +
     stream_prelude +

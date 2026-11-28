@@ -1,0 +1,5 @@
+fn validate_unicode_source(n: Int) -> Int { return n + 2 }
+fn main() -> Int {
+    print(validate_unicode_source(40))
+    return 0
+}

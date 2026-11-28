@@ -1,0 +1,4 @@
+fn main() -> Int {
+    print(validate_unicode_source(6))
+    return 0
+}

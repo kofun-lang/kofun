@@ -1,0 +1,4 @@
+0
+error[EUNICODE001] 1行1列 (byte 0): UTF-8として不正なバイト列です
+error[EUNICODE001] 1行3列 (byte 2): UTF-8として不正なバイト列です
+error[EUNICODE001] 1行1列 (byte 0): UTF-8として不正なバイト列です

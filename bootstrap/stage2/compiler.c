@@ -11740,6 +11740,18 @@ static char *emit_primary(
         char *name = token_copy(source, cursor);
         int64_t open = skip_trivia(source, token_end(source, cursor));
         if (open < end && token_equal(source, open, "(") &&
+            strcmp(name, "validate_unicode_source") == 0 && call_resolves_to_builtin(source, hir, cursor, name)) {
+            int64_t argument = skip_trivia(source, token_end(source, open));
+            char *value = emit_expression(source, hir, argument, argument_end(source, argument));
+            free(name);
+            if (strncmp(value, "error[", 6) == 0) return value;
+            Buffer output;
+            buffer_init(&output);
+            buffer_format(&output, "kofun_validate_source_text(%s)", value);
+            free(value);
+            return output.data;
+        }
+        if (open < end && token_equal(source, open, "(") &&
             strcmp(name, "replace") == 0 && call_resolves_to_builtin(source, hir, cursor, name)) {
             free(name);
             return emit_text_replace(source, hir, cursor, open);
@@ -15144,6 +15156,7 @@ static char *validate_core_calls(const char *source, const char *hir) {
                     free(argument_error);
                     if (
                         strcmp(name, "chars") == 0 || strcmp(name, "replace") == 0 ||
+                        strcmp(name, "validate_unicode_source") == 0 ||
                         strcmp(name, "contains") == 0 ||
                         strcmp(name, "find") == 0 ||
                         strcmp(name, "is_digit") == 0 ||
@@ -34667,6 +34680,7 @@ static char *validate_struct_identity(const char *source) {
 static int64_t count_text_sites(const char *bodies) {
     static const char *calls[] = {
         "kofun_text_slice(",
+        "kofun_validate_source_text(",
         "kofun_text_replace(",
         "kofun_char_list_index(",
         "kofun_to_text(",
@@ -35401,7 +35415,8 @@ static char *lower_c_body(
     if (fractional_values || uses_fixed) {
         buffer_append(&output, "#include \"decimal_v1.c\"\n");
     }
-    if (uses_xid_continue) {
+    bool validates_source = source_calls_builtin(source, hir, "validate_unicode_source");
+    if (uses_xid_continue || validates_source) {
         buffer_append(&output, "#include \"kofun_unicode.c\"\n");
     }
     buffer_append(&output, "\n");
@@ -35935,6 +35950,27 @@ static char *lower_c_body(
         "    slot[left_width + right_width] = '\\0'; return slot;\n"
         "}\n"
     );
+    if (validates_source) {
+        buffer_append(&output,
+            "static inline const char *kofun_validate_source_text(const char *source) {\n"
+            "    KofunUnicodeError error;\n"
+            "    if (kofun_unicode_validate_source((const uint8_t *)source, strlen(source), &error)) {\n"
+            "        return \"\";\n"
+            "    }\n"
+            "    char message[1024];\n"
+            "    kofun_unicode_format_error(&error, getenv(\"KOFUN_DIAGNOSTIC_LOCALE\"), message, sizeof(message));\n"
+            "    size_t width = strlen(message);\n"
+            "    if (width > 255) {\n"
+            "        kofun_error(\"error[R021]: Unicode diagnostic exceeds the 255-byte Text limit\");\n"
+            "        return \"\";\n"
+            "    }\n"
+            "    char *slot = kofun_text_temporary();\n"
+            "    if (slot == NULL) return \"\";\n"
+            "    memcpy(slot, message, width + 1);\n"
+            "    return slot;\n"
+            "}\n"
+        );
+    }
     if (source_calls_builtin(source, hir, "replace")) {
         buffer_append(&output,
             "static inline const char *kofun_text_replace(const char *value, const char *old, const char *replacement) {\n"
