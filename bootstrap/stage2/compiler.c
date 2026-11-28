@@ -4020,6 +4020,11 @@ static char *validate_const_arguments(const char *source);
 static char *validate_const_erasure(const char *source);
 static char *validate_fixed_arguments(const char *source);
 static char *validate_fixed_scale_budget(const char *source);
+static char *discarded_pure_call_error(
+    const char *source,
+    int64_t cursor,
+    int64_t value_end
+);
 
 /* Ownership mode is the optional first component of a parameter head. */
 static bool ownership_mode_token(const char *source, int64_t cursor) {
@@ -30234,6 +30239,21 @@ static char *lower_body_with_workspace(
                     );
                     returned = true;
                 } else {
+                    /*
+                     * #1730, DD-042. This is the one position that discards an
+                     * expression statement; the implicit-result arm above does
+                     * not. Every emission error above already won, so a refused
+                     * argument keeps its own diagnostic.
+                     */
+                    char *discarded = discarded_pure_call_error(
+                        source, cursor, value_end);
+                    if (strncmp(discarded, "error[", 6) == 0) {
+                        free(value);
+                        free(emitted.data);
+                        free(name);
+                        return discarded;
+                    }
+                    free(discarded);
                     buffer_format(
                         &emitted,
                         "    (void)%s;\n"
@@ -36068,6 +36088,127 @@ static char *validate_pure_annotations(const char *source) {
         stage2_active_authority_context->diagnostic = saved;
     }
     return boundary;
+}
+
+/*
+ * #1730, DD-042. `spec/effects/pure-io-v1.md` § Discarded pure results.
+ *
+ * `cursor` starts a discarded expression statement and `value_end` is the end
+ * `expression_end` returned for it. The statement is refused when the whole
+ * expression is one call to a top-level function whose summary is `pure`,
+ * whose result is not `Unit`, every argument's own summary is `pure`, and the
+ * callee declares no `edit` parameter. The query is `inferred_io_functions`,
+ * the same one the `pure fn` boundary asks, so silence and the published fact
+ * agree.
+ */
+static bool discarded_pure_argument(
+    const char *source,
+    int64_t start,
+    int64_t end,
+    const char *io_set
+) {
+    char *callee;
+    bool pure;
+    if (function_calls_name(source, start, end, "print")) return false;
+    callee = first_io_callee(source, start, end, io_set);
+    pure = callee[0] == '\0';
+    free(callee);
+    return pure;
+}
+
+static bool discarded_pure_arguments(
+    const char *source,
+    int64_t open,
+    const char *io_set
+) {
+    int64_t close = balanced_end(source, open, "(", ")");
+    int64_t argument;
+    if (close < 0) return true;
+    argument = skip_trivia(source, token_end(source, open));
+    while (argument < close && !token_equal(source, argument, ")")) {
+        int64_t end = argument_end(source, argument);
+        int64_t separator;
+        if (end <= argument || end > close) return true;
+        if (!discarded_pure_argument(source, argument, end, io_set)) return false;
+        separator = skip_trivia(source, end);
+        if (separator >= close || !token_equal(source, separator, ",")) return true;
+        argument = skip_trivia(source, token_end(source, separator));
+    }
+    return true;
+}
+
+static char *discarded_pure_call_error(
+    const char *source,
+    int64_t cursor,
+    int64_t value_end
+) {
+    int64_t open;
+    char *name;
+    int64_t declaration;
+    char *result;
+    int64_t count;
+    char *io_set;
+    bool refused;
+    if (strcmp(token_kind(source, cursor), "identifier") != 0) {
+        return owned_text("");
+    }
+    open = skip_trivia(source, token_end(source, cursor));
+    if (open >= source_length(source) || !token_equal(source, open, "(")) {
+        return owned_text("");
+    }
+    if (balanced_end(source, open, "(", ")") != value_end) {
+        return owned_text("");
+    }
+    name = token_copy(source, cursor);
+    declaration = function_start_named(source, name);
+    if (declaration < 0) {
+        free(name);
+        return owned_text("");
+    }
+    result = function_return_type(source, name);
+    if (result[0] == '\0' || strcmp(result, "Void") == 0 ||
+        strcmp(result, "Unit") == 0) {
+        free(result);
+        free(name);
+        return owned_text("");
+    }
+    free(result);
+    count = parameter_count(source, declaration);
+    for (int64_t index = 0; index < count; ++index) {
+        char *mode = function_parameter_mode(source, name, index);
+        bool edit = strcmp(mode, "edit") == 0;
+        free(mode);
+        if (edit) {
+            free(name);
+            return owned_text("");
+        }
+    }
+    io_set = inferred_io_functions(source, "print");
+    {
+        Buffer key;
+        buffer_init(&key);
+        buffer_format(&key, "|%s|", name);
+        refused = strstr(io_set, key.data) == NULL;
+        free(key.data);
+    }
+    if (refused) {
+        refused = discarded_pure_arguments(source, open, io_set);
+    }
+    free(io_set);
+    if (!refused) {
+        free(name);
+        return owned_text("");
+    }
+    {
+        Buffer message;
+        char *error;
+        buffer_init(&message);
+        buffer_format(&message, "discarded result of pure call `%s`", name);
+        error = lower_error("E2S223", message.data, cursor);
+        free(message.data);
+        free(name);
+        return error;
+    }
 }
 
 static char *validate_authority_uses(const char *source) {

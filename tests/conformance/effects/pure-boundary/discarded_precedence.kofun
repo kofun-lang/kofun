@@ -1,0 +1,13 @@
+fn twice(x: Int) -> Int {
+    return x + x
+}
+
+fn holder(take root: RootAuthority) -> Int {
+    let alias = root
+    return 0
+}
+
+fn main() -> Int {
+    twice(21)
+    return 0
+}

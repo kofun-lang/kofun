@@ -1,5 +1,5 @@
-# Stage 2 C11 function-call fixture: parameters, results, recursion, an ignored
-# zero-argument call, and a forward reference.
+# Stage 2 C11 function-call fixture: parameters, results, recursion, an
+# explicitly discarded zero-argument call, and a forward reference.
 
 fn twice(value: Int) -> Int {
     return value * 2
@@ -25,7 +25,7 @@ fn add(left: Int, right: Int) -> Int {
 }
 
 fn main() -> Int {
-    ignored()
+    let _ = ignored()
     print(twice(21))
     print(fib(10))
     print(forward_answer())

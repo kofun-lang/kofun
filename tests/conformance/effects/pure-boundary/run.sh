@@ -62,7 +62,7 @@ compile() {
 # The two programs the boundary must not touch: one that keeps its promise, and
 # one that never made it.
 
-for stem in accept identifier callable_argument_pure; do
+for stem in accept identifier callable_argument_pure discarded_accept; do
     compile "$stem"
     assert_num "$stem exit" "$compile_status" -eq 0
     assert_file_nonempty "$stem C output" "$WORK/$stem.c"
@@ -84,6 +84,20 @@ assert_eq 'pure as an identifier still computes' "$identifier_output" 42
 callable_output=$("$WORK/callable_argument_pure")
 assert_eq 'a pure function passed by name still computes' \
     "$callable_output" 42
+
+# #1730. A discarded pure result is refused, and every exemption is load
+# bearing: the sanctioned `let _ =`, an io argument (`forward(noisy, 7)` and
+# `twice(noisy(3))`), a call through a callable parameter, and a callee with
+# an `edit` parameter all still compile. Running the program is what proves the
+# accepted statements still do their work: the io arguments print, and the
+# mutable borrow writes.
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror "$WORK/discarded_accept.c" \
+    -o "$WORK/discarded_accept"
+discarded_output=$("$WORK/discarded_accept")
+assert_eq 'accepted discards keep their effects' \
+    "$discarded_output" '7
+3
+42'
 
 # ------------------------------------------------------------------ negatives
 #
@@ -130,6 +144,9 @@ callable_alias:E2S35
 callable_labelled:E2S35
 callable_module:E2S159
 callable_field:E2S32
+discarded_pure:E2S223
+discarded_precedence:E353
+discarded_unit:E2S15
 '
 
 previous_ifs=$IFS
@@ -409,10 +426,27 @@ mutate boundary-first \
     's/^        char \*authority_check = validate_authority_uses(source);$/        char *authority_check = validate_pure_annotations(source);/'
 mutant_disagrees boundary-first authority_precedence
 
+# #1730. The discard refusal and its two exemptions, each removed. Disabling
+# the query accepts the program DD-042 refuses; ignoring the `edit` parameter
+# refuses a program that writes through a borrow; ignoring argument summaries
+# refuses two programs whose arguments print.
+mutate no-discard-enforcement \
+    's/^    if (strcmp(token_kind(source, cursor), "identifier") != 0) {$/    if (true) {/'
+mutant_disagrees no-discard-enforcement discarded_pure
+
+mutate discard-ignores-edit \
+    's/^        bool edit = strcmp(mode, "edit") == 0;$/        bool edit = false;/'
+mutant_disagrees discard-ignores-edit discarded_accept
+
+mutate discard-ignores-arguments \
+    's/^    pure = callee\[0\] == .\\0.;$/    pure = true;/'
+mutant_disagrees discard-ignores-arguments discarded_accept
+
 printf '%s\n' \
     'PASS: direct, one-hop, multi-hop, back-edge, self- and mutually recursive boundaries are refused' \
     'PASS: a function or the root passed by name is charged to its caller; every other function-value route is refused' \
     'PASS: unannotated, unresolved, and identifier uses of `pure` are unchanged' \
     'PASS: the refusal survives reordering, remapping, repetition, and O0/O2' \
     'PASS: an accepted program keeps its inferred effect facts and both pipelines agree' \
-    'PASS: seven mutations of the boundary are each caught by a named fixture'
+    'PASS: a discarded pure result is refused; `let _`, io arguments, callable parameters, and edit callees are exempt' \
+    'PASS: ten mutations of the boundary and the discard rule are each caught by a named fixture'

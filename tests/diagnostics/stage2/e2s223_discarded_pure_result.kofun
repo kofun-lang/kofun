@@ -1,0 +1,11 @@
+# diagnostic-mode: compile
+# expect-code: E2S223
+# expect-span: byte 150
+fn twice(value: Int) -> Int {
+    return value * 2
+}
+
+fn main() -> Int {
+    twice(21)
+    return 0
+}
