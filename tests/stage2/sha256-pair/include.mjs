@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
-import {loadCompiler, text} from '../../../bootstrap/stage2/host-driver.mjs';
+import {HostOperationError, loadCompiler, text} from '../../../bootstrap/stage2/host-driver.mjs';
 
 const [compilerSource, binary, shaEntry, work, root] = process.argv.slice(2);
 const drivers = [
@@ -35,6 +35,24 @@ function catalog(records) {
   return Buffer.concat(chunks);
 }
 
+function nativeOutcome(args) {
+  const result = spawnSync(binary, args, {encoding: 'utf8'});
+  assert.ifError(result.error);
+  assert.equal(result.stderr, '');
+  return {status: result.status, stdout: result.stdout};
+}
+
+function kofunOutcome(args) {
+  argv.splice(0, argv.length, ...args);
+  printed = '';
+  try {
+    return {status: Number(compiler.main()), stdout: printed};
+  } catch (error) {
+    if (!(error instanceof HostOperationError)) throw error;
+    return {status: 2, stdout: printed + error.message + '\n'};
+  }
+}
+
 function compare(name, input, bundle, expected) {
   const output = path.join(scratch, name + '.c');
   const args = ['--include-bundle', bundle, '--compile-outcome', input, output, output + '.ir', output + '.tokens'];
@@ -42,17 +60,12 @@ function compare(name, input, bundle, expected) {
   const initial = Buffer.from('prior artifact\n');
   const reset = () => paths.forEach(file => fs.writeFileSync(file, initial));
   reset();
-  const native = spawnSync(binary, args, {encoding:'utf8'});
-  assert.ifError(native.error);
-  assert.equal(native.stderr, '', name);
+  const native = nativeOutcome(args);
   const artifacts = paths.map(file => fs.readFileSync(file));
   reset();
-  argv.splice(0, argv.length, ...args);
-  printed = '';
-  assert.equal(Number(compiler.main()), native.status, name);
-  assert.equal(printed, native.stdout, name);
+  assert.deepEqual(kofunOutcome(args), native, name);
   assert.equal(native.status, expected ? 1 : 0, name + ' ' + native.stdout);
-  if (expected) assert(printed.startsWith('error[' + expected + ']'), name + ' ' + printed);
+  if (expected) assert(native.stdout.startsWith('error[' + expected + ']'), name + ' ' + native.stdout);
   for (let i = 0; i < paths.length; i++) {
     assert.deepEqual(fs.readFileSync(paths[i]), artifacts[i], paths[i]);
     if (expected) assert.deepEqual(artifacts[i], initial, paths[i]);
@@ -85,4 +98,31 @@ fixture('noncanonical', 'include "block"', Buffer.from('KOFUN-INCLUDES-1\nblock\
 fixture('duplicate-record', 'include "block"', catalog([['block',''],['block','']]), 'E2S226');
 compare('sha256', shaEntry, fixed);
 assert.deepEqual(fs.readFileSync(path.join(work, 'block.c')), fs.readFileSync(path.join(scratch, 'sha256.c')));
+
+const alias = path.join(scratch, 'catalog-hardlink');
+const prior = path.join(scratch, 'prior-output');
+const fresh = path.join(scratch, 'absent-output');
+const invalid = path.join(input, 'child');
+fs.writeFileSync(input, 'fn main() -> Int { return 0 }\n');
+fs.writeFileSync(bundle, one);
+fs.linkSync(bundle, alias);
+fs.writeFileSync(prior, 'existing output\n');
+const preserved = [input, bundle, alias, prior].map(file => [file, fs.readFileSync(file)]);
+const same = 'error[E2S35]: compiler input and output must be distinct\n';
+const lookup = 'error[E2S35]: stage2_same_file: file lookup failed before output open\n';
+for (const [name, catalogPath, destinations, stdout] of [
+  ['catalog alias before invalid IR', bundle, [alias, invalid, prior], same],
+  ['invalid C output before source alias', bundle, [invalid, input, prior], lookup],
+  ['catalog alias at IR before invalid tokens', bundle, [fresh, alias, invalid], same],
+  ['source alias before empty catalog lookup', '', [input, prior, fresh], same],
+  ['explicit empty catalog operand', '', [fresh, prior, fresh + '-tokens'], lookup],
+]) {
+  const args = ['--include-bundle', catalogPath, '--compile-outcome', input, ...destinations];
+  for (const invoke of [nativeOutcome, kofunOutcome]) {
+    assert.deepEqual(invoke(args), {status: 2, stdout}, name);
+    for (const [file, contents] of preserved) assert.deepEqual(fs.readFileSync(file), contents, name);
+    assert(!fs.existsSync(fresh), name);
+    assert(!fs.existsSync(fresh + '-tokens'), name);
+  }
+}
 console.log('PASS: both compiler entry points agree on include results, C, token tape, IR and preservation of prior outputs');
