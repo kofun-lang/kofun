@@ -1,0 +1,8 @@
+fn replace(value: Int) -> Int { return value + 1 }
+fn apply(replace: (Int) -> Int) -> Int { return replace(8) }
+fn twice(value: Int) -> Int { return value + value }
+fn main() -> Int {
+    print(replace(6))
+    print(apply(twice))
+    return 0
+}

@@ -206,7 +206,8 @@ export function loadCompiler({ source = fs.readFileSync(`${root}bootstrap/stage2
     len:value=>BigInt(value.length), chars:value=>value,
     text_slice:(value,start,end)=>{ start = start < 0n ? 0n : start; end = end < start ? start : end; return value.slice(Number(start),Number(end)); },
     contains:(value,part)=>value.includes(part), starts_with:(value,part)=>value.startsWith(part),
-    find:(value,part)=>BigInt(value.indexOf(part)), replace:(value,old,replacement)=>value.replaceAll(old,replacement),
+    find:(value,part)=>BigInt(value.indexOf(part)),
+    replace:(value,old,replacement)=>old.length ? value.split(old).join(replacement) : value,
     trim:value=>value.replace(/^[ \t\r\n\v\f]+|[ \t\r\n\v\f]+$/g,''),
     is_digit:value=>/^[0-9]$/.test(value), is_space:value=>/^[ \t\r\n\v\f]$/.test(value),
     // Existing public byte classifier; scalar XID classification is in the

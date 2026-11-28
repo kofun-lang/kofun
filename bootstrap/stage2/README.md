@@ -182,6 +182,10 @@ and past-end indices fail with `R010`. For example, `len(chars("k字n"))`
 is 5 on the frozen bootstrap path. The lexer uses these byte offsets for
 token spans. The frozen Stage 1 source now reaches `trim` at byte 7701.
 
+`replace(Text, Text, Text)` replaces non-overlapping byte sequences and
+copies the subject when the needle is empty. The replacement is literal.
+The result uses one Text temporary and reports `R021` above 255 bytes.
+
 Unannotated `let` bindings carry inferred types in the scope-HIR rather than
 a blind `Int` default: literals by token kind, calls by the declared or
 builtin result type, name references by their resolved binding, indexing the

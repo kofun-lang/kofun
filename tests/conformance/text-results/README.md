@@ -10,6 +10,10 @@ bootstrap lexer, including UTF-8 byte counts, copied bindings, grouping and
 the evaluation order of the receiver and index. Companion cases cover
 shadowing, an invalid index type and an out-of-range read.
 
+The replacement cases check non-overlapping byte matches, an empty needle,
+literal replacement text, nested calls, and source-order evaluation. A result
+can occupy 255 bytes. A 256-byte replacement fails with `R021`.
+
 The bounded lifetime contract has three independent limits:
 
 - one result is at most 255 bytes (`R020` for an invalid slice and `R021` for

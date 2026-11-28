@@ -10433,6 +10433,9 @@ static char *emit_fixed_slot_call_temporaries(
                 fixed_slot_temporary_body(source, cursor) == body_open
             ) {
                 char *callee = token_copy(source, cursor);
+                if (strcmp(callee, "replace") == 0 && call_resolves_to_builtin(source, hir, cursor, callee)) {
+                    buffer_format(&output, "    const char *kofun_replace_args_%" PRId64 "[3];\n", cursor);
+                }
                 if (strcmp(callee, "chars") == 0 && chars_constructor_index(source, hir, cursor, close) >= 0) {
                     buffer_format(&output, "    KofunCharList kofun_char_receiver_%" PRId64 ";\n", cursor);
                 }
@@ -11476,6 +11479,31 @@ static char *emit_int_bit_chain(
     return emitted;
 }
 
+static char *emit_text_replace(const char *source, const char *hir, int64_t call, int64_t open) {
+    Buffer output;
+    buffer_init(&output);
+    buffer_append(&output, "(");
+    int64_t argument = skip_trivia(source, token_end(source, open));
+    for (int index = 0; index < 3; ++index) {
+        int64_t bound = argument_end(source, argument);
+        if (bound <= argument) {
+            free(output.data);
+            return lower_error("E2S12", "invalid replacement argument", argument);
+        }
+        char *value = emit_expression(source, hir, argument, bound);
+        if (strncmp(value, "error[", 6) == 0) { free(output.data); return value; }
+        buffer_format(&output, "kofun_replace_args_%" PRId64 "[%d] = %s, ", call, index, value);
+        free(value);
+        if (index < 2) {
+            int64_t comma = skip_trivia(source, bound);
+            argument = skip_trivia(source, token_end(source, comma));
+        }
+    }
+    buffer_format(&output, "kofun_text_replace(kofun_replace_args_%" PRId64 "[0], "
+        "kofun_replace_args_%" PRId64 "[1], kofun_replace_args_%" PRId64 "[2]))", call, call, call);
+    return output.data;
+}
+
 static char *emit_primary(
     const char *source,
     const char *hir,
@@ -11711,6 +11739,11 @@ static char *emit_primary(
         free(conversion);
         char *name = token_copy(source, cursor);
         int64_t open = skip_trivia(source, token_end(source, cursor));
+        if (open < end && token_equal(source, open, "(") &&
+            strcmp(name, "replace") == 0 && call_resolves_to_builtin(source, hir, cursor, name)) {
+            free(name);
+            return emit_text_replace(source, hir, cursor, open);
+        }
         if (open < end && token_equal(source, open, "(") &&
             strcmp(name, "chars") == 0 && call_resolves_to_builtin(source, hir, cursor, name)) {
             int64_t arg = skip_trivia(source, token_end(source, open));
@@ -15113,7 +15146,7 @@ static char *validate_core_calls(const char *source, const char *hir) {
                     }
                     free(argument_error);
                     if (
-                        strcmp(name, "chars") == 0 ||
+                        strcmp(name, "chars") == 0 || strcmp(name, "replace") == 0 ||
                         strcmp(name, "contains") == 0 ||
                         strcmp(name, "find") == 0 ||
                         strcmp(name, "is_digit") == 0 ||
@@ -34619,6 +34652,7 @@ static char *validate_struct_identity(const char *source) {
 static int64_t count_text_sites(const char *bodies) {
     static const char *calls[] = {
         "kofun_text_slice(",
+        "kofun_text_replace(",
         "kofun_char_list_index(",
         "kofun_to_text(",
         "kofun_text_concat(",
@@ -35884,6 +35918,41 @@ static char *lower_c_body(
         "    slot[left_width + right_width] = '\\0'; return slot;\n"
         "}\n"
     );
+    if (source_calls_builtin(source, hir, "replace")) {
+        buffer_append(&output,
+            "static inline const char *kofun_text_replace(const char *value, const char *old, const char *replacement) {\n"
+            "    size_t old_size = strlen(old), replacement_size = strlen(replacement), matches = 0;\n"
+            "    const char *cursor = value, *match;\n"
+            "    if (old_size != 0) {\n"
+            "        while ((match = strstr(cursor, old)) != NULL) {\n"
+            "            ++matches;\n"
+            "            cursor = match + old_size;\n"
+            "        }\n"
+            "    }\n"
+            "    size_t kept = strlen(value) - matches * old_size;\n"
+            "    if (kept > 255 || (matches && replacement_size > (255 - kept) / matches)) {\n"
+            "        kofun_error(\"error[R021]: bounded Text replacement exceeds 255 bytes\");\n"
+            "        return \"\";\n"
+            "    }\n"
+            "    char *result = kofun_text_temporary();\n"
+            "    if (result == NULL) return \"\";\n"
+            "    char *out = result;\n"
+            "    cursor = value;\n"
+            "    while (matches != 0) {\n"
+            "        match = strstr(cursor, old);\n"
+            "        size_t prefix = (size_t)(match - cursor);\n"
+            "        memcpy(out, cursor, prefix);\n"
+            "        out += prefix;\n"
+            "        memcpy(out, replacement, replacement_size);\n"
+            "        out += replacement_size;\n"
+            "        cursor = match + old_size;\n"
+            "        --matches;\n"
+            "    }\n"
+            "    memcpy(out, cursor, strlen(cursor) + 1);\n"
+            "    return result;\n"
+            "}\n"
+        );
+    }
     if (source_calls_builtin(source, hir, "chars")) {
         buffer_append(&output,
             "typedef struct { const char *text; size_t length; } KofunCharList;\n"

@@ -72,7 +72,7 @@ KOFUN_STAGE2_COMPILER="$WORK/kofun-stage2" "$ROOT/bin/kofun" run \
 compare 'public run stdout' "$CASES/values.stdout" "$WORK/cli.stdout"
 assert_file_empty 'public run stderr' "$WORK/cli.stderr"
 
-for stem in bootstrap_chars chars_shadow; do
+for stem in bootstrap_chars chars_shadow bootstrap_replace replace_shadow; do
     compile_positive "$stem.compile" "$CASES/$stem.kofun"
     KOFUN_STAGE2_COMPILER="$WORK/kofun-stage2" "$ROOT/bin/kofun" run \
         "$CASES/$stem.kofun" >"$WORK/$stem.stdout" 2>"$WORK/$stem.stderr"
@@ -81,9 +81,13 @@ for stem in bootstrap_chars chars_shadow; do
 done
 assert_not_grep 'shadowed chars emits no builtin helper' -Fq -- 'kofun_chars(' \
     "$WORK/chars_shadow.compile/output.c"
+assert_not_grep 'shadowed replace emits no builtin helper' -Fq -- 'kofun_text_replace(' \
+    "$WORK/replace_shadow.compile/output.c"
 node "$ROOT/tests/conformance/callable-purity/pair.mjs" "$WORK/kofun-stage2" \
-    "$WORK/chars-pair" "$CASES/bootstrap_chars.kofun" "$CASES/chars_shadow.kofun" \
-    "$CASES/chars_index_type.kofun" "$CASES/chars_out_of_range.kofun"
+    "$WORK/text-pair" "$CASES/bootstrap_chars.kofun" "$CASES/chars_shadow.kofun" \
+    "$CASES/chars_index_type.kofun" "$CASES/chars_out_of_range.kofun" \
+    "$CASES/bootstrap_replace.kofun" "$CASES/replace_shadow.kofun" \
+    "$CASES/replace_bad_type.kofun" "$CASES/replace_too_long.kofun"
 
 "$WORK/values" >"$WORK/values.second.stdout" \
     2>"$WORK/values.second.stderr" ||
@@ -157,6 +161,7 @@ compile_refusal mixed_text_int E2S155
 compile_refusal mixed_int_text E2S155
 compile_refusal site_limit E2S156
 compile_refusal chars_index_type E2S157
+compile_refusal replace_bad_type E2S15
 
 run_runtime_refusal() {
     stem=$1
@@ -191,6 +196,8 @@ run_runtime_refusal() {
 run_runtime_refusal slice_out_of_range R020
 run_runtime_refusal chars_out_of_range R010
 assert_file_empty 'chars bounds refusal stdout' "$WORK/chars_out_of_range.stdout"
+run_runtime_refusal replace_too_long R021
+assert_file_empty 'replace length refusal stdout' "$WORK/replace_too_long.stdout"
 assert_file_empty 'slice refusal stdout' "$WORK/slice_out_of_range.stdout"
 run_runtime_refusal concat_too_long R021
 assert_file_empty 'concat refusal stdout' "$WORK/concat_too_long.stdout"

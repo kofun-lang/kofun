@@ -7143,6 +7143,9 @@ fn emit_fixed_slot_call_temporaries(
             if open < close && token_text(source, open) == "(" &&
                 fixed_slot_temporary_body(source, cursor) == body_open {
                 let callee = token_text(source, cursor)
+                if callee == "replace" && call_resolves_to_builtin(source, hir, cursor, callee) {
+                    emitted = emitted + "    const char *kofun_replace_args_" + to_text(cursor) + "[3];\n"
+                }
                 if callee == "chars" && chars_constructor_index(source, hir, cursor, close) >= 0 {
                     emitted = emitted + "    KofunCharList kofun_char_receiver_" +
                         to_text(cursor) + ";\n"
@@ -7842,6 +7845,29 @@ fn emit_int_bit_chain(
     return emitted
 }
 
+# The generated C call uses source-ordered spills, including nested calls.
+fn emit_text_replace(source: Text, hir: Text, call: Int, open: Int) -> Text {
+    let slots = "kofun_replace_args_" + to_text(call)
+    let mut emitted = "("
+    let mut argument = skip_trivia(source, token_end(source, open))
+    let mut index = 0
+    while index < 3 {
+        let bound = argument_end(source, argument)
+        if bound <= argument {
+            return "error[E2S12]: invalid replacement argument at byte " + to_text(argument)
+        }
+        let value = emit_expression(source, hir, argument, bound)
+        if starts_with(value, "error[") { return value }
+        emitted = emitted + slots + "[" + to_text(index) + "] = " + value + ", "
+        if index < 2 {
+            let comma = skip_trivia(source, bound)
+            argument = skip_trivia(source, token_end(source, comma))
+        }
+        index = index + 1
+    }
+    return emitted + "kofun_text_replace(" + slots + "[0], " + slots + "[1], " + slots + "[2]))"
+}
+
 fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
     let cursor = skip_trivia(source, start)
     # A bit-operation chain owns the whole span, so it is dispatched before any
@@ -7964,6 +7990,10 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
         }
         let name = token_text(source, cursor)
         let open = skip_trivia(source, token_end(source, cursor))
+        if open < end && token_text(source, open) == "(" && name == "replace" &&
+           call_resolves_to_builtin(source, hir, cursor, name) {
+            return emit_text_replace(source, hir, cursor, open)
+        }
         if open < end && token_text(source, open) == "(" && name == "chars" &&
            call_resolves_to_builtin(source, hir, cursor, name) {
             let argument = skip_trivia(source, token_end(source, open))
@@ -10320,7 +10350,8 @@ fn validate_core_calls(source: Text, hir: Text) -> Text {
                     if len(argument_error) > 0 {
                         return argument_error
                     }
-                    if name == "chars" || name == "contains" || name == "find" ||
+                    if name == "chars" || name == "replace" ||
+                       name == "contains" || name == "find" ||
                        name == "is_digit" || name == "is_space" ||
                        name == "is_xid_continue" || name == "len" ||
                        name == "starts_with" ||
@@ -22904,6 +22935,10 @@ fn count_text_sites(bodies: Text) -> Int {
         } else if symbol == "\"" {
             quoted = true
             cursor = cursor + 1
+        } else if cursor + 19 <= len(bodies) &&
+                  text_slice(bodies, cursor, cursor + 19) == "kofun_text_replace(" {
+            count = count + 1
+            cursor = cursor + 19
         } else if cursor + 22 <= len(bodies) &&
                   text_slice(bodies, cursor, cursor + 22) ==
                   "kofun_char_list_index(" {
@@ -24185,6 +24220,41 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
         "    return kofun_unicode_is_xid_continue(codepoint);\n" +
         "}\n"
     }
+    let mut replace_prelude = ""
+    if source_calls_builtin(source, hir, "replace") {
+        replace_prelude =
+        "static inline const char *kofun_text_replace(const char *value, const char *old, const char *replacement) {\n" +
+        "    size_t old_size = strlen(old), replacement_size = strlen(replacement), matches = 0;\n" +
+        "    const char *cursor = value, *match;\n" +
+        "    if (old_size != 0) {\n" +
+        "        while ((match = strstr(cursor, old)) != NULL) {\n" +
+        "            ++matches;\n" +
+        "            cursor = match + old_size;\n" +
+        "        }\n" +
+        "    }\n" +
+        "    size_t kept = strlen(value) - matches * old_size;\n" +
+        "    if (kept > 255 || (matches && replacement_size > (255 - kept) / matches)) {\n" +
+        "        kofun_error(\"error[R021]: bounded Text replacement exceeds 255 bytes\");\n" +
+        "        return \"\";\n" +
+        "    }\n" +
+        "    char *result = kofun_text_temporary();\n" +
+        "    if (result == NULL) return \"\";\n" +
+        "    char *out = result;\n" +
+        "    cursor = value;\n" +
+        "    while (matches != 0) {\n" +
+        "        match = strstr(cursor, old);\n" +
+        "        size_t prefix = (size_t)(match - cursor);\n" +
+        "        memcpy(out, cursor, prefix);\n" +
+        "        out += prefix;\n" +
+        "        memcpy(out, replacement, replacement_size);\n" +
+        "        out += replacement_size;\n" +
+        "        cursor = match + old_size;\n" +
+        "        --matches;\n" +
+        "    }\n" +
+        "    memcpy(out, cursor, strlen(cursor) + 1);\n" +
+        "    return result;\n" +
+        "}\n"
+    }
     let mut chars_prelude = ""
     if source_calls_builtin(source, hir, "chars") {
         chars_prelude =
@@ -24379,7 +24449,7 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     "    memcpy(slot, left, left_width); memcpy(slot + left_width, right, right_width);\n" +
     "    slot[left_width + right_width] = '\\0'; return slot;\n" +
     "}\n" +
-    chars_prelude + command_prelude +
+    replace_prelude + chars_prelude + command_prelude +
     stream_prelude +
     origin_prelude +
     "static inline int64_t kofun_add(int64_t a, int64_t b) {\n" +
