@@ -5,6 +5,11 @@ capabilities: direct `Text` parameters/results, canonical `to_text(Int)`, and
 `Text + Text` concatenation. It also keeps `Int + Int` on the checked integer
 path.
 
+The `bootstrap_chars` fixture checks the read-only byte list used by the
+bootstrap lexer, including UTF-8 byte counts, copied bindings, grouping and
+the evaluation order of the receiver and index. Companion cases cover
+shadowing, an invalid index type and an out-of-range read.
+
 The bounded lifetime contract has three independent limits:
 
 - one result is at most 255 bytes (`R020` for an invalid slice and `R021` for

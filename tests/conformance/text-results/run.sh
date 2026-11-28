@@ -72,6 +72,19 @@ KOFUN_STAGE2_COMPILER="$WORK/kofun-stage2" "$ROOT/bin/kofun" run \
 compare 'public run stdout' "$CASES/values.stdout" "$WORK/cli.stdout"
 assert_file_empty 'public run stderr' "$WORK/cli.stderr"
 
+for stem in bootstrap_chars chars_shadow; do
+    compile_positive "$stem.compile" "$CASES/$stem.kofun"
+    KOFUN_STAGE2_COMPILER="$WORK/kofun-stage2" "$ROOT/bin/kofun" run \
+        "$CASES/$stem.kofun" >"$WORK/$stem.stdout" 2>"$WORK/$stem.stderr"
+    compare "$stem public run stdout" "$CASES/$stem.stdout" "$WORK/$stem.stdout"
+    assert_file_empty "$stem public run stderr" "$WORK/$stem.stderr"
+done
+assert_not_grep 'shadowed chars emits no builtin helper' -Fq -- 'kofun_chars(' \
+    "$WORK/chars_shadow.compile/output.c"
+node "$ROOT/tests/conformance/callable-purity/pair.mjs" "$WORK/kofun-stage2" \
+    "$WORK/chars-pair" "$CASES/bootstrap_chars.kofun" "$CASES/chars_shadow.kofun" \
+    "$CASES/chars_index_type.kofun" "$CASES/chars_out_of_range.kofun"
+
 "$WORK/values" >"$WORK/values.second.stdout" \
     2>"$WORK/values.second.stderr" ||
     fail 'repeated positive execution exited non-zero'
@@ -143,6 +156,7 @@ compile_refusal() {
 compile_refusal mixed_text_int E2S155
 compile_refusal mixed_int_text E2S155
 compile_refusal site_limit E2S156
+compile_refusal chars_index_type E2S157
 
 run_runtime_refusal() {
     stem=$1
@@ -175,6 +189,8 @@ run_runtime_refusal() {
 }
 
 run_runtime_refusal slice_out_of_range R020
+run_runtime_refusal chars_out_of_range R010
+assert_file_empty 'chars bounds refusal stdout' "$WORK/chars_out_of_range.stdout"
 assert_file_empty 'slice refusal stdout' "$WORK/slice_out_of_range.stdout"
 run_runtime_refusal concat_too_long R021
 assert_file_empty 'concat refusal stdout' "$WORK/concat_too_long.stdout"

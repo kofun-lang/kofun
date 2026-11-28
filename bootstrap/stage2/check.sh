@@ -935,7 +935,7 @@ assert_num "selfhost frontier status" "$selfhost_frontier_status" -eq 3
 assert_not_grep "selfhost-S.stdout" 'E2S35' "$temporary/selfhost-S.stdout"
 assert_not_grep "selfhost-S.stdout" 'E2S16' "$temporary/selfhost-S.stdout"
 assert_grep "selfhost-S.stdout" \
-    'error\[E2S10\]: unsupported Core builtin call `chars`' \
+    'error\[E2S10\]: unsupported Core builtin call `trim` at byte 7701$' \
     "$temporary/selfhost-S.stdout"
 assert_absent "$temporary/selfhost-S.c" "$temporary/selfhost-S.c"
 
@@ -950,8 +950,9 @@ assert_absent "$temporary/selfhost-S.c" "$temporary/selfhost-S.c"
 assert_grep "selfhost-S.scopes" \
     '^binding|2|3|symbols|immutable|List|gc|initialized|890|897|911$' \
     "$temporary/selfhost-S.scopes"
+# The initializer ends after the closing bracket in symbols[cursor].
 assert_grep "selfhost-S.scopes" \
-    '^binding|21|22|symbol|immutable|Text|gc|initialized|2503|2509|2519$' \
+    '^binding|21|22|symbol|immutable|Text|gc|initialized|2503|2509|2527$' \
     "$temporary/selfhost-S.scopes"
 assert_grep "selfhost-S.scopes" \
     '^binding|303|347|marker|immutable|Text|gc|initialized|40600|40606|40617$' \
