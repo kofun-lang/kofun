@@ -8382,7 +8382,7 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
                         source,
                         hir,
                         field_index_open,
-                        0 - 1
+                        0 - 1, "List[Int]"
                     )
                     if starts_with(field_index, "error[") {
                         return field_index
