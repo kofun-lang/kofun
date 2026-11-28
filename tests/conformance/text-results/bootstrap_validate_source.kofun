@@ -1,0 +1,11 @@
+fn main() -> Int {
+    let letters = chars("é")
+    let invalid = letters[0]
+    let first = validate_unicode_source(invalid)
+    let second = validate_unicode_source("ab" + invalid)
+    print(len(validate_unicode_source("let 山 = 1")))
+    print(first)
+    print(second)
+    print(first)
+    return 0
+}
