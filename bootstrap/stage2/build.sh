@@ -65,3 +65,56 @@ kofun_seed_digest_build() {
         "$kofun_seed_root/bootstrap/stage2/sha256.c" \
         -o "$kofun_seed_out"
 }
+
+# Prepare an include catalog once for the caller's compilation. The archive
+# inventory is part of the acquisition; the gate checks it against Git's files.
+# Both the packer and the catalog are private to the caller's work directory.
+kofun_stage2_include_bundle() (
+    root=$1
+    work=$2
+    "${CC:-cc}" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+        "$root/bootstrap/stage2/include_bundle.c" "$root/bootstrap/stage2/sha256.c" \
+        -o "$work/include-bundle" || exit 1
+    if test -e "$root/.git" || test -L "$root/.git"; then
+        # A changed worktree inventory cannot authorize a new target. Compare
+        # each path in the staged inventory to its actual mode and stage.
+        inventory=bootstrap/stage2/includes-v1.files
+        git -C "$root" show ":$inventory" >"$work/index.files" || {
+            printf '%s\n' 'error[E2S226]: cannot read checkout include inventory'
+            exit 1
+        }
+        while IFS= read -r entry; do
+            if ! git --literal-pathspecs -C "$root" ls-files --stage -- "$entry" |
+                LC_ALL=C grep -Eq '^100(644|755) [0-9a-f]+ 0[[:space:]]'; then
+                printf '%s\n' 'error[E2S226]: include target is not a tracked regular file'
+                exit 1
+            fi
+        done <"$work/index.files"
+        "$work/include-bundle" "$root" "$work/includes-v1.bundle" \
+            --tracked-stdin <"$work/index.files"
+    else
+        "$work/include-bundle" "$root" "$work/includes-v1.bundle"
+    fi
+)
+
+# Build the public digest command from its manifest-pinned source. A private
+# directory beside the destination keeps a concurrent cold build atomic.
+kofun_digest_build() (
+    root=$1
+    output=$2
+    directory=$(dirname -- "$output")
+    mkdir -p "$directory" || exit 1
+    work=$(mktemp -d "$directory/kofun-digest.XXXXXX") || exit 1
+    trap 'rm -rf "$work"' 0 1 2 15
+    kofun_stage2_build "$root" "$work/kofun-stage2" || exit 1
+    kofun_stage2_include_bundle "$root" "$work" || exit 1
+    "$work/kofun-stage2" --include-bundle "$work/includes-v1.bundle" --compile-outcome \
+        "$root/bootstrap/digest/command.kofun.in" "$work/digest.c" \
+        "$work/digest.ir" "$work/digest.tokens" >"$work/out" || {
+        cat "$work/out" >&2
+        exit 1
+    }
+    "${CC:-cc}" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+        "$work/digest.c" -o "$work/digest" || exit 1
+    mv -f "$work/digest" "$output"
+)

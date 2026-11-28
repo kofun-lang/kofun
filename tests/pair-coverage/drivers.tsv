@@ -84,6 +84,7 @@ import-aliases
 imports-qualified
 imports-selective
 incremental
+include-form
 int-bits
 int-bits-lowering
 kif-generics-codec
