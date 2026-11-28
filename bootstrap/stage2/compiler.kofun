@@ -2142,6 +2142,8 @@ fn record_declaration_start(source: Text, identity: Text) -> Int {
 # `parameter_list_type_end` instead of restating the `List [ X ]` shape: two
 # parsers for one syntax is how the two ends of a field list start disagreeing.
 fn record_field_type_end(source: Text, field_type: Int, limit: Int) -> Int {
+    let generic_end = executable_record_application_end(source, field_type)
+    if generic_end >= 0 { return generic_end }
     let list_end = parameter_list_type_end(source, field_type, limit)
     if list_end >= 0 {
         return list_end
@@ -2269,8 +2271,9 @@ fn record_field_count(source: Text, record_type: Text) -> Int {
                "List[Int]" {
                 return -2
             }
-        } else if admissible_record_field_token(source, field_type) ==
-                  false {
+        } else if !admissible_record_field_token(source, field_type) &&
+                  !executable_record_generic(source, declaration) &&
+                  executable_record_application_end(source, field_type) < 0 {
             return -2
         }
         count = count + 1
@@ -2319,6 +2322,12 @@ fn record_field_text(
         let field_type = skip_trivia(source, token_end(source, colon))
         if index == wanted_index {
             if want_type {
+                if executable_record_generic(source, declaration) ||
+                   executable_record_application_end(source, field_type) >= 0 {
+                    let end = generic_record_type_end(source, field_type, close)
+                    return executable_record_substitute(source, field_type, end, generic_record_binder_names(source, declaration),
+                        executable_record_arguments(record_type))
+                }
                 # #1183: a `List[Int]` field's type is its canonical name, not
                 # its first token. Callers compare this against carrier names
                 # like `List[Int]`, so returning `List` would make a bounded
@@ -2968,6 +2977,11 @@ fn type_parameter_list_error(source: Text, start: Int) -> Text {
         "` has an unterminated parameter list at byte " + to_text(bracket)
     }
     let keyword = skip_trivia(source, token_end(source, bracket))
+    if executable_record_generic(source, start) {
+        let names = generic_record_binder_names(source, start)
+        if starts_with(names, "error[") { return names }
+        if len(names) > 0 { return "" }
+    }
     if token_text(source, keyword) != "const" {
         return "error[E2S148]: type parameters on a nominal type are unsupported; `" +
         name +
@@ -3683,6 +3697,10 @@ fn parse_program(source: Text) -> Text {
     let pipeline_shape_check = validate_pipeline_shapes(source)
     if starts_with(pipeline_shape_check, "error[") {
         return pipeline_shape_check
+    }
+    if executable_record_enabled(source) {
+        let checked = executable_record_instances(source)
+        if starts_with(checked, "error[") { return checked }
     }
     # Const generic surface (#916). Both checks run before any declaration is
     # recorded, so a refused source never reaches layout, IR, or an artifact.
@@ -4765,6 +4783,14 @@ fn primary_end(source: Text, start: Int) -> Int {
         return -1
     }
     if kind == "identifier" {
+        let type_end = executable_record_application_end(source, cursor)
+        if type_end >= 0 {
+            let arguments = skip_trivia(source, type_end)
+            if token_text(source, arguments) == "(" {
+                let finish = balanced_end(source, arguments, "(", ")")
+                if finish >= 0 { return field_postfix_end(source, finish) }
+            }
+        }
         if len(numeric_conversion_at(source, cursor)) > 0 {
             let dot = skip_trivia(source, token_end(source, cursor))
             let member = skip_trivia(source, token_end(source, dot))
@@ -5284,6 +5310,10 @@ fn const_argument_of(identity: Text) -> Text {
 # construct at all. `validate_struct_identity` now refuses that collapse
 # instead of a comment asserting it is fine.
 fn record_c_type_name(record_type: Text) -> Text {
+    let args = const_argument_of(record_type)
+    if len(args) > 0 && !is_digit(text_slice(args, 0, 1)) {
+        return executable_record_symbol(record_type, "main.kofun")
+    }
     let argument = const_argument_of(record_type)
     if len(argument) == 0 {
         return "KofunRecord_" + c_identifier_name(record_type)
@@ -5486,6 +5516,17 @@ fn emit_record_value(
     # `Int` field read compiled and ran as the record it was read from, with
     # no diagnostic anywhere. Anything left unconsumed that is not a call is
     # not a record value in this slice.
+    if open < end && token_text(source, open) == "." {
+        let field = skip_trivia(source, token_end(source, open))
+        let id = hir_use_binding_id(hir, cursor)
+        let owner = hir_binding_field(hir, id, 5)
+        if skip_trivia(source, token_end(source, field)) >= end &&
+           (executable_record_generic(source, record_declaration_start(source, owner)) ||
+            executable_record_generic(source, record_declaration_start(source, record_type))) &&
+           record_field_type_named(source, owner, token_text(source, field)) == record_type {
+            return "k_b" + id + "." + record_c_field_name(token_text(source, field))
+        }
+    }
     if open < end && token_text(source, open) != "(" {
         return "error[E2S32]: nominal record value must be a whole binding or function call at byte " +
         to_text(cursor)
@@ -5500,6 +5541,9 @@ fn emit_record_value(
             let actual = hir_binding_field(hir, binding_id, 5)
             if len(binding_id) > 0 &&
                const_type_base(actual) == const_type_base(record_type) {
+                if executable_record_generic(source, record_declaration_start(source, actual)) {
+                    return lower_error("E2S32", "nominal record binding `" + actual + "` does not match `" + record_type + "`", cursor)
+                }
                 return "error[E2S151]: `" + actual + "` is not `" +
                 record_type +
                 "`; instantiations differing only in their const argument are different types at byte " +
@@ -10781,6 +10825,8 @@ fn fixed_result_type_end(source: Text, type_start: Int) -> Int {
 # instantiation becomes a type identity, so every comparison downstream
 # distinguishes the scales without knowing they exist.
 fn annotation_type_text(source: Text, type_start: Int) -> Text {
+    let generic_end = executable_record_application_end(source, type_start)
+    if generic_end >= 0 { return executable_record_substitute(source, type_start, generic_end, "", "") }
     let specialization = fixed_result_type_text(source, type_start)
     if len(specialization) > 0 {
         return specialization
@@ -10806,6 +10852,8 @@ fn annotation_type_text(source: Text, type_start: Int) -> Text {
 # past only the head token here is what would leave `[2]` in the stream for
 # the next parser step to trip over.
 fn annotation_type_end(source: Text, type_start: Int) -> Int {
+    let generic_end = executable_record_application_end(source, type_start)
+    if generic_end >= 0 { return generic_end }
     let specialization_end = fixed_result_type_end(source, type_start)
     if specialization_end >= 0 {
         return specialization_end
@@ -14157,6 +14205,14 @@ fn type_annotation_token(
                     token_end(source, colon)
                 )
                 let type_end = annotation_type_end(source, type_start)
+                let equal = skip_trivia(source, type_end)
+                if token_text(source, equal) == "=" {
+                    let value = skip_trivia(source, token_end(source, equal))
+                    let parameters_end = executable_record_application_end(source, value)
+                    if parameters_end >= 0 && target >= value && target < parameters_end {
+                        return true
+                    }
+                }
                 if target >= type_start && target < type_end {
                     return true
                 }
@@ -14270,7 +14326,7 @@ fn record_initializer_constructor_token(
                 )
                 let equals = skip_trivia(
                     source,
-                    token_end(source, type_cursor)
+                    annotation_type_end(source, type_cursor)
                 )
                 let initializer = skip_trivia(
                     source,
@@ -15349,6 +15405,10 @@ fn initializer_type_bounded(
         return "Bool"
     }
     if kind == "identifier" {
+        let type_end = executable_record_application_end(source, cursor)
+        if type_end >= 0 && token_text(source, skip_trivia(source, type_end)) == "(" {
+            return annotation_type_text(source, cursor)
+        }
         # Call and index detection must not stop at the bounded expression
         # end: profile initializers may continue across lines, and `[`
         # follows the resolved primary directly.
@@ -22257,7 +22317,11 @@ fn record_used_as_list_element(source: Text, record_type: Text) -> Bool {
 }
 
 fn emit_record_c_declarations(source: Text) -> Text {
+    let generic = executable_record_enabled(source)
     let mut declarations = ""
+    if generic {
+        declarations = executable_record_layouts(source, executable_record_instances(source))
+    }
     let mut cursor = after_optional_module_header(source, 0)
     while cursor < len(source) {
         let type_start = type_declaration_start(source, cursor)
@@ -22282,11 +22346,9 @@ fn emit_record_c_declarations(source: Text) -> Text {
                 }
             } else {
                 let c_type = record_c_type_name(record_type)
-                declarations = declarations + emit_record_c_declaration(
-                    source,
-                    record_type,
-                    c_type
-                )
+                if !generic {
+                    declarations = declarations + emit_record_c_declaration(source, record_type, c_type)
+                }
                 if record_used_as_list_element(source, record_type) {
                     let list_c_type = record_list_c_type(record_type)
                     declarations = declarations +
@@ -36027,4 +36089,274 @@ fn main() -> Int {
         return 1
     }
     return 0
+}
+
+# Concrete applications are kept as normalized token spellings in scope HIR.
+# Source spans still refer to authored tokens. Only the backend maps the
+# structural identity to a C identifier.
+fn executable_record_generic(source: Text, declaration: Int) -> Bool {
+    if declaration < 0 { return false }
+    let bracket = type_parameter_open(source, declaration)
+    if bracket < 0 { return false }
+    let first = skip_trivia(source, token_end(source, bracket))
+    return token_text(source, first) != "const" && record_declaration_at(source, declaration)
+}
+
+fn executable_record_application_end(source: Text, at: Int) -> Int {
+    let bracket = skip_trivia(source, token_end(source, at))
+    if bracket >= len(source) || token_text(source, bracket) != "[" { return -1 }
+    let decl = record_declaration_start(source, token_text(source, at))
+    if !executable_record_generic(source, decl) { return -1 }
+    return balanced_end(source, bracket, "[", "]")
+}
+
+fn executable_record_substitute(source: Text, at: Int, end: Int, names: Text, arguments: Text) -> Text {
+    let mut cursor = at
+    let mut out = ""
+    while cursor < end {
+        let token = token_text(source, cursor)
+        let ordinal = generic_record_binder_ordinal(names, token)
+        if ordinal >= 0 && len(arguments) > 0 {
+            out = out + generic_record_line(arguments, ordinal)
+        } else {
+            out = out + token
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return out
+}
+
+fn executable_record_arguments(identity: Text) -> Text {
+    let open = find(identity, "[")
+    if open < 0 { return "" }
+    let mut rows = ""
+    let mut cursor = open + 1
+    while cursor < len(identity) - 1 {
+        let end = generic_record_type_end(identity, cursor, len(identity) - 1)
+        if end <= cursor { return "" }
+        if len(rows) > 0 { rows = rows + "\n" }
+        rows = rows + text_slice(identity, cursor, end)
+        cursor = end
+        if token_text(identity, cursor) == "," { cursor = cursor + 1 }
+    }
+    return rows
+}
+
+fn executable_record_argument_hexes(identity: Text, path: Text) -> Text {
+    let arguments = executable_record_arguments(identity)
+    let total = generic_record_lines(arguments)
+    let mut rows = ""
+    let mut index = 0
+    while index < total {
+        let item = generic_record_line(arguments, index)
+        let mut hex = ""
+        if generic_record_primitive(item) {
+            hex = "01" + generic_record_primitive_id(item)
+        } else {
+            let children = executable_record_argument_hexes(item, path)
+            hex = "03" + generic_record_type_id(path, const_type_base(item)) +
+                scoped_hir_hex(generic_record_lines(children), 4) + generic_record_flatten(children)
+        }
+        if index > 0 { rows = rows + "\n" }
+        rows = rows + hex
+        index = index + 1
+    }
+    return rows
+}
+
+fn executable_record_symbol(identity: Text, path: Text) -> Text {
+    let id = generic_record_constructed_id(generic_record_type_id(path, const_type_base(identity)),
+        executable_record_argument_hexes(identity, path))
+    let target = "x86_64-linux"
+    let backend = "record-c11/v1"
+    let layout = "aggregate-layout-v1"
+    let hash = scoped_hir_hash_frame("kofun.id.backend-symbol/v1",
+        scoped_hir_text_hex(target) + "00", id,
+        "00" + scoped_hir_text_hex(backend) + "00", scoped_hir_text_hex(layout))
+    let alphabet = "abcdefghijklmnopqrstuvwxyz234567"
+    let one = 1
+    let mut out = "KofunGR_"
+    let mut bits = 0
+    let mut value = 0
+    let mut index = 0
+    while index < len(hash) {
+        value = value * 16 + scoped_hir_hex_digit(text_slice(hash, index, index + 1))
+        bits = bits + 4
+        if bits >= 5 {
+            bits = bits - 5
+            let divisor = one.shl(bits)
+            let digit = value // divisor
+            out = out + text_slice(alphabet, digit, digit + 1)
+            value = value % divisor
+        }
+        index = index + 1
+    }
+    if bits > 0 {
+        let digit = value.shl(5 - bits)
+        out = out + text_slice(alphabet, digit, digit + 1)
+    }
+    return out
+}
+
+# Order dependencies by substituted stored fields. An argument ignored by
+# its declaration does not introduce a by-value cycle.
+fn executable_record_visit(source: Text, identity: Text, rows: Text, stack: Text, at: Int) -> Text {
+    if len(identity) > 128 && (stack != "|" || contains(identity, "[")) {
+        return generic_record_refusal("E2S198", "constructed TypeRef exceeds its display bound", at)
+    }
+    if contains("\n" + rows + "\n", "\n" + identity + "\n") { return rows }
+    let base = const_type_base(identity)
+    let decl = record_declaration_start(source, base)
+    if decl < 0 { return generic_record_refusal("E2S196", "unknown nominal type `" + base + "`", at) }
+    if contains(stack, "|" + identity + "|") {
+        let code = "E2S200"
+        if ends_with(stack, "|" + identity + "|") {
+            return generic_record_refusal("E2S199", "recursive by-value record layout", at)
+        }
+        return generic_record_refusal(code, "mutually recursive by-value record layout", at)
+    }
+    let names = generic_record_binder_names(source, decl)
+    let args = executable_record_arguments(identity)
+    let count = generic_record_lines(args)
+    if starts_with(names, "error[") { return names }
+    if count != generic_record_comma_count(names) {
+        return generic_record_refusal("E2S195", "`" + base + "` expects " +
+            to_text(generic_record_comma_count(names)) + " arguments, got " + to_text(count), at)
+    }
+    let mut result = rows
+    let fields = record_field_count(source, identity)
+    let mut index = 0
+    while index < fields {
+        let field = record_field_text(source, identity, index, true)
+        if record_declaration_start(source, const_type_base(field)) >= 0 {
+            result = executable_record_visit(source, field, result, stack + identity + "|", at)
+            if starts_with(result, "error[") { return result }
+        } else if field != "Int" && field != "Text" && field != "Bool" && field != "Bytes" && field != "List[Int]" {
+            return generic_record_refusal("E2S201", "unsupported stored field type `" + field + "`", at)
+        }
+        index = index + 1
+    }
+    let mut found = 0
+    index = 0
+    while index < generic_record_lines(result) {
+        if const_type_base(generic_record_line(result, index)) == base { found = found + 1 }
+        index = index + 1
+    }
+    if found >= 8 { return generic_record_refusal("E2S197", "`" + base + "` has more than 8 instantiations", decl) }
+    if len(result) > 0 { result = result + "\n" }
+    return result + identity
+}
+
+fn executable_record_instances(source: Text) -> Text {
+    # Diagnose an unsupported generic ADT before the record-only layout pass
+    # resolves a field that uses it, including a forward reference.
+    let first = after_optional_module_header(source, 0)
+    let mut declaration = first
+    while declaration < len(source) {
+        let start = type_declaration_start(source, declaration)
+        if start >= 0 && type_parameter_open(source, start) >= 0 && !record_declaration_at(source, start) {
+            return type_parameter_list_error(source, start)
+        }
+        let end = top_level_end(source, declaration)
+        if end <= declaration { break }
+        declaration = skip_trivia(source, end)
+    }
+    let mut rows = ""
+    let mut cursor = first
+    while cursor < len(source) {
+        let start = type_declaration_start(source, cursor)
+        if start >= 0 {
+            let end = type_declaration_end(source, start)
+            if end < 0 { return generic_record_refusal("E2S201", "malformed record declaration", start) }
+            if executable_record_generic(source, start) {
+                let fields = generic_record_fields_json(source, start, "main.kofun", "", "")
+                if starts_with(fields, "error[") { return fields }
+            }
+            if record_declaration_at(source, start) && type_parameter_open(source, start) < 0 {
+                rows = executable_record_visit(source, type_name(source, start), rows, "|", start)
+                if starts_with(rows, "error[") { return rows }
+            }
+            cursor = skip_trivia(source, end)
+        } else {
+            if token_kind(source, cursor) == "identifier" {
+                let end = executable_record_application_end(source, cursor)
+                if end >= 0 {
+                    let checked = generic_record_type(source, cursor, end, "", "", "main.kofun", "", "", 0)
+                    if starts_with(checked, "error[") { return checked }
+                    let identity = executable_record_substitute(source, cursor, end, "", "")
+                    rows = executable_record_visit(source, identity, rows, "|", cursor)
+                    if starts_with(rows, "error[") { return rows }
+                }
+            }
+            cursor = skip_trivia(source, token_end(source, cursor))
+        }
+    }
+    return rows
+}
+
+fn executable_record_enabled(source: Text) -> Bool {
+    if !contains(source, "[") || !contains(source, "type") { return false }
+    let mut cursor = after_optional_module_header(source, 0)
+    while cursor < len(source) {
+        let start = type_declaration_start(source, cursor)
+        if executable_record_generic(source, start) { return true }
+        let end = top_level_end(source, cursor)
+        if end <= cursor { return false }
+        cursor = skip_trivia(source, end)
+    }
+    return false
+}
+
+# Each row records an already classified complete C type. Nested record size
+# and alignment are read from the completed row, never guessed from a name.
+fn executable_record_layouts(source: Text, rows: Text) -> Text {
+    let mut output = ""
+    let mut facts = ""
+    let mut index = 0
+    while index < generic_record_lines(rows) {
+        let identity = generic_record_line(rows, index)
+        let type = record_c_type_name(identity)
+        let fields = record_field_count(source, identity)
+        let mut declarations = "typedef struct {\n"
+        let mut assertions = ""
+        let mut size = 0
+        let mut align = 1
+        let mut field = 0
+        while field < fields {
+            let name = record_c_field_name(record_field_text(source, identity, field, false))
+            let stored = record_field_text(source, identity, field, true)
+            let mut c = ""
+            let mut width = 8
+            let mut boundary = 8
+            if stored == "Int" { c = "int64_t" }
+            else if stored == "Bool" { c = "bool" width = 1 boundary = 1 }
+            else if stored == "Text" { c = "const char *" }
+            else if stored == "List[Int]" { c = "KofunIntListValue" width = 520 }
+            else if stored == "Bytes" { c = "KofunBytesValue" width = 24 }
+            else {
+                let found = find(facts, "|" + stored + "|")
+                if found < 0 { return generic_record_refusal("E2S201", "missing field layout", 0) }
+                let tail = text_slice(facts, found + len(stored) + 2, len(facts))
+                let split = find(tail, "|")
+                width = decimal_value(text_slice(tail, 0, split))
+                boundary = decimal_value(text_slice(tail, split + 1, find(tail, "\n")))
+                c = record_c_type_name(stored)
+            }
+            size = record_align_up(size, boundary)
+            declarations = declarations + "    " + c + " " + name + ";\n"
+            assertions = assertions + "_Static_assert(offsetof(" + type + ", " + name + ") == " + to_text(size) +
+                ", \"AggregateLayout field offset\");\n"
+            size = size + width
+            if boundary > align { align = boundary }
+            field = field + 1
+        }
+        size = record_align_up(size, align)
+        if size > 140737488355328 { return generic_record_refusal("E2S201", "record exceeds target object bound", 0) }
+        facts = facts + "|" + identity + "|" + to_text(size) + "|" + to_text(align) + "\n"
+        output = output + declarations + "} " + type + ";\n" + assertions +
+            "_Static_assert(sizeof(" + type + ") == " + to_text(size) + ", \"AggregateLayout record size\");\n" +
+            "_Static_assert(_Alignof(" + type + ") == " + to_text(align) + ", \"AggregateLayout record alignment\");\n\n"
+        index = index + 1
+    }
+    return output
 }

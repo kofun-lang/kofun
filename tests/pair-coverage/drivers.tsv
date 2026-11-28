@@ -76,6 +76,7 @@ fuzz
 gate-reachability
 generic-adt-hir
 generic-record-hir
+generic-records-stage2
 generics
 hm-levels
 http

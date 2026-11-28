@@ -1,0 +1,11 @@
+type Box[T] = { value: T }
+fn consume(take item: Box[Text]) -> Int {
+    print(item.value)
+    take item
+    return 7
+}
+fn main() -> Int {
+    let item: Box[Text] = Box[Text](value: "moved")
+    print(consume(item))
+    return 0
+}

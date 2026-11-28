@@ -281,6 +281,11 @@ tasks:
   # preimage with the #303 frame and checks the canonical document, the
   # substituted fields, the limits, and the refusals. The compiler entry that
   # must reproduce these goldens lands next and joins this gate then.
+  generic-records-stage2:
+    desc: "Verify executable concrete generic records across both Stage 2 compilers"
+    cmds:
+      - "sh tests/conformance/generic-records-stage2/check.sh"
+
   generic-record-hir:
     desc: "Verify the generic-record HIR v1 identities, limits, and refusals"
     cmds:
@@ -1690,6 +1695,7 @@ tasks:
             aggregate-bridge \
             generics \
             const-generics \
+            generic-records-stage2 \
             generic-record-hir \
             generic-adt-hir \
             law-declaration-hir \

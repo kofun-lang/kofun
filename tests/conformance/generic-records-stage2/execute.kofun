@@ -1,0 +1,32 @@
+type Box[T] = {
+    value: T,
+}
+
+type Pair[A, B] = {
+    first: A,
+    second: B,
+}
+
+fn pack(value: Int) -> Box[Int] {
+    let result: Box[Int] = Box[Int](value: value)
+    return result
+}
+
+fn read_value(read box: Box[Int]) -> Int {
+    return box.value
+}
+
+fn main() -> Int {
+    let number: Box[Int] = pack(42)
+    print(read_value(number))
+    let message: Box[Text] = Box[Text](value: "kofun")
+    print(message.value)
+    let pair: Pair[Bool, Int] = Pair[Bool, Int](second: 7, first: true)
+    if pair.first {
+        print(pair.second)
+    }
+    let nested: Box[Box[Int]] = Box[Box[Int]](value: number)
+    let inner: Box[Int] = nested.value
+    print(inner.value)
+    return 0
+}

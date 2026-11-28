@@ -127,6 +127,7 @@ cc	invoke	7	required-today	required	framework/cli/check.sh
 cc	invoke	1	required-today	required	framework/http/build.sh
 cc	invoke	1	required-today	required	framework/tui/build.sh
 cc	invoke	2	required-today	required	framework/tui/check.sh
+cc	invoke	1	required-today	required	spec/generic-adt-hir-v1/check.mjs
 cc	invoke	1	required-today	required	spec/generic-adt-hir-v1/check.sh
 cc	invoke	1	required-today	required	spec/generic-record-hir-v1/check.sh
 cc	invoke	1	required-today	required	spec/kif-generics-v1/check.mjs
@@ -160,7 +161,7 @@ cc	invoke	5	required-today	required	tests/conformance/codegen/dense-enum-dispatc
 cc	invoke	1	required-today	required	tests/conformance/command-operands/run.sh
 cc	invoke	1	required-today	required	tests/conformance/concurrency/ownership/check.mjs
 cc	invoke	1	required-today	required	tests/conformance/concurrency/runtime/run.sh
-cc	invoke	6	required-today	required	tests/conformance/const-generics/run.sh
+cc	invoke	7	required-today	required	tests/conformance/const-generics/run.sh
 cc	invoke	4	required-today	required	tests/conformance/decimal-fixed/carrier/run.sh
 cc	invoke	1	required-today	required	tests/conformance/decimal-fixed/runtime/check.sh
 cc	invoke	4	required-today	required	tests/conformance/decimal/run.sh
@@ -169,6 +170,7 @@ cc	invoke	1	required-today	required	tests/conformance/discovery/sanitizer-cc-wra
 cc	invoke	2	required-today	required	tests/conformance/discovery/sanitizer-objects.sh
 cc	invoke	5	required-today	required	tests/conformance/effects/pure-boundary/run.sh
 cc	invoke	1	required-today	required	tests/conformance/effects/pure-io/run.sh
+cc	invoke	1	required-today	required	tests/conformance/generic-records-stage2/check.mjs
 cc	invoke	3	required-today	required	tests/conformance/generics/run.sh
 cc	invoke	1	required-today	required	tests/conformance/http-client-errors/run.sh
 cc	invoke	1	required-today	required	tests/conformance/http-client-headers/run.sh
@@ -330,6 +332,7 @@ node	invoke	2	required-today	required	tests/conformance/decimal-fixed/carrier/ru
 node	invoke	2	required-today	required	tests/conformance/decimal-fixed/identity/run.sh
 node	invoke	7	required-today	required	tests/conformance/effects/pure-boundary/run.sh
 node	invoke	5	required-today	required	tests/conformance/effects/pure-io/run.sh
+node	invoke	1	required-today	required	tests/conformance/generic-records-stage2/check.sh
 node	invoke	7	required-today	required	tests/conformance/http-client-errors/run.sh
 node	invoke	2	required-today	required	tests/conformance/http-client-headers/run.sh
 node	invoke	2	required-today	required	tests/conformance/http-client-origin/run.sh
@@ -485,6 +488,8 @@ node	source	1	required-today	required	tests/conformance/decimal-fixed/carrier/pa
 node	source	1	required-today	required	tests/conformance/decimal-fixed/identity/pair.mjs
 node	source	1	required-today	required	tests/conformance/effects/pure-boundary/report.mjs
 node	source	1	required-today	required	tests/conformance/effects/pure-io/report.mjs
+node	source	1	required-today	required	tests/conformance/generic-records-stage2/check-layout.mjs
+node	source	1	required-today	required	tests/conformance/generic-records-stage2/check.mjs
 node	source	1	required-today	required	tests/conformance/http-client-errors/capture.mjs
 node	source	1	required-today	required	tests/conformance/http-client-errors/check-registry.mjs
 node	source	1	required-today	required	tests/conformance/http-client-errors/value_match_pair.mjs
@@ -725,6 +730,7 @@ shell-build-driver	source	1	required-today	required	tests/conformance/discovery/
 shell-build-driver	source	1	required-today	required	tests/conformance/discovery/sanitizer-objects.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/effects/pure-boundary/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/effects/pure-io/run.sh
+shell-build-driver	source	1	required-today	required	tests/conformance/generic-records-stage2/check.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/generics/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/http-client-errors/run.sh
 shell-build-driver	source	1	required-today	required	tests/conformance/http-client-headers/run.sh

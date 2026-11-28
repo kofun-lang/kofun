@@ -129,8 +129,8 @@ executable bootstrap implementation.
   both halves of the `--emit-generic-record-hir` entry (the canonical Kofun half
   through the host driver, the maintained C half as the built binary) against
   the positive golden and the negative fixtures, requiring the two halves to
-  agree. Ordinary compilation keeps refusing generic records (`E2S148`), and no
-  C, KIF, or capability is claimed here.
+  agree. `task generic-records-stage2` checks the distinct C types, layouts,
+  and execution of bounded concrete generic records using those identities.
 - `generic-adt-hir-v1/generic-adt-hir-v1.md`, its closed JSON schema
   `kofun.generic-adt-hir.v1.schema.json`, independent `model.mjs` oracle, and
   canonical positive golden freeze the generic-ADT analysis document for issue
@@ -143,10 +143,9 @@ executable bootstrap implementation.
   refusal (`E2S203`-`E2S217`), and drives both halves of the
   `--emit-generic-adt-hir` entry against the golden and the negative fixtures,
   requiring the halves to agree with each other, with the record entry on a
-  record-only file, and with ordinary compilation still refusing generic
-  sources (`E2S148`). Layout, matching, and backend emission are deferred
-  (#1269/#1270), as is exact per-instantiation layout-cycle classification; no
-  C, KIF, or capability is claimed here.
+  record-only file, and on ordinary compilation. Both halves execute the
+  concrete record example and refuse generic ADTs with `E2S148`. Generic
+  ADT layout, matching, and backend emission are tracked in #1270.
 - `concurrency/schedule-trace-v1.md` is the accepted deterministic testing
   contract for issue #736: stable scope/task identities, the canonical
   `kofun.schedule-trace/v1` and `kofun.schedule-witness/v1` bytes, FIFO, seeded,

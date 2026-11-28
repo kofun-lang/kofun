@@ -14,8 +14,8 @@
  * the golden byte for byte, refuse every negative fixture with its registered
  * code and no artifact, agree with each other on every byte they print, agree
  * with the record entry on a record-only file (the executable form of "the
- * identity core is reused unchanged"), and leave ordinary compilation refusing
- * generic sources with `E2S148`.
+ * identity core is reused unchanged"). Ordinary compilation must refuse generic
+ * ADTs with `E2S148` and run a concrete generic record on both halves.
  */
 
 import fs from "node:fs";
@@ -753,15 +753,19 @@ if (refused === negatives.length) {
     }
 }
 
-/* Ordinary compilation keeps refusing generic sources. */
+/* Ordinary compilation refuses generic ADTs, including mixed record/ADT files. */
 {
+    const forward = `${WORK}/record-before-adt.kofun`;
+    fs.writeFileSync(forward, "type Wrapper[T] = { inner: Opt[T] }\ntype Opt[T] = | None | Some(value: T)\n");
     const sources = [
-        `${FIX}positive.kofun`,
-        `${RECORD_FIX}positive.kofun`,
-        `${ROOT}tests/conformance/adt/generic_unsupported.kofun`,
+        [`${FIX}positive.kofun`, "Opt", 9],
+        [forward, "Opt", 45],
+        [`${ROOT}tests/conformance/adt/generic_unsupported.kofun`, "Box", 9],
     ];
     let ordinary = 0;
-    for (const source of sources) {
+    for (const [source, name, offset] of sources) {
+        const expected = "error[E2S148]: type parameters on a nominal type are unsupported; " +
+            "`" + name + "` may declare `[const NAME: Int]` only at byte " + offset + "\n";
         const base = `${WORK}/ordinary-${counter += 1}`;
         const outputs = [`${base}.c`, `${base}.ir`, `${base}.tokens`];
         const c = spawnSync(stage2, ["--compile-outcome", source, ...outputs], { encoding: "latin1" });
@@ -770,21 +774,49 @@ if (refused === negatives.length) {
         const status = kofun.compile_file(bytes(source), bytes(outputs[0]), bytes(outputs[1]), bytes(outputs[2]));
         const kLeft = outputs.filter((output) => fs.existsSync(output));
         outputs.forEach((output) => fs.rmSync(output, { force: true }));
-        if (c.status !== 1 || !c.stdout.startsWith("error[E2S148]")) {
+        if (c.status !== 1 || c.stderr !== "" || c.stdout !== expected) {
             fail("ordinary C", `${source.split("/").pop()}: expected E2S148 exit 1, got ${c.status} ${c.stdout.trim()}`);
-        } else if (Number(status) !== 1 || !printed.startsWith("error[E2S148]")) {
+        } else if (Number(status) !== 1 || printed !== expected) {
             fail("ordinary Kofun", `${source.split("/").pop()}: expected E2S148 exit 1, got ${status} ${printed.trim()}`);
         } else if (cLeft.length > 0 || kLeft.length > 0) {
             fail("ordinary artifacts", `${source.split("/").pop()}: a refused compilation left ${[...cLeft, ...kLeft].join(", ")}`);
-        } else if (c.stdout !== printed) {
-            fail("ordinary agreement", `${source.split("/").pop()}: the halves disagree on the refusal`);
         } else {
             ordinary += 1;
         }
     }
     if (ordinary === sources.length) {
-        pass("ordinary compilation and --compile-outcome still refuse generic sources with E2S148, exit 1 and no artifact, in both halves");
+        pass("ordinary compilation refuses generic ADTs with E2S148 and no artifact on both halves, regardless of record declaration order");
     }
+}
+
+/* Give the record-only HIR fixture an executable entry point. */
+{
+    const source = `${WORK}/ordinary-record.kofun`;
+    fs.writeFileSync(source, fs.readFileSync(`${RECORD_FIX}positive.kofun`, "utf8") + `
+fn main() -> Int {
+    let box: Box[Int] = Box[Int](value: 42)
+    print(box.value)
+    return 0
+}
+`);
+    let executed = 0;
+    for (const half of ["C", "Kofun"]) {
+        const base = `${WORK}/ordinary-record-${half}`;
+        const cFile = base + ".c";
+        const args = [source, cFile, base + ".ir", base + ".tokens"];
+        printed = "";
+        const result = half === "C"
+            ? spawnSync(stage2, ["--compile-outcome", ...args], { encoding: "utf8" })
+            : { status: Number(kofun.compile_file(...args.map(bytes))), stdout: printed, stderr: "" };
+        if (!check(result.status === 0 && result.stderr === "" && result.stdout === cFile + "\n",
+            `ordinary record ${half}`, result.error?.message ?? `${result.status} ${result.stdout} ${result.stderr}`)) continue;
+        const build = spawnSync(process.env.CC || "cc", ["-std=c11", cFile, "-o", base], { encoding: "utf8" });
+        if (!check(build.status === 0, `ordinary record ${half} link`, build.error?.message ?? build.stderr)) continue;
+        const run = spawnSync(base, [], { encoding: "utf8" });
+        if (check(run.status === 0 && run.stdout === "42\n" && run.stderr === "",
+            `ordinary record ${half} execution`, run.error?.message ?? `${run.status} ${run.stdout} ${run.stderr}`)) executed++;
+    }
+    if (executed === 2) pass("both compiler halves execute the record-only fixture and print its constructed Box[Int] field");
 }
 
 /* A lexical error is reported as such by both entries in both halves. */
