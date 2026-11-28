@@ -6,7 +6,7 @@
     "VERSION": "52805dd2a8754a2d0acfe93aedfbbb70a8d360223d80a9c8d7c8876d5b3502d6",
     "release/claims.json": "579afcb7cb298f632d64bb07b6af295589fcf9c0e993ea2ea7a4abf21a5760d3",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
-    "bootstrap/manifest.json": "c7070d4dc1e13252483ec690888b30fe92926910bc5c1aacd6fe031e84225b9d"
+    "bootstrap/manifest.json": "5a06041329a143f28ef7fae11e3c4a32fb80f03860106f6fd8f0ababab44a39a"
   },
   "states": {
     "checkpoint": 42,
@@ -831,7 +831,7 @@
     "bootstrap/selfhost/driver/corpus_reject.stdout": "b11ae682acae186b10022c3469af65b54cd03c2e88a4756eba1cbe5b0e9356f9",
     "bootstrap/stage1/README.md": "449e52413da5d35eafee5b56a7c243ee0363774b8d4110d2a3a998a49f95d52f",
     "bootstrap/stage1/SHA256SUMS": "0dc3d2677f03dfe3bd6f9da9f923315dd5f30dcaeca4768f3c63ec1f66744b94",
-    "bootstrap/stage2/README.md": "e5dfcf4b3448f90580821e9341105dcefbe0d78fc1561447fb0c3537bd7e079f",
+    "bootstrap/stage2/README.md": "9efec52be58316e4334825ed95be9ad6e30c26f27eae43c682b87648dd3d414c",
     "bootstrap/stage2/fixtures/borrowed_move_text.kofun": "34502461891e7c8f42c9017e9fbfc857e54b10ca4fe59551be9ab9ab22d2c1b6",
     "bootstrap/wasm/fixtures/unsupported_text.kofun": "e0a45136410ddb85e9f5b3e5c39e7903d96da39aa53aaf3078d2555b4f383864",
     "bootstrap/wasm/object_arena_check.sh": "40af44fc0928dfb5ab18dc9f06a295e7c9ec653422fe07999fbd9a66914fde3d",

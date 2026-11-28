@@ -68,6 +68,15 @@ function kofunLower(side,test) {
   const source=bytes(test.source), hir=side.build_scope_hir(source);
   return text(hir).startsWith('error[') ? text(hir) : text(side.lower_c(source,hir));
 }
+function buildProgram(name, source, flags = []) {
+  const emitted = path.join(work, name + '.c');
+  const binary = path.join(work, name);
+  fs.writeFileSync(emitted, source);
+  const build = run(process.env.CC || 'cc', ['-std=c11', '-Wall', '-Wextra', '-Werror',
+    '-pedantic', ...flags, emitted, '-o', binary]);
+  assert.equal(build.status, 0, name + ': ' + build.stderr);
+  return binary;
+}
 const expected = new Map();
 for(const test of fixture.cases) {
   const output=nativeLower(native,test);
@@ -77,10 +86,7 @@ for(const test of fixture.cases) {
   const input=path.join(work,`${test.name}.kofun`);
   const validation=run(native,['--pair-validate',input]);
   assert.equal(validation.status,0);assert.equal(validation.stdout,'',`valid Unicode fixture: ${test.name}`);
-  const emitted=path.join(work,`${test.name}.c`), binary=path.join(work,test.name);
-  fs.writeFileSync(emitted,output);
-  const build=run(process.env.CC || 'cc',['-std=c11','-Wall','-Wextra','-Werror','-pedantic',emitted,'-o',binary]);
-  assert.equal(build.status,0,`${test.name}: ${build.stderr}`);
+  const binary = buildProgram(test.name, output);
   const execution=run(binary,[]);assert.equal(execution.status,0);assert.equal(execution.stdout,test.output);
 }
 console.log(`PASS: ${covered.size} identifier funnels, byte-identical C and strict C11 execution in both halves`);
@@ -119,13 +125,39 @@ assert.equal(compiler.selfhost_c11_builtin_helper('stage2_unicode_scalar_at'),''
 const scalarTest={name:'admitted-scalar',source:'fn main() -> Int { return stage2_unicode_scalar_at("A", 0) }\n'};
 for(const output of [nativeLower(native,scalarTest),kofunLower(compiler,scalarTest)]) assert.ok(!output.startsWith('error['),`scalar admitted: ${output.slice(0,80)}`);
 
-// #1785 still owns the file-identity binding; until then it stays private.
-assert.equal(compiler.builtin_arity('stage2_same_file'),-1n);
+assert.equal(compiler.builtin_arity('stage2_same_file'),2n);
 assert.equal(compiler.selfhost_builtin_slot('stage2_same_file'),-1n);
 assert.equal(compiler.selfhost_c11_builtin_helper('stage2_same_file'),'');
-const fileTest={name:'private-stage2_same_file',source:'fn main() -> Int { return stage2_same_file("a", "b") }\n'};
-for(const refusal of [nativeLower(native,fileTest),kofunLower(compiler,fileTest)]) assert.match(refusal,/error\[E2S16\]: unknown Core function/);
-console.log('PASS: the scalar operation is admitted; the file-identity operation stays private until #1785; same-spelling declarations remain ordinary');
+assert.doesNotMatch(expected.get('private-spelling-declarations'), /sys\/stat\.h|kofun_same_file\(/);
+const fileTest = {
+  name: 'core-file-identity',
+  source: [
+    'fn report(value: Int) -> Int { print(value)',
+    '    return 0',
+    '}',
+    'fn main() -> Int {',
+    '    let left = stage2_command_operand_text(1)',
+    '    let right = stage2_command_operand_text(2)',
+    '    return report(stage2_same_file(left, right))',
+    '}',
+    '',
+  ].join('\n'),
+};
+const fileC = nativeLower(native, fileTest);
+assert.match(fileC, /static inline int64_t kofun_same_file\(/);
+assert.equal(kofunLower(compiler, fileTest), fileC);
+const fileProgram = buildProgram(fileTest.name, fileC, ['-O2']);
+for (const [args, error] of [
+  ['"a"', /error\[E2S17\]: Core function .* expects 2 arguments, got 1/],
+  ['paths, "b"', /error\[E2S15\]: builtin .* expects Text for argument 1, got List/],
+  ['"a", paths', /error\[E2S15\]: builtin .* expects Text for argument 2, got List/],
+]) {
+  const invalid = {name: 'file-identity-signature', source:
+    'fn main() -> Int {\n    let paths: List[Int] = [1, 2]\n    return stage2_same_file(' + args + ')\n}\n'};
+  const refusal = nativeLower(native, invalid);
+  assert.match(refusal, error);
+  assert.equal(kofunLower(compiler, invalid), refusal);
+}
 
 const modes=[
   ['--emit-selfhost-hir','emit_selfhost_hir_file','selfhost-HIR',true],
@@ -143,6 +175,31 @@ const input=path.join(work,'input.kofun'), output=path.join(work,'output'), hard
 const source='fn main() -> Int { return 0 }\n';
 fs.writeFileSync(input,source);fs.linkSync(input,hard);fs.symlinkSync(input,link);fs.mkdirSync(path.join(work,'dir'));
 const aliases=[input,hard,link,`${work}/./input.kofun`,`${work}/dir/../input.kofun`,path.relative(root,input)];
+const absent = path.join(work, 'absent-output');
+const loop = path.join(work, 'symlink-loop');
+fs.symlinkSync(loop, loop);
+fs.writeFileSync(output, 'preserve output');
+for (const [left, right, identity] of [
+  ...aliases.map(alias => [input, alias, 1]),
+  [absent, absent, 1],
+  [input, output, 0],
+  [input, absent, 0],
+  [absent, output, null],
+  [absent, absent + '-other', null],
+  [input, path.join(input, 'child'), null],
+  [input, loop, null],
+]) {
+  const result = run(fileProgram, [left, right]);
+  const failed = identity === null;
+  assert.equal(result.status, failed ? 2 : 0);
+  assert.equal(result.stdout, failed ? '' : String(identity) + '\n');
+  assert.equal(result.stderr, failed ? 'error[E2S35]: stage2_same_file: file lookup failed before output open\n' : '');
+  assert.equal(fs.readFileSync(input, 'utf8'), source);
+  assert.equal(fs.readFileSync(output, 'utf8'), 'preserve output');
+  assert(!fs.existsSync(absent));
+  assert(!fs.existsSync(absent + '-other'));
+}
+console.log('PASS: Core file identity in both halves, alias and lookup precedence, typed refusal before the caller continues');
 function invokeKofun(pair,mode,left,right,{fault,invalidDigest=false,writeProbe,extra=[]}={}) {
   let printed='';
   const stat=p=> { if(text(p)===fault) { const error=new Error('injected lookup');error.code='EACCES';throw error; } return fs.statSync(text(p),{bigint:true}); };

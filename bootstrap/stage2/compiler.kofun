@@ -11,9 +11,9 @@
 # own full source: any change made by the front end would make the second
 # projection differ.
 
-# The driver alone binds stage2_unicode_scalar_at and stage2_same_file.
-# Neither name is in the ordinary-source builtin tables. Text offsets and
-# chars remain byte-wise; only validated scalar boundaries reach the decoder.
+# The driver and the Core lowerer provide the bounded scalar and file-identity
+# operations. Text offsets and chars are byte-wise; only validated scalar
+# boundaries reach the decoder.
 fn unicode_scalar_width(value: Int) -> Int {
     if value < 128 { return 1 }
     if value < 2048 { return 2 }
@@ -8065,26 +8065,27 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
             }
             return "kofun_find(" + subject + ", " + needle_value + ")"
         }
-        # #1782/#1784. The driver's bounded UTF-8 scalar decode, admitted to
-        # the Core path for self-compilation with read-only authority.
+        # Both host operations have two arguments. Resolve the call first so
+        # an ordinary declaration or lexical binding can shadow either name.
         if open < end && token_text(source, open) == "(" &&
-           name == "stage2_unicode_scalar_at" &&
+           (name == "stage2_unicode_scalar_at" || name == "stage2_same_file") &&
            call_resolves_to_builtin(source, hir, cursor, name) {
-            let value = skip_trivia(source, token_end(source, open))
-            let value_end = argument_end(source, value)
-            let separator = skip_trivia(source, value_end)
-            let offset = skip_trivia(source, token_end(source, separator))
-            let subject = emit_expression(source, hir, value, value_end)
-            if starts_with(subject, "error[") {
-                return subject
+            let left = skip_trivia(source, token_end(source, open))
+            let left_end = argument_end(source, left)
+            let separator = skip_trivia(source, left_end)
+            let right = skip_trivia(source, token_end(source, separator))
+            let left_text = emit_expression(source, hir, left, left_end)
+            if starts_with(left_text, "error[") {
+                return left_text
             }
-            let offset_value = emit_expression(
-                source, hir, offset, argument_end(source, offset))
-            if starts_with(offset_value, "error[") {
-                return offset_value
+            let right_text = emit_expression(
+                source, hir, right, argument_end(source, right))
+            if starts_with(right_text, "error[") {
+                return right_text
             }
-            return "kofun_unicode_scalar_at(" + subject + ", " +
-            offset_value + ")"
+            let mut helper = "kofun_unicode_scalar_at"
+            if name == "stage2_same_file" { helper = "kofun_same_file" }
+            return helper + "(" + left_text + ", " + right_text + ")"
         }
         if open >= end || token_text(source, open) != "(" {
             let binding_id = hir_use_binding_id(hir, cursor)
@@ -8927,9 +8928,8 @@ fn builtin_arity(name: Text) -> Int {
     if name == "stage2_list_append" {
         return 2
     }
-    # #1782/#1784. The driver's Unicode scalar decode, admitted to the Core
-    # path for self-compilation with bounded read-only authority.
-    if name == "stage2_unicode_scalar_at" {
+    # The bounded host operations admitted to the Core path by #1782.
+    if name == "stage2_unicode_scalar_at" || name == "stage2_same_file" {
         return 2
     }
     # #1696. The checked origin construction takes the record it validates.
@@ -9064,7 +9064,7 @@ fn builtin_parameter_types(name: Text) -> Text {
         return "TextOrList"
     }
     if name == "contains" || name == "find" || name == "starts_with" ||
-       name == "write_text" {
+       name == "stage2_same_file" || name == "write_text" {
         return "Text|Text"
     }
     if name == "replace" {
@@ -10155,6 +10155,7 @@ fn validate_core_calls(source: Text, hir: Text) -> Text {
                     }
                     if name == "find" || name == "len" ||
                        name == "stage2_unicode_scalar_at" ||
+                       name == "stage2_same_file" ||
                        name == "text_slice" || name == "to_text" ||
                        name == "stage2_bytes_empty" ||
                        name == "stage2_bytes_assign_zeroed" ||
@@ -14852,7 +14853,7 @@ fn builtin_return_type(name: Text) -> Text {
         return "Bool"
     }
     if name == "find" || name == "len" ||
-       name == "stage2_unicode_scalar_at" {
+       name == "stage2_unicode_scalar_at" || name == "stage2_same_file" {
         return "Int"
     }
     if name == "read_text" || name == "replace" || name == "text_slice" ||
@@ -22215,6 +22216,19 @@ fn source_uses_bytes(source: Text, hir: Text) -> Bool {
     return false
 }
 
+fn source_calls_builtin(source: Text, hir: Text, name: Text) -> Bool {
+    if !contains(source, name) { return false }
+    let mut cursor = skip_trivia(source, 0)
+    while cursor < len(source) {
+        let next = skip_trivia(source, token_end(source, cursor))
+        if token_text(source, cursor) == name && next < len(source) &&
+           token_text(source, next) == "(" &&
+           call_resolves_to_builtin(source, hir, cursor, name) { return true }
+        cursor = next
+    }
+    return false
+}
+
 fn source_uses_fractional_values(source: Text) -> Bool {
     let mut cursor = skip_trivia(source, 0)
     while cursor < len(source) {
@@ -23319,11 +23333,30 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     # is degradation the call-arguments gate correctly refuses.
     let mut bytes_prelude = ""
     let mut bytes_text_prelude = ""
-    let mut bytes_include = ""
+    let mut stdlib_include = ""
     if source_uses_bytes(source, hir) {
         bytes_prelude = bytes_carrier_prelude()
         bytes_text_prelude = bytes_text_bridge_prelude()
-        bytes_include = "#include <stdlib.h>\n"
+        stdlib_include = "#include <stdlib.h>\n"
+    }
+    let mut identity_includes = ""
+    let mut identity_prelude = ""
+    if source_calls_builtin(source, hir, "stage2_same_file") {
+        stdlib_include = "#include <stdlib.h>\n"
+        identity_includes = "#include <errno.h>\n#include <sys/stat.h>\n"
+        identity_prelude =
+        "static inline int64_t kofun_same_file(const char *input, const char *output) {\n" +
+        "    struct stat left, right;\n" +
+        "    if (strcmp(input, output) == 0) return 1;\n" +
+        "    if (stat(input, &left) == 0) {\n" +
+        "        if (stat(output, &right) == 0) {\n" +
+        "            return left.st_dev == right.st_dev && left.st_ino == right.st_ino;\n" +
+        "        }\n" +
+        "        if (errno == ENOENT) return 0;\n" +
+        "    }\n" +
+        "    kofun_error(\"error[E2S35]: stage2_same_file: file lookup failed before output open\");\n" +
+        "    exit(2);\n" +
+        "}\n"
     }
     # #1666. The bounded C11 command surface is emitted only for a source that
     # can reach it, the way the Bytes carrier is: a program that never spells
@@ -23684,7 +23717,7 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     "#include <stddef.h>\n" +
     "#include <stdint.h>\n" +
     "#include <stdio.h>\n" +
-    bytes_include + "#include <string.h>\n" + decimal_include + "\n" +
+    stdlib_include + "#include <string.h>\n" + identity_includes + decimal_include + "\n" +
     enum_classic_typedef(source) +
     "typedef const unsigned char *KofunIntList;\n" +
     "typedef struct { uint64_t length; int64_t elements[64]; } KofunIntListValue;\n" +
@@ -23828,6 +23861,7 @@ fn lower_c_body(source: Text, hir: Text) -> Text {
     "    memcpy(slot, left, left_width); memcpy(slot + left_width, right, right_width);\n" +
     "    slot[left_width + right_width] = '\\0'; return slot;\n" +
     "}\n" +
+    identity_prelude +
     command_prelude +
     stream_prelude +
     origin_prelude +

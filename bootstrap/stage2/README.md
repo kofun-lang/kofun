@@ -12,15 +12,14 @@ bootstrap subset already exercised by the Stage 1 seed:
 - `args`, `read_text`, `write_text`, `chars`, `len`, `text_slice`,
   `contains`, `starts_with`, `is_digit`, `is_space`, and `to_text`.
 
-The compiler-private `stage2_unicode_scalar_at` and `stage2_same_file`
-operations follow
+The bounded `stage2_unicode_scalar_at` and `stage2_same_file` operations follow
 [`stage2-pair-host-primitives-v1`](../../spec/stage2-pair-host-primitives-v1/PROFILE.md).
-They are driver bindings, separate from ordinary-source builtin resolution.
-`host-driver.mjs` executes the trusted Kofun compiler's bootstrap subset for
-`task stage2-pair-host-primitives`; program source is passed to those compiler
-functions as data and receives no host-operation authority. This bounded
-execution path does not claim native self-compilation of the Stage 2 compiler
-(the remaining owner is #1483).
+The bootstrap driver binds them when executing the trusted compiler. The Core
+lowerer also recognizes both signatures in ordinary source, where user
+declarations of the same name take precedence. The generated file-identity
+helper follows final symlinks and reports `E2S35` on an indeterminate lookup
+before its caller continues. The host-primitives gate runs the Kofun half
+through `host-driver.mjs`; #1483 tracks native self-compilation.
 
 The pair gate compares complete C output and runs the emitted programs across
 all identifier escaping funnels, including parameters, function values,
