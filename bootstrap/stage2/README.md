@@ -186,6 +186,11 @@ token spans. The frozen Stage 1 source now reaches `trim` at byte 7701.
 copies the subject when the needle is empty. The replacement is literal.
 The result uses one Text temporary and reports `R021` above 255 bytes.
 
+`validate_unicode_source(Text)` calls the pinned Unicode source validator.
+It returns empty Text on success and the formatted diagnostic in the selected
+locale on failure. A diagnostic that exceeds the bounded Text size produces
+`R021`. Compile emitted C that uses this builtin with `-I unicode`.
+
 Unannotated `let` bindings carry inferred types in the scope-HIR rather than
 a blind `Int` default: literals by token kind, calls by the declared or
 builtin result type, name references by their resolved binding, indexing the

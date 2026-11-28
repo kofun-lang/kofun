@@ -1287,6 +1287,7 @@ tests/conformance/syntax/issues_48_60/token-spans.kofun
 tests/conformance/syntax/issues_48_60/unterminated-string.kofun
 tests/conformance/text-results/bootstrap_chars.kofun
 tests/conformance/text-results/bootstrap_replace.kofun
+tests/conformance/text-results/bootstrap_validate_source.kofun
 tests/conformance/text-results/chars_index_type.kofun
 tests/conformance/text-results/chars_out_of_range.kofun
 tests/conformance/text-results/chars_shadow.kofun
@@ -1300,6 +1301,9 @@ tests/conformance/text-results/replace_too_long.kofun
 tests/conformance/text-results/site_limit.kofun
 tests/conformance/text-results/slice_out_of_range.kofun
 tests/conformance/text-results/temporary_exhaustion.kofun
+tests/conformance/text-results/validate_source_bad_type.kofun
+tests/conformance/text-results/validate_source_shadow.kofun
+tests/conformance/text-results/validate_source_too_long.kofun
 tests/conformance/text-results/values.kofun
 tests/conformance/text/arabic_graphemes.kofun
 tests/conformance/text/chars_runtime.kofun
