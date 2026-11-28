@@ -126,11 +126,11 @@ records the decision on
 [#1714](https://github.com/kofun-lang/kofun/issues/1714), which the decision
 owner accepted on 2026-10-04 as amended by the argument-effect rule. The ledger
 indexes it as `DD-042`. #1730 implemented the refusal as `E2S223`; the
-`Current behavior` table below is the measurement that motivated it, kept as
-the before picture. The decision owner resolved the two open conflicts on
+`Behavior before the refusal` table records the measurement that motivated it.
+The decision owner resolved the two open conflicts on
 2026-11-23; *Resolved conflicts* records the answers in place of the questions.
 
-### Current behavior
+### Behavior before the refusal
 
 Measured on `origin/main@7d2caf6f3fa3bf733533b08ccf20b6551c3e13f0`,
 2026-10-04, where `twice` is `fn twice(x: Int) -> Int { return x + x }` and
@@ -144,8 +144,7 @@ Measured on `origin/main@7d2caf6f3fa3bf733533b08ccf20b6551c3e13f0`,
 | `forward(noisy, 7)` | `bin/kofun check` / `bin/kofun run` | `ok`, exit 0 / prints `7`, exit 0. The sidecar publishes `forward` and `main` as `pure`, `noisy` as `io` |
 | `twice(noisy(3))` | `bin/kofun run` | prints `3`, exit 0 |
 
-A call is therefore the only expression a statement can discard today, and
-nothing refuses the discard.
+On that revision, a statement could discard a call's result without a diagnostic.
 
 ### The rule
 
@@ -263,9 +262,10 @@ earlier by `E2S16`, an authority misuse by `E353`, a `pure` promise by
 `E2S176`, and a `Unit` result by `E2S15`; the discard refusal never replaces
 those answers.
 
-The refusal cannot read a sidecar file, because its own failure prevents that
-file from being written. The typed-sidecar producer's projection budget
-therefore does not enter into it. On the commit above, the concatenated program
+The compiler decides the refusal before sidecar projection. With
+`--emit-typed-sidecar`, a refused call produces a partial, non-authoritative
+document carrying `E2S223` and no validated effect fact. The projection budget
+therefore does not enter into the decision. On the commit above, the concatenated program
 that `tests/stdlib/benchmark-report-codec/check.sh` builds checks `ok`. With
 `--emit-typed-sidecar` it fails with `ETS04`, because it declares 103 top-level
 functions and the producer projects at most 64. The refusal applies to that

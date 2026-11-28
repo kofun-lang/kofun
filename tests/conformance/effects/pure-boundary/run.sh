@@ -281,9 +281,9 @@ if grep -a 'effect-io-' "$WORK/one_hop.kse" >/dev/null 2>&1; then
     fail 'a refused program published an effect fact'
 fi
 
-# #1711. The value-reference refusals through the producer's pipeline too:
-# the edge is asked in both, so both must refuse with the CLI's golden.
-for stem in callable_argument callable_root; do
+# Check value-reference and discarded-result refusals through the producer.
+# Its diagnostics must match the CLI even when an authority error takes precedence.
+for stem in callable_argument callable_root discarded_pure discarded_precedence; do
     set +e
     "$WORK/kofun-stage2-semantic-events" \
         "$CASES/$stem.kofun" "src/$stem.kofun" "$WORK/$stem.kse" 1 \
@@ -293,6 +293,7 @@ for stem in callable_argument callable_root; do
     assert_num "producer exit for $stem" "$producer_status" -eq 1
     cmp "$CASES/$stem.stderr" "$WORK/$stem.producer" ||
         fail "the two compile pipelines disagree about $stem"
+    assert_not_grep "refused $stem publishes no effect fact" -a 'effect-io-' "$WORK/$stem.kse"
 done
 
 # ------------------------------------------------------------------ mutations
