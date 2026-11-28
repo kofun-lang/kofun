@@ -27292,6 +27292,68 @@ static char *lower_fixed_result_match(
     return emitted.data;
 }
 
+static void emit_print_value(
+    Buffer *emitted,
+    const char *value_type,
+    const char *value,
+    const char *failure_result
+) {
+    if (strcmp(value_type, "Decimal") == 0) {
+        buffer_format(
+            emitted,
+            "    {\n"
+            "        KofunDecimal *kofun_value = %s;\n"
+            "        char *kofun_text = "
+            "kofun_decimal_to_canonical_text(kofun_value);\n"
+            "        printf(\"%%s\\n\", kofun_text);\n"
+            "        free(kofun_text);\n"
+            "    }\n",
+            value
+        );
+    } else if (strcmp(value_type, "Float") == 0) {
+        buffer_format(
+            emitted,
+            "    {\n"
+            "        double kofun_value = %s;\n"
+            "        printf(\"%%.17g\\n\", kofun_value);\n"
+            "    }\n",
+            value
+        );
+    } else if (strcmp(value_type, "DecimalResult") == 0) {
+        buffer_format(
+            emitted,
+            "    {\n"
+            "        KofunDecimalResult *kofun_value = %s;\n"
+            "        printf(\"%%s\\n\", "
+            "kofun_decimal_value_division_name(kofun_value));\n"
+            "    }\n",
+            value
+        );
+    } else if (strcmp(value_type, "Text") == 0) {
+        buffer_format(
+            emitted,
+            "    {\n"
+            "        const char *kofun_value = %s;\n"
+            "        if (kofun_failed) return %s;\n"
+            "        printf(\"%%s\\n\", kofun_value);\n"
+            "    }\n",
+            value,
+            failure_result
+        );
+    } else {
+        buffer_format(
+            emitted,
+            "    {\n"
+            "        int64_t kofun_value = %s;\n"
+            "        if (kofun_failed) return %s;\n"
+            "        printf(\"%%\" PRId64 \"\\n\", kofun_value);\n"
+            "    }\n",
+            value,
+            failure_result
+        );
+    }
+}
+
 static char *lower_body_with_workspace(
     const char *source,
     const char *hir,
@@ -28771,60 +28833,7 @@ static char *lower_body_with_workspace(
                 function_open,
                 value_start
             );
-            if (strcmp(value_type, "Decimal") == 0) {
-                buffer_format(
-                    &emitted,
-                    "    {\n"
-                    "        KofunDecimal *kofun_value = %s;\n"
-                    "        char *kofun_text = "
-                    "kofun_decimal_to_canonical_text(kofun_value);\n"
-                    "        printf(\"%%s\\n\", kofun_text);\n"
-                    "        free(kofun_text);\n"
-                    "    }\n",
-                    value
-                );
-            } else if (strcmp(value_type, "Float") == 0) {
-                buffer_format(
-                    &emitted,
-                    "    {\n"
-                    "        double kofun_value = %s;\n"
-                    "        printf(\"%%.17g\\n\", kofun_value);\n"
-                    "    }\n",
-                    value
-                );
-            } else if (strcmp(value_type, "DecimalResult") == 0) {
-                buffer_format(
-                    &emitted,
-                    "    {\n"
-                    "        KofunDecimalResult *kofun_value = %s;\n"
-                    "        printf(\"%%s\\n\", "
-                    "kofun_decimal_value_division_name(kofun_value));\n"
-                    "    }\n",
-                    value
-                );
-            } else if (strcmp(value_type, "Text") == 0) {
-                buffer_format(
-                    &emitted,
-                    "    {\n"
-                    "        const char *kofun_value = %s;\n"
-                    "        if (kofun_failed) return %s;\n"
-                    "        printf(\"%%s\\n\", kofun_value);\n"
-                    "    }\n",
-                    value,
-                    failure_result
-                );
-            } else {
-                buffer_format(
-                    &emitted,
-                    "    {\n"
-                    "        int64_t kofun_value = %s;\n"
-                    "        if (kofun_failed) return %s;\n"
-                    "        printf(\"%%\" PRId64 \"\\n\", kofun_value);\n"
-                    "    }\n",
-                    value,
-                    failure_result
-                );
-            }
+            emit_print_value(&emitted, value_type, value, failure_result);
             free(value_type);
             free(value);
             cursor = skip_trivia(source, token_end(source, call_close));

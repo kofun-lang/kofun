@@ -18787,6 +18787,41 @@ fn lower_fixed_result_match(
     return "M@@" + to_text(match_end) + "@@" + emitted
 }
 
+fn emit_print_value(value_type: Text, value: Text, failure_result: Text) -> Text {
+    if value_type == "Decimal" {
+        return "    {\n" +
+        "        KofunDecimal *kofun_value = " + value + ";\n" +
+        "        char *kofun_text = kofun_decimal_to_canonical_text(kofun_value);\n" +
+        "        printf(\"%s\\n\", kofun_text);\n" +
+        "        free(kofun_text);\n" + "    }\n"
+    }
+    if value_type == "Float" {
+        return "    {\n" +
+        "        double kofun_value = " + value + ";\n" +
+        "        printf(\"%.17g\\n\", kofun_value);\n" +
+        "    }\n"
+    }
+    if value_type == "DecimalResult" {
+        return "    {\n" +
+        "        KofunDecimalResult *kofun_value = " + value +
+        ";\n" + "        printf(\"%s\\n\", " +
+        "kofun_decimal_value_division_name(kofun_value));\n" +
+        "    }\n"
+    }
+    if value_type == "Text" {
+        return "    {\n" +
+        "        const char *kofun_value = " + value + ";\n" +
+        "        if (kofun_failed) return " + failure_result + ";\n" +
+        "        printf(\"%s\\n\", kofun_value);\n" +
+        "    }\n"
+    }
+    return "    {\n" +
+    "        int64_t kofun_value = " + value + ";\n" +
+    "        if (kofun_failed) return " + failure_result + ";\n" +
+    "        printf(\"%\" PRId64 \"\\n\", kofun_value);\n" +
+    "    }\n"
+}
+
 fn lower_body(
     source: Text,
     hir: Text,
@@ -19680,36 +19715,7 @@ fn lower_body(
                     function_open,
                     value_start
                 )
-                if value_type == "Decimal" {
-                    emitted = emitted + "    {\n" +
-                    "        KofunDecimal *kofun_value = " + value + ";\n" +
-                    "        char *kofun_text = kofun_decimal_to_canonical_text(kofun_value);\n" +
-                    "        printf(\"%s\\n\", kofun_text);\n" +
-                    "        free(kofun_text);\n" + "    }\n"
-                } else if value_type == "Float" {
-                    emitted = emitted + "    {\n" +
-                    "        double kofun_value = " + value + ";\n" +
-                    "        printf(\"%.17g\\n\", kofun_value);\n" +
-                    "    }\n"
-                } else if value_type == "DecimalResult" {
-                    emitted = emitted + "    {\n" +
-                    "        KofunDecimalResult *kofun_value = " + value +
-                    ";\n" + "        printf(\"%s\\n\", " +
-                    "kofun_decimal_value_division_name(kofun_value));\n" +
-                    "    }\n"
-                } else if value_type == "Text" {
-                    emitted = emitted + "    {\n" +
-                    "        const char *kofun_value = " + value + ";\n" +
-                    "        if (kofun_failed) return " + failure_result + ";\n" +
-                    "        printf(\"%s\\n\", kofun_value);\n" +
-                    "    }\n"
-                } else {
-                    emitted = emitted + "    {\n" +
-                    "        int64_t kofun_value = " + value + ";\n" +
-                    "        if (kofun_failed) return " + failure_result + ";\n" +
-                    "        printf(\"%\" PRId64 \"\\n\", kofun_value);\n" +
-                    "    }\n"
-                }
+                emitted = emitted + emit_print_value(value_type, value, failure_result)
                 cursor = skip_trivia(source, token_end(source, call_close))
             }
         } else if statement == "if" &&
