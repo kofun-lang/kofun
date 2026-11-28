@@ -129,16 +129,23 @@ assert.equal(compiler.builtin_arity('stage2_same_file'),2n);
 assert.equal(compiler.selfhost_builtin_slot('stage2_same_file'),-1n);
 assert.equal(compiler.selfhost_c11_builtin_helper('stage2_same_file'),'');
 assert.doesNotMatch(expected.get('private-spelling-declarations'), /sys\/stat\.h|kofun_same_file\(/);
+// Compile the writer's actual three-destination guard. The rest of the
+// compiler source still depends on Core builtins that have separate owners.
+const fileGuard = pairSource.match(/^fn compiler_output_aliases_input\([\s\S]*?^}/m);
+assert.ok(fileGuard, 'expected the canonical compiler output guard');
 const fileTest = {
   name: 'core-file-identity',
   source: [
+    fileGuard[0],
     'fn report(value: Int) -> Int { print(value)',
     '    return 0',
     '}',
     'fn main() -> Int {',
-    '    let left = stage2_command_operand_text(1)',
-    '    let right = stage2_command_operand_text(2)',
-    '    return report(stage2_same_file(left, right))',
+    '    let input = stage2_command_operand_text(1)',
+    '    let output = stage2_command_operand_text(2)',
+    '    let ir = stage2_command_operand_text(3)',
+    '    let tokens = stage2_command_operand_text(4)',
+    '    return report(compiler_output_aliases_input(input, output, ir, tokens))',
     '}',
     '',
   ].join('\n'),
@@ -179,17 +186,20 @@ const absent = path.join(work, 'absent-output');
 const loop = path.join(work, 'symlink-loop');
 fs.symlinkSync(loop, loop);
 fs.writeFileSync(output, 'preserve output');
-for (const [left, right, identity] of [
-  ...aliases.map(alias => [input, alias, 1]),
-  [absent, absent, 1],
-  [input, output, 0],
-  [input, absent, 0],
-  [absent, output, null],
-  [absent, absent + '-other', null],
-  [input, path.join(input, 'child'), null],
-  [input, loop, null],
+for (const [paths, identity] of [
+  ...aliases.map(alias => [[input, alias, loop, loop], 1]),
+  [[absent, absent, loop, loop], 1],
+  [[input, output, hard, loop], 1],
+  [[input, output, absent, link], 1],
+  [[input, output, output, output], 0],
+  [[input, absent, absent, absent], 0],
+  [[absent, output, absent, absent], null],
+  [[absent, absent + '-other', absent, absent], null],
+  [[input, path.join(input, 'child'), hard, hard], null],
+  [[input, output, loop, hard], null],
+  [[input, output, absent, loop], null],
 ]) {
-  const result = run(fileProgram, [left, right]);
+  const result = run(fileProgram, paths);
   const failed = identity === null;
   assert.equal(result.status, failed ? 2 : 0);
   assert.equal(result.stdout, failed ? '' : String(identity) + '\n');

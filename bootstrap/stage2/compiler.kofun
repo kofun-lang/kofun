@@ -24683,6 +24683,19 @@ fn ends_with(value: Text, suffix: Text) -> Bool {
     text_slice(value, value_length - suffix_length, value_length) == suffix
 }
 
+# Check destinations in writer order and stop at the first alias or lookup
+# refusal. Core can lower each comparison on its own.
+fn compiler_output_aliases_input(
+    input_path: Text,
+    output_path: Text,
+    ir_path: Text,
+    tokens_path: Text
+) -> Int {
+    if stage2_same_file(input_path, output_path) == 1 { return 1 }
+    if stage2_same_file(input_path, ir_path) == 1 { return 1 }
+    return stage2_same_file(input_path, tokens_path)
+}
+
 fn compile_file(
     input_path: Text,
     output_path: Text,
@@ -24690,9 +24703,7 @@ fn compile_file(
     tokens_path: Text
 ) -> Int {
     # All destinations are checked before the first artifact is written.
-    if stage2_same_file(input_path, output_path) == 1 ||
-       stage2_same_file(input_path, ir_path) == 1 ||
-       stage2_same_file(input_path, tokens_path) == 1 {
+    if compiler_output_aliases_input(input_path, output_path, ir_path, tokens_path) == 1 {
         print("error[E2S35]: compiler input and output must be distinct")
         return 2
     }
