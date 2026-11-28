@@ -1,0 +1,9 @@
+fn twice(x: Int) -> Int {
+    return x + x
+}
+
+fn main() -> Int {
+    twice(21)
+    print(1)
+    return 0
+}

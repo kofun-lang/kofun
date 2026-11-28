@@ -704,6 +704,10 @@ tests/conformance/effects/pure-boundary/callable_return.kofun
 tests/conformance/effects/pure-boundary/callable_root.kofun
 tests/conformance/effects/pure-boundary/callable_unused.kofun
 tests/conformance/effects/pure-boundary/direct.kofun
+tests/conformance/effects/pure-boundary/discarded_accept.kofun
+tests/conformance/effects/pure-boundary/discarded_precedence.kofun
+tests/conformance/effects/pure-boundary/discarded_pure.kofun
+tests/conformance/effects/pure-boundary/discarded_unit.kofun
 tests/conformance/effects/pure-boundary/identifier.kofun
 tests/conformance/effects/pure-boundary/io_annotation.kofun
 tests/conformance/effects/pure-boundary/multi_hop.kofun
@@ -1433,6 +1437,7 @@ tests/diagnostics/stage2/e2s219_unproven_argument.kofun
 tests/diagnostics/stage2/e2s21_two_borrows.kofun
 tests/diagnostics/stage2/e2s221_question_non_result.kofun
 tests/diagnostics/stage2/e2s222_fixed_plain_match.kofun
+tests/diagnostics/stage2/e2s223_discarded_pure_result.kofun
 tests/diagnostics/stage2/e2s22_immutable_assignment.kofun
 tests/diagnostics/stage2/e2s23_invalid_if_condition.kofun
 tests/diagnostics/stage2/e2s24_match_pattern.kofun

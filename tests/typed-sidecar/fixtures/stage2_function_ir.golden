@@ -1,9 +1,9 @@
 kofun-stage2-ir/v1
-source-bytes|576
-function|twice|1|128|180|private|implicit|-1|-1|128|180|file:0|symbol:0
-function|fib|1|182|300|private|implicit|-1|-1|182|300|file:0|symbol:1
-function|forward_answer|0|302|354|private|implicit|-1|-1|302|354|file:0|symbol:2
-function|ignored|0|356|392|private|implicit|-1|-1|356|392|file:0|symbol:3
-function|add|2|394|458|private|implicit|-1|-1|394|458|file:0|symbol:4
-function|main|0|460|575|private|implicit|-1|-1|460|575|file:0|symbol:5
+source-bytes|597
+function|twice|1|141|193|private|implicit|-1|-1|141|193|file:0|symbol:0
+function|fib|1|195|313|private|implicit|-1|-1|195|313|file:0|symbol:1
+function|forward_answer|0|315|367|private|implicit|-1|-1|315|367|file:0|symbol:2
+function|ignored|0|369|405|private|implicit|-1|-1|369|405|file:0|symbol:3
+function|add|2|407|471|private|implicit|-1|-1|407|471|file:0|symbol:4
+function|main|0|473|596|private|implicit|-1|-1|473|596|file:0|symbol:5
 function-count|6

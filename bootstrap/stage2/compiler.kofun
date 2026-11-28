@@ -20793,6 +20793,15 @@ fn lower_body(
                     "    }\n"
                     returned = true
                 } else {
+                    # #1730, DD-042. This is the one position that discards an
+                    # expression statement: the implicit-result arm above does
+                    # not. All emission errors above already won, so a refused
+                    # argument keeps its own diagnostic.
+                    let discarded = discarded_pure_call_error(
+                        source, hir, cursor, value_end)
+                    if starts_with(discarded, "error[") {
+                        return discarded
+                    }
                     emitted = emitted + "    (void)" +
                     statement_value + ";\n" +
                     "    if (kofun_failed) return " + failure_result + ";\n"
@@ -24924,6 +24933,82 @@ fn validate_pure_annotations(source: Text) -> Text {
         return hir
     }
     return boundary
+}
+
+# #1730, DD-042. `spec/effects/pure-io-v1.md` § Discarded pure results.
+#
+# `cursor` starts a discarded expression statement and `value_end` is the end
+# `expression_end` returned for it. The statement is refused when the whole
+# expression is one call to a top-level function whose summary is `pure`,
+# whose result is not `Unit`, every argument's own summary is `pure`, and the
+# callee declares no `edit` parameter. The query is `inferred_io_functions`,
+# the same one the `pure fn` boundary asks, so silence and the published fact
+# agree.
+fn discarded_arguments_are_pure(
+    source: Text, hir: Text, start: Int, end: Int, io_set: Text
+) -> Bool {
+    if function_calls_name(source, start, end, "print") ||
+       len(first_io_callee(source, start, end, io_set)) > 0 {
+        return false
+    }
+    let mut cursor = skip_trivia(source, start)
+    while cursor < end {
+        if token_kind(source, cursor) == "identifier" {
+            let binding = hir_use_binding_id(hir, cursor)
+            if len(binding) > 0 {
+                if callable_parameter_type_start(source, hir, binding) >= 0 ||
+                   lambda_binding_open(source, hir, binding) >= 0 {
+                    return false
+                }
+            }
+        }
+        cursor = skip_trivia(source, token_end(source, cursor))
+    }
+    return true
+}
+
+fn discarded_pure_call_error(
+    source: Text, hir: Text, cursor: Int, value_end: Int
+) -> Text {
+    if token_kind(source, cursor) != "identifier" {
+        return ""
+    }
+    let open = skip_trivia(source, token_end(source, cursor))
+    if open >= len(source) || token_text(source, open) != "(" {
+        return ""
+    }
+    if balanced_end(source, open, "(", ")") != value_end {
+        return ""
+    }
+    if len(hir_use_binding_id(hir, cursor)) > 0 {
+        return ""
+    }
+    let name = token_text(source, cursor)
+    let declaration = function_start_named(source, name)
+    if declaration < 0 {
+        return ""
+    }
+    let result = function_return_type(source, name)
+    if len(result) == 0 || result == "Void" || result == "Unit" {
+        return ""
+    }
+    let count = parameter_count(source, declaration)
+    let mut index = 0
+    while index < count {
+        if function_parameter_mode(source, name, index) == "edit" {
+            return ""
+        }
+        index = index + 1
+    }
+    let io_set = inferred_io_functions(source, "print")
+    if contains(io_set, "|" + name + "|") {
+        return ""
+    }
+    if !discarded_arguments_are_pure(source, hir, token_end(source, open), value_end, io_set) {
+        return ""
+    }
+    return "error[E2S223]: discarded result of pure call `" + name +
+        "` at byte " + to_text(cursor)
 }
 
 fn validate_authority_uses(source: Text) -> Text {
