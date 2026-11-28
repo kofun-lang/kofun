@@ -66,6 +66,12 @@ done
 compare 'positive stdout' "$CASES/values.stdout" "$WORK/values.stdout"
 assert_file_empty 'positive runtime stderr' "$WORK/values.stderr"
 
+KOFUN_STAGE2_COMPILER="$WORK/kofun-stage2" "$ROOT/bin/kofun" run \
+    "$CASES/values.kofun" >"$WORK/cli.stdout" 2>"$WORK/cli.stderr" ||
+    fail 'the public run command could not build and run the Text predicates'
+compare 'public run stdout' "$CASES/values.stdout" "$WORK/cli.stdout"
+assert_file_empty 'public run stderr' "$WORK/cli.stderr"
+
 "$WORK/values" >"$WORK/values.second.stdout" \
     2>"$WORK/values.second.stderr" ||
     fail 'repeated positive execution exited non-zero'
