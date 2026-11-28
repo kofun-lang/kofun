@@ -7966,6 +7966,9 @@ static bool source_has_list_int_local(const char *source) {
     int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, 0);
     while (cursor < length) {
+        if (token_equal(source, cursor, "chars") &&
+            token_equal(source, skip_trivia(source, token_end(source, cursor)), "(") &&
+            function_start_named(source, "chars") < 0) return true;
         if (token_equal(source, cursor, "let")) {
             int64_t name = skip_trivia(source, token_end(source, cursor));
             if (token_equal(source, name, "mut")) {
@@ -9776,18 +9779,19 @@ static char *emit_argument(
         start
     );
     if (
-        strcmp(actual_type, "List[Int]") == 0 &&
-        strcmp(expected_type, "List[Int]") != 0
+        strcmp(actual_type, "List") == 0 || (strcmp(actual_type, "List[Int]") == 0 &&
+        strcmp(expected_type, "List[Int]") != 0)
     ) {
         Buffer message;
         buffer_init(&message);
         buffer_format(
             &message,
             "Core function `%s` expects %s for argument %" PRId64
-            ", got List[Int]",
+            ", got %s",
             callee,
             expected_type,
-            argument_index + 1
+            argument_index + 1,
+            strcmp(actual_type, "List") == 0 ? "List[Text]" : actual_type
         );
         free(actual_type);
         free(expected_type);
@@ -10373,6 +10377,30 @@ static char *emit_fixed_slot_call(
  * An expression-bodied lambda has no brace to bound it, so its extent is what
  * `lambda_parameters_end` spans and its statements begin after the arrow.
  */
+static int64_t chars_constructor_index(
+    const char *source, const char *hir, int64_t start, int64_t end
+) {
+    int64_t cursor = start;
+    while (cursor < end && token_equal(source, cursor, "(")) {
+        cursor = skip_trivia(source, token_end(source, cursor));
+    }
+    if (cursor >= end || !token_equal(source, cursor, "chars")) return -1;
+    int64_t open = skip_trivia(source, token_end(source, cursor));
+    if (open >= end || !token_equal(source, open, "(")) return -1;
+    int64_t close = balanced_end(source, open, "(", ")");
+    if (close < 0) return -1;
+    int64_t after = skip_trivia(source, close);
+    while (after < end && token_equal(source, after, ")")) {
+        after = skip_trivia(source, token_end(source, after));
+    }
+    if (after >= end || !token_equal(source, after, "[")) return -1;
+    return call_resolves_to_builtin(source, hir, cursor, "chars") ? after : -1;
+}
+
+static int64_t grouped_char_list_index(
+    const char *source, const char *hir, int64_t start, int64_t end
+);
+
 static char *emit_fixed_slot_call_temporaries(
     const char *source,
     const char *hir,
@@ -10405,6 +10433,12 @@ static char *emit_fixed_slot_call_temporaries(
                 fixed_slot_temporary_body(source, cursor) == body_open
             ) {
                 char *callee = token_copy(source, cursor);
+                if (strcmp(callee, "replace") == 0 && call_resolves_to_builtin(source, hir, cursor, callee)) {
+                    buffer_format(&output, "    const char *kofun_replace_args_%" PRId64 "[3];\n", cursor);
+                }
+                if (strcmp(callee, "chars") == 0 && chars_constructor_index(source, hir, cursor, close) >= 0) {
+                    buffer_format(&output, "    KofunCharList kofun_char_receiver_%" PRId64 ";\n", cursor);
+                }
                 bool labelled = call_has_labelled_argument(source, open);
                 if (fixed_slot_call_supported(
                     source,
@@ -11034,7 +11068,8 @@ static char *emit_list_int_subscript(
     const char *source,
     const char *hir,
     int64_t open,
-    int64_t literal_count
+    int64_t literal_count,
+    const char *list_type
 ) {
     int64_t index_start = skip_trivia(source, token_end(source, open));
     int64_t index_end = expression_end(source, index_start);
@@ -11044,11 +11079,12 @@ static char *emit_list_int_subscript(
         close >= source_length(source) ||
         !token_equal(source, close, "]")
     ) {
-        return lower_error(
-            "E2S157",
-            "malformed List[Int] index",
-            open
-        );
+        Buffer message;
+        buffer_init(&message);
+        buffer_format(&message, "malformed %s index", list_type);
+        char *error = lower_error("E2S157", message.data, open);
+        free(message.data);
+        return error;
     }
     /*
      * Bounded at the `]` (#1158). Unbounded, the classification runs past the
@@ -11068,8 +11104,8 @@ static char *emit_list_int_subscript(
         buffer_init(&message);
         buffer_format(
             &message,
-            "List[Int] index must have type Int, got %s",
-            index_type
+            "%s index must have type Int, got %s",
+            list_type, index_type
         );
         free(index_type);
         char *error = lower_error(
@@ -11144,7 +11180,7 @@ static char *emit_list_int_index_value(
         source,
         hir,
         open,
-        list_int_binding_literal_count(source, hir, binding_start)
+        list_int_binding_literal_count(source, hir, binding_start), "List[Int]"
     );
 }
 
@@ -11443,6 +11479,31 @@ static char *emit_int_bit_chain(
     return emitted;
 }
 
+static char *emit_text_replace(const char *source, const char *hir, int64_t call, int64_t open) {
+    Buffer output;
+    buffer_init(&output);
+    buffer_append(&output, "(");
+    int64_t argument = skip_trivia(source, token_end(source, open));
+    for (int index = 0; index < 3; ++index) {
+        int64_t bound = argument_end(source, argument);
+        if (bound <= argument) {
+            free(output.data);
+            return lower_error("E2S12", "invalid replacement argument", argument);
+        }
+        char *value = emit_expression(source, hir, argument, bound);
+        if (strncmp(value, "error[", 6) == 0) { free(output.data); return value; }
+        buffer_format(&output, "kofun_replace_args_%" PRId64 "[%d] = %s, ", call, index, value);
+        free(value);
+        if (index < 2) {
+            int64_t comma = skip_trivia(source, bound);
+            argument = skip_trivia(source, token_end(source, comma));
+        }
+    }
+    buffer_format(&output, "kofun_text_replace(kofun_replace_args_%" PRId64 "[0], "
+        "kofun_replace_args_%" PRId64 "[1], kofun_replace_args_%" PRId64 "[2]))", call, call, call);
+    return output.data;
+}
+
 static char *emit_primary(
     const char *source,
     const char *hir,
@@ -11459,6 +11520,40 @@ static char *emit_primary(
     int64_t bit_dot = int_bit_chain_dot(source, cursor, end);
     if (bit_dot >= 0) {
         return emit_int_bit_chain(source, hir, cursor, bit_dot, end);
+    }
+    int64_t grouped_index = grouped_char_list_index(source, hir, cursor, end);
+    if (grouped_index >= 0) {
+        int64_t name = cursor;
+        while (token_equal(source, name, "(")) name = skip_trivia(source, token_end(source, name));
+        char *index = emit_list_int_subscript(source, hir, grouped_index, -1, "List[Text]");
+        if (strncmp(index, "error[", 6) == 0) return index;
+        char *binding = hir_use_binding_id(hir, name);
+        Buffer output;
+        buffer_init(&output);
+        buffer_format(&output, "kofun_char_list_index(k_b%s, %s)", binding, index);
+        free(index);
+        free(binding);
+        return output.data;
+    }
+    int64_t subscript = chars_constructor_index(source, hir, cursor, end);
+    if (subscript >= 0) {
+        int64_t call = cursor;
+        while (token_equal(source, call, "(")) {
+            call = skip_trivia(source, token_end(source, call));
+        }
+        int64_t open = skip_trivia(source, token_end(source, call));
+        char *receiver = emit_primary(source, hir, call, balanced_end(source, open, "(", ")"));
+        if (strncmp(receiver, "error[", 6) == 0) return receiver;
+        char *index = emit_list_int_subscript(source, hir, subscript, -1, "List[Text]");
+        if (strncmp(index, "error[", 6) == 0) { free(receiver); return index; }
+        Buffer output;
+        buffer_init(&output);
+        buffer_format(&output, "(kofun_char_receiver_%" PRId64 " = %s, "
+            "kofun_char_list_index(kofun_char_receiver_%" PRId64 ", %s))",
+            call, receiver, call, index);
+        free(receiver);
+        free(index);
+        return output.data;
     }
     const char *kind = token_kind(source, cursor);
     /* A pipeline never reaches here: `|>` is the lowest-precedence boundary, so
@@ -11644,6 +11739,35 @@ static char *emit_primary(
         free(conversion);
         char *name = token_copy(source, cursor);
         int64_t open = skip_trivia(source, token_end(source, cursor));
+        if (open < end && token_equal(source, open, "(") &&
+            strcmp(name, "validate_unicode_source") == 0 && call_resolves_to_builtin(source, hir, cursor, name)) {
+            int64_t argument = skip_trivia(source, token_end(source, open));
+            char *value = emit_expression(source, hir, argument, argument_end(source, argument));
+            free(name);
+            if (strncmp(value, "error[", 6) == 0) return value;
+            Buffer output;
+            buffer_init(&output);
+            buffer_format(&output, "kofun_validate_source_text(%s)", value);
+            free(value);
+            return output.data;
+        }
+        if (open < end && token_equal(source, open, "(") &&
+            strcmp(name, "replace") == 0 && call_resolves_to_builtin(source, hir, cursor, name)) {
+            free(name);
+            return emit_text_replace(source, hir, cursor, open);
+        }
+        if (open < end && token_equal(source, open, "(") &&
+            strcmp(name, "chars") == 0 && call_resolves_to_builtin(source, hir, cursor, name)) {
+            int64_t arg = skip_trivia(source, token_end(source, open));
+            char *value = emit_expression(source, hir, arg, argument_end(source, arg));
+            free(name);
+            if (strncmp(value, "error[", 6) == 0) return value;
+            Buffer list;
+            buffer_init(&list);
+            buffer_format(&list, "kofun_chars(%s)", value);
+            free(value);
+            return list.data;
+        }
         if (
             open < end && token_equal(source, open, "(") &&
             strcmp(name, "len") == 0
@@ -11662,6 +11786,11 @@ static char *emit_primary(
                 enclosing_function_open(source, value),
                 value
             );
+            if (strncmp(emitted, "error[", 6) == 0 && strcmp(actual, "List") == 0) {
+                free(actual);
+                free(name);
+                return emitted;
+            }
             Buffer length;
             buffer_init(&length);
             if (strcmp(actual, "List[Int]") == 0) {
@@ -11692,7 +11821,7 @@ static char *emit_primary(
                         emitted
                     );
                 }
-            } else if (strncmp(actual, "List[", 5) == 0) {
+            } else if (strcmp(actual, "List") == 0 || strncmp(actual, "List[", 5) == 0) {
                 /* #1695. A bounded list of records is stored by value, so its
                  * length is the carrier's own `length` word. */
                 buffer_format(&length, "((int64_t)(%s).length)", emitted);
@@ -12033,45 +12162,40 @@ static char *emit_primary(
             free(name);
             return found.data;
         }
-        /* #1782/#1784. The driver-bound UTF-8 scalar decode, admitted to the
-         * Core path for self-compilation with bounded read-only authority. */
+        /* The two bounded host operations share the normal two-argument
+         * lowering. User declarations and lexical bindings take precedence. */
         if (
             open < end && token_equal(source, open, "(") &&
-            strcmp(name, "stage2_unicode_scalar_at") == 0 &&
+            (strcmp(name, "stage2_unicode_scalar_at") == 0 ||
+             strcmp(name, "stage2_same_file") == 0) &&
             call_resolves_to_builtin(source, hir, cursor, name)
         ) {
-            int64_t value = skip_trivia(source, token_end(source, open));
-            int64_t value_end = argument_end(source, value);
-            int64_t separator = skip_trivia(source, value_end);
-            int64_t offset = skip_trivia(source, token_end(source, separator));
-            char *value_text = emit_expression(source, hir, value, value_end);
-            if (strncmp(value_text, "error[", 6) == 0) {
+            int64_t left = skip_trivia(source, token_end(source, open));
+            int64_t left_end = argument_end(source, left);
+            int64_t separator = skip_trivia(source, left_end);
+            int64_t right = skip_trivia(source, token_end(source, separator));
+            char *left_text = emit_expression(source, hir, left, left_end);
+            if (strncmp(left_text, "error[", 6) == 0) {
                 free(name);
-                return value_text;
+                return left_text;
             }
-            char *offset_text = emit_expression(
-                source,
-                hir,
-                offset,
-                argument_end(source, offset)
+            char *right_text = emit_expression(
+                source, hir, right, argument_end(source, right)
             );
-            if (strncmp(offset_text, "error[", 6) == 0) {
-                free(value_text);
+            if (strncmp(right_text, "error[", 6) == 0) {
+                free(left_text);
                 free(name);
-                return offset_text;
+                return right_text;
             }
-            Buffer scalar;
-            buffer_init(&scalar);
-            buffer_format(
-                &scalar,
-                "kofun_unicode_scalar_at(%s, %s)",
-                value_text,
-                offset_text
-            );
-            free(offset_text);
-            free(value_text);
+            const char *helper = strcmp(name, "stage2_same_file") == 0
+                ? "kofun_same_file" : "kofun_unicode_scalar_at";
+            Buffer call;
+            buffer_init(&call);
+            buffer_format(&call, "%s(%s, %s)", helper, left_text, right_text);
+            free(right_text);
+            free(left_text);
             free(name);
-            return scalar.data;
+            return call.data;
         }
         /* #1780. The one-argument Text predicates the compiler's own source
          * uses. `is_xid_continue` pulls the pinned Unicode tables only when
@@ -12147,6 +12271,20 @@ static char *emit_primary(
         if (open >= end || !token_equal(source, open, "(")) {
             char *binding_id = hir_use_binding_id(hir, cursor);
             char *subscript_type = hir_binding_field(hir, binding_id, 5);
+            if (strcmp(subscript_type, "List") == 0 && open < end && token_equal(source, open, "[")) {
+                char *index = emit_list_int_subscript(source, hir, open, -1, "List[Text]");
+                free(subscript_type);
+                free(name);
+                if (strncmp(index, "error[", 6) == 0) {
+                    free(binding_id);
+                    free(output.data);
+                    return index;
+                }
+                buffer_format(&output, "kofun_char_list_index(k_b%s, %s)", binding_id, index);
+                free(binding_id);
+                free(index);
+                return output.data;
+            }
             bool record_subscript =
                 strncmp(subscript_type, "List[", 5) == 0 &&
                 strcmp(subscript_type, "List[Int]") != 0;
@@ -12377,7 +12515,7 @@ static char *emit_primary(
                         source,
                         hir,
                         field_index_open,
-                        -1
+                        -1, "List[Int]"
                     );
                     if (strncmp(field_index, "error[", 6) == 0) {
                         free(c_field);
@@ -12713,7 +12851,7 @@ static bool operator_operand_aggregate(
     const char *value_type
 ) {
     if (
-        strcmp(value_type, "List[Int]") == 0 ||
+        strcmp(value_type, "List[Int]") == 0 || strcmp(value_type, "List") == 0 ||
         strcmp(value_type, "Bytes") == 0
     ) {
         return true;
@@ -13350,9 +13488,9 @@ static int64_t builtin_arity(const char *name) {
         /* #1696. The checked origin construction takes the record it
          * validates. */
         {"stage2_http_origin", 1},
-        /* #1782/#1784. Driver-bound UTF-8 scalar decode, admitted to the Core
-         * path with bounded read-only authority. */
+        /* Bounded host operations admitted to the Core path by #1782. */
         {"stage2_unicode_scalar_at", 2},
+        {"stage2_same_file", 2},
         /* #1667. The chunked-read surface: selecting standard input takes no
          * argument; opening a path and reading a chunk each take one. */
         {"stage2_bytes_stream_stdin", 0},
@@ -13462,6 +13600,7 @@ static const char *builtin_parameter_types(const char *name) {
          * the `HttpOrigin` field shape is checked where the call lowers. */
         {"stage2_http_origin", "Record"},
         {"stage2_unicode_scalar_at", "Text|Int"},
+        {"stage2_same_file", "Text|Text"},
         /* #1667. Selecting standard input takes no argument; opening a path
          * takes a `Text`; the chunk read takes the `Bytes` carrier it fills. */
         {"stage2_bytes_stream_stdin", ""},
@@ -13540,15 +13679,17 @@ static char *builtin_argument_check(
         expected[0] != '\0'
     ) {
         size_t expected_length = strcspn(expected, "|");
+        int64_t bound = argument_end(source, argument);
+        int64_t separator = bound > argument ? skip_trivia(source, bound) : argument;
+        int64_t type_end = token_equal(source, separator, ",") ||
+            token_equal(source, separator, ")") ? bound : -1;
         if (!value_control(source, argument)) {
-            char *actual = initializer_type(
-                source,
-                hir,
-                function_open,
-                argument
+            char *actual = initializer_type_bounded(
+                source, hir, function_open, argument, type_end
             );
             bool matches;
-            if (strncmp(expected, "TextOrList", expected_length) == 0) {
+            if (expected_length == sizeof("TextOrList") - 1 &&
+                strncmp(expected, "TextOrList", expected_length) == 0) {
                 matches = strcmp(actual, "Text") == 0 ||
                     strcmp(actual, "List") == 0 ||
                     strncmp(actual, "List[", 5) == 0;
@@ -13595,12 +13736,7 @@ static char *builtin_argument_check(
             }
             free(actual);
         }
-        int64_t argument_end = expression_end(source, argument);
-        /* Text-literal arguments are single tokens outside the bounded
-         * arithmetic expression grammar. */
-        if (argument_end < 0) argument_end = token_end(source, argument);
-        int64_t separator = skip_trivia(source, argument_end);
-        if (separator >= length || !token_equal(source, separator, ",")) {
+        if (bound <= argument || separator >= length || !token_equal(source, separator, ",")) {
             break;
         }
         argument = skip_trivia(source, token_end(source, separator));
@@ -15019,6 +15155,8 @@ static char *validate_core_calls(const char *source, const char *hir) {
                     }
                     free(argument_error);
                     if (
+                        strcmp(name, "chars") == 0 || strcmp(name, "replace") == 0 ||
+                        strcmp(name, "validate_unicode_source") == 0 ||
                         strcmp(name, "contains") == 0 ||
                         strcmp(name, "find") == 0 ||
                         strcmp(name, "is_digit") == 0 ||
@@ -15026,6 +15164,7 @@ static char *validate_core_calls(const char *source, const char *hir) {
                         strcmp(name, "is_xid_continue") == 0 ||
                         strcmp(name, "starts_with") == 0 ||
                         strcmp(name, "stage2_unicode_scalar_at") == 0 ||
+                        strcmp(name, "stage2_same_file") == 0 ||
                         strcmp(name, "len") == 0 ||
                         strcmp(name, "text_slice") == 0 ||
                         strcmp(name, "to_text") == 0 ||
@@ -20205,6 +20344,34 @@ static int64_t scope_depth_for_open(
  * (Int/Bool/Text/List/Void); List[Text] element typing belongs to the
  * selfhost-HIR emitter. Returns NULL for a non-builtin name.
  */
+static int64_t grouped_char_list_index(
+    const char *source, const char *hir, int64_t start, int64_t end
+) {
+    if (!token_equal(source, start, "(")) return -1;
+    int64_t name = start;
+    while (name < end && token_equal(source, name, "(")) {
+        name = skip_trivia(source, token_end(source, name));
+    }
+    if (strcmp(token_kind(source, name), "identifier") != 0) return -1;
+    int64_t after = skip_trivia(source, token_end(source, name));
+    if (!token_equal(source, after, ")")) return -1;
+    while (after < end && token_equal(source, after, ")")) {
+        after = skip_trivia(source, token_end(source, after));
+    }
+    if (after >= end || !token_equal(source, after, "[")) return -1;
+    int64_t function_open = enclosing_function_open(source, name);
+    char *scope = hir_scope_id_for_open(hir, parent_block_open(source, function_open, name));
+    char *word = token_copy(source, name);
+    char *binding = hir_resolve_binding(hir, scope, name, word);
+    char *type = hir_binding_field(hir, binding, 5);
+    bool list = strcmp(type, "List") == 0;
+    free(scope);
+    free(type);
+    free(binding);
+    free(word);
+    return list ? after : -1;
+}
+
 static const char *builtin_return_type(const char *name) {
     static const struct {
         const char *name;
@@ -20272,6 +20439,7 @@ static const char *builtin_return_type(const char *name) {
          * runtime diagnostic, so the call has no source value. */
         {"stage2_http_origin", "Void"},
         {"stage2_unicode_scalar_at", "Int"},
+        {"stage2_same_file", "Int"},
         /* #1667. All three chunked-read operations report an `Int`: the open
          * status, the standard-input status, and the chunk's byte count (0 at
          * end of stream, negative for a failure the program continues past). */
@@ -20747,6 +20915,8 @@ static char *initializer_type_bounded(
         walk = skip_trivia(source, previous_end);
     }
     if (optional_coalescing) return owned_text("Int");
+    if (chars_constructor_index(source, hir, initializer, end) >= 0 ||
+        grouped_char_list_index(source, hir, initializer, end) >= 0) return owned_text("Text");
     int64_t cursor = skip_trivia(source, initializer);
     while (
         cursor < end &&
@@ -27299,6 +27469,114 @@ static char *lower_fixed_result_match(
     return emitted.data;
 }
 
+/*
+ * The carrier an inferred binding gets is the carrier its type
+ * already names.  A nominal record was the one type with no row
+ * here, so it fell through to `int64_t` and every later use of
+ * the name became a member access on a scalar: accepted by the
+ * checker, rejected by `cc`, in a file the author did not write.
+ *
+ * The record row derives its C type from `record_c_type_name`,
+ * which is what the annotated binding path uses, so the two
+ * spellings of one binding cannot disagree.  It owns storage,
+ * unlike every other row here, so it is held separately and freed
+ * on both exits below.
+ */
+static const char *inferred_local_c_type(
+    const char *source, const char *binding_type, char **owned_type
+) {
+    const char *c_type = "int64_t";
+    if (strcmp(binding_type, "Decimal") == 0) {
+        c_type = "KofunDecimal *";
+    } else if (strcmp(binding_type, "Float") == 0) {
+        c_type = "double";
+    } else if (strcmp(binding_type, "DecimalResult") == 0) {
+        c_type = "KofunDecimalResult *";
+    } else if (strcmp(binding_type, "Text") == 0) {
+        c_type = "const char *";
+    } else if (strcmp(binding_type, "List") == 0) {
+        c_type = "KofunCharList";
+    } else if (strcmp(binding_type, "List[Int]") == 0) {
+        c_type = "KofunIntListValue";
+    } else if (strncmp(binding_type, "List[", 5) == 0) {
+        size_t inner = strlen(binding_type) - 6;
+        char *element = malloc(inner + 1);
+        memcpy(element, binding_type + 5, inner);
+        element[inner] = '\0';
+        *owned_type = record_list_c_type(element);
+        free(element);
+        c_type = *owned_type;
+    } else if (strcmp(binding_type, "Bytes") == 0) {
+        c_type = "KofunBytesValue";
+    } else if (record_declaration_start(source, binding_type) >= 0) {
+        *owned_type = record_c_type_name(binding_type);
+        c_type = *owned_type;
+    }
+    return c_type;
+}
+
+static void emit_print_value(
+    Buffer *emitted,
+    const char *value_type,
+    const char *value,
+    const char *failure_result
+) {
+    if (strcmp(value_type, "Decimal") == 0) {
+        buffer_format(
+            emitted,
+            "    {\n"
+            "        KofunDecimal *kofun_value = %s;\n"
+            "        char *kofun_text = "
+            "kofun_decimal_to_canonical_text(kofun_value);\n"
+            "        printf(\"%%s\\n\", kofun_text);\n"
+            "        free(kofun_text);\n"
+            "    }\n",
+            value
+        );
+    } else if (strcmp(value_type, "Float") == 0) {
+        buffer_format(
+            emitted,
+            "    {\n"
+            "        double kofun_value = %s;\n"
+            "        printf(\"%%.17g\\n\", kofun_value);\n"
+            "    }\n",
+            value
+        );
+    } else if (strcmp(value_type, "DecimalResult") == 0) {
+        buffer_format(
+            emitted,
+            "    {\n"
+            "        KofunDecimalResult *kofun_value = %s;\n"
+            "        printf(\"%%s\\n\", "
+            "kofun_decimal_value_division_name(kofun_value));\n"
+            "    }\n",
+            value
+        );
+    } else if (strcmp(value_type, "Text") == 0) {
+        buffer_format(
+            emitted,
+            "    {\n"
+            "        const char *kofun_value = %s;\n"
+            "        if (kofun_failed) return %s;\n"
+            "        printf(\"%%s\\n\", kofun_value);\n"
+            "    }\n",
+            value,
+            failure_result
+        );
+    } else {
+        buffer_format(
+            emitted,
+            "    {\n"
+            "        int64_t kofun_value = %s;\n"
+            "        if (kofun_failed) return %s;\n"
+            "        printf(\"%%\" PRId64 \"\\n\", kofun_value);\n"
+            "    }\n",
+            value,
+            failure_result
+        );
+    }
+}
+
 static char *lower_body_with_workspace(
     const char *source,
     const char *hir,
@@ -28581,50 +28859,14 @@ static char *lower_body_with_workspace(
                     return value;
                 }
             }
-            /*
-             * The carrier an inferred binding gets is the carrier its type
-             * already names.  A nominal record was the one type with no row
-             * here, so it fell through to `int64_t` and every later use of
-             * the name became a member access on a scalar: accepted by the
-             * checker, rejected by `cc`, in a file the author did not write.
-             *
-             * The record row derives its C type from `record_c_type_name`,
-             * which is what the annotated binding path uses, so the two
-             * spellings of one binding cannot disagree.  It owns storage,
-             * unlike every other row here, so it is held separately and freed
-             * on both exits below.
-             */
-            const char *c_type = "int64_t";
             char *record_type_owned = NULL;
-            if (strcmp(binding_type, "Decimal") == 0) {
-                c_type = "KofunDecimal *";
-            } else if (strcmp(binding_type, "Float") == 0) {
-                c_type = "double";
-            } else if (strcmp(binding_type, "DecimalResult") == 0) {
-                c_type = "KofunDecimalResult *";
-            } else if (strcmp(binding_type, "Text") == 0) {
-                c_type = "const char *";
-            } else if (strcmp(binding_type, "List[Int]") == 0) {
-                c_type = "KofunIntListValue";
-            } else if (strncmp(binding_type, "List[", 5) == 0) {
-                size_t inner = strlen(binding_type) - 6;
-                char *element = malloc(inner + 1);
-                memcpy(element, binding_type + 5, inner);
-                element[inner] = '\0';
-                record_type_owned = record_list_c_type(element);
-                free(element);
-                c_type = record_type_owned;
-            } else if (strcmp(binding_type, "Bytes") == 0) {
-                c_type = "KofunBytesValue";
-            } else if (record_declaration_start(source, binding_type) >= 0) {
-                record_type_owned = record_c_type_name(binding_type);
-                c_type = record_type_owned;
-            }
+            const char *c_type = inferred_local_c_type(source, binding_type, &record_type_owned);
             if (
                 mutable &&
                 strcmp(binding_type, "Int") != 0 &&
                 strcmp(binding_type, "List[Int]") != 0
             ) {
+                bool chars = strcmp(binding_type, "List") == 0;
                 free(record_type_owned);
                 free(binding_type);
                 free(value);
@@ -28633,6 +28875,7 @@ static char *lower_body_with_workspace(
                 free(emitted.data);
                 return lower_error(
                     "E2S144",
+                    chars ? "chars produces a read-only List[Text]" :
                     "mutable Decimal, DecimalResult, Float, and Text bindings are "
                     "outside this lowering slice",
                     value_start
@@ -28778,60 +29021,13 @@ static char *lower_body_with_workspace(
                 function_open,
                 value_start
             );
-            if (strcmp(value_type, "Decimal") == 0) {
-                buffer_format(
-                    &emitted,
-                    "    {\n"
-                    "        KofunDecimal *kofun_value = %s;\n"
-                    "        char *kofun_text = "
-                    "kofun_decimal_to_canonical_text(kofun_value);\n"
-                    "        printf(\"%%s\\n\", kofun_text);\n"
-                    "        free(kofun_text);\n"
-                    "    }\n",
-                    value
-                );
-            } else if (strcmp(value_type, "Float") == 0) {
-                buffer_format(
-                    &emitted,
-                    "    {\n"
-                    "        double kofun_value = %s;\n"
-                    "        printf(\"%%.17g\\n\", kofun_value);\n"
-                    "    }\n",
-                    value
-                );
-            } else if (strcmp(value_type, "DecimalResult") == 0) {
-                buffer_format(
-                    &emitted,
-                    "    {\n"
-                    "        KofunDecimalResult *kofun_value = %s;\n"
-                    "        printf(\"%%s\\n\", "
-                    "kofun_decimal_value_division_name(kofun_value));\n"
-                    "    }\n",
-                    value
-                );
-            } else if (strcmp(value_type, "Text") == 0) {
-                buffer_format(
-                    &emitted,
-                    "    {\n"
-                    "        const char *kofun_value = %s;\n"
-                    "        if (kofun_failed) return %s;\n"
-                    "        printf(\"%%s\\n\", kofun_value);\n"
-                    "    }\n",
-                    value,
-                    failure_result
-                );
-            } else {
-                buffer_format(
-                    &emitted,
-                    "    {\n"
-                    "        int64_t kofun_value = %s;\n"
-                    "        if (kofun_failed) return %s;\n"
-                    "        printf(\"%%\" PRId64 \"\\n\", kofun_value);\n"
-                    "    }\n",
-                    value,
-                    failure_result
-                );
+            if (strcmp(value_type, "List") == 0) {
+                free(value);
+                free(value_type);
+                free(emitted.data);
+                return lower_error("E2S15", "print requires a scalar, got List[Text]", value_start);
             }
+            emit_print_value(&emitted, value_type, value, failure_result);
             free(value_type);
             free(value);
             cursor = skip_trivia(source, token_end(source, call_close));
@@ -30310,11 +30506,14 @@ static char *lower_body_with_workspace(
                 }
                 char *mutability = hir_binding_field(hir, binding_id, 4);
                 if (strcmp(mutability, "mutable") != 0) {
+                    char *type = hir_binding_field(hir, binding_id, 5);
+                    bool chars = strcmp(type, "List") == 0;
+                    free(type);
                     char *error = assignment_error(
-                        "cannot assign through immutable List[Int] binding",
-                        name,
-                        assignment_start,
-                        "declare it with `let mut`"
+                        chars ? "cannot assign through immutable List[Text] binding" :
+                            "cannot assign through immutable List[Int] binding",
+                        name, assignment_start,
+                        chars ? "chars produces a read-only list" : "declare it with `let mut`"
                     );
                     free(mutability);
                     free(binding_id);
@@ -32671,6 +32870,20 @@ static bool source_uses_bytes(const char *source, const char *hir) {
     return false;
 }
 
+static bool source_calls_builtin(const char *source, const char *hir, const char *name) {
+    if (strstr(source, name) == NULL) return false;
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, 0);
+    while (cursor < length) {
+        int64_t next = skip_trivia(source, token_end(source, cursor));
+        if (token_equal(source, cursor, name) && next < length &&
+            token_equal(source, next, "(") &&
+            call_resolves_to_builtin(source, hir, cursor, name)) return true;
+        cursor = next;
+    }
+    return false;
+}
+
 static bool source_uses_fractional_values(const char *source) {
     int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, 0);
@@ -34467,6 +34680,9 @@ static char *validate_struct_identity(const char *source) {
 static int64_t count_text_sites(const char *bodies) {
     static const char *calls[] = {
         "kofun_text_slice(",
+        "kofun_validate_source_text(",
+        "kofun_text_replace(",
+        "kofun_char_list_index(",
         "kofun_to_text(",
         "kofun_text_concat(",
         "stage2_bytes_text(",
@@ -35188,16 +35404,19 @@ static char *lower_c_body(
         "#include <stdint.h>\n"
         "#include <stdio.h>\n"
     );
-    /* `calloc`/`free` for the Bytes carrier (#1315), only when one is
-     * reachable in this source. */
-    if (uses_bytes) {
+    bool uses_file_identity = source_calls_builtin(source, hir, "stage2_same_file");
+    if (uses_bytes || uses_file_identity) {
         buffer_append(&output, "#include <stdlib.h>\n");
     }
     buffer_append(&output, "#include <string.h>\n");
+    if (uses_file_identity) {
+        buffer_append(&output, "#include <errno.h>\n#include <sys/stat.h>\n");
+    }
     if (fractional_values || uses_fixed) {
         buffer_append(&output, "#include \"decimal_v1.c\"\n");
     }
-    if (uses_xid_continue) {
+    bool validates_source = source_calls_builtin(source, hir, "validate_unicode_source");
+    if (uses_xid_continue || validates_source) {
         buffer_append(&output, "#include \"kofun_unicode.c\"\n");
     }
     buffer_append(&output, "\n");
@@ -35731,6 +35950,97 @@ static char *lower_c_body(
         "    slot[left_width + right_width] = '\\0'; return slot;\n"
         "}\n"
     );
+    if (validates_source) {
+        buffer_append(&output,
+            "static inline const char *kofun_validate_source_text(const char *source) {\n"
+            "    KofunUnicodeError error;\n"
+            "    if (kofun_unicode_validate_source((const uint8_t *)source, strlen(source), &error)) {\n"
+            "        return \"\";\n"
+            "    }\n"
+            "    char message[1024];\n"
+            "    kofun_unicode_format_error(&error, getenv(\"KOFUN_DIAGNOSTIC_LOCALE\"), message, sizeof(message));\n"
+            "    size_t width = strlen(message);\n"
+            "    if (width > 255) {\n"
+            "        kofun_error(\"error[R021]: Unicode diagnostic exceeds the 255-byte Text limit\");\n"
+            "        return \"\";\n"
+            "    }\n"
+            "    char *slot = kofun_text_temporary();\n"
+            "    if (slot == NULL) return \"\";\n"
+            "    memcpy(slot, message, width + 1);\n"
+            "    return slot;\n"
+            "}\n"
+        );
+    }
+    if (source_calls_builtin(source, hir, "replace")) {
+        buffer_append(&output,
+            "static inline const char *kofun_text_replace(const char *value, const char *old, const char *replacement) {\n"
+            "    size_t old_size = strlen(old), replacement_size = strlen(replacement), matches = 0;\n"
+            "    const char *cursor = value, *match;\n"
+            "    if (old_size != 0) {\n"
+            "        while ((match = strstr(cursor, old)) != NULL) {\n"
+            "            ++matches;\n"
+            "            cursor = match + old_size;\n"
+            "        }\n"
+            "    }\n"
+            "    size_t kept = strlen(value) - matches * old_size;\n"
+            "    if (kept > 255 || (matches && replacement_size > (255 - kept) / matches)) {\n"
+            "        kofun_error(\"error[R021]: bounded Text replacement exceeds 255 bytes\");\n"
+            "        return \"\";\n"
+            "    }\n"
+            "    char *result = kofun_text_temporary();\n"
+            "    if (result == NULL) return \"\";\n"
+            "    char *out = result;\n"
+            "    cursor = value;\n"
+            "    while (matches != 0) {\n"
+            "        match = strstr(cursor, old);\n"
+            "        size_t prefix = (size_t)(match - cursor);\n"
+            "        memcpy(out, cursor, prefix);\n"
+            "        out += prefix;\n"
+            "        memcpy(out, replacement, replacement_size);\n"
+            "        out += replacement_size;\n"
+            "        cursor = match + old_size;\n"
+            "        --matches;\n"
+            "    }\n"
+            "    memcpy(out, cursor, strlen(cursor) + 1);\n"
+            "    return result;\n"
+            "}\n"
+        );
+    }
+    if (source_calls_builtin(source, hir, "chars")) {
+        buffer_append(&output,
+            "typedef struct { const char *text; size_t length; } KofunCharList;\n"
+            "static inline KofunCharList kofun_chars(const char *text) {\n"
+            "    return (KofunCharList){text, strlen(text)};\n"
+            "}\n"
+            "static inline const char *kofun_char_list_index(KofunCharList list, int64_t index) {\n"
+            "    if (index < 0 || (uint64_t)index >= list.length) {\n"
+            "        kofun_error(\"error[R010]: List[Text] index out of bounds\");\n"
+            "        return \"\";\n"
+            "    }\n"
+            "    char *slot = kofun_text_temporary();\n"
+            "    if (slot == NULL) return \"\";\n"
+            "    slot[0] = list.text[index];\n"
+            "    slot[1] = '\\0';\n"
+            "    return slot;\n"
+            "}\n"
+        );
+    }
+    if (uses_file_identity) {
+        buffer_append(&output,
+            "static inline int64_t kofun_same_file(const char *input, const char *output) {\n"
+            "    struct stat left, right;\n"
+            "    if (strcmp(input, output) == 0) return 1;\n"
+            "    if (stat(input, &left) == 0) {\n"
+            "        if (stat(output, &right) == 0) {\n"
+            "            return left.st_dev == right.st_dev && left.st_ino == right.st_ino;\n"
+            "        }\n"
+            "        if (errno == ENOENT) return 0;\n"
+            "    }\n"
+            "    kofun_error(\"error[E2S35]: stage2_same_file: file lookup failed before output open\");\n"
+            "    exit(2);\n"
+            "}\n"
+        );
+    }
     /* #1666. The bounded C11 command surface, emitted only for a source that
      * can reach it. The operand count, the indexed operand read, and the
      * standard-error line all live here; the argument globals are seeded in

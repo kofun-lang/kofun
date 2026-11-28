@@ -1,0 +1,8 @@
+fn chars(n: Int) -> Int { return n + 1 }
+fn apply(chars: (Int) -> Int) -> Int { return chars(5) }
+fn twice(n: Int) -> Int { return n + n }
+fn main() -> Int {
+    print(chars(8))
+    print(apply(twice))
+    return 0
+}

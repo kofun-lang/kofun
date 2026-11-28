@@ -12,15 +12,14 @@ bootstrap subset already exercised by the Stage 1 seed:
 - `args`, `read_text`, `write_text`, `chars`, `len`, `text_slice`,
   `contains`, `starts_with`, `is_digit`, `is_space`, and `to_text`.
 
-The compiler-private `stage2_unicode_scalar_at` and `stage2_same_file`
-operations follow
+The bounded `stage2_unicode_scalar_at` and `stage2_same_file` operations follow
 [`stage2-pair-host-primitives-v1`](../../spec/stage2-pair-host-primitives-v1/PROFILE.md).
-They are driver bindings, separate from ordinary-source builtin resolution.
-`host-driver.mjs` executes the trusted Kofun compiler's bootstrap subset for
-`task stage2-pair-host-primitives`; program source is passed to those compiler
-functions as data and receives no host-operation authority. This bounded
-execution path does not claim native self-compilation of the Stage 2 compiler
-(the remaining owner is #1483).
+The bootstrap driver binds them when executing the trusted compiler. The Core
+lowerer also recognizes both signatures in ordinary source, where user
+declarations of the same name take precedence. The generated file-identity
+helper follows final symlinks and reports `E2S35` on an indeterminate lookup
+before its caller continues. The host-primitives gate runs the Kofun half
+through `host-driver.mjs`; #1483 tracks native self-compilation.
 
 The pair gate compares complete C output and runs the emitted programs across
 all identifier escaping funnels, including parameters, function values,
@@ -174,6 +173,22 @@ Consequently the frozen self-host source `S`
 (`bootstrap/stage1/compiler.kofun`) clears the complete lexical binding layer
 and call resolution: `S` is valid source whose remaining boundary is typed
 builtin lowering, owned by the #653/#620 slices of #619.
+
+The Stage 2 C11 bootstrap profile lowers `chars(Text)` to a read-only view
+of the source bytes. It supports inferred immutable locals, copies, `len`,
+and checked integer indexing. An index returns one byte as Text. Negative
+and past-end indices fail with `R010`. For example, `len(chars("k字n"))`
+is 5 on the frozen bootstrap path. The lexer uses these byte offsets for
+token spans. The frozen Stage 1 source now reaches `trim` at byte 7701.
+
+`replace(Text, Text, Text)` replaces non-overlapping byte sequences and
+copies the subject when the needle is empty. The replacement is literal.
+The result uses one Text temporary and reports `R021` above 255 bytes.
+
+`validate_unicode_source(Text)` calls the pinned Unicode source validator.
+It returns empty Text on success and the formatted diagnostic in the selected
+locale on failure. A diagnostic that exceeds the bounded Text size produces
+`R021`. Compile emitted C that uses this builtin with `-I unicode`.
 
 Unannotated `let` bindings carry inferred types in the scope-HIR rather than
 a blind `Int` default: literals by token kind, calls by the declared or

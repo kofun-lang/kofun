@@ -1,0 +1,6 @@
+fn main() -> Int {
+    let unit = "0123456789abcdef"
+    let expanded = unit + unit
+    print(replace("aaaaaaaa", "a", expanded))
+    return 0
+}

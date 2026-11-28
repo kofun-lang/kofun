@@ -1,0 +1,16 @@
+fn mark(value: Text) -> Text {
+    print(value)
+    return value
+}
+
+fn main() -> Int {
+    print(replace(mark("10_0_0"), mark("_"), mark("x")))
+    print(replace("aaaaa", "aa", "b"))
+    print(replace("abc", "", "x"))
+    print(replace("keep", "absent", "x"))
+    print(replace("é+é", "é", "$&"))
+    print(replace("ab", "ab", ""))
+    print(replace(replace("a_a", "_", "9"), "a", "b"))
+    print(len(replace("aaaaaaaaaaaaaaaaa", "a", "123456789abcdef")))
+    return 0
+}

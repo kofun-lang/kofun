@@ -31,6 +31,13 @@ validation and source reads. A missing output is written successfully through
 the real HIR writer. Failed lookups and aliases preserve the input and any
 existing output bytes.
 
+The gate also compiles the canonical three-destination output guard in an
+ordinary Core program and passes its result to a function that prints it.
+Both compiler halves must emit identical C. The executable
+prints `1` for aliases and `0` for distinct files or an absent output.
+An indeterminate lookup exits with status 2 and `E2S35` before the print.
+Separate cases check the operand types, arity, and ordinary shadowing.
+
 The native fixture injects lookup failures only inside its own translation
 unit; production code has no environment-controlled failure or guard bypass.
 The public C driver also compiles every identifier fixture and exercises all
