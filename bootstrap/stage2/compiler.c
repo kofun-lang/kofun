@@ -12027,45 +12027,40 @@ static char *emit_primary(
             free(name);
             return found.data;
         }
-        /* #1782/#1784. The driver-bound UTF-8 scalar decode, admitted to the
-         * Core path for self-compilation with bounded read-only authority. */
+        /* The two bounded host operations share the normal two-argument
+         * lowering. User declarations and lexical bindings take precedence. */
         if (
             open < end && token_equal(source, open, "(") &&
-            strcmp(name, "stage2_unicode_scalar_at") == 0 &&
+            (strcmp(name, "stage2_unicode_scalar_at") == 0 ||
+             strcmp(name, "stage2_same_file") == 0) &&
             call_resolves_to_builtin(source, hir, cursor, name)
         ) {
-            int64_t value = skip_trivia(source, token_end(source, open));
-            int64_t value_end = argument_end(source, value);
-            int64_t separator = skip_trivia(source, value_end);
-            int64_t offset = skip_trivia(source, token_end(source, separator));
-            char *value_text = emit_expression(source, hir, value, value_end);
-            if (strncmp(value_text, "error[", 6) == 0) {
+            int64_t left = skip_trivia(source, token_end(source, open));
+            int64_t left_end = argument_end(source, left);
+            int64_t separator = skip_trivia(source, left_end);
+            int64_t right = skip_trivia(source, token_end(source, separator));
+            char *left_text = emit_expression(source, hir, left, left_end);
+            if (strncmp(left_text, "error[", 6) == 0) {
                 free(name);
-                return value_text;
+                return left_text;
             }
-            char *offset_text = emit_expression(
-                source,
-                hir,
-                offset,
-                argument_end(source, offset)
+            char *right_text = emit_expression(
+                source, hir, right, argument_end(source, right)
             );
-            if (strncmp(offset_text, "error[", 6) == 0) {
-                free(value_text);
+            if (strncmp(right_text, "error[", 6) == 0) {
+                free(left_text);
                 free(name);
-                return offset_text;
+                return right_text;
             }
-            Buffer scalar;
-            buffer_init(&scalar);
-            buffer_format(
-                &scalar,
-                "kofun_unicode_scalar_at(%s, %s)",
-                value_text,
-                offset_text
-            );
-            free(offset_text);
-            free(value_text);
+            const char *helper = strcmp(name, "stage2_same_file") == 0
+                ? "kofun_same_file" : "kofun_unicode_scalar_at";
+            Buffer call;
+            buffer_init(&call);
+            buffer_format(&call, "%s(%s, %s)", helper, left_text, right_text);
+            free(right_text);
+            free(left_text);
             free(name);
-            return scalar.data;
+            return call.data;
         }
         Buffer output;
         buffer_init(&output);
@@ -13275,9 +13270,9 @@ static int64_t builtin_arity(const char *name) {
         /* #1696. The checked origin construction takes the record it
          * validates. */
         {"stage2_http_origin", 1},
-        /* #1782/#1784. Driver-bound UTF-8 scalar decode, admitted to the Core
-         * path with bounded read-only authority. */
+        /* Bounded host operations admitted to the Core path by #1782. */
         {"stage2_unicode_scalar_at", 2},
+        {"stage2_same_file", 2},
         /* #1667. The chunked-read surface: selecting standard input takes no
          * argument; opening a path and reading a chunk each take one. */
         {"stage2_bytes_stream_stdin", 0},
@@ -13387,6 +13382,7 @@ static const char *builtin_parameter_types(const char *name) {
          * the `HttpOrigin` field shape is checked where the call lowers. */
         {"stage2_http_origin", "Record"},
         {"stage2_unicode_scalar_at", "Text|Int"},
+        {"stage2_same_file", "Text|Text"},
         /* #1667. Selecting standard input takes no argument; opening a path
          * takes a `Text`; the chunk read takes the `Bytes` carrier it fills. */
         {"stage2_bytes_stream_stdin", ""},
@@ -13473,7 +13469,8 @@ static char *builtin_argument_check(
                 argument
             );
             bool matches;
-            if (strncmp(expected, "TextOrList", expected_length) == 0) {
+            if (expected_length == sizeof("TextOrList") - 1 &&
+                strncmp(expected, "TextOrList", expected_length) == 0) {
                 matches = strcmp(actual, "Text") == 0 ||
                     strcmp(actual, "List") == 0 ||
                     strncmp(actual, "List[", 5) == 0;
@@ -14946,6 +14943,7 @@ static char *validate_core_calls(const char *source, const char *hir) {
                     if (
                         strcmp(name, "find") == 0 ||
                         strcmp(name, "stage2_unicode_scalar_at") == 0 ||
+                        strcmp(name, "stage2_same_file") == 0 ||
                         strcmp(name, "len") == 0 ||
                         strcmp(name, "text_slice") == 0 ||
                         strcmp(name, "to_text") == 0 ||
@@ -20192,6 +20190,7 @@ static const char *builtin_return_type(const char *name) {
          * runtime diagnostic, so the call has no source value. */
         {"stage2_http_origin", "Void"},
         {"stage2_unicode_scalar_at", "Int"},
+        {"stage2_same_file", "Int"},
         /* #1667. All three chunked-read operations report an `Int`: the open
          * status, the standard-input status, and the chunk's byte count (0 at
          * end of stream, negative for a failure the program continues past). */
@@ -32576,6 +32575,20 @@ static bool source_uses_bytes(const char *source, const char *hir) {
     return false;
 }
 
+static bool source_calls_builtin(const char *source, const char *hir, const char *name) {
+    if (strstr(source, name) == NULL) return false;
+    int64_t length = source_length(source);
+    int64_t cursor = skip_trivia(source, 0);
+    while (cursor < length) {
+        int64_t next = skip_trivia(source, token_end(source, cursor));
+        if (token_equal(source, cursor, name) && next < length &&
+            token_equal(source, next, "(") &&
+            call_resolves_to_builtin(source, hir, cursor, name)) return true;
+        cursor = next;
+    }
+    return false;
+}
+
 static bool source_uses_fractional_values(const char *source) {
     int64_t length = source_length(source);
     int64_t cursor = skip_trivia(source, 0);
@@ -35090,12 +35103,14 @@ static char *lower_c_body(
         "#include <stdint.h>\n"
         "#include <stdio.h>\n"
     );
-    /* `calloc`/`free` for the Bytes carrier (#1315), only when one is
-     * reachable in this source. */
-    if (uses_bytes) {
+    bool uses_file_identity = source_calls_builtin(source, hir, "stage2_same_file");
+    if (uses_bytes || uses_file_identity) {
         buffer_append(&output, "#include <stdlib.h>\n");
     }
     buffer_append(&output, "#include <string.h>\n");
+    if (uses_file_identity) {
+        buffer_append(&output, "#include <errno.h>\n#include <sys/stat.h>\n");
+    }
     if (fractional_values || uses_fixed) {
         buffer_append(&output, "#include \"decimal_v1.c\"\n");
     }
@@ -35595,6 +35610,22 @@ static char *lower_c_body(
         "    slot[left_width + right_width] = '\\0'; return slot;\n"
         "}\n"
     );
+    if (uses_file_identity) {
+        buffer_append(&output,
+            "static inline int64_t kofun_same_file(const char *input, const char *output) {\n"
+            "    struct stat left, right;\n"
+            "    if (strcmp(input, output) == 0) return 1;\n"
+            "    if (stat(input, &left) == 0) {\n"
+            "        if (stat(output, &right) == 0) {\n"
+            "            return left.st_dev == right.st_dev && left.st_ino == right.st_ino;\n"
+            "        }\n"
+            "        if (errno == ENOENT) return 0;\n"
+            "    }\n"
+            "    kofun_error(\"error[E2S35]: stage2_same_file: file lookup failed before output open\");\n"
+            "    exit(2);\n"
+            "}\n"
+        );
+    }
     /* #1666. The bounded C11 command surface, emitted only for a source that
      * can reach it. The operand count, the indexed operand read, and the
      * standard-error line all live here; the argument globals are seeded in
