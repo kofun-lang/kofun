@@ -49,6 +49,10 @@ for source in "$CASES"/*.kofun; do
     test "$status" -eq 1 || fail "$stem exited $status instead of 1"
     test ! -s "$WORK/$stem.internal" || fail "$stem wrote internal stderr"
     test ! -e "$output" || fail "$stem emitted C"
+    case $stem in
+        enum_fixed|fixed_qualified) test ! -e "$WORK/$stem.ir" && test ! -e "$WORK/$stem.tokens" ;;
+        *) test -s "$WORK/$stem.ir" && test -s "$WORK/$stem.tokens" ;;
+    esac || fail "$stem changed which checkpoints survive refusal"
     cmp "$golden" "$WORK/$stem.actual" || fail "$stem diagnostic differs from its golden"
     printf '%s\n' "PASS: refusal $stem"
 done
@@ -65,7 +69,7 @@ done
 # (if_owner_fallthrough, while_owner_fallthrough, arm_owner_fallthrough,
 # #1763). Every `.stdout` golden is a positive and must be listed, so none can
 # skip the seam.
-POSITIVES='first_program:cents ok_transfer:cents err_rewrap:again two_owners:cents ok_arm_return:again ok_arm_payload:again if_owner_fallthrough:cents while_owner_fallthrough:cents arm_owner_fallthrough:again'
+POSITIVES='grouped_propagation:cents propagate_call_and_local:cents construction_contexts:cents first_program:cents ok_transfer:cents err_rewrap:again two_owners:cents ok_arm_return:again ok_arm_payload:again if_owner_fallthrough:cents while_owner_fallthrough:cents arm_owner_fallthrough:again'
 # #1766. Programs whose entry fails a statement through `kofun_failed`, an R010
 # overflow, with Fixed owners live: after a `let` in the function body, in an
 # `if` branch, on a `while` body's second pass and in an `Ok` arm with its
@@ -222,6 +226,17 @@ for program in $POSITIVES $FAILURES; do
         "$WORK/$stem.c" "$WORK/$stem.ir" "$WORK/$stem.tokens" >/dev/null
     test -s "$WORK/$stem.c" || fail "the $kind $stem emitted no C"
 
+    if grep -Eq '(^|[^[:alnum:]_])(decimal_fatal|kofun_decimal_value_round)[[:space:]]*\(' "$WORK/$stem.c"; then
+        fail "$stem emitted a fatal Decimal operation for Fixed"
+    fi
+    if test "$stem" = construction_contexts; then
+        sed -n 's/^typedef struct { KofunDecimal value; } \(KofunFixed__[0-9]*\);$/\1/p' "$WORK/$stem.c" |
+            sort >"$WORK/fixed-names"
+        printf '%s\n' KofunFixed__2 KofunFixed__3 | cmp - "$WORK/fixed-names" ||
+            fail 'Fixed[02], Fixed[2] and Fixed[3] did not lower to exactly two built-in types'
+        grep -Fqx '} KofunRecord_Fixed__2;' "$WORK/$stem.c" ||
+            fail 'the user record lost its separate C type'
+    fi
     "$CC" -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
         -I"$ROOT/bootstrap/stage2" "$WORK/$stem.c" \
         -o "$WORK/$stem"

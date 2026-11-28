@@ -1,6 +1,6 @@
 # diagnostic-mode: compile
 # expect-code: E407
-# expect-span: byte 133
+# expect-span: byte 102
 fn main() -> Int {
     let x = Fixed.from_decimal(1.5, HalfUp)?
     return 0

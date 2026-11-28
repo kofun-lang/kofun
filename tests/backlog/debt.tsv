@@ -174,4 +174,3 @@
 # keep the window short. The live lane runs on every push to `main`, so the
 # window is the minutes between.
 capability-blocker	1291	-
-closed-blockers	1759	#1754

@@ -1,0 +1,4 @@
+fn main() -> Int {
+    let amounts: List[Fixed[2]] = []
+    return 0
+}

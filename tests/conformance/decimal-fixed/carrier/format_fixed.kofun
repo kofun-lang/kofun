@@ -1,0 +1,9 @@
+fn cents() -> Result[Fixed[2], DecimalError] {
+    let amount: Fixed[2] = Fixed.from_decimal(1.999, HalfUp)?
+    print(Decimal.format(amount, 2))
+    return Ok(amount)
+}
+
+fn main() -> Int {
+    return 0
+}

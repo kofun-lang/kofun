@@ -1,0 +1,13 @@
+type Box[T] = {
+    value: T,
+}
+
+fn invalid(box: Box[Int]) -> Int {
+    take box
+    return box.value
+}
+
+fn main() -> Int {
+    let value: Box[Int] = Box[Int](value: 7)
+    return invalid(value)
+}

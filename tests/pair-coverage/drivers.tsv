@@ -76,6 +76,7 @@ fuzz
 gate-reachability
 generic-adt-hir
 generic-record-hir
+generic-records-stage2
 generics
 hm-levels
 http
@@ -84,12 +85,14 @@ import-aliases
 imports-qualified
 imports-selective
 incremental
+include-form
 int-bits
 int-bits-lowering
 kif-generics-codec
 kif-v1
 kofun-digest-model
 kotest
+law-declaration-hir
 list-int-signatures
 list-int-values
 live-https-get-adapter-decision

@@ -111,14 +111,21 @@ for(const kind of ['start','continue']) {
 }
 console.log('PASS: scalar boundaries and distinct typed failures; pinned XID range boundaries and holes');
 
-for(const operation of ['stage2_unicode_scalar_at','stage2_same_file']) {
-  assert.equal(compiler.builtin_arity(operation),-1n);
-  assert.equal(compiler.selfhost_builtin_slot(operation),-1n);
-  assert.equal(compiler.selfhost_c11_builtin_helper(operation),'');
-  const test={name:`private-${operation}`,source:`fn main() -> Int { return ${operation}("a", "b") }\n`};
-  for(const refusal of [nativeLower(native,test),kofunLower(compiler,test)]) assert.match(refusal,/error\[E2S16\]: unknown Core function/);
-}
-console.log('PASS: private operations do not resolve as source builtins; same-spelling declarations remain ordinary');
+// #1782/#1784. The scalar operation is admitted to the Core path with bounded
+// authority, but it is still absent from the self-host serialization profile.
+assert.equal(compiler.builtin_arity('stage2_unicode_scalar_at'),2n);
+assert.equal(compiler.selfhost_builtin_slot('stage2_unicode_scalar_at'),-1n);
+assert.equal(compiler.selfhost_c11_builtin_helper('stage2_unicode_scalar_at'),'');
+const scalarTest={name:'admitted-scalar',source:'fn main() -> Int { return stage2_unicode_scalar_at("A", 0) }\n'};
+for(const output of [nativeLower(native,scalarTest),kofunLower(compiler,scalarTest)]) assert.ok(!output.startsWith('error['),`scalar admitted: ${output.slice(0,80)}`);
+
+// #1785 still owns the file-identity binding; until then it stays private.
+assert.equal(compiler.builtin_arity('stage2_same_file'),-1n);
+assert.equal(compiler.selfhost_builtin_slot('stage2_same_file'),-1n);
+assert.equal(compiler.selfhost_c11_builtin_helper('stage2_same_file'),'');
+const fileTest={name:'private-stage2_same_file',source:'fn main() -> Int { return stage2_same_file("a", "b") }\n'};
+for(const refusal of [nativeLower(native,fileTest),kofunLower(compiler,fileTest)]) assert.match(refusal,/error\[E2S16\]: unknown Core function/);
+console.log('PASS: the scalar operation is admitted; the file-identity operation stays private until #1785; same-spelling declarations remain ordinary');
 
 const modes=[
   ['--emit-selfhost-hir','emit_selfhost_hir_file','selfhost-HIR',true],

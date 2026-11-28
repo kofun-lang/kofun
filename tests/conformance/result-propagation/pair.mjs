@@ -45,9 +45,7 @@ function read(file) {
   return fs.existsSync(file) ? fs.readFileSync(file, 'latin1') : null;
 }
 
-let compared = 0;
-for (const source of sources) {
-  const stem = path.basename(source, '.kofun');
+function compareSource(source, stem) {
   const cDirectory = path.join(work, 'c');
   const kDirectory = path.join(work, 'kofun');
   fs.mkdirSync(cDirectory, {recursive: true});
@@ -63,14 +61,12 @@ for (const source of sources) {
   const kStatus = Number(kofun.compile_file(bytes(source), bytes(kOut.c), bytes(kOut.ir), bytes(kOut.tokens)));
 
   assert.equal(kStatus, c.status, `${stem}: exit status differs between the halves`);
-  // A successful compile prints its own output path; nothing in this corpus
-  // succeeds, but the comparison should not depend on that.
+  // Successful compilations print their own destination.
   assert.equal(printed.split(kOut.c).join('OUTPUT.c'), text(c.stdout).split(cOut.c).join('OUTPUT.c'),
     `${stem}: printed outcome differs between the halves`);
-  for (const key of ['ir', 'tokens']) {
+  for (const key of ['c', 'ir', 'tokens']) {
     assert.equal(read(kOut[key]), read(cOut[key]), `${stem}: ${key} checkpoint differs between the halves`);
   }
-  assert.equal(fs.existsSync(kOut.c), fs.existsSync(cOut.c), `${stem}: C output presence differs`);
 
   const cHir = path.join(cDirectory, `${stem}.scope-hir`);
   const kHir = path.join(kDirectory, `${stem}.scope-hir`);
@@ -83,6 +79,43 @@ for (const source of sources) {
   assert.equal(kScope, cScope.status, `${stem}: scope-HIR status differs between the halves`);
   assert.equal(printed, text(cScope.stdout), `${stem}: scope-HIR diagnostic differs between the halves`);
   assert.equal(read(kHir), read(cHir), `${stem}: scope HIR differs between the halves`);
-  compared += 1;
+  return {status: c.status, c: cOut.c, hir: read(cHir)};
 }
-console.log(`PASS: ${compared} sources compile and build scope HIR identically in both halves of the pair`);
+
+for (const source of sources) compareSource(source, path.basename(source, '.kofun'));
+console.log(`PASS: ${sources.length} sources agree on diagnostics, checkpoints, C and scope HIR`);
+
+const carrier = path.join(root, 'tests/conformance/decimal-fixed/carrier');
+const twins = path.join(root, 'tests/conformance/result-propagation/fixed-twins');
+const expectedTwins = [];
+for (const golden of fs.readdirSync(carrier).sort()) {
+  if (!/\.(stdout|failure)$/.test(golden)) continue;
+  const stem = path.parse(golden).name;
+  const filename = stem + '.kofun';
+  const sugar = compareSource(path.join(carrier, filename), 'sugar-' + stem);
+  assert.equal(sugar.status, 0, stem);
+  if (!/^propagate\|/m.test(sugar.hir)) continue;
+  expectedTwins.push(filename);
+
+  const twin = compareSource(path.join(twins, filename), 'explicit-' + stem);
+  assert.equal(twin.status, 0, stem);
+  assert.doesNotMatch(twin.hir, /^propagate\|/m, stem + ': twin still uses ?');
+  assert.equal(read(twin.c), read(sugar.c), stem + ': desugaring changed emitted C');
+
+  const fails = golden.endsWith('.failure');
+  for (const generated of [sugar.c, twin.c]) {
+    const exe = generated.slice(0, -2);
+    const built = spawnSync(process.env.CC || 'cc', ['-std=c11', '-O0', '-Wall', '-Wextra',
+      '-Werror', '-pedantic', '-I' + path.join(root, 'bootstrap/stage2'), generated, '-o', exe],
+      {encoding: 'utf8'});
+    assert.ifError(built.error);
+    assert.equal(built.status, 0, built.stderr);
+    const result = spawnSync(exe, [], {encoding: 'utf8'});
+    assert.ifError(result.error);
+    assert.equal(result.status, fails ? 1 : 0, stem);
+    assert.equal(result.stdout, fails ? '' : read(path.join(carrier, golden)), stem);
+    assert.equal(result.stderr, fails ? read(path.join(carrier, golden)) : '', stem);
+  }
+}
+assert.deepEqual(fs.readdirSync(twins).sort(), expectedTwins.sort(), 'unpaired Fixed fixtures');
+console.log(`PASS: ${expectedTwins.length} Fixed propagation twins generate identical C and observations`);

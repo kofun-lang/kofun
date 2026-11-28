@@ -935,7 +935,7 @@ assert_num "selfhost frontier status" "$selfhost_frontier_status" -eq 3
 assert_not_grep "selfhost-S.stdout" 'E2S35' "$temporary/selfhost-S.stdout"
 assert_not_grep "selfhost-S.stdout" 'E2S16' "$temporary/selfhost-S.stdout"
 assert_grep "selfhost-S.stdout" \
-    'error\[E2S10\]: unsupported Core builtin call `is_xid_continue`' \
+    'error\[E2S10\]: unsupported Core builtin call `chars`' \
     "$temporary/selfhost-S.stdout"
 assert_absent "$temporary/selfhost-S.c" "$temporary/selfhost-S.c"
 
@@ -1015,14 +1015,14 @@ assert_num "builtin argument two status" "$builtin_argument_two_status" -eq 1
 assert_grep "builtin-argument-two.stdout" \
     'error\[E2S15\]: builtin `find` expects Text for argument 2, got Int' \
     "$temporary/builtin-argument-two.stdout"
-assert_num "builtin text args status" "$builtin_text_args_status" -eq 3
-assert_grep "builtin-text-args.stdout" \
-    'error\[E2S10\]: unsupported Core builtin call `contains`' \
-    "$temporary/builtin-text-args.stdout"
+assert_num "builtin text args status" "$builtin_text_args_status" -eq 0
+assert_file_nonempty "builtin text args C artifact" \
+    "$temporary/builtin-text-args.c"
+assert_grep "builtin-text-args.c" \
+    'kofun_contains(' "$temporary/builtin-text-args.c"
 assert_absent "$temporary/builtin-argument.c" "$temporary/builtin-argument.c"
 assert_absent "$temporary/builtin-argument-two.c" \
     "$temporary/builtin-argument-two.c"
-assert_absent "$temporary/builtin-text-args.c" "$temporary/builtin-text-args.c"
 
 echo "PASS: Stage 2 statically compiled Copy Int borrowed-return slice"
 echo "PASS: Stage 2 and kofun check rejected non-Copy Text move with E007"

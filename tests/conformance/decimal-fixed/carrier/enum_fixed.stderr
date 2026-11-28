@@ -1,0 +1,1 @@
+error[E2S31]: enum constructor `Sample` payload 0 has undeclared type `Fixed` at byte 34

@@ -33,6 +33,7 @@ export const STAGE2_SEMANTIC_EVENT_V2_LIMITS = Object.freeze({
   relations: LIMITS.relations,
 });
 const V1_PROFILE = Object.freeze({ major: 1, limits: LIMITS });
+const V3_PROFILE = Object.freeze({ major: 3, limits: LIMITS });
 const V2_PROFILE = Object.freeze({ major: 2, limits: STAGE2_SEMANTIC_EVENT_V2_LIMITS });
 const V2_PHASE = Object.freeze({
   1: 1, 2: 2, 3: 3, 8: 4, 9: 5, 10: 6, 11: 7, 12: 8, 13: 9,
@@ -93,6 +94,7 @@ const FACT_KIND = Object.freeze({
   3: "ownership",
   4: "origin",
 });
+const V3_FACT_KIND = Object.freeze({ ...FACT_KIND, 5: "declared_pure" });
 const NAMESPACE = Object.freeze({
   1: "value",
   2: "type",
@@ -563,7 +565,7 @@ function recordFromFields(kind, fields, record, limits = LIMITS) {
   }
 }
 
-function basicRecordValidation(event, record, eventKind, nodeKinds = NODE_KIND) {
+function basicRecordValidation(event, record, eventKind, nodeKinds = NODE_KIND, factKinds = FACT_KIND) {
   const enumValue = (table, value, message) => {
     if (!Object.hasOwn(table, value)) {
       fail("ETS03", message, { record, eventKind });
@@ -607,7 +609,7 @@ function basicRecordValidation(event, record, eventKind, nodeKinds = NODE_KIND) 
       enumValue(IDENTITY_KIND, event.target_kind, "unknown target identity kind");
     }
   } else if (event.kind === "fact") {
-    enumValue(FACT_KIND, event.fact_kind, "unknown semantic fact kind");
+    enumValue(factKinds, event.fact_kind, "unknown semantic fact kind");
     enumValue(STATUS, event.status, "unknown semantic fact status");
   } else if (event.kind === "diagnostic") {
     enumValue(SEVERITY, event.severity, "unknown diagnostic severity");
@@ -748,7 +750,7 @@ function readSemanticEventBytes(input, profile) {
         }
         exactFieldSchema(kind, fields, record);
       }
-      const phase = profile.major === 1 ? kind : V2_PHASE[kind];
+      const phase = profile.major === 2 ? V2_PHASE[kind] : kind;
       if (!phase || phase < previousPhase || (record === 0 && kind !== 1) ||
           (record === eventCount - 1 && kind !== 7) ||
           (record !== 0 && kind === 1) ||
@@ -761,7 +763,8 @@ function readSemanticEventBytes(input, profile) {
       if (!event) {
         event = recordFromFields(kind, fields, record, limits);
         basicRecordValidation(event, record, kind,
-          profile.major === 2 ? V2_NODE_KIND : NODE_KIND);
+          profile.major === 2 ? V2_NODE_KIND : NODE_KIND,
+          profile.major === 3 ? V3_FACT_KIND : FACT_KIND);
         if (profile.major === 2 && !encodeCommonEvent(event).equals(bytes.subarray(frameStart, frameEnd))) {
           fail("ETS03", "common event frame is not canonical", { record, eventKind: kind });
         }
@@ -1048,7 +1051,11 @@ function mapDiagnostic(event, source, allRecordIds) {
   };
 }
 
-function semanticProjection(events, limits = LIMITS, nodeKinds = NODE_KIND) {
+function semanticProjection(events, profile = V1_PROFILE) {
+  const { limits, major } = profile;
+  const nodeKinds = major === 2 ? V2_NODE_KIND : NODE_KIND;
+  const factKinds = major === 3 ? V3_FACT_KIND : FACT_KIND;
+  const declaredPure = [];
   if (!Array.isArray(events)) {
     throw new TypeError("Stage 2 semantic events must be an array");
   }
@@ -1191,7 +1198,7 @@ function semanticProjection(events, limits = LIMITS, nodeKinds = NODE_KIND) {
       allIds.add(event.id);
     } else if (event.kind === "fact") {
       ensureId(event.owner_node_id, "fact owner");
-      if (!FACT_KIND[event.fact_kind] || !STATUS[event.status] ||
+      if (!factKinds[event.fact_kind] || !STATUS[event.status] ||
           !nodes.has(event.owner_node_id)) {
         fail("ETS03", "invalid semantic fact", { record: index });
       }
@@ -1253,7 +1260,16 @@ function semanticProjection(events, limits = LIMITS, nodeKinds = NODE_KIND) {
     }
     addRelationSet(owner.mapped.depends_on, event.dependencies);
     addRelationSet(owner.mapped.diagnostic_ids, event.diagnostic_ids);
-    owner.mapped[FACT_KIND[event.fact_kind]] = mapFact(event);
+    if (factKinds[event.fact_kind] === "declared_pure") {
+      if (owner.mapped.kind !== "function.declaration" || owner.mapped.status !== "validated" ||
+          event.status !== 1 || event.display !== "pure" || event.reason !== "" ||
+          event.dependencies.length || event.diagnostic_ids.length) {
+        fail("ETS03", "invalid declared purity fact");
+      }
+      declaredPure.push(event.owner_node_id);
+    } else {
+      owner.mapped[factKinds[event.fact_kind]] = mapFact(event);
+    }
   }
 
   const diagnosticIds = new Set(diagnosticEvents.map((event) => event.id));
@@ -1390,11 +1406,12 @@ function semanticProjection(events, limits = LIMITS, nodeKinds = NODE_KIND) {
     limits: {
       document_bytes: TYPED_SIDECAR_LIMITS.documentBytes,
       max_depth: TYPED_SIDECAR_LIMITS.maxDepth,
-      profile: "default-v1",
+      profile: major === 3 ? "default-v3" : "default-v1",
     },
     nodes: mappedNodes,
     references: mappedReferences,
-    schema: "kofun.typed-sidecar/v1",
+    schema: major === 3 ? "kofun.typed-sidecar/v3" : "kofun.typed-sidecar/v1",
+    ...(major === 3 ? { declared_pure_functions: declaredPure.sort() } : {}),
     source_status: sourceStatus,
   };
   const encoded = encodeTypedSidecar(document);
@@ -1413,9 +1430,9 @@ function semanticProjection(events, limits = LIMITS, nodeKinds = NODE_KIND) {
   };
 }
 
-export function projectStage2SemanticEvents(events) {
+function projectEventsWithProfile(events, profile) {
   try {
-    const projected = semanticProjection(events);
+    const projected = semanticProjection(events, profile);
     return Object.freeze({
       ok: true,
       document: projected.document,
@@ -1425,6 +1442,14 @@ export function projectStage2SemanticEvents(events) {
     if (error instanceof TypeError) throw error;
     return errorResult(error);
   }
+}
+
+export function projectStage2SemanticEvents(events) {
+  return projectEventsWithProfile(events, V1_PROFILE);
+}
+
+export function projectStage2SemanticEventsV3(events) {
+  return projectEventsWithProfile(events, V3_PROFILE);
 }
 
 function mapCodecError(error) {
@@ -1522,6 +1547,11 @@ async function emitSemanticSidecar(eventBytes, destination, context, readEvents,
 export async function emitStage2TypedSidecar(eventBytes, destination, context) {
   return emitSemanticSidecar(eventBytes, destination, context,
     readStage2SemanticEvents, projectStage2SemanticEvents);
+}
+
+export async function emitStage2TypedSidecarV3(eventBytes, destination, context) {
+  return emitSemanticSidecar(eventBytes, destination, context,
+    bytes => readSemanticEventBytes(bytes, V3_PROFILE), projectStage2SemanticEventsV3);
 }
 
 // KSE2 is an explicit successor API. The old entrypoints above remain v1-only.
@@ -1730,7 +1760,7 @@ function encodeV2Bytes(events) {
 function projectV2Decoded(events) {
   const captures = events.filter((event) => typeof event.kind === "number");
   const common = events.filter((event) => typeof event.kind === "string");
-  const projected = semanticProjection(common, V2_PROFILE.limits, V2_NODE_KIND);
+  const projected = semanticProjection(common, V2_PROFILE);
   const nodes = new Map(common.filter((event) => event.kind === "node").map((event) => [event.id, event]));
   // Key by the actual kind/value pair, not a display label or an arbitrary owner.
   const identities = new Map(common.filter((event) => event.kind === "identity")

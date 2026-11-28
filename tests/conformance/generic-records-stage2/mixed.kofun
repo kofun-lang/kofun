@@ -1,0 +1,9 @@
+type Scaled[const scale: Int] = { value: Int }
+type Box[T] = { value: T }
+fn main() -> Int {
+    let s: Scaled[2] = Scaled[2](value: 7)
+    let b: Box[Int] = Box[Int](value: 3)
+    print(s.value)
+    print(b.value)
+    return 0
+}

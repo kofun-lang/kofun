@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 88,
+  "open_issues": 87,
   "issues": [
     {
       "number": 26,
@@ -191,11 +191,11 @@
       "state_line": "blocked",
       "blocked_by": [
         1291,
-        1292,
-        1530
+        1292
       ],
       "evidence_commits": [
-        "20cee8101c2792e0725fb6dd2211d1b0bfcec500"
+        "20cee8101c2792e0725fb6dd2211d1b0bfcec500",
+        "6d4ae8fff4b72e80d3404fb361052220e9a0146b"
       ],
       "claims": [
         {
@@ -477,6 +477,7 @@
       ],
       "evidence_commits": [
         "30f18e4d85dcd23232c46f73fb0d20fac301815e",
+        "6d4ae8fff4b72e80d3404fb361052220e9a0146b",
         "fd680a7e630ad85e51940062601728c4c1a1f6d2"
       ]
     },
@@ -1179,7 +1180,8 @@
       "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
-        "20cee8101c2792e0725fb6dd2211d1b0bfcec500"
+        "20cee8101c2792e0725fb6dd2211d1b0bfcec500",
+        "6d4ae8fff4b72e80d3404fb361052220e9a0146b"
       ],
       "claims": [
         {
@@ -1200,11 +1202,11 @@
       ],
       "state_line": "blocked",
       "blocked_by": [
-        1291,
-        1530
+        1291
       ],
       "evidence_commits": [
-        "20cee8101c2792e0725fb6dd2211d1b0bfcec500"
+        "20cee8101c2792e0725fb6dd2211d1b0bfcec500",
+        "6d4ae8fff4b72e80d3404fb361052220e9a0146b"
       ],
       "claims": [
         {
@@ -1758,9 +1760,9 @@
       "number": 1679,
       "title": "Stage 2 pair divergences: Text-literal initializers and value `if`/`match` end positions",
       "state_labels": [
-        "needs-detail"
+        "in-progress"
       ],
-      "state_line": "needs-detail",
+      "state_line": "in-progress",
       "blocked_by": [],
       "evidence_commits": [],
       "claims": [
@@ -1779,6 +1781,14 @@
         {
           "agent_id": "grok-opencode-pair-divergence-1679-20260926",
           "status": "released"
+        },
+        {
+          "agent_id": "opencode-value-else-if-1679-20261123",
+          "status": "active"
+        },
+        {
+          "agent_id": "opencode-value-else-if-1679-20261123",
+          "status": "pr-open"
         }
       ]
     },
@@ -1888,33 +1898,10 @@
       ],
       "evidence_commits": [
         "7d2caf6f3fa3bf733533b08ccf20b6551c3e13f0"
-      ]
-    },
-    {
-      "number": 1756,
-      "title": "RFC-0020: check arguments to pure parameters (E2S218, E2S219)",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
-      "blocked_by": [
-        1754,
-        1768
-      ],
-      "evidence_commits": [
-        "85126c27abf910100b37851ff18afd7310614557"
       ],
       "claims": [
         {
-          "agent_id": "agent-pure-argument-rule-1756-20261115",
-          "status": "active"
-        },
-        {
-          "agent_id": "agent-pure-argument-rule-1756-20261115",
-          "status": "released"
-        },
-        {
-          "agent_id": "release-stage2-1756-20261121",
+          "agent_id": "opencode-deepseek-1730",
           "status": "active"
         }
       ]
@@ -1953,40 +1940,35 @@
       "number": 1759,
       "title": "RFC-0020: typed sidecar v3 shows callable shapes and their pure requirement",
       "state_labels": [
-        "blocked"
+        "needs-detail"
       ],
-      "state_line": "blocked",
-      "blocked_by": [
-        1754
-      ],
-      "evidence_commits": [
-        "85126c27abf910100b37851ff18afd7310614557"
-      ]
-    },
-    {
-      "number": 1765,
-      "title": "Fixed[S]: an `Ok(owner)` transfer inside an `if` or `while` body is never recorded, so a second use takes an empty owner",
-      "state_labels": [
-        "in-progress"
-      ],
-      "state_line": "in-progress",
+      "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
-        "bcc1196d50a82c0070b628d41807cec3911ef62e"
+        "6d4ae8fff4b72e80d3404fb361052220e9a0146b",
+        "85126c27abf910100b37851ff18afd7310614557"
       ],
       "claims": [
         {
-          "agent_id": "agent-nested-ok-move-1765-20261116",
+          "agent_id": "backlog-sync-1759-20261123",
           "status": "active"
         },
         {
-          "agent_id": "agent-nested-ok-move-1765-20261116",
+          "agent_id": "backlog-sync-1759-20261123",
           "status": "released"
-        },
-        {
-          "agent_id": "release-stage2-1765-20261121",
-          "status": "active"
         }
+      ]
+    },
+    {
+      "number": 1772,
+      "title": "Stage 2 concrete laws: parse declarations and emit typed HIR (DD-035)",
+      "state_labels": [
+        "needs-detail"
+      ],
+      "state_line": "needs-detail",
+      "blocked_by": [],
+      "evidence_commits": [
+        "6d4ae8fff4b72e80d3404fb361052220e9a0146b"
       ]
     }
   ]

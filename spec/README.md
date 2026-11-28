@@ -70,9 +70,8 @@ executable bootstrap implementation.
 - `stage2-include-v1.md` defines the bounded top-level `include "NAME"` form by
   which a Stage 2 unit reuses a declared, digested block instead of a build-time
   extraction, the committed manifest that names and pins each target by SHA-256,
-  and the refusals that keep the read non-ambient. It is the replacement #1668
-  question 1 asked for; it is design-only and `E2S02` still refuses it until the
-  implementation lands.
+  and the four refusal codes. The `include-form` gate compares both compilers
+  against the C seed on four independent NIST test vectors.
 - `decimal-error-v1.md` records the source-level answers RFC-0015 names but does
   not define for `kofun.fixed-decimal/v1`: `DecimalError` is an opaque nominal
   value with a `D00x` code accessor reserved for `Fixed` in v1, the clone form
@@ -114,6 +113,10 @@ executable bootstrap implementation.
   links, phase/order, bounds, privacy, typed-sidecar v2 `captures[]`, and the
   exact v1 contract bytes. It does not change the 46-row selfhost profile,
   accept `par`, or claim compiler, codec, runtime, or backend implementation.
+- [Concrete law declaration HIR v1](law-declaration-hir-v1/README.md) describes
+  the Boolean/Optional analysis entry, ground substitutions, equation trees
+  and source-byte targets. Both compiler halves exercise the example and
+  its refusal cases in `task law-declaration-hir`.
 - `generic-record-hir-v1.md`, its closed JSON schema
   `kofun.generic-record-hir.v1.schema.json`, independent `model.mjs` oracle, and
   canonical positive golden freeze the generic-record analysis document for
@@ -126,8 +129,8 @@ executable bootstrap implementation.
   both halves of the `--emit-generic-record-hir` entry (the canonical Kofun half
   through the host driver, the maintained C half as the built binary) against
   the positive golden and the negative fixtures, requiring the two halves to
-  agree. Ordinary compilation keeps refusing generic records (`E2S148`), and no
-  C, KIF, or capability is claimed here.
+  agree. `task generic-records-stage2` checks the distinct C types, layouts,
+  and execution of bounded concrete generic records using those identities.
 - `generic-adt-hir-v1/generic-adt-hir-v1.md`, its closed JSON schema
   `kofun.generic-adt-hir.v1.schema.json`, independent `model.mjs` oracle, and
   canonical positive golden freeze the generic-ADT analysis document for issue
@@ -140,10 +143,9 @@ executable bootstrap implementation.
   refusal (`E2S203`-`E2S217`), and drives both halves of the
   `--emit-generic-adt-hir` entry against the golden and the negative fixtures,
   requiring the halves to agree with each other, with the record entry on a
-  record-only file, and with ordinary compilation still refusing generic
-  sources (`E2S148`). Layout, matching, and backend emission are deferred
-  (#1269/#1270), as is exact per-instantiation layout-cycle classification; no
-  C, KIF, or capability is claimed here.
+  record-only file, and on ordinary compilation. Both halves execute the
+  concrete record example and refuse generic ADTs with `E2S148`. Generic
+  ADT layout, matching, and backend emission are tracked in #1270.
 - `concurrency/schedule-trace-v1.md` is the accepted deterministic testing
   contract for issue #736: stable scope/task identities, the canonical
   `kofun.schedule-trace/v1` and `kofun.schedule-witness/v1` bytes, FIFO, seeded,
