@@ -1,0 +1,1 @@
+error[E2S15]: `Fixed.from_decimal` rounding mode must be one of HalfUp, HalfEven, TowardZero, Floor, or Ceiling at byte 100

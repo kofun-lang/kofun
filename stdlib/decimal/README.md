@@ -24,17 +24,18 @@ recovers the same canonical native value, including negative values.
 
 ## Fixed-point boundary
 
-The project still names the Decimal-library limitation `runtime-scale/v1`:
-destination scales in this slice are ordinary runtime `Int` arguments.
+Plain `Decimal` uses runtime scale arguments. Its `runtime-scale/v1` profile
+requires an explicit display or destination scale for formatting, rounding and
+rounded division.
 
-Literal integer const generics already distinguish Scaled[2] from Scaled[3]; that type-system checkpoint is not a Decimal-backed Fixed[scale] implementation.
-
-The current library has no Decimal-backed `Fixed` value and no static scale
-safety. Slice 5 removes the old `Fixed { significand: Int, scale: Int }`
-placeholder instead of allowing a fixed-width representation to coexist with
-compiler-native Decimal. A future Decimal-backed Fixed type must reuse the
-existing const-generic identity, introduce its own executable representation,
-and update the profile name and documentation together.
+The ordinary Stage 2 C11 compiler also supports the owned `Fixed[S]` carrier.
+A literal `S` from 0 through 6144 is part of its type. To construct a value in
+a function returning `Result[Fixed[2], DecimalError]`, write
+`let amount: Fixed[2] = Fixed.from_decimal(1.999, HalfUp)?`. The compiler
+takes the scale from the annotation and propagates an allocation failure
+through the enclosing result. Run `task decimal-fixed-carrier` for the
+constructor, consuming match and owner-lifetime cases. Fixed formatting,
+conversion to Decimal and arithmetic belong to later checkpoints.
 
 ## Executable evidence
 

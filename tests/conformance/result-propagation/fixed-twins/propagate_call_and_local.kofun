@@ -1,0 +1,29 @@
+fn milli() -> Result[Fixed[3], DecimalError] {
+    return Fixed.from_decimal(2.125, HalfEven)
+}
+
+fn cents() -> Result[Fixed[2], DecimalError] {
+    let milli_value: Fixed[3] = match take milli() {
+        Ok(v) => v,
+        Err(e) => return Err(e),
+    }
+    let result: Result[Fixed[2], DecimalError] = Fixed.from_decimal(1.999, HalfUp)
+    let cents_value: Fixed[2] = match take result {
+        Ok(v) => v,
+        Err(e) => return Err(e),
+    }
+    return Ok(cents_value)
+}
+
+fn main() -> Int {
+    let outcome: Result[Fixed[2], DecimalError] = cents()
+    match take outcome {
+        Ok(value) => { print(0) },
+        Err(error) => {
+            let first: DecimalError = error
+            let copy = first
+            print(DecimalError.code(copy))
+        },
+    }
+    return 0
+}

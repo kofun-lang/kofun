@@ -1,0 +1,1 @@
+error[E2S32]: nominal record cannot shadow built-in type `DecimalError` at byte 0

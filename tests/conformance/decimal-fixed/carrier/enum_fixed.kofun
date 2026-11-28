@@ -1,0 +1,6 @@
+type Packet =
+    | Sample(value: Fixed[2])
+
+fn main() -> Int {
+    return 0
+}

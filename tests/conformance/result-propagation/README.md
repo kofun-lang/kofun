@@ -1,10 +1,12 @@
-# Result propagation: Stage 2 refusals
+# Stage 2 result propagation
 
-`task result-propagation` holds the Stage 2 pair to the part of
-[`spec/result-propagation-v1.md`](../../../spec/result-propagation-v1.md) it can
-reach before a `Result` type exists (#1662). Stage 2 parses postfix `?` and
-records each one as a typed scope-HIR node, and since nothing it can type is a
-`Result[T, E]`, every `?` is refused. Positive lowering is #1250's.
+`task result-propagation` checks the typed scope-HIR nodes for postfix `?`,
+the operand and pipeline refusals, and the C11 lowering for the
+`Result[Fixed[S], DecimalError]` specialization. Each executable Fixed
+fixture containing a propagation node has a consuming-match counterpart in
+[fixed-twins](fixed-twins). Both compilers must emit identical C for the two
+forms. Their executables must match the carrier fixture's exit status,
+stdout and stderr. [Result propagation v1](../../../spec/result-propagation-v1.md)
 
 ## What is parsed
 
@@ -93,6 +95,5 @@ specific suggestion is the useful one.
 - `let v: Int? = null?` is refused by scope construction as `E2S35`: `null`
   resolves only where it is the whole value of an `Int?` slot, and `null?` is
   not. `null? ?? 0` is such a slot, and `optional_null.kofun` pins it.
-- The non-Result enclosing function refusal is unreachable here, because the
-  operand is refused first; #1250 registers it. The error-type mismatch
-  refusal needs two `Result` error types.
+- The Fixed carrier suite checks `E2S221` for a propagation inside a non-Result
+  function. The error-type mismatch requires two distinct Result error types.
