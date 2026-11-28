@@ -18,7 +18,7 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
 CASES="$ROOT/tests/conformance/optional-narrowing"
 CC=${CC:-cc}
 ANALYZER_CC=${ANALYZER_CC:-gcc}
-WORK=${KOFUN_OPTIONAL_NARROWING_WORK:-"$ROOT/build/optional-narrowing"}
+WORK=${KOFUN_OPTIONAL_NARROWING_WORK:-"$ROOT/build/${KOFUN_GATE_WORK_NAMESPACE:+$KOFUN_GATE_WORK_NAMESPACE/}optional-narrowing"}
 
 fail() {
     printf '%s\n' "FAIL: $*" >&2

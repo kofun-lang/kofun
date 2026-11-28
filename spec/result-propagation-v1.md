@@ -4,12 +4,14 @@ Status: accepted normative design for GitHub issue #626. Stage 2 parses
 postfix `?` as a typed scope-HIR node and implements refusals 1–3 of
 *Diagnostics* below — operand is not a `Result` (`E2S189`), optional operand
 (`E2S190`), and `?` on a pipeline stage (`E2S191`) — gated by
-`task result-propagation` (#1662). Stage 2 has no `Result` type, so every `?`
-it sees is refused. Pending in #1250: positive lowering, the non-Result
-enclosing function refusal, and the hand-desugared twin corpus. The
-error-type mismatch refusal stays unimplemented until two `Result` error types
-exist. No formatter, debugger mapping, Stage 1, or direct/Wasm backend
-implements the syntax.
+`task result-propagation` (#1662). The Stage 2 C11 carrier specializes
+`Result[Fixed[S], DecimalError]`. In a typed `Fixed[S]` initializer, a
+constructor, call or local result can propagate its error to the enclosing
+`Result[Fixed[U], DecimalError]`. A consuming match expresses the same early
+return. The gate compares the generated C and executes both forms. A non-Result
+enclosing function produces `E2S221` at the question mark. The error-type
+mismatch requires two Result error types. Formatter and debugger mappings,
+Stage 1, and direct/Wasm lowering remain open.
 
 The words **must**, **must not**, and **may** are normative.
 

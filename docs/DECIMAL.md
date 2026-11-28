@@ -355,6 +355,9 @@ Decimal identity.
 
 ## Fixed point
 
+This design sketch describes the target Fixed surface. For executable C11 syntax,
+see the carrier checkpoint below.
+
 `Fixed[scale]` is the target scale-carrying type. Its scale is a compile-time
 integer parameter, and assignment or construction requires an explicit
 rounding mode whenever digits may be discarded:
@@ -373,34 +376,38 @@ Converting that product to a different target scale requires an explicit mode
 when it discards digits. Other operations that can exceed a requested scale
 likewise specify their result type and rounding boundary.
 
+### Stage 2 C11 carrier checkpoint
+
+The ordinary Stage 2 C11 compiler supplies an owned `Fixed[S]` carrier over the
+arbitrary-precision Decimal representation. A literal scale from 0 through
+6144 is part of the type. `Fixed[02]` and `Fixed[2]` denote the same type,
+and `Fixed[3]` denotes another. Construction takes a positional rounding
+mode and uses the scale from the expected type:
+
+```kofun
+fn cents() -> Result[Fixed[2], DecimalError] {
+    let amount: Fixed[2] = Fixed.from_decimal(1.999, HalfUp)?
+    return Ok(amount)
+}
+```
+
+The constructor can also initialize a local annotated with the result type
+or be returned directly from a function with that result type. Consumers
+use `match take` to take ownership of the value or the error.
+`task decimal-fixed-carrier` exercises these forms on the C11 backend and
+injects allocation failures to verify cleanup.
+
+RFC-0015 specifies exact conversion back to Decimal, formatting at scale
+`S`, exact same-scale addition and subtraction, and multiplication with an
+explicit scale-sum result. Those operations belong to later checkpoints.
+Fixed division remains deferred to the explicit Decimal division API.
+
 ### Interim profile: `runtime-scale/v1`
 
-Literal integer const generics are implemented for nominal record identity and
-the bounded ordinary C11 Stage 2 specialization.
-
-Literal integer const generics already distinguish Scaled[2] from Scaled[3]; that type-system checkpoint is not a Decimal-backed Fixed[scale] implementation.
-
-**`runtime-scale/v1` is what native Decimal operations ship.** Destination and
-display scales are ordinary runtime `Int` arguments. `stdlib/decimal` declares
-no Decimal-backed `Fixed` value, constructor, conversion, or arithmetic, so no
-Decimal value carries or statically checks a storage scale. The earlier
-`Fixed { significand: Int, scale: Int }` checkpoint was removed when the stdlib
-moved to native Decimal; keeping it would preserve the fixed-width
-representation under a second name.
-
-The type system can therefore express distinct nominal scale identities, but
-current stdlib Decimal operations do not use them. Explicit runtime arguments
-prevent implicit rounding, but provide **no static scale safety**. A future
-Decimal-backed Fixed implementation must reuse the existing const-generic
-identity, move scale into the Decimal-backed value type, and replace this
-profile rather than presenting runtime arguments as that guarantee.
-
-RFC-0015 now fixes that future profile without claiming it implemented:
-`Fixed[S]` is an owned nominal wrapper over the arbitrary-precision carrier,
-literal `S` is limited to `0..6144`, construction and clone return typed
-`DecimalError`, conversion back to Decimal is exact, and the first arithmetic
-surface is exact `+`, `-`, scale-additive `*`, and formatting at `S`. Fixed
-division remains deferred to the explicit Decimal division API.
+Plain `Decimal` uses runtime scale arguments. Its destination and display
+scales are ordinary `Int` arguments supplied separately on each call to
+`Decimal.round`, `Decimal.divide` or `Decimal.format`. A plain Decimal value
+does not carry a statically checked storage scale.
 
 ## Laws
 
@@ -464,7 +471,7 @@ formats.
 
 The following details are intentionally not invented by this design:
 
-- the implementation schedule for Decimal-backed `Fixed[scale]` and for const
+- the implementation schedule for Fixed conversions and arithmetic, and for const
   expressions or inference beyond the shipped literal nominal profile;
 - locale-aware formatting and exponent-selection thresholds beyond the exact
   fixed-display-scale API;
@@ -481,8 +488,8 @@ The migrated `stdlib/decimal` checkpoint demonstrates compiler-native exact
 arithmetic, all five signed rounding modes, explicit rounded division,
 format/parse round trips, bounded evidence, and a native ledger/tax example.
 The Stage 2 C11 backend and direct runtime gates establish arbitrary precision
-for their declared profile. `Fixed[scale]`, general compiler law declarations,
-other backend runtimes, and interchange formats remain open.
+for their declared profile. Fixed conversions and arithmetic, general compiler law
+declarations, other backend runtimes and interchange formats remain open.
 
 Implementation should land in this order:
 
@@ -492,8 +499,7 @@ Implementation should land in this order:
 4. implement exact operations and checked exact division across every backend;
 5. implement explicit rounding and formatting, then migrate the checkpoint
    (landed in issue #724);
-6. add Decimal-backed `Fixed[scale]` on the existing literal const-generic
-   identity checkpoint;
+6. build the Fixed conversion and arithmetic APIs on the Stage 2 C11 carrier;
 7. connect versioned law evidence and backend differential tests.
 
 Each step must reject unsupported behavior explicitly. A backend that lacks the

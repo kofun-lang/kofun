@@ -86,12 +86,12 @@ kofun-stage2 --emit-generic-adt-hir INPUT.kofun OUTPUT.json LOGICAL-PATH
 - The document is canonical JSON on one line terminated by `\n`, with object
   keys in lexicographic order.
 
-Ordinary compilation and `--compile-outcome` keep refusing every generic ADT and
-generic record exactly as they do today (`E2S148` on a type parameter, exit 1,
-no C and no artifact). [#1673](https://github.com/kofun-lang/kofun/issues/1673)
-decision 3(a): only the analysis entries accept, so the two public modes cannot
-disagree and the Stage 1 compatibility path is never entered. The gate asserts
-this for the positive fixture in both halves.
+Ordinary compilation and `--compile-outcome` refuse generic ADTs with
+`E2S148`, exit 1 and no C, IR or token tape. This includes the positive HIR
+fixture, which mixes generic ADTs and records. On record-only programs, C11
+Stage 2 supports the bounded concrete record layouts covered by
+[`task generic-records-stage2`](../../tests/conformance/generic-records-stage2/check.sh).
+The gate compiles and runs a record-only example through both halves.
 
 ## Source surface
 
@@ -370,8 +370,9 @@ requires the two halves to agree on the diagnostic text. It checks:
 - a record-only file produces the same declaration entries through
   `--emit-generic-record-hir` and `--emit-generic-adt-hir`, which is the
   executable form of "the core is reused unchanged";
-- ordinary compilation and `--compile-outcome` keep refusing the same generic
-  sources with `E2S148`, exit 1 and no artifact, in both halves;
+- both compiler halves refuse generic ADTs with `E2S148`, including a record
+  with a forward reference to a generic ADT, and execute a record-only
+  program that constructs and reads a `Box[Int]`;
 - the boundary of every limit, with sources generated at the boundary.
 
 ### Defects this exposed in the #1674 record half

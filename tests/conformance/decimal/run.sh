@@ -161,24 +161,9 @@ for undecided in floor_div floordiv modulo remainder truncate_div; do
 done
 printf '%s\n' "PASS: Decimal // and % remain undecided and unimplemented"
 
-# #916 now makes a literal const argument part of a nominal type's identity:
-# the shipped CLI refuses `Scaled[3]` where `Scaled[2]` is required. That is the
-# type-system foundation for #725 Part B, not a Decimal-backed `Fixed` value.
-# Native Decimal still takes destination and display scales as runtime Int
-# arguments, so #725 Part A's `runtime-scale/v1` name remains the truthful
-# profile for the operations this gate executes.
-#
-# Three parts are asserted, because any one can drift on its own:
-#
-#   1. the type checker must retain const-generic scale identity;
-#   2. the documents must carry the name and the disclaimer, so a reader is
-#      told what the guarantee is rather than left to infer it;
-#   3. native Decimal must still match that description, so the sentence
-#      cannot go on being printed after it stops being true.
-#
-# Reuse the product-path erasure sentinel instead of inventing a second
-# mismatch fixture. `task const-generics` owns its full corpus; this focused
-# observation ties that established type identity to Decimal's scale profile.
+# The user-defined const-generic erasure sentinel still distinguishes Scaled[2]
+# from Scaled[3]. Plain Decimal operations take runtime scales; the compiler's
+# owned Fixed[S] carrier has a separately exercised Stage 2 C11 checkpoint.
 PROFILE='runtime-scale/v1'
 SCALE_MISMATCH="$ROOT/tests/conformance/const-generics/product/scale_mismatch"
 
@@ -197,14 +182,11 @@ cmp "$SCALE_MISMATCH.stdout" "$WORK/scale-mismatch.stderr" ||
 for doc in docs/DECIMAL.md stdlib/decimal/README.md; do
     grep -qF "$PROFILE" "$ROOT/$doc" ||
         fail "$doc does not name the interim scale profile $PROFILE"
-    grep -qF 'Literal integer const generics already distinguish Scaled[2] from Scaled[3]' \
-        "$ROOT/$doc" ||
-        fail "$doc stopped stating the shipped literal const-generic identity"
-    grep -qF 'not a Decimal-backed Fixed[scale] implementation' "$ROOT/$doc" ||
-        fail "$doc confuses const-generic identity with Decimal-backed Fixed semantics"
+    grep -qF 'Plain `Decimal` uses runtime scale arguments.' "$ROOT/$doc" ||
+        fail "$doc omitted the scale contract for plain Decimal"
+    grep -qF 'task decimal-fixed-carrier' "$ROOT/$doc" ||
+        fail "$doc omitted the Stage 2 C11 Fixed carrier checkpoint"
 done
-grep -qF 'no static scale safety' "$ROOT/docs/DECIMAL.md" ||
-    fail "docs/DECIMAL.md stopped stating that runtime Decimal has no static scale safety"
 
 for stale in \
     'const-generic integer parameters are not implemented' \
@@ -234,7 +216,7 @@ grep -qF 'destination_scale' "$ROOT/stdlib/decimal/decimal.kofun" ||
     fail "stdlib Decimal source does not expose explicit runtime scale"
 printf '%s\n' "PASS: scale guarantees are stated as $PROFILE and still true"
 printf '%s\n' \
-    "PASS: const-generic scale identity exists; Decimal-backed Fixed semantics do not"
+    "PASS: plain Decimal uses runtime scales; task decimal-fixed-carrier covers the Stage 2 C11 Fixed carrier"
 
 # --- exact arithmetic (slice 4 of #710, issue #723) ------------------------
 

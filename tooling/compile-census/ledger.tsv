@@ -56,7 +56,11 @@
 # removing it means not running the gate twice rather than not compiling the
 # source twice.
 #
-# repeated-ceiling: 68
+# Bounded includes (#1690) add the packer used by the CLI, the digest
+# launcher, and the include/SHA-256 acceptance gates. The include-form
+# gate runs both directly and through diagnostics, adding two seed-oracle
+# builds. The clean four-issue integration check measured 87 repeats.
+# repeated-ceiling: 87
 #
 # count	profile	macros	sources	reason
 4	-O0 -fanalyzer	-	bootstrap/stage2/imports_selective.c	compiled by 2 gates: tests/conformance/modules/import-aliases/run.sh tests/conformance/modules/imports-selective/run.sh
@@ -78,7 +82,8 @@
 2	-O0 -fanalyzer	-	bootstrap/stage2/module_symbols.c	compiled by 4 gates: tests/conformance/adt-exhaustiveness/run.sh tests/conformance/modules/imports-qualified/run.sh tests/conformance/modules/raw-imports/run.sh tests/conformance/modules/top-level-declarations/run.sh
 3	-	-	bootstrap/stage2/imports_qualified.c bootstrap/stage2/kif_v1.c bootstrap/stage2/sha256.c bootstrap/stage2/visibility_access.c unicode/kofun_unicode.c	compiled by 4 gates: tests/conformance/modules/import-aliases/run.sh tests/conformance/modules/imports-qualified/run.sh tests/conformance/modules/raw-imports/run.sh tests/modules/inventory/check.sh
 2	-O2	-	bootstrap/stage2/module_symbols.c bootstrap/stage2/sha256.c unicode/kofun_unicode.c	compiled by 4 gates: tests/conformance/adt-exhaustiveness/run.sh tests/conformance/modules/imports-qualified/run.sh tests/conformance/modules/raw-imports/run.sh tests/conformance/modules/top-level-declarations/run.sh
-7	-O2	-	bootstrap/stage2/sha256.c bootstrap/stage2/sha256_tool.c	compiled by 2 gates: tests/digest/check.sh tests/stage2/sha256-pair/check.sh
+9	-O2	-	bootstrap/stage2/sha256.c bootstrap/stage2/sha256_tool.c	compiled by seed verification, tests/digest/check.sh and tests/stage2/sha256-pair/check.sh, including the diagnostics adapter
+18	-O2	-	bootstrap/stage2/include_bundle.c bootstrap/stage2/sha256.c	compiled by bootstrap/stage2/build.sh for bin/kofun, tests/stage2/sha256-pair/check.sh and tests/conformance/bytes-read-stream/run.sh
 3	-O2	-DKOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY	bootstrap/stage2/kif_v1.c bootstrap/stage2/stage2_kif_producer.c	compiled by 2 gates: tests/conformance/modules/stage2-kif-producer/run.sh tests/tooling/verify-object-reuse/check.sh
 2	-O2	-	bootstrap/stage2/confusable_visible_set.c bootstrap/stage2/sha256.c tests/conformance/modules/confusable-visible-set/driver.c unicode/kofun_unicode.c	compiled by 2 gates: tests/conformance/modules/confusable-visible-set/run.sh tests/diagnostics/unicode/run.sh
 2	-	-	bootstrap/stage2/kif_v1.c bootstrap/stage2/re_exports.c bootstrap/stage2/sha256.c bootstrap/stage2/visibility_access.c unicode/kofun_unicode.c	compiled by 2 gates: tests/conformance/modules/raw-re-exports/run.sh tests/conformance/modules/re-exports/run.sh

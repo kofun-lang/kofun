@@ -6,7 +6,7 @@
     "VERSION": "52805dd2a8754a2d0acfe93aedfbbb70a8d360223d80a9c8d7c8876d5b3502d6",
     "release/claims.json": "579afcb7cb298f632d64bb07b6af295589fcf9c0e993ea2ea7a4abf21a5760d3",
     "spec/release-claim.schema.json": "06af4520ca7f4e5d364d5d795a8eeab6ea4dba6185f005c2bd29f778fd5d5366",
-    "bootstrap/manifest.json": "42d8fc8a6a6fa260747c03622ba3fb730c055da444b0cf73e1b45f495e42d962"
+    "bootstrap/manifest.json": "56bb31db9318b34c8f1ccc5eed2576f1ba79cda90e9dbf39253683c5f0eac854"
   },
   "states": {
     "checkpoint": 42,
@@ -818,7 +818,7 @@
   ],
   "evidence_digests": {
     ".github/workflows/native-hosts.yml": "76d3edbe30c1a65f7c9525d78464c14859f094ecc04aec9638ea586284fad9cb",
-    "Taskfile.yml": "bb1749f57c5e31af4756df80b7a45068926d552d34a4d4f83c7d63f3dbd9bff6",
+    "Taskfile.yml": "0c4520b940f40d7051370bc0d3a9bc2788dab60026a428daed40837db9f2ce8c",
     "bootstrap/native/README.md": "6c470b203c3dbc327c6b601ab958c754e6f82be78c255d442307ad0c7691bc21",
     "bootstrap/native/check-macho64-signed.sh": "6fc51ddfec599ea85b8b06a5c16d68b6fdc994621cdb8ca4267e20be38141393",
     "bootstrap/native/check-macho64.sh": "d6bd52e3f6756aa607a2dc44a0117defeaaa55e64fa3f4221986da6406251e15",
@@ -837,10 +837,10 @@
     "bootstrap/wasm/object_arena_check.sh": "40af44fc0928dfb5ab18dc9f06a295e7c9ec653422fe07999fbd9a66914fde3d",
     "docs/BUILD_SYSTEM.md": "d4a372fc97c53874cc2438f3de132289beb033ce2bf1e67518b702de796b05a8",
     "docs/COMPILER_ARCHITECTURE.md": "1e3ce4c825607ccd577b4c8554d6091c244f5273ecc5bc54c992105f63cb383e",
-    "docs/DECIMAL.md": "565e03b16a48a951cf8143d6d58da1497dfac87c81e7dc1a8179ad17bb6c2aa6",
+    "docs/DECIMAL.md": "4dc80c3fdb59371a62799a880a5a03766b66ae39a27240d7002f35f2d2742e2e",
     "docs/DOCUMENTATION_INDEX.md": "f0e22ded32b0dfebd4e628e0c57036574c197b12889d07771539f6e29640b4d9",
     "docs/GETTING_STARTED.md": "cbbe5d0df1a008c9ca2194792e5619527d8701bedf7fd6b6b777e27169008f0c",
-    "docs/LAW_SYSTEM.md": "b974f0ad762bec778ee76afa5d0a2176423ac96a3a583739eee55dcb8dca5043",
+    "docs/LAW_SYSTEM.md": "e592bb4cd498c8972a7aecd795d1a0cf2069ab94b2938468552a1de01c4f8051",
     "docs/LINGUIST_RECOGNITION.md": "279f9afa7157c90e41d656974c2f5020f8b6d25acbbd389ee760efbb2d6d6166",
     "docs/MEMORY_MODEL.md": "ddc67d55f669f0ff689f2a2b8daacd2213032bececbe2b8f84b1b3531d4d1b0f",
     "docs/MVP_IMPLEMENTED.md": "8e0787ac120d7f6b2ad28cc1e1cf8b998d81a8c9e2db2ea28490d65e529c526d",
@@ -867,7 +867,7 @@
     "spec/typed-sidecar/kofun.typed-sidecar.v1.schema.json": "2574494144647b9e89ff45a126dc768ab947ed21a02044965ee22a0076f77460",
     "spec/wasm-host-abi-v1.md": "b49538b8b8bbdd29c36faa7b8bcd07e34c1dc14fb86cb654f1dbe6c93f25beaf",
     "spec/wasm-host-profile-v1.md": "162c197b85ca283e72dfa8009b0615be6454366da0e93c34f26dae95f4a533b6",
-    "stdlib/decimal/README.md": "e0404b4b1ddd0f34989baec7e46b78b4adb9df615b2485347c8b04c6864f4272",
+    "stdlib/decimal/README.md": "5784f61debadfcf201629d56b0cb4ece8da9c477d7181a907a65ec56863221c9",
     "stdlib/tests/verify.sh": "7904bde49ce46f8447deb98072cfb4aa422ebba189e509256882a86bcdc3d45d",
     "tests/cli.sh": "6ca726adc3cb5fa4437d34665603b6556a63d01d26db1141a93af3388c5240f9",
     "tests/cli_stage2_outcomes.sh": "39997e23a0b7f6806721c3953e4fd4526744ae26935b2d99fc61dc35d656dbc8",
@@ -883,7 +883,7 @@
     "tests/conformance/records/stage2_unsupported_field.kofun": "3a2a267549694c0ccf71e682b37992d94ff5b0a59b1b6438726b5384d3c46e82",
     "tests/conformance/syntax/issues_35_47/enum_payload_unsupported_field.kofun": "e1b4ce6cda998dac0a955ed016c8eb2f81a9effaed91b823011572cf68f6c59e",
     "tests/diagnostics/README.md": "0c915028a977e49a363c31304fec0e0e4635f0c814cb0cce5cfd4cabca6ff70e",
-    "tests/diagnostics/registry.tsv": "709f6697254671a86794b36160ae7304029743660b1a08ae64760f88a683a5fb",
+    "tests/diagnostics/registry.tsv": "b174e7616198a2dd009691efd5686a70a6efcafc12b301abb3e8ab8c6709f174",
     "tests/diagnostics/stage2/e2s10_unsupported_statement.kofun": "664c4d3b0d4bcd9265fee34b3ae60d8bf0eb58c9ce5c2b504579c1249aa16f2d",
     "tests/diagnostics/visibility-api-leaks.sh": "5c65b941bec961bc7b814e3979170af630df34fa8812d0fa650639e159ea755a",
     "tests/docs/documentation_index_test.mjs": "1195ff0fb6486bd046e1b70a8d364838a51ae06b47749206f851de54ac8d4c44",

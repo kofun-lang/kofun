@@ -26,9 +26,9 @@ set -eu
 # one piece of the old path in a rebuilt compiler and requires a named
 # fixture to stop answering the way its golden says.
 #
-# Positive lowering is #1250's, and so are the non-Result enclosing function
-# refusal and the hand-desugared twin corpus. The error-type mismatch refusal
-# is unreachable until two `Result` error types exist.
+# Fixed carrier fixtures cover positive lowering, the non-Result enclosing
+# function refusal, and hand-desugared consuming matches (#1250). The error
+# type mismatch needs two distinct Result error types.
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
 CASES="$ROOT/tests/conformance/result-propagation"

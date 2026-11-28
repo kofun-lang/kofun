@@ -281,6 +281,11 @@ tasks:
   # preimage with the #303 frame and checks the canonical document, the
   # substituted fields, the limits, and the refusals. The compiler entry that
   # must reproduce these goldens lands next and joins this gate then.
+  generic-records-stage2:
+    desc: "Verify executable concrete generic records across both Stage 2 compilers"
+    cmds:
+      - "sh tests/conformance/generic-records-stage2/check.sh"
+
   generic-record-hir:
     desc: "Verify the generic-record HIR v1 identities, limits, and refusals"
     cmds:
@@ -298,6 +303,11 @@ tasks:
     desc: "Verify the generic-ADT HIR v1 identities, cycle classes, limits, and refusals"
     cmds:
       - "sh spec/generic-adt-hir-v1/check.sh"
+
+  law-declaration-hir:
+    desc: "Verify concrete law declarations and typed equation HIR on the Stage 2 pair"
+    cmds:
+      - "sh spec/law-declaration-hir-v1/check.sh"
 
   hm-levels:
     desc: "Verify bounded Algorithm J inference for local lambdas"
@@ -799,10 +809,15 @@ tasks:
   # can reach one: the digest now lives in both halves of the Stage 2 pair
   # and in `sha256.c`, and three copies are safe only while something
   # compares them.
+  include-form:
+    desc: "Verify the bounded Stage 2 include manifest, refusals, and SHA-256 oracle"
+    cmds:
+      - "sh tests/stage2/sha256-pair/check.sh --include-form"
+
   sha256-pair:
     desc: "Verify both halves of the Stage 2 pair digest identically to the C oracle"
     cmds:
-      - "sh tests/stage2/sha256-pair/check.sh"
+      - "sh tests/stage2/sha256-pair/check.sh --sha256-pair"
 
   benchmark-report-comparison:
     desc: "Verify deterministic threshold comparison, rounding, and precedence"
@@ -1680,8 +1695,10 @@ tasks:
             aggregate-bridge \
             generics \
             const-generics \
+            generic-records-stage2 \
             generic-record-hir \
             generic-adt-hir \
+            law-declaration-hir \
             hm-levels \
             effect-inference \
             pure-boundary \
@@ -1775,6 +1792,7 @@ tasks:
             benchmark-report \
             kofun-digest-model \
             sha256-pair \
+            include-form \
             move-assertion \
             usability-corpus \
             capabilities \

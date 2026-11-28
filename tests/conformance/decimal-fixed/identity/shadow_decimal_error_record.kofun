@@ -1,0 +1,5 @@
+type DecimalError = { value: Int }
+
+fn main() -> Int {
+    return 0
+}
