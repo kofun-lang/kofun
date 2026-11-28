@@ -1285,6 +1285,10 @@ tests/conformance/syntax/issues_35_47/unsupported_for.kofun
 tests/conformance/syntax/issues_35_47/unsupported_owned_binding.kofun
 tests/conformance/syntax/issues_48_60/token-spans.kofun
 tests/conformance/syntax/issues_48_60/unterminated-string.kofun
+tests/conformance/text-results/bootstrap_chars.kofun
+tests/conformance/text-results/chars_index_type.kofun
+tests/conformance/text-results/chars_out_of_range.kofun
+tests/conformance/text-results/chars_shadow.kofun
 tests/conformance/text-results/concat_too_long.kofun
 tests/conformance/text-results/loop_reclamation.kofun
 tests/conformance/text-results/mixed_int_text.kofun
