@@ -24826,7 +24826,7 @@ fn expand_bounded_includes(source: Text, bundle: Text) -> Text {
 }
 
 fn compile_file(input_path: Text, output_path: Text, ir_path: Text, tokens_path: Text) -> Int {
-    return compile_file_with_bundle("", input_path, output_path, ir_path, tokens_path)
+    return compile_file_outputs(0, "", input_path, output_path, ir_path, tokens_path)
 }
 
 fn compile_file_with_bundle(
@@ -24836,19 +24836,38 @@ fn compile_file_with_bundle(
     ir_path: Text,
     tokens_path: Text
 ) -> Int {
-    # All destinations are checked before the first artifact is written.
-    if stage2_same_file(input_path, output_path) == 1 ||
-       stage2_same_file(input_path, ir_path) == 1 ||
-       stage2_same_file(input_path, tokens_path) == 1 ||
-       (len(bundle_path) > 0 && (stage2_same_file(bundle_path, output_path) == 1 ||
-        stage2_same_file(bundle_path, ir_path) == 1 || stage2_same_file(bundle_path, tokens_path) == 1)) {
+    return compile_file_outputs(1, bundle_path, input_path, output_path, ir_path, tokens_path)
+}
+
+fn output_aliases_compiler_input(
+    bundle_supplied: Int, bundle_path: Text, input_path: Text, destination: Text
+) -> Int {
+    if stage2_same_file(input_path, destination) == 1 { return 1 }
+    if bundle_supplied == 1 { return stage2_same_file(bundle_path, destination) }
+    return 0
+}
+
+fn compile_file_outputs(
+    bundle_supplied: Int, bundle_path: Text, input_path: Text,
+    output_path: Text, ir_path: Text, tokens_path: Text
+) -> Int {
+    # Each destination is checked against the source and then the supplied
+    # catalog. An explicit empty catalog path still goes through host lookup.
+    let mut alias = output_aliases_compiler_input(bundle_supplied, bundle_path, input_path, output_path)
+    if alias == 0 {
+        alias = output_aliases_compiler_input(bundle_supplied, bundle_path, input_path, ir_path)
+    }
+    if alias == 0 {
+        alias = output_aliases_compiler_input(bundle_supplied, bundle_path, input_path, tokens_path)
+    }
+    if alias == 1 {
         print("error[E2S35]: compiler input and output must be distinct")
         return 2
     }
     let mut source = read_text(input_path)
     if uses_bounded_include(source) {
         let mut bundle = "KOFUN-INCLUDES-1\n"
-        if len(bundle_path) > 0 { bundle = read_text(bundle_path) }
+        if bundle_supplied == 1 { bundle = read_text(bundle_path) }
         source = expand_bounded_includes(source, bundle)
         if starts_with(source, "error[") {
             print(source)
