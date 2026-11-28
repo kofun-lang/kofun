@@ -18904,6 +18904,48 @@ fn lower_fixed_result_match(
     return "M@@" + to_text(match_end) + "@@" + emitted
 }
 
+# The carrier an inferred binding gets is the carrier its type
+# already names. A nominal record was the one type with no row
+# here, so it fell through to `int64_t` and every later use of
+# the name became a member access on a scalar -- accepted by
+# the checker, rejected by `cc`, in a file the author did not
+# write.
+#
+# The record row derives its C type from
+# `record_c_type_name`, which is what the *annotated* binding
+# path uses, so the two spellings of one binding cannot
+# disagree. It is not written as a call to
+# `call_slot_declaration_prefix`, which carries the same
+# vocabulary: that helper returns a trailing space this site
+# does not want, and it does not know `Decimal`, `Float`, or
+# `DecimalResult`, so folding the two ladders together here
+# would trade this defect for those three.
+fn inferred_local_c_type(source: Text, inferred_type: Text) -> Text {
+    let mut c_type = "int64_t"
+    if inferred_type == "Decimal" {
+        c_type = "KofunDecimal *"
+    } else if inferred_type == "Float" {
+        c_type = "double"
+    } else if inferred_type == "DecimalResult" {
+        c_type = "KofunDecimalResult *"
+    } else if inferred_type == "Text" {
+        c_type = "const char *"
+    } else if inferred_type == "List" {
+        c_type = "KofunCharList"
+    } else if inferred_type == "List[Int]" {
+        c_type = "KofunIntListValue"
+    } else if starts_with(inferred_type, "List[") {
+        c_type = record_list_c_type(
+            text_slice(inferred_type, 5, len(inferred_type) - 1)
+        )
+    } else if inferred_type == "Bytes" {
+        c_type = "KofunBytesValue"
+    } else if record_declaration_start(source, inferred_type) >= 0 {
+        c_type = record_c_type_name(inferred_type)
+    }
+    return c_type
+}
+
 fn emit_print_value(value_type: Text, value: Text, failure_result: Text) -> Text {
     if value_type == "Decimal" {
         return "    {\n" +
@@ -19704,44 +19746,7 @@ fn lower_body(
                         return initializer
                     }
                 }
-                # The carrier an inferred binding gets is the carrier its type
-                # already names. A nominal record was the one type with no row
-                # here, so it fell through to `int64_t` and every later use of
-                # the name became a member access on a scalar -- accepted by
-                # the checker, rejected by `cc`, in a file the author did not
-                # write.
-                #
-                # The record row derives its C type from
-                # `record_c_type_name`, which is what the *annotated* binding
-                # path uses, so the two spellings of one binding cannot
-                # disagree. It is not written as a call to
-                # `call_slot_declaration_prefix`, which carries the same
-                # vocabulary: that helper returns a trailing space this site
-                # does not want, and it does not know `Decimal`, `Float`, or
-                # `DecimalResult`, so folding the two ladders together here
-                # would trade this defect for those three.
-                let mut c_type = "int64_t"
-                if inferred_type == "Decimal" {
-                    c_type = "KofunDecimal *"
-                } else if inferred_type == "Float" {
-                    c_type = "double"
-                } else if inferred_type == "DecimalResult" {
-                    c_type = "KofunDecimalResult *"
-                } else if inferred_type == "Text" {
-                    c_type = "const char *"
-                } else if inferred_type == "List" {
-                    c_type = "KofunCharList"
-                } else if inferred_type == "List[Int]" {
-                    c_type = "KofunIntListValue"
-                } else if starts_with(inferred_type, "List[") {
-                    c_type = record_list_c_type(
-                        text_slice(inferred_type, 5, len(inferred_type) - 1)
-                    )
-                } else if inferred_type == "Bytes" {
-                    c_type = "KofunBytesValue"
-                } else if record_declaration_start(source, inferred_type) >= 0 {
-                    c_type = record_c_type_name(inferred_type)
-                }
+                let c_type = inferred_local_c_type(source, inferred_type)
                 if mutable && inferred_type == "List" {
                     return "error[E2S144]: chars produces a read-only List[Text] at byte " +
                         to_text(value_start)

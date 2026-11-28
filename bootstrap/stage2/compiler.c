@@ -27456,6 +27456,52 @@ static char *lower_fixed_result_match(
     return emitted.data;
 }
 
+/*
+ * The carrier an inferred binding gets is the carrier its type
+ * already names.  A nominal record was the one type with no row
+ * here, so it fell through to `int64_t` and every later use of
+ * the name became a member access on a scalar: accepted by the
+ * checker, rejected by `cc`, in a file the author did not write.
+ *
+ * The record row derives its C type from `record_c_type_name`,
+ * which is what the annotated binding path uses, so the two
+ * spellings of one binding cannot disagree.  It owns storage,
+ * unlike every other row here, so it is held separately and freed
+ * on both exits below.
+ */
+static const char *inferred_local_c_type(
+    const char *source, const char *binding_type, char **owned_type
+) {
+    const char *c_type = "int64_t";
+    if (strcmp(binding_type, "Decimal") == 0) {
+        c_type = "KofunDecimal *";
+    } else if (strcmp(binding_type, "Float") == 0) {
+        c_type = "double";
+    } else if (strcmp(binding_type, "DecimalResult") == 0) {
+        c_type = "KofunDecimalResult *";
+    } else if (strcmp(binding_type, "Text") == 0) {
+        c_type = "const char *";
+    } else if (strcmp(binding_type, "List") == 0) {
+        c_type = "KofunCharList";
+    } else if (strcmp(binding_type, "List[Int]") == 0) {
+        c_type = "KofunIntListValue";
+    } else if (strncmp(binding_type, "List[", 5) == 0) {
+        size_t inner = strlen(binding_type) - 6;
+        char *element = malloc(inner + 1);
+        memcpy(element, binding_type + 5, inner);
+        element[inner] = '\0';
+        *owned_type = record_list_c_type(element);
+        free(element);
+        c_type = *owned_type;
+    } else if (strcmp(binding_type, "Bytes") == 0) {
+        c_type = "KofunBytesValue";
+    } else if (record_declaration_start(source, binding_type) >= 0) {
+        *owned_type = record_c_type_name(binding_type);
+        c_type = *owned_type;
+    }
+    return c_type;
+}
+
 static void emit_print_value(
     Buffer *emitted,
     const char *value_type,
@@ -28800,47 +28846,8 @@ static char *lower_body_with_workspace(
                     return value;
                 }
             }
-            /*
-             * The carrier an inferred binding gets is the carrier its type
-             * already names.  A nominal record was the one type with no row
-             * here, so it fell through to `int64_t` and every later use of
-             * the name became a member access on a scalar: accepted by the
-             * checker, rejected by `cc`, in a file the author did not write.
-             *
-             * The record row derives its C type from `record_c_type_name`,
-             * which is what the annotated binding path uses, so the two
-             * spellings of one binding cannot disagree.  It owns storage,
-             * unlike every other row here, so it is held separately and freed
-             * on both exits below.
-             */
-            const char *c_type = "int64_t";
             char *record_type_owned = NULL;
-            if (strcmp(binding_type, "Decimal") == 0) {
-                c_type = "KofunDecimal *";
-            } else if (strcmp(binding_type, "Float") == 0) {
-                c_type = "double";
-            } else if (strcmp(binding_type, "DecimalResult") == 0) {
-                c_type = "KofunDecimalResult *";
-            } else if (strcmp(binding_type, "Text") == 0) {
-                c_type = "const char *";
-            } else if (strcmp(binding_type, "List") == 0) {
-                c_type = "KofunCharList";
-            } else if (strcmp(binding_type, "List[Int]") == 0) {
-                c_type = "KofunIntListValue";
-            } else if (strncmp(binding_type, "List[", 5) == 0) {
-                size_t inner = strlen(binding_type) - 6;
-                char *element = malloc(inner + 1);
-                memcpy(element, binding_type + 5, inner);
-                element[inner] = '\0';
-                record_type_owned = record_list_c_type(element);
-                free(element);
-                c_type = record_type_owned;
-            } else if (strcmp(binding_type, "Bytes") == 0) {
-                c_type = "KofunBytesValue";
-            } else if (record_declaration_start(source, binding_type) >= 0) {
-                record_type_owned = record_c_type_name(binding_type);
-                c_type = record_type_owned;
-            }
+            const char *c_type = inferred_local_c_type(source, binding_type, &record_type_owned);
             if (
                 mutable &&
                 strcmp(binding_type, "Int") != 0 &&
